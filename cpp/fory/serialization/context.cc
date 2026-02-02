@@ -32,21 +32,21 @@ using namespace meta;
 // Meta String Encoding Constants (shared between encoder and writer)
 // ============================================================================
 
-static constexpr uint32_t kSmallStringThreshold = 16;
+static constexpr uint32_t k_small_string_threshold = 16;
 
 // Package/namespace encoder: dots and underscores as special chars
-static const MetaStringEncoder kNamespaceEncoder('.', '_');
+static const MetaStringEncoder k_namespace_encoder('.', '_');
 
 // Type name encoder: dollar sign and underscores as special chars
-static const MetaStringEncoder kTypeNameEncoder('$', '_');
+static const MetaStringEncoder k_type_name_encoder('$', '_');
 
-// Allowed encodings for package/namespace (same as Java's pkgEncodings)
-static const std::vector<MetaEncoding> kPkgEncodings = {
+// Allowed encodings for package/namespace (same as Java's pkg_encodings)
+static const std::vector<MetaEncoding> k_pkg_encodings = {
     MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
-// Allowed encodings for type name (same as Java's typeNameEncodings)
-static const std::vector<MetaEncoding> kTypeNameEncodings = {
+// Allowed encodings for type name (same as Java's type_name_encodings)
+static const std::vector<MetaEncoding> k_type_name_encodings = {
     MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
@@ -78,36 +78,36 @@ void WriteContext::write_type_meta(const TypeInfo *type_info) {
   auto it = write_type_info_index_map_.find(type_info);
   if (it != write_type_info_index_map_.end()) {
     // Reference to previously written type: (index << 1) | 1, LSB=1
-    buffer_.WriteVarUint32(static_cast<uint32_t>((it->second << 1) | 1));
+    buffer_.write_var_uint32(static_cast<uint32_t>((it->second << 1) | 1));
     return;
   }
 
   // New type: index << 1, LSB=0, followed by TypeDef bytes inline
   size_t index = write_type_info_index_map_.size();
-  buffer_.WriteVarUint32(static_cast<uint32_t>(index << 1));
+  buffer_.write_var_uint32(static_cast<uint32_t>(index << 1));
   write_type_info_index_map_[type_info] = index;
 
-  // Write TypeDef bytes inline
-  buffer_.WriteBytes(type_info->type_def.data(), type_info->type_def.size());
+  // write TypeDef bytes inline
+  buffer_.write_bytes(type_info->type_def.data(), type_info->type_def.size());
 }
 
-/// Write pre-encoded meta string to buffer (avoids re-encoding on each write)
+/// write pre-encoded meta string to buffer (avoids re-encoding on each write)
 static void write_encoded_meta_string(Buffer &buffer,
                                       const CachedMetaString &encoded) {
   const uint32_t encoded_len = static_cast<uint32_t>(encoded.bytes.size());
   uint32_t header = encoded_len << 1; // last bit 0 => new string
-  buffer.WriteVarUint32(header);
+  buffer.write_var_uint32(header);
 
-  if (encoded_len > kSmallStringThreshold) {
+  if (encoded_len > k_small_string_threshold) {
     // For large strings, write pre-computed hash
-    buffer.WriteInt64(encoded.hash);
+    buffer.write_int64(encoded.hash);
   } else {
     // For small strings, write encoding byte
-    buffer.WriteInt8(static_cast<int8_t>(encoded.encoding));
+    buffer.write_int8(static_cast<int8_t>(encoded.encoding));
   }
 
   if (encoded_len > 0) {
-    buffer.WriteBytes(encoded.bytes.data(), encoded_len);
+    buffer.write_bytes(encoded.bytes.data(), encoded_len);
   }
 }
 
@@ -117,14 +117,14 @@ WriteContext::write_enum_typeinfo(const std::type_index &type) {
   uint32_t type_id = type_info->type_id;
   uint32_t type_id_low = type_id & 0xff;
 
-  buffer_.WriteVarUint32(type_id);
+  buffer_.write_var_uint32(type_id);
 
   if (type_id_low == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
     if (config_->compatible) {
-      // Write type meta inline using streaming protocol
+      // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(type));
     } else {
-      // Write pre-encoded namespace and type_name
+      // write pre-encoded namespace and type_name
       if (type_info->encoded_namespace && type_info->encoded_type_name) {
         write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
         write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
@@ -148,14 +148,14 @@ WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
   uint32_t type_id = type_info->type_id;
   uint32_t type_id_low = type_id & 0xff;
 
-  buffer_.WriteVarUint32(type_id);
+  buffer_.write_var_uint32(type_id);
 
   if (type_id_low == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
     if (config_->compatible) {
-      // Write type meta inline using streaming protocol
+      // write type meta inline using streaming protocol
       write_type_meta(type_info);
     } else {
-      // Write pre-encoded namespace and type_name
+      // write pre-encoded namespace and type_name
       if (type_info->encoded_namespace && type_info->encoded_type_name) {
         write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
         write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
@@ -175,24 +175,24 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
                                  const std::type_index &concrete_type_id) {
   // Check if it's an internal type
   if (is_internal_type(fory_type_id)) {
-    buffer_.WriteVarUint32(fory_type_id);
+    buffer_.write_var_uint32(fory_type_id);
     FORY_TRY(type_info, type_resolver_->get_type_info_by_id(fory_type_id));
     return type_info;
   }
 
-  // Get type info for the concrete type
+  // get type info for the concrete type
   FORY_TRY(type_info, type_resolver_->get_type_info(concrete_type_id));
   uint32_t type_id = type_info->type_id;
 
-  // Write type_id
-  buffer_.WriteVarUint32(type_id);
+  // write type_id
+  buffer_.write_var_uint32(type_id);
 
   // Handle different type categories based on low byte
   uint32_t type_id_low = type_id & 0xff;
   switch (type_id_low) {
   case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
   case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
-    // Write type meta inline using streaming protocol
+    // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
     break;
   }
@@ -201,10 +201,10 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
   case static_cast<uint32_t>(TypeId::NAMED_STRUCT):
   case static_cast<uint32_t>(TypeId::NAMED_UNION): {
     if (config_->compatible) {
-      // Write type meta inline using streaming protocol
+      // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
     } else {
-      // Write pre-encoded namespace and type_name
+      // write pre-encoded namespace and type_name
       if (type_info->encoded_namespace && type_info->encoded_type_name) {
         write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
         write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
@@ -225,28 +225,28 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
 
 Result<void, Error>
 WriteContext::write_struct_type_info(const std::type_index &type_id) {
-  // Get type info with single lookup
+  // get type info with single lookup
   FORY_TRY(type_info, type_resolver_->get_type_info(type_id));
   uint32_t fory_type_id = type_info->type_id;
 
-  // Write type_id
-  buffer_.WriteVarUint32(fory_type_id);
+  // write type_id
+  buffer_.write_var_uint32(fory_type_id);
 
   // Handle different struct type categories based on low byte
   uint32_t type_id_low = fory_type_id & 0xff;
   switch (type_id_low) {
   case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
   case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
-    // Write type meta inline using streaming protocol
+    // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(type_id));
     break;
   }
   case static_cast<uint32_t>(TypeId::NAMED_STRUCT): {
     if (config_->compatible) {
-      // Write type meta inline using streaming protocol
+      // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(type_id));
     } else {
-      // Write pre-encoded namespace and type_name
+      // write pre-encoded namespace and type_name
       if (type_info->encoded_namespace && type_info->encoded_type_name) {
         write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
         write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
@@ -269,24 +269,24 @@ Result<void, Error>
 WriteContext::write_struct_type_info(const TypeInfo *type_info) {
   uint32_t fory_type_id = type_info->type_id;
 
-  // Write type_id
-  buffer_.WriteVarUint32(fory_type_id);
+  // write type_id
+  buffer_.write_var_uint32(fory_type_id);
 
   // Handle different struct type categories based on low byte
   uint32_t type_id_low = fory_type_id & 0xff;
   switch (type_id_low) {
   case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
   case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
-    // Write type meta inline using streaming protocol
+    // write type meta inline using streaming protocol
     write_type_meta(type_info);
     break;
   }
   case static_cast<uint32_t>(TypeId::NAMED_STRUCT): {
     if (config_->compatible) {
-      // Write type meta inline using streaming protocol
+      // write type meta inline using streaming protocol
       write_type_meta(type_info);
     } else {
-      // Write pre-encoded namespace and type_name
+      // write pre-encoded namespace and type_name
       if (type_info->encoded_namespace && type_info->encoded_type_name) {
         write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
         write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
@@ -312,9 +312,9 @@ void WriteContext::reset() {
   // Clear meta map for streaming TypeMeta (size is used as counter)
   write_type_info_index_map_.clear();
   current_dyn_depth_ = 0;
-  // Reset buffer indices for reuse - no memory operations needed
-  buffer_.WriterIndex(0);
-  buffer_.ReaderIndex(0);
+  // reset buffer indices for reuse - no memory operations needed
+  buffer_.writer_index(0);
+  buffer_.reader_index(0);
 }
 
 uint32_t WriteContext::get_type_id_for_cache(const std::type_index &type_idx) {
@@ -337,8 +337,8 @@ ReadContext::ReadContext(const Config &config,
 ReadContext::~ReadContext() = default;
 
 // Static decoders for NAMED_ENUM namespace/type_name - shared across calls
-static const MetaStringDecoder kNamespaceDecoder('.', '_');
-static const MetaStringDecoder kTypeNameDecoder('$', '_');
+static const MetaStringDecoder k_namespace_decoder('.', '_');
+static const MetaStringDecoder k_type_name_decoder('$', '_');
 
 Result<const TypeInfo *, Error>
 ReadContext::read_enum_type_info(const std::type_index &type,
@@ -360,12 +360,12 @@ ReadContext::read_enum_type_info(uint32_t base_type_id) {
 }
 
 // Maximum number of parsed type defs to cache (avoid OOM from malicious input)
-static constexpr size_t kMaxParsedNumTypeDefs = 8192;
+static constexpr size_t k_max_parsed_num_type_defs = 8192;
 
 Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   Error error;
   // Read the index marker
-  uint32_t index_marker = buffer_->ReadVarUint32(error);
+  uint32_t index_marker = buffer_->read_var_uint32(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -380,7 +380,7 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
 
   // New type - read TypeMeta inline
   // Read the 8-byte header first for caching
-  int64_t meta_header = buffer_->ReadInt64(error);
+  int64_t meta_header = buffer_->read_int64(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -425,7 +425,7 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     type_info->type_id = local_type_info->type_id;
     type_info->type_meta = std::move(parsed_meta);
     type_info->type_def = local_type_info->type_def;
-    // CRITICAL: Copy the harness from the registered type_info
+    // CRITICAL: copy the harness from the registered type_info
     type_info->harness = local_type_info->harness;
     type_info->name_to_index = local_type_info->name_to_index;
     type_info->namespace_name = local_type_info->namespace_name;
@@ -437,14 +437,14 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     type_info->type_meta = std::move(parsed_meta);
   }
 
-  // Get raw pointer before moving into storage
+  // get raw pointer before moving into storage
   const TypeInfo *raw_ptr = type_info.get();
 
   // Store in primary storage
   owned_reading_type_infos_.push_back(std::move(type_info));
 
   // Cache the parsed TypeInfo (with size limit to prevent OOM)
-  if (parsed_type_infos_.size() < kMaxParsedNumTypeDefs) {
+  if (parsed_type_infos_.size() < k_max_parsed_num_type_defs) {
     parsed_type_infos_[meta_header] = raw_ptr;
   }
 
@@ -464,7 +464,7 @@ ReadContext::get_type_info_by_index(size_t index) const {
 
 Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
   Error error;
-  uint32_t type_id = buffer_->ReadVarUint32(error);
+  uint32_t type_id = buffer_->read_var_uint32(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -486,9 +486,9 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
       return read_type_meta();
     }
     FORY_TRY(namespace_str,
-             meta_string_table_.read_string(*buffer_, kNamespaceDecoder));
+             meta_string_table_.read_string(*buffer_, k_namespace_decoder));
     FORY_TRY(type_name,
-             meta_string_table_.read_string(*buffer_, kTypeNameDecoder));
+             meta_string_table_.read_string(*buffer_, k_type_name_decoder));
     FORY_TRY(type_info,
              type_resolver_->get_type_info_by_name(namespace_str, type_name));
     return type_info;

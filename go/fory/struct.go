@@ -44,6 +44,7 @@ type structSerializer struct {
 	name       string
 	type_      reflect.Type
 	structHash int32
+	typeID     uint32
 
 	// Pre-sorted and categorized fields (embedded for cache locality)
 	fieldGroup FieldGroup
@@ -148,10 +149,105 @@ func computeLocalNullable(typeResolver *TypeResolver, field reflect.StructField,
 	if foryTag.NullableSet {
 		nullableFlag = foryTag.Nullable
 	}
-	if isNonNullablePrimitiveKind(fieldType.Kind()) && !isEnum {
+	if isNonNullablePrimitiveKind(fieldType.Kind()) && !isEnum && !isOptional {
 		nullableFlag = false
 	}
 	return nullableFlag
+}
+
+func primitiveTypeIdMatchesKind(typeId TypeId, kind reflect.Kind) bool {
+	switch typeId {
+	case BOOL:
+		return kind == reflect.Bool
+	case INT8:
+		return kind == reflect.Int8
+	case INT16:
+		return kind == reflect.Int16
+	case INT32, VARINT32:
+		return kind == reflect.Int32 || kind == reflect.Int
+	case INT64, VARINT64, TAGGED_INT64:
+		return kind == reflect.Int64 || kind == reflect.Int
+	case UINT8:
+		return kind == reflect.Uint8
+	case UINT16:
+		return kind == reflect.Uint16
+	case UINT32, VAR_UINT32:
+		return kind == reflect.Uint32 || kind == reflect.Uint
+	case UINT64, VAR_UINT64, TAGGED_UINT64:
+		return kind == reflect.Uint64 || kind == reflect.Uint
+	case FLOAT32:
+		return kind == reflect.Float32
+	case FLOAT64:
+		return kind == reflect.Float64
+	case STRING:
+		return kind == reflect.String
+	default:
+		return false
+	}
+}
+
+func applyNestedRefOverride(serializer Serializer, fieldType reflect.Type, foryTag ForyTag) Serializer {
+	if !foryTag.NestedRefSet || !foryTag.NestedRefValid {
+		return serializer
+	}
+	return applyNestedRefOverrideWithPath(serializer, fieldType, foryTag.NestedRef)
+}
+
+func applyNestedRefOverrideWithPath(serializer Serializer, fieldType reflect.Type, nestedRefs []bool) Serializer {
+	if serializer == nil || len(nestedRefs) == 0 {
+		return serializer
+	}
+	switch fieldType.Kind() {
+	case reflect.Slice:
+		if len(nestedRefs) < 1 {
+			return serializer
+		}
+		if sliceSer, ok := serializer.(*sliceSerializer); ok {
+			override := nestedRefs[0]
+			newSer := *sliceSer
+			newSer.referencable = newSer.referencable && override
+			if len(nestedRefs) > 1 && newSer.elemSerializer != nil {
+				newSer.elemSerializer = applyNestedRefOverrideWithPath(
+					newSer.elemSerializer,
+					fieldType.Elem(),
+					nestedRefs[1:],
+				)
+			}
+			return &newSer
+		}
+	case reflect.Map:
+		if len(nestedRefs) < 2 {
+			return serializer
+		}
+		keyOverride := nestedRefs[0]
+		valueOverride := nestedRefs[1]
+		if mapSer, ok := serializer.(*mapSerializer); ok {
+			newSer := *mapSer
+			newSer.keyReferencable = newSer.keyReferencable && keyOverride
+			newSer.valueReferencable = newSer.valueReferencable && valueOverride
+			if len(nestedRefs) > 2 && newSer.valueSerializer != nil {
+				newSer.valueSerializer = applyNestedRefOverrideWithPath(
+					newSer.valueSerializer,
+					fieldType.Elem(),
+					nestedRefs[2:],
+				)
+			}
+			return &newSer
+		}
+		if mapSer, ok := serializer.(mapSerializer); ok {
+			mapSer.keyReferencable = mapSer.keyReferencable && keyOverride
+			mapSer.valueReferencable = mapSer.valueReferencable && valueOverride
+			if len(nestedRefs) > 2 && mapSer.valueSerializer != nil {
+				mapSer.valueSerializer = applyNestedRefOverrideWithPath(
+					mapSer.valueSerializer,
+					fieldType.Elem(),
+					nestedRefs[2:],
+				)
+			}
+			return mapSer
+		}
+	}
+	return serializer
 }
 
 // initFields initializes fields from local struct type using TypeResolver
@@ -215,6 +311,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 			// For struct fields with interface element types, use sliceDynSerializer
 			fieldSerializer = mustNewSliceDynSerializer(fieldType.Elem())
 		}
+		fieldSerializer = applyNestedRefOverride(fieldSerializer, fieldType, foryTag)
 
 		// Get TypeId for the serializer, fallback to deriving from kind
 		fieldTypeId := typeResolver.getTypeIdByType(fieldType)
@@ -312,13 +409,21 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		if foryTag.RefSet {
 			trackRef = foryTag.Ref
 		}
+		trackingRef := trackRef
+		if trackingRef && !NeedWriteRef(fieldTypeId) {
+			trackingRef = false
+		}
+		// Align trackingRef with xlang rules for field ref flags:
+		// - simple value types never write ref flags
+		// - collection fields only write ref flags when explicitly tagged
+		if typeResolver.fory.config.IsXlang && trackingRef && isCollectionType(fieldTypeId) && !foryTag.RefSet {
+			trackingRef = false
+		}
 
-		// Pre-compute RefMode based on (possibly overridden) trackRef and nullable
-		// For pointer-to-struct fields, enable ref tracking when trackRef is enabled,
-		// regardless of nullable flag. This is necessary to detect circular references.
+		// Pre-compute RefMode based on trackingRef and nullable.
+		// When trackingRef is true, we must write ref flags even for non-nullable fields.
 		refMode := RefModeNone
-		isStructPointer := fieldType.Kind() == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct
-		if trackRef && (nullableFlag || isStructPointer) {
+		if trackingRef {
 			refMode = RefModeTracking
 		} else if nullableFlag {
 			refMode = RefModeNullOnly
@@ -344,7 +449,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 				}
 			}
 		}
-		if DebugOutputEnabled() {
+		if DebugOutputEnabled {
 			fmt.Printf("[Go][fory-debug] initFields: field=%s type=%v dispatchId=%d refMode=%v nullableFlag=%v serializer=%T\n",
 				SnakeCase(field.Name), fieldType, dispatchId, refMode, nullableFlag, fieldSerializer)
 		}
@@ -623,11 +728,63 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					shouldRead = true
 					fieldType = localType // Use local type for struct fields
 				}
-			} else if typeLookupFailed && (defTypeId == LIST || defTypeId == SET) {
-				// For collection fields with failed type lookup (e.g., List<Animal> with interface element type),
-				// check if local type is a slice with interface element type (e.g., []Animal)
-				// The type lookup fails because sliceSerializer doesn't support interface elements
-				if localType.Kind() == reflect.Slice && localType.Elem().Kind() == reflect.Interface {
+			} else if typeLookupFailed && (internalDefTypeId == UNION || internalDefTypeId == TYPED_UNION || internalDefTypeId == NAMED_UNION) {
+				// For union fields with failed type lookup (named unions aren't in typeIDToTypeInfo),
+				// allow reading if the local type is a union.
+				if isUnionType(localType) {
+					shouldRead = true
+					fieldType = localType
+				}
+			} else if typeLookupFailed && isPrimitiveType(int16(internalDefTypeId)) {
+				baseLocal := localType
+				if optInfo, ok := getOptionalInfo(baseLocal); ok {
+					baseLocal = optInfo.valueType
+				}
+				if baseLocal.Kind() == reflect.Ptr {
+					baseLocal = baseLocal.Elem()
+				}
+				if primitiveTypeIdMatchesKind(internalDefTypeId, baseLocal.Kind()) {
+					shouldRead = true
+					fieldType = localType
+				}
+			} else if typeLookupFailed && isPrimitiveArrayType(int16(internalDefTypeId)) {
+				// Primitive arrays/slices use array type IDs but may not be registered in typeIDToTypeInfo.
+				// Allow reading using the local slice/array type when the type IDs match.
+				localTypeId := typeIdFromKind(localType)
+				if TypeId(localTypeId&0xFF) == internalDefTypeId {
+					shouldRead = true
+					fieldType = localType
+				}
+			} else if typeLookupFailed && defTypeId == LIST {
+				// For list fields with failed type lookup (e.g., named struct element types),
+				// allow reading using the local slice type.
+				if localType.Kind() == reflect.Slice {
+					elemKind := localType.Elem().Kind()
+					if elemKind == reflect.Interface ||
+						elemKind == reflect.Struct ||
+						(elemKind == reflect.Ptr && localType.Elem().Elem().Kind() == reflect.Struct) {
+						shouldRead = true
+						fieldType = localType
+					}
+				}
+			} else if typeLookupFailed && defTypeId == MAP {
+				// For map fields with failed type lookup (e.g., named struct key/value types),
+				// allow reading using the local map type.
+				if localType.Kind() == reflect.Map {
+					keyKind := localType.Key().Kind()
+					valueKind := localType.Elem().Kind()
+					if keyKind == reflect.Interface ||
+						keyKind == reflect.Struct ||
+						(keyKind == reflect.Ptr && localType.Key().Elem().Kind() == reflect.Struct) ||
+						valueKind == reflect.Interface ||
+						valueKind == reflect.Struct ||
+						(valueKind == reflect.Ptr && localType.Elem().Elem().Kind() == reflect.Struct) {
+						shouldRead = true
+						fieldType = localType
+					}
+				}
+			} else if typeLookupFailed && defTypeId == SET {
+				if isSetReflectType(localType) {
 					shouldRead = true
 					fieldType = localType
 				}
@@ -653,6 +810,10 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 						fieldSerializer = mustNewSliceDynSerializer(localType.Elem())
 					}
 				}
+				// If serializer is still nil, fall back to local type serializer.
+				if fieldSerializer == nil {
+					fieldSerializer, _ = typeResolver.getSerializerByType(localType, true)
+				}
 				// For Set fields (fory.Set[T] = map[T]struct{}), get the setSerializer
 				if defTypeId == SET && isSetReflectType(localType) && fieldSerializer == nil {
 					fieldSerializer, _ = typeResolver.getSerializerByType(localType, true)
@@ -667,7 +828,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 				if isEnumField && localType.Kind() == reflect.Ptr {
 					baseType := localType.Elem()
 					fieldSerializer, _ = typeResolver.getSerializerByType(baseType, true)
-					if DebugOutputEnabled() {
+					if DebugOutputEnabled {
 						fmt.Printf("[fory-debug] pointer enum field %s: localType=%v baseType=%v serializer=%T\n",
 							def.name, localType, baseType, fieldSerializer)
 					}
@@ -822,7 +983,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 	s.fieldGroup = GroupFields(s.fields)
 
 	// Debug output for field order comparison with Java MetaSharedSerializer
-	if DebugOutputEnabled() && s.type_ != nil {
+	if DebugOutputEnabled && s.type_ != nil {
 		fmt.Printf("[Go] Remote TypeDef order (%d fields):\n", len(s.fieldDefs))
 		for i, def := range s.fieldDefs {
 			fmt.Printf("[Go]   [%d] %s -> typeId=%d, nullable=%v\n", i, def.name, def.fieldType.TypeId(), def.nullable)
@@ -837,6 +998,10 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 	for i, field := range fields {
 		if field.Meta.FieldIndex < 0 {
 			// Field exists in remote TypeDef but not locally
+			if DebugOutputEnabled && s.type_ != nil {
+				fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: missing local field for remote def idx=%d name=%q tagID=%d typeId=%d\n",
+					s.name, i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, s.fieldDefs[i].fieldType.TypeId())
+			}
 			s.typeDefDiffers = true
 			break
 		}
@@ -848,17 +1013,53 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			// Check if local Go field is nullable based on local field definitions
 			localNullable := localNullableByIndex[field.Meta.FieldIndex]
 			if remoteNullable != localNullable {
+				if DebugOutputEnabled && s.type_ != nil {
+					fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: nullable mismatch idx=%d name=%q tagID=%d remote=%v local=%v\n",
+						s.name, i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, remoteNullable, localNullable)
+				}
+				s.typeDefDiffers = true
+				break
+			}
+			remoteTypeId := TypeId(s.fieldDefs[i].fieldType.TypeId() & 0xFF)
+			localTypeId := typeResolver.getTypeIdByType(field.Meta.Type)
+			if localTypeId == 0 {
+				localTypeId = typeIdFromKind(field.Meta.Type)
+			}
+			localTypeId = TypeId(localTypeId & 0xFF)
+			if !typeIdEqualForDiff(remoteTypeId, localTypeId) {
+				if DebugOutputEnabled && s.type_ != nil {
+					fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: type ID mismatch idx=%d name=%q tagID=%d remote=%d local=%d\n",
+						s.name, i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, remoteTypeId, localTypeId)
+				}
 				s.typeDefDiffers = true
 				break
 			}
 		}
 	}
 
-	if DebugOutputEnabled() && s.type_ != nil {
+	if DebugOutputEnabled && s.type_ != nil {
 		fmt.Printf("[Go] typeDefDiffers=%v for %s\n", s.typeDefDiffers, s.type_.Name())
 	}
 
 	return nil
+}
+
+func typeIdEqualForDiff(remoteTypeId TypeId, localTypeId TypeId) bool {
+	if remoteTypeId == localTypeId {
+		return true
+	}
+	if remoteTypeId == UNION && (localTypeId == TYPED_UNION || localTypeId == NAMED_UNION) {
+		return true
+	}
+	if localTypeId == UNION && (remoteTypeId == TYPED_UNION || remoteTypeId == NAMED_UNION) {
+		return true
+	}
+	// Treat byte array encodings as compatible for diffing.
+	if (remoteTypeId == INT8_ARRAY || remoteTypeId == UINT8_ARRAY || remoteTypeId == BINARY) &&
+		(localTypeId == INT8_ARRAY || localTypeId == UINT8_ARRAY || localTypeId == BINARY) {
+		return true
+	}
+	return false
 }
 
 func (s *structSerializer) computeHash() int32 {
@@ -882,14 +1083,14 @@ func (s *structSerializer) computeHash() int32 {
 				}
 			}
 			// Unions use UNION type ID in fingerprints, regardless of typed/named variants.
-			internalId := TypeId(typeId & 0xFF)
+			internalId := typeId & 0xFF
 			if internalId == TYPED_UNION || internalId == NAMED_UNION || internalId == UNION {
 				typeId = UNION
 			}
 			// For user-defined types (struct, ext types), use UNKNOWN in fingerprint
 			// This matches Java's behavior where user-defined types return UNKNOWN
 			// to ensure consistent fingerprint computation across languages
-			if isUserDefinedType(int16(typeId)) {
+			if isUserDefinedType(typeId) {
 				typeId = UNKNOWN
 			}
 			fieldTypeForHash := field.Meta.Type
@@ -971,7 +1172,7 @@ func (s *structSerializer) computeHash() int32 {
 	h1, _ := Murmur3Sum128WithSeed(data, 47)
 	hash := int32(h1 & 0xFFFFFFFF)
 
-	if DebugOutputEnabled() {
+	if DebugOutputEnabled {
 		fmt.Printf("[Go][fory-debug] struct %v version fingerprint=\"%s\" version hash=%d\n", s.type_, hashString, hash)
 	}
 
@@ -1188,6 +1389,17 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				} else {
 					binary.LittleEndian.PutUint64(data[bufOffset:], math.Float64bits(v))
 				}
+			case PrimitiveFloat16DispatchId:
+				v, ok := loadFieldValue[uint16](field.Kind, fieldPtr, optInfo)
+				if !ok {
+					v = 0
+				}
+				if isLittleEndian {
+					*(*uint16)(unsafe.Pointer(&data[bufOffset])) = v
+				} else {
+					binary.LittleEndian.PutUint16(data[bufOffset:], v)
+				}
+
 			}
 		}
 		// Update writer index ONCE after all fixed fields
@@ -1232,19 +1444,19 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				offset += buf.UnsafePutVaruint32(offset, v)
+				offset += buf.UnsafePutVarUint32(offset, v)
 			case PrimitiveVarUint64DispatchId:
 				v, ok := loadFieldValue[uint64](field.Kind, fieldPtr, optInfo)
 				if !ok {
 					v = 0
 				}
-				offset += buf.UnsafePutVaruint64(offset, v)
+				offset += buf.UnsafePutVarUint64(offset, v)
 			case PrimitiveUintDispatchId:
 				v, ok := loadFieldValue[uint](field.Kind, fieldPtr, optInfo)
 				if !ok {
 					v = 0
 				}
-				offset += buf.UnsafePutVaruint64(offset, uint64(v))
+				offset += buf.UnsafePutVarUint64(offset, uint64(v))
 			case PrimitiveTaggedInt64DispatchId:
 				v, ok := loadFieldValue[int64](field.Kind, fieldPtr, optInfo)
 				if !ok {
@@ -1276,6 +1488,10 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 // writeRemainingField writes a non-primitive field (string, slice, map, struct, enum)
 func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Pointer, field *FieldInfo, value reflect.Value) {
 	buf := ctx.Buffer()
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] write field %s: fieldInfo=%v typeId=%v serializer=%T, buffer writerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.writerIndex)
+	}
 	if field.Kind == FieldKindOptional {
 		if ptr != nil {
 			if writeOptionFast(ctx, field, unsafe.Add(ptr, field.Offset)) {
@@ -1373,6 +1589,24 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 				break
 			}
 			ctx.WriteInt64Slice(*(*[]int64)(fieldPtr), field.RefMode, false)
+			return
+		case Uint16SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			ctx.WriteUint16Slice(*(*[]uint16)(fieldPtr), field.RefMode, false)
+			return
+		case Uint32SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			ctx.WriteUint32Slice(*(*[]uint32)(fieldPtr), field.RefMode, false)
+			return
+		case Uint64SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			ctx.WriteUint64Slice(*(*[]uint64)(fieldPtr), field.RefMode, false)
 			return
 		case IntSliceDispatchId:
 			if field.RefMode == RefModeTracking {
@@ -1607,7 +1841,7 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 				return
 			}
 			buf.WriteInt8(NotNullValueFlag)
-			buf.WriteVaruint32(*ptr)
+			buf.WriteVarUint32(*ptr)
 			return
 		case NullableVarint64DispatchId:
 			ptr := *(**int64)(fieldPtr)
@@ -1625,7 +1859,7 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 				return
 			}
 			buf.WriteInt8(NotNullValueFlag)
-			buf.WriteVaruint64(*ptr)
+			buf.WriteVarUint64(*ptr)
 			return
 		}
 	}
@@ -1635,6 +1869,10 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 		return
 	}
 
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] write normal field %s: fieldInfo=%v typeId=%v serializer=%T, buffer writerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.writerIndex)
+	}
 	// Fall back to serializer for other types
 	fieldValue := value.Field(field.Meta.FieldIndex)
 	if field.Serializer != nil {
@@ -1939,9 +2177,9 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 	case NullableVarUint32DispatchId:
 		if field.RefMode == RefModeNone {
 			if has {
-				buf.WriteVaruint32(*(*uint32)(valuePtr))
+				buf.WriteVarUint32(*(*uint32)(valuePtr))
 			} else {
-				buf.WriteVaruint32(0)
+				buf.WriteVarUint32(0)
 			}
 			return true
 		}
@@ -1950,7 +2188,7 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 			return true
 		}
 		buf.WriteInt8(NotNullValueFlag)
-		buf.WriteVaruint32(*(*uint32)(valuePtr))
+		buf.WriteVarUint32(*(*uint32)(valuePtr))
 		return true
 	case NullableVarint64DispatchId:
 		if field.RefMode == RefModeNone {
@@ -1971,9 +2209,9 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 	case NullableVarUint64DispatchId:
 		if field.RefMode == RefModeNone {
 			if has {
-				buf.WriteVaruint64(*(*uint64)(valuePtr))
+				buf.WriteVarUint64(*(*uint64)(valuePtr))
 			} else {
-				buf.WriteVaruint64(0)
+				buf.WriteVarUint64(0)
 			}
 			return true
 		}
@@ -1982,7 +2220,7 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 			return true
 		}
 		buf.WriteInt8(NotNullValueFlag)
-		buf.WriteVaruint64(*(*uint64)(valuePtr))
+		buf.WriteVarUint64(*(*uint64)(valuePtr))
 		return true
 	case PrimitiveBoolDispatchId:
 		if has {
@@ -2063,9 +2301,9 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 		return true
 	case PrimitiveVarUint32DispatchId:
 		if has {
-			buf.WriteVaruint32(*(*uint32)(valuePtr))
+			buf.WriteVarUint32(*(*uint32)(valuePtr))
 		} else {
-			buf.WriteVaruint32(0)
+			buf.WriteVarUint32(0)
 		}
 		return true
 	case PrimitiveUint64DispatchId:
@@ -2077,16 +2315,16 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 		return true
 	case PrimitiveVarUint64DispatchId:
 		if has {
-			buf.WriteVaruint64(*(*uint64)(valuePtr))
+			buf.WriteVarUint64(*(*uint64)(valuePtr))
 		} else {
-			buf.WriteVaruint64(0)
+			buf.WriteVarUint64(0)
 		}
 		return true
 	case PrimitiveUintDispatchId:
 		if has {
-			buf.WriteVaruint64(uint64(*(*uint)(valuePtr)))
+			buf.WriteVarUint64(uint64(*(*uint)(valuePtr)))
 		} else {
-			buf.WriteVaruint64(0)
+			buf.WriteVarUint64(0)
 		}
 		return true
 	case PrimitiveTaggedInt64DispatchId:
@@ -2147,14 +2385,64 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 	}
 	if readType {
-		// Read type info - in compatible mode this returns the serializer with remote fieldDefs
-		typeID := buf.ReadVaruint32Small7(ctxErr)
+		if !ctx.Compatible() && s.type_ != nil {
+			typeID := buf.ReadVarUint32Small7(ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if s.typeID != 0 && typeID == s.typeID && !IsNamespacedType(TypeId(typeID)) {
+				s.ReadData(ctx, value)
+				return
+			}
+			if IsNamespacedType(TypeId(typeID)) {
+				// Expected type is known: skip namespace/type meta and read data directly.
+				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
+				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
+				if ctxErr.HasError() {
+					return
+				}
+				s.ReadData(ctx, value)
+				return
+			}
+			internalTypeID := TypeId(typeID & 0xFF)
+			if internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
+				typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+				if ctxErr.HasError() {
+					return
+				}
+				if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+					structSer.ReadData(ctx, value)
+					return
+				}
+				if s.typeID != 0 && typeID == s.typeID {
+					s.ReadData(ctx, value)
+					return
+				}
+			}
+			ctx.SetError(DeserializationError("unexpected type id for struct"))
+			return
+		}
+		if s.type_ != nil {
+			serializer := ctx.TypeResolver().ReadTypeInfoForType(buf, s.type_, ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if serializer == nil {
+				ctx.SetError(DeserializationError("unexpected type id for struct"))
+				return
+			}
+			if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+				structSer.ReadData(ctx, value)
+				return
+			}
+			s.ReadData(ctx, value)
+			return
+		}
+		// Fallback: read type info based on typeID when expected type is unknown
+		typeID := buf.ReadVarUint32Small7(ctxErr)
 		internalTypeID := TypeId(typeID & 0xFF)
-		// Check if this is a struct type that needs type meta reading
 		if IsNamespacedType(TypeId(typeID)) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
-			// For struct types in compatible mode, use the serializer from TypeInfo
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
-			// Use the serializer from TypeInfo which has the remote field definitions
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				structSer.ReadData(ctx, value)
 				return
@@ -2303,6 +2591,16 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 					v = math.Float64frombits(binary.LittleEndian.Uint64(data[bufOffset:]))
 				}
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			case PrimitiveFloat16DispatchId:
+				var v uint16
+				if isLittleEndian {
+					v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
+				} else {
+					v = binary.LittleEndian.Uint16(data[bufOffset:])
+				}
+				// Float16 is underlying uint16, so we can store it directly
+				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+
 			}
 		}
 		// Update reader index ONCE after all fixed fields
@@ -2313,31 +2611,61 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Note: For tagged int64/uint64, we can't use unsafe reads because they need bounds checking
 	if len(s.fieldGroup.PrimitiveVarintFields) > 0 {
 		err := ctx.Err()
-		for _, field := range s.fieldGroup.PrimitiveVarintFields {
-			fieldPtr := unsafe.Add(ptr, field.Offset)
-			optInfo := optionalInfo{}
-			if field.Kind == FieldKindOptional && field.Meta != nil {
-				optInfo = field.Meta.OptionalInfo
+		if buf.remaining() >= s.fieldGroup.MaxVarintSize {
+			for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fieldPtr := unsafe.Add(ptr, field.Offset)
+				optInfo := optionalInfo{}
+				if field.Kind == FieldKindOptional && field.Meta != nil {
+					optInfo = field.Meta.OptionalInfo
+				}
+				switch field.DispatchId {
+				case PrimitiveVarint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarint32())
+				case PrimitiveVarint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarint64())
+				case PrimitiveIntDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.UnsafeReadVarint64()))
+				case PrimitiveVarUint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarUint32())
+				case PrimitiveVarUint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarUint64())
+				case PrimitiveUintDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.UnsafeReadVarUint64()))
+				case PrimitiveTaggedInt64DispatchId:
+					// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
+				case PrimitiveTaggedUint64DispatchId:
+					// Tagged UINT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+				}
 			}
-			switch field.DispatchId {
-			case PrimitiveVarint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint32(err))
-			case PrimitiveVarint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
-			case PrimitiveIntDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
-			case PrimitiveVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
-			case PrimitiveVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
-			case PrimitiveUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
-			case PrimitiveTaggedInt64DispatchId:
-				// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
-			case PrimitiveTaggedUint64DispatchId:
-				// Tagged UINT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+		} else {
+			for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fieldPtr := unsafe.Add(ptr, field.Offset)
+				optInfo := optionalInfo{}
+				if field.Kind == FieldKindOptional && field.Meta != nil {
+					optInfo = field.Meta.OptionalInfo
+				}
+				switch field.DispatchId {
+				case PrimitiveVarint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint32(err))
+				case PrimitiveVarint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
+				case PrimitiveIntDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
+				case PrimitiveVarUint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
+				case PrimitiveVarUint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
+				case PrimitiveUintDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
+				case PrimitiveTaggedInt64DispatchId:
+					// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
+				case PrimitiveTaggedUint64DispatchId:
+					// Tagged UINT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+				}
 			}
 		}
 	}
@@ -2347,11 +2675,18 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	for i := range s.fieldGroup.RemainingFields {
 		s.readRemainingField(ctx, ptr, &s.fieldGroup.RemainingFields[i], value)
 	}
+	if ctx.HasError() {
+		ctx.Err().stack = append(ctx.Err().stack, fmt.Sprintf(" [struct %s]", s.name))
+	}
 }
 
 // readRemainingField reads a non-primitive field (string, slice, map, struct, enum)
 func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Pointer, field *FieldInfo, value reflect.Value) {
 	buf := ctx.Buffer()
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] read remaining field %s: fieldInfo=%v typeId=%v, buffer readerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, buf.readerIndex)
+	}
 	ctxErr := ctx.Err()
 	if field.Kind == FieldKindOptional {
 		if ptr != nil {
@@ -2451,6 +2786,24 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 				break
 			}
 			*(*[]int64)(fieldPtr) = ctx.ReadInt64Slice(field.RefMode, false)
+			return
+		case Uint16SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			*(*[]uint16)(fieldPtr) = ctx.ReadUint16Slice(field.RefMode, false)
+			return
+		case Uint32SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			*(*[]uint32)(fieldPtr) = ctx.ReadUint32Slice(field.RefMode, false)
+			return
+		case Uint64SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			*(*[]uint64)(fieldPtr) = ctx.ReadUint64Slice(field.RefMode, false)
 			return
 		case IntSliceDispatchId:
 			if field.RefMode == RefModeTracking {
@@ -2660,7 +3013,7 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 				return
 			}
 			v := new(uint32)
-			*v = buf.ReadVaruint32(ctxErr)
+			*v = buf.ReadVarUint32(ctxErr)
 			*(**uint32)(fieldPtr) = v
 			return
 		case NullableVarint64DispatchId:
@@ -2678,12 +3031,11 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 				return
 			}
 			v := new(uint64)
-			*v = buf.ReadVaruint64(ctxErr)
+			*v = buf.ReadVarUint64(ctxErr)
 			*(**uint64)(fieldPtr) = v
 			return
 		}
 	}
-
 	// Slow path for RefModeTracking cases that break from the switch above
 	fieldValue := value.Field(field.Meta.FieldIndex)
 	if field.Serializer != nil {
@@ -2889,7 +3241,7 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 			}
 		}
 		*hasPtr = true
-		*(*uint32)(valuePtr) = buf.ReadVaruint32(err)
+		*(*uint32)(valuePtr) = buf.ReadVarUint32(err)
 		return true
 	case NullableVarint64DispatchId:
 		if field.RefMode != RefModeNone {
@@ -2913,7 +3265,7 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 			}
 		}
 		*hasPtr = true
-		*(*uint64)(valuePtr) = buf.ReadVaruint64(err)
+		*(*uint64)(valuePtr) = buf.ReadVarUint64(err)
 		return true
 	case PrimitiveBoolDispatchId:
 		*hasPtr = true
@@ -2961,7 +3313,7 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 		return true
 	case PrimitiveVarUint32DispatchId:
 		*hasPtr = true
-		*(*uint32)(valuePtr) = buf.ReadVaruint32(err)
+		*(*uint32)(valuePtr) = buf.ReadVarUint32(err)
 		return true
 	case PrimitiveUint64DispatchId:
 		*hasPtr = true
@@ -2969,11 +3321,11 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 		return true
 	case PrimitiveVarUint64DispatchId:
 		*hasPtr = true
-		*(*uint64)(valuePtr) = buf.ReadVaruint64(err)
+		*(*uint64)(valuePtr) = buf.ReadVarUint64(err)
 		return true
 	case PrimitiveUintDispatchId:
 		*hasPtr = true
-		*(*uint)(valuePtr) = uint(buf.ReadVaruint64(err))
+		*(*uint)(valuePtr) = uint(buf.ReadVarUint64(err))
 		return true
 	case PrimitiveTaggedInt64DispatchId:
 		*hasPtr = true
@@ -3006,15 +3358,6 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 	readField := func(field *FieldInfo) {
 		if field.Meta.FieldIndex < 0 {
 			s.skipField(ctx, field)
-			return
-		}
-		if field.Kind == FieldKindOptional {
-			fieldValue := value.Field(field.Meta.FieldIndex)
-			if field.Serializer != nil {
-				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, fieldValue)
-			} else {
-				ctx.ReadValue(fieldValue, RefModeTracking, true)
-			}
 			return
 		}
 
@@ -3065,9 +3408,9 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case PrimitiveVarint64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
 			case PrimitiveVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
 			case PrimitiveVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
 			case PrimitiveTaggedInt64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
 			case PrimitiveTaggedUint64DispatchId:
@@ -3075,7 +3418,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case PrimitiveIntDispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
 			case PrimitiveUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
 			}
 			return
 		}
@@ -3136,9 +3479,9 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case NullableVarint64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
 			case NullableVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
 			case NullableVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
 			case NullableTaggedInt64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
 			case NullableTaggedUint64DispatchId:
@@ -3146,7 +3489,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case NullableIntDispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
 			case NullableUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
 			}
 			return
 		}
@@ -3177,8 +3520,8 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 // skipField skips a field that doesn't exist or is incompatible
 // Uses context error state for deferred error checking.
 func (s *structSerializer) skipField(ctx *ReadContext, field *FieldInfo) {
-	if field.Meta.FieldDef.name != "" {
-		if DebugOutputEnabled() {
+	if field.Meta.FieldDef.name != "" || field.Meta.FieldDef.tagID >= 0 {
+		if DebugOutputEnabled {
 			fmt.Printf("[Go][fory-debug] skipField name=%s typeId=%d fieldType=%s\n",
 				field.Meta.FieldDef.name,
 				field.Meta.FieldDef.fieldType.TypeId(),
@@ -3206,7 +3549,7 @@ func (s *structSerializer) skipField(ctx *ReadContext, field *FieldInfo) {
 }
 
 // writeEnumField writes an enum field respecting the field's RefMode.
-// Java writes enum ordinals as unsigned Varuint32Small7, not signed zigzag.
+// Java writes enum ordinals as unsigned VarUint32Small7, not signed zigzag.
 // RefMode determines whether null flag is written, regardless of whether the local type is a pointer.
 // This is important for compatible mode where remote TypeDef's nullable flag controls the wire format.
 func writeEnumField(ctx *WriteContext, field *FieldInfo, fieldValue reflect.Value) {
@@ -3233,7 +3576,6 @@ func writeEnumField(ctx *WriteContext, field *FieldInfo, fieldValue reflect.Valu
 			targetValue = fieldValue.Elem()
 		}
 	}
-
 	// For pointer enum fields, the serializer is ptrToValueSerializer wrapping enumSerializer.
 	// We need to call the inner enumSerializer directly with the dereferenced value.
 	if ptrSer, ok := field.Serializer.(*ptrToValueSerializer); ok {
@@ -3293,7 +3635,7 @@ func readEnumFieldUnsafe(ctx *ReadContext, field *FieldInfo, fieldPtr unsafe.Poi
 		}
 	}
 
-	ordinal := buf.ReadVaruint32Small7(ctx.Err())
+	ordinal := buf.ReadVarUint32Small7(ctx.Err())
 	if ctx.HasError() {
 		return
 	}

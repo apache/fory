@@ -30,7 +30,7 @@ const (
 
 // ForyTag represents parsed fory struct tag options.
 //
-// Tag format: `fory:"id=N,nullable=bool,ref=bool,ignore=bool,compress=bool,encoding=value,type=name"` or `fory:"-"`
+// Tag format: `fory:"id=N,nullable=bool,ref=bool,ignore=bool,compress=bool,encoding=value,type=name,nested_ref=[[],[]]"` or `fory:"-"`
 //
 // Options:
 //   - id: Field tag ID. -1 (default) uses field name, >=0 uses numeric tag ID for compact encoding
@@ -42,6 +42,7 @@ const (
 //   - int32/uint32: "varint" (default) or "fixed"
 //   - int64/uint64: "varint" (default), "fixed", or "tagged"
 //   - type: Explicit field type override for array types (e.g. "uint8_array", "int8_array")
+//   - nested_ref: Nested ref tracking overrides for collection elements (e.g. "[[]]" or "[[],[]]")
 //
 // Note: For int32/uint32, use either `compress` or `encoding`, not both.
 //
@@ -78,6 +79,10 @@ type ForyTag struct {
 	EncodingSet bool
 	TypeIDSet   bool
 	TypeIDValid bool
+
+	NestedRefSet   bool
+	NestedRefValid bool
+	NestedRef      []bool
 }
 
 // parseForyTag parses a fory struct tag from reflect.StructField.Tag.
@@ -118,8 +123,8 @@ func parseForyTag(field reflect.StructField) ForyTag {
 		return tag
 	}
 
-	// Parse comma-separated options
-	parts := strings.Split(tagValue, ",")
+	// Parse comma-separated options (ignore commas inside brackets)
+	parts := splitTagParts(tagValue)
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -156,6 +161,13 @@ func parseForyTag(field reflect.StructField) ForyTag {
 				tag.TypeIDSet = true
 				tag.TypeIDValid = ok
 				tag.TypeID = typeID
+			case "nested_ref":
+				tag.NestedRefSet = true
+				refs, ok := parseNestedRef(value)
+				tag.NestedRefValid = ok
+				if ok {
+					tag.NestedRef = refs
+				}
 			}
 		} else {
 			// Handle standalone flags (presence means true)
@@ -174,6 +186,79 @@ func parseForyTag(field reflect.StructField) ForyTag {
 	}
 
 	return tag
+}
+
+func splitTagParts(tagValue string) []string {
+	var parts []string
+	depth := 0
+	start := 0
+	for i, r := range tagValue {
+		switch r {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				parts = append(parts, tagValue[start:i])
+				start = i + 1
+			}
+		}
+	}
+	if start <= len(tagValue) {
+		parts = append(parts, tagValue[start:])
+	}
+	return parts
+}
+
+func parseNestedRef(value string) ([]bool, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, false
+	}
+	if !strings.HasPrefix(value, "[") || !strings.HasSuffix(value, "]") {
+		return nil, false
+	}
+	content := strings.TrimSpace(value[1 : len(value)-1])
+	if content == "" {
+		return []bool{}, true
+	}
+	outerParts := splitTagParts(content)
+	result := make([]bool, 0, len(outerParts))
+	for _, part := range outerParts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.HasPrefix(part, "[") || !strings.HasSuffix(part, "]") {
+			return nil, false
+		}
+		inner := strings.TrimSpace(part[1 : len(part)-1])
+		if inner == "" {
+			result = append(result, false)
+			continue
+		}
+		val, ok := parseBoolStrict(inner)
+		if !ok {
+			return nil, false
+		}
+		result = append(result, val)
+	}
+	return result, true
+}
+
+func parseBoolStrict(s string) (bool, bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "true", "1", "yes":
+		return true, true
+	case "false", "0", "no":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func parseTypeIdTag(value string) (TypeId, bool) {
@@ -245,6 +330,12 @@ func validateForyTags(t reflect.Type) error {
 		if tag.TypeIDSet && field.Type.Kind() != reflect.Slice && field.Type.Kind() != reflect.Array {
 			return InvalidTagErrorf(
 				"fory tag type override on field %s requires slice or array type",
+				field.Name,
+			)
+		}
+		if tag.NestedRefSet && !tag.NestedRefValid {
+			return InvalidTagErrorf(
+				"invalid fory tag nested_ref on field %s: expected nested_ref=[[]] or nested_ref=[[],[]]",
 				field.Name,
 			)
 		}

@@ -49,7 +49,7 @@ where
     V: Serializer,
     I: Iterator<Item = (&'a K, &'a V)>,
 {
-    context.writer.write_varuint32(length as u32);
+    context.writer.write_var_uint32(length as u32);
     if length == 0 {
         return Ok(());
     }
@@ -358,9 +358,6 @@ macro_rules! impl_read_map_dyn_ref {
         {
             let key_is_polymorphic = K::fory_is_polymorphic();
             let val_is_polymorphic = V::fory_is_polymorphic();
-            let key_is_shared_ref = K::fory_is_shared_ref();
-            let val_is_shared_ref = V::fory_is_shared_ref();
-
             let mut len_counter = 0u32;
 
             while len_counter < length {
@@ -392,11 +389,14 @@ macro_rules! impl_read_map_dyn_ref {
                     };
 
                     // Read value payload
-                    let read_ref = val_is_shared_ref || track_value_ref;
-                    let ref_mode = if read_ref { RefMode::Tracking } else { RefMode::None };
+                    let ref_mode = if track_value_ref {
+                        RefMode::Tracking
+                    } else {
+                        RefMode::None
+                    };
                     let value = if let Some(type_info) = value_type_info {
                         V::fory_read_with_type_info(context, ref_mode, type_info)?
-                    } else if read_ref {
+                    } else if track_value_ref {
                         V::fory_read(context, ref_mode, false)?
                     } else {
                         V::fory_read_data(context)?
@@ -423,11 +423,14 @@ macro_rules! impl_read_map_dyn_ref {
                         None
                     };
 
-                    let read_ref = key_is_shared_ref || track_key_ref;
-                    let ref_mode = if read_ref { RefMode::Tracking } else { RefMode::None };
+                    let ref_mode = if track_key_ref {
+                        RefMode::Tracking
+                    } else {
+                        RefMode::None
+                    };
                     let key = if let Some(type_info) = key_type_info {
                         K::fory_read_with_type_info(context, ref_mode, type_info)?
-                    } else if read_ref {
+                    } else if track_key_ref {
                         K::fory_read(context, ref_mode, false)?
                     } else {
                         K::fory_read_data(context)?
@@ -475,14 +478,20 @@ macro_rules! impl_read_map_dyn_ref {
                 );
 
                 // Read chunk_size pairs of key-value
-                let key_read_ref = key_is_shared_ref || track_key_ref;
-                let val_read_ref = val_is_shared_ref || track_value_ref;
-                let key_ref_mode = if key_read_ref { RefMode::Tracking } else { RefMode::None };
-                let val_ref_mode = if val_read_ref { RefMode::Tracking } else { RefMode::None };
+                let key_ref_mode = if track_key_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let val_ref_mode = if track_value_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
                 for _ in 0..chunk_size {
                     let key = if let Some(type_info) = key_type_info.as_ref() {
                         K::fory_read_with_type_info(context, key_ref_mode, type_info.clone())?
-                    } else if key_read_ref {
+                    } else if track_key_ref {
                         K::fory_read(context, key_ref_mode, false)?
                     } else {
                         K::fory_read_data(context)?
@@ -490,7 +499,7 @@ macro_rules! impl_read_map_dyn_ref {
 
                     let value = if let Some(type_info) = value_type_info.as_ref() {
                         V::fory_read_with_type_info(context, val_ref_mode, type_info.clone())?
-                    } else if val_read_ref {
+                    } else if track_value_ref {
                         V::fory_read(context, val_ref_mode, false)?
                     } else {
                         V::fory_read_data(context)?
@@ -657,7 +666,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::MAP as u32);
+        context.writer.write_var_uint32(TypeId::MAP as u32);
         Ok(())
     }
 
@@ -807,7 +816,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::MAP as u32);
+        context.writer.write_var_uint32(TypeId::MAP as u32);
         Ok(())
     }
 

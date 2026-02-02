@@ -1023,7 +1023,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
           Field field = type.getDeclaredField(component.getName());
           descriptors.add(
               new Descriptor(
-                  field, TypeRef.of(field.getGenericType()), component.getAccessor(), null));
+                  field, TypeRef.of(field.getAnnotatedType()), component.getAccessor(), null));
         }
       } catch (NoSuchFieldException e) {
         // impossible
@@ -1032,7 +1032,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     } else {
       for (Field field : ReflectionUtils.getFields(type, true)) {
         if (!Modifier.isStatic(field.getModifiers())) {
-          descriptors.add(new Descriptor(field, TypeRef.of(field.getGenericType()), null, null));
+          descriptors.add(new Descriptor(field, TypeRef.of(field.getAnnotatedType()), null, null));
         }
       }
     }

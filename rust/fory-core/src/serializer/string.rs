@@ -35,7 +35,7 @@ impl Serializer for String {
     #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         let bitor = (self.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;
-        context.writer.write_varuint36_small(bitor);
+        context.writer.write_var_uint36_small(bitor);
         context.writer.write_utf8_string(self);
         Ok(())
     }
@@ -90,7 +90,7 @@ impl Serializer for String {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::STRING as u32);
+        context.writer.write_var_uint32(TypeId::STRING as u32);
         Ok(())
     }
 

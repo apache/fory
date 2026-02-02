@@ -19,7 +19,6 @@
 
 package org.apache.fory.xlang;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -29,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
@@ -93,7 +93,7 @@ public class GoXlangTest extends XlangTestBase {
     command.add(IS_WINDOWS ? GO_BINARY : "./" + GO_BINARY);
     command.add("--case");
     command.add(caseName);
-    ImmutableMap<String, String> env = envBuilder(dataFile).build();
+    Map<String, String> env = envBuilder(dataFile);
     return new CommandContext(command, env, new File("../../go/fory/tests"));
   }
 
@@ -178,6 +178,11 @@ public class GoXlangTest extends XlangTestBase {
   @Test(dataProvider = "enableCodegen")
   public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
     super.testStructWithMap(enableCodegen);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
+    super.testCollectionElementRefOverride(enableCodegen);
   }
 
   @Test(dataProvider = "enableCodegen")

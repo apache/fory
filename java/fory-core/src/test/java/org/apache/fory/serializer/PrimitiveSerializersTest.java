@@ -25,10 +25,25 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.Int8ArrayType;
+import org.apache.fory.annotation.Uint16ArrayType;
+import org.apache.fory.annotation.Uint32ArrayType;
+import org.apache.fory.annotation.Uint64ArrayType;
+import org.apache.fory.annotation.Uint8ArrayType;
+import org.apache.fory.collection.Int16List;
+import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.Int8List;
+import org.apache.fory.collection.Uint16List;
+import org.apache.fory.collection.Uint32List;
+import org.apache.fory.collection.Uint64List;
+import org.apache.fory.collection.Uint8List;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
 import org.apache.fory.memory.MemoryBuffer;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class PrimitiveSerializersTest extends ForyTestBase {
@@ -142,5 +157,113 @@ public class PrimitiveSerializersTest extends ForyTestBase {
             Double.MIN_VALUE,
             Double.MIN_VALUE);
     copyCheck(fory, struct);
+  }
+
+  @DataProvider(name = "compatibleMode")
+  public static Object[][] compatibleModeProvider() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  public static class PrimitiveArrayStruct {
+    @Int8ArrayType public byte[] int8Values;
+    public short[] int16Values;
+    public int[] int32Values;
+    public long[] int64Values;
+    @Uint8ArrayType public byte[] uint8Values;
+    @Uint16ArrayType public short[] uint16Values;
+    @Uint32ArrayType public int[] uint32Values;
+    @Uint64ArrayType public long[] uint64Values;
+  }
+
+  public static class PrimitiveListStruct {
+    public Int8List int8Values;
+    public Int16List int16Values;
+    public Int32List int32Values;
+    public Int64List int64Values;
+    public Uint8List uint8Values;
+    public Uint16List uint16Values;
+    public Uint32List uint32Values;
+    public Uint64List uint64Values;
+  }
+
+  @Test(dataProvider = "compatibleMode")
+  public void testPrimitiveArrayListRoundTrip(boolean compatible) {
+    CompatibleMode mode = compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
+    Fory arrayFory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(mode)
+            .requireClassRegistration(true)
+            .build();
+    Fory listFory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(mode)
+            .requireClassRegistration(true)
+            .build();
+
+    arrayFory.register(PrimitiveArrayStruct.class, 1001);
+    listFory.register(PrimitiveListStruct.class, 1001);
+
+    PrimitiveArrayStruct arrayStruct = buildPrimitiveArrayStruct();
+    PrimitiveListStruct listStruct = buildPrimitiveListStruct(arrayStruct);
+
+    PrimitiveListStruct listRoundTrip =
+        listFory.deserialize(arrayFory.serialize(arrayStruct), PrimitiveListStruct.class);
+    assertListEqualsArray(listRoundTrip, arrayStruct);
+
+    PrimitiveArrayStruct arrayRoundTrip =
+        arrayFory.deserialize(listFory.serialize(listStruct), PrimitiveArrayStruct.class);
+    assertArrayEqualsList(arrayRoundTrip, listStruct);
+  }
+
+  private PrimitiveArrayStruct buildPrimitiveArrayStruct() {
+    PrimitiveArrayStruct struct = new PrimitiveArrayStruct();
+    struct.int8Values = new byte[] {1, -2, 3};
+    struct.int16Values = new short[] {100, -200, 300};
+    struct.int32Values = new int[] {1000, -2000, 3000};
+    struct.int64Values = new long[] {10000L, -20000L, 30000L};
+    struct.uint8Values = new byte[] {(byte) 200, (byte) 250};
+    struct.uint16Values = new short[] {(short) 50000, (short) 60000};
+    struct.uint32Values = new int[] {2000000000, 2100000000};
+    struct.uint64Values = new long[] {9000000000L, 12000000000L};
+    return struct;
+  }
+
+  private PrimitiveListStruct buildPrimitiveListStruct(PrimitiveArrayStruct arrays) {
+    PrimitiveListStruct struct = new PrimitiveListStruct();
+    struct.int8Values = new Int8List(arrays.int8Values);
+    struct.int16Values = new Int16List(arrays.int16Values);
+    struct.int32Values = new Int32List(arrays.int32Values);
+    struct.int64Values = new Int64List(arrays.int64Values);
+    struct.uint8Values = new Uint8List(arrays.uint8Values);
+    struct.uint16Values = new Uint16List(arrays.uint16Values);
+    struct.uint32Values = new Uint32List(arrays.uint32Values);
+    struct.uint64Values = new Uint64List(arrays.uint64Values);
+    return struct;
+  }
+
+  private void assertListEqualsArray(PrimitiveListStruct list, PrimitiveArrayStruct arrays) {
+    assertNotNull(list);
+    assertTrue(java.util.Arrays.equals(list.int8Values.copyArray(), arrays.int8Values));
+    assertTrue(java.util.Arrays.equals(list.int16Values.copyArray(), arrays.int16Values));
+    assertTrue(java.util.Arrays.equals(list.int32Values.copyArray(), arrays.int32Values));
+    assertTrue(java.util.Arrays.equals(list.int64Values.copyArray(), arrays.int64Values));
+    assertTrue(java.util.Arrays.equals(list.uint8Values.copyArray(), arrays.uint8Values));
+    assertTrue(java.util.Arrays.equals(list.uint16Values.copyArray(), arrays.uint16Values));
+    assertTrue(java.util.Arrays.equals(list.uint32Values.copyArray(), arrays.uint32Values));
+    assertTrue(java.util.Arrays.equals(list.uint64Values.copyArray(), arrays.uint64Values));
+  }
+
+  private void assertArrayEqualsList(PrimitiveArrayStruct arrays, PrimitiveListStruct list) {
+    assertNotNull(arrays);
+    assertTrue(java.util.Arrays.equals(arrays.int8Values, list.int8Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.int16Values, list.int16Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.int32Values, list.int32Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.int64Values, list.int64Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.uint8Values, list.uint8Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.uint16Values, list.uint16Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.uint32Values, list.uint32Values.copyArray()));
+    assertTrue(java.util.Arrays.equals(arrays.uint64Values, list.uint64Values.copyArray()));
   }
 }

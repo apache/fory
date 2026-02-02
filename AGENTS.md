@@ -150,6 +150,8 @@ FORY_PYTHON_JAVA_CI=1 ENABLE_FORY_CYTHON_SERIALIZATION=1 ENABLE_FORY_DEBUG_OUTPU
 - All commands must be executed within the `go/fory` directory.
 - All changes to `go` must pass the format check and tests.
 - Go implementation focuses on reflection-based and codegen-based serialization.
+- Set `FORY_PANIC_ON_ERROR=1` when debugging test errors to see full callstack.
+- You must not set `FORY_PANIC_ON_ERROR=1` when running all go tests to check whether all tests pass, some tests will check Error content, which will fail if error just panic.
 
 ```bash
 # Format code
@@ -411,8 +413,8 @@ Fory uses binary protocols for efficient serialization and deserialization. Fory
 - **Location**: `compiler/` contains the Fory compiler, parser, IR, and code generators.
 - **Install & CLI**:
   - `cd compiler && pip install -e .`
-  - `fory compile --help`
-  - `fory compile schema.fdl --lang <langs> --output <dir>`
+  - `foryc --help`
+  - `foryc schema.fdl --lang <langs> --output <dir>`
 - **Generated code**: Never edit generated files manually; update the `.fdl`/`.proto`/`.fbs` and re-run the compiler.
 - **IDL tests**: Use `integration_tests/idl_tests/generate_idl.py` for test codegen.
   - In `integration_tests/idl_tests`, keep package names aligned with the IDL filename.
@@ -482,6 +484,7 @@ Fory python has two implementations for the protocol:
 - **Python mode**: Pure python implementation based on `xlang serialization format`, used for debugging and testing only. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=0` environment variable.
 - **Cython mode**: Cython based implementation based on `xlang serialization format`, which is used by default and has better performance than pure python. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=1` environment variable.
 - **Python mode** and **Cython mode** reused some code from each other to reduce code duplication.
+- **Debug Struct Serialization**: set `ENABLE_FORY_PYTHON_JIT=0` when debug struct fields serialization error, this mode is more easy to debug and add logs. Even struct serialization itself has no bug, by enable this mode and adding debug logs, we can narrow the bug scope more easily.
 
 Code structure:
 

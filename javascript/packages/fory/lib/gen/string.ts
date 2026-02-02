@@ -19,7 +19,7 @@
 
 import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
-import { BaseSerializerGenerator, RefState } from "./serializer";
+import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { TypeId } from "../type";
 import { Scope } from "./scope";
@@ -32,11 +32,11 @@ class StringSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = typeInfo;
   }
 
-  writeStmt(accessor: string): string {
+  write(accessor: string): string {
     return this.builder.writer.stringWithHeader(accessor);
   }
 
-  readStmt(accessor: (expr: string) => string, refState: RefState): string {
+  read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     return `
         const ${result} = ${this.builder.reader.stringWithHeader()};
@@ -47,10 +47,6 @@ class StringSerializerGenerator extends BaseSerializerGenerator {
 
   getFixedSize(): number {
     return 8;
-  }
-
-  needToWriteRef(): boolean {
-    return Boolean(this.builder.fory.config.refTracking);
   }
 }
 

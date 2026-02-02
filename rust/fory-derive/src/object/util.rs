@@ -772,11 +772,11 @@ pub(super) fn get_primitive_writer_method(type_name: &str) -> &'static str {
 /// - type_id=INT32: write_i32 (fixed 4-byte)
 ///
 /// For u32 fields:
-/// - type_id=VARINT32/VAR_UINT32 (default): write_varuint32
+/// - type_id=VARINT32/VAR_UINT32 (default): write_var_uint32
 /// - type_id=INT32/UINT32: write_u32 (fixed 4-byte)
 ///
 /// For u64 fields:
-/// - type_id=VARINT32/VAR_UINT64 (default): write_varuint64
+/// - type_id=VARINT32/VAR_UINT64 (default): write_var_uint64
 /// - type_id=INT32/UINT64: write_u64 (fixed 8-byte)
 /// - type_id=TAGGED_UINT64: write_tagged_u64
 pub(super) fn get_primitive_writer_method_with_encoding(
@@ -802,7 +802,7 @@ pub(super) fn get_primitive_writer_method_with_encoding(
                 return "write_u32"; // Fixed 4-byte encoding
             }
         }
-        return "write_varuint32"; // Variable-length (default)
+        return "write_var_uint32"; // Variable-length (default)
     }
 
     // Handle u64 with type_id
@@ -814,7 +814,7 @@ pub(super) fn get_primitive_writer_method_with_encoding(
                 return "write_tagged_u64"; // Tagged variable-length
             }
         }
-        return "write_varuint64"; // Variable-length (default)
+        return "write_var_uint64"; // Variable-length (default)
     }
 
     // For other types, use the default method from PRIMITIVE_IO_METHODS
@@ -1435,8 +1435,12 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         };
         let nullable_flag = if nullable { "1" } else { "0" };
 
-        // User-defined types (UNKNOWN) use 0 in fingerprint, matching Java behavior
-        let effective_type_id = if info.type_id == TypeId::UNKNOWN as u32 {
+        // User-defined types (UNKNOWN) and unions use 0 in fingerprint, matching Java behavior
+        let effective_type_id = if info.type_id == TypeId::UNKNOWN as u32
+            || info.type_id == TypeId::UNION as u32
+            || info.type_id == TypeId::TYPED_UNION as u32
+            || info.type_id == TypeId::NAMED_UNION as u32
+        {
             0
         } else {
             info.type_id

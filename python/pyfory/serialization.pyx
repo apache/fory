@@ -148,7 +148,7 @@ cdef class MapRefResolver:
         else:
             # The obj has been written previously.
             buffer.write_int8(REF_FLAG)
-            buffer.write_varuint32(<uint64_t> deref(it).second)
+            buffer.write_var_uint32(<uint64_t> deref(it).second)
             return True
 
     cpdef inline int8_t read_ref_or_null(self, Buffer buffer):
@@ -159,7 +159,7 @@ cdef class MapRefResolver:
         cdef PyObject * obj
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
-            ref_id = buffer.read_varuint32()
+            ref_id = buffer.read_var_uint32()
             assert 0 <= ref_id < self.read_objects.size(), f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
             obj = self.read_objects[ref_id]
             assert obj != NULL, f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
@@ -180,21 +180,21 @@ cdef class MapRefResolver:
     cpdef inline int32_t try_preserve_ref_id(self, Buffer buffer):
         if not self.ref_tracking:
             # `NOT_NULL_VALUE_FLAG` can be used as stub reference id because we use
-            # `refId >= NOT_NULL_VALUE_FLAG` to read data.
+            # `ref_id >= NOT_NULL_VALUE_FLAG` to read data.
             return buffer.read_int8()
         head_flag = buffer.read_int8()
         cdef int32_t ref_id
         cdef PyObject *obj
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
-            ref_id = buffer.read_varuint32()
+            ref_id = buffer.read_var_uint32()
             # avoid wrong id cause crash
             assert 0 <= ref_id < self.read_objects.size(), f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
             obj = self.read_objects[ref_id]
             assert obj != NULL, f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
             self.read_object = <object> obj
             # `head_flag` except `REF_FLAG` can be used as stub reference id because
-            # we use `refId >= NOT_NULL_VALUE_FLAG` to read data.
+            # we use `ref_id >= NOT_NULL_VALUE_FLAG` to read data.
             return head_flag
         else:
             self.read_object = None
@@ -335,17 +335,17 @@ cdef class MetaStringResolver:
             metastr_bytes.dynamic_write_string_id = dynamic_type_id
             self.dynamic_write_string_id += 1
             self._c_dynamic_written_enum_string.push_back(<PyObject *> metastr_bytes)
-            buffer.write_varuint32(length << 1)
+            buffer.write_var_uint32(length << 1)
             if length <= SMALL_STRING_THRESHOLD:
                 buffer.write_int8(metastr_bytes.encoding)
             else:
                 buffer.write_int64(metastr_bytes.hashcode)
             buffer.write_bytes(metastr_bytes.data)
         else:
-            buffer.write_varuint32(((dynamic_type_id + 1) << 1) | 1)
+            buffer.write_var_uint32(((dynamic_type_id + 1) << 1) | 1)
 
     cpdef inline MetaStringBytes read_meta_string_bytes(self, Buffer buffer):
-        cdef int32_t header = buffer.read_varuint32()
+        cdef int32_t header = buffer.read_var_uint32()
         cdef int32_t length = header >> 1
         if header & 0b1 != 0:
             return <MetaStringBytes> self._c_dynamic_id_to_enum_string_vec[length - 1]
@@ -572,7 +572,7 @@ cdef class TypeResolver:
         type_id = typeinfo.type_id
         if type_id >= self._c_registered_id_to_type_info.size():
             self._c_registered_id_to_type_info.resize(type_id * 2, NULL)
-        if type_id > 0 and (self.fory.language == Language.PYTHON or not IsNamespacedType(type_id)):
+        if type_id > 0 and (self.fory.language == Language.PYTHON or not is_namespaced_type(type_id)):
             self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
         # Resize if load factor >= 0.4 (using integer arithmetic: size/capacity >= 4/10)
@@ -650,14 +650,14 @@ cdef class TypeResolver:
             self.write_shared_type_meta(buffer, typeinfo)
             return
 
-        buffer.write_varuint32(type_id)
-        if IsNamespacedType(internal_type_id):
+        buffer.write_var_uint32(type_id)
+        if is_namespaced_type(internal_type_id):
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
 
     cpdef inline TypeInfo read_typeinfo(self, Buffer buffer):
         cdef:
-            int32_t type_id = buffer.read_varuint32()
+            int32_t type_id = buffer.read_var_uint32()
         if type_id < 0:
             type_id = -type_id
         if type_id >= self._c_registered_id_to_type_info.size():
@@ -667,7 +667,7 @@ cdef class TypeResolver:
             MetaStringBytes namespace_bytes, typename_bytes
         if self.meta_share:
             return self.serialization_context.meta_context.read_shared_typeinfo_with_type_id(buffer, type_id)
-        if IsNamespacedType(internal_type_id):
+        if is_namespaced_type(internal_type_id):
             namespace_bytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             typename_bytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             return self._load_bytes_to_typeinfo(type_id, namespace_bytes, typename_bytes)
@@ -678,7 +678,7 @@ cdef class TypeResolver:
         return typeinfo
 
     cpdef inline TypeInfo get_typeinfo_by_id(self, int32_t type_id):
-        if type_id >= self._c_registered_id_to_type_info.size() or type_id < 0 or IsNamespacedType(type_id & 0xFF):
+        if type_id >= self._c_registered_id_to_type_info.size() or type_id < 0 or is_namespaced_type(type_id & 0xFF):
             raise ValueError(f"Unexpected type_id {type_id}")
         typeinfo_ptr = self._c_registered_id_to_type_info[type_id]
         if typeinfo_ptr == NULL:
@@ -696,7 +696,7 @@ cdef class TypeResolver:
         return self._resolver.get_meta_compressor()
 
     cpdef inline write_shared_type_meta(self, Buffer buffer, TypeInfo typeinfo):
-        """Write shared type meta information."""
+        """write shared type meta information."""
         meta_context = self.serialization_context.meta_context
         meta_context.write_shared_typeinfo(buffer, typeinfo)
 
@@ -753,34 +753,34 @@ cdef class MetaContext:
         self._read_type_infos = []
 
     cpdef inline void write_shared_typeinfo(self, Buffer buffer, typeinfo):
-        """Write type info with streaming inline TypeDef."""
+        """write type info with streaming inline TypeDef."""
         type_cls = typeinfo.cls
         cdef int32_t type_id = typeinfo.type_id
         cdef int32_t internal_type_id = type_id & 0xFF
-        buffer.write_varuint32(type_id)
-        if not IsTypeShareMeta(internal_type_id):
+        buffer.write_var_uint32(type_id)
+        if not is_type_share_meta(internal_type_id):
             return
 
         cdef uint64_t type_addr = <uint64_t> <PyObject *> type_cls
         cdef flat_hash_map[uint64_t, int32_t].iterator it = self._c_type_map.find(type_addr)
         if it != self._c_type_map.end():
             # Reference to previously written type: (index << 1) | 1, LSB=1
-            buffer.write_varuint32((deref(it).second << 1) | 1)
+            buffer.write_var_uint32((deref(it).second << 1) | 1)
             return
 
         # New type: index << 1, LSB=0, followed by TypeDef bytes inline
         cdef index = self._c_type_map.size()
-        buffer.write_varuint32(index << 1)
+        buffer.write_var_uint32(index << 1)
         self._c_type_map[type_addr] = index
         type_def = typeinfo.type_def
         if type_def is None:
             self.type_resolver._set_typeinfo(typeinfo)
             type_def = typeinfo.type_def
-        # Write TypeDef bytes inline instead of deferring to end
+        # write TypeDef bytes inline instead of deferring to end
         buffer.write_bytes(type_def.encoded)
 
     cpdef inline reset_write(self):
-        """Reset write state."""
+        """reset write state."""
         self._c_type_map.clear()
 
     cpdef inline add_read_typeinfo(self, type_info):
@@ -789,15 +789,15 @@ cdef class MetaContext:
 
     cpdef inline read_shared_typeinfo(self, Buffer buffer):
         """Read type info with streaming inline TypeDef."""
-        cdef int32_t type_id = buffer.read_varuint32()
+        cdef int32_t type_id = buffer.read_var_uint32()
         return self.read_shared_typeinfo_with_type_id(buffer, type_id)
 
     cpdef inline read_shared_typeinfo_with_type_id(self, Buffer buffer, int32_t type_id):
         """Read shared type info when type_id is already consumed."""
-        if not IsTypeShareMeta(type_id & 0xFF):
+        if not is_type_share_meta(type_id & 0xFF):
             return self.type_resolver.get_typeinfo_by_id(type_id)
 
-        cdef int32_t index_marker = buffer.read_varuint32()
+        cdef int32_t index_marker = buffer.read_var_uint32()
         cdef c_bool is_ref = (index_marker & 1) == 1
         cdef int32_t index = index_marker >> 1
 
@@ -811,11 +811,11 @@ cdef class MetaContext:
             return type_info
 
     cpdef inline reset_read(self):
-        """Reset read state."""
+        """reset read state."""
         self._read_type_infos.clear()
 
     cpdef inline reset(self):
-        """Reset both read and write state."""
+        """reset both read and write state."""
         self.reset_write()
         self.reset_read()
 
@@ -1285,19 +1285,19 @@ cdef class Fory:
     cpdef inline write_no_ref(self, Buffer buffer, obj):
         cls = type(obj)
         if cls is str:
-            buffer.write_varuint32(STRING_TYPE_ID)
+            buffer.write_var_uint32(STRING_TYPE_ID)
             buffer.write_string(obj)
             return
         elif cls is int:
-            buffer.write_varuint32(INT64_TYPE_ID)
+            buffer.write_var_uint32(INT64_TYPE_ID)
             buffer.write_varint64(obj)
             return
         elif cls is bool:
-            buffer.write_varuint32(BOOL_TYPE_ID)
+            buffer.write_var_uint32(BOOL_TYPE_ID)
             buffer.write_bool(obj)
             return
         elif cls is float:
-            buffer.write_varuint32(FLOAT64_TYPE_ID)
+            buffer.write_var_uint32(FLOAT64_TYPE_ID)
             buffer.write_double(obj)
             return
         cdef TypeInfo typeinfo = self.type_resolver.get_typeinfo(cls)
@@ -1499,7 +1499,7 @@ cdef class Fory:
         if self.buffer_callback is None:
             size = buffer_object.total_bytes()
             # writer length.
-            buffer.write_varuint32(size)
+            buffer.write_var_uint32(size)
             writer_index = buffer.get_writer_index()
             buffer.ensure(writer_index + size)
             buf = buffer.slice(writer_index, size)
@@ -1510,7 +1510,7 @@ cdef class Fory:
             buffer.write_bool(True)
             size = buffer_object.total_bytes()
             # writer length.
-            buffer.write_varuint32(size)
+            buffer.write_var_uint32(size)
             writer_index = buffer.get_writer_index()
             buffer.ensure(writer_index + size)
             buf = buffer.slice(writer_index, size)
@@ -1524,7 +1524,7 @@ cdef class Fory:
         cdef int32_t size
         cdef Buffer buf
         if not self.is_peer_out_of_band_enabled:
-            size = buffer.read_varuint32()
+            size = buffer.read_var_uint32()
             reader_index = buffer.get_reader_index()
             buf = buffer.slice(reader_index, size)
             buffer.set_reader_index(reader_index + size)
@@ -1533,7 +1533,7 @@ cdef class Fory:
         if not in_band:
             assert self._buffers is not None
             return next(self._buffers)
-        size = buffer.read_varuint32()
+        size = buffer.read_var_uint32()
         reader_index = buffer.get_reader_index()
         buf = buffer.slice(reader_index, size)
         buffer.set_reader_index(reader_index + size)
@@ -1571,7 +1571,7 @@ cdef class Fory:
 
     cpdef inline reset_write(self):
         """
-        Reset write state after serialization.
+        reset write state after serialization.
 
         Clears internal write buffers, reference tracking state, and type resolution
         caches. This method is automatically called after each serialization.
@@ -1585,7 +1585,7 @@ cdef class Fory:
 
     cpdef inline reset_read(self):
         """
-        Reset read state after deserialization.
+        reset read state after deserialization.
 
         Clears internal read buffers, reference tracking state, and type resolution
         caches. This method is automatically called after each deserialization.
@@ -1601,7 +1601,7 @@ cdef class Fory:
 
     cpdef inline reset(self):
         """
-        Reset both write and read state.
+        reset both write and read state.
 
         Clears all internal state including buffers, reference tracking, and type
         resolution caches. Use this to ensure a clean state before reusing a Fory
@@ -1787,10 +1787,10 @@ cdef class EnumSerializer(Serializer):
         return getattr(self.type_, name)
 
     cpdef inline xwrite(self, Buffer buffer, value):
-        buffer.write_varuint32(value.value)
+        buffer.write_var_uint32(value.value)
 
     cpdef inline xread(self, Buffer buffer):
-        ordinal = buffer.read_varuint32()
+        ordinal = buffer.read_var_uint32()
         return self.type_(ordinal)
 
 

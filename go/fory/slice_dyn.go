@@ -80,7 +80,7 @@ func (s sliceDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	// Get slice length and handle empty slice case
 	length := value.Len()
 	if length == 0 {
-		buf.WriteVaruint32(0) // WriteData 0 for empty slice
+		buf.WriteVarUint32(0) // WriteData 0 for empty slice
 		return
 	}
 
@@ -149,7 +149,7 @@ func (s sliceDynSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, valu
 	}
 
 	// WriteData metadata to buffer
-	buf.WriteVaruint32(uint32(value.Len())) // Collection size
+	buf.WriteVarUint32(uint32(value.Len())) // Collection size
 	buf.WriteInt8(int8(collectFlag))        // Collection flags
 
 	// WriteData element type info if all elements have same type and not using declared type
@@ -261,7 +261,7 @@ func (s sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 func (s sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := int(buf.ReadVaruint32(ctxErr))
+	length := int(buf.ReadVarUint32(ctxErr))
 	sliceType := value.Type()
 	value.Set(reflect.MakeSlice(sliceType, length, length))
 	if length == 0 {

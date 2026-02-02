@@ -76,6 +76,7 @@ from pyfory.struct import DataClassSerializer
 from pyfory.field import field  # noqa: F401 # pylint: disable=unused-import
 from pyfory.types import (  # noqa: F401 # pylint: disable=unused-import
     TypeId,
+    Ref,
     int8,
     int16,
     int32,
@@ -141,6 +142,7 @@ __all__ = [
     "record_class_factory",
     "get_qualified_classname",
     "TypeId",
+    "Ref",
     "int8",
     "int16",
     "int32",

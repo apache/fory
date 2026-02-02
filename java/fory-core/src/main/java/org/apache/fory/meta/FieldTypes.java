@@ -32,7 +32,18 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.util.Objects;
 import org.apache.fory.annotation.ForyField;
+import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float32List;
+import org.apache.fory.collection.Float64List;
+import org.apache.fory.collection.Int16List;
+import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.collection.Uint16List;
+import org.apache.fory.collection.Uint32List;
+import org.apache.fory.collection.Uint64List;
+import org.apache.fory.collection.Uint8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -155,6 +166,10 @@ public class FieldTypes {
     boolean isUnionType = Types.isUnionType(typeId & 0xff);
     if (isUnionType) {
       typeId = Types.UNION;
+    }
+
+    if (Types.isPrimitiveArray(typeId & 0xff)) {
+      return new RegisteredFieldType(nullable, trackingRef, typeId);
     }
 
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())) {
@@ -478,6 +493,22 @@ public class FieldTypes {
         }
         return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
       }
+      if (Types.isPrimitiveArray(internalTypeId)) {
+        if (declared != null) {
+          Class<?> declaredRaw = declared.getRawType();
+          if (declaredRaw.isArray()) {
+            return TypeRef.of(declaredRaw, new TypeExtMeta(typeId, nullable, trackingRef));
+          }
+          Class<?> listClass = getPrimitiveListClass(internalTypeId);
+          if (listClass != null && listClass.isAssignableFrom(declaredRaw)) {
+            return TypeRef.of(declaredRaw, new TypeExtMeta(typeId, nullable, trackingRef));
+          }
+        }
+        cls = getPrimitiveArrayClass(internalTypeId);
+        if (cls != null) {
+          return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
+        }
+      }
       if (resolver instanceof XtypeResolver) {
         ClassInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
         Preconditions.checkNotNull(xtypeInfo);
@@ -540,6 +571,60 @@ public class FieldTypes {
           + ", typeId="
           + typeId
           + '}';
+    }
+  }
+
+  private static Class<?> getPrimitiveArrayClass(int typeId) {
+    switch (typeId) {
+      case Types.BOOL_ARRAY:
+        return boolean[].class;
+      case Types.INT8_ARRAY:
+      case Types.UINT8_ARRAY:
+        return byte[].class;
+      case Types.INT16_ARRAY:
+      case Types.UINT16_ARRAY:
+        return short[].class;
+      case Types.INT32_ARRAY:
+      case Types.UINT32_ARRAY:
+        return int[].class;
+      case Types.INT64_ARRAY:
+      case Types.UINT64_ARRAY:
+        return long[].class;
+      case Types.FLOAT32_ARRAY:
+        return float[].class;
+      case Types.FLOAT64_ARRAY:
+        return double[].class;
+      default:
+        return null;
+    }
+  }
+
+  private static Class<?> getPrimitiveListClass(int typeId) {
+    switch (typeId) {
+      case Types.BOOL_ARRAY:
+        return BoolList.class;
+      case Types.INT8_ARRAY:
+        return Int8List.class;
+      case Types.UINT8_ARRAY:
+        return Uint8List.class;
+      case Types.INT16_ARRAY:
+        return Int16List.class;
+      case Types.UINT16_ARRAY:
+        return Uint16List.class;
+      case Types.INT32_ARRAY:
+        return Int32List.class;
+      case Types.UINT32_ARRAY:
+        return Uint32List.class;
+      case Types.INT64_ARRAY:
+        return Int64List.class;
+      case Types.UINT64_ARRAY:
+        return Uint64List.class;
+      case Types.FLOAT32_ARRAY:
+        return Float32List.class;
+      case Types.FLOAT64_ARRAY:
+        return Float64List.class;
+      default:
+        return null;
     }
   }
 

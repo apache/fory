@@ -29,6 +29,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/apache/fory/go/fory/float16"
 	"github.com/apache/fory/go/fory/meta"
 )
 
@@ -66,8 +67,12 @@ var (
 	int64SliceType       = reflect.TypeOf((*[]int64)(nil)).Elem()
 	intSliceType         = reflect.TypeOf((*[]int)(nil)).Elem()
 	uintSliceType        = reflect.TypeOf((*[]uint)(nil)).Elem()
+	uint16SliceType      = reflect.TypeOf((*[]uint16)(nil)).Elem()
+	uint32SliceType      = reflect.TypeOf((*[]uint32)(nil)).Elem()
+	uint64SliceType      = reflect.TypeOf((*[]uint64)(nil)).Elem()
 	float32SliceType     = reflect.TypeOf((*[]float32)(nil)).Elem()
 	float64SliceType     = reflect.TypeOf((*[]float64)(nil)).Elem()
+	float16SliceType     = reflect.TypeOf((*[]float16.Float16)(nil)).Elem()
 	interfaceSliceType   = reflect.TypeOf((*[]any)(nil)).Elem()
 	interfaceMapType     = reflect.TypeOf((*map[any]any)(nil)).Elem()
 	stringStringMapType  = reflect.TypeOf((*map[string]string)(nil)).Elem()
@@ -93,6 +98,7 @@ var (
 	intType              = reflect.TypeOf((*int)(nil)).Elem()
 	float32Type          = reflect.TypeOf((*float32)(nil)).Elem()
 	float64Type          = reflect.TypeOf((*float64)(nil)).Elem()
+	float16Type          = reflect.TypeOf((*float16.Float16)(nil)).Elem()
 	dateType             = reflect.TypeOf((*Date)(nil)).Elem()
 	timestampType        = reflect.TypeOf((*time.Time)(nil)).Elem()
 	genericSetType       = reflect.TypeOf((*Set[any])(nil)).Elem()
@@ -187,6 +193,9 @@ type TypeResolver struct {
 
 	// Fast type cache for O(1) lookup using type pointer
 	typePointerCache map[uintptr]*TypeInfo
+
+	// Cache for union type detection to avoid repeated reflect.Implements in hot paths.
+	unionTypeCache map[reflect.Type]bool
 }
 
 func newTypeResolver(fory *Fory) *TypeResolver {
@@ -226,6 +235,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		typeToTypeDef:    make(map[reflect.Type]*TypeDef),
 		defIdToTypeDef:   make(map[int64]*TypeDef),
 		typePointerCache: make(map[uintptr]*TypeInfo),
+		unionTypeCache:   make(map[reflect.Type]bool),
 	}
 	// base type info for encode/decode types.
 	// composite types info will be constructed dynamically.
@@ -239,6 +249,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		int64Type,
 		float32Type,
 		float64Type,
+		float16Type,
 		stringType,
 		dateType,
 		timestampType,
@@ -309,6 +320,58 @@ func (r *TypeResolver) IsXlang() bool {
 	return r.isXlang
 }
 
+func (r *TypeResolver) getTypeInfoByType(type_ reflect.Type) *TypeInfo {
+	if type_ == nil {
+		return nil
+	}
+	typePtr := typePointer(type_)
+	if cachedInfo, ok := r.typePointerCache[typePtr]; ok {
+		return cachedInfo
+	}
+	info, ok := r.typesInfo[type_]
+	if !ok {
+		return nil
+	}
+	if info.Serializer == nil {
+		serializer, err := r.createSerializer(type_, false)
+		if err != nil {
+			return nil
+		}
+		info.Serializer = serializer
+	}
+	r.typePointerCache[typePtr] = info
+	return info
+}
+
+// IsUnionType returns true if the type is a union, using a local cache for performance.
+// Note: Fory/TypeResolver are expected to be used single-threaded.
+func (r *TypeResolver) IsUnionType(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	if v, ok := r.unionTypeCache[t]; ok {
+		return v
+	}
+	base := t
+	if info, ok := getOptionalInfo(t); ok {
+		base = info.valueType
+	}
+	if v, ok := r.unionTypeCache[base]; ok {
+		r.unionTypeCache[t] = v
+		return v
+	}
+
+	v := isUnionType(base)
+	r.unionTypeCache[t] = v
+	r.unionTypeCache[base] = v
+	if base.Kind() == reflect.Ptr {
+		r.unionTypeCache[base.Elem()] = v
+	} else {
+		r.unionTypeCache[reflect.PtrTo(base)] = v
+	}
+	return v
+}
+
 // GetTypeInfo returns TypeInfo for the given value. This is exported for generated serializers.
 func (r *TypeResolver) GetTypeInfo(value reflect.Value, create bool) (*TypeInfo, error) {
 	return r.getTypeInfo(value, create)
@@ -325,7 +388,7 @@ func (r *TypeResolver) initialize() {
 		// Register interface types first so typeIDToTypeInfo maps to generic types
 		// that can hold any element type when deserializing into any
 		{interfaceSliceType, LIST, sliceDynSerializer{}},
-		{interfaceMapType, MAP, mapSerializer{}},
+		{interfaceMapType, MAP, mapSerializer{type_: interfaceMapType, keyReferencable: true, valueReferencable: true}},
 		// stringSliceType uses dedicated stringSliceSerializer for optimized serialization
 		// This ensures CollectionIsDeclElementType is set for Java compatibility
 		{stringSliceType, LIST, stringSliceSerializer{}},
@@ -338,8 +401,12 @@ func (r *TypeResolver) initialize() {
 		{int64SliceType, INT64_ARRAY, int64SliceSerializer{}},
 		{intSliceType, INT64_ARRAY, intSliceSerializer{}}, // int is typically 64-bit
 		{uintSliceType, INT64_ARRAY, uintSliceSerializer{}},
+		{uint16SliceType, UINT16_ARRAY, uint16SliceSerializer{}},
+		{uint32SliceType, UINT32_ARRAY, uint32SliceSerializer{}},
+		{uint64SliceType, UINT64_ARRAY, uint64SliceSerializer{}},
 		{float32SliceType, FLOAT32_ARRAY, float32SliceSerializer{}},
 		{float64SliceType, FLOAT64_ARRAY, float64SliceSerializer{}},
+		{float16SliceType, FLOAT16_ARRAY, float16SliceSerializer{}},
 		// Register common map types for fast path with optimized serializers
 		{stringStringMapType, MAP, stringStringMapSerializer{}},
 		{stringInt64MapType, MAP, stringInt64MapSerializer{}},
@@ -363,6 +430,7 @@ func (r *TypeResolver) initialize() {
 		{intType, VARINT64, intSerializer{}}, // int maps to int64 for xlang
 		{float32Type, FLOAT32, float32Serializer{}},
 		{float64Type, FLOAT64, float64Serializer{}},
+		{float16Type, FLOAT16, float16Serializer{}},
 		{dateType, DATE, dateSerializer{}},
 		{timestampType, TIMESTAMP, timeSerializer{}},
 		{genericSetType, SET, setSerializer{}},
@@ -370,7 +438,7 @@ func (r *TypeResolver) initialize() {
 	for _, elem := range serializers {
 		_, err := r.registerType(elem.Type, uint32(elem.TypeId), "", "", elem.Serializer, true)
 		if err != nil {
-			fmt.Errorf("init type error: %v", err)
+			panic(fmt.Errorf("init type error: %v", err))
 		}
 	}
 
@@ -382,6 +450,8 @@ func (r *TypeResolver) initialize() {
 		typeId TypeId
 		goType reflect.Type
 	}{
+		// Byte slice can be encoded as BINARY or UINT8_ARRAY
+		{UINT8_ARRAY, byteSliceType},
 		// Fixed-size integer encodings (in addition to varint defaults)
 		{UINT32, uint32Type},        // Fixed UINT32 (11) → uint32
 		{UINT64, uint64Type},        // Fixed UINT64 (13) → uint64
@@ -1236,6 +1306,9 @@ func (r *TypeResolver) registerType(
 		hashValue:    calcTypeHash(type_),  // Precomputed hash for fast lookups
 		NeedWriteRef: NeedWriteRef(TypeId(typeID)),
 	}
+	if structSer, ok := serializer.(*structSerializer); ok {
+		structSer.typeID = typeID
+	}
 	// Update resolver caches:
 	r.typesInfo[type_] = typeInfo // Cache by type string
 	if typeName != "" {
@@ -1297,8 +1370,8 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 	// Extract the internal type ID (lower 8 bits)
 	typeID := typeInfo.TypeID
 	internalTypeID := TypeId(typeID & 0xFF)
-	// WriteData the type ID to buffer using Varuint32Small7 encoding (matches Java)
-	buffer.WriteVaruint32Small7(typeID)
+	// WriteData the type ID to buffer using VarUint32Small7 encoding (matches Java)
+	buffer.WriteVarUint32Small7(typeID)
 
 	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeClassInfo)
 	switch internalTypeID {
@@ -1325,13 +1398,13 @@ func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInf
 
 	if index, exists := context.typeMap[typ]; exists {
 		// Reference to previously written type: (index << 1) | 1, LSB=1
-		buffer.WriteVaruint32((index << 1) | 1)
+		buffer.WriteVarUint32((index << 1) | 1)
 		return
 	}
 
 	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
 	newIndex := uint32(len(context.typeMap))
-	buffer.WriteVaruint32(newIndex << 1)
+	buffer.WriteVarUint32(newIndex << 1)
 	context.typeMap[typ] = newIndex
 
 	// Only build TypeDef for struct types - enums don't have field definitions
@@ -1380,7 +1453,7 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 	}
 
 	// Read index marker using streaming protocol
-	indexMarker := buffer.ReadVaruint32(err)
+	indexMarker := buffer.ReadVarUint32(err)
 	if err.HasError() {
 		return nil
 	}
@@ -1551,6 +1624,11 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			}
 			return int32ArraySerializer{arrayType: type_}, nil
 		case reflect.Uint16:
+			// Check for fory.Float16 (aliased to uint16)
+			// Check name first to avoid slow PkgPath call
+			if elem.Name() == "Float16" && (elem.PkgPath() == "github.com/apache/fory/go/fory/float16" || strings.HasSuffix(elem.PkgPath(), "/float16")) {
+				return float16ArraySerializer{arrayType: type_}, nil
+			}
 			return uint16ArraySerializer{arrayType: type_}, nil
 		case reflect.Uint32:
 			return uint32ArraySerializer{arrayType: type_}, nil
@@ -1585,6 +1663,9 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			return setSerializer{}, nil
 		}
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())
+		// Determine key/value referencability using isRefType which handles xlang mode
+		keyReferencable := isRefType(type_.Key(), r.isXlang)
+		valueReferencable := isRefType(type_.Elem(), r.isXlang)
 		if hasKeySerializer || hasValueSerializer {
 			var keySerializer, valueSerializer Serializer
 			/*
@@ -1604,9 +1685,6 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 					return nil, err
 				}
 			}
-			// Determine key/value referencability using isRefType which handles xlang mode
-			keyReferencable := isRefType(type_.Key(), r.isXlang)
-			valueReferencable := isRefType(type_.Elem(), r.isXlang)
 			return &mapSerializer{
 				type_:             type_,
 				keySerializer:     keySerializer,
@@ -1615,9 +1693,13 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 				valueReferencable: valueReferencable,
 				hasGenerics:       mapInStruct,
 			}, nil
-		} else {
-			return mapSerializer{hasGenerics: mapInStruct}, nil
 		}
+		return mapSerializer{
+			type_:             type_,
+			keyReferencable:   keyReferencable,
+			valueReferencable: valueReferencable,
+			hasGenerics:       mapInStruct,
+		}, nil
 	case reflect.Struct:
 		serializer := r.typeToSerializers[type_]
 		if serializer == nil {
@@ -1880,8 +1962,8 @@ func (r *TypeResolver) readTypeByReadTag(buffer *ByteBuffer, err *Error) reflect
 // ReadTypeInfo reads type info from buffer and returns it.
 // This is exported for use by generated code.
 func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
-	// ReadData variable-length type ID using Varuint32Small7 encoding (matches Java)
-	typeID := buffer.ReadVaruint32Small7(err)
+	// ReadData variable-length type ID using VarUint32Small7 encoding (matches Java)
+	typeID := buffer.ReadVarUint32Small7(err)
 	internalTypeID := TypeId(typeID & 0xFF)
 
 	// Handle type meta based on internal type ID (matching Java XtypeResolver.readClassInfo)
@@ -2059,7 +2141,7 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		}
 	}
 
-	err.SetError(fmt.Errorf("unknown type id: %d", typeID))
+	err.SetError(DeserializationErrorf("unknown type id: %d", typeID))
 	return nil
 }
 
@@ -2186,7 +2268,7 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 // For STRUCT/NAMED_STRUCT: Gets serializer directly by the passed type (skips type resolution)
 // For COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: Reads type def and creates serializer with passed type
 func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
-	typeID := buffer.ReadVaruint32Small7(err)
+	typeID := buffer.ReadVarUint32Small7(err)
 	internalTypeID := TypeId(typeID & 0xFF)
 
 	switch internalTypeID {
@@ -2244,7 +2326,7 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 		r.dynamicStringId += 1
 		r.dynamicStringToId[str] = dynamicStringId
 		length := len(str)
-		buffer.WriteVaruint32(uint32(length << 1))
+		buffer.WriteVarUint32(uint32(length << 1))
 		if length <= SMALL_STRING_THRESHOLD {
 			buffer.WriteByte_(uint8(meta.UTF_8))
 		} else {
@@ -2263,12 +2345,12 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 		}
 		buffer.WriteBinary(unsafeGetBytes(str))
 	} else {
-		buffer.WriteVaruint32(uint32(((id + 1) << 1) | 1))
+		buffer.WriteVarUint32(uint32(((id + 1) << 1) | 1))
 	}
 }
 
 func (r *TypeResolver) readMetaString(buffer *ByteBuffer, err *Error) string {
-	header := buffer.ReadVaruint32(err)
+	header := buffer.ReadVarUint32(err)
 	var length = int(header >> 1)
 	if header&0b1 == 0 {
 		if length <= SMALL_STRING_THRESHOLD {

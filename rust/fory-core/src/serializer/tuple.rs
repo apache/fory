@@ -120,7 +120,7 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
             write_tuple_element(&self.0, context)?;
         } else {
             // Compatible mode: use collection protocol (heterogeneous)
-            context.writer.write_varuint32(1);
+            context.writer.write_var_uint32(1);
             let header = 0u8; // No IS_SAME_TYPE flag
             context.writer.write_u8(header);
             self.0.fory_write(context, RefMode::NullOnly, true, false)?;
@@ -360,7 +360,7 @@ macro_rules! impl_tuple_serializer {
                 } else {
                     // Compatible mode: use collection protocol (always heterogeneous)
                     let len = fory_tuple_count!($T0, $($T),*);
-                    context.writer.write_varuint32(len as u32);
+                    context.writer.write_var_uint32(len as u32);
 
                     // Write header without IS_SAME_TYPE flag
                     let header = 0u8;

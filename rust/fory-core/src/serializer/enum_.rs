@@ -51,7 +51,7 @@ pub fn write<T: Serializer>(
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    context.writer.write_varuint32(type_id);
+    context.writer.write_var_uint32(type_id);
     let is_named_enum = type_id & 0xff == TypeId::NAMED_ENUM as u32;
     if !is_named_enum {
         return Ok(());

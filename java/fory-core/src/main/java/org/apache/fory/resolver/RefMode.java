@@ -19,6 +19,8 @@
 
 package org.apache.fory.resolver;
 
+import org.apache.fory.annotation.CodegenInvoke;
+
 /**
  * Reference mode for field serialization, determining how null values and references are handled.
  *
@@ -48,6 +50,7 @@ public enum RefMode {
    * @param nullable whether this field can be null
    * @return the appropriate RefMode
    */
+  @CodegenInvoke
   public static RefMode of(boolean trackingRef, boolean nullable) {
     if (trackingRef) {
       return TRACKING;
@@ -56,5 +59,13 @@ public enum RefMode {
     } else {
       return NONE;
     }
+  }
+
+  @CodegenInvoke
+  public static RefMode ofNullable(boolean nullable) {
+    if (nullable) {
+      return NULL_ONLY;
+    }
+    return NONE;
   }
 }

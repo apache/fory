@@ -69,12 +69,12 @@ struct Serializer<MyExt> {
     write_data(value, ctx);
   }
 
-  // Write only the data (no type info)
+  // write only the data (no type info)
   static void write_data(const MyExt &value, WriteContext &ctx) {
     Serializer<int32_t>::write_data(value.id, ctx);
   }
 
-  // Write data with generics support
+  // write data with generics support
   static void write_data_generic(const MyExt &value, WriteContext &ctx,
                                  bool has_generics) {
     (void)has_generics;
@@ -202,7 +202,7 @@ struct Serializer<CustomType> {
   }
 
   static void write_data(const CustomType &value, WriteContext &ctx) {
-    // Write value as varint for compact encoding
+    // write value as varint for compact encoding
     Serializer<int32_t>::write_data(value.value, ctx);
     // Delegate string serialization to built-in serializer
     Serializer<std::string>::write_data(value.name, ctx);
@@ -289,9 +289,9 @@ ctx.write_int8(value);
 ctx.write_uint16(value);
 
 // Variable-length integers (compact encoding)
-ctx.write_varuint32(value);   // Unsigned varint
+ctx.write_var_uint32(value);   // Unsigned varint
 ctx.write_varint32(value);    // Signed zigzag varint
-ctx.write_varuint64(value);   // Unsigned varint
+ctx.write_var_uint64(value);   // Unsigned varint
 ctx.write_varint64(value);    // Signed zigzag varint
 
 // Tagged integers (for mixed-size encoding)
@@ -302,9 +302,9 @@ ctx.write_tagged_int64(value);
 ctx.write_bytes(data_ptr, length);
 
 // Access underlying buffer for advanced operations
-ctx.buffer().WriteInt32(value);
-ctx.buffer().WriteFloat(value);
-ctx.buffer().WriteDouble(value);
+ctx.buffer().write_int32(value);
+ctx.buffer().write_float(value);
+ctx.buffer().write_double(value);
 ```
 
 ## ReadContext Methods
@@ -317,9 +317,9 @@ uint8_t u8 = ctx.read_uint8(ctx.error());
 int8_t i8 = ctx.read_int8(ctx.error());
 
 // Variable-length integers
-uint32_t u32 = ctx.read_varuint32(ctx.error());
+uint32_t u32 = ctx.read_var_uint32(ctx.error());
 int32_t i32 = ctx.read_varint32(ctx.error());
-uint64_t u64 = ctx.read_varuint64(ctx.error());
+uint64_t u64 = ctx.read_var_uint64(ctx.error());
 int64_t i64 = ctx.read_varint64(ctx.error());
 
 // Check for errors after read operations
@@ -328,9 +328,9 @@ if (ctx.has_error()) {
 }
 
 // Access underlying buffer for advanced operations
-int32_t value = ctx.buffer().ReadInt32(ctx.error());
-float f = ctx.buffer().ReadFloat(ctx.error());
-double d = ctx.buffer().ReadDouble(ctx.error());
+int32_t value = ctx.buffer().read_int32(ctx.error());
+float f = ctx.buffer().read_float(ctx.error());
+double d = ctx.buffer().read_double(ctx.error());
 ```
 
 ## Delegating to Built-in Serializers

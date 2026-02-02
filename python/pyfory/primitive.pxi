@@ -150,10 +150,10 @@ cdef class Uint32Serializer(XlangCompatibleSerializer):
 cdef class VarUint32Serializer(XlangCompatibleSerializer):
     """Serializer for VAR_UINT32 type - variable-length encoded unsigned 32-bit integer."""
     cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varuint32(value)
+        buffer.write_var_uint32(value)
 
     cpdef inline read(self, Buffer buffer):
-        return buffer.read_varuint32()
+        return buffer.read_var_uint32()
 
 
 @cython.final
@@ -170,10 +170,10 @@ cdef class Uint64Serializer(XlangCompatibleSerializer):
 cdef class VarUint64Serializer(XlangCompatibleSerializer):
     """Serializer for VAR_UINT64 type - variable-length encoded unsigned 64-bit integer."""
     cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varuint64(value)
+        buffer.write_var_uint64(value)
 
     cpdef inline read(self, Buffer buffer):
-        return buffer.read_varuint64()
+        return buffer.read_var_uint64()
 
 
 @cython.final

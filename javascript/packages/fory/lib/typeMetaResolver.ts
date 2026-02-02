@@ -17,11 +17,11 @@
  * under the License.
  */
 
-import { StructTypeInfo, Type } from "./typeInfo";
+import { StructTypeInfo, Type, TypeInfo } from "./typeInfo";
 import fory from "./fory";
 import { TypeMeta } from "./meta/TypeMeta";
 import { BinaryReader } from "./reader";
-import { Serializer } from "./type";
+import { Serializer, TypeId } from "./type";
 import { BinaryWriter } from "./writer";
 
 export class TypeMetaResolver {
@@ -33,28 +33,41 @@ export class TypeMetaResolver {
 
   }
 
-  private typeMetaToTypeInfo(typeMeta: TypeMeta, ns: string, typeName: string) {
-    const typeId = typeMeta.getTypeId();
-    return Type.struct({
-      typeId: typeId < 0xFF ? undefined : typeId,
-      namespace: ns,
-      typeName,
-    }, {
-      ...Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
-        const typeId = x.getFieldId();
-        const fieldName = x.getFieldName();
-        const typeInfo = this.fory.classResolver.getTypeInfo(typeId);
-        if (!typeInfo) {
-          throw new Error(`${typeId} not registered`); // todo
-        }
-        return [fieldName, typeInfo];
-      })),
-    });
+  private updateTypeInfo(typeMeta: TypeMeta, typeInfo: TypeInfo) {
+    typeInfo.options.props = Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
+      const typeId = x.getTypeId();
+      const fieldName = x.getFieldName();
+      const fieldTypeInfo = this.fory.classResolver.getTypeInfo(typeId);
+      if (!fieldTypeInfo) {
+        throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
+      }
+      if (!typeInfo.options.fieldInfo) {
+        typeInfo.options.fieldInfo = {};
+      }
+      typeInfo.options.fieldInfo[x.fieldName] = {
+        nullable: x.nullable,
+        trackingRef: x.trackingRef,
+        ...typeInfo.options.fieldInfo[x.fieldName],
+      };
+      return [fieldName, fieldTypeInfo];
+    }));
   }
 
-  genSerializerByTypeMetaRuntime(typeMeta: TypeMeta, ns: string, typeName: string): Serializer {
-    const typeInfo = this.typeMetaToTypeInfo(typeMeta, ns, typeName);
-    return this.fory.registerSerializer(typeInfo, true).serializer;
+  genSerializerByTypeMetaRuntime(typeMeta: TypeMeta): Serializer {
+    const typeName = typeMeta.getTypeName();
+    const ns = typeMeta.getNs();
+    const typeId = typeMeta.getTypeId();
+    let typeInfo;
+    if (!TypeId.isNamedType(typeId)) {
+      typeInfo = this.fory.classResolver.getTypeInfo(typeId);
+    } else {
+      typeInfo = this.fory.classResolver.getTypeInfo(`${ns}$${typeName}`);
+    }
+    if (!typeInfo) {
+      throw new Error(`${typeId} not registered`); // todo
+    }
+    this.updateTypeInfo(typeMeta, typeInfo);
+    return this.fory.replaceSerializerReader(typeInfo);
   }
 
   readTypeMeta(reader: BinaryReader): TypeMeta {

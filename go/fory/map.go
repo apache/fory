@@ -64,7 +64,7 @@ func (s mapSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	value = unwrapInterface(value)
 	length := value.Len()
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -141,7 +141,7 @@ func (s mapSerializer) writeNullValueEntry(ctx *WriteContext, key reflect.Value,
 	}
 
 	header := int8(VALUE_HAS_NULL)
-	writeKeyRef := trackRef && keyTypeInfo.NeedWriteRef
+	writeKeyRef := trackRef && s.keyReferencable && keyTypeInfo.NeedWriteRef
 	if writeKeyRef {
 		header |= TRACKING_KEY_REF
 	}
@@ -178,7 +178,7 @@ func (s mapSerializer) writeNullKeyEntry(ctx *WriteContext, value reflect.Value,
 	}
 
 	header := int8(KEY_HAS_NULL)
-	writeValueRef := trackRef && valueTypeInfo.NeedWriteRef
+	writeValueRef := trackRef && s.valueReferencable && valueTypeInfo.NeedWriteRef
 	if writeValueRef {
 		header |= TRACKING_VALUE_REF
 	}
@@ -215,7 +215,7 @@ func (s mapSerializer) writeChunk(ctx *WriteContext, iter *reflect.MapIter, entr
 		keyTypeInfo, _ := getTypeInfoForValue(*entryKey, resolver)
 		resolver.WriteTypeInfo(buf, keyTypeInfo, ctx.Err())
 		keySer = keyTypeInfo.Serializer
-		keyWriteRef = keyTypeInfo.NeedWriteRef
+		keyWriteRef = s.keyReferencable && keyTypeInfo.NeedWriteRef
 	}
 
 	// Determine value serializer and write type info if needed
@@ -226,7 +226,7 @@ func (s mapSerializer) writeChunk(ctx *WriteContext, iter *reflect.MapIter, entr
 		valueTypeInfo, _ := getTypeInfoForValue(*entryVal, resolver)
 		resolver.WriteTypeInfo(buf, valueTypeInfo, ctx.Err())
 		valSer = valueTypeInfo.Serializer
-		valueWriteRef = valueTypeInfo.NeedWriteRef
+		valueWriteRef = s.valueReferencable && valueTypeInfo.NeedWriteRef
 	}
 
 	// Set ref tracking flags
@@ -305,7 +305,7 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	refResolver.Reference(value)
 
-	size := int(buf.ReadVaruint32(ctxErr))
+	size := int(buf.ReadVarUint32(ctxErr))
 	if size == 0 || ctx.HasError() {
 		return
 	}
@@ -408,16 +408,20 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 			return reflect.Value{}
 		}
 
+		ser := ti.Serializer
 		valType := ti.Type
 		if valType == nil {
 			valType = staticType
 		}
+		valType, ser = wrapMapSerializerIfNeeded(staticType, valType, ser)
 		v := reflect.New(valType).Elem()
-		ti.Serializer.ReadData(ctx, v)
+		ser.ReadData(ctx, v)
 		if ctx.HasError() {
 			return reflect.Value{}
 		}
-		refResolver.Reference(v)
+		if _, ok := ser.(*ptrToValueSerializer); !ok {
+			refResolver.Reference(v)
+		}
 		return v
 	}
 
@@ -433,6 +437,7 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 		}
 		ser = typeInfo.Serializer
 		valType = typeInfo.Type
+		valType, ser = wrapMapSerializerIfNeeded(staticType, valType, ser)
 	} else {
 		ser = declaredSer
 		if ser == nil {
@@ -468,6 +473,8 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 	trackValRef := (header & TRACKING_VALUE_REF) != 0
 	keyDeclType := (header & KEY_DECL_TYPE) != 0
 	valDeclType := (header & VALUE_DECL_TYPE) != 0
+	declaredKeyType := keyType
+	declaredValueType := valueType
 
 	chunkSize := int(buf.ReadUint8(ctxErr))
 	if ctx.HasError() {
@@ -485,6 +492,7 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 		}
 		keySer = keyTypeInfo.Serializer
 		keyType = keyTypeInfo.Type
+		keyType, keySer = wrapMapSerializerIfNeeded(declaredKeyType, keyType, keySer)
 	} else {
 		keySer = s.keySerializer
 		if keySer == nil {
@@ -499,6 +507,7 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 		}
 		valSer = valueTypeInfo.Serializer
 		valueType = valueTypeInfo.Type
+		valueType, valSer = wrapMapSerializerIfNeeded(declaredValueType, valueType, valSer)
 	} else {
 		valSer = s.valueSerializer
 		if valSer == nil {
@@ -574,7 +583,7 @@ func writeMapRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, valu
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVaruint32Small7(uint32(MAP))
+		ctx.buffer.WriteVarUint32Small7(uint32(MAP))
 	}
 	return false
 }
@@ -605,7 +614,7 @@ func readMapRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value r
 		}
 	}
 	if readType {
-		buf.ReadVaruint32Small7(ctxErr)
+		buf.ReadVarUint32Small7(ctxErr)
 	}
 	return false
 }
@@ -617,6 +626,30 @@ func unwrapInterface(v reflect.Value) reflect.Value {
 		return v.Elem()
 	}
 	return v
+}
+
+func wrapMapSerializerIfNeeded(declaredType, actualType reflect.Type, serializer Serializer) (reflect.Type, Serializer) {
+	if declaredType == nil || actualType == nil || serializer == nil {
+		return actualType, serializer
+	}
+	if declaredType.Kind() == reflect.Ptr {
+		if actualType.Kind() == reflect.Ptr {
+			return actualType, serializer
+		}
+		return reflect.PtrTo(actualType), &ptrToValueSerializer{valueSerializer: serializer}
+	}
+	if declaredType.Kind() == reflect.Interface {
+		if actualType.AssignableTo(declaredType) {
+			return actualType, serializer
+		}
+		if actualType.Kind() != reflect.Ptr {
+			ptrType := reflect.PtrTo(actualType)
+			if ptrType.AssignableTo(declaredType) {
+				return ptrType, &ptrToValueSerializer{valueSerializer: serializer}
+			}
+		}
+	}
+	return actualType, serializer
 }
 
 // UnwrapReflectValue is exported for use by other packages

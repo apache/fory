@@ -32,7 +32,7 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = typeInfo;
   }
 
-  writeStmt(accessor: string): string {
+  write(accessor: string): string {
     if (/^-?[0-9]+$/.test(accessor)) {
       const msVar = this.scope.uniqueName("ts_ms");
       const secondsVar = this.scope.uniqueName("ts_sec");
@@ -61,7 +61,7 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
         `;
   }
 
-  readStmt(accessor: (expr: string) => string): string {
+  read(accessor: (expr: string) => string): string {
     const seconds = this.builder.reader.int64();
     const nanos = this.builder.reader.uint32();
     return accessor(`new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`);
@@ -69,10 +69,6 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
 
   getFixedSize(): number {
     return 12;
-  }
-
-  needToWriteRef(): boolean {
-    return false;
   }
 }
 
@@ -84,19 +80,18 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = typeInfo;
   }
 
-  writeStmt(accessor: string): string {
+  write(accessor: string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
-    if (/^-?[0-9]+$/.test(accessor)) {
-      return `
-            ${this.builder.writer.int32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
-        `;
-    }
     return `
-            ${this.builder.writer.int32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
-        `;
+      if (${accessor} instanceof Date) {
+        ${this.builder.writer.int32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+      } else {
+        ${this.builder.writer.int32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+      }
+    `;
   }
 
-  readStmt(accessor: (expr: string) => string): string {
+  read(accessor: (expr: string) => string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
     return accessor(`
             new Date(${epoch} + (${this.builder.reader.int32()} * (24 * 60 * 60) * 1000))
@@ -105,10 +100,6 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
 
   getFixedSize(): number {
     return 7;
-  }
-
-  needToWriteRef(): boolean {
-    return false;
   }
 }
 

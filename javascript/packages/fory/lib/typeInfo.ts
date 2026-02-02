@@ -17,8 +17,8 @@
  * under the License.
  */
 
-import { TypeMeta } from "./meta/TypeMeta";
-import { ForyTypeInfoSymbol, WithForyClsInfo, TypeId } from "./type";
+import Fory from "./fory";
+import { ForyTypeInfoSymbol, TypeId, Mode } from "./type";
 
 const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
   if (!target.prototype) {
@@ -28,10 +28,21 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
     typeInfo.options = {};
   }
   typeInfo.options.withConstructor = true;
+  typeInfo.options.constructor = target;
   Object.assign(typeInfo.options.props, targetFields.get(target) || {})
-  target.prototype[ForyTypeInfoSymbol] = {
-    structTypeInfo: typeInfo,
-  } as WithForyClsInfo;
+  Object.defineProperties(target.prototype, {
+    [ForyTypeInfoSymbol]: {
+      get() {
+        return {
+          structTypeInfo: typeInfo
+        };
+      },
+      enumerable: false,
+      set(_) {
+        throw new Error("fory type info is readonly")
+      },
+    },
+  })
 };
 
 const targetFields = new WeakMap<new () => any, { [key: string]: TypeInfo }>();
@@ -57,13 +68,22 @@ class ExtensibleFunction extends Function {
 // eslint-disable-next-line
 export class TypeInfo<T = unknown> extends ExtensibleFunction {
   dynamicTypeId = -1;
-  hash = BigInt(0);
   named = "";
   namespace = "";
   typeName = "";
   options?: any;
+  dynamic: "TRUE" | "FALSE" | "AUTO" = "AUTO";
+  static fory: WeakRef<Fory> | null = null;
 
-  private constructor(public typeId: number) {
+  static attach(fory: Fory) {
+    TypeInfo.fory = new WeakRef(fory);
+  }
+  
+  static detach() {
+    TypeInfo.fory = null;
+  }
+
+  private constructor(private _typeId: number) {
     super(function (target: any, key?: string | { name?: string }) {
       if (key === undefined) {
         initMeta(target, that as unknown as StructTypeInfo);
@@ -79,6 +99,56 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     const that = this;
   }
 
+  computeTypeId(fory?: Fory) {
+    const internalTypeId = this._typeId & 0xff;
+    if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
+      return this._typeId;
+    }
+    if (!fory) {
+      throw new Error("fory is not attached")
+    }
+    if (internalTypeId === TypeId.NAMED_STRUCT && fory.config.mode === Mode.Compatible) {
+      return ((this._typeId >> 8) << 8) | TypeId.NAMED_COMPATIBLE_STRUCT
+    }
+    if (internalTypeId === TypeId.STRUCT && fory.config.mode === Mode.Compatible) {
+      return ((this._typeId >> 8) << 8) | TypeId.COMPATIBLE_STRUCT
+    }
+    return this._typeId;
+  }
+
+  get typeId() {
+    return this.computeTypeId(TypeInfo.fory?.deref());
+  }
+
+  isMonomorphic() {
+    switch (this.dynamic) {
+      case "TRUE":
+        return false;
+      case "FALSE":
+        return true;
+      default:
+        if (TypeId.structType(this._typeId)) {
+          return false;
+        }
+        if (TypeId.enumType(this._typeId)) {
+          return true;
+        }
+        const internalTypeId = this._typeId & 0xff;
+        const fory = TypeInfo.fory?.deref();
+        if (!fory) {
+          throw new Error("fory is not attached")
+        }
+        if (fory.isCompatible()) {
+          return !TypeId.userDefinedType(this._typeId) && internalTypeId != TypeId.UNKNOWN;
+        }
+        return internalTypeId != TypeId.UNKNOWN;
+    }
+  }
+
+  isNamedType() {
+    return TypeId.isNamedType(this._typeId);
+  }
+
   static fromNonParam<T>(typeId: number) {
     return new TypeInfo<{
       type: T;
@@ -91,10 +161,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     typeName?: string;
   } | string | number, props?: Record<string, TypeInfo>, {
     withConstructor = false,
-    compatible = false,
+    fieldInfo = {},
   }: {
     withConstructor?: boolean;
-    compatible?: boolean;
+    fieldInfo?: Record<string, StructFieldInfo>
   } = {}) {
     let typeId: number | undefined;
     let namespace: string | undefined;
@@ -125,26 +195,18 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     }
     let finalTypeId = 0;
     if (typeId !== undefined) {
-      if (compatible) {
-        finalTypeId = (typeId << 8) | TypeId.COMPATIBLE_STRUCT;
-      } else {
         finalTypeId = (typeId << 8) | TypeId.STRUCT;
-      }
     } else {
-      if (compatible) {
-        finalTypeId = TypeId.NAMED_COMPATIBLE_STRUCT;
-      } else {
         finalTypeId = TypeId.NAMED_STRUCT;
-      }
     }
     const typeInfo = new TypeInfo<T>(finalTypeId).cast<StructTypeInfo>();
     typeInfo.options = {
       props: props || {},
       withConstructor,
+      fieldInfo
     };
     typeInfo.namespace = namespace || "";
     typeInfo.typeName = typeId !== undefined ? "" : typeName!;
-    typeInfo.hash = TypeMeta.fromTypeInfo(typeInfo).getHash();
     typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
     return typeInfo as TypeInfo<T>;
   }
@@ -210,10 +272,13 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   }
 }
 
+type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean}
 export interface StructTypeInfo extends TypeInfo {
   options: {
-    props?: { [key: string]: TypeInfo & { nullable?: boolean } };
+    props?: { [key: string]: TypeInfo };
+    fieldInfo?: {[key: string]: StructFieldInfo};
     withConstructor?: boolean;
+    constructor?: Function;
   };
 }
 
@@ -333,7 +398,7 @@ export type HintInput<T> = T extends {
   }
   ? SetProps<T>
   : T extends {
-    type: typeof TypeId.ARRAY;
+    type: typeof TypeId.LIST;
   }
   ? InnerProps<T>
   : T extends {
@@ -400,7 +465,7 @@ export type HintResult<T> = T extends never ? any : T extends {
   }
   ? SetProps<T>
   : T extends {
-    type: typeof TypeId.ARRAY;
+    type: typeof TypeId.LIST;
   }
   ? InnerProps<T>
   : T extends {
@@ -428,7 +493,7 @@ export const Type = {
     return TypeInfo.fromNonParam<typeof TypeId.UNKNOWN>(TypeId.UNKNOWN);
   },
   array<T extends TypeInfo>(inner: T) {
-    return TypeInfo.fromWithOptions<typeof TypeId.ARRAY, { inner: T }>(TypeId.ARRAY, {
+    return TypeInfo.fromWithOptions<typeof TypeId.LIST, { inner: T }>(TypeId.LIST, {
       inner,
     });
   },
@@ -469,10 +534,10 @@ export const Type = {
     typeName?: string;
   } | string | number, props?: T, {
     withConstructor = false,
-    compatible = false,
+    fieldInfo,
   }: {
     withConstructor?: boolean;
-    compatible?: boolean;
+    fieldInfo?: Record<string, StructFieldInfo>
   } = {}) {
     return TypeInfo.fromStruct<{
       type: typeof TypeId.STRUCT;
@@ -481,7 +546,7 @@ export const Type = {
       };
     }>(nameInfo, props, {
       withConstructor,
-      compatible,
+      fieldInfo
     });
   },
   string() {
@@ -596,7 +661,6 @@ export const Type = {
   timestamp() {
     return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(
       (TypeId.TIMESTAMP),
-
     );
   },
   boolArray() {

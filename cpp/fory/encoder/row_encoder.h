@@ -48,14 +48,14 @@ template <typename T> using GetWriterType = typename GetWriterTypeImpl<T>::type;
 
 template <typename T, std::enable_if_t<
                           std::is_same_v<GetWriterType<T>, RowWriter>, int> = 0>
-auto GetSchemaOrType() {
+auto get_schema_or_type() {
   return RowEncodeTrait<T>::Schema();
 }
 
 template <
     typename T,
     std::enable_if_t<std::is_same_v<GetWriterType<T>, ArrayWriter>, int> = 0>
-auto GetSchemaOrType() {
+auto get_schema_or_type() {
   return std::dynamic_pointer_cast<ListType>(RowEncodeTrait<T>::Type());
 }
 
@@ -68,42 +68,43 @@ template <typename T> struct RowEncoder {
   using WriterType = details::GetWriterType<T>;
 
   RowEncoder()
-      : writer_(std::make_unique<WriterType>(details::GetSchemaOrType<T>())) {}
+      : writer_(
+            std::make_unique<WriterType>(details::get_schema_or_type<T>())) {}
 
   template <typename U = WriterType,
             std::enable_if_t<std::is_same_v<U, RowWriter>, int> = 0>
-  void Encode(const T &value) {
-    writer_->Reset();
-    RowEncodeTrait<T>::Write(DefaultWriteVisitor{children_}, value,
-                             GetWriter());
+  void encode(const T &value) {
+    writer_->reset();
+    RowEncodeTrait<T>::write(DefaultWriteVisitor{children_}, value,
+                             get_writer());
   }
 
   template <typename U = WriterType,
             std::enable_if_t<std::is_same_v<U, ArrayWriter>, int> = 0>
-  void Encode(const T &value) {
-    writer_->Reset(value.size());
-    RowEncodeTrait<T>::Write(DefaultWriteVisitor{children_}, value,
-                             GetWriter());
+  void encode(const T &value) {
+    writer_->reset(value.size());
+    RowEncodeTrait<T>::write(DefaultWriteVisitor{children_}, value,
+                             get_writer());
   }
 
-  WriterType &GetWriter() const { return *writer_.get(); }
-  const std::vector<std::unique_ptr<Writer>> &GetChildren() const {
+  WriterType &get_writer() const { return *writer_.get(); }
+  const std::vector<std::unique_ptr<Writer>> &get_children() const {
     return children_;
   }
 
   template <typename U = WriterType,
             std::enable_if_t<std::is_same_v<U, RowWriter>, int> = 0>
-  const Schema &GetSchema() const {
+  const Schema &get_schema() const {
     return *writer_->schema().get();
   }
 
   template <typename U = WriterType,
             std::enable_if_t<std::is_same_v<U, ArrayWriter>, int> = 0>
-  const ListType &GetType() const {
+  const ListType &get_type() const {
     return *writer_->type().get();
   }
 
-  void ResetChildren() { children_.clear(); }
+  void reset_children() { children_.clear(); }
 
 private:
   std::unique_ptr<WriterType> writer_;

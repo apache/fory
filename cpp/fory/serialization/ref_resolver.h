@@ -68,7 +68,7 @@ public:
     auto it = ptr_to_id_.find(address);
     if (it != ptr_to_id_.end()) {
       writer.write_int8(static_cast<int8_t>(RefFlag::Ref));
-      writer.write_varuint32(it->second);
+      writer.write_var_uint32(it->second);
       return true;
     }
 
@@ -78,12 +78,12 @@ public:
     return false;
   }
 
-  /// Reserve a ref_id slot without storing a pointer.
+  /// reserve a ref_id slot without storing a pointer.
   /// Used for types (like structs) that Java tracks but C++ doesn't reference.
   /// This keeps ref ID numbering in sync across languages.
   uint32_t reserve_ref_id() { return next_id_++; }
 
-  /// Reset resolver for reuse in new serialization.
+  /// reset resolver for reuse in new serialization.
   /// Clears all tracked references.
   void reset() {
     ptr_to_id_.clear();
@@ -179,7 +179,7 @@ public:
 
   template <typename Reader>
   Result<uint32_t, Error> read_ref_id(Reader &reader) const {
-    return reader.read_varuint32();
+    return reader.read_var_uint32();
   }
 
   uint32_t reserve_ref_id() {

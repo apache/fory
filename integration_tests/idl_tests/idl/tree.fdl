@@ -17,6 +17,8 @@
 
 package tree;
 
+option go_package = "github.com/apache/fory/integration_tests/idl_tests/go/tree;tree";
+
 message TreeNode {
     string id = 1;
     string name = 2;

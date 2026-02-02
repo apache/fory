@@ -22,6 +22,8 @@ package org.apache.fory.serializer;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.RefMode;
+import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.type.TypeUtils;
 
 /**
@@ -31,8 +33,10 @@ import org.apache.fory.type.TypeUtils;
  * @param <T> type of objects being serializing/deserializing
  */
 @NotThreadSafe
+@SuppressWarnings("unchecked")
 public abstract class Serializer<T> {
   protected final Fory fory;
+  protected final RefResolver refResolver;
   protected final Class<T> type;
   protected final boolean isJava;
   protected final boolean needToWriteRef;
@@ -45,8 +49,154 @@ public abstract class Serializer<T> {
 
   protected final boolean immutable;
 
+  public Serializer(Fory fory, Class<T> type) {
+    this(
+        fory,
+        type,
+        fory.trackingRef() && !TypeUtils.isBoxed(TypeUtils.wrap(type)),
+        TypeUtils.isPrimitive(type) || TypeUtils.isBoxed(type));
+  }
+
+  public Serializer(Fory fory, Class<T> type, boolean immutable) {
+    this(fory, type, fory.trackingRef() && !TypeUtils.isBoxed(TypeUtils.wrap(type)), immutable);
+  }
+
+  public Serializer(Fory fory, Class<T> type, boolean needToWriteRef, boolean immutable) {
+    this.fory = fory;
+    this.refResolver = fory.getRefResolver();
+    this.type = type;
+    this.isJava = !fory.isCrossLanguage();
+    this.needToWriteRef = needToWriteRef;
+    this.needToCopyRef = fory.copyTrackingRef() && !immutable;
+    this.immutable = immutable;
+  }
+
+  /**
+   * Write value to buffer, this method may write ref/null flags based passed {@code refMode}, and
+   * the passed value can be null. Note that this method don't write type info, this method is
+   * mostly be used in cases the context has already knows the value type when deserialization.
+   */
+  public void write(MemoryBuffer buffer, RefMode refMode, T value) {
+    // noinspection Duplicates
+    if (refMode == RefMode.TRACKING) {
+      if (refResolver.writeRefOrNull(buffer, value)) {
+        return;
+      }
+    } else if (refMode == RefMode.NULL_ONLY) {
+      if (value == null) {
+        buffer.writeByte(Fory.NULL_FLAG);
+        return;
+      } else {
+        buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+      }
+    }
+    write(buffer, value);
+  }
+
+  /**
+   * Write value to buffer, this method do not write ref/null flags and the passed value must not be
+   * null.
+   */
   public void write(MemoryBuffer buffer, T value) {
-    throw new UnsupportedOperationException();
+    throw new UnsupportedOperationException("Please implement serialization for " + type);
+  }
+
+  /**
+   * Read value from buffer, this method may read ref/null flags based passed {@code refMode}, and
+   * the read value can be null. Note that this method don't read type info, this method is mostly
+   * be used in cases the context has already knows the value type for deserialization.
+   */
+  public T read(MemoryBuffer buffer, RefMode refMode) {
+    if (refMode == RefMode.TRACKING) {
+      T obj;
+      int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+      if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+        obj = read(buffer);
+        refResolver.setReadObject(nextReadRefId, obj);
+        return obj;
+      } else {
+        return (T) refResolver.getReadObject();
+      }
+    } else if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
+      if (needToWriteRef) {
+        // in normal case, the xread implementation may invoke `refResolver.reference` to
+        // support circular reference, so we still need this `-1`
+        refResolver.preserveRefId(-1);
+      }
+      return read(buffer);
+    }
+    return null;
+  }
+
+  /**
+   * Read value from buffer, this method wont read ref/null flags and the read value won't be null.
+   */
+  public T read(MemoryBuffer buffer) {
+    throw new UnsupportedOperationException("Please implement serialization for " + type);
+  }
+
+  /**
+   * Write value to buffer, this method may write ref/null flags based passed {@code refMode}, and
+   * the passed value can be null. Note that this method don't write type info, this method is
+   * mostly be used in cases the context has already knows the value type when deserialization.
+   */
+  public void xwrite(MemoryBuffer buffer, RefMode refMode, T value) {
+    // noinspection Duplicates
+    if (refMode == RefMode.TRACKING) {
+      if (refResolver.writeRefOrNull(buffer, value)) {
+        return;
+      }
+    } else if (refMode == RefMode.NULL_ONLY) {
+      if (value == null) {
+        buffer.writeByte(Fory.NULL_FLAG);
+        return;
+      } else {
+        buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+      }
+    }
+    xwrite(buffer, value);
+  }
+
+  /**
+   * Write value to buffer, this method do not write ref/null flags and the passed value must not be
+   * null.
+   */
+  public void xwrite(MemoryBuffer buffer, T value) {
+    throw new UnsupportedOperationException("Please implement xlang serialization for " + type);
+  }
+
+  /**
+   * Read value from buffer, this method may read ref/null flags based passed {@code refMode}, and
+   * the read value can be null. Note that this method don't read type info, this method is mostly
+   * be used in cases the context has already knows the value type for deserialization.
+   */
+  public T xread(MemoryBuffer buffer, RefMode refMode) {
+    if (refMode == RefMode.TRACKING) {
+      T obj;
+      int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+      if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+        obj = xread(buffer);
+        refResolver.setReadObject(nextReadRefId, obj);
+        return obj;
+      } else {
+        return (T) refResolver.getReadObject();
+      }
+    } else if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
+      if (needToWriteRef) {
+        // in normal case, the xread implementation may invoke `refResolver.reference` to
+        // support circular reference, so we still need this `-1`
+        refResolver.preserveRefId(-1);
+      }
+      return xread(buffer);
+    }
+    return null;
+  }
+
+  /**
+   * Read value from buffer, this method won't read ref/null flags and the read value won't be null.
+   */
+  public T xread(MemoryBuffer buffer) {
+    throw new UnsupportedOperationException("Please implement xlang serialization for " + type);
   }
 
   public T copy(T value) {
@@ -55,54 +205,6 @@ public abstract class Serializer<T> {
     }
     throw new UnsupportedOperationException(
         String.format("Copy for %s is not supported", value.getClass()));
-  }
-
-  public T read(MemoryBuffer buffer) {
-    throw new UnsupportedOperationException();
-  }
-
-  public void xwrite(MemoryBuffer buffer, T value) {
-    throw new UnsupportedOperationException();
-  }
-
-  public T xread(MemoryBuffer buffer) {
-    throw new UnsupportedOperationException(
-        getClass() + " doesn't support xlang serialization for " + type);
-  }
-
-  public Serializer(Fory fory, Class<T> type) {
-    this.fory = fory;
-    this.type = type;
-    this.isJava = !fory.isCrossLanguage();
-    if (fory.trackingRef()) {
-      needToWriteRef = !TypeUtils.isBoxed(TypeUtils.wrap(type)) || false;
-    } else {
-      needToWriteRef = false;
-    }
-    this.needToCopyRef = fory.copyTrackingRef();
-    this.immutable = false;
-  }
-
-  public Serializer(Fory fory, Class<T> type, boolean immutable) {
-    this.fory = fory;
-    this.type = type;
-    this.isJava = !fory.isCrossLanguage();
-    if (fory.trackingRef()) {
-      needToWriteRef = !TypeUtils.isBoxed(TypeUtils.wrap(type)) || false;
-    } else {
-      needToWriteRef = false;
-    }
-    this.needToCopyRef = fory.copyTrackingRef() && !immutable;
-    this.immutable = immutable;
-  }
-
-  public Serializer(Fory fory, Class<T> type, boolean needToWriteRef, boolean immutable) {
-    this.fory = fory;
-    this.type = type;
-    this.isJava = !fory.isCrossLanguage();
-    this.needToWriteRef = needToWriteRef;
-    this.needToCopyRef = fory.copyTrackingRef() && !immutable;
-    this.immutable = immutable;
   }
 
   public final boolean needToWriteRef() {

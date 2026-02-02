@@ -129,11 +129,11 @@ func (b *ByteBuffer) WriteLength(value int) {
 	if value >= MaxInt32 {
 		panic(fmt.Errorf("too long: %d", value))
 	}
-	b.WriteVaruint32(uint32(value))
+	b.WriteVarUint32(uint32(value))
 }
 
 func (b *ByteBuffer) ReadLength(err *Error) int {
-	return int(b.ReadVaruint32(err))
+	return int(b.ReadVarUint32(err))
 }
 
 //go:inline
@@ -393,12 +393,12 @@ func (b *ByteBuffer) Reserve(n int) {
 //go:inline
 func (b *ByteBuffer) UnsafeWriteVarint32(value int32) int8 {
 	u := uint32((value << 1) ^ (value >> 31))
-	return b.UnsafeWriteVaruint32(u)
+	return b.UnsafeWriteVarUint32(u)
 }
 
-// UnsafeWriteVaruint32 writes a varuint32 without grow check.
+// UnsafeWriteVarUint32 writes a VarUint32 without grow check.
 // Caller must have called Reserve(8) beforehand (8 for bulk uint64 write).
-func (b *ByteBuffer) UnsafeWriteVaruint32(value uint32) int8 {
+func (b *ByteBuffer) UnsafeWriteVarUint32(value uint32) int8 {
 	if value>>7 == 0 {
 		b.data[b.writerIndex] = byte(value)
 		b.writerIndex++
@@ -600,13 +600,13 @@ func (b *ByteBuffer) UnsafeWriteBool(v bool) {
 //go:inline
 func (b *ByteBuffer) UnsafePutVarInt32(offset int, value int32) int {
 	u := uint32((value << 1) ^ (value >> 31))
-	return b.UnsafePutVaruint32(offset, u)
+	return b.UnsafePutVarUint32(offset, u)
 }
 
-// UnsafePutVaruint32 writes an unsigned varuint32 at the given offset without advancing writerIndex.
+// UnsafePutVarUint32 writes an unsigned VarUint32 at the given offset without advancing writerIndex.
 // Caller must have called Reserve(8) to ensure capacity (8 for bulk uint64 write).
 // Returns the number of bytes written (1-5).
-func (b *ByteBuffer) UnsafePutVaruint32(offset int, value uint32) int {
+func (b *ByteBuffer) UnsafePutVarUint32(offset int, value uint32) int {
 	if value>>7 == 0 {
 		b.data[offset] = byte(value)
 		return 1
@@ -666,13 +666,13 @@ func (b *ByteBuffer) UnsafePutVaruint32(offset int, value uint32) int {
 //go:inline
 func (b *ByteBuffer) UnsafePutVarInt64(offset int, value int64) int {
 	u := uint64((value << 1) ^ (value >> 63))
-	return b.UnsafePutVaruint64(offset, u)
+	return b.UnsafePutVarUint64(offset, u)
 }
 
-// UnsafePutVaruint64 writes an unsigned varuint64 at the given offset without advancing writerIndex.
+// UnsafePutVarUint64 writes an unsigned VarUint64 at the given offset without advancing writerIndex.
 // Caller must have called Reserve(16) to ensure capacity (for bulk writes).
 // Returns the number of bytes written (1-9).
-func (b *ByteBuffer) UnsafePutVaruint64(offset int, value uint64) int {
+func (b *ByteBuffer) UnsafePutVarUint64(offset int, value uint64) int {
 	if value>>7 == 0 {
 		b.data[offset] = byte(value)
 		return 1
@@ -795,13 +795,13 @@ func (b *ByteBuffer) PutInt32(index int, value int32) {
 	binary.LittleEndian.PutUint32(b.data[index:], uint32(value))
 }
 
-// WriteVaruint32 writes a 1-5 byte positive int (no zigzag encoding), returns the number of bytes written.
+// WriteVarUint32 writes a 1-5 byte positive int (no zigzag encoding), returns the number of bytes written.
 // Use this for lengths, type IDs, and other non-negative values.
 //
 //go:inline
-func (b *ByteBuffer) WriteVaruint32(value uint32) int8 {
+func (b *ByteBuffer) WriteVarUint32(value uint32) int8 {
 	b.grow(8) // 8 bytes for bulk uint64 write in worst case
-	return b.UnsafeWriteVaruint32(value)
+	return b.UnsafeWriteVarUint32(value)
 }
 
 type BufferObject interface {
@@ -815,11 +815,11 @@ type BufferObject interface {
 //go:inline
 func (b *ByteBuffer) WriteVarint64(value int64) {
 	u := uint64((value << 1) ^ (value >> 63))
-	b.WriteVaruint64(u)
+	b.WriteVarUint64(u)
 }
 
-// WriteVaruint64 writes to unsigned varint (up to 9 bytes)
-func (b *ByteBuffer) WriteVaruint64(value uint64) {
+// WriteVarUint64 writes to unsigned varint (up to 9 bytes)
+func (b *ByteBuffer) WriteVarUint64(value uint64) {
 	b.grow(9)
 	offset := b.writerIndex
 	data := b.data[offset : offset+9]
@@ -942,7 +942,7 @@ func (b *ByteBuffer) readVaruint36SmallSlow(err *Error) uint64 {
 //
 //go:inline
 func (b *ByteBuffer) ReadVarint64(err *Error) int64 {
-	u := b.ReadVaruint64(err)
+	u := b.ReadVarUint64(err)
 	v := int64(u >> 1)
 	if u&1 != 0 {
 		v = ^v
@@ -1053,20 +1053,20 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 	return value
 }
 
-// ReadVaruint64 reads unsigned varint
+// ReadVarUint64 reads unsigned varint
 //
 //go:inline
-func (b *ByteBuffer) ReadVaruint64(err *Error) uint64 {
+func (b *ByteBuffer) ReadVarUint64(err *Error) uint64 {
 	if b.remaining() >= 9 {
-		return b.readVaruint64Fast()
+		return b.readVarUint64Fast()
 	}
-	return b.readVaruint64Slow(err)
+	return b.readVarUint64Slow(err)
 }
 
 // Fast path (when the remaining bytes are sufficient)
 //
 //go:inline
-func (b *ByteBuffer) readVaruint64Fast() uint64 {
+func (b *ByteBuffer) readVarUint64Fast() uint64 {
 	// Single instruction load using unsafe pointer cast (little-endian only)
 	var bulk uint64
 	if isLittleEndian {
@@ -1117,7 +1117,7 @@ func (b *ByteBuffer) readVaruint64Fast() uint64 {
 }
 
 // Slow path (read byte by byte)
-func (b *ByteBuffer) readVaruint64Slow(err *Error) uint64 {
+func (b *ByteBuffer) readVarUint64Slow(err *Error) uint64 {
 	var result uint64
 	var shift uint
 	for i := 0; i < 8; i++ {
@@ -1167,14 +1167,14 @@ func (b *ByteBuffer) ReadUint8(err *Error) uint8 {
 //go:inline
 func (b *ByteBuffer) WriteVarint32(value int32) int8 {
 	u := uint32((value << 1) ^ (value >> 31))
-	return b.WriteVaruint32(u)
+	return b.WriteVarUint32(u)
 }
 
 // ReadVarint32 reads a signed int32 using zigzag decoding (compatible with Java's readVarint32).
 //
 //go:inline
 func (b *ByteBuffer) ReadVarint32(err *Error) int32 {
-	u := b.ReadVaruint32(err)
+	u := b.ReadVarUint32(err)
 	v := int32(u >> 1)
 	if u&1 != 0 {
 		v = ^v
@@ -1187,7 +1187,7 @@ func (b *ByteBuffer) ReadVarint32(err *Error) int32 {
 //
 //go:inline
 func (b *ByteBuffer) UnsafeReadVarint32() int32 {
-	u := b.readVaruint32Fast()
+	u := b.readVarUint32Fast()
 	v := int32(u >> 1)
 	if u&1 != 0 {
 		v = ^v
@@ -1200,7 +1200,7 @@ func (b *ByteBuffer) UnsafeReadVarint32() int32 {
 //
 //go:inline
 func (b *ByteBuffer) UnsafeReadVarint64() int64 {
-	u := b.readVaruint64Fast()
+	u := b.readVarUint64Fast()
 	v := int64(u >> 1)
 	if u&1 != 0 {
 		v = ^v
@@ -1208,36 +1208,36 @@ func (b *ByteBuffer) UnsafeReadVarint64() int64 {
 	return v
 }
 
-// UnsafeReadVaruint32 reads a varuint32 without bounds checking.
+// UnsafeReadVarUint32 reads a VarUint32 without bounds checking.
 // Caller must ensure remaining() >= 5 before calling.
 //
 //go:inline
-func (b *ByteBuffer) UnsafeReadVaruint32() uint32 {
-	return b.readVaruint32Fast()
+func (b *ByteBuffer) UnsafeReadVarUint32() uint32 {
+	return b.readVarUint32Fast()
 }
 
-// UnsafeReadVaruint64 reads a varuint64 without bounds checking.
+// UnsafeReadVarUint64 reads a VarUint64 without bounds checking.
 // Caller must ensure remaining() >= 10 before calling.
 //
 //go:inline
-func (b *ByteBuffer) UnsafeReadVaruint64() uint64 {
-	return b.readVaruint64Fast()
+func (b *ByteBuffer) UnsafeReadVarUint64() uint64 {
+	return b.readVarUint64Fast()
 }
 
-// ReadVaruint32 reads a varuint32 and sets error on bounds violation
+// ReadVarUint32 reads a VarUint32 and sets error on bounds violation
 //
 //go:inline
-func (b *ByteBuffer) ReadVaruint32(err *Error) uint32 {
+func (b *ByteBuffer) ReadVarUint32(err *Error) uint32 {
 	if b.remaining() >= 8 { // Need 8 bytes for bulk uint64 read in fast path
-		return b.readVaruint32Fast()
+		return b.readVarUint32Fast()
 	}
-	return b.readVaruint32Slow(err)
+	return b.readVarUint32Slow(err)
 }
 
 // Fast path reading (when the remaining bytes are sufficient)
 //
 //go:inline
-func (b *ByteBuffer) readVaruint32Fast() uint32 {
+func (b *ByteBuffer) readVarUint32Fast() uint32 {
 	// Single instruction load using unsafe pointer cast (little-endian only)
 	// On big-endian systems, use binary.LittleEndian which the compiler optimizes
 	var bulk uint64
@@ -1271,7 +1271,7 @@ func (b *ByteBuffer) readVaruint32Fast() uint32 {
 }
 
 // Slow path reading (processing byte by byte)
-func (b *ByteBuffer) readVaruint32Slow(err *Error) uint32 {
+func (b *ByteBuffer) readVarUint32Slow(err *Error) uint32 {
 	var result uint32
 	var shift uint
 	for {
@@ -1287,7 +1287,7 @@ func (b *ByteBuffer) readVaruint32Slow(err *Error) uint32 {
 		}
 		shift += 7
 		if shift >= 35 {
-			*err = DeserializationError("varuint32 overflow")
+			*err = DeserializationError("VarUint32 overflow")
 			return 0
 		}
 	}
@@ -1299,18 +1299,18 @@ func (b *ByteBuffer) PutUint8(writerIndex int, value uint8) {
 	b.data[writerIndex] = byte(value)
 }
 
-// WriteVaruint32Small7 writes a uint32 in variable-length small-7 format
-func (b *ByteBuffer) WriteVaruint32Small7(value uint32) int {
+// WriteVarUint32Small7 writes a uint32 in variable-length small-7 format
+func (b *ByteBuffer) WriteVarUint32Small7(value uint32) int {
 	b.grow(8)
 	if value>>7 == 0 {
 		b.data[b.writerIndex] = byte(value)
 		b.writerIndex++
 		return 1
 	}
-	return b.continueWriteVaruint32Small7(value)
+	return b.continueWriteVarUint32Small7(value)
 }
 
-func (b *ByteBuffer) continueWriteVaruint32Small7(value uint32) int {
+func (b *ByteBuffer) continueWriteVarUint32Small7(value uint32) int {
 	encoded := uint64(value & 0x7F)
 	encoded |= uint64((value&0x3f80)<<1) | 0x80
 	idx := b.writerIndex
@@ -1434,8 +1434,8 @@ func (b *ByteBuffer) UnsafePutTaggedUint64(offset int, value uint64) int {
 	return 9
 }
 
-// ReadVaruint32Small7 reads a varuint32 in small-7 format with error checking
-func (b *ByteBuffer) ReadVaruint32Small7(err *Error) uint32 {
+// ReadVarUint32Small7 reads a VarUint32 in small-7 format with error checking
+func (b *ByteBuffer) ReadVarUint32Small7(err *Error) uint32 {
 	if b.readerIndex >= len(b.data) {
 		*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
 		return 0
@@ -1447,10 +1447,10 @@ func (b *ByteBuffer) ReadVaruint32Small7(err *Error) uint32 {
 		b.readerIndex = readIdx
 		return uint32(v)
 	}
-	return b.readVaruint32Small14(err)
+	return b.readVarUint32Small14(err)
 }
 
-func (b *ByteBuffer) readVaruint32Small14(err *Error) uint32 {
+func (b *ByteBuffer) readVarUint32Small14(err *Error) uint32 {
 	readIdx := b.readerIndex
 	if len(b.data)-readIdx >= 5 {
 		four := binary.LittleEndian.Uint32(b.data[readIdx:])
@@ -1460,7 +1460,7 @@ func (b *ByteBuffer) readVaruint32Small14(err *Error) uint32 {
 			readIdx++
 			value |= (four >> 1) & 0x3f80
 			if four&0x8000 != 0 {
-				return b.continueReadVaruint32(readIdx, four, value)
+				return b.continueReadVarUint32(readIdx, four, value)
 			}
 		}
 		b.readerIndex = readIdx
@@ -1469,7 +1469,7 @@ func (b *ByteBuffer) readVaruint32Small14(err *Error) uint32 {
 	return uint32(b.readVaruint36Slow(err))
 }
 
-func (b *ByteBuffer) continueReadVaruint32(readIdx int, bulkRead, value uint32) uint32 {
+func (b *ByteBuffer) continueReadVarUint32(readIdx int, bulkRead, value uint32) uint32 {
 	readIdx++
 	value |= (bulkRead >> 2) & 0x1fc000
 	if bulkRead&0x800000 != 0 {

@@ -17,10 +17,12 @@
 
 """C++ code generator."""
 
-from typing import Dict, List, Optional, Set
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 import typing
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
     Enum,
@@ -31,6 +33,7 @@ from fory_compiler.ir.ast import (
     NamedType,
     ListType,
     MapType,
+    Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -129,6 +132,119 @@ class CppGenerator(BaseGenerator):
         """Get type name for FORY_FIELD_CONFIG."""
         return self.get_namespaced_type_name(type_name, parent_stack)
 
+    def is_imported_type(self, type_def: object) -> bool:
+        """Return True if a type definition comes from an imported IDL file."""
+        if not self.schema.source_file:
+            return False
+        location = getattr(type_def, "location", None)
+        if location is None or not location.file:
+            return False
+        try:
+            return (
+                Path(location.file).resolve() != Path(self.schema.source_file).resolve()
+            )
+        except Exception:
+            return location.file != self.schema.source_file
+
+    def split_imported_types(
+        self, items: List[object]
+    ) -> Tuple[List[object], List[object]]:
+        imported: List[object] = []
+        local: List[object] = []
+        for item in items:
+            if self.is_imported_type(item):
+                imported.append(item)
+            else:
+                local.append(item)
+        return imported, local
+
+    def _load_schema(self, file_path: str) -> Optional[Schema]:
+        if not file_path:
+            return None
+        if not hasattr(self, "_schema_cache"):
+            self._schema_cache = {}
+        cache: Dict[Path, Schema] = self._schema_cache
+        path = Path(file_path).resolve()
+        if path in cache:
+            return cache[path]
+        try:
+            schema = parse_idl_file(path)
+        except Exception:
+            return None
+        cache[path] = schema
+        return schema
+
+    def _namespace_for_schema(self, schema: Schema) -> str:
+        if schema.package:
+            return schema.package.replace(".", "::")
+        return ""
+
+    def _namespace_for_type(self, type_def: object) -> str:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        schema = self._load_schema(file_path)
+        if schema is None:
+            return ""
+        return self._namespace_for_schema(schema)
+
+    def _header_for_schema(self, schema: Schema) -> str:
+        if schema.package:
+            return f"{schema.package.replace('.', '_')}.h"
+        return "generated.h"
+
+    def _header_for_type(self, type_def: object) -> Optional[str]:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        schema = self._load_schema(file_path)
+        if schema is None:
+            return None
+        return self._header_for_schema(schema)
+
+    def _collect_imported_namespaces(self) -> List[str]:
+        namespaces: Set[str] = set()
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if not self.is_imported_type(type_def):
+                continue
+            ns = self._namespace_for_type(type_def)
+            if ns:
+                namespaces.add(ns)
+        ordered: List[str] = []
+        used: Set[str] = set()
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = (base_dir / imp.path).resolve()
+                schema = self._load_schema(str(candidate))
+                if schema is None:
+                    continue
+                ns = self._namespace_for_schema(schema)
+                if not ns or ns in used:
+                    continue
+                ordered.append(ns)
+                used.add(ns)
+        for ns in sorted(namespaces):
+            if ns in used:
+                continue
+            ordered.append(ns)
+        return ordered
+
+    def generate_bytes_methods(self, class_name: str, indent: str) -> List[str]:
+        lines: List[str] = []
+        lines.append(
+            f"{indent}fory::Result<std::vector<uint8_t>, fory::Error> to_bytes() const {{"
+        )
+        lines.append(f"{indent}  return detail::get_fory().serialize(*this);")
+        lines.append(f"{indent}}}")
+        lines.append("")
+        lines.append(
+            f"{indent}static fory::Result<{class_name}, fory::Error> from_bytes(const std::vector<uint8_t>& data) {{"
+        )
+        lines.append(
+            f"{indent}  return detail::get_fory().deserialize<{class_name}>(data);"
+        )
+        lines.append(f"{indent}}}")
+        return lines
+
     def generate_header(self) -> GeneratedFile:
         """Generate a C++ header file with all types."""
         lines = []
@@ -152,10 +268,22 @@ class CppGenerator(BaseGenerator):
             includes.add("<memory>")
             includes.add("<typeindex>")
             includes.add('"fory/serialization/union_serializer.h"')
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = (base_dir / imp.path).resolve()
+                schema = self._load_schema(str(candidate))
+                if schema is None:
+                    continue
+                includes.add(f'"{self._header_for_schema(schema)}"')
 
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             self.collect_message_includes(message, includes)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             self.collect_union_includes(union, includes)
 
         # License header
@@ -186,9 +314,15 @@ class CppGenerator(BaseGenerator):
         self.generate_forward_declarations(lines)
         if self.schema.messages:
             lines.append("")
+        lines.append("namespace detail {")
+        lines.append("fory::serialization::ThreadSafeFory& get_fory();")
+        lines.append("} // namespace detail")
+        lines.append("")
 
         # Generate enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             lines.extend(self.generate_enum_definition(enum))
             enum_macros.append(self.generate_enum_macro(enum, []))
             lines.append("")
@@ -280,14 +414,20 @@ class CppGenerator(BaseGenerator):
     def generate_forward_declarations(self, lines: List[str]):
         """Generate forward declarations for top-level messages."""
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             lines.append(f"class {message.name};")
 
     def get_definition_order(self) -> List:
         """Return top-level unions/messages in dependency order."""
         items: List = []
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             items.append(("union", union))
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             items.append(("message", message))
 
         name_to_index = {}
@@ -498,8 +638,15 @@ class CppGenerator(BaseGenerator):
         if self.is_message_type(field.field_type, parent_stack) and not (
             field.ref or weak_ref
         ):
-            type_name = self.resolve_nested_type_name(
-                field.field_type.name, parent_stack
+            type_name = self.generate_type(
+                field.field_type,
+                False,
+                False,
+                False,
+                False,
+                weak_ref,
+                element_weak_ref,
+                parent_stack,
             )
             return f"std::unique_ptr<{type_name}>"
         return self.generate_type(
@@ -528,7 +675,16 @@ class CppGenerator(BaseGenerator):
         if self.is_message_type(field.field_type, parent_stack) and not (
             field.ref or weak_ref
         ):
-            return self.resolve_nested_type_name(field.field_type.name, parent_stack)
+            return self.generate_type(
+                field.field_type,
+                False,
+                False,
+                False,
+                False,
+                weak_ref,
+                element_weak_ref,
+                parent_stack,
+            )
         return self.generate_type(
             field.field_type,
             False,
@@ -777,6 +933,9 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{body_indent}  return true;")
         lines.append(f"{body_indent}}}")
 
+        lines.append("")
+        lines.extend(self.generate_bytes_methods(class_name, body_indent))
+
         struct_type_name = self.get_qualified_type_name(message.name, parent_stack)
         if message.fields:
             lines.append("")
@@ -923,6 +1082,8 @@ class CppGenerator(BaseGenerator):
         lines.append(f"{body_indent}  }}")
         lines.append("")
 
+        lines.extend(self.generate_bytes_methods(class_name, f"{body_indent}  "))
+
         lines.append(f"{body_indent}private:")
         lines.append(f"{body_indent}  {variant_type} value_;")
         lines.append("")
@@ -1004,9 +1165,12 @@ class CppGenerator(BaseGenerator):
         )
 
     def schema_has_unions(self) -> bool:
-        if self.schema.unions:
-            return True
+        for union in self.schema.unions:
+            if not self.is_imported_type(union):
+                return True
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             if self.message_has_unions(message):
                 return True
         return False
@@ -1121,7 +1285,7 @@ class CppGenerator(BaseGenerator):
         lines.append(
             f"  static inline void write_data(const {qualified_name} &obj, WriteContext &ctx) {{"
         )
-        lines.append(f"    ctx.write_varuint32(obj.{case_id_method}());")
+        lines.append(f"    ctx.write_var_uint32(obj.{case_id_method}());")
         lines.append("    obj.visit([&](const auto &value) {")
         lines.append("      using Alt = std::decay_t<decltype(value)>;")
         lines.append(
@@ -1291,7 +1455,11 @@ class CppGenerator(BaseGenerator):
 
         if isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
-            namespace = self.get_namespace()
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                namespace = self._namespace_for_type(named_type)
+            else:
+                namespace = self.get_namespace()
             if namespace:
                 type_name = f"{namespace}::{type_name}"
             if ref:
@@ -1465,6 +1633,11 @@ class CppGenerator(BaseGenerator):
 
         elif isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                ns = self._namespace_for_type(named_type)
+                if ns:
+                    type_name = f"{ns}::{type_name}"
             if ref:
                 wrapper = (
                     "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
@@ -1622,25 +1795,59 @@ class CppGenerator(BaseGenerator):
                 False,
             )
 
+        elif isinstance(field_type, NamedType):
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                header = self._header_for_type(named_type)
+                if header:
+                    includes.add(f'"{header}"')
+
     def generate_registration(self) -> List[str]:
         """Generate the Fory registration function."""
         lines = []
 
-        lines.append("inline void RegisterTypes(fory::serialization::Fory& fory) {")
+        lines.append(
+            "inline void register_types(fory::serialization::BaseFory& fory) {"
+        )
 
         # Register enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             self.generate_enum_registration(lines, enum, [])
 
         # Register unions (top-level)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             self.generate_union_registration(lines, union, [])
 
         # Register messages (including nested types)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             self.generate_message_registration(lines, message, [])
 
         lines.append("}")
+
+        lines.append("")
+        lines.append("namespace detail {")
+        lines.append("inline fory::serialization::ThreadSafeFory& get_fory() {")
+        lines.append(
+            "  static fory::serialization::ThreadSafeFory fory = "
+            "fory::serialization::Fory::builder().xlang(true).track_ref(true)"
+            ".compatible(true).build_thread_safe();"
+        )
+        lines.append("  static const bool initialized = []() {")
+        for ns in self._collect_imported_namespaces():
+            lines.append(f"    {ns}::register_types(fory);")
+        lines.append("    register_types(fory);")
+        lines.append("    return true;")
+        lines.append("  }();")
+        lines.append("  (void)initialized;")
+        lines.append("  return fory;")
+        lines.append("}")
+        lines.append("} // namespace detail")
 
         return lines
 

@@ -56,7 +56,7 @@ struct CollectionHeader {
   bool is_declared_type;
   bool is_same_type;
 
-  /// Encode header to single byte
+  /// encode header to single byte
   inline uint8_t encode() const {
     uint8_t header = 0;
     if (track_ref)
@@ -114,7 +114,7 @@ template <typename T> inline constexpr bool need_type_for_collection_elem() {
          tid == TypeId::NAMED_EXT;
 }
 
-/// Write collection data for non-polymorphic, non-shared-ref elements.
+/// write collection data for non-polymorphic, non-shared-ref elements.
 template <typename T, typename Container>
 inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
                                        bool has_generics) {
@@ -123,8 +123,8 @@ inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
   static_assert(!is_shared_ref_v<T>,
                 "Fast path is for non-shared-ref types only");
 
-  // Write length
-  ctx.write_varuint32(static_cast<uint32_t>(coll.size()));
+  // write length
+  ctx.write_var_uint32(static_cast<uint32_t>(coll.size()));
 
   if (coll.empty()) {
     return;
@@ -155,15 +155,15 @@ inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
     bitmap |= COLL_DECL_ELEMENT_TYPE;
   }
 
-  // Write header
+  // write header
   ctx.write_uint8(bitmap);
 
-  // Write element type info if not declared
+  // write element type info if not declared
   if (!is_elem_declared) {
     Serializer<ElemType>::write_type_info(ctx);
   }
 
-  // Write elements
+  // write elements
   if constexpr (is_nullable_v<T>) {
     using Inner = nullable_element_t<T>;
     if (has_null) {
@@ -205,12 +205,12 @@ inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
   }
 }
 
-/// Write collection data for polymorphic or shared-ref elements.
+/// write collection data for polymorphic or shared-ref elements.
 template <typename T, typename Container>
 inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
                                        bool has_generics) {
-  // Write length
-  ctx.write_varuint32(static_cast<uint32_t>(coll.size()));
+  // write length
+  ctx.write_var_uint32(static_cast<uint32_t>(coll.size()));
 
   if (coll.empty()) {
     return;
@@ -277,13 +277,13 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
     }
   }
 
-  // Write header
+  // write header
   ctx.write_uint8(bitmap);
 
-  // Write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
+  // write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
   if (is_same_type && !(bitmap & COLL_DECL_ELEMENT_TYPE)) {
     if constexpr (elem_is_polymorphic) {
-      // Write concrete type info for polymorphic elements
+      // write concrete type info for polymorphic elements
       ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::UNKNOWN),
                              first_type);
     } else {
@@ -294,7 +294,7 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
   // Determine if we're actually tracking refs for this collection
   const bool tracking_refs = (bitmap & COLL_TRACKING_REF) != 0;
 
-  // Write elements
+  // write elements
   if (is_same_type) {
     // All elements have same type - type info written once above
     if (tracking_refs) {
@@ -520,11 +520,11 @@ struct Serializer<
   }();
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -539,7 +539,7 @@ struct Serializer<
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data(vec, ctx);
   }
@@ -554,15 +554,15 @@ struct Serializer<
     Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     size_t max_size = 8 + total_bytes;
-    buffer.Grow(static_cast<uint32_t>(max_size));
+    buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.PutVarUint32(writer_index, static_cast<uint32_t>(total_bytes));
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
     if (total_bytes > 0) {
-      buffer.UnsafePut(writer_index, vec.data(),
-                       static_cast<uint32_t>(total_bytes));
+      buffer.unsafe_put(writer_index, vec.data(),
+                        static_cast<uint32_t>(total_bytes));
     }
-    buffer.WriterIndex(writer_index + static_cast<uint32_t>(total_bytes));
+    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<T, Alloc> &vec,
@@ -578,7 +578,7 @@ struct Serializer<
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<T, Alloc>();
       }
@@ -598,7 +598,7 @@ struct Serializer<
   }
 
   static inline std::vector<T, Alloc> read_data(ReadContext &ctx) {
-    uint32_t total_bytes_u32 = ctx.read_varuint32(ctx.error());
+    uint32_t total_bytes_u32 = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<T, Alloc>();
     }
@@ -628,11 +628,11 @@ struct Serializer<
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -652,7 +652,7 @@ struct Serializer<
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<T, Alloc>();
       }
@@ -664,8 +664,8 @@ struct Serializer<
       }
     }
 
-    // Length written via writeVarUint32Small7
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    // Length written via write_var_uint32_small7
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<T, Alloc>();
     }
@@ -758,12 +758,12 @@ struct Serializer<
   static inline void write(const std::vector<T, Alloc> &vec, WriteContext &ctx,
                            RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    // Write ref flag if requested
+    // write ref flag if requested
     write_not_null_ref_flag(ctx, ref_mode);
 
-    // Write type info if requested
+    // write type info if requested
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(vec, ctx, has_generics);
@@ -771,7 +771,7 @@ struct Serializer<
 
   static inline void write_data(const std::vector<T, Alloc> &vec,
                                 WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(vec.size()));
+    ctx.write_var_uint32(static_cast<uint32_t>(vec.size()));
     for (const auto &elem : vec) {
       Serializer<T>::write_data(elem, ctx);
     }
@@ -796,7 +796,7 @@ struct Serializer<
   }
 
   static inline std::vector<T, Alloc> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<T, Alloc>();
     }
@@ -818,11 +818,11 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
   static constexpr TypeId type_id = TypeId::BOOL_ARRAY;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -837,7 +837,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data(vec, ctx);
   }
@@ -847,15 +847,15 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
     Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     size_t max_size = 8 + vec.size();
-    buffer.Grow(static_cast<uint32_t>(max_size));
+    buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.PutVarUint32(writer_index, static_cast<uint32_t>(vec.size()));
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(vec.size()));
     for (size_t i = 0; i < vec.size(); ++i) {
-      buffer.UnsafePutByte(writer_index + i,
-                           static_cast<uint8_t>(vec[i] ? 1 : 0));
+      buffer.unsafe_put_byte(writer_index + i,
+                             static_cast<uint8_t>(vec[i] ? 1 : 0));
     }
-    buffer.WriterIndex(writer_index + vec.size());
+    buffer.writer_index(writer_index + vec.size());
   }
 
   static inline void write_data_generic(const std::vector<bool, Alloc> &vec,
@@ -871,7 +871,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<bool, Alloc>();
       }
@@ -885,7 +885,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
   }
 
   static inline std::vector<bool, Alloc> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<bool, Alloc>();
     }
@@ -897,7 +897,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
       for (uint32_t i = 0; i < size; ++i) {
         result[i] = (src[i] != 0);
       }
-      buffer.IncreaseReaderIndex(size);
+      buffer.increase_reader_index(size);
     } else {
       // Fallback: read byte-by-byte with bounds checking
       for (uint32_t i = 0; i < size; ++i) {
@@ -920,11 +920,11 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -944,7 +944,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::list<T, Alloc>();
       }
@@ -956,8 +956,8 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       }
     }
 
-    // Length written via writeVarUint32Small7
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    // Length written via write_var_uint32_small7
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::list<T, Alloc>();
     }
@@ -1049,12 +1049,12 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
   static inline void write(const std::list<T, Alloc> &lst, WriteContext &ctx,
                            RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    // Write ref flag if requested
+    // write ref flag if requested
     write_not_null_ref_flag(ctx, ref_mode);
 
-    // Write type info if requested
+    // write type info if requested
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(lst, ctx, has_generics);
@@ -1062,7 +1062,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
 
   static inline void write_data(const std::list<T, Alloc> &lst,
                                 WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(lst.size()));
+    ctx.write_var_uint32(static_cast<uint32_t>(lst.size()));
     for (const auto &elem : lst) {
       Serializer<T>::write_data(elem, ctx);
     }
@@ -1087,7 +1087,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
   }
 
   static inline std::list<T, Alloc> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::list<T, Alloc>();
     }
@@ -1111,11 +1111,11 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1135,7 +1135,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::deque<T, Alloc>();
       }
@@ -1147,8 +1147,8 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       }
     }
 
-    // Length written via writeVarUint32Small7
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    // Length written via write_var_uint32_small7
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::deque<T, Alloc>();
     }
@@ -1240,12 +1240,12 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
   static inline void write(const std::deque<T, Alloc> &deq, WriteContext &ctx,
                            RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    // Write ref flag if requested
+    // write ref flag if requested
     write_not_null_ref_flag(ctx, ref_mode);
 
-    // Write type info if requested
+    // write type info if requested
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(deq, ctx, has_generics);
@@ -1253,7 +1253,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
 
   static inline void write_data(const std::deque<T, Alloc> &deq,
                                 WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(deq.size()));
+    ctx.write_var_uint32(static_cast<uint32_t>(deq.size()));
     for (const auto &elem : deq) {
       Serializer<T>::write_data(elem, ctx);
     }
@@ -1278,7 +1278,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
   }
 
   static inline std::deque<T, Alloc> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::deque<T, Alloc>();
     }
@@ -1303,11 +1303,11 @@ struct Serializer<std::forward_list<T, Alloc>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1327,7 +1327,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::forward_list<T, Alloc>();
       }
@@ -1339,8 +1339,8 @@ struct Serializer<std::forward_list<T, Alloc>> {
       }
     }
 
-    // Length written via writeVarUint32Small7
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    // Length written via write_var_uint32_small7
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::forward_list<T, Alloc>();
     }
@@ -1439,12 +1439,12 @@ struct Serializer<std::forward_list<T, Alloc>> {
   static inline void write(const std::forward_list<T, Alloc> &lst,
                            WriteContext &ctx, RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    // Write ref flag if requested
+    // write ref flag if requested
     write_not_null_ref_flag(ctx, ref_mode);
 
-    // Write type info if requested
+    // write type info if requested
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(lst, ctx, has_generics);
@@ -1458,7 +1458,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
       (void)elem;
       ++size;
     }
-    ctx.write_varuint32(size);
+    ctx.write_var_uint32(size);
     for (const auto &elem : lst) {
       Serializer<T>::write_data(elem, ctx);
     }
@@ -1472,8 +1472,8 @@ struct Serializer<std::forward_list<T, Alloc>> {
       temp.push_back(std::cref(elem));
     }
 
-    // Write length
-    ctx.write_varuint32(static_cast<uint32_t>(temp.size()));
+    // write length
+    ctx.write_var_uint32(static_cast<uint32_t>(temp.size()));
 
     if (temp.empty()) {
       return;
@@ -1508,15 +1508,15 @@ struct Serializer<std::forward_list<T, Alloc>> {
         bitmap |= COLL_DECL_ELEMENT_TYPE;
       }
 
-      // Write header
+      // write header
       ctx.write_uint8(bitmap);
 
-      // Write element type info if not declared
+      // write element type info if not declared
       if (!is_elem_declared) {
         Serializer<ElemType>::write_type_info(ctx);
       }
 
-      // Write elements
+      // write elements
       if constexpr (is_nullable_v<T>) {
         using Inner = nullable_element_t<T>;
         if (has_null) {
@@ -1623,10 +1623,10 @@ struct Serializer<std::forward_list<T, Alloc>> {
         }
       }
 
-      // Write header
+      // write header
       ctx.write_uint8(bitmap);
 
-      // Write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
+      // write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
       if (is_same_type && !(bitmap & COLL_DECL_ELEMENT_TYPE)) {
         if constexpr (elem_is_polymorphic) {
           ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::UNKNOWN),
@@ -1636,7 +1636,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
         }
       }
 
-      // Write elements
+      // write elements
       if (is_same_type) {
         if (!has_null) {
           if constexpr (elem_is_shared_ref) {
@@ -1695,7 +1695,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
   }
 
   static inline std::forward_list<T, Alloc> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::forward_list<T, Alloc>();
     }
@@ -1726,11 +1726,11 @@ struct Serializer<std::set<T, Args...>> {
   static constexpr TypeId type_id = TypeId::SET;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1746,7 +1746,7 @@ struct Serializer<std::set<T, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(set, ctx, has_generics);
@@ -1754,7 +1754,7 @@ struct Serializer<std::set<T, Args...>> {
 
   static inline void write_data(const std::set<T, Args...> &set,
                                 WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(set.size()));
+    ctx.write_var_uint32(static_cast<uint32_t>(set.size()));
     for (const auto &elem : set) {
       Serializer<T>::write_data(elem, ctx);
     }
@@ -1781,7 +1781,7 @@ struct Serializer<std::set<T, Args...>> {
 
     // Read type info
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::set<T, Args...>();
       }
@@ -1793,7 +1793,7 @@ struct Serializer<std::set<T, Args...>> {
     }
 
     // Read set size
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::set<T, Args...>();
     }
@@ -1873,7 +1873,7 @@ struct Serializer<std::set<T, Args...>> {
   }
 
   static inline std::set<T, Args...> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::set<T, Args...>();
     }
@@ -1898,11 +1898,11 @@ struct Serializer<std::unordered_set<T, Args...>> {
   static constexpr TypeId type_id = TypeId::SET;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1918,7 +1918,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(set, ctx, has_generics);
@@ -1926,7 +1926,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
 
   static inline void write_data(const std::unordered_set<T, Args...> &set,
                                 WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(set.size()));
+    ctx.write_var_uint32(static_cast<uint32_t>(set.size()));
     for (const auto &elem : set) {
       Serializer<T>::write_data(elem, ctx);
     }
@@ -1954,7 +1954,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
 
     // Read type info
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::unordered_set<T, Args...>();
       }
@@ -1966,7 +1966,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
     }
 
     // Read set size
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::unordered_set<T, Args...>();
     }
@@ -2049,7 +2049,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
   }
 
   static inline std::unordered_set<T, Args...> read_data(ReadContext &ctx) {
-    uint32_t size = ctx.read_varuint32(ctx.error());
+    uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::unordered_set<T, Args...>();
     }

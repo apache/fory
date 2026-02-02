@@ -26,10 +26,13 @@ use idl_tests::addressbook::{
     person::{PhoneNumber, PhoneType},
     AddressBook, Animal, Cat, Dog, Person,
 };
+use idl_tests::complex_pb::{self, PrimitiveTypes};
 use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
+use idl_tests::collection::{self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections, NumericCollectionsArray};
 use idl_tests::monster::{self, Color, Monster, Vec3};
 use idl_tests::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
 use idl_tests::any_example::{self, AnyHolder, AnyInner, AnyUnion};
+use idl_tests::root;
 use idl_tests::{graph, tree};
 
 fn build_address_book() -> AddressBook {
@@ -68,12 +71,70 @@ fn build_address_book() -> AddressBook {
     }
 }
 
-fn build_primitive_types() -> addressbook::PrimitiveTypes {
-    let mut contact =
-        addressbook::primitive_types::Contact::Email("alice@example.com".to_string());
-    contact = addressbook::primitive_types::Contact::Phone(12345);
+fn build_root_holder() -> root::MultiHolder {
+    let owner = Person {
+        name: "Alice".to_string(),
+        id: 123,
+        email: String::new(),
+        tags: Vec::new(),
+        scores: HashMap::new(),
+        salary: 0.0,
+        phones: Vec::new(),
+        pet: Animal::Dog(Dog {
+            name: "Rex".to_string(),
+            bark_volume: 5,
+        }),
+    };
 
-    addressbook::PrimitiveTypes {
+    let book = AddressBook {
+        people: vec![owner.clone()],
+        people_by_name: HashMap::from([(owner.name.clone(), owner.clone())]),
+    };
+
+    let root_node = tree::TreeNode {
+        id: "root".to_string(),
+        name: "root".to_string(),
+        children: Vec::new(),
+        parent: None,
+    };
+
+    root::MultiHolder {
+        book: Some(book),
+        root: Some(root_node),
+        owner: Some(owner),
+    }
+}
+
+#[test]
+fn test_to_bytes_from_bytes() {
+    let book = build_address_book();
+    let bytes = book.to_bytes().expect("serialize addressbook");
+    let decoded = AddressBook::from_bytes(&bytes).expect("deserialize addressbook");
+    assert_eq!(decoded, book);
+
+    let dog = Dog {
+        name: "Rex".to_string(),
+        bark_volume: 5,
+    };
+    let animal = Animal::Dog(dog);
+    let animal_bytes = animal.to_bytes().expect("serialize animal");
+    let decoded_animal =
+        Animal::from_bytes(&animal_bytes).expect("deserialize animal");
+    assert_eq!(decoded_animal, animal);
+
+    let multi = build_root_holder();
+    let multi_bytes = multi.to_bytes().expect("serialize root");
+    let decoded_multi =
+        root::MultiHolder::from_bytes(&multi_bytes).expect("deserialize root");
+    assert_eq!(decoded_multi, multi);
+}
+
+fn build_primitive_types() -> PrimitiveTypes {
+    let mut contact =
+        complex_pb::primitive_types::Contact::Email("alice@example.com".to_string());
+    contact = complex_pb::primitive_types::Contact::Phone(12345);
+
+    PrimitiveTypes {
         bool_value: true,
         int8_value: 12,
         int16_value: 1234,
@@ -93,6 +154,44 @@ fn build_primitive_types() -> addressbook::PrimitiveTypes {
         float64_value: 3.5,
         contact: Some(contact),
     }
+}
+
+fn build_numeric_collections() -> NumericCollections {
+    NumericCollections {
+        int8_values: vec![1, -2, 3],
+        int16_values: vec![100, -200, 300],
+        int32_values: vec![1000, -2000, 3000],
+        int64_values: vec![10000, -20000, 30000],
+        uint8_values: vec![200, 250],
+        uint16_values: vec![50000, 60000],
+        uint32_values: vec![2000000000, 2100000000],
+        uint64_values: vec![9000000000, 12000000000],
+        float32_values: vec![1.5, 2.5],
+        float64_values: vec![3.5, 4.5],
+    }
+}
+
+fn build_numeric_collection_union() -> NumericCollectionUnion {
+    NumericCollectionUnion::Int32Values(vec![7, 8, 9])
+}
+
+fn build_numeric_collections_array() -> NumericCollectionsArray {
+    NumericCollectionsArray {
+        int8_values: vec![1, -2, 3],
+        int16_values: vec![100, -200, 300],
+        int32_values: vec![1000, -2000, 3000],
+        int64_values: vec![10000, -20000, 30000],
+        uint8_values: vec![200, 250],
+        uint16_values: vec![50000, 60000],
+        uint32_values: vec![2000000000, 2100000000],
+        uint64_values: vec![9000000000, 12000000000],
+        float32_values: vec![1.5, 2.5],
+        float64_values: vec![3.5, 4.5],
+    }
+}
+
+fn build_numeric_collection_array_union() -> NumericCollectionArrayUnion {
+    NumericCollectionArrayUnion::Uint16Values(vec![1000, 2000, 3000])
 }
 
 fn build_monster() -> Monster {
@@ -376,11 +475,22 @@ fn assert_graph(value: &graph::Graph) {
 }
 
 #[test]
-fn test_address_book_roundtrip() {
-    let mut fory = Fory::default().xlang(true);
+fn test_address_book_roundtrip_compatible() {
+    run_address_book_roundtrip(true);
+}
+
+#[test]
+fn test_address_book_roundtrip_schema_consistent() {
+    run_address_book_roundtrip(false);
+}
+
+fn run_address_book_roundtrip(compatible: bool) {
+    let mut fory = Fory::default().xlang(true).compatible(compatible);
+    complex_pb::register_types(&mut fory).expect("register complex pb types");
     addressbook::register_types(&mut fory).expect("register types");
     monster::register_types(&mut fory).expect("register monster types");
     complex_fbs::register_types(&mut fory).expect("register flatbuffers types");
+    collection::register_types(&mut fory).expect("register collection types");
     optional_types::register_types(&mut fory).expect("register optional types");
     any_example::register_types(&mut fory).expect("register any example types");
 
@@ -404,7 +514,7 @@ fn test_address_book_roundtrip() {
 
     let types = build_primitive_types();
     let bytes = fory.serialize(&types).expect("serialize");
-    let roundtrip: addressbook::PrimitiveTypes = fory.deserialize(&bytes).expect("deserialize");
+    let roundtrip: PrimitiveTypes = fory.deserialize(&bytes).expect("deserialize");
     assert_eq!(types, roundtrip);
 
     let primitive_file = match env::var("DATA_FILE_PRIMITIVES") {
@@ -412,12 +522,87 @@ fn test_address_book_roundtrip() {
         Err(_) => return,
     };
     let payload = fs::read(&primitive_file).expect("read data file");
-    let peer_types: addressbook::PrimitiveTypes = fory
+    let peer_types: PrimitiveTypes = fory
         .deserialize(&payload)
         .expect("deserialize peer payload");
     assert_eq!(types, peer_types);
     let encoded = fory.serialize(&peer_types).expect("serialize peer payload");
     fs::write(primitive_file, encoded).expect("write data file");
+
+    let collections = build_numeric_collections();
+    let bytes = fory.serialize(&collections).expect("serialize collections");
+    let roundtrip: NumericCollections = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collections, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_collections: NumericCollections = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collections, peer_collections);
+        let encoded = fory
+            .serialize(&peer_collections)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let collection_union = build_numeric_collection_union();
+    let bytes = fory
+        .serialize(&collection_union)
+        .expect("serialize collection union");
+    let roundtrip: NumericCollectionUnion = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collection_union, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_UNION") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_union: NumericCollectionUnion = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collection_union, peer_union);
+        let encoded = fory
+            .serialize(&peer_union)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let collections_array = build_numeric_collections_array();
+    let bytes = fory
+        .serialize(&collections_array)
+        .expect("serialize collection array");
+    let roundtrip: NumericCollectionsArray = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collections_array, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_ARRAY") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_array: NumericCollectionsArray = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collections_array, peer_array);
+        let encoded = fory
+            .serialize(&peer_array)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let collection_array_union = build_numeric_collection_array_union();
+    let bytes = fory
+        .serialize(&collection_array_union)
+        .expect("serialize collection array union");
+    let roundtrip: NumericCollectionArrayUnion =
+        fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collection_array_union, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_ARRAY_UNION") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_union: NumericCollectionArrayUnion = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collection_array_union, peer_union);
+        let encoded = fory
+            .serialize(&peer_union)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
 
     let monster = build_monster();
     let bytes = fory.serialize(&monster).expect("serialize");
@@ -482,7 +667,10 @@ fn test_address_book_roundtrip() {
     let result: Result<AnyHolder, _> = fory.deserialize(&bytes);
     assert!(result.is_err());
 
-    let mut ref_fory = Fory::default().xlang(true).track_ref(true);
+    let mut ref_fory = Fory::default()
+        .xlang(true)
+        .compatible(compatible)
+        .track_ref(true);
     tree::register_types(&mut ref_fory).expect("register tree types");
     graph::register_types(&mut ref_fory).expect("register graph types");
 

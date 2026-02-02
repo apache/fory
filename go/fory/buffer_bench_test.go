@@ -19,7 +19,7 @@ package fory
 
 import "testing"
 
-var benchVaruint64Values = []uint64{
+var benchVarUint64Values = []uint64{
 	0,
 	1,
 	127,
@@ -31,7 +31,7 @@ var benchVaruint64Values = []uint64{
 	^uint64(0),
 }
 
-var benchVaruint64SmallValues = []uint64{
+var benchVarUint64SmallValues = []uint64{
 	0,
 	1,
 	2,
@@ -43,7 +43,7 @@ var benchVaruint64SmallValues = []uint64{
 	127,
 }
 
-var benchVaruint64MidValues = []uint64{
+var benchVarUint64MidValues = []uint64{
 	128,
 	129,
 	16383,
@@ -56,7 +56,7 @@ var benchVaruint64MidValues = []uint64{
 	1 << 34,
 }
 
-var benchVaruint64LargeValues = []uint64{
+var benchVarUint64LargeValues = []uint64{
 	1<<40 - 1,
 	1 << 40,
 	1<<55 - 1,
@@ -65,7 +65,7 @@ var benchVaruint64LargeValues = []uint64{
 	^uint64(0),
 }
 
-var benchVaruint32SmallValues = []uint32{
+var benchVarUint32SmallValues = []uint32{
 	0,
 	1,
 	2,
@@ -77,7 +77,7 @@ var benchVaruint32SmallValues = []uint32{
 	127,
 }
 
-var benchVaruint32MidValues = []uint32{
+var benchVarUint32MidValues = []uint32{
 	128,
 	129,
 	16383,
@@ -88,7 +88,7 @@ var benchVaruint32MidValues = []uint32{
 	1 << 27,
 }
 
-var benchVaruint32LargeValues = []uint32{
+var benchVarUint32LargeValues = []uint32{
 	1<<29 - 1,
 	1 << 29,
 	1<<31 - 1,
@@ -119,7 +119,7 @@ var benchVaruint36LargeValues = []uint64{
 	1<<36 - 1,
 }
 
-func writeVaruint32Loop(buf *ByteBuffer, value uint32) int8 {
+func WriteVarUint32Loop(buf *ByteBuffer, value uint32) int8 {
 	buf.grow(5)
 	offset := buf.writerIndex
 	data := buf.data[offset : offset+5]
@@ -135,9 +135,9 @@ func writeVaruint32Loop(buf *ByteBuffer, value uint32) int8 {
 	return int8(i)
 }
 
-func writeVaruint32Unrolled(buf *ByteBuffer, value uint32) int8 {
+func WriteVarUint32Unrolled(buf *ByteBuffer, value uint32) int8 {
 	buf.grow(5)
-	return buf.UnsafeWriteVaruint32(value)
+	return buf.UnsafeWriteVarUint32(value)
 }
 
 func writeVaruint36SmallLoop(buf *ByteBuffer, value uint64) {
@@ -163,113 +163,113 @@ func writeVaruint36SmallUnrolled(buf *ByteBuffer, value uint64) {
 	buf.WriteVaruint36Small(value)
 }
 
-func BenchmarkWriteVaruint64Loop(b *testing.B) {
+func BenchmarkWriteVarUint64Loop(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint64Values
+	values := benchVarUint64Values
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		buf.WriteVaruint64(values[i%len(values)])
+		buf.WriteVarUint64(values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint64LoopSmall(b *testing.B) {
+func BenchmarkWriteVarUint64LoopSmall(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint64SmallValues
+	values := benchVarUint64SmallValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		buf.WriteVaruint64(values[i%len(values)])
+		buf.WriteVarUint64(values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint64LoopMid(b *testing.B) {
+func BenchmarkWriteVarUint64LoopMid(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint64MidValues
+	values := benchVarUint64MidValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		buf.WriteVaruint64(values[i%len(values)])
+		buf.WriteVarUint64(values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint64LoopLarge(b *testing.B) {
+func BenchmarkWriteVarUint64LoopLarge(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint64LargeValues
+	values := benchVarUint64LargeValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		buf.WriteVaruint64(values[i%len(values)])
+		buf.WriteVarUint64(values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint32LoopSmall(b *testing.B) {
+func BenchmarkWriteVarUint32LoopSmall(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint32SmallValues
+	values := benchVarUint32SmallValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		writeVaruint32Loop(buf, values[i%len(values)])
+		WriteVarUint32Loop(buf, values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint32UnrolledSmall(b *testing.B) {
+func BenchmarkWriteVarUint32UnrolledSmall(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint32SmallValues
+	values := benchVarUint32SmallValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		writeVaruint32Unrolled(buf, values[i%len(values)])
+		WriteVarUint32Unrolled(buf, values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint32LoopMid(b *testing.B) {
+func BenchmarkWriteVarUint32LoopMid(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint32MidValues
+	values := benchVarUint32MidValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		writeVaruint32Loop(buf, values[i%len(values)])
+		WriteVarUint32Loop(buf, values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint32UnrolledMid(b *testing.B) {
+func BenchmarkWriteVarUint32UnrolledMid(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint32MidValues
+	values := benchVarUint32MidValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		writeVaruint32Unrolled(buf, values[i%len(values)])
+		WriteVarUint32Unrolled(buf, values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint32LoopLarge(b *testing.B) {
+func BenchmarkWriteVarUint32LoopLarge(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint32LargeValues
+	values := benchVarUint32LargeValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		writeVaruint32Loop(buf, values[i%len(values)])
+		WriteVarUint32Loop(buf, values[i%len(values)])
 	}
 }
 
-func BenchmarkWriteVaruint32UnrolledLarge(b *testing.B) {
+func BenchmarkWriteVarUint32UnrolledLarge(b *testing.B) {
 	buf := NewByteBuffer(make([]byte, 0, 1024))
-	values := benchVaruint32LargeValues
+	values := benchVarUint32LargeValues
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.writerIndex = 0
-		writeVaruint32Unrolled(buf, values[i%len(values)])
+		WriteVarUint32Unrolled(buf, values[i%len(values)])
 	}
 }
 

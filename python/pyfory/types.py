@@ -191,6 +191,32 @@ tagged_uint64 = TypeVar("tagged_uint64", bound=int)
 float32 = TypeVar("float32", bound=float)
 float64 = TypeVar("float64", bound=float)
 
+
+class RefMeta:
+    __slots__ = ("enable",)
+
+    def __init__(self, enable: bool = True):
+        self.enable = enable
+
+
+class Ref:
+    def __class_getitem__(cls, params):
+        if not isinstance(params, tuple):
+            params = (params,)
+        if len(params) == 0 or len(params) > 2:
+            raise TypeError("Ref expects Ref[T] or Ref[T, bool]")
+        target = params[0]
+        enable = True
+        if len(params) == 2:
+            enable = params[1]
+        if not isinstance(enable, bool):
+            raise TypeError("Ref enable must be a bool")
+        annotated = getattr(typing, "Annotated", None)
+        if annotated is None:
+            return target
+        return annotated[target, RefMeta(enable)]
+
+
 _primitive_types = {
     int,
     float,
@@ -388,6 +414,12 @@ _struct_type_ids = {
     TypeId.NAMED_COMPATIBLE_STRUCT,
 }
 
+_union_type_ids = {
+    TypeId.UNION,
+    TypeId.TYPED_UNION,
+    TypeId.NAMED_UNION,
+}
+
 
 def is_polymorphic_type(type_id: int) -> bool:
     return type_id in _polymorphic_type_ids
@@ -395,3 +427,15 @@ def is_polymorphic_type(type_id: int) -> bool:
 
 def is_struct_type(type_id: int) -> bool:
     return type_id in _struct_type_ids
+
+
+def is_union_type(type_or_id) -> bool:
+    if type_or_id is None:
+        return False
+    if isinstance(type_or_id, int):
+        type_id = type_or_id
+    else:
+        type_id = getattr(type_or_id, "type_id", None)
+    if type_id is None or not isinstance(type_id, int):
+        return False
+    return (type_id & 0xFF) in _union_type_ids

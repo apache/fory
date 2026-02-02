@@ -87,7 +87,7 @@ TEST(SharedWeakTest, Update) {
 TEST(SharedWeakTest, ClonesShareInternalStorage) {
   auto strong = std::make_shared<int32_t>(100);
   SharedWeak<int32_t> weak1 = SharedWeak<int32_t>::from(strong);
-  SharedWeak<int32_t> weak2 = weak1; // Copy
+  SharedWeak<int32_t> weak2 = weak1; // copy
 
   // Both should point to the same object
   EXPECT_EQ(weak1.upgrade(), weak2.upgrade());
@@ -371,24 +371,24 @@ TEST(WeakPtrSerializerTest, ForwardReferenceResolution) {
 
 TEST(WeakPtrSerializerTest, DeepNestedGraph) {
   // Create a deep chain: A -> B -> C with each child having weak to parent
-  auto nodeA = std::make_shared<NodeWithParent>();
-  nodeA->value = 1;
+  auto node_a = std::make_shared<NodeWithParent>();
+  node_a->value = 1;
 
-  auto nodeB = std::make_shared<NodeWithParent>();
-  nodeB->value = 2;
-  nodeB->parent = SharedWeak<NodeWithParent>::from(nodeA);
+  auto node_b = std::make_shared<NodeWithParent>();
+  node_b->value = 2;
+  node_b->parent = SharedWeak<NodeWithParent>::from(node_a);
 
-  auto nodeC = std::make_shared<NodeWithParent>();
-  nodeC->value = 3;
-  nodeC->parent = SharedWeak<NodeWithParent>::from(nodeB);
+  auto node_c = std::make_shared<NodeWithParent>();
+  node_c->value = 3;
+  node_c->parent = SharedWeak<NodeWithParent>::from(node_b);
 
-  nodeA->children.push_back(nodeB);
-  nodeB->children.push_back(nodeC);
+  node_a->children.push_back(node_b);
+  node_b->children.push_back(node_c);
 
   auto fory = create_serializer(true);
   fory.register_struct<NodeWithParent>(103);
 
-  auto bytes_result = fory.serialize(nodeA);
+  auto bytes_result = fory.serialize(node_a);
   ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
 
   auto deserialize_result = fory.deserialize<std::shared_ptr<NodeWithParent>>(
@@ -396,20 +396,20 @@ TEST(WeakPtrSerializerTest, DeepNestedGraph) {
   ASSERT_TRUE(deserialize_result.ok())
       << deserialize_result.error().to_string();
 
-  auto desA = std::move(deserialize_result).value();
-  ASSERT_NE(desA, nullptr);
-  EXPECT_EQ(desA->value, 1);
-  EXPECT_TRUE(desA->parent.expired());
+  auto des_a = std::move(deserialize_result).value();
+  ASSERT_NE(des_a, nullptr);
+  EXPECT_EQ(des_a->value, 1);
+  EXPECT_TRUE(des_a->parent.expired());
 
-  ASSERT_EQ(desA->children.size(), 1u);
-  auto desB = desA->children[0];
-  EXPECT_EQ(desB->value, 2);
-  EXPECT_EQ(desB->parent.upgrade(), desA);
+  ASSERT_EQ(des_a->children.size(), 1u);
+  auto des_b = des_a->children[0];
+  EXPECT_EQ(des_b->value, 2);
+  EXPECT_EQ(des_b->parent.upgrade(), des_a);
 
-  ASSERT_EQ(desB->children.size(), 1u);
-  auto desC = desB->children[0];
-  EXPECT_EQ(desC->value, 3);
-  EXPECT_EQ(desC->parent.upgrade(), desB);
+  ASSERT_EQ(des_b->children.size(), 1u);
+  auto des_c = des_b->children[0];
+  EXPECT_EQ(des_c->value, 3);
+  EXPECT_EQ(des_c->parent.upgrade(), des_b);
 }
 
 // ============================================================================

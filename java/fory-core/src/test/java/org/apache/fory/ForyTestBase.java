@@ -193,33 +193,6 @@ public abstract class ForyTestBase {
         Fory.builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(true)
-            .withCodegen(false)
-            .requireClassRegistration(false)
-            .suppressClassRegistrationWarnings(true)
-            .build()
-      },
-      {
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(false)
-            .withCodegen(false)
-            .requireClassRegistration(false)
-            .suppressClassRegistrationWarnings(true)
-            .build()
-      },
-      {
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(true)
-            .withCodegen(true)
-            .requireClassRegistration(false)
-            .suppressClassRegistrationWarnings(true)
-            .build()
-      },
-      {
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(false)
             .withCodegen(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)

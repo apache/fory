@@ -187,7 +187,7 @@ public class ClassDefTest extends ForyTestBase {
 
   @Test
   public void testTypeExtInfo() {
-    Fory fory = Fory.builder().withMetaShare(true).build();
+    Fory fory = Fory.builder().withRefTracking(true).withMetaShare(true).build();
     ClassResolver classResolver = fory.getClassResolver();
     assertTrue(
         classResolver.needToWriteRef(

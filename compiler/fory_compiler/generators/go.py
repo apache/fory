@@ -17,9 +17,11 @@
 
 """Go code generator."""
 
+from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
     Enum,
@@ -30,6 +32,7 @@ from fory_compiler.ir.ast import (
     NamedType,
     ListType,
     MapType,
+    Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -110,8 +113,12 @@ class GoGenerator(BaseGenerator):
             name_map.setdefault(go_name, []).append(qualified)
 
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             add_name(enum.name, enum.name)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             add_name(union.name, union.name)
 
         def visit_message(message: Message, parents: List[Message]) -> None:
@@ -133,6 +140,8 @@ class GoGenerator(BaseGenerator):
                 visit_message(nested_msg, parents + [message])
 
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             visit_message(message, [])
 
         duplicates = {name: types for name, types in name_map.items() if len(types) > 1}
@@ -145,9 +154,12 @@ class GoGenerator(BaseGenerator):
 
     def schema_has_unions(self) -> bool:
         """Return True if schema contains any unions (including nested)."""
-        if self.schema.unions:
-            return True
+        for union in self.schema.unions:
+            if not self.is_imported_type(union):
+                return True
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             if self.message_has_unions(message):
                 return True
         return False
@@ -177,7 +189,7 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "uint64",
         PrimitiveKind.VAR_UINT64: "uint64",
         PrimitiveKind.TAGGED_UINT64: "uint64",
-        PrimitiveKind.FLOAT16: "float32",
+        PrimitiveKind.FLOAT16: "float16.Float16",
         PrimitiveKind.FLOAT32: "float32",
         PrimitiveKind.FLOAT64: "float64",
         PrimitiveKind.STRING: "string",
@@ -203,6 +215,165 @@ class GoGenerator(BaseGenerator):
         _, package_name = self.get_go_package_info()
         return package_name
 
+    def is_imported_type(self, type_def: object) -> bool:
+        """Return True if a type definition comes from an imported IDL file."""
+        if not self.schema.source_file:
+            return False
+        location = getattr(type_def, "location", None)
+        if location is None or not location.file:
+            return False
+        try:
+            return (
+                Path(location.file).resolve() != Path(self.schema.source_file).resolve()
+            )
+        except Exception:
+            return location.file != self.schema.source_file
+
+    def split_imported_types(
+        self, items: List[object]
+    ) -> Tuple[List[object], List[object]]:
+        imported: List[object] = []
+        local: List[object] = []
+        for item in items:
+            if self.is_imported_type(item):
+                imported.append(item)
+            else:
+                local.append(item)
+        return imported, local
+
+    def _normalize_import_path(self, path_str: str) -> str:
+        if not path_str:
+            return path_str
+        try:
+            return str(Path(path_str).resolve())
+        except Exception:
+            return path_str
+
+    def _collect_imported_type_infos(self) -> List[Tuple[str, str, str]]:
+        file_info: Dict[str, Tuple[str, str, str]] = {}
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if not self.is_imported_type(type_def):
+                continue
+            location = getattr(type_def, "location", None)
+            file_path = getattr(location, "file", None) if location else None
+            if not file_path:
+                continue
+            normalized = self._normalize_import_path(file_path)
+            if normalized in file_info:
+                continue
+            info = self._import_info_for_type(type_def)
+            if info is None:
+                continue
+            file_info[normalized] = info
+
+        ordered: List[Tuple[str, str, str]] = []
+        used: Set[str] = set()
+
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = self._normalize_import_path(
+                    str((base_dir / imp.path).resolve())
+                )
+                if candidate in file_info and candidate not in used:
+                    ordered.append(file_info[candidate])
+                    used.add(candidate)
+
+        for key in sorted(file_info.keys()):
+            if key in used:
+                continue
+            ordered.append(file_info[key])
+
+        return ordered
+
+    def _load_schema(self, file_path: str) -> Optional[Schema]:
+        if not file_path:
+            return None
+        if not hasattr(self, "_schema_cache"):
+            self._schema_cache = {}
+        cache: Dict[Path, Schema] = self._schema_cache
+        path = Path(file_path).resolve()
+        if path in cache:
+            return cache[path]
+        try:
+            schema = parse_idl_file(path)
+        except Exception:
+            return None
+        cache[path] = schema
+        return schema
+
+    def _get_go_package_info_for_schema(
+        self, schema: Schema
+    ) -> Tuple[Optional[str], str]:
+        go_package = schema.get_option("go_package")
+        if go_package:
+            if ";" in go_package:
+                import_path, package_name = go_package.split(";", 1)
+                return (import_path, package_name)
+            parts = go_package.rstrip("/").split("/")
+            return (go_package, parts[-1])
+        if schema.package:
+            parts = schema.package.split(".")
+            return (None, parts[-1])
+        return (None, "generated")
+
+    def _get_nested_type_style_for_schema(self, schema: Schema) -> str:
+        style = schema.get_option("go_nested_type_style")
+        if style is None:
+            return "underscore"
+        style = str(style).strip().lower()
+        if style not in ("camelcase", "underscore"):
+            return "underscore"
+        return style
+
+    def _format_imported_type_name(self, type_name: str, schema: Schema) -> str:
+        if "." not in type_name:
+            return type_name
+        parts = type_name.split(".")
+        style = self._get_nested_type_style_for_schema(schema)
+        if style == "underscore":
+            return "_".join(parts)
+        return "".join(parts)
+
+    def _import_info_for_file(self, file_path: str) -> Optional[Tuple[str, str, str]]:
+        if not file_path:
+            return None
+        if not hasattr(self, "_import_info_cache"):
+            self._import_info_cache = {}
+            self._import_aliases = {}
+        cache: Dict[str, Tuple[str, str, str]] = self._import_info_cache
+        normalized = self._normalize_import_path(file_path)
+        if normalized in cache:
+            return cache[normalized]
+        schema = self._load_schema(file_path)
+        if schema is None:
+            return None
+        import_path, package_name = self._get_go_package_info_for_schema(schema)
+        if not import_path:
+            import_path = package_name
+        alias_base = package_name
+        if not alias_base:
+            alias_base = "imported"
+        alias = alias_base
+        if not hasattr(self, "_used_import_aliases"):
+            self._used_import_aliases = set()
+        used: Set[str] = self._used_import_aliases
+        if alias == self.get_package_name() or alias in used:
+            suffix = 1
+            while f"{alias_base}{suffix}" in used:
+                suffix += 1
+            alias = f"{alias_base}{suffix}"
+        used.add(alias)
+        cache[normalized] = (alias, import_path, package_name)
+        return cache[normalized]
+
+    def _import_info_for_type(self, type_def: object) -> Optional[Tuple[str, str, str]]:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        if not file_path:
+            return None
+        return self._import_info_for_file(file_path)
+
     def get_file_name(self) -> str:
         """Get the Go file name."""
         if self.package:
@@ -216,6 +387,8 @@ class GoGenerator(BaseGenerator):
 
         # Collect imports (including from nested types)
         imports.add('fory "github.com/apache/fory/go/fory"')
+        imports.add('threadsafe "github.com/apache/fory/go/fory/threadsafe"')
+        imports.add('"sync"')
 
         for message in self.schema.messages:
             self.collect_message_imports(message, imports)
@@ -225,6 +398,14 @@ class GoGenerator(BaseGenerator):
         if self.schema_has_unions():
             imports.add('"fmt"')
             imports.add('"reflect"')
+
+        for alias, import_path, package_name in self._collect_imported_type_infos():
+            if not import_path:
+                continue
+            if alias == package_name:
+                imports.add(f'"{import_path}"')
+            else:
+                imports.add(f'{alias} "{import_path}"')
 
         # License header
         lines.append(self.get_license_header("//"))
@@ -244,20 +425,28 @@ class GoGenerator(BaseGenerator):
 
         # Generate enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             lines.extend(self.generate_enum(enum))
             lines.append("")
 
         # Generate unions (top-level)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             lines.extend(self.generate_union(union))
             lines.append("")
 
         # Generate messages (including nested as flat types with qualified names)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             lines.extend(self.generate_message_with_nested(message))
 
         # Generate registration function
         lines.extend(self.generate_registration())
+        lines.append("")
+        lines.extend(self.generate_fory_helpers())
         lines.append("")
 
         return GeneratedFile(
@@ -424,12 +613,22 @@ class GoGenerator(BaseGenerator):
 
         lines.append("")
 
+        lines.append(f"func (u {type_name}) ForyUnionMarker() {{}}")
+        lines.append("")
         lines.append(
             f"func (u {type_name}) ForyUnionGet() (uint32, any) {{ return uint32(u.case_), u.value }}"
         )
         lines.append(f"func (u *{type_name}) ForyUnionSet(caseId uint32, value any) {{")
         lines.append(f"\tu.case_ = {case_type}(caseId)")
         lines.append("\tu.value = value")
+        lines.append("}")
+        lines.append("")
+        lines.append(f"func (u *{type_name}) ToBytes() ([]byte, error) {{")
+        lines.append("\treturn getFory().Serialize(u)")
+        lines.append("}")
+        lines.append("")
+        lines.append(f"func (u *{type_name}) FromBytes(data []byte) error {{")
+        lines.append("\treturn getFory().Deserialize(data, u)")
         lines.append("}")
 
         return lines
@@ -481,8 +680,13 @@ class GoGenerator(BaseGenerator):
                     return "fory.NAMED_UNION"
                 return "fory.UNION"
             if isinstance(type_def, Message):
+                evolving = bool(type_def.options.get("evolving"))
                 if type_def.type_id is None:
+                    if evolving:
+                        return "fory.NAMED_COMPATIBLE_STRUCT"
                     return "fory.NAMED_STRUCT"
+                if evolving:
+                    return "fory.COMPATIBLE_STRUCT"
                 return "fory.STRUCT"
         return "fory.UNKNOWN"
 
@@ -549,6 +753,14 @@ class GoGenerator(BaseGenerator):
             for line in field_lines:
                 lines.append(f"\t{line}")
 
+        lines.append("}")
+        lines.append("")
+        lines.append(f"func (m *{type_name}) ToBytes() ([]byte, error) {{")
+        lines.append("\treturn getFory().Serialize(m)")
+        lines.append("}")
+        lines.append("")
+        lines.append(f"func (m *{type_name}) FromBytes(data []byte) error {{")
+        lines.append("\treturn getFory().Deserialize(data, m)")
         lines.append("}")
 
         return lines
@@ -643,6 +855,10 @@ class GoGenerator(BaseGenerator):
         if array_tag:
             tags.append(array_tag)
 
+        nested_ref_tag = self.get_nested_ref_tag(field)
+        if nested_ref_tag:
+            tags.append(nested_ref_tag)
+
         if tags:
             tag_str = ",".join(tags)
             lines.append(f'{field_name} {go_type} `fory:"{tag_str}"`')
@@ -682,6 +898,25 @@ class GoGenerator(BaseGenerator):
         if element_type.kind == PrimitiveKind.UINT8:
             return "type=uint8_array"
         return None
+
+    def get_nested_ref_tag(self, field: Field) -> Optional[str]:
+        if isinstance(field.field_type, ListType):
+            if not self.is_ref_target_type(field.field_type.element_type):
+                return None
+            entry = "[true]" if field.element_ref else "[]"
+            return f"nested_ref=[{entry}]"
+        if isinstance(field.field_type, MapType):
+            if not self.is_ref_target_type(field.field_type.value_type):
+                return None
+            value_entry = "[true]" if field.field_type.value_ref else "[]"
+            return f"nested_ref=[[],{value_entry}]"
+        return None
+
+    def is_ref_target_type(self, field_type: FieldType) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self.schema.get_type(field_type.name)
+        return isinstance(resolved, (Message, Union))
 
     def field_uses_option(self, field: Field) -> bool:
         """Return True if field should use optional.Optional in generated Go code."""
@@ -724,6 +959,17 @@ class GoGenerator(BaseGenerator):
 
         elif isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                info = self._import_info_for_type(named_type)
+                schema = self._load_schema(
+                    getattr(getattr(named_type, "location", None), "file", None)
+                )
+                if schema is not None:
+                    type_name = self._format_imported_type_name(field_type.name, schema)
+                if info is not None:
+                    alias, _, _ = info
+                    type_name = f"{alias}.{type_name}"
             if nullable:
                 if use_option and not ref:
                     named_type = self.schema.get_type(field_type.name)
@@ -777,6 +1023,19 @@ class GoGenerator(BaseGenerator):
             type_name = self.resolve_nested_type_name(
                 field.field_type.name, parent_stack
             )
+            named_type = self.schema.get_type(field.field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                info = self._import_info_for_type(named_type)
+                schema = self._load_schema(
+                    getattr(getattr(named_type, "location", None), "file", None)
+                )
+                if schema is not None:
+                    type_name = self._format_imported_type_name(
+                        field.field_type.name, schema
+                    )
+                if info is not None:
+                    alias, _, _ = info
+                    type_name = f"{alias}.{type_name}"
             return f"*{type_name}"
         return self.generate_type(
             field.field_type,
@@ -818,6 +1077,8 @@ class GoGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
                 imports.add('"time"')
+            elif field_type.kind == PrimitiveKind.FLOAT16:
+                imports.add('float16 "github.com/apache/fory/go/fory/float16"')
 
         elif isinstance(field_type, ListType):
             self.collect_imports(field_type.element_type, imports)
@@ -825,6 +1086,18 @@ class GoGenerator(BaseGenerator):
         elif isinstance(field_type, MapType):
             self.collect_imports(field_type.key_type, imports)
             self.collect_imports(field_type.value_type, imports)
+
+        elif isinstance(field_type, NamedType):
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                info = self._import_info_for_type(named_type)
+                if info is not None:
+                    alias, import_path, package_name = info
+                    if import_path:
+                        if alias == package_name:
+                            imports.add(f'"{import_path}"')
+                        else:
+                            imports.add(f'{alias} "{import_path}"')
 
     def generate_registration(self) -> List[str]:
         """Generate the Fory registration function."""
@@ -834,19 +1107,54 @@ class GoGenerator(BaseGenerator):
 
         # Register enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             self.generate_enum_registration(lines, enum, None)
 
         # Register unions (top-level)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             self.generate_union_registration(lines, union, None)
 
         # Register messages (including nested types)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             self.generate_message_registration(lines, message, None)
 
         lines.append("\treturn nil")
         lines.append("}")
 
+        return lines
+
+    def generate_fory_helpers(self) -> List[str]:
+        lines: List[str] = []
+        lines.append("func createFory() *fory.Fory {")
+        lines.append(
+            "\tf := fory.New(fory.WithXlang(true), fory.WithRefTracking(true), fory.WithCompatible(true))"
+        )
+        for alias, _, _ in self._collect_imported_type_infos():
+            lines.append(f"\tif err := {alias}.RegisterTypes(f); err != nil {{")
+            lines.append("\t\tpanic(err)")
+            lines.append("\t}")
+        lines.append("\tif err := RegisterTypes(f); err != nil {")
+        lines.append("\t\tpanic(err)")
+        lines.append("\t}")
+        lines.append("\treturn f")
+        lines.append("}")
+        lines.append("")
+        lines.append("var (")
+        lines.append("\tforyOnce sync.Once")
+        lines.append("\tforyInstance *threadsafe.Fory")
+        lines.append(")")
+        lines.append("")
+        lines.append("func getFory() *threadsafe.Fory {")
+        lines.append("\tforyOnce.Do(func() {")
+        lines.append("\t\tforyInstance = threadsafe.NewWithFactory(createFory)")
+        lines.append("\t})")
+        lines.append("\treturn foryInstance")
+        lines.append("}")
         return lines
 
     def generate_enum_registration(

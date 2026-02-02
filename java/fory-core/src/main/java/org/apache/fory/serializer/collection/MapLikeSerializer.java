@@ -264,9 +264,15 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   private void writeKeyForNullValueChunkGeneric(
       MemoryBuffer buffer, Object key, GenericType keyType) {
+    boolean trackingRef = keyType.trackingRef(typeResolver);
     if (!keyType.isMonomorphic()) {
-      buffer.writeByte(VALUE_HAS_NULL | TRACKING_KEY_REF);
-      binding.writeRef(buffer, key, keyClassInfoWriteCache);
+      if (trackingRef) {
+        buffer.writeByte(VALUE_HAS_NULL | TRACKING_KEY_REF);
+        binding.writeRef(buffer, key, keyClassInfoWriteCache);
+      } else {
+        buffer.writeByte(VALUE_HAS_NULL);
+        binding.writeNonRef(buffer, key);
+      }
       return;
     }
     Serializer serializer = keyType.getSerializer(typeResolver);
@@ -274,7 +280,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       fory.getGenerics().pushGenericType(keyType);
       fory.incDepth(1);
     }
-    if (serializer.needToWriteRef()) {
+    if (trackingRef && serializer.needToWriteRef()) {
       buffer.writeByte(NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF);
       binding.writeRef(buffer, key, serializer);
     } else {
@@ -289,9 +295,15 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   private void writeValueForNullKeyChunkGeneric(
       MemoryBuffer buffer, Object value, GenericType valueType) {
+    boolean trackingRef = valueType.trackingRef(typeResolver);
     if (!valueType.isMonomorphic()) {
-      buffer.writeByte(KEY_HAS_NULL | TRACKING_VALUE_REF);
-      binding.writeRef(buffer, value, valueClassInfoWriteCache);
+      if (trackingRef) {
+        buffer.writeByte(KEY_HAS_NULL | TRACKING_VALUE_REF);
+        binding.writeRef(buffer, value, valueClassInfoWriteCache);
+      } else {
+        buffer.writeByte(KEY_HAS_NULL);
+        binding.writeNonRef(buffer, value);
+      }
       return;
     }
     Serializer serializer = valueType.getSerializer(typeResolver);
@@ -299,7 +311,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       fory.getGenerics().pushGenericType(valueType);
       fory.incDepth(1);
     }
-    if (serializer.needToWriteRef()) {
+    if (trackingRef && serializer.needToWriteRef()) {
       buffer.writeByte(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF);
       binding.writeRef(buffer, value, serializer);
     } else {
@@ -452,11 +464,13 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     } else {
       valueSerializer = writeValueClassInfo(classResolver, valueType, buffer);
     }
-    boolean keyWriteRef = keySerializer.needToWriteRef();
+    boolean trackingKeyRef = keyGenericType.trackingRef(typeResolver);
+    boolean trackingValueRef = valueGenericType.trackingRef(typeResolver);
+    boolean keyWriteRef = trackingKeyRef && keySerializer.needToWriteRef();
     if (keyWriteRef) {
       chunkHeader |= TRACKING_KEY_REF;
     }
-    boolean valueWriteRef = valueSerializer.needToWriteRef();
+    boolean valueWriteRef = trackingValueRef && valueSerializer.needToWriteRef();
     if (valueWriteRef) {
       chunkHeader |= TRACKING_VALUE_REF;
     }
@@ -765,7 +779,8 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     }
   }
 
-  private long readJavaChunk(
+  @CodegenInvoke
+  public long readJavaChunk(
       Fory fory,
       MemoryBuffer buffer,
       Map map,

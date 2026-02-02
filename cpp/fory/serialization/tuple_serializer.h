@@ -50,7 +50,7 @@ template <typename... Ts>
 inline constexpr bool is_tuple_homogeneous_v =
     is_tuple_homogeneous<Ts...>::value;
 
-/// Get the first type of a tuple (for homogeneous tuple element type)
+/// get the first type of a tuple (for homogeneous tuple element type)
 template <typename Tuple> struct tuple_first_type;
 
 template <typename T, typename... Rest>
@@ -65,7 +65,7 @@ using tuple_first_type_t = typename tuple_first_type<Tuple>::type;
 // Tuple Serialization Helpers
 // ============================================================================
 
-/// Write tuple elements directly (non-xlang mode)
+/// write tuple elements directly (non-xlang mode)
 template <typename Tuple, size_t... Is>
 inline void write_tuple_elements_direct(const Tuple &tuple, WriteContext &ctx,
                                         std::index_sequence<Is...>) {
@@ -88,12 +88,12 @@ inline void write_tuple_elements_direct(const Tuple &tuple, WriteContext &ctx,
       ...);
 }
 
-/// Write tuple elements with type info (xlang/compatible mode, heterogeneous)
+/// write tuple elements with type info (xlang/compatible mode, heterogeneous)
 template <typename Tuple, size_t... Is>
 inline void write_tuple_elements_heterogeneous(const Tuple &tuple,
                                                WriteContext &ctx,
                                                std::index_sequence<Is...>) {
-  // Write each element with its type info
+  // write each element with its type info
   (
       [&]() {
         if (ctx.has_error())
@@ -105,12 +105,12 @@ inline void write_tuple_elements_heterogeneous(const Tuple &tuple,
       ...);
 }
 
-/// Write tuple elements without type info (xlang/compatible mode, homogeneous)
+/// write tuple elements without type info (xlang/compatible mode, homogeneous)
 template <typename Tuple, size_t... Is>
 inline void write_tuple_elements_homogeneous(const Tuple &tuple,
                                              WriteContext &ctx,
                                              std::index_sequence<Is...>) {
-  // Write each element data only (type info written once in header)
+  // write each element data only (type info written once in header)
   (
       [&]() {
         if (ctx.has_error())
@@ -170,9 +170,9 @@ inline Tuple read_tuple_elements_heterogeneous(ReadContext &ctx,
       }(),
       ...);
 
-  // Skip any extra elements beyond tuple size
+  // skip any extra elements beyond tuple size
   while (index < length && !ctx.has_error()) {
-    // Skip value - read type and skip data
+    // skip value - read type and skip data
     ctx.read_any_typeinfo(ctx.error());
     ++index;
   }
@@ -201,7 +201,7 @@ inline Tuple read_tuple_elements_homogeneous(ReadContext &ctx, uint32_t length,
       }(),
       ...);
 
-  // Skip any extra elements beyond tuple size
+  // skip any extra elements beyond tuple size
   using ElemType = tuple_first_type_t<Tuple>;
   while (index < length && !ctx.has_error()) {
     Serializer<ElemType>::read_data(ctx);
@@ -220,7 +220,7 @@ template <> struct Serializer<std::tuple<>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
@@ -239,13 +239,13 @@ template <> struct Serializer<std::tuple<>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data(std::tuple<>(), ctx);
   }
 
   static inline void write_data(const std::tuple<> &, WriteContext &ctx) {
-    ctx.write_varuint32(0); // length = 0
+    ctx.write_var_uint32(0); // length = 0
   }
 
   static inline void write_data_generic(const std::tuple<> &tuple,
@@ -261,7 +261,7 @@ template <> struct Serializer<std::tuple<>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::tuple<>();
       }
@@ -275,7 +275,7 @@ template <> struct Serializer<std::tuple<>> {
   }
 
   static inline std::tuple<> read_data(ReadContext &ctx) {
-    ctx.read_varuint32(ctx.error()); // Ignore length - empty tuple
+    ctx.read_var_uint32(ctx.error()); // Ignore length - empty tuple
     return std::tuple<>();
   }
 
@@ -296,7 +296,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
   using IndexSeq = std::index_sequence_for<Ts...>;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
@@ -315,7 +315,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data_generic(tuple, ctx, has_generics);
   }
@@ -329,8 +329,8 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
 
     // xlang/compatible mode: use collection protocol
 
-    // Write length
-    ctx.write_varuint32(static_cast<uint32_t>(tuple_size));
+    // write length
+    ctx.write_var_uint32(static_cast<uint32_t>(tuple_size));
 
     if constexpr (tuple_size == 0) {
       return;
@@ -340,7 +340,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
     uint8_t bitmap = 0;
     ctx.write_uint8(bitmap);
 
-    // Write elements with type info per element
+    // write elements with type info per element
     write_tuple_elements_heterogeneous(tuple, ctx, IndexSeq{});
   }
 
@@ -357,7 +357,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return TupleType{};
       }
@@ -378,7 +378,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
     }
 
     // xlang/compatible mode: read collection protocol
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return TupleType{};
     }

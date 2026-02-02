@@ -298,6 +298,10 @@ abstract class SerializationBinding {
 
     @Override
     public Object read(MemoryBuffer buffer, Serializer serializer) {
+      if (fory.trackingRef() && serializer.needToWriteRef()) {
+        // Preserve a dummy ref ID so serializer.read() can call reference() safely.
+        refResolver.preserveRefId(-1);
+      }
       return serializer.read(buffer);
     }
 
@@ -606,19 +610,15 @@ abstract class SerializationBinding {
     @Override
     Object readField(SerializationFieldInfo fieldInfo, RefMode refMode, MemoryBuffer buffer) {
       if (fieldInfo.useDeclaredTypeInfo) {
-        if (refMode == RefMode.TRACKING) {
-          return fory.xreadRef(buffer, fieldInfo.classInfo);
-        } else {
-          if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-            return fory.xreadNonRef(buffer, fieldInfo.classInfo);
-          }
-        }
+        return fieldInfo.classInfo.getSerializer().xread(buffer, refMode);
       } else {
         if (refMode == RefMode.TRACKING) {
           return fory.xreadRef(buffer, fieldInfo.classInfoHolder);
         } else {
           if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-            return fory.xreadNonRef(buffer, fieldInfo.classInfoHolder);
+            ClassInfo classInfo = xtypeResolver.readClassInfo(buffer, fieldInfo.classInfoHolder);
+            Serializer<?> serializer = classInfo.getSerializer();
+            return serializer.xread(buffer, refMode);
           }
         }
       }
@@ -627,6 +627,10 @@ abstract class SerializationBinding {
 
     @Override
     public Object read(MemoryBuffer buffer, Serializer serializer) {
+      if (fory.trackingRef() && serializer.needToWriteRef()) {
+        // Preserve a dummy ref ID so serializer.xread() can call reference() safely.
+        refResolver.preserveRefId(-1);
+      }
       return serializer.xread(buffer);
     }
 

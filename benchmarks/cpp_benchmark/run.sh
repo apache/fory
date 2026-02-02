@@ -17,7 +17,7 @@
 # under the License.
 
 set -e
-
+export ENABLE_FORY_DEBUG_OUTPUT=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 

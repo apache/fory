@@ -51,10 +51,6 @@ class ArraySerializerGenerator extends CollectionSerializerGenerator {
   getFixedSize(): number {
     return 7;
   }
-
-  needToWriteRef(): boolean {
-    return Boolean(this.builder.fory.config.refTracking);
-  }
 }
 
-CodegenRegistry.register(TypeId.ARRAY, ArraySerializerGenerator);
+CodegenRegistry.register(TypeId.LIST, ArraySerializerGenerator);

@@ -19,11 +19,12 @@
 
 import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
-import { BaseSerializerGenerator, RefState, SerializerGenerator } from "./serializer";
+import { BaseSerializerGenerator, SerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { TypeId, RefFlags, Serializer } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
+import { AnyHelper } from "./any";
 
 export const CollectionFlags = {
   /** Whether track elements ref. */
@@ -33,10 +34,10 @@ export const CollectionFlags = {
   HAS_NULL: 0b10,
 
   /** Whether collection elements type is not declare type. */
-  NOT_DECL_ELEMENT_TYPE: 0b100,
+  DECL_ELEMENT_TYPE: 0b100,
 
   /** Whether collection elements type different. */
-  NOT_SAME_TYPE: 0b1000,
+  SAME_TYPE: 0b1000,
 };
 
 class CollectionAnySerializer {
@@ -49,13 +50,20 @@ class CollectionAnySerializer {
     let isSame = true;
     let serializer: Serializer | null | undefined = null;
     let includeNone = false;
+    let trackingRef = false;
 
     for (const item of arr) {
       if ((item === undefined || item === null) && !includeNone) {
         includeNone = true;
       }
+      const current = this.fory.classResolver.getSerializerByData(item);
+      if (!current) {
+        throw new Error("can't detect the type of item in list");
+      }
+      if (!trackingRef) {
+        trackingRef = current.needToWriteRef();
+      }
       if (isSame) {
-        const current = this.fory.classResolver.getSerializerByData(item);
         if (serializer !== null && serializer !== undefined && current !== serializer) {
           isSame = false;
         } else {
@@ -64,74 +72,133 @@ class CollectionAnySerializer {
       }
     }
 
-    if (!isSame) {
-      flag |= CollectionFlags.NOT_SAME_TYPE;
+    if (isSame) {
+      flag |= CollectionFlags.SAME_TYPE;
     }
     if (includeNone) {
       flag |= CollectionFlags.HAS_NULL;
     }
-    if (serializer && serializer!.needToWriteRef()) {
+    if (trackingRef) {
       flag |= CollectionFlags.TRACKING_REF;
     }
     this.fory.binaryWriter.uint8(flag);
-    if (isSame) {
-      this.fory.binaryWriter.int16(serializer ? serializer!.getTypeId() : 0);
-    }
     return {
       serializer,
       isSame,
       flag,
       includeNone,
+      trackingRef,
     };
   }
 
   write(value: any, size: number) {
-    const { serializer, isSame, includeNone } = this.writeElementsHeader(value);
-    this.fory.binaryWriter.varUInt32(size);
-    for (const item of value) {
-      if (includeNone) {
-        if (item === null || item === undefined) {
-          this.fory.binaryWriter.uint8(RefFlags.NullFlag);
-          continue;
-        } else {
-          this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
+    this.fory.binaryWriter.writeVarUint32Small7(size);
+    const { serializer, isSame, includeNone, trackingRef } = this.writeElementsHeader(value);
+    if (isSame) {
+      serializer!.writeClassInfo(value);
+      if (trackingRef) {
+        for (const item of value) {
+          if (!serializer!.writeRefOrNull(item)) {
+            serializer!.write(item);
+          }
+        }
+      } else if (includeNone) {
+        for (const item of value) {
+          if (item === null || item === undefined) {
+            this.fory.binaryWriter.uint8(RefFlags.NullFlag);
+          } else {
+            this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
+            serializer!.write(item);
+          }
+        }
+      } else {
+        for (const item of value) {
+          serializer!.write(item);
         }
       }
-      let finalSerializer = serializer;
-      if (!isSame) {
-        finalSerializer = this.fory.classResolver.getSerializerByData(item);
-        this.fory.binaryWriter.uint16(finalSerializer!.getTypeId());
+    } else {
+      if (trackingRef) {
+        for (const item of value) {
+          const serializer = this.fory.classResolver.getSerializerByData(item);
+          serializer?.writeRef(item);
+        }
+      } else if (includeNone) {
+        for (const item of value) {
+          if (item === null || item === undefined) {
+            this.fory.binaryWriter.uint8(RefFlags.NullFlag);
+          } else {
+            const serializer = this.fory.classResolver.getSerializerByData(item);
+            this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
+            serializer!.write(item);
+          }
+        }
+      } else {
+        for (const item of value) {
+          serializer!.write(item);
+        }
       }
-      finalSerializer!.write(item);
     }
   }
 
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
+    const len = this.fory.binaryReader.readVarUint32Small7();
     const flags = this.fory.binaryReader.uint8();
-    const isSame = !(flags & CollectionFlags.NOT_SAME_TYPE);
+    const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
-
-    let serializer: Serializer;
-    if (isSame) {
-      serializer = this.fory.classResolver.getSerializerById(this.fory.binaryReader.int16());
-    }
-    const len = this.fory.binaryReader.varUInt32();
+    const refTracking = flags & CollectionFlags.TRACKING_REF;
     const result = createCollection(len);
-    if (fromRef) {
-      this.fory.referenceResolver.reference(result);
-    }
-    for (let index = 0; index < len; index++) {
-      if (includeNone) {
-        const refFlag = this.fory.binaryReader.uint8();
-        if (RefFlags.NullFlag === refFlag) {
-          accessor(result, index, null);
-          continue;
+
+    if (isSame) {
+      const serializer = AnyHelper.detectSerializer(this.fory);
+      if (refTracking) {
+        for (let i = 0; i < len; i++) {
+          serializer.readRef();
+          const refFlag = this.fory.referenceResolver.readRefFlag();
+          if (refFlag === RefFlags.RefFlag) {
+            const refId = this.fory.binaryReader.varUInt32();
+            accessor(result, i, this.fory.referenceResolver.getReadObject(refId));
+          } else if (refFlag === RefFlags.RefValueFlag) {
+            accessor(result, i, serializer!.read(true));
+          } else {
+            accessor(result, i, null);
+          }
+        }
+      } else if (includeNone) {
+        for (let i = 0; i < len; i++) {
+          const flag = this.fory.binaryReader.uint8();
+          if (flag === RefFlags.NullFlag) {
+            accessor(result, i, null);
+          } else {
+            accessor(result, i, serializer!.read(false));
+          }
+        }
+      } else {
+        for (let i = 0; i < len; i++) {
+          accessor(result, i, serializer!.read(false));
         }
       }
-      if (!isSame) {
-        serializer = this.fory.classResolver.getSerializerById(this.fory.binaryReader.int16());
+    } else {
+      if (refTracking) {
+        for (let i = 0; i < len; i++) {
+          const itemSerializer = AnyHelper.detectSerializer(this.fory);
+          accessor(result, i, itemSerializer!.readRef());
+        }
+      } else if (includeNone) {
+        for (let i = 0; i < len; i++) {
+          const flag = this.fory.binaryReader.uint8();
+          if (flag === RefFlags.NullFlag) {
+            accessor(result, i, null);
+          } else {
+            const itemSerializer = AnyHelper.detectSerializer(this.fory);
+            accessor(result, i, itemSerializer!.read(false));
+          }
+        }
+      } else {
+        for (let i = 0; i < len; i++) {
+          const itemSerializer = AnyHelper.detectSerializer(this.fory);
+          accessor(result, i, itemSerializer!.read(false));
+        }
       }
-      accessor(result, index, serializer!.read());
     }
     return result;
   }
@@ -164,9 +231,6 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const item = this.scope.uniqueName("item");
     const stmts = [
     ];
-    if (this.innerGenerator.needToWriteRef()) {
-      stmts.push(`${flagAccessor} |= ${CollectionFlags.TRACKING_REF}`);
-    }
     stmts.push(`
         for (const ${item} of ${accessor}) {
             if (${item} === null || ${item} === undefined) {
@@ -179,19 +243,17 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     return stmts.join("\n");
   }
 
-  writeStmtSpecificType(accessor: string): string {
+  writeSpecificType(accessor: string): string {
     const item = this.scope.uniqueName("item");
     const flags = this.scope.uniqueName("flags");
     const existsId = this.scope.uniqueName("existsId");
-
+    const flag = CollectionFlags.SAME_TYPE | CollectionFlags.DECL_ELEMENT_TYPE;
     return `
-            let ${flags} = 0;
+            let ${flags} = ${(this.innerGenerator.needToWriteRef() ? CollectionFlags.TRACKING_REF : 0) | flag};
+            ${this.builder.writer.writeVarUint32Small7(`${accessor}.${this.sizeProp()}`)}
             ${this.writeElementsHeader(accessor, flags)}
-            ${this.builder.writer.int16(this.typeInfo.typeId)}
-            ${this.builder.writer.varUInt32(`${accessor}.${this.sizeProp()}`)}
             ${this.builder.writer.reserve(`${this.innerGenerator.getFixedSize()} * ${accessor}.${this.sizeProp()}`)};
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
-                
                 for (const ${item} of ${accessor}) {
                     if (${accessor} !== null && ${accessor} !== undefined) {
                         const ${existsId} = ${this.builder.referenceResolver.existsWriteObject(item)};
@@ -201,46 +263,39 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                         } else {
                             ${this.builder.referenceResolver.writeRef(item)}
                             ${this.builder.writer.int8(RefFlags.RefValueFlag)};
-                            ${this.innerGenerator.toWriteEmbed(item, true)}
+                            ${this.innerGenerator.writeEmbed().write(item)}
                         }
                     } else {
                         ${this.builder.writer.int8(RefFlags.NullFlag)};
                     }
                 }
+            } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
+                for (const ${item} of ${accessor}) {
+                    if (${accessor} !== null && ${accessor} !== undefined) {
+                        ${this.builder.writer.int8(RefFlags.NotNullValueFlag)};
+                        ${this.innerGenerator.writeEmbed().write(item)}
+                    } else {
+                        ${this.builder.writer.int8(RefFlags.NullFlag)};
+                    }
+                }
             } else {
-                if (${flags} & ${CollectionFlags.HAS_NULL}) {
-                    for (const ${item} of ${accessor}) {
-                        if (${accessor} !== null && ${accessor} !== undefined) {
-                            ${this.builder.writer.int8(RefFlags.NotNullValueFlag)};
-                            ${this.innerGenerator.toWriteEmbed(item, true)}
-                        } else {
-                            ${this.builder.writer.int8(RefFlags.NullFlag)};
-                        }
-                    }
-                } else {
-                    for (const ${item} of ${accessor}) {
-                        ${this.innerGenerator.toWriteEmbed(item, true)}
-                    }
+                for (const ${item} of ${accessor}) {
+                    ${this.innerGenerator.writeEmbed().write(item)}
                 }
             }
         `;
   }
 
-  readStmtSpecificType(accessor: (expr: string) => string, refState: RefState): string {
+  readSpecificType(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     const len = this.scope.uniqueName("len");
     const flags = this.scope.uniqueName("flags");
     const idx = this.scope.uniqueName("idx");
     const refFlag = this.scope.uniqueName("refFlag");
 
-    // If track elements ref, use first bit 0b1 of header to flag it.
-    // If collection has null, use second bit 0b10 of header to flag it. If ref tracking is enabled for this element type, this flag is invalid.
-    // If collection element types is not declared type, use 3rd bit 0b100 of header to flag it.
-    // If collection element types different, use 4th bit 0b1000 of header to flag it.
     return `
+            const ${len} = ${this.builder.reader.readVarUint32Small7()};
             const ${flags} = ${this.builder.reader.uint8()};
-            ${this.builder.reader.skip(2)};
-            const ${len} = ${this.builder.reader.varUInt32()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
@@ -249,7 +304,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     switch (${refFlag}) {
                         case ${RefFlags.NotNullValueFlag}:
                         case ${RefFlags.RefValueFlag}:
-                            ${this.innerGenerator.toReadEmbed(x => `${this.putAccessor(result, x, idx)}`, true, RefState.fromCondition(`${refFlag} === ${RefFlags.RefValueFlag}`))}
+                            ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                             break;
                         case ${RefFlags.RefFlag}:
                             ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()), idx)}
@@ -259,42 +314,41 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                             break;
                     }
                 }
+            } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
+                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                    if (${this.builder.reader.uint8()} == ${RefFlags.NullFlag}) {
+                        ${this.putAccessor(result, "null", idx)}
+                    } else {
+                        ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                    }
+                }
+
             } else {
-                if (!(${flags} & ${CollectionFlags.HAS_NULL})) {
-                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                        ${this.innerGenerator.toReadEmbed(x => `${this.putAccessor(result, x, idx)}`, true, RefState.fromFalse())}
-                    }
-                } else {
-                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                        if (${this.builder.reader.uint8()} == ${RefFlags.NullFlag}) {
-                            ${this.putAccessor(result, "null", idx)}
-                        } else {
-                            ${this.innerGenerator.toReadEmbed(x => `${this.putAccessor(result, x, idx)}`, true, RefState.fromFalse())}
-                        }
-                    }
+                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                    ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
                 }
             }
             ${accessor(result)}
         `;
   }
 
-  writeStmt(accessor: string): string {
+  write(accessor: string): string {
     if (this.isAny()) {
       return `
                 new (${this.builder.getExternal(CollectionAnySerializer.name)})(${this.builder.getForyName()}).write(${accessor}, ${accessor}.${this.sizeProp()})
             `;
     }
-    return this.writeStmtSpecificType(accessor);
+    return this.writeSpecificType(accessor);
   }
 
-  readStmt(accessor: (expr: string) => string, refState: RefState): string {
+  read(accessor: (expr: string) => string, refState: string): string {
     if (this.isAny()) {
       return accessor(`new (${this.builder.getExternal(CollectionAnySerializer.name)})(${this.builder.getForyName()}).read((result, i, v) => {
               ${this.putAccessor("result", "v", "i")};
-          }, (len) => ${this.newCollection("len")}, ${refState.toConditionExpr()});
+          }, (len) => ${this.newCollection("len")}, ${refState});
       `);
     }
-    return this.readStmtSpecificType(accessor, refState);
+    return this.readSpecificType(accessor, refState);
   }
 }
 

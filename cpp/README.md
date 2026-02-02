@@ -279,15 +279,15 @@ apache::fory::RowEncoder<UserProfile> encoder;
 
 UserProfile profile{12345, "alice", "alice@example.com", {95, 87, 92}, true};
 
-// Encode to row format
-encoder.Encode(profile);
-auto& writer = encoder.GetWriter();
+// encode to row format
+encoder.encode(profile);
+auto& writer = encoder.get_writer();
 
 // Access fields directly without full deserialization
-auto row = writer.ToRow();
-assert(row.GetInt64(0) == 12345);           // id
-assert(row.GetString(1) == "alice");         // username
-assert(row.GetBool(4) == true);              // is_active
+auto row = writer.to_row();
+assert(row.get_int64(0) == 12345);           // id
+assert(row.get_string(1) == "alice");         // username
+assert(row.get_bool(4) == true);              // is_active
 ```
 
 ## Cross-Language Serialization
@@ -336,7 +336,7 @@ cpp/fory/
 │   ├── temporal_serializers.h   # Duration, Timestamp, Date
 │   ├── variant_serializer.h     # std::variant support
 │   ├── type_resolver.h     # Type resolution and registration
-│   └── context.h           # Read/Write context
+│   └── context.h           # Read/write context
 ├── encoder/                 # Row format encoding
 │   ├── row_encoder.h       # Row format encoder
 │   └── row_encode_trait.h  # Encoding traits

@@ -100,9 +100,9 @@ cdef extern from "fory/row/schema.h" namespace "fory::row" nogil:
     cdef cppclass CDataType" fory::row::DataType":
         CTypeId id()
         c_string name()
-        c_string ToString()
-        c_bool Equals(const CDataType& other)
-        c_bool Equals(shared_ptr[CDataType] other)
+        c_string to_string()
+        c_bool equals(const CDataType& other)
+        c_bool equals(shared_ptr[CDataType] other)
         int num_fields()
         shared_ptr[CField] field(int i)
         vector[shared_ptr[CField]] fields()
@@ -163,9 +163,9 @@ cdef extern from "fory/row/schema.h" namespace "fory::row" nogil:
         const c_string& name()
         const shared_ptr[CDataType]& type()
         c_bool nullable()
-        c_string ToString()
-        c_bool Equals(const CField& other)
-        c_bool Equals(shared_ptr[CField] other)
+        c_string to_string()
+        c_bool equals(const CField& other)
+        c_bool equals(shared_ptr[CField] other)
 
     ctypedef shared_ptr[CField] CFieldPtr" fory::row::FieldPtr"
 
@@ -179,8 +179,8 @@ cdef extern from "fory/row/schema.h" namespace "fory::row" nogil:
 
     cdef cppclass CStructType" fory::row::StructType"(CDataType):
         CStructType(vector[shared_ptr[CField]] fields)
-        shared_ptr[CField] GetFieldByName(const c_string& name)
-        int GetFieldIndex(const c_string& name)
+        shared_ptr[CField] get_field_by_name(const c_string& name)
+        int get_field_index(const c_string& name)
 
     ctypedef shared_ptr[CStructType] CStructTypePtr" fory::row::StructTypePtr"
 
@@ -200,15 +200,15 @@ cdef extern from "fory/row/schema.h" namespace "fory::row" nogil:
         shared_ptr[CField] field(int i)
         const vector[shared_ptr[CField]]& fields()
         vector[c_string] field_names()
-        shared_ptr[CField] GetFieldByName(const c_string& name)
-        int GetFieldIndex(const c_string& name)
-        c_string ToString()
-        c_bool Equals(const CSchema& other)
-        c_bool Equals(shared_ptr[CSchema] other)
+        shared_ptr[CField] get_field_by_name(const c_string& name)
+        int get_field_index(const c_string& name)
+        c_string to_string()
+        c_bool equals(const CSchema& other)
+        c_bool equals(shared_ptr[CSchema] other)
         # Schema serialization methods
-        vector[uint8_t] ToBytes() const
+        vector[uint8_t] to_bytes() const
         @staticmethod
-        shared_ptr[CSchema] FromBytes(const vector[uint8_t]& bytes)
+        shared_ptr[CSchema] from_bytes(const vector[uint8_t]& bytes)
 
     ctypedef shared_ptr[CSchema] CSchemaPtr" fory::row::SchemaPtr"
 
@@ -245,35 +245,35 @@ cdef extern from "fory/row/row.h" namespace "fory::row" nogil:
 
         int size_bytes() const
 
-        c_bool IsNullAt(int i)
+        c_bool is_null_at(int i)
 
-        int8_t GetInt8(int i)
+        int8_t get_int8(int i)
 
-        int8_t GetUInt8(int i)
+        int8_t get_uint8(int i)
 
-        c_bool GetBoolean(int i)
+        c_bool get_boolean(int i)
 
-        int16_t GetInt16(int i)
+        int16_t get_int16(int i)
 
-        int32_t GetInt32(int i)
+        int32_t get_int32(int i)
 
-        int64_t GetInt64(int i)
+        int64_t get_int64(int i)
 
-        float GetFloat(int i)
+        float get_float(int i)
 
-        double GetDouble(int i)
+        double get_double(int i)
 
-        c_string GetString(int i)
+        c_string get_string(int i)
 
-        int GetBinary(int i, uint8_t** out)
+        int get_binary(int i, uint8_t** out)
 
-        shared_ptr[CRow] GetStruct(int i)
+        shared_ptr[CRow] get_struct(int i)
 
-        shared_ptr[CArrayData] GetArray(int i)
+        shared_ptr[CArrayData] get_array(int i)
 
-        shared_ptr[CMapData] GetMap(int i)
+        shared_ptr[CMapData] get_map(int i)
 
-        c_string ToString()
+        c_string to_string()
 
     cdef cppclass CArrayData" fory::row::ArrayData"(CGetter):
         CArrayData(shared_ptr[CListType] type)
@@ -285,7 +285,7 @@ cdef extern from "fory/row/row.h" namespace "fory::row" nogil:
     cdef cppclass CMapData" fory::row::MapData":
         CMapData(shared_ptr[CMapType] type)
 
-        void PointTo(shared_ptr[CBuffer] buffer,
+        void point_to(shared_ptr[CBuffer] buffer,
                      uint32_t offset, uint32_t size_in_bytes)
 
         int num_elements()
@@ -302,7 +302,7 @@ cdef extern from "fory/row/row.h" namespace "fory::row" nogil:
 
         shared_ptr[CArrayData] values_array()
 
-        c_string ToString()
+        c_string to_string()
 
     cdef cppclass CRow" fory::row::Row"(CGetter):
         CRow(shared_ptr[CSchema] schema)
@@ -311,7 +311,7 @@ cdef extern from "fory/row/row.h" namespace "fory::row" nogil:
 
         int num_fields()
 
-        void PointTo(shared_ptr[CBuffer] buffer,
+        void point_to(shared_ptr[CBuffer] buffer,
                      uint32_t offset, uint32_t size_in_bytes)
 
 
@@ -326,40 +326,40 @@ cdef extern from "fory/row/writer.h" namespace "fory::row" nogil:
 
         uint32_t starting_offset()
 
-        void IncreaseCursor(uint32_t val)
+        void increase_cursor(uint32_t val)
 
-        void Grow(uint32_t needed_size)
+        void grow(uint32_t needed_size)
 
-        void SetOffsetAndSize(int i, uint32_t size)
+        void set_offset_and_size(int i, uint32_t size)
 
-        void SetOffsetAndSize(int i, uint32_t absolute_offset, uint32_t size)
+        void set_offset_and_size(int i, uint32_t absolute_offset, uint32_t size)
 
-        void ZeroOutPaddingBytes(uint32_t num_bytes)
+        void zero_out_padding_bytes(uint32_t num_bytes)
 
-        void SetNullAt(int i)
+        void set_null_at(int i)
 
-        void SetNotNullAt(int i)
+        void set_not_null_at(int i)
 
-        c_bool IsNullAt(int i) const
+        c_bool is_null_at(int i) const
 
-        void Write(int i, int8_t value)
-        void Write(int i, c_bool value)
-        void Write(int i, int16_t value)
-        void Write(int i, int32_t value)
-        void Write(int i, int64_t value)
-        void Write(int i, float value)
-        void Write(int i, double value)
+        void write(int i, int8_t value)
+        void write(int i, c_bool value)
+        void write(int i, int16_t value)
+        void write(int i, int32_t value)
+        void write(int i, int64_t value)
+        void write(int i, float value)
+        void write(int i, double value)
 
-        void WriteString(int i, c_string &value)
+        void write_string(int i, c_string &value)
 
-        void WriteBytes(int i, const uint8_t *input, uint32_t length)
+        void write_bytes(int i, const uint8_t *input, uint32_t length)
 
-        void WriteUnaligned(int i, const uint8_t *input,
+        void write_unaligned(int i, const uint8_t *input,
                             uint32_t offset, uint32_t num_bytes)
 
-        void WriteDirectly(int64_t value)
+        void write_directly(int64_t value)
 
-        void WriteDirectly(uint32_t offset, int64_t value)
+        void write_directly(uint32_t offset, int64_t value)
 
     cdef cppclass CRowWriter" fory::row::RowWriter"(CWriter):
         CRowWriter(shared_ptr[CSchema] schema)
@@ -368,17 +368,17 @@ cdef extern from "fory/row/writer.h" namespace "fory::row" nogil:
 
         shared_ptr[CSchema] schema()
 
-        void SetBuffer(shared_ptr[CBuffer]& buffer)
+        void set_buffer(shared_ptr[CBuffer]& buffer)
 
-        void Reset()
+        void reset()
 
-        shared_ptr[CRow] ToRow()
+        shared_ptr[CRow] to_row()
 
     cdef cppclass CArrayWriter" fory::row::ArrayWriter"(CWriter):
         CArrayWriter(shared_ptr[CListType] type_, CWriter *writer)
 
-        void Reset(int num_elements)
+        void reset(int num_elements)
 
         int size()
 
-        shared_ptr[CArrayData] CopyToArrayData()
+        shared_ptr[CArrayData] copy_to_array_data()

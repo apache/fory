@@ -22,6 +22,7 @@ package org.apache.fory.codegen;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_VOID_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -29,6 +30,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.fory.codegen.Expression.EnumExpression;
+import org.apache.fory.codegen.Expression.Literal;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.SerializableSupplier;
@@ -91,6 +94,15 @@ public class ExpressionOptimizer {
       if (expression == null) {
         continue;
       }
+      if (expression instanceof Literal) {
+        continue;
+      }
+      if (expression instanceof EnumExpression) {
+        EnumExpression expr = (EnumExpression) expression;
+        if (Modifier.isPublic(expr.getEnumValue().getClass().getModifiers())) {
+          continue;
+        }
+      }
       Preconditions.checkArgument(
           expression.type() != PRIMITIVE_VOID_TYPE, "Cut on block is not supported currently.");
       String param = ctx.newName(getRawType(expression.type()));
@@ -103,7 +115,9 @@ public class ExpressionOptimizer {
             exprSite -> {
               if (cutPoint.contains((exprSite.current))) {
                 Reference newExpr = cutExprMap.get(exprSite.current);
-                if (exprSite.current != newExpr) {
+                // cutpoint may pass null, or we remove some expr from cutpoint if we think
+                // it's ok to use original expr such as Literal or Enum expr.
+                if (exprSite.current != newExpr && newExpr != null) {
                   exprSite.update(newExpr);
                 }
                 return false;
@@ -128,6 +142,7 @@ public class ExpressionOptimizer {
       Reference ref = entry.getValue();
       formalParams.add(getRawType(ref.type()));
       formalParams.add(ref.name());
+      Preconditions.checkNotNull(expr);
       actualParams.add(expr);
     }
     ctx.addMethod(

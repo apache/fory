@@ -29,7 +29,7 @@
 namespace fory {
 
 /// This function returns the current call stack information.
-std::string GetCallTrace();
+std::string get_call_trace();
 
 // Simple logging implementation to avoid introduce glog dependency.
 
@@ -45,7 +45,7 @@ enum class ForyLogLevel {
   ::fory::ForyLog(__FILE__, __LINE__, ::fory::ForyLogLevel::level)
 
 #define FORY_LOG_ENABLED(level)                                                \
-  ::fory::ForyLog::IsLevelEnabled(::fory::ForyLogLevel::level)
+  ::fory::ForyLog::is_level_enabled(::fory::ForyLogLevel::level)
 
 #define FORY_LOG(level)                                                        \
   if (FORY_LOG_ENABLED(level))                                                 \
@@ -76,7 +76,7 @@ public:
   virtual ~ForyLog();
 
   template <typename T> ForyLog &operator<<(const T &t) {
-    Stream() << t;
+    stream() << t;
     return *this;
   };
 
@@ -84,12 +84,12 @@ public:
   ///
   /// \param log_level The input log level to test.
   /// \return True if input log level is not lower than the threshold.
-  static bool IsLevelEnabled(ForyLogLevel log_level);
+  static bool is_level_enabled(ForyLogLevel log_level);
 
-  static ForyLogLevel GetLogLevel();
+  static ForyLogLevel get_log_level();
 
 protected:
-  virtual std::ostream &Stream() { return std::cerr; };
+  virtual std::ostream &stream() { return std::cerr; };
 
 private:
   /// log level.

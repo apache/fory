@@ -38,62 +38,62 @@ namespace util {
 //
 
 // Swap the byte order (i.e. endianess)
-static inline int64_t ByteSwap(int64_t value) {
+static inline int64_t byte_swap(int64_t value) {
   return FORY_BYTE_SWAP64(value);
 }
 
-static inline uint64_t ByteSwap(uint64_t value) {
+static inline uint64_t byte_swap(uint64_t value) {
   return static_cast<uint64_t>(FORY_BYTE_SWAP64(value));
 }
 
-static inline int32_t ByteSwap(int32_t value) {
+static inline int32_t byte_swap(int32_t value) {
   return FORY_BYTE_SWAP32(value);
 }
 
-static inline uint32_t ByteSwap(uint32_t value) {
+static inline uint32_t byte_swap(uint32_t value) {
   return static_cast<uint32_t>(FORY_BYTE_SWAP32(value));
 }
 
-static inline int16_t ByteSwap(int16_t value) {
+static inline int16_t byte_swap(int16_t value) {
   constexpr auto m = static_cast<int16_t>(0xff);
   return static_cast<int16_t>(((value >> 8) & m) | ((value & m) << 8));
 }
 
-static inline uint16_t ByteSwap(uint16_t value) {
-  return static_cast<uint16_t>(ByteSwap(static_cast<int16_t>(value)));
+static inline uint16_t byte_swap(uint16_t value) {
+  return static_cast<uint16_t>(byte_swap(static_cast<int16_t>(value)));
 }
 
-static inline float ByteSwap(float value) {
+static inline float byte_swap(float value) {
   auto *ptr = reinterpret_cast<uint32_t *>(&value);
   uint32_t i = FORY_BYTE_SWAP32(*ptr);
   auto *f = reinterpret_cast<float *>(&i);
   return *(f);
 }
 
-static inline double ByteSwap(double value) {
+static inline double byte_swap(double value) {
   auto *ptr = reinterpret_cast<uint64_t *>(&value);
   uint64_t i = FORY_BYTE_SWAP64(*ptr);
   auto *d = reinterpret_cast<double *>(&i);
   return *d;
 }
 
-// WriteString the swapped bytes into dst. Src and dst cannot overlap.
-static inline void ByteSwap(void *dst, const void *src, int len) {
+// write_string the swapped bytes into dst. Src and dst cannot overlap.
+static inline void byte_swap(void *dst, const void *src, int len) {
   switch (len) {
   case 1:
     *reinterpret_cast<int8_t *>(dst) = *reinterpret_cast<const int8_t *>(src);
     return;
   case 2:
     *reinterpret_cast<int16_t *>(dst) =
-        ByteSwap(*reinterpret_cast<const int16_t *>(src));
+        byte_swap(*reinterpret_cast<const int16_t *>(src));
     return;
   case 4:
     *reinterpret_cast<int32_t *>(dst) =
-        ByteSwap(*reinterpret_cast<const int32_t *>(src));
+        byte_swap(*reinterpret_cast<const int32_t *>(src));
     return;
   case 8:
     *reinterpret_cast<int64_t *>(dst) =
-        ByteSwap(*reinterpret_cast<const int64_t *>(src));
+        byte_swap(*reinterpret_cast<const int64_t *>(src));
     return;
   default:
     break;
@@ -119,57 +119,57 @@ using EnableIfIsEndianConvertibleType =
     typename std::enable_if<IsEndianConvertibleType<T>::value, T>::type;
 
 template <typename T, typename = EnableIfIsEndianConvertibleType<T>>
-static inline T ToBigEndian(T value) {
+static inline T to_big_endian(T value) {
   if constexpr (FORY_LITTLE_ENDIAN) {
-    return ByteSwap(value);
+    return byte_swap(value);
   } else {
     return value;
   }
 }
 
 template <typename T, typename = EnableIfIsEndianConvertibleType<T>>
-static inline T ToLittleEndian(T value) {
+static inline T to_little_endian(T value) {
   if constexpr (FORY_LITTLE_ENDIAN) {
     return value;
   } else {
-    return ByteSwap(value);
+    return byte_swap(value);
   }
 }
 
 // Bitmask selecting the k-th bit in a byte
-static constexpr uint8_t kBitmask[] = {1, 2, 4, 8, 16, 32, 64, 128};
+static constexpr uint8_t k_bitmask[] = {1, 2, 4, 8, 16, 32, 64, 128};
 
-// the bitwise complement version of kBitmask
-static constexpr uint8_t kFlippedBitmask[] = {254, 253, 251, 247,
-                                              239, 223, 191, 127};
+// the bitwise complement version of k_bitmask
+static constexpr uint8_t k_flipped_bitmask[] = {254, 253, 251, 247,
+                                                239, 223, 191, 127};
 
-constexpr bool IsMultipleOf64(int64_t n) { return (n & 63) == 0; }
+constexpr bool is_multiple_of64(int64_t n) { return (n & 63) == 0; }
 
-constexpr bool IsMultipleOf8(int64_t n) { return (n & 7) == 0; }
+constexpr bool is_multiple_of8(int64_t n) { return (n & 7) == 0; }
 
-static inline bool GetBit(const uint8_t *bits, uint32_t i) {
+static inline bool get_bit(const uint8_t *bits, uint32_t i) {
   return static_cast<bool>((bits[i >> 3] >> (i & 0x07)) & 1);
 }
 
-static inline void ClearBit(uint8_t *bits, int64_t i) {
-  bits[i / 8] &= kFlippedBitmask[i % 8];
+static inline void clear_bit(uint8_t *bits, int64_t i) {
+  bits[i / 8] &= k_flipped_bitmask[i % 8];
 }
 
-static inline void SetBit(uint8_t *bits, int64_t i) {
-  bits[i / 8] |= kBitmask[i % 8];
+static inline void set_bit(uint8_t *bits, int64_t i) {
+  bits[i / 8] |= k_bitmask[i % 8];
 }
 
-static inline void SetBitTo(uint8_t *bits, int64_t i, bool bit_is_set) {
+static inline void set_bit_to(uint8_t *bits, int64_t i, bool bit_is_set) {
   // https://graphics.stanford.edu/~seander/bithacks.html
   // "Conditionally set or clear bits without branching"
   // NOTE: this seems to confuse Valgrind as it reads from potentially
   // uninitialized memory
   bits[i / 8] ^=
       static_cast<uint8_t>(-static_cast<uint8_t>(bit_is_set) ^ bits[i / 8]) &
-      kBitmask[i % 8];
+      k_bitmask[i % 8];
 }
 
-static inline int RoundNumberOfBytesToNearestWord(int num_bytes) {
+static inline int round_number_of_bytes_to_nearest_word(int num_bytes) {
   int remainder = num_bytes & 0x07;
   if (remainder == 0) {
     return num_bytes;

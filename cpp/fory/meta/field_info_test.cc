@@ -34,7 +34,7 @@ struct A {
 
 TEST(FieldInfo, Simple) {
   A a;
-  constexpr auto info = meta::ForyFieldInfo(a);
+  constexpr auto info = meta::fory_field_info(a);
 
   static_assert(info.Size == 3);
 
@@ -44,9 +44,9 @@ TEST(FieldInfo, Simple) {
   static_assert(info.Names[1] == "y");
   static_assert(info.Names[2] == "z");
 
-  static_assert(std::get<0>(decltype(info)::Ptrs()) == &A::x);
-  static_assert(std::get<1>(decltype(info)::Ptrs()) == &A::y);
-  static_assert(std::get<2>(decltype(info)::Ptrs()) == &A::z);
+  static_assert(std::get<0>(decltype(info)::ptrs()) == &A::x);
+  static_assert(std::get<1>(decltype(info)::ptrs()) == &A::y);
+  static_assert(std::get<2>(decltype(info)::ptrs()) == &A::z);
 }
 
 struct B {
@@ -57,7 +57,7 @@ struct B {
 
 TEST(FieldInfo, Hidden) {
   B b;
-  constexpr auto info = meta::ForyFieldInfo(b);
+  constexpr auto info = meta::fory_field_info(b);
 
   static_assert(info.Size == 1);
 
@@ -65,7 +65,7 @@ TEST(FieldInfo, Hidden) {
 
   static_assert(info.Names[0] == "a");
 
-  static_assert(std::get<0>(decltype(info)::Ptrs()) == &B::a);
+  static_assert(std::get<0>(decltype(info)::ptrs()) == &B::a);
 }
 
 } // namespace test

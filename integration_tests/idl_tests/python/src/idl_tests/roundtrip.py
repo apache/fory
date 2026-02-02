@@ -24,10 +24,13 @@ from pathlib import Path
 import addressbook
 import any_example
 import complex_fbs
+import complex_pb
+import collection
 import monster
 import optional_types
 import graph
 import tree
+import root
 import numpy as np
 import pyfory
 
@@ -62,11 +65,57 @@ def build_address_book() -> "addressbook.AddressBook":
     )
 
 
+def build_root_holder() -> "root.MultiHolder":
+    owner = addressbook.Person(
+        name="Alice",
+        id=123,
+        email="",
+        tags=[],
+        scores={},
+        salary=0.0,
+        phones=[],
+        pet=addressbook.Animal.dog(addressbook.Dog(name="Rex", bark_volume=5)),
+    )
+    book = addressbook.AddressBook(
+        people=[owner],
+        people_by_name={owner.name: owner},
+    )
+    root_node = tree.TreeNode(
+        id="root",
+        name="root",
+        children=[],
+        parent=None,
+    )
+    return root.MultiHolder(
+        book=book,
+        root=root_node,
+        owner=owner,
+    )
+
+
 def local_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
     data = fory.serialize(book)
     decoded = fory.deserialize(data)
     assert isinstance(decoded, addressbook.AddressBook)
     assert decoded == book
+
+
+def bytes_roundtrip_addressbook(book: "addressbook.AddressBook") -> None:
+    payload = book.to_bytes()
+    decoded = addressbook.AddressBook.from_bytes(payload)
+    assert decoded == book
+
+    dog = addressbook.Dog(name="Rex", bark_volume=5)
+    animal = addressbook.Animal.dog(dog)
+    animal_payload = animal.to_bytes()
+    decoded_animal = addressbook.Animal.from_bytes(animal_payload)
+    assert decoded_animal == animal
+
+
+def bytes_roundtrip_root(multi: "root.MultiHolder") -> None:
+    payload = multi.to_bytes()
+    decoded = root.MultiHolder.from_bytes(payload)
+    assert decoded == multi
 
 
 def file_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
@@ -80,10 +129,10 @@ def file_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
     Path(data_file).write_bytes(fory.serialize(decoded))
 
 
-def build_primitive_types() -> "addressbook.PrimitiveTypes":
-    contact = addressbook.PrimitiveTypes.Contact.email("alice@example.com")
-    contact = addressbook.PrimitiveTypes.Contact.phone(12345)
-    return addressbook.PrimitiveTypes(
+def build_primitive_types() -> "complex_pb.PrimitiveTypes":
+    contact = complex_pb.PrimitiveTypes.Contact.email("alice@example.com")
+    contact = complex_pb.PrimitiveTypes.Contact.phone(12345)
+    return complex_pb.PrimitiveTypes(
         bool_value=True,
         int8_value=12,
         int16_value=1234,
@@ -103,6 +152,106 @@ def build_primitive_types() -> "addressbook.PrimitiveTypes":
         float64_value=3.5,
         contact=contact,
     )
+
+
+def build_numeric_collections() -> "collection.NumericCollections":
+    return collection.NumericCollections(
+        int8_values=np.array([1, -2, 3], dtype=np.int8),
+        int16_values=np.array([100, -200, 300], dtype=np.int16),
+        int32_values=np.array([1000, -2000, 3000], dtype=np.int32),
+        int64_values=np.array([10000, -20000, 30000], dtype=np.int64),
+        uint8_values=np.array([200, 250], dtype=np.uint8),
+        uint16_values=np.array([50000, 60000], dtype=np.uint16),
+        uint32_values=np.array([2000000000, 2100000000], dtype=np.uint32),
+        uint64_values=np.array([9000000000, 12000000000], dtype=np.uint64),
+        float32_values=np.array([1.5, 2.5], dtype=np.float32),
+        float64_values=np.array([3.5, 4.5], dtype=np.float64),
+    )
+
+
+def build_numeric_collection_union() -> "collection.NumericCollectionUnion":
+    return collection.NumericCollectionUnion.int32_values(
+        np.array([7, 8, 9], dtype=np.int32)
+    )
+
+
+def build_numeric_collections_array() -> "collection.NumericCollectionsArray":
+    return collection.NumericCollectionsArray(
+        int8_values=np.array([1, -2, 3], dtype=np.int8),
+        int16_values=np.array([100, -200, 300], dtype=np.int16),
+        int32_values=np.array([1000, -2000, 3000], dtype=np.int32),
+        int64_values=np.array([10000, -20000, 30000], dtype=np.int64),
+        uint8_values=np.array([200, 250], dtype=np.uint8),
+        uint16_values=np.array([50000, 60000], dtype=np.uint16),
+        uint32_values=np.array([2000000000, 2100000000], dtype=np.uint32),
+        uint64_values=np.array([9000000000, 12000000000], dtype=np.uint64),
+        float32_values=np.array([1.5, 2.5], dtype=np.float32),
+        float64_values=np.array([3.5, 4.5], dtype=np.float64),
+    )
+
+
+def build_numeric_collection_array_union() -> "collection.NumericCollectionArrayUnion":
+    return collection.NumericCollectionArrayUnion.uint16_values(
+        np.array([1000, 2000, 3000], dtype=np.uint16)
+    )
+
+
+def assert_numeric_collections_equal(
+    decoded: "collection.NumericCollections",
+    expected: "collection.NumericCollections",
+) -> None:
+    assert np.array_equal(decoded.int8_values, expected.int8_values)
+    assert np.array_equal(decoded.int16_values, expected.int16_values)
+    assert np.array_equal(decoded.int32_values, expected.int32_values)
+    assert np.array_equal(decoded.int64_values, expected.int64_values)
+    assert np.array_equal(decoded.uint8_values, expected.uint8_values)
+    assert np.array_equal(decoded.uint16_values, expected.uint16_values)
+    assert np.array_equal(decoded.uint32_values, expected.uint32_values)
+    assert np.array_equal(decoded.uint64_values, expected.uint64_values)
+    assert np.array_equal(decoded.float32_values, expected.float32_values)
+    assert np.array_equal(decoded.float64_values, expected.float64_values)
+
+
+def assert_numeric_collections_array_equal(
+    decoded: "collection.NumericCollectionsArray",
+    expected: "collection.NumericCollectionsArray",
+) -> None:
+    assert np.array_equal(decoded.int8_values, expected.int8_values)
+    assert np.array_equal(decoded.int16_values, expected.int16_values)
+    assert np.array_equal(decoded.int32_values, expected.int32_values)
+    assert np.array_equal(decoded.int64_values, expected.int64_values)
+    assert np.array_equal(decoded.uint8_values, expected.uint8_values)
+    assert np.array_equal(decoded.uint16_values, expected.uint16_values)
+    assert np.array_equal(decoded.uint32_values, expected.uint32_values)
+    assert np.array_equal(decoded.uint64_values, expected.uint64_values)
+    assert np.array_equal(decoded.float32_values, expected.float32_values)
+    assert np.array_equal(decoded.float64_values, expected.float64_values)
+
+
+def assert_numeric_collection_union_equal(
+    decoded: "collection.NumericCollectionUnion",
+    expected: "collection.NumericCollectionUnion",
+) -> None:
+    assert decoded.case() == expected.case()
+    if decoded.case() == collection.NumericCollectionUnionCase.INT32_VALUES:
+        assert np.array_equal(
+            decoded.int32_values_value(), expected.int32_values_value()
+        )
+        return
+    raise AssertionError(f"unexpected union case: {decoded.case()}")
+
+
+def assert_numeric_collection_array_union_equal(
+    decoded: "collection.NumericCollectionArrayUnion",
+    expected: "collection.NumericCollectionArrayUnion",
+) -> None:
+    assert decoded.case() == expected.case()
+    if decoded.case() == collection.NumericCollectionArrayUnionCase.UINT16_VALUES:
+        assert np.array_equal(
+            decoded.uint16_values_value(), expected.uint16_values_value()
+        )
+        return
+    raise AssertionError(f"unexpected union case: {decoded.case()}")
 
 
 def build_optional_holder() -> "optional_types.OptionalHolder":
@@ -271,25 +420,89 @@ def file_roundtrip_container(
 
 
 def local_roundtrip_primitives(
-    fory: pyfory.Fory, types: "addressbook.PrimitiveTypes"
+    fory: pyfory.Fory, types: "complex_pb.PrimitiveTypes"
 ) -> None:
     data = fory.serialize(types)
     decoded = fory.deserialize(data)
-    assert isinstance(decoded, addressbook.PrimitiveTypes)
+    assert isinstance(decoded, complex_pb.PrimitiveTypes)
     assert decoded == types
 
 
 def file_roundtrip_primitives(
-    fory: pyfory.Fory, types: "addressbook.PrimitiveTypes"
+    fory: pyfory.Fory, types: "complex_pb.PrimitiveTypes"
 ) -> None:
     data_file = os.environ.get("DATA_FILE_PRIMITIVES")
     if not data_file:
         return
     payload = Path(data_file).read_bytes()
     decoded = fory.deserialize(payload)
-    assert isinstance(decoded, addressbook.PrimitiveTypes)
+    assert isinstance(decoded, complex_pb.PrimitiveTypes)
     assert decoded == types
     Path(data_file).write_bytes(fory.serialize(decoded))
+
+
+def local_roundtrip_collections(
+    fory: pyfory.Fory,
+    collections_value: "collection.NumericCollections",
+    union_value: "collection.NumericCollectionUnion",
+    array_value: "collection.NumericCollectionsArray",
+    array_union_value: "collection.NumericCollectionArrayUnion",
+) -> None:
+    decoded = fory.deserialize(fory.serialize(collections_value))
+    assert isinstance(decoded, collection.NumericCollections)
+    assert_numeric_collections_equal(decoded, collections_value)
+
+    decoded_union = fory.deserialize(fory.serialize(union_value))
+    assert isinstance(decoded_union, collection.NumericCollectionUnion)
+    assert_numeric_collection_union_equal(decoded_union, union_value)
+
+    decoded_array = fory.deserialize(fory.serialize(array_value))
+    assert isinstance(decoded_array, collection.NumericCollectionsArray)
+    assert_numeric_collections_array_equal(decoded_array, array_value)
+
+    decoded_array_union = fory.deserialize(fory.serialize(array_union_value))
+    assert isinstance(decoded_array_union, collection.NumericCollectionArrayUnion)
+    assert_numeric_collection_array_union_equal(decoded_array_union, array_union_value)
+
+
+def file_roundtrip_collections(
+    fory: pyfory.Fory,
+    collections_value: "collection.NumericCollections",
+    union_value: "collection.NumericCollectionUnion",
+    array_value: "collection.NumericCollectionsArray",
+    array_union_value: "collection.NumericCollectionArrayUnion",
+) -> None:
+    data_file = os.environ.get("DATA_FILE_COLLECTION")
+    if data_file:
+        payload = Path(data_file).read_bytes()
+        decoded = fory.deserialize(payload)
+        assert isinstance(decoded, collection.NumericCollections)
+        assert_numeric_collections_equal(decoded, collections_value)
+        Path(data_file).write_bytes(fory.serialize(decoded))
+
+    union_file = os.environ.get("DATA_FILE_COLLECTION_UNION")
+    if union_file:
+        payload = Path(union_file).read_bytes()
+        decoded = fory.deserialize(payload)
+        assert isinstance(decoded, collection.NumericCollectionUnion)
+        assert_numeric_collection_union_equal(decoded, union_value)
+        Path(union_file).write_bytes(fory.serialize(decoded))
+
+    array_file = os.environ.get("DATA_FILE_COLLECTION_ARRAY")
+    if array_file:
+        payload = Path(array_file).read_bytes()
+        decoded = fory.deserialize(payload)
+        assert isinstance(decoded, collection.NumericCollectionsArray)
+        assert_numeric_collections_array_equal(decoded, array_value)
+        Path(array_file).write_bytes(fory.serialize(decoded))
+
+    array_union_file = os.environ.get("DATA_FILE_COLLECTION_ARRAY_UNION")
+    if array_union_file:
+        payload = Path(array_union_file).read_bytes()
+        decoded = fory.deserialize(payload)
+        assert isinstance(decoded, collection.NumericCollectionArrayUnion)
+        assert_numeric_collection_array_union_equal(decoded, array_union_value)
+        Path(array_union_file).write_bytes(fory.serialize(decoded))
 
 
 def assert_optional_types_equal(
@@ -452,21 +665,36 @@ def file_roundtrip_graph(fory: pyfory.Fory, graph_value: "graph.Graph") -> None:
     Path(data_file).write_bytes(fory.serialize(decoded))
 
 
-def main() -> int:
-    fory = pyfory.Fory(xlang=True)
+def run_roundtrip(compatible: bool) -> None:
+    fory = pyfory.Fory(xlang=True, compatible=compatible)
+    complex_pb.register_complex_pb_types(fory)
     addressbook.register_addressbook_types(fory)
     monster.register_monster_types(fory)
     complex_fbs.register_complex_fbs_types(fory)
+    collection.register_collection_types(fory)
     optional_types.register_optional_types_types(fory)
     any_example.register_any_example_types(fory)
 
     book = build_address_book()
+    bytes_roundtrip_addressbook(book)
+    bytes_roundtrip_root(build_root_holder())
     local_roundtrip(fory, book)
     file_roundtrip(fory, book)
 
     primitives = build_primitive_types()
     local_roundtrip_primitives(fory, primitives)
     file_roundtrip_primitives(fory, primitives)
+
+    collections_value = build_numeric_collections()
+    union_value = build_numeric_collection_union()
+    array_value = build_numeric_collections_array()
+    array_union_value = build_numeric_collection_array_union()
+    local_roundtrip_collections(
+        fory, collections_value, union_value, array_value, array_union_value
+    )
+    file_roundtrip_collections(
+        fory, collections_value, union_value, array_value, array_union_value
+    )
 
     monster_value = build_monster()
     local_roundtrip_monster(fory, monster_value)
@@ -483,7 +711,7 @@ def main() -> int:
     any_holder = build_any_holder()
     local_roundtrip_any(fory, any_holder)
 
-    ref_fory = pyfory.Fory(xlang=True, ref=True)
+    ref_fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
     tree.register_tree_types(ref_fory)
     graph.register_graph_types(ref_fory)
     tree_root = build_tree()
@@ -492,6 +720,23 @@ def main() -> int:
     graph_value = build_graph()
     local_roundtrip_graph(ref_fory, graph_value)
     file_roundtrip_graph(ref_fory, graph_value)
+
+
+def resolve_compatible_modes() -> list[bool]:
+    value = os.environ.get("IDL_COMPATIBLE")
+    if value is None or value.strip() == "":
+        return [False, True]
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes"):
+        return [True]
+    if normalized in ("0", "false", "no"):
+        return [False]
+    raise ValueError(f"Unsupported IDL_COMPATIBLE value: {value}")
+
+
+def main() -> int:
+    for compatible in resolve_compatible_modes():
+        run_roundtrip(compatible)
     return 0
 
 

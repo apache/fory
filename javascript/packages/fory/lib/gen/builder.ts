@@ -335,8 +335,8 @@ class TypeMetaResolverBuilder {
     return `${this.holder}.readTypeMeta(${reader})`;
   }
 
-  genSerializerByTypeMetaRuntime(typeMeta: string, ns: string, typeName: string) {
-    return `${this.holder}.genSerializerByTypeMetaRuntime(${typeMeta}, ${ns}, ${typeName})`;
+  genSerializerByTypeMetaRuntime(typeMeta: string) {
+    return `${this.holder}.genSerializerByTypeMetaRuntime(${typeMeta})`;
   }
 }
 

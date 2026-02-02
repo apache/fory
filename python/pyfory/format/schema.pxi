@@ -124,13 +124,13 @@ cdef class DataType:
         if not isinstance(other, DataType):
             return False
         cdef DataType other_type = <DataType>other
-        return self.c_type.get().Equals(other_type.c_type)
+        return self.c_type.get().equals(other_type.c_type)
 
     def __eq__(self, other):
         return self.equals(other)
 
     def __str__(self) -> str:
-        return self.c_type.get().ToString().decode('utf-8')
+        return self.c_type.get().to_string().decode('utf-8')
 
     def __repr__(self) -> str:
         return f"DataType({self})"
@@ -199,7 +199,7 @@ cdef class StructType(DataType):
         """Returns the field with the given name, or None if not found."""
         cdef CStructType* struct_type = <CStructType*>self.c_type.get()
         cdef c_string c_name = name.encode('utf-8')
-        cdef shared_ptr[CField] c_field = struct_type.GetFieldByName(c_name)
+        cdef shared_ptr[CField] c_field = struct_type.get_field_by_name(c_name)
         if c_field.get() == NULL:
             return None
         return Field.wrap(c_field)
@@ -208,7 +208,7 @@ cdef class StructType(DataType):
         """Returns the index of the field with the given name, or -1 if not found."""
         cdef CStructType* struct_type = <CStructType*>self.c_type.get()
         cdef c_string c_name = name.encode('utf-8')
-        return struct_type.GetFieldIndex(c_name)
+        return struct_type.get_field_index(c_name)
 
 
 cdef class Field:
@@ -260,13 +260,13 @@ cdef class Field:
         if not isinstance(other, Field):
             return False
         cdef Field other_field = <Field>other
-        return self.c_field.get().Equals(other_field.c_field)
+        return self.c_field.get().equals(other_field.c_field)
 
     def __eq__(self, other):
         return self.equals(other)
 
     def __str__(self) -> str:
-        return self.c_field.get().ToString().decode('utf-8')
+        return self.c_field.get().to_string().decode('utf-8')
 
     def __repr__(self) -> str:
         return f"Field({self})"
@@ -320,7 +320,7 @@ cdef class Schema:
     def get_field_by_name(self, str name):
         """Returns the field with the given name, or None if not found."""
         cdef c_string c_name = name.encode('utf-8')
-        cdef shared_ptr[CField] c_field = self.c_schema.get().GetFieldByName(c_name)
+        cdef shared_ptr[CField] c_field = self.c_schema.get().get_field_by_name(c_name)
         if c_field.get() == NULL:
             return None
         return Field.wrap(c_field)
@@ -328,14 +328,14 @@ cdef class Schema:
     def get_field_index(self, str name) -> int:
         """Returns the index of the field with the given name, or -1 if not found."""
         cdef c_string c_name = name.encode('utf-8')
-        return self.c_schema.get().GetFieldIndex(c_name)
+        return self.c_schema.get().get_field_index(c_name)
 
     def equals(self, other) -> bool:
         """Check if this schema equals another schema."""
         if not isinstance(other, Schema):
             return False
         cdef Schema other_schema = <Schema>other
-        return self.c_schema.get().Equals(other_schema.c_schema)
+        return self.c_schema.get().equals(other_schema.c_schema)
 
     def __eq__(self, other):
         return self.equals(other)
@@ -351,7 +351,7 @@ cdef class Schema:
         raise TypeError(f"Schema indices must be int or str, not {type(key).__name__}")
 
     def __str__(self) -> str:
-        return self.c_schema.get().ToString().decode('utf-8')
+        return self.c_schema.get().to_string().decode('utf-8')
 
     def __repr__(self) -> str:
         return f"Schema({self})"
@@ -362,7 +362,7 @@ cdef class Schema:
         Returns:
             bytes: The serialized schema.
         """
-        cdef vector[uint8_t] c_bytes = self.c_schema.get().ToBytes()
+        cdef vector[uint8_t] c_bytes = self.c_schema.get().to_bytes()
         return bytes(c_bytes)
 
     @staticmethod
@@ -386,7 +386,7 @@ cdef class Schema:
             data_ptr = <const uint8_t*>py_bytes
             data_len = len(py_bytes)
         c_bytes.assign(data_ptr, data_ptr + data_len)
-        return Schema.wrap(CSchema.FromBytes(c_bytes))
+        return Schema.wrap(CSchema.from_bytes(c_bytes))
 
 
 # Factory functions for creating types

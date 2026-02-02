@@ -66,7 +66,7 @@ macro_rules! impl_xlang_unsigned_num_serializer {
 
             #[inline(always)]
             fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_varuint32($field_type as u32);
+                context.writer.write_var_uint32($field_type as u32);
                 Ok(())
             }
 
@@ -132,7 +132,7 @@ macro_rules! impl_rust_unsigned_num_serializer {
 
             #[inline(always)]
             fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_varuint32($field_type as u32);
+                context.writer.write_var_uint32($field_type as u32);
                 Ok(())
             }
 
@@ -155,13 +155,13 @@ impl_xlang_unsigned_num_serializer!(u8, Writer::write_u8, Reader::read_u8, TypeI
 impl_xlang_unsigned_num_serializer!(u16, Writer::write_u16, Reader::read_u16, TypeId::UINT16);
 impl_xlang_unsigned_num_serializer!(
     u32,
-    Writer::write_varuint32,
+    Writer::write_var_uint32,
     Reader::read_varuint32,
     TypeId::VAR_UINT32
 );
 impl_xlang_unsigned_num_serializer!(
     u64,
-    Writer::write_varuint64,
+    Writer::write_var_uint64,
     Reader::read_varuint64,
     TypeId::VAR_UINT64
 );

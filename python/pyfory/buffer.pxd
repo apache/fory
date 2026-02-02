@@ -160,19 +160,19 @@ cdef class Buffer:
 
     cpdef inline write_varint64(self, int64_t v)
 
-    cpdef inline write_varuint64(self, int64_t v)
+    cpdef inline write_var_uint64(self, int64_t v)
 
     cpdef inline int64_t read_varint64(self)
 
-    cpdef inline int64_t read_varuint64(self)
+    cpdef inline int64_t read_var_uint64(self)
 
-    cpdef inline write_varuint32(self, uint32_t value)
+    cpdef inline write_var_uint32(self, uint32_t value)
 
     cpdef inline write_varint32(self, int32_t value)
 
     cpdef inline int32_t read_varint32(self)
 
-    cpdef inline uint32_t read_varuint32(self)
+    cpdef inline uint32_t read_var_uint32(self)
 
     cpdef inline write_tagged_int64(self, int64_t value)
 

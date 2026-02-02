@@ -18,6 +18,7 @@
  */
 
 #include <any>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -29,12 +30,15 @@
 
 #include "addressbook.h"
 #include "any_example.h"
+#include "collection.h"
 #include "complex_fbs.h"
+#include "complex_pb.h"
 #include "fory/serialization/any_serializer.h"
 #include "fory/serialization/fory.h"
 #include "graph.h"
 #include "monster.h"
 #include "optional_types.h"
+#include "root.h"
 #include "tree.h"
 
 namespace {
@@ -156,18 +160,21 @@ fory::Result<void, fory::Error> ValidateGraph(const graph::Graph &graph_value) {
 
 using StringMap = std::map<std::string, std::string>;
 
-fory::Result<void, fory::Error> RunRoundTrip() {
+fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
-                  .check_struct_version(true)
+                  .compatible(compatible)
+                  .check_struct_version(!compatible)
                   .track_ref(false)
                   .build();
 
-  addressbook::RegisterTypes(fory);
-  monster::RegisterTypes(fory);
-  complex_fbs::RegisterTypes(fory);
-  optional_types::RegisterTypes(fory);
-  any_example::RegisterTypes(fory);
+  complex_pb::register_types(fory);
+  addressbook::register_types(fory);
+  monster::register_types(fory);
+  complex_fbs::register_types(fory);
+  collection::register_types(fory);
+  optional_types::register_types(fory);
+  any_example::register_types(fory);
 
   FORY_RETURN_IF_ERROR(
       fory::serialization::register_any_type<bool>(fory.type_resolver()));
@@ -220,6 +227,50 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   *book.mutable_people() = {person};
   *book.mutable_people_by_name() = {{person.name(), person}};
 
+  FORY_TRY(book_bytes, book.to_bytes());
+  FORY_TRY(book_roundtrip_bytes,
+           addressbook::AddressBook::from_bytes(book_bytes));
+  if (!(book_roundtrip_bytes == book)) {
+    return fory::Unexpected(
+        fory::Error::invalid("addressbook to_bytes roundtrip mismatch"));
+  }
+
+  addressbook::Animal animal = addressbook::Animal::dog(dog);
+  FORY_TRY(animal_bytes, animal.to_bytes());
+  FORY_TRY(animal_roundtrip, addressbook::Animal::from_bytes(animal_bytes));
+  if (!(animal_roundtrip == animal)) {
+    return fory::Unexpected(
+        fory::Error::invalid("animal to_bytes roundtrip mismatch"));
+  }
+
+  addressbook::Person multi_owner;
+  multi_owner.set_name("Alice");
+  multi_owner.set_id(123);
+  addressbook::Dog multi_dog;
+  multi_dog.set_name("Rex");
+  multi_dog.set_bark_volume(5);
+  *multi_owner.mutable_pet() = addressbook::Animal::dog(multi_dog);
+
+  addressbook::AddressBook multi_book;
+  *multi_book.mutable_people() = {multi_owner};
+  *multi_book.mutable_people_by_name() = {{multi_owner.name(), multi_owner}};
+
+  tree::TreeNode multi_root;
+  multi_root.set_id("root");
+  multi_root.set_name("root");
+
+  root::MultiHolder multi;
+  *multi.mutable_book() = multi_book;
+  *multi.mutable_root() = multi_root;
+  *multi.mutable_owner() = multi_owner;
+
+  FORY_TRY(multi_bytes, multi.to_bytes());
+  FORY_TRY(multi_roundtrip, root::MultiHolder::from_bytes(multi_bytes));
+  if (!(multi_roundtrip == multi)) {
+    return fory::Unexpected(
+        fory::Error::invalid("root to_bytes roundtrip mismatch"));
+  }
+
   FORY_TRY(bytes, fory.serialize(book));
   FORY_TRY(roundtrip, fory.deserialize<addressbook::AddressBook>(bytes.data(),
                                                                  bytes.size()));
@@ -229,7 +280,7 @@ fory::Result<void, fory::Error> RunRoundTrip() {
         fory::Error::invalid("addressbook roundtrip mismatch"));
   }
 
-  addressbook::PrimitiveTypes types;
+  complex_pb::PrimitiveTypes types;
   types.set_bool_value(true);
   types.set_int8_value(12);
   types.set_int16_value(1234);
@@ -248,17 +299,97 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   types.set_float32_value(2.5F);
   types.set_float64_value(3.5);
   *types.mutable_contact() =
-      addressbook::PrimitiveTypes::Contact::email("alice@example.com");
-  *types.mutable_contact() = addressbook::PrimitiveTypes::Contact::phone(12345);
+      complex_pb::PrimitiveTypes::Contact::email("alice@example.com");
+  *types.mutable_contact() = complex_pb::PrimitiveTypes::Contact::phone(12345);
 
   FORY_TRY(primitive_bytes, fory.serialize(types));
   FORY_TRY(primitive_roundtrip,
-           fory.deserialize<addressbook::PrimitiveTypes>(
+           fory.deserialize<complex_pb::PrimitiveTypes>(
                primitive_bytes.data(), primitive_bytes.size()));
 
   if (!(primitive_roundtrip == types)) {
     return fory::Unexpected(
         fory::Error::invalid("primitive types roundtrip mismatch"));
+  }
+
+  collection::NumericCollections collections;
+  *collections.mutable_int8_values() = {
+      static_cast<int8_t>(1), static_cast<int8_t>(-2), static_cast<int8_t>(3)};
+  *collections.mutable_int16_values() = {static_cast<int16_t>(100),
+                                         static_cast<int16_t>(-200),
+                                         static_cast<int16_t>(300)};
+  *collections.mutable_int32_values() = {1000, -2000, 3000};
+  *collections.mutable_int64_values() = {10000, -20000, 30000};
+  *collections.mutable_uint8_values() = {static_cast<uint8_t>(200),
+                                         static_cast<uint8_t>(250)};
+  *collections.mutable_uint16_values() = {static_cast<uint16_t>(50000),
+                                          static_cast<uint16_t>(60000)};
+  *collections.mutable_uint32_values() = {2000000000U, 2100000000U};
+  *collections.mutable_uint64_values() = {9000000000ULL, 12000000000ULL};
+  *collections.mutable_float32_values() = {1.5F, 2.5F};
+  *collections.mutable_float64_values() = {3.5, 4.5};
+
+  collection::NumericCollectionUnion collection_union =
+      collection::NumericCollectionUnion::int32_values(
+          std::vector<int32_t>{7, 8, 9});
+
+  collection::NumericCollectionsArray collections_array;
+  *collections_array.mutable_int8_values() = {
+      static_cast<int8_t>(1), static_cast<int8_t>(-2), static_cast<int8_t>(3)};
+  *collections_array.mutable_int16_values() = {static_cast<int16_t>(100),
+                                               static_cast<int16_t>(-200),
+                                               static_cast<int16_t>(300)};
+  *collections_array.mutable_int32_values() = {1000, -2000, 3000};
+  *collections_array.mutable_int64_values() = {10000, -20000, 30000};
+  *collections_array.mutable_uint8_values() = {static_cast<uint8_t>(200),
+                                               static_cast<uint8_t>(250)};
+  *collections_array.mutable_uint16_values() = {static_cast<uint16_t>(50000),
+                                                static_cast<uint16_t>(60000)};
+  *collections_array.mutable_uint32_values() = {2000000000U, 2100000000U};
+  *collections_array.mutable_uint64_values() = {9000000000ULL, 12000000000ULL};
+  *collections_array.mutable_float32_values() = {1.5F, 2.5F};
+  *collections_array.mutable_float64_values() = {3.5, 4.5};
+
+  collection::NumericCollectionArrayUnion collection_array_union =
+      collection::NumericCollectionArrayUnion::uint16_values(
+          std::vector<uint16_t>{1000, 2000, 3000});
+
+  FORY_TRY(collection_bytes, fory.serialize(collections));
+  FORY_TRY(collection_roundtrip,
+           fory.deserialize<collection::NumericCollections>(
+               collection_bytes.data(), collection_bytes.size()));
+  if (!(collection_roundtrip == collections)) {
+    return fory::Unexpected(
+        fory::Error::invalid("collection roundtrip mismatch"));
+  }
+
+  FORY_TRY(collection_union_bytes, fory.serialize(collection_union));
+  FORY_TRY(collection_union_roundtrip,
+           fory.deserialize<collection::NumericCollectionUnion>(
+               collection_union_bytes.data(), collection_union_bytes.size()));
+  if (!(collection_union_roundtrip == collection_union)) {
+    return fory::Unexpected(
+        fory::Error::invalid("collection union roundtrip mismatch"));
+  }
+
+  FORY_TRY(collection_array_bytes, fory.serialize(collections_array));
+  FORY_TRY(collection_array_roundtrip,
+           fory.deserialize<collection::NumericCollectionsArray>(
+               collection_array_bytes.data(), collection_array_bytes.size()));
+  if (!(collection_array_roundtrip == collections_array)) {
+    return fory::Unexpected(
+        fory::Error::invalid("collection array roundtrip mismatch"));
+  }
+
+  FORY_TRY(collection_array_union_bytes,
+           fory.serialize(collection_array_union));
+  FORY_TRY(collection_array_union_roundtrip,
+           fory.deserialize<collection::NumericCollectionArrayUnion>(
+               collection_array_union_bytes.data(),
+               collection_array_union_bytes.size()));
+  if (!(collection_array_union_roundtrip == collection_array_union)) {
+    return fory::Unexpected(
+        fory::Error::invalid("collection array union roundtrip mismatch"));
   }
 
   monster::Vec3 pos;
@@ -409,7 +540,7 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   const char *primitive_file = std::getenv("DATA_FILE_PRIMITIVES");
   if (primitive_file != nullptr && primitive_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(primitive_file));
-    FORY_TRY(peer_types, fory.deserialize<addressbook::PrimitiveTypes>(
+    FORY_TRY(peer_types, fory.deserialize<complex_pb::PrimitiveTypes>(
                              payload.data(), payload.size()));
     if (!(peer_types == types)) {
       return fory::Unexpected(
@@ -417,6 +548,61 @@ fory::Result<void, fory::Error> RunRoundTrip() {
     }
     FORY_TRY(peer_bytes, fory.serialize(peer_types));
     FORY_RETURN_IF_ERROR(WriteFile(primitive_file, peer_bytes));
+  }
+
+  const char *collection_file = std::getenv("DATA_FILE_COLLECTION");
+  if (collection_file != nullptr && collection_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(collection_file));
+    FORY_TRY(peer_collections, fory.deserialize<collection::NumericCollections>(
+                                   payload.data(), payload.size()));
+    if (!(peer_collections == collections)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer collection payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_collections));
+    FORY_RETURN_IF_ERROR(WriteFile(collection_file, peer_bytes));
+  }
+
+  const char *collection_union_file = std::getenv("DATA_FILE_COLLECTION_UNION");
+  if (collection_union_file != nullptr && collection_union_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(collection_union_file));
+    FORY_TRY(peer_union, fory.deserialize<collection::NumericCollectionUnion>(
+                             payload.data(), payload.size()));
+    if (!(peer_union == collection_union)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer collection union payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_union));
+    FORY_RETURN_IF_ERROR(WriteFile(collection_union_file, peer_bytes));
+  }
+
+  const char *collection_array_file = std::getenv("DATA_FILE_COLLECTION_ARRAY");
+  if (collection_array_file != nullptr && collection_array_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(collection_array_file));
+    FORY_TRY(peer_array, fory.deserialize<collection::NumericCollectionsArray>(
+                             payload.data(), payload.size()));
+    if (!(peer_array == collections_array)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer collection array payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_array));
+    FORY_RETURN_IF_ERROR(WriteFile(collection_array_file, peer_bytes));
+  }
+
+  const char *collection_array_union_file =
+      std::getenv("DATA_FILE_COLLECTION_ARRAY_UNION");
+  if (collection_array_union_file != nullptr &&
+      collection_array_union_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(collection_array_union_file));
+    FORY_TRY(peer_array_union,
+             fory.deserialize<collection::NumericCollectionArrayUnion>(
+                 payload.data(), payload.size()));
+    if (!(peer_array_union == collection_array_union)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer collection array union payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_array_union));
+    FORY_RETURN_IF_ERROR(WriteFile(collection_array_union_file, peer_bytes));
   }
 
   const char *monster_file = std::getenv("DATA_FILE_FLATBUFFERS_MONSTER");
@@ -460,11 +646,12 @@ fory::Result<void, fory::Error> RunRoundTrip() {
 
   auto ref_fory = fory::serialization::Fory::builder()
                       .xlang(true)
-                      .check_struct_version(true)
+                      .compatible(compatible)
+                      .check_struct_version(!compatible)
                       .track_ref(true)
                       .build();
-  tree::RegisterTypes(ref_fory);
-  graph::RegisterTypes(ref_fory);
+  tree::register_types(ref_fory);
+  graph::register_types(ref_fory);
 
   tree::TreeNode tree_root = BuildTree();
   FORY_TRY(tree_bytes, ref_fory.serialize(tree_root));
@@ -501,10 +688,52 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   return fory::Result<void, fory::Error>();
 }
 
+bool ParseCompatibleMode(const char *value, bool *compatible) {
+  if (value == nullptr || value[0] == '\0') {
+    return false;
+  }
+  std::string normalized(value);
+  for (char &ch : normalized) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  if (normalized == "1" || normalized == "true" || normalized == "yes") {
+    *compatible = true;
+    return true;
+  }
+  if (normalized == "0" || normalized == "false" || normalized == "no") {
+    *compatible = false;
+    return true;
+  }
+  return false;
+}
+
 } // namespace
 
 int main() {
-  auto result = RunRoundTrip();
+  const char *compat_env = std::getenv("IDL_COMPATIBLE");
+  bool compatible = false;
+  if (compat_env != nullptr && compat_env[0] != '\0') {
+    if (!ParseCompatibleMode(compat_env, &compatible)) {
+      std::cerr << "Unsupported IDL_COMPATIBLE value: " << compat_env
+                << std::endl;
+      return 1;
+    }
+    auto result = RunRoundTrip(compatible);
+    if (!result.ok()) {
+      std::cerr << "IDL roundtrip failed: " << result.error().message()
+                << std::endl;
+      return 1;
+    }
+    return 0;
+  }
+
+  auto result = RunRoundTrip(false);
+  if (!result.ok()) {
+    std::cerr << "IDL roundtrip failed: " << result.error().message()
+              << std::endl;
+    return 1;
+  }
+  result = RunRoundTrip(true);
   if (!result.ok()) {
     std::cerr << "IDL roundtrip failed: " << result.error().message()
               << std::endl;

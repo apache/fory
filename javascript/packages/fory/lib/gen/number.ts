@@ -33,20 +33,16 @@ function buildNumberSerializer(writeFun: (builder: CodecBuilder, accessor: strin
       this.typeInfo = typeInfo;
     }
 
-    writeStmt(accessor: string): string {
+    write(accessor: string): string {
       return writeFun(this.builder, accessor);
     }
 
-    readStmt(accessor: (expr: string) => string): string {
+    read(accessor: (expr: string) => string): string {
       return accessor(read(this.builder));
     }
 
     getFixedSize(): number {
       return 11;
-    }
-
-    needToWriteRef(): boolean {
-      return false;
     }
   };
 }

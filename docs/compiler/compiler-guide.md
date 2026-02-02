@@ -33,7 +33,7 @@ pip install -e .
 ### Verify Installation
 
 ```bash
-fory compile --help
+foryc --help
 ```
 
 ## Command Line Interface
@@ -41,7 +41,11 @@ fory compile --help
 ### Basic Usage
 
 ```bash
-fory compile [OPTIONS] FILES...
+foryc [OPTIONS] FILES...
+```
+
+```bash
+foryc --scan-generated [OPTIONS]
 ```
 
 ### Options
@@ -59,68 +63,91 @@ fory compile [OPTIONS] FILES...
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
 | `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | (none)        |
 
+### Scan Generated Files
+
+Use `--scan-generated` to find files produced by the Fory compiler. The scanner walks
+the tree recursively, skips `build/`, `target/`, and hidden directories, and prints
+each generated file as it is found.
+
+```bash
+# Scan current directory
+foryc --scan-generated
+
+# Scan a specific root
+foryc --scan-generated --root ./src
+
+# Print paths relative to the scan root
+foryc --scan-generated --root ./src --relative
+
+# Delete scanned generated files
+foryc --scan-generated --root ./src --delete
+
+# Dry-run (scan and print only)
+foryc --scan-generated --root ./src --dry-run
+```
+
 ### Examples
 
 **Compile for all languages:**
 
 ```bash
-fory compile schema.fdl
+foryc schema.fdl
 ```
 
 **Compile for specific languages:**
 
 ```bash
-fory compile schema.fdl --lang java,python
+foryc schema.fdl --lang java,python
 ```
 
 **Specify output directory:**
 
 ```bash
-fory compile schema.fdl --output ./src/generated
+foryc schema.fdl --output ./src/generated
 ```
 
 **Override package name:**
 
 ```bash
-fory compile schema.fdl --package com.myapp.models
+foryc schema.fdl --package com.myapp.models
 ```
 
 **Compile multiple files:**
 
 ```bash
-fory compile user.fdl order.fdl product.fdl --output ./generated
+foryc user.fdl order.fdl product.fdl --output ./generated
 ```
 
 **Use import search paths:**
 
 ```bash
 # Add a single import path
-fory compile src/main.fdl -I libs/common
+foryc src/main.fdl -I libs/common
 
 # Add multiple import paths (repeated option)
-fory compile src/main.fdl -I libs/common -I libs/types
+foryc src/main.fdl -I libs/common -I libs/types
 
 # Add multiple import paths (comma-separated)
-fory compile src/main.fdl -I libs/common,libs/types,third_party/
+foryc src/main.fdl -I libs/common,libs/types,third_party/
 
 # Using --proto_path (protoc-compatible alias)
-fory compile src/main.fdl --proto_path=libs/common
+foryc src/main.fdl --proto_path=libs/common
 
 # Mix all styles
-fory compile src/main.fdl -I libs/common,libs/types --proto_path third_party/
+foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 ```
 
 **Language-specific output directories (protoc-style):**
 
 ```bash
 # Generate only Java code to a specific directory
-fory compile schema.fdl --java_out=./src/main/java
+foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-fory compile schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen
 
 # Combine with import paths
-fory compile schema.fdl --java_out=./gen/java -I proto/ -I common/
+foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
 ```
 
 When using `--{lang}_out` options:
@@ -145,7 +172,7 @@ import "common.fdl";  // Found if common.fdl is in the same directory
 
 ```bash
 # No -I needed for same-directory imports
-fory compile main.fdl
+foryc main.fdl
 ```
 
 **Example project structure:**
@@ -161,7 +188,7 @@ project/
 **Without `-I` (fails):**
 
 ```bash
-$ fory compile src/main.fdl
+$ foryc src/main.fdl
 Import error: Import not found: common.fdl
   Searched in: /project/src
 ```
@@ -169,7 +196,7 @@ Import error: Import not found: common.fdl
 **With `-I` (succeeds):**
 
 ```bash
-$ fory compile src/main.fdl -I libs/
+$ foryc src/main.fdl -I libs/
 Compiling src/main.fdl...
   Resolved 1 import(s)
 ```
@@ -370,7 +397,7 @@ setup(
 Add to your Go file:
 
 ```go
-//go:generate fory compile ../schema.fdl --lang go --output .
+//go:generate foryc ../schema.fdl --lang go --output .
 package models
 ```
 
@@ -526,7 +553,7 @@ steps:
     run: pip install ./compiler
 
   - name: Generate Types
-    run: fory compile fdl/*.fdl --output src/generated
+    run: foryc fdl/*.fdl --output src/generated
 
   - name: Build
     run: ./gradlew build

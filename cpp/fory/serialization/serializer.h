@@ -45,7 +45,7 @@ namespace serialization {
 /// Example usage:
 /// ```cpp
 /// Error error;
-/// int32_t value = buffer.ReadVarInt32(error);
+/// int32_t value = buffer.read_var_int32(error);
 /// FORY_RETURN_IF_SERDE_ERROR(error);
 /// // Use value...
 /// ```
@@ -109,18 +109,18 @@ inline Result<HeaderInfo, Error> read_header(Buffer &buffer) {
   uint32_t start_pos = buffer.reader_index();
 
   // Read flags byte
-  uint8_t flags = buffer.GetByteAs<uint8_t>(start_pos);
+  uint8_t flags = buffer.get_byte_as<uint8_t>(start_pos);
   info.is_null = (flags & (1 << 0)) != 0;
   info.is_xlang = (flags & (1 << 1)) != 0;
   info.is_oob = (flags & (1 << 2)) != 0;
 
   // Update reader index (1 byte consumed: flags)
-  buffer.IncreaseReaderIndex(1);
+  buffer.increase_reader_index(1);
 
   // Language byte after header in xlang mode
   if (info.is_xlang) {
     Error error;
-    uint8_t lang_byte = buffer.ReadUint8(error);
+    uint8_t lang_byte = buffer.read_uint8(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
@@ -139,7 +139,7 @@ inline Result<HeaderInfo, Error> read_header(Buffer &buffer) {
 // Reference Metadata Helpers
 // ============================================================================
 
-/// Write ref flag for NullOnly mode (not null case).
+/// write ref flag for NullOnly mode (not null case).
 /// Fast path: primitives, strings, time types use this.
 FORY_ALWAYS_INLINE void write_not_null_ref_flag(WriteContext &ctx,
                                                 RefMode ref_mode) {
@@ -169,7 +169,7 @@ FORY_ALWAYS_INLINE bool read_null_only_flag(ReadContext &ctx,
     return true;
   }
   if (flag == REF_FLAG) {
-    uint32_t ref_id = ctx.read_varuint32(ctx.error());
+    uint32_t ref_id = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return false;
     }

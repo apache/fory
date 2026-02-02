@@ -185,7 +185,7 @@ public:
   // Configuration Access
   // ==========================================================================
 
-  /// Get reference to the serialization configuration.
+  /// get reference to the serialization configuration.
   ///
   /// The configuration contains settings like xlang mode, compatible mode,
   /// reference tracking, etc.
@@ -472,7 +472,7 @@ public:
     std::swap(buffer, write_ctx_->buffer());
     auto result = serialize_impl(obj, write_ctx_->buffer());
     std::swap(buffer, write_ctx_->buffer());
-    // Reset internal state after use without clobbering caller buffer.
+    // reset internal state after use without clobbering caller buffer.
     write_ctx_->reset();
     return result;
   }
@@ -638,10 +638,10 @@ private:
   Result<size_t, Error> serialize_impl(const T &obj, Buffer &buffer) {
     size_t start_pos = buffer.writer_index();
 
-    // Write precomputed header (2 bytes), then adjust index if not xlang
-    buffer.Grow(2);
-    buffer.UnsafePut<uint16_t>(buffer.writer_index(), precomputed_header_);
-    buffer.IncreaseWriterIndex(header_length_);
+    // write precomputed header (2 bytes), then adjust index if not xlang
+    buffer.grow(2);
+    buffer.unsafe_put<uint16_t>(buffer.writer_index(), precomputed_header_);
+    buffer.increase_writer_index(header_length_);
 
     // Top-level serialization: use Tracking if ref tracking is enabled,
     // otherwise NullOnly for nullable handling

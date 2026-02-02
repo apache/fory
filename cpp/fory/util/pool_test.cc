@@ -100,13 +100,13 @@ TEST(PoolTest, ConcurrentBorrow) {
     return std::make_unique<size_t>(0);
   });
 
-  constexpr size_t kThreads = 8;
-  constexpr size_t kIterations = 256;
+  constexpr size_t k_threads = 8;
+  constexpr size_t k_iterations = 256;
   std::vector<std::thread> threads;
-  threads.reserve(kThreads);
+  threads.reserve(k_threads);
 
-  for (size_t t = 0; t < kThreads; ++t) {
-    threads.emplace_back([&pool, iterations = kIterations]() {
+  for (size_t t = 0; t < k_threads; ++t) {
+    threads.emplace_back([&pool, iterations = k_iterations]() {
       for (size_t i = 0; i < iterations; ++i) {
         auto value = pool.acquire();
         (*value)++;
@@ -119,7 +119,7 @@ TEST(PoolTest, ConcurrentBorrow) {
   }
 
   // Only a bounded number of items should be created even under contention.
-  EXPECT_LE(created.load(std::memory_order_relaxed), kThreads);
+  EXPECT_LE(created.load(std::memory_order_relaxed), k_threads);
 }
 
 } // namespace

@@ -76,15 +76,15 @@ public:
 
   virtual std::string name() const = 0;
 
-  virtual std::string ToString() const { return name(); }
+  virtual std::string to_string() const { return name(); }
 
-  virtual bool Equals(const DataType &other) const { return id_ == other.id_; }
+  virtual bool equals(const DataType &other) const { return id_ == other.id_; }
 
-  bool Equals(const DataTypePtr &other) const {
+  bool equals(const DataTypePtr &other) const {
     if (!other) {
       return false;
     }
-    return Equals(*other);
+    return equals(*other);
   }
 
   virtual int num_fields() const { return 0; }
@@ -212,7 +212,7 @@ public:
 
   std::string name() const override { return "decimal"; }
 
-  std::string ToString() const override {
+  std::string to_string() const override {
     return "decimal(" + std::to_string(precision_) + ", " +
            std::to_string(scale_) + ")";
   }
@@ -243,20 +243,20 @@ public:
     return metadata_;
   }
 
-  std::string ToString() const {
-    return name_ + ": " + type_->ToString() + (nullable_ ? "" : " not null");
+  std::string to_string() const {
+    return name_ + ": " + type_->to_string() + (nullable_ ? "" : " not null");
   }
 
-  bool Equals(const Field &other) const {
-    return name_ == other.name_ && type_->Equals(*other.type_) &&
+  bool equals(const Field &other) const {
+    return name_ == other.name_ && type_->equals(*other.type_) &&
            nullable_ == other.nullable_;
   }
 
-  bool Equals(const FieldPtr &other) const {
+  bool equals(const FieldPtr &other) const {
     if (!other) {
       return false;
     }
-    return Equals(*other);
+    return equals(*other);
   }
 
 private:
@@ -278,8 +278,8 @@ public:
 
   std::string name() const override { return "list"; }
 
-  std::string ToString() const override {
-    return "list<" + value_field_->type()->ToString() + ">";
+  std::string to_string() const override {
+    return "list<" + value_field_->type()->to_string() + ">";
   }
 
   const DataTypePtr &value_type() const { return value_field_->type(); }
@@ -297,12 +297,12 @@ public:
 
   std::vector<FieldPtr> fields() const override { return {value_field_}; }
 
-  bool Equals(const DataType &other) const override {
-    if (!DataType::Equals(other)) {
+  bool equals(const DataType &other) const override {
+    if (!DataType::equals(other)) {
       return false;
     }
     const auto &other_list = static_cast<const ListType &>(other);
-    return value_field_->type()->Equals(other_list.value_field_->type());
+    return value_field_->type()->equals(other_list.value_field_->type());
   }
 
 private:
@@ -321,13 +321,13 @@ public:
 
   std::string name() const override { return "struct"; }
 
-  std::string ToString() const override {
+  std::string to_string() const override {
     std::string result = "struct<";
     for (size_t i = 0; i < fields_.size(); ++i) {
       if (i > 0) {
         result += ", ";
       }
-      result += fields_[i]->ToString();
+      result += fields_[i]->to_string();
     }
     result += ">";
     return result;
@@ -344,7 +344,7 @@ public:
 
   std::vector<FieldPtr> fields() const override { return fields_; }
 
-  FieldPtr GetFieldByName(const std::string &name) const {
+  FieldPtr get_field_by_name(const std::string &name) const {
     auto it = name_to_index_.find(name);
     if (it != name_to_index_.end()) {
       return fields_[it->second];
@@ -352,7 +352,7 @@ public:
     return nullptr;
   }
 
-  int GetFieldIndex(const std::string &name) const {
+  int get_field_index(const std::string &name) const {
     auto it = name_to_index_.find(name);
     if (it != name_to_index_.end()) {
       return it->second;
@@ -360,8 +360,8 @@ public:
     return -1;
   }
 
-  bool Equals(const DataType &other) const override {
-    if (!DataType::Equals(other)) {
+  bool equals(const DataType &other) const override {
+    if (!DataType::equals(other)) {
       return false;
     }
     const auto &other_struct = static_cast<const StructType &>(other);
@@ -369,7 +369,7 @@ public:
       return false;
     }
     for (size_t i = 0; i < fields_.size(); ++i) {
-      if (!fields_[i]->Equals(other_struct.fields_[i])) {
+      if (!fields_[i]->equals(other_struct.fields_[i])) {
         return false;
       }
     }
@@ -393,9 +393,9 @@ public:
 
   std::string name() const override { return "map"; }
 
-  std::string ToString() const override {
-    return "map<" + key_field_->type()->ToString() + ", " +
-           item_field_->type()->ToString() + ">";
+  std::string to_string() const override {
+    return "map<" + key_field_->type()->to_string() + ", " +
+           item_field_->type()->to_string() + ">";
   }
 
   const DataTypePtr &key_type() const { return key_field_->type(); }
@@ -424,13 +424,13 @@ public:
     return {key_field_, item_field_};
   }
 
-  bool Equals(const DataType &other) const override {
-    if (!DataType::Equals(other)) {
+  bool equals(const DataType &other) const override {
+    if (!DataType::equals(other)) {
       return false;
     }
     const auto &other_map = static_cast<const MapType &>(other);
-    return key_field_->type()->Equals(other_map.key_field_->type()) &&
-           item_field_->type()->Equals(other_map.item_field_->type());
+    return key_field_->type()->equals(other_map.key_field_->type()) &&
+           item_field_->type()->equals(other_map.item_field_->type());
   }
 
 private:
@@ -470,7 +470,7 @@ public:
     return names;
   }
 
-  FieldPtr GetFieldByName(const std::string &name) const {
+  FieldPtr get_field_by_name(const std::string &name) const {
     auto it = name_to_index_.find(name);
     if (it != name_to_index_.end()) {
       return fields_[it->second];
@@ -478,7 +478,7 @@ public:
     return nullptr;
   }
 
-  int GetFieldIndex(const std::string &name) const {
+  int get_field_index(const std::string &name) const {
     auto it = name_to_index_.find(name);
     if (it != name_to_index_.end()) {
       return it->second;
@@ -490,47 +490,47 @@ public:
     return metadata_;
   }
 
-  std::string ToString() const {
+  std::string to_string() const {
     std::string result;
     for (size_t i = 0; i < fields_.size(); ++i) {
       if (i > 0) {
         result += "\n";
       }
-      result += fields_[i]->ToString();
+      result += fields_[i]->to_string();
     }
     return result;
   }
 
-  bool Equals(const Schema &other) const {
+  bool equals(const Schema &other) const {
     if (fields_.size() != other.fields_.size()) {
       return false;
     }
     for (size_t i = 0; i < fields_.size(); ++i) {
-      if (!fields_[i]->Equals(other.fields_[i])) {
+      if (!fields_[i]->equals(other.fields_[i])) {
         return false;
       }
     }
     return true;
   }
 
-  bool Equals(const SchemaPtr &other) const {
+  bool equals(const SchemaPtr &other) const {
     if (!other) {
       return false;
     }
-    return Equals(*other);
+    return equals(*other);
   }
 
   /// Serialize this schema to a byte vector.
-  std::vector<uint8_t> ToBytes() const;
+  std::vector<uint8_t> to_bytes() const;
 
   /// Serialize this schema to a Buffer.
-  void ToBytes(Buffer &buffer) const;
+  void to_bytes(Buffer &buffer) const;
 
   /// Deserialize a schema from a byte vector.
-  static SchemaPtr FromBytes(const std::vector<uint8_t> &bytes);
+  static SchemaPtr from_bytes(const std::vector<uint8_t> &bytes);
 
   /// Deserialize a schema from a Buffer.
-  static SchemaPtr FromBytes(Buffer &buffer);
+  static SchemaPtr from_bytes(Buffer &buffer);
 
 private:
   std::vector<FieldPtr> fields_;

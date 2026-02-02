@@ -20,6 +20,7 @@ package fory
 import (
 	"testing"
 
+	"github.com/apache/fory/go/fory/float16"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -128,5 +129,24 @@ func TestArraySliceInteroperability(t *testing.T) {
 		// Serialized as list with len 2. Array expects 3.
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "array length")
+	})
+}
+
+func TestFloat16Array(t *testing.T) {
+	f := NewFory()
+
+	t.Run("float16_array", func(t *testing.T) {
+		arr := [3]float16.Float16{
+			float16.Float16FromFloat32(1.0),
+			float16.Float16FromFloat32(2.5),
+			float16.Float16FromFloat32(-0.5),
+		}
+		data, err := f.Serialize(arr)
+		assert.NoError(t, err)
+
+		var result [3]float16.Float16
+		err = f.Deserialize(data, &result)
+		assert.NoError(t, err)
+		assert.Equal(t, arr, result)
 	})
 }

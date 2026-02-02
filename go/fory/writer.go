@@ -159,25 +159,25 @@ func (c *WriteContext) RawFloat32(v float32)    { c.buffer.WriteFloat32(v) }
 func (c *WriteContext) RawFloat64(v float64)    { c.buffer.WriteFloat64(v) }
 func (c *WriteContext) WriteVarint32(v int32)   { c.buffer.WriteVarint32(v) }
 func (c *WriteContext) WriteVarint64(v int64)   { c.buffer.WriteVarint64(v) }
-func (c *WriteContext) WriteVaruint32(v uint32) { c.buffer.WriteVaruint32(v) }
+func (c *WriteContext) WriteVarUint32(v uint32) { c.buffer.WriteVarUint32(v) }
 func (c *WriteContext) WriteByte(v byte)        { c.buffer.WriteByte_(v) }
 func (c *WriteContext) WriteBytes(v []byte)     { c.buffer.WriteBinary(v) }
 
 func (c *WriteContext) RawString(v string) {
-	c.buffer.WriteVaruint32(uint32(len(v)))
+	c.buffer.WriteVarUint32(uint32(len(v)))
 	if len(v) > 0 {
 		c.buffer.WriteBinary(unsafe.Slice(unsafe.StringData(v), len(v)))
 	}
 }
 
 func (c *WriteContext) WriteBinary(v []byte) {
-	c.buffer.WriteVaruint32(uint32(len(v)))
+	c.buffer.WriteVarUint32(uint32(len(v)))
 	c.buffer.WriteBinary(v)
 }
 
 func (c *WriteContext) WriteTypeId(id TypeId) {
-	// Use Varuint32Small7 encoding to match Java's xlang serialization
-	c.buffer.WriteVaruint32Small7(uint32(id))
+	// Use VarUint32Small7 encoding to match Java's xlang serialization
+	c.buffer.WriteVarUint32Small7(uint32(id))
 }
 
 // writeFast writes a value using fast path based on DispatchId
@@ -203,6 +203,9 @@ func (c *WriteContext) writeFast(ptr unsafe.Pointer, ct DispatchId) {
 		c.buffer.WriteFloat32(*(*float32)(ptr))
 	case PrimitiveFloat64DispatchId:
 		c.buffer.WriteFloat64(*(*float64)(ptr))
+	case PrimitiveFloat16DispatchId:
+		// Float16 is uint16 in Go
+		c.buffer.WriteUint16(*(*uint16)(ptr))
 	case StringDispatchId:
 		writeString(c.buffer, *(*string)(ptr))
 	}
@@ -214,7 +217,7 @@ func (c *WriteContext) WriteLength(length int) {
 		c.SetError(SerializationErrorf("length %d exceeds int32 range", length))
 		return
 	}
-	c.buffer.WriteVaruint32(uint32(length))
+	c.buffer.WriteVarUint32(uint32(length))
 }
 
 // ============================================================================
@@ -302,6 +305,51 @@ func (c *WriteContext) WriteInt64Slice(value []int64, refMode RefMode, writeType
 		c.WriteTypeId(INT64_ARRAY)
 	}
 	WriteInt64Slice(c.buffer, value)
+}
+
+// WriteUint16Slice writes []uint16 with ref/type info
+func (c *WriteContext) WriteUint16Slice(value []uint16, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT16_ARRAY)
+	}
+	WriteUint16Slice(c.buffer, value)
+}
+
+// WriteUint32Slice writes []uint32 with ref/type info
+func (c *WriteContext) WriteUint32Slice(value []uint32, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT32_ARRAY)
+	}
+	WriteUint32Slice(c.buffer, value)
+}
+
+// WriteUint64Slice writes []uint64 with ref/type info
+func (c *WriteContext) WriteUint64Slice(value []uint64, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT64_ARRAY)
+	}
+	WriteUint64Slice(c.buffer, value)
 }
 
 // WriteIntSlice writes []int with ref/type info

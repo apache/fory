@@ -203,10 +203,10 @@ class VarUint32Serializer(XlangCompatibleSerializer):
     """Serializer for VAR_UINT32 type - variable-length encoded unsigned 32-bit integer."""
 
     def write(self, buffer, value):
-        buffer.write_varuint32(value)
+        buffer.write_var_uint32(value)
 
     def read(self, buffer):
-        return buffer.read_varuint32()
+        return buffer.read_var_uint32()
 
 
 class Uint64Serializer(XlangCompatibleSerializer):
@@ -223,10 +223,10 @@ class VarUint64Serializer(XlangCompatibleSerializer):
     """Serializer for VAR_UINT64 type - variable-length encoded unsigned 64-bit integer."""
 
     def write(self, buffer, value):
-        buffer.write_varuint64(value)
+        buffer.write_var_uint64(value)
 
     def read(self, buffer):
-        return buffer.read_varuint64()
+        return buffer.read_var_uint64()
 
 
 class TaggedUint64Serializer(XlangCompatibleSerializer):
@@ -328,10 +328,10 @@ class EnumSerializer(Serializer):
         return getattr(self.type_, name)
 
     def xwrite(self, buffer, value):
-        buffer.write_varuint32(value.value)
+        buffer.write_var_uint32(value.value)
 
     def xread(self, buffer):
-        ordinal = buffer.read_varuint32()
+        ordinal = buffer.read_var_uint32()
         return self.type_(ordinal)
 
 

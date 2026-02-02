@@ -29,7 +29,7 @@ import (
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -50,8 +50,8 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 			// Write type info for generic reader compatibility
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(STRING)) // key type
-			buf.WriteVaruint32Small7(uint32(STRING)) // value type
+			buf.WriteVarUint32Small7(uint32(STRING)) // key type
+			buf.WriteVarUint32Small7(uint32(STRING)) // value type
 		}
 
 		// WriteData chunk entries
@@ -70,7 +70,7 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 
 // readMapStringString reads map[string]string using chunk protocol
 func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[string]string, size)
 	if size == 0 {
 		return result
@@ -92,7 +92,7 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 			// Null key with non-null value
 			valueDeclared := (chunkHeader & VALUE_DECL_TYPE) != 0
 			if !valueDeclared {
-				buf.ReadVaruint32Small7(err) // skip value type
+				buf.ReadVarUint32Small7(err) // skip value type
 			}
 			v := readString(buf, err)
 			result[""] = v // empty string as null key
@@ -102,7 +102,7 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 			// Non-null key with null value
 			keyDeclared := (chunkHeader & KEY_DECL_TYPE) != 0
 			if !keyDeclared {
-				buf.ReadVaruint32Small7(err) // skip key type
+				buf.ReadVarUint32Small7(err) // skip key type
 			}
 			k := readString(buf, err)
 			result[k] = "" // empty string as null value
@@ -115,10 +115,10 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 
 		// Read type info if not DECL_TYPE
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err) // skip key type
+			buf.ReadVarUint32Small7(err) // skip key type
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err) // skip value type
+			buf.ReadVarUint32Small7(err) // skip value type
 		}
 
 		// ReadData chunk entries
@@ -136,7 +136,7 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -154,8 +154,8 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(STRING))   // key type
-			buf.WriteVaruint32Small7(uint32(VARINT64)) // value type
+			buf.WriteVarUint32Small7(uint32(STRING))   // key type
+			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type
 		}
 
 		count := 0
@@ -173,7 +173,7 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 
 // readMapStringInt64 reads map[string]int64 using chunk protocol
 func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[string]int64, size)
 	if size == 0 {
 		return result
@@ -191,10 +191,10 @@ func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -210,7 +210,7 @@ func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -228,8 +228,8 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(STRING))   // key type
-			buf.WriteVaruint32Small7(uint32(VARINT32)) // value type
+			buf.WriteVarUint32Small7(uint32(STRING))   // key type
+			buf.WriteVarUint32Small7(uint32(VARINT32)) // value type
 		}
 
 		count := 0
@@ -247,7 +247,7 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 
 // readMapStringInt32 reads map[string]int32 using chunk protocol
 func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[string]int32, size)
 	if size == 0 {
 		return result
@@ -265,10 +265,10 @@ func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -284,7 +284,7 @@ func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -302,8 +302,8 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(STRING))   // key type
-			buf.WriteVaruint32Small7(uint32(VARINT64)) // value type (int serialized as varint64)
+			buf.WriteVarUint32Small7(uint32(STRING))   // key type
+			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type (int serialized as varint64)
 		}
 
 		count := 0
@@ -321,7 +321,7 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 
 // readMapStringInt reads map[string]int using chunk protocol
 func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[string]int, size)
 	if size == 0 {
 		return result
@@ -339,10 +339,10 @@ func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -358,7 +358,7 @@ func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -376,8 +376,8 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(STRING))  // key type
-			buf.WriteVaruint32Small7(uint32(FLOAT64)) // value type
+			buf.WriteVarUint32Small7(uint32(STRING))  // key type
+			buf.WriteVarUint32Small7(uint32(FLOAT64)) // value type
 		}
 
 		count := 0
@@ -395,7 +395,7 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 
 // readMapStringFloat64 reads map[string]float64 using chunk protocol
 func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[string]float64, size)
 	if size == 0 {
 		return result
@@ -413,10 +413,10 @@ func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -432,7 +432,7 @@ func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -450,8 +450,8 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(STRING)) // key type
-			buf.WriteVaruint32Small7(uint32(BOOL))   // value type
+			buf.WriteVarUint32Small7(uint32(STRING)) // key type
+			buf.WriteVarUint32Small7(uint32(BOOL))   // value type
 		}
 
 		count := 0
@@ -469,7 +469,7 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 
 // readMapStringBool reads map[string]bool using chunk protocol
 func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[string]bool, size)
 	if size == 0 {
 		return result
@@ -491,10 +491,10 @@ func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
 		keyDeclType := (chunkHeader & KEY_DECL_TYPE) != 0
 		valDeclType := (chunkHeader & VALUE_DECL_TYPE) != 0
 		if !keyDeclType {
-			buf.ReadVaruint32Small7(err) // skip key type info
+			buf.ReadVarUint32Small7(err) // skip key type info
 		}
 		if !valDeclType {
-			buf.ReadVaruint32Small7(err) // skip value type info
+			buf.ReadVarUint32Small7(err) // skip value type info
 		}
 
 		for i := 0; i < chunkSize && size > 0; i++ {
@@ -511,7 +511,7 @@ func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -529,8 +529,8 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(VARINT32)) // key type
-			buf.WriteVaruint32Small7(uint32(VARINT32)) // value type
+			buf.WriteVarUint32Small7(uint32(VARINT32)) // key type
+			buf.WriteVarUint32Small7(uint32(VARINT32)) // value type
 		}
 
 		count := 0
@@ -548,7 +548,7 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 
 // readMapInt32Int32 reads map[int32]int32 using chunk protocol
 func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[int32]int32, size)
 	if size == 0 {
 		return result
@@ -566,10 +566,10 @@ func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := buf.ReadVarint32(err)
@@ -585,7 +585,7 @@ func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -603,8 +603,8 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(VARINT64)) // key type
-			buf.WriteVaruint32Small7(uint32(VARINT64)) // value type
+			buf.WriteVarUint32Small7(uint32(VARINT64)) // key type
+			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type
 		}
 
 		count := 0
@@ -622,7 +622,7 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 
 // readMapInt64Int64 reads map[int64]int64 using chunk protocol
 func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[int64]int64, size)
 	if size == 0 {
 		return result
@@ -640,10 +640,10 @@ func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := buf.ReadVarint64(err)
@@ -659,7 +659,7 @@ func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 	length := len(m)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -677,8 +677,8 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVaruint32Small7(uint32(VARINT64)) // key type (int serialized as varint64)
-			buf.WriteVaruint32Small7(uint32(VARINT64)) // value type
+			buf.WriteVarUint32Small7(uint32(VARINT64)) // key type (int serialized as varint64)
+			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type
 		}
 
 		count := 0
@@ -696,7 +696,7 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 
 // readMapIntInt reads map[int]int using chunk protocol
 func readMapIntInt(buf *ByteBuffer, err *Error) map[int]int {
-	size := int(buf.ReadVaruint32(err))
+	size := int(buf.ReadVarUint32(err))
 	result := make(map[int]int, size)
 	if size == 0 {
 		return result
@@ -714,10 +714,10 @@ func readMapIntInt(buf *ByteBuffer, err *Error) map[int]int {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVaruint32Small7(err)
+			buf.ReadVarUint32Small7(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := buf.ReadVarint64(err)

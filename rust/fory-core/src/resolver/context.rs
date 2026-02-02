@@ -227,7 +227,7 @@ impl<'a> WriteContext<'a> {
         concrete_type_id: std::any::TypeId,
     ) -> Result<Rc<TypeInfo>, Error> {
         if types::is_internal_type(fory_type_id) {
-            self.writer.write_varuint32(fory_type_id);
+            self.writer.write_var_uint32(fory_type_id);
             return self
                 .type_resolver
                 .get_type_info_by_id(fory_type_id)
@@ -237,7 +237,7 @@ impl<'a> WriteContext<'a> {
         let fory_type_id = type_info.get_type_id();
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
-        self.writer.write_varuint32(fory_type_id);
+        self.writer.write_var_uint32(fory_type_id);
         // should be compiled to jump table generation
         match fory_type_id & 0xff {
             types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {

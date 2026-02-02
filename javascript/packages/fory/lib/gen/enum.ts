@@ -32,52 +32,100 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = <EnumTypeInfo>typeInfo;
   }
 
-  writeStmt(accessor: string): string {
+  write(accessor: string): string {
     if (Object.values(this.typeInfo.options.inner).length < 1) {
       throw new Error("An enum must contain at least one field");
     }
     return `
         ${Object.values(this.typeInfo.options.inner).map((value, index) => {
-            if (typeof value !== "string" && typeof value !== "number") {
-                throw new Error("Enum value must be string or number");
-            }
-            if (typeof value === "number") {
-                if (value > MaxUInt32 || value < 0) {
-                    throw new Error("Enum value must be a valid uint32");
-                }
-            }
-            const safeValue = typeof value === "string" ? `"${value}"` : value;
-            return ` if (${accessor} === ${safeValue}) {
+      if (typeof value !== "string" && typeof value !== "number") {
+        throw new Error("Enum value must be string or number");
+      }
+      if (typeof value === "number") {
+        if (value > MaxUInt32 || value < 0) {
+          throw new Error("Enum value must be a valid uint32");
+        }
+      }
+      const safeValue = typeof value === "string" ? `"${value}"` : value;
+      return ` if (${accessor} === ${safeValue}) {
                     ${this.builder.writer.varUInt32(index)}
                 }`;
-        }).join(" else ")}
+    }).join(" else ")}
         else {
             throw new Error("Enum received an unexpected value: " + ${accessor});
         }
     `;
   }
 
-  readStmt(accessor: (expr: string) => string): string {
+  readClassInfo(): string {
+    return `
+      ${
+      // skip the typeId
+      this.builder.reader.readVarUint32Small7()
+      }
+
+      ${
+        TypeId.isNamedType(this.getTypeId())
+        ? `
+          ${
+            // skip the namespace
+            this.builder.metaStringResolver.readNamespace(this.builder.reader.ownName())
+          }
+
+          ${
+          // skip the namespace
+          this.builder.metaStringResolver.readTypeName(this.builder.reader.ownName())
+          }
+        `
+        : ""}
+    `;
+  }
+
+  writeClassInfo(): string {
+    const internalTypeId = this.getInternalTypeId();
+    let typeMeta = "";
+    switch (internalTypeId) {
+      case TypeId.NAMED_ENUM:
+        {
+          const typeInfo = this.typeInfo.castToStruct();
+          const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
+          const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
+          typeMeta = `
+              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
+              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
+            `;
+        }
+        break;
+      default:
+        break;
+    }
+    return ` 
+        ${this.builder.writer.writeVarUint32Small7(this.getTypeId())};
+        ${typeMeta}
+      `;
+  }
+
+  read(accessor: (expr: string) => string): string {
     const enumValue = this.scope.uniqueName("enum_v");
     return `
         const ${enumValue} = ${this.builder.reader.varUInt32()};
         switch(${enumValue}) {
             ${Object.values(this.typeInfo.options.inner).map((value, index) => {
-                if (typeof value !== "string" && typeof value !== "number") {
-                    throw new Error("Enum value must be string or number");
-                }
-                if (typeof value === "number") {
-                    if (value > MaxUInt32 || value < 0) {
-                        throw new Error("Enum value must be a valid uint32");
-                    }
-                }
-                const safeValue = typeof value === "string" ? `"${value}"` : `${value}`;
-                return `
+      if (typeof value !== "string" && typeof value !== "number") {
+        throw new Error("Enum value must be string or number");
+      }
+      if (typeof value === "number") {
+        if (value > MaxUInt32 || value < 0) {
+          throw new Error("Enum value must be a valid uint32");
+        }
+      }
+      const safeValue = typeof value === "string" ? `"${value}"` : `${value}`;
+      return `
                 case ${index}:
                     ${accessor(safeValue)}
                     break;
                 `;
-            }).join("\n")}
+    }).join("\n")}
             default:
                 throw new Error("Enum received an unexpected value: " + ${enumValue});
         }
@@ -86,10 +134,6 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
 
   getFixedSize(): number {
     return 7;
-  }
-
-  needToWriteRef(): boolean {
-    return false;
   }
 }
 

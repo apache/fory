@@ -535,11 +535,11 @@ class TypeResolver:
             if type_id not in self._type_id_to_typeinfo or not internal:
                 self._type_id_to_typeinfo[type_id] = typeinfo
         self._types_info[cls] = typeinfo
-        # Create TypeDef for NAMED_ENUM and NAMED_EXT when meta_share is enabled
+        # Create TypeDef for named non-struct types when meta_share is enabled
         if self.meta_share and type_id is not None:
             base_type_id = type_id & 0xFF
-            if base_type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT):
-                type_def = encode_typedef(self, cls)
+            if base_type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT, TypeId.NAMED_UNION):
+                type_def = encode_typedef(self, cls, include_fields=is_struct_type(base_type_id))
                 if type_def is not None:
                     typeinfo.type_def = type_def
         return typeinfo
@@ -752,7 +752,7 @@ class TypeResolver:
             return
         type_id = typeinfo.type_id
         internal_type_id = type_id & 0xFF
-        buffer.write_varuint32(type_id)
+        buffer.write_var_uint32(type_id)
         if TypeId.is_namespaced_type(internal_type_id):
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
@@ -762,7 +762,7 @@ class TypeResolver:
         if self.meta_share:
             return self.read_shared_type_meta(buffer)
 
-        type_id = buffer.read_varuint32()
+        type_id = buffer.read_var_uint32()
         internal_type_id = type_id & 0xFF
         if TypeId.is_namespaced_type(internal_type_id):
             ns_metabytes = self.metastring_resolver.read_meta_string_bytes(buffer)

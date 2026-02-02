@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package addressbook
+package idl_test
 
 import (
 	"os"
@@ -25,60 +25,81 @@ import (
 
 	fory "github.com/apache/fory/go/fory"
 	"github.com/apache/fory/go/fory/optional"
+	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
 	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
+	collection "github.com/apache/fory/integration_tests/idl_tests/go/collection"
 	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs"
+	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb"
 	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph"
 	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster"
 	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types"
 	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree"
 )
 
-func buildAddressBook() AddressBook {
-	mobile := Person_PhoneNumber{
+func buildAddressBook() addressbook.AddressBook {
+	mobile := addressbook.Person_PhoneNumber{
 		Number:    "555-0100",
-		PhoneType: Person_PhoneTypeMobile,
+		PhoneType: addressbook.Person_PhoneTypeMobile,
 	}
-	work := Person_PhoneNumber{
+	work := addressbook.Person_PhoneNumber{
 		Number:    "555-0111",
-		PhoneType: Person_PhoneTypeWork,
+		PhoneType: addressbook.Person_PhoneTypeWork,
 	}
 
-	pet := DogAnimal(&Dog{
+	pet := addressbook.DogAnimal(&addressbook.Dog{
 		Name:       "Rex",
 		BarkVolume: 5,
 	})
-	pet = CatAnimal(&Cat{
+	pet = addressbook.CatAnimal(&addressbook.Cat{
 		Name:  "Mimi",
 		Lives: 9,
 	})
 
-	person := Person{
+	person := addressbook.Person{
 		Name:   "Alice",
 		Id:     123,
 		Email:  "alice@example.com",
 		Tags:   []string{"friend", "colleague"},
 		Scores: map[string]int32{"math": 100, "science": 98},
 		Salary: 120000.5,
-		Phones: []Person_PhoneNumber{mobile, work},
+		Phones: []addressbook.Person_PhoneNumber{mobile, work},
 		Pet:    pet,
 	}
 
-	return AddressBook{
-		People:       []Person{person},
-		PeopleByName: map[string]Person{person.Name: person},
+	return addressbook.AddressBook{
+		People:       []addressbook.Person{person},
+		PeopleByName: map[string]addressbook.Person{person.Name: person},
 	}
 }
 
-func TestAddressBookRoundTrip(t *testing.T) {
-	f := fory.NewFory(fory.WithXlang(true), fory.WithRefTracking(false))
-	if err := RegisterTypes(f); err != nil {
+func TestAddressBookRoundTripCompatible(t *testing.T) {
+	runAddressBookRoundTrip(t, true)
+}
+
+func TestAddressBookRoundTripSchemaConsistent(t *testing.T) {
+	runAddressBookRoundTrip(t, false)
+}
+
+func runAddressBookRoundTrip(t *testing.T, compatible bool) {
+	f := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(false),
+		fory.WithCompatible(compatible),
+	)
+	if err := addressbook.RegisterTypes(f); err != nil {
 		t.Fatalf("register types: %v", err)
+	}
+	if err := complexpb.RegisterTypes(f); err != nil {
+		t.Fatalf("register complex pb types: %v", err)
 	}
 	if err := monster.RegisterTypes(f); err != nil {
 		t.Fatalf("register monster types: %v", err)
 	}
 	if err := complexfbs.RegisterTypes(f); err != nil {
 		t.Fatalf("register flatbuffers types: %v", err)
+	}
+	if err := collection.RegisterTypes(f); err != nil {
+		t.Fatalf("register collection types: %v", err)
 	}
 	if err := optionaltypes.RegisterTypes(f); err != nil {
 		t.Fatalf("register optional types: %v", err)
@@ -95,6 +116,13 @@ func TestAddressBookRoundTrip(t *testing.T) {
 	runLocalPrimitiveRoundTrip(t, f, types)
 	runFilePrimitiveRoundTrip(t, f, types)
 
+	collections := buildNumericCollections()
+	collectionUnion := buildNumericCollectionUnion()
+	collectionsArray := buildNumericCollectionsArray()
+	collectionArrayUnion := buildNumericCollectionArrayUnion()
+	runLocalCollectionRoundTrip(t, f, collections, collectionUnion, collectionsArray, collectionArrayUnion)
+	runFileCollectionRoundTrip(t, f, collections, collectionUnion, collectionsArray, collectionArrayUnion)
+
 	monster := buildMonster()
 	runLocalMonsterRoundTrip(t, f, monster)
 	runFileMonsterRoundTrip(t, f, monster)
@@ -110,7 +138,11 @@ func TestAddressBookRoundTrip(t *testing.T) {
 	anyHolder := buildAnyHolder()
 	runLocalAnyRoundTrip(t, f, anyHolder)
 
-	refFory := fory.NewFory(fory.WithXlang(true), fory.WithRefTracking(true))
+	refFory := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(true),
+		fory.WithCompatible(compatible),
+	)
 	if err := treepkg.RegisterTypes(refFory); err != nil {
 		t.Fatalf("register tree types: %v", err)
 	}
@@ -123,6 +155,35 @@ func TestAddressBookRoundTrip(t *testing.T) {
 	graphValue := buildGraph()
 	runLocalGraphRoundTrip(t, refFory, graphValue)
 	runFileGraphRoundTrip(t, refFory, graphValue)
+}
+
+func TestToBytesFromBytes(t *testing.T) {
+	book := buildAddressBook()
+	data, err := book.ToBytes()
+	if err != nil {
+		t.Fatalf("addressbook to_bytes: %v", err)
+	}
+	var decodedBook addressbook.AddressBook
+	if err := decodedBook.FromBytes(data); err != nil {
+		t.Fatalf("addressbook from_bytes: %v", err)
+	}
+	if !reflect.DeepEqual(book, decodedBook) {
+		t.Fatalf("addressbook to_bytes roundtrip mismatch")
+	}
+
+	dog := addressbook.Dog{Name: "Rex", BarkVolume: 5}
+	animal := addressbook.DogAnimal(&dog)
+	animalBytes, err := animal.ToBytes()
+	if err != nil {
+		t.Fatalf("animal to_bytes: %v", err)
+	}
+	var decodedAnimal addressbook.Animal
+	if err := decodedAnimal.FromBytes(animalBytes); err != nil {
+		t.Fatalf("animal from_bytes: %v", err)
+	}
+	if !reflect.DeepEqual(animal, decodedAnimal) {
+		t.Fatalf("animal to_bytes roundtrip mismatch")
+	}
 }
 
 func buildAnyHolder() anyexample.AnyHolder {
@@ -323,13 +384,13 @@ func normalizeStringMap(value any) (map[string]string, bool) {
 	}
 }
 
-func runLocalRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
+func runLocalRoundTrip(t *testing.T, f *fory.Fory, book addressbook.AddressBook) {
 	data, err := f.Serialize(&book)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
 
-	var out AddressBook
+	var out addressbook.AddressBook
 	if err := f.Deserialize(data, &out); err != nil {
 		t.Fatalf("deserialize: %v", err)
 	}
@@ -339,7 +400,7 @@ func runLocalRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 	}
 }
 
-func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
+func runFileRoundTrip(t *testing.T, f *fory.Fory, book addressbook.AddressBook) {
 	dataFile := os.Getenv("DATA_FILE")
 	if dataFile == "" {
 		return
@@ -349,7 +410,7 @@ func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 		t.Fatalf("read data file: %v", err)
 	}
 
-	var decoded AddressBook
+	var decoded addressbook.AddressBook
 	if err := f.Deserialize(payload, &decoded); err != nil {
 		t.Fatalf("deserialize peer payload: %v", err)
 	}
@@ -366,10 +427,10 @@ func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 	}
 }
 
-func buildPrimitiveTypes() PrimitiveTypes {
-	contact := EmailPrimitiveTypes_Contact("alice@example.com")
-	contact = PhonePrimitiveTypes_Contact(12345)
-	return PrimitiveTypes{
+func buildPrimitiveTypes() complexpb.PrimitiveTypes {
+	contact := complexpb.EmailPrimitiveTypes_Contact("alice@example.com")
+	contact = complexpb.PhonePrimitiveTypes_Contact(12345)
+	return complexpb.PrimitiveTypes{
 		BoolValue:         true,
 		Int8Value:         12,
 		Int16Value:        1234,
@@ -391,13 +452,51 @@ func buildPrimitiveTypes() PrimitiveTypes {
 	}
 }
 
-func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes) {
+func buildNumericCollections() collection.NumericCollections {
+	return collection.NumericCollections{
+		Int8Values:    []int8{1, -2, 3},
+		Int16Values:   []int16{100, -200, 300},
+		Int32Values:   []int32{1000, -2000, 3000},
+		Int64Values:   []int64{10000, -20000, 30000},
+		Uint8Values:   []uint8{200, 250},
+		Uint16Values:  []uint16{50000, 60000},
+		Uint32Values:  []uint32{2000000000, 2100000000},
+		Uint64Values:  []uint64{9000000000, 12000000000},
+		Float32Values: []float32{1.5, 2.5},
+		Float64Values: []float64{3.5, 4.5},
+	}
+}
+
+func buildNumericCollectionUnion() collection.NumericCollectionUnion {
+	return collection.Int32ValuesNumericCollectionUnion([]int32{7, 8, 9})
+}
+
+func buildNumericCollectionsArray() collection.NumericCollectionsArray {
+	return collection.NumericCollectionsArray{
+		Int8Values:    []int8{1, -2, 3},
+		Int16Values:   []int16{100, -200, 300},
+		Int32Values:   []int32{1000, -2000, 3000},
+		Int64Values:   []int64{10000, -20000, 30000},
+		Uint8Values:   []uint8{200, 250},
+		Uint16Values:  []uint16{50000, 60000},
+		Uint32Values:  []uint32{2000000000, 2100000000},
+		Uint64Values:  []uint64{9000000000, 12000000000},
+		Float32Values: []float32{1.5, 2.5},
+		Float64Values: []float64{3.5, 4.5},
+	}
+}
+
+func buildNumericCollectionArrayUnion() collection.NumericCollectionArrayUnion {
+	return collection.Uint16ValuesNumericCollectionArrayUnion([]uint16{1000, 2000, 3000})
+}
+
+func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types complexpb.PrimitiveTypes) {
 	data, err := f.Serialize(&types)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
 
-	var out PrimitiveTypes
+	var out complexpb.PrimitiveTypes
 	if err := f.Deserialize(data, &out); err != nil {
 		t.Fatalf("deserialize: %v", err)
 	}
@@ -407,7 +506,7 @@ func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes
 	}
 }
 
-func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes) {
+func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types complexpb.PrimitiveTypes) {
 	dataFile := os.Getenv("DATA_FILE_PRIMITIVES")
 	if dataFile == "" {
 		return
@@ -417,7 +516,7 @@ func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes)
 		t.Fatalf("read data file: %v", err)
 	}
 
-	var decoded PrimitiveTypes
+	var decoded complexpb.PrimitiveTypes
 	if err := f.Deserialize(payload, &decoded); err != nil {
 		t.Fatalf("deserialize peer payload: %v", err)
 	}
@@ -431,6 +530,162 @@ func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes)
 	}
 	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
 		t.Fatalf("write data file: %v", err)
+	}
+}
+
+func runLocalCollectionRoundTrip(
+	t *testing.T,
+	f *fory.Fory,
+	collections collection.NumericCollections,
+	unionValue collection.NumericCollectionUnion,
+	collectionsArray collection.NumericCollectionsArray,
+	arrayUnion collection.NumericCollectionArrayUnion,
+) {
+	data, err := f.Serialize(&collections)
+	if err != nil {
+		t.Fatalf("serialize collections: %v", err)
+	}
+
+	var out collection.NumericCollections
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize collections: %v", err)
+	}
+
+	if !reflect.DeepEqual(collections, out) {
+		t.Fatalf("collection roundtrip mismatch: %#v != %#v", collections, out)
+	}
+
+	unionData, err := f.Serialize(&unionValue)
+	if err != nil {
+		t.Fatalf("serialize collection union: %v", err)
+	}
+	var unionOut collection.NumericCollectionUnion
+	if err := f.Deserialize(unionData, &unionOut); err != nil {
+		t.Fatalf("deserialize collection union: %v", err)
+	}
+	if !reflect.DeepEqual(unionValue, unionOut) {
+		t.Fatalf("collection union mismatch: %#v != %#v", unionValue, unionOut)
+	}
+
+	arrayData, err := f.Serialize(&collectionsArray)
+	if err != nil {
+		t.Fatalf("serialize collection array: %v", err)
+	}
+	var arrayOut collection.NumericCollectionsArray
+	if err := f.Deserialize(arrayData, &arrayOut); err != nil {
+		t.Fatalf("deserialize collection array: %v", err)
+	}
+	if !reflect.DeepEqual(collectionsArray, arrayOut) {
+		t.Fatalf("collection array mismatch: %#v != %#v", collectionsArray, arrayOut)
+	}
+
+	arrayUnionData, err := f.Serialize(&arrayUnion)
+	if err != nil {
+		t.Fatalf("serialize collection array union: %v", err)
+	}
+	var arrayUnionOut collection.NumericCollectionArrayUnion
+	if err := f.Deserialize(arrayUnionData, &arrayUnionOut); err != nil {
+		t.Fatalf("deserialize collection array union: %v", err)
+	}
+	if !reflect.DeepEqual(arrayUnion, arrayUnionOut) {
+		t.Fatalf("collection array union mismatch: %#v != %#v", arrayUnion, arrayUnionOut)
+	}
+}
+
+func runFileCollectionRoundTrip(
+	t *testing.T,
+	f *fory.Fory,
+	collections collection.NumericCollections,
+	unionValue collection.NumericCollectionUnion,
+	collectionsArray collection.NumericCollectionsArray,
+	arrayUnion collection.NumericCollectionArrayUnion,
+) {
+	dataFile := os.Getenv("DATA_FILE_COLLECTION")
+	if dataFile != "" {
+		payload, err := os.ReadFile(dataFile)
+		if err != nil {
+			t.Fatalf("read collection file: %v", err)
+		}
+		var decoded collection.NumericCollections
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection file: %v", err)
+		}
+		if !reflect.DeepEqual(collections, decoded) {
+			t.Fatalf("collection file mismatch: %#v != %#v", collections, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection file: %v", err)
+		}
+		if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+			t.Fatalf("write collection file: %v", err)
+		}
+	}
+
+	unionFile := os.Getenv("DATA_FILE_COLLECTION_UNION")
+	if unionFile != "" {
+		payload, err := os.ReadFile(unionFile)
+		if err != nil {
+			t.Fatalf("read collection union file: %v", err)
+		}
+		var decoded collection.NumericCollectionUnion
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection union file: %v", err)
+		}
+		if !reflect.DeepEqual(unionValue, decoded) {
+			t.Fatalf("collection union file mismatch: %#v != %#v", unionValue, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection union file: %v", err)
+		}
+		if err := os.WriteFile(unionFile, out, 0o644); err != nil {
+			t.Fatalf("write collection union file: %v", err)
+		}
+	}
+
+	arrayFile := os.Getenv("DATA_FILE_COLLECTION_ARRAY")
+	if arrayFile != "" {
+		payload, err := os.ReadFile(arrayFile)
+		if err != nil {
+			t.Fatalf("read collection array file: %v", err)
+		}
+		var decoded collection.NumericCollectionsArray
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection array file: %v", err)
+		}
+		if !reflect.DeepEqual(collectionsArray, decoded) {
+			t.Fatalf("collection array file mismatch: %#v != %#v", collectionsArray, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection array file: %v", err)
+		}
+		if err := os.WriteFile(arrayFile, out, 0o644); err != nil {
+			t.Fatalf("write collection array file: %v", err)
+		}
+	}
+
+	arrayUnionFile := os.Getenv("DATA_FILE_COLLECTION_ARRAY_UNION")
+	if arrayUnionFile != "" {
+		payload, err := os.ReadFile(arrayUnionFile)
+		if err != nil {
+			t.Fatalf("read collection array union file: %v", err)
+		}
+		var decoded collection.NumericCollectionArrayUnion
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection array union file: %v", err)
+		}
+		if !reflect.DeepEqual(arrayUnion, decoded) {
+			t.Fatalf("collection array union file mismatch: %#v != %#v", arrayUnion, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection array union file: %v", err)
+		}
+		if err := os.WriteFile(arrayUnionFile, out, 0o644); err != nil {
+			t.Fatalf("write collection array union file: %v", err)
+		}
 	}
 }
 

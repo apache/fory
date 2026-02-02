@@ -43,7 +43,7 @@
 namespace fory {
 namespace serialization {
 
-using meta::ForyFieldInfo;
+using meta::fory_field_info;
 
 /// Field type markers for collection fields in compatible/evolution mode.
 /// These match Java's FieldResolver.FieldTypes values.
@@ -58,7 +58,7 @@ constexpr int8_t FIELD_TYPE_MAP_KV_FINAL = 4;
 /// This template is populated automatically when `FORY_STRUCT` is used to
 /// register a type. The registration macro defines a constexpr metadata
 /// function that is discovered via member lookup or ADL. The field count is
-/// derived from the generated `ForyFieldInfo` metadata.
+/// derived from the generated `fory_field_info` metadata.
 template <typename T, typename Enable> struct SerializationMeta {
   static constexpr bool is_serializable = false;
   static constexpr size_t field_count = 0;
@@ -68,7 +68,7 @@ struct SerializationMeta<T,
                          std::enable_if_t<meta::HasForyStructInfo<T>::value>> {
   static constexpr bool is_serializable = true;
   static constexpr size_t field_count =
-      decltype(ForyFieldInfo(std::declval<const T &>()))::Size;
+      decltype(fory_field_info(std::declval<const T &>()))::Size;
 };
 
 namespace detail {
@@ -92,7 +92,7 @@ inline constexpr bool is_primitive_type_id(TypeId type_id) {
          type_id == TypeId::TAGGED_UINT64;
 }
 
-/// Write a primitive value to buffer at given offset WITHOUT updating
+/// write a primitive value to buffer at given offset WITHOUT updating
 /// writer_index. Returns the number of bytes written. Caller must ensure buffer
 /// has sufficient capacity.
 template <typename T>
@@ -103,10 +103,10 @@ FORY_ALWAYS_INLINE uint32_t put_primitive_at(T value, Buffer &buffer,
     int32_t val = static_cast<int32_t>(value);
     uint32_t zigzag =
         (static_cast<uint32_t>(val) << 1) ^ static_cast<uint32_t>(val >> 31);
-    return buffer.PutVarUint32(offset, zigzag);
+    return buffer.put_var_uint32(offset, zigzag);
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
-    buffer.UnsafePut<uint32_t>(offset, static_cast<uint32_t>(value));
+    buffer.unsafe_put<uint32_t>(offset, static_cast<uint32_t>(value));
     return 4;
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
@@ -114,34 +114,34 @@ FORY_ALWAYS_INLINE uint32_t put_primitive_at(T value, Buffer &buffer,
     int64_t val = static_cast<int64_t>(value);
     uint64_t zigzag =
         (static_cast<uint64_t>(val) << 1) ^ static_cast<uint64_t>(val >> 63);
-    return buffer.PutVarUint64(offset, zigzag);
+    return buffer.put_var_uint64(offset, zigzag);
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
-    buffer.UnsafePut<uint64_t>(offset, static_cast<uint64_t>(value));
+    buffer.unsafe_put<uint64_t>(offset, static_cast<uint64_t>(value));
     return 8;
   } else if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int>) {
-    buffer.UnsafePut<int32_t>(offset, static_cast<int32_t>(value));
+    buffer.unsafe_put<int32_t>(offset, static_cast<int32_t>(value));
     return 4;
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
-    buffer.UnsafePut<int64_t>(offset, static_cast<int64_t>(value));
+    buffer.unsafe_put<int64_t>(offset, static_cast<int64_t>(value));
     return 8;
   } else if constexpr (std::is_same_v<T, bool>) {
-    buffer.UnsafePutByte(offset, static_cast<uint8_t>(value ? 1 : 0));
+    buffer.unsafe_put_byte(offset, static_cast<uint8_t>(value ? 1 : 0));
     return 1;
   } else if constexpr (std::is_same_v<T, int8_t> ||
                        std::is_same_v<T, uint8_t>) {
-    buffer.UnsafePutByte(offset, static_cast<uint8_t>(value));
+    buffer.unsafe_put_byte(offset, static_cast<uint8_t>(value));
     return 1;
   } else if constexpr (std::is_same_v<T, int16_t> ||
                        std::is_same_v<T, uint16_t>) {
-    buffer.UnsafePut<T>(offset, value);
+    buffer.unsafe_put<T>(offset, value);
     return 2;
   } else if constexpr (std::is_same_v<T, float>) {
-    buffer.UnsafePut<float>(offset, value);
+    buffer.unsafe_put<float>(offset, value);
     return 4;
   } else if constexpr (std::is_same_v<T, double>) {
-    buffer.UnsafePut<double>(offset, value);
+    buffer.unsafe_put<double>(offset, value);
     return 8;
   } else {
     static_assert(sizeof(T) == 0, "Unsupported primitive type");
@@ -149,40 +149,40 @@ FORY_ALWAYS_INLINE uint32_t put_primitive_at(T value, Buffer &buffer,
   }
 }
 
-/// Write a fixed-size primitive at absolute offset. Does NOT return bytes
+/// write a fixed-size primitive at absolute offset. Does NOT return bytes
 /// written (caller uses compile-time size). Caller ensures buffer capacity.
 template <typename T>
 FORY_ALWAYS_INLINE void put_fixed_primitive_at(T value, Buffer &buffer,
                                                uint32_t offset) {
   if constexpr (std::is_same_v<T, bool>) {
-    buffer.UnsafePutByte(offset, static_cast<uint8_t>(value ? 1 : 0));
+    buffer.unsafe_put_byte(offset, static_cast<uint8_t>(value ? 1 : 0));
   } else if constexpr (std::is_same_v<T, int8_t> ||
                        std::is_same_v<T, uint8_t>) {
-    buffer.UnsafePutByte(offset, static_cast<uint8_t>(value));
+    buffer.unsafe_put_byte(offset, static_cast<uint8_t>(value));
   } else if constexpr (std::is_same_v<T, int16_t> ||
                        std::is_same_v<T, uint16_t>) {
-    buffer.UnsafePut<T>(offset, value);
+    buffer.unsafe_put<T>(offset, value);
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
-    buffer.UnsafePut<uint32_t>(offset, static_cast<uint32_t>(value));
+    buffer.unsafe_put<uint32_t>(offset, static_cast<uint32_t>(value));
   } else if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int>) {
-    buffer.UnsafePut<int32_t>(offset, static_cast<int32_t>(value));
+    buffer.unsafe_put<int32_t>(offset, static_cast<int32_t>(value));
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
-    buffer.UnsafePut<uint64_t>(offset, static_cast<uint64_t>(value));
+    buffer.unsafe_put<uint64_t>(offset, static_cast<uint64_t>(value));
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
-    buffer.UnsafePut<int64_t>(offset, static_cast<int64_t>(value));
+    buffer.unsafe_put<int64_t>(offset, static_cast<int64_t>(value));
   } else if constexpr (std::is_same_v<T, float>) {
-    buffer.UnsafePut<float>(offset, value);
+    buffer.unsafe_put<float>(offset, value);
   } else if constexpr (std::is_same_v<T, double>) {
-    buffer.UnsafePut<double>(offset, value);
+    buffer.unsafe_put<double>(offset, value);
   } else {
     static_assert(sizeof(T) == 0, "Unsupported fixed-size primitive type");
   }
 }
 
-/// Write a varint primitive at offset. Returns bytes written.
+/// write a varint primitive at offset. Returns bytes written.
 /// Caller ensures buffer capacity.
 template <typename T>
 FORY_ALWAYS_INLINE uint32_t put_varint_at(T value, Buffer &buffer,
@@ -192,23 +192,23 @@ FORY_ALWAYS_INLINE uint32_t put_varint_at(T value, Buffer &buffer,
     int32_t val = static_cast<int32_t>(value);
     uint32_t zigzag =
         (static_cast<uint32_t>(val) << 1) ^ static_cast<uint32_t>(val >> 31);
-    return buffer.PutVarUint32(offset, zigzag);
+    return buffer.put_var_uint32(offset, zigzag);
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
     // varint64 with zigzag encoding
     int64_t val = static_cast<int64_t>(value);
     uint64_t zigzag =
         (static_cast<uint64_t>(val) << 1) ^ static_cast<uint64_t>(val >> 63);
-    return buffer.PutVarUint64(offset, zigzag);
+    return buffer.put_var_uint64(offset, zigzag);
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
     // Unsigned 32-bit varint (no zigzag)
-    return buffer.PutVarUint32(offset, static_cast<uint32_t>(value));
+    return buffer.put_var_uint32(offset, static_cast<uint32_t>(value));
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
     // Unsigned 64-bit varint (no zigzag) - used for VAR_UINT64 and
     // TAGGED_UINT64
-    return buffer.PutVarUint64(offset, static_cast<uint64_t>(value));
+    return buffer.put_var_uint64(offset, static_cast<uint64_t>(value));
   } else {
     static_assert(sizeof(T) == 0, "Unsupported varint type");
     return 0;
@@ -342,14 +342,14 @@ FORY_ALWAYS_INLINE uint32_t write_configurable_int_at(FieldType value,
   if constexpr (is_signed_configurable_int_v<FieldType>) {
     if constexpr (enc == Encoding::Fixed) {
       if constexpr (is_configurable_int32_v<FieldType>) {
-        buffer.UnsafePut<int32_t>(offset, static_cast<int32_t>(value));
+        buffer.unsafe_put<int32_t>(offset, static_cast<int32_t>(value));
         return 4;
       }
-      buffer.UnsafePut<int64_t>(offset, static_cast<int64_t>(value));
+      buffer.unsafe_put<int64_t>(offset, static_cast<int64_t>(value));
       return 8;
     }
     if constexpr (enc == Encoding::Tagged) {
-      return buffer.PutTaggedInt64(offset, static_cast<int64_t>(value));
+      return buffer.put_tagged_int64(offset, static_cast<int64_t>(value));
     }
     return put_varint_at<FieldType>(value, buffer, offset);
   } else {
@@ -358,15 +358,15 @@ FORY_ALWAYS_INLINE uint32_t write_configurable_int_at(FieldType value,
     }
     if constexpr (enc == Encoding::Tagged) {
       if constexpr (is_configurable_int64_v<FieldType>) {
-        return buffer.PutTaggedUint64(offset, static_cast<uint64_t>(value));
+        return buffer.put_tagged_uint64(offset, static_cast<uint64_t>(value));
       }
       return put_varint_at<FieldType>(value, buffer, offset);
     }
     if constexpr (is_configurable_int32_v<FieldType>) {
-      buffer.UnsafePut<uint32_t>(offset, static_cast<uint32_t>(value));
+      buffer.unsafe_put<uint32_t>(offset, static_cast<uint32_t>(value));
       return 4;
     }
-    buffer.UnsafePut<uint64_t>(offset, static_cast<uint64_t>(value));
+    buffer.unsafe_put<uint64_t>(offset, static_cast<uint64_t>(value));
     return 8;
   }
 }
@@ -381,18 +381,18 @@ FORY_ALWAYS_INLINE FieldType read_configurable_int_at(Buffer &buffer,
     if constexpr (enc == Encoding::Fixed) {
       if constexpr (is_configurable_int32_v<FieldType>) {
         FieldType value =
-            static_cast<FieldType>(buffer.UnsafeGet<int32_t>(offset));
+            static_cast<FieldType>(buffer.unsafe_get<int32_t>(offset));
         offset += 4;
         return value;
       }
       FieldType value =
-          static_cast<FieldType>(buffer.UnsafeGet<int64_t>(offset));
+          static_cast<FieldType>(buffer.unsafe_get<int64_t>(offset));
       offset += 8;
       return value;
     }
     if constexpr (enc == Encoding::Tagged) {
       uint32_t bytes_read = 0;
-      auto value = buffer.GetTaggedInt64(offset, &bytes_read);
+      auto value = buffer.get_tagged_int64(offset, &bytes_read);
       offset += bytes_read;
       return static_cast<FieldType>(value);
     }
@@ -404,7 +404,7 @@ FORY_ALWAYS_INLINE FieldType read_configurable_int_at(Buffer &buffer,
     if constexpr (enc == Encoding::Tagged) {
       if constexpr (is_configurable_int64_v<FieldType>) {
         uint32_t bytes_read = 0;
-        auto value = buffer.GetTaggedUint64(offset, &bytes_read);
+        auto value = buffer.get_tagged_uint64(offset, &bytes_read);
         offset += bytes_read;
         return static_cast<FieldType>(value);
       }
@@ -412,12 +412,12 @@ FORY_ALWAYS_INLINE FieldType read_configurable_int_at(Buffer &buffer,
     }
     if constexpr (is_configurable_int32_v<FieldType>) {
       FieldType value =
-          static_cast<FieldType>(buffer.UnsafeGet<uint32_t>(offset));
+          static_cast<FieldType>(buffer.unsafe_get<uint32_t>(offset));
       offset += 4;
       return value;
     }
     FieldType value =
-        static_cast<FieldType>(buffer.UnsafeGet<uint64_t>(offset));
+        static_cast<FieldType>(buffer.unsafe_get<uint64_t>(offset));
     offset += 8;
     return value;
   }
@@ -445,9 +445,9 @@ FORY_ALWAYS_INLINE FieldType read_configurable_int(ReadContext &ctx) {
   } else {
     if constexpr (enc == Encoding::Varint) {
       if constexpr (is_configurable_int32_v<FieldType>) {
-        return static_cast<FieldType>(ctx.read_varuint32(ctx.error()));
+        return static_cast<FieldType>(ctx.read_var_uint32(ctx.error()));
       }
-      return static_cast<FieldType>(ctx.read_varuint64(ctx.error()));
+      return static_cast<FieldType>(ctx.read_var_uint64(ctx.error()));
     }
     if constexpr (enc == Encoding::Tagged) {
       return static_cast<FieldType>(ctx.read_tagged_uint64(ctx.error()));
@@ -476,7 +476,7 @@ void dispatch_field_index_impl(size_t target_index, Func &&func,
 template <typename T, typename Func>
 void dispatch_field_index(size_t target_index, Func &&func, bool &handled) {
   constexpr size_t field_count =
-      decltype(ForyFieldInfo(std::declval<const T &>()))::Size;
+      decltype(fory_field_info(std::declval<const T &>()))::Size;
   dispatch_field_index_impl<T>(target_index, std::forward<Func>(func),
                                std::make_index_sequence<field_count>{},
                                handled);
@@ -491,11 +491,11 @@ void dispatch_field_index(size_t target_index, Func &&func, bool &handled) {
 // ------------------------------------------------------------------
 
 template <typename T> struct CompileTimeFieldHelpers {
-  using FieldDescriptor = decltype(ForyFieldInfo(std::declval<const T &>()));
+  using FieldDescriptor = decltype(fory_field_info(std::declval<const T &>()));
   static constexpr size_t FieldCount = FieldDescriptor::Size;
   static inline constexpr auto Names = FieldDescriptor::Names;
-  static inline constexpr auto Ptrs = FieldDescriptor::Ptrs();
-  using FieldPtrs = decltype(Ptrs);
+  static inline constexpr auto ptrs = FieldDescriptor::ptrs();
+  using FieldPtrs = decltype(ptrs);
 
   template <size_t Index> static constexpr uint32_t field_type_id() {
     if constexpr (FieldCount == 0) {
@@ -503,7 +503,7 @@ template <typename T> struct CompileTimeFieldHelpers {
     } else {
       using PtrT = std::tuple_element_t<Index, FieldPtrs>;
       using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
-      // Unwrap fory::field<> to get the actual type for serialization
+      // unwrap fory::field<> to get the actual type for serialization
       using FieldType = unwrap_field_t<RawFieldType>;
 
       // Check for encoding override from FORY_FIELD_CONFIG
@@ -549,6 +549,15 @@ template <typename T> struct CompileTimeFieldHelpers {
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         if constexpr (::fory::detail::GetFieldTagEntry<T, Index>::has_entry) {
           return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
+        }
+        return field_is_nullable_v<RawFieldType>;
+      }
+      // Else if FORY_FIELD_CONFIG is defined, use nullable from config
+      else if constexpr (::fory::detail::has_field_config_v<T>) {
+        if constexpr (::fory::detail::GetFieldConfigEntry<T,
+                                                          Index>::has_entry &&
+                      ::fory::detail::GetFieldConfigEntry<T, Index>::nullable) {
+          return true;
         }
         return field_is_nullable_v<RawFieldType>;
       }
@@ -620,6 +629,15 @@ template <typename T> struct CompileTimeFieldHelpers {
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
       }
+      // Else if FORY_FIELD_CONFIG is defined, use ref from config
+      else if constexpr (::fory::detail::has_field_config_v<T>) {
+        if constexpr (::fory::detail::GetFieldConfigEntry<T,
+                                                          Index>::has_entry &&
+                      ::fory::detail::GetFieldConfigEntry<T, Index>::ref) {
+          return true;
+        }
+        return field_track_ref_v<RawFieldType>;
+      }
       // Default: shared_ptr/SharedWeak track refs
       else {
         return field_track_ref_v<RawFieldType>;
@@ -646,6 +664,15 @@ template <typename T> struct CompileTimeFieldHelpers {
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         return ::fory::detail::GetFieldTagEntry<T, Index>::dynamic_value;
       }
+      // Else if FORY_FIELD_CONFIG is defined, use dynamic_value from config
+      else if constexpr (::fory::detail::has_field_config_v<T>) {
+        constexpr int dynamic_value =
+            ::fory::detail::GetFieldConfigEntry<T, Index>::dynamic_value;
+        if constexpr (dynamic_value != -1) {
+          return dynamic_value;
+        }
+        return -1;
+      }
       // Default: AUTO (use std::is_polymorphic to decide)
       else {
         return -1;
@@ -653,7 +680,7 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
-  /// Get the underlying field type (unwraps fory::field<> if present)
+  /// get the underlying field type (unwraps fory::field<> if present)
   template <size_t Index> struct UnwrappedFieldTypeHelper {
     using PtrT = std::tuple_element_t<Index, FieldPtrs>;
     using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
@@ -724,7 +751,7 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
-  /// Get fixed size in bytes for a field based on its C++ type
+  /// get fixed size in bytes for a field based on its C++ type
   template <size_t Index> static constexpr size_t field_fixed_size_bytes() {
     if constexpr (FieldCount == 0) {
       return 0;
@@ -751,7 +778,7 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
-  /// Get max varint size in bytes for a field based on its C++ type
+  /// get max varint size in bytes for a field based on its C++ type
   template <size_t Index> static constexpr size_t field_max_varint_bytes() {
     if constexpr (FieldCount == 0) {
       return 0;
@@ -1028,11 +1055,11 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   /// Check if a type ID represents a compressed (varint/tagged) type.
-  /// This must match Java's Types.isCompressedType() exactly for consistent
+  /// This must match Java's Types.is_compressed_type() exactly for consistent
   /// field ordering. Java only considers VARINT32, VAR_UINT32, VARINT64,
   /// VAR_UINT64, TAGGED_INT64, and TAGGED_UINT64 as compressed.
   /// Note: INT32, INT64, UINT32, UINT64 are NOT compressed - they are fixed-
-  /// size types. Java xlang mode uses compressInt=true which maps int→VARINT32
+  /// size types. Java xlang mode uses compress_int=true which maps int→VARINT32
   /// and long→VARINT64, but the actual INT32/INT64 type IDs are not compressed.
   static constexpr bool is_compress_id(uint32_t tid) {
     return tid == static_cast<uint32_t>(TypeId::VARINT32) ||
@@ -1316,7 +1343,7 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
-  /// Get the max varint size in bytes for a type_id (0 if not varint)
+  /// get the max varint size in bytes for a type_id (0 if not varint)
   static constexpr size_t max_varint_bytes(uint32_t tid) {
     switch (static_cast<TypeId>(tid)) {
     case TypeId::VARINT32: // explicit varint
@@ -1329,7 +1356,7 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
-  /// Get the fixed size in bytes for a type_id (0 if not fixed-size)
+  /// get the fixed size in bytes for a type_id (0 if not fixed-size)
   static constexpr size_t fixed_size_bytes(uint32_t tid) {
     switch (static_cast<TypeId>(tid)) {
     case TypeId::BOOL:
@@ -1528,13 +1555,13 @@ FORY_ALWAYS_INLINE void write_single_fixed_field(const T &obj, Buffer &buffer,
   constexpr size_t original_index = Helpers::sorted_indices[SortedIdx];
   constexpr size_t field_offset =
       compute_fixed_field_write_offset<T, SortedIdx>();
-  const auto field_info = ForyFieldInfo(obj);
+  const auto field_info = fory_field_info(obj);
   const auto field_ptr =
-      std::get<original_index>(decltype(field_info)::PtrsRef());
+      std::get<original_index>(decltype(field_info)::ptrs_ref());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
-  // Get the actual value (unwrap fory::field<> if needed)
+  // get the actual value (unwrap fory::field<> if needed)
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
       return (obj.*field_ptr).value;
@@ -1556,11 +1583,11 @@ write_fixed_primitive_fields(const T &obj, Buffer &buffer,
   using Helpers = CompileTimeFieldHelpers<T>;
   const uint32_t base_offset = buffer.writer_index();
 
-  // Write each field using helper function - no lambda overhead
+  // write each field using helper function - no lambda overhead
   (write_single_fixed_field<T, Indices>(obj, buffer, base_offset), ...);
 
   // Update writer_index once with total fixed bytes (compile-time constant)
-  buffer.WriterIndex(base_offset + Helpers::leading_fixed_size_bytes);
+  buffer.writer_index(base_offset + Helpers::leading_fixed_size_bytes);
 }
 
 /// Helper to write a single varint primitive field.
@@ -1570,13 +1597,13 @@ FORY_ALWAYS_INLINE void write_single_varint_field(const T &obj, Buffer &buffer,
                                                   uint32_t &offset) {
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
-  const auto field_info = ForyFieldInfo(obj);
+  const auto field_info = fory_field_info(obj);
   const auto field_ptr =
-      std::get<original_index>(decltype(field_info)::PtrsRef());
+      std::get<original_index>(decltype(field_info)::ptrs_ref());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
-  // Get the actual value (unwrap fory::field<> if needed)
+  // get the actual value (unwrap fory::field<> if needed)
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
       return (obj.*field_ptr).value;
@@ -1600,7 +1627,7 @@ template <typename T, size_t FixedCount, size_t... Indices>
 FORY_ALWAYS_INLINE void
 write_varint_primitive_fields(const T &obj, Buffer &buffer, uint32_t &offset,
                               std::index_sequence<Indices...>) {
-  // Write each varint field using helper function - no lambda overhead
+  // write each varint field using helper function - no lambda overhead
   // Indices are 0, 1, 2, ... so actual sorted position is FixedCount + Indices
   (write_single_varint_field<T, FixedCount + Indices>(obj, buffer, offset),
    ...);
@@ -1613,13 +1640,13 @@ FORY_ALWAYS_INLINE void
 write_single_remaining_field(const T &obj, Buffer &buffer, uint32_t &offset) {
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
-  const auto field_info = ForyFieldInfo(obj);
+  const auto field_info = fory_field_info(obj);
   const auto field_ptr =
-      std::get<original_index>(decltype(field_info)::PtrsRef());
+      std::get<original_index>(decltype(field_info)::ptrs_ref());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
-  // Get the actual value (unwrap fory::field<> if needed)
+  // get the actual value (unwrap fory::field<> if needed)
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
       return (obj.*field_ptr).value;
@@ -1635,13 +1662,13 @@ write_single_remaining_field(const T &obj, Buffer &buffer, uint32_t &offset) {
   offset += put_primitive_at<FieldType>(field_value, buffer, offset);
 }
 
-/// Write remaining primitive fields after fixed and varint phases.
+/// write remaining primitive fields after fixed and varint phases.
 /// StartPos is the first sorted index to process.
 template <typename T, size_t StartPos, size_t... Indices>
 FORY_ALWAYS_INLINE void
 write_remaining_primitive_fields(const T &obj, Buffer &buffer, uint32_t &offset,
                                  std::index_sequence<Indices...>) {
-  // Write each remaining field using helper function - no lambda overhead
+  // write each remaining field using helper function - no lambda overhead
   (write_single_remaining_field<T, StartPos + Indices>(obj, buffer, offset),
    ...);
 }
@@ -1662,28 +1689,28 @@ write_primitive_fields_fast(const T &obj, Buffer &buffer,
   constexpr size_t varint_count = Helpers::varint_count;
   constexpr size_t total_count = sizeof...(Indices);
 
-  // Phase 1: Write leading fixed-size primitives if any
+  // Phase 1: write leading fixed-size primitives if any
   if constexpr (fixed_count > 0 && fixed_bytes > 0) {
     write_fixed_primitive_fields<T>(obj, buffer,
                                     std::make_index_sequence<fixed_count>{});
   }
 
-  // Phase 2: Write consecutive varint primitives if any
+  // Phase 2: write consecutive varint primitives if any
   if constexpr (varint_count > 0) {
     uint32_t offset = buffer.writer_index();
     write_varint_primitive_fields<T, fixed_count>(
         obj, buffer, offset, std::make_index_sequence<varint_count>{});
-    buffer.WriterIndex(offset);
+    buffer.writer_index(offset);
   }
 
-  // Phase 3: Write remaining primitives (if any) using dedicated helper
+  // Phase 3: write remaining primitives (if any) using dedicated helper
   constexpr size_t fast_count = fixed_count + varint_count;
   if constexpr (fast_count < total_count) {
     uint32_t offset = buffer.writer_index();
     write_remaining_primitive_fields<T, fast_count>(
         obj, buffer, offset,
         std::make_index_sequence<total_count - fast_count>{});
-    buffer.WriterIndex(offset);
+    buffer.writer_index(offset);
   }
 }
 
@@ -1702,10 +1729,10 @@ void write_single_field(const T &obj, WriteContext &ctx,
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
-  // Unwrap fory::field<> to get the actual type for serialization
+  // unwrap fory::field<> to get the actual type for serialization
   using FieldType = unwrap_field_t<RawFieldType>;
 
-  // Get the actual value (unwrap fory::field<> if needed)
+  // get the actual value (unwrap fory::field<> if needed)
   const auto &raw_field_ref = obj.*field_ptr;
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
@@ -1718,7 +1745,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
   constexpr bool is_primitive_field = is_primitive_type_id(field_type_id);
 
-  // Get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
+  // get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
   constexpr bool track_ref = Helpers::template field_track_ref<Index>();
   // Some wrapper types always require ref/null flags in the wire format.
@@ -1741,30 +1768,30 @@ void write_single_field(const T &obj, WriteContext &ctx,
   if constexpr (is_encoded_optional_uint) {
     constexpr auto enc =
         ::fory::detail::GetFieldConfigEntry<T, Index>::encoding;
-    // Write nullable flag
+    // write nullable flag
     if (!field_value.has_value()) {
       ctx.write_int8(NULL_FLAG);
       return;
     }
     ctx.write_int8(NOT_NULL_VALUE_FLAG);
 
-    // Write the value with encoding-aware writing
+    // write the value with encoding-aware writing
     using InnerType = typename std::remove_reference_t<FieldType>::value_type;
     InnerType value = field_value.value();
     if constexpr (std::is_same_v<InnerType, uint32_t>) {
       if constexpr (enc == Encoding::Varint) {
-        ctx.write_varuint32(value);
+        ctx.write_var_uint32(value);
       } else {
-        ctx.buffer().WriteInt32(static_cast<int32_t>(value));
+        ctx.buffer().write_int32(static_cast<int32_t>(value));
       }
     } else if constexpr (std::is_same_v<InnerType, uint64_t>) {
       if constexpr (enc == Encoding::Varint) {
-        ctx.write_varuint64(value);
+        ctx.write_var_uint64(value);
       } else if constexpr (enc == Encoding::Tagged) {
         ctx.write_tagged_uint64(value);
       } else {
         // For fixed encoding, cast to int64 since binary representation is same
-        ctx.buffer().WriteInt64(static_cast<int64_t>(value));
+        ctx.buffer().write_int64(static_cast<int64_t>(value));
       }
     }
     return;
@@ -1784,14 +1811,14 @@ void write_single_field(const T &obj, WriteContext &ctx,
     if constexpr (std::is_same_v<InnerType, int32_t> ||
                   std::is_same_v<InnerType, int>) {
       if constexpr (enc == Encoding::Fixed) {
-        ctx.buffer().WriteInt32(static_cast<int32_t>(value));
+        ctx.buffer().write_int32(static_cast<int32_t>(value));
       } else {
         ctx.write_varint32(static_cast<int32_t>(value));
       }
     } else if constexpr (std::is_same_v<InnerType, int64_t> ||
                          std::is_same_v<InnerType, long long>) {
       if constexpr (enc == Encoding::Fixed) {
-        ctx.buffer().WriteInt64(static_cast<int64_t>(value));
+        ctx.buffer().write_int64(static_cast<int64_t>(value));
       } else if constexpr (enc == Encoding::Tagged) {
         ctx.write_tagged_int64(static_cast<int64_t>(value));
       } else {
@@ -1802,7 +1829,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   }
 
   // Per Rust implementation: primitives are written directly without ref/type
-  if constexpr (is_primitive_field && !field_type_is_nullable) {
+  if constexpr (is_primitive_field && !field_type_is_nullable && !is_nullable) {
     if constexpr (::fory::detail::has_field_config_v<T> &&
                   (std::is_same_v<FieldType, uint32_t> ||
                    std::is_same_v<FieldType, uint64_t> ||
@@ -1814,24 +1841,24 @@ void write_single_field(const T &obj, WriteContext &ctx,
           ::fory::detail::GetFieldConfigEntry<T, Index>::encoding;
       if constexpr (std::is_same_v<FieldType, uint32_t>) {
         if constexpr (enc == Encoding::Varint) {
-          ctx.write_varuint32(field_value);
+          ctx.write_var_uint32(field_value);
         } else {
-          ctx.buffer().WriteInt32(static_cast<int32_t>(field_value));
+          ctx.buffer().write_int32(static_cast<int32_t>(field_value));
         }
         return;
       } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
         if constexpr (enc == Encoding::Varint) {
-          ctx.write_varuint64(field_value);
+          ctx.write_var_uint64(field_value);
         } else if constexpr (enc == Encoding::Tagged) {
           ctx.write_tagged_uint64(field_value);
         } else {
-          ctx.buffer().WriteInt64(static_cast<int64_t>(field_value));
+          ctx.buffer().write_int64(static_cast<int64_t>(field_value));
         }
         return;
       } else if constexpr (std::is_same_v<FieldType, int32_t> ||
                            std::is_same_v<FieldType, int>) {
         if constexpr (enc == Encoding::Fixed) {
-          ctx.buffer().WriteInt32(static_cast<int32_t>(field_value));
+          ctx.buffer().write_int32(static_cast<int32_t>(field_value));
         } else {
           ctx.write_varint32(static_cast<int32_t>(field_value));
         }
@@ -1839,7 +1866,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
       } else if constexpr (std::is_same_v<FieldType, int64_t> ||
                            std::is_same_v<FieldType, long long>) {
         if constexpr (enc == Encoding::Fixed) {
-          ctx.buffer().WriteInt64(static_cast<int64_t>(field_value));
+          ctx.buffer().write_int64(static_cast<int64_t>(field_value));
         } else if constexpr (enc == Encoding::Tagged) {
           ctx.write_tagged_int64(static_cast<int64_t>(field_value));
         } else {
@@ -1881,7 +1908,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   constexpr bool is_ext = is_ext_type(field_type_id);
   constexpr bool is_polymorphic = field_type_id == TypeId::UNKNOWN;
 
-  // Get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
+  // get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
   // info)
   constexpr int dynamic_val = Helpers::template field_dynamic_value<Index>();
 
@@ -1890,7 +1917,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   // - TRUE (1): always write type info
   // - FALSE (0): never write type info for this field
   // - AUTO (-1): write type info if is_polymorphic (auto-detected)
-  bool polymorphic_write_type =
+  constexpr bool polymorphic_write_type =
       (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic);
   bool write_type =
       polymorphic_write_type || ((is_struct || is_ext) && ctx.is_compatible());
@@ -1904,8 +1931,8 @@ void write_field_at_sorted_position(const T &obj, WriteContext &ctx,
                                     bool has_generics) {
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPosition];
-  const auto field_info = ForyFieldInfo(obj);
-  const auto &field_ptrs = decltype(field_info)::PtrsRef();
+  const auto field_info = fory_field_info(obj);
+  const auto &field_ptrs = decltype(field_info)::ptrs_ref();
   write_single_field<T, original_index>(obj, ctx, field_ptrs, has_generics);
 }
 
@@ -1917,12 +1944,12 @@ FORY_ALWAYS_INLINE void write_remaining_fields(const T &obj, WriteContext &ctx,
                                                std::index_sequence<Is...>) {
   constexpr size_t remaining = sizeof...(Is);
   constexpr size_t max_bytes_per_field = 10;
-  ctx.buffer().Grow(static_cast<uint32_t>(remaining * max_bytes_per_field));
+  ctx.buffer().grow(static_cast<uint32_t>(remaining * max_bytes_per_field));
 
   (write_field_at_sorted_position<T, Offset + Is>(obj, ctx, has_generics), ...);
 }
 
-/// Write struct fields recursively using index sequence (sorted order)
+/// write struct fields recursively using index sequence (sorted order)
 /// Optimized with hybrid fast/slow path: primitive fields use direct buffer
 /// writes, non-primitive fields use full serialization with error handling.
 template <typename T, size_t... Indices>
@@ -1935,16 +1962,16 @@ void write_struct_fields_impl(const T &obj, WriteContext &ctx,
 
   if constexpr (prim_count == total_count) {
     // FAST PATH: ALL fields are non-nullable primitives
-    // Use direct buffer writes without per-field Grow()
+    // Use direct buffer writes without per-field grow()
     constexpr size_t max_size = Helpers::max_primitive_serialized_size;
-    ctx.buffer().Grow(static_cast<uint32_t>(max_size));
+    ctx.buffer().grow(static_cast<uint32_t>(max_size));
     write_primitive_fields_fast<T>(obj, ctx.buffer(),
                                    std::make_index_sequence<prim_count>{});
   } else if constexpr (prim_count > 0) {
     // HYBRID PATH: Some leading primitives + remaining non-primitives
     // Part 1: Fast-write primitive fields (sorted indices 0 to prim_count-1)
     constexpr size_t max_prim_size = Helpers::max_leading_primitive_size;
-    ctx.buffer().Grow(static_cast<uint32_t>(max_prim_size));
+    ctx.buffer().grow(static_cast<uint32_t>(max_prim_size));
     write_primitive_fields_fast<T>(obj, ctx.buffer(),
                                    std::make_index_sequence<prim_count>{});
 
@@ -1955,7 +1982,7 @@ void write_struct_fields_impl(const T &obj, WriteContext &ctx,
   } else {
     // SLOW PATH: No leading primitives - all fields need full serialization
     constexpr size_t max_bytes_per_field = 10;
-    ctx.buffer().Grow(static_cast<uint32_t>(total_count * max_bytes_per_field));
+    ctx.buffer().grow(static_cast<uint32_t>(total_count * max_bytes_per_field));
 
     (write_field_at_sorted_position<T, Indices>(obj, ctx, has_generics), ...);
   }
@@ -2010,7 +2037,7 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
         static_cast<uint32_t>(ctx.read_int32(error)));
   case TypeId::VAR_UINT32:
     // VAR_UINT32 uses varint encoding
-    return static_cast<TargetType>(ctx.read_varuint32(error));
+    return static_cast<TargetType>(ctx.read_var_uint32(error));
   case TypeId::INT64:
     // INT64 uses fixed encoding
     return static_cast<TargetType>(ctx.read_int64(error));
@@ -2026,7 +2053,7 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
         static_cast<uint64_t>(ctx.read_int64(error)));
   case TypeId::VAR_UINT64:
     // VAR_UINT64 uses varint encoding
-    return static_cast<TargetType>(ctx.read_varuint64(error));
+    return static_cast<TargetType>(ctx.read_var_uint64(error));
   case TypeId::TAGGED_UINT64:
     // TAGGED_UINT64 uses tagged encoding (special hybrid encoding)
     return static_cast<TargetType>(ctx.read_tagged_uint64(error));
@@ -2095,12 +2122,12 @@ FORY_ALWAYS_INLINE FieldType read_primitive_field_direct(ReadContext &ctx,
 template <size_t Index, typename T>
 void read_single_field_by_index(T &obj, ReadContext &ctx) {
   using Helpers = CompileTimeFieldHelpers<T>;
-  const auto field_info = ForyFieldInfo(obj);
-  const auto &field_ptrs = decltype(field_info)::PtrsRef();
+  const auto field_info = fory_field_info(obj);
+  const auto &field_ptrs = decltype(field_info)::ptrs_ref();
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
-  // Unwrap fory::field<> to get the actual type for deserialization
+  // unwrap fory::field<> to get the actual type for deserialization
   using FieldType = unwrap_field_t<RawFieldType>;
 
   // In non-compatible mode, no type info for fields except for polymorphic
@@ -2115,7 +2142,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   constexpr bool is_ext_field = is_ext_type(field_type_id);
   constexpr bool is_polymorphic_field = field_type_id == TypeId::UNKNOWN;
 
-  // Get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
+  // get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
   // info)
   constexpr int dynamic_val = Helpers::template field_dynamic_value<Index>();
 
@@ -2123,22 +2150,14 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // - TRUE (1): always read type info
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
-  bool read_type =
-      (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic_field);
+  // Struct/EXT fields need type info in compatible mode for TypeMeta.
+  bool read_type = (dynamic_val == 1) ||
+                   (dynamic_val == -1 && is_polymorphic_field) ||
+                   ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
-  // Get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
+  // get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
   constexpr bool track_ref = Helpers::template field_track_ref<Index>();
-
-  // In compatible mode, nested struct fields always carry type metadata
-  // (xtypeId + meta index). We must read this metadata so that
-  // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
-  // remote TypeMeta instead of treating the bytes as part of the first field
-  // value.
-  if (!is_polymorphic_field && (is_struct_field || is_ext_field) &&
-      ctx.is_compatible()) {
-    read_type = true;
-  }
 
   // Per xlang spec, all non-primitive fields have ref flags.
   // Primitive types: bool, int8-64, var_int32/64, sli_int64, float16/32/64
@@ -2154,7 +2173,8 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // shared_ptr) that don't need ref metadata, bypass Serializer<T>::read
   // and use direct buffer reads with Error&.
   constexpr bool is_raw_prim = is_raw_primitive_v<FieldType>;
-  if constexpr (is_raw_prim && is_primitive_field && !field_type_is_nullable) {
+  if constexpr (is_raw_prim && is_primitive_field && !field_type_is_nullable &&
+                !is_nullable) {
     auto read_value = [&ctx]() -> FieldType {
       if constexpr (is_configurable_int_v<FieldType>) {
         return read_configurable_int<FieldType, T, Index>(ctx);
@@ -2202,13 +2222,13 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
       InnerType value;
       if constexpr (std::is_same_v<InnerType, uint32_t>) {
         if constexpr (enc == Encoding::Varint) {
-          value = ctx.read_varuint32(ctx.error());
+          value = ctx.read_var_uint32(ctx.error());
         } else {
           value = static_cast<uint32_t>(ctx.read_int32(ctx.error()));
         }
       } else if constexpr (std::is_same_v<InnerType, uint64_t>) {
         if constexpr (enc == Encoding::Varint) {
-          value = ctx.read_varuint64(ctx.error());
+          value = ctx.read_var_uint64(ctx.error());
         } else if constexpr (enc == Encoding::Tagged) {
           value = ctx.read_tagged_uint64(ctx.error());
         } else {
@@ -2280,12 +2300,12 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
                                            RefMode remote_ref_mode,
                                            uint32_t remote_type_id) {
   using Helpers = CompileTimeFieldHelpers<T>;
-  const auto field_info = ForyFieldInfo(obj);
-  const auto &field_ptrs = decltype(field_info)::PtrsRef();
+  const auto field_info = fory_field_info(obj);
+  const auto &field_ptrs = decltype(field_info)::ptrs_ref();
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
-  // Unwrap fory::field<> to get the actual type for deserialization
+  // unwrap fory::field<> to get the actual type for deserialization
   using FieldType = unwrap_field_t<RawFieldType>;
 
   constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
@@ -2295,7 +2315,7 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   constexpr bool is_polymorphic_field = field_type_id == TypeId::UNKNOWN;
   constexpr bool is_primitive_field = is_primitive_type_id(field_type_id);
 
-  // Get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
+  // get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
   // info)
   constexpr int dynamic_val = Helpers::template field_dynamic_value<Index>();
 
@@ -2303,18 +2323,10 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // - TRUE (1): always read type info
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
-  bool read_type =
-      (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic_field);
-
-  // In compatible mode, nested struct fields always carry type metadata
-  // (xtypeId + meta index). We must read this metadata so that
-  // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
-  // remote TypeMeta instead of treating the bytes as part of the first field
-  // value.
-  if (!is_polymorphic_field && (is_struct_field || is_ext_field) &&
-      ctx.is_compatible()) {
-    read_type = true;
-  }
+  // Struct/EXT fields need type info in compatible mode for TypeMeta.
+  bool read_type = (dynamic_val == 1) ||
+                   (dynamic_val == -1 && is_polymorphic_field) ||
+                   ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
   // In compatible mode, trust the remote field metadata (remote_ref_mode)
   // to tell us whether a ref/null flag was written before the value payload.
@@ -2453,7 +2465,7 @@ void read_field_at_sorted_position(T &obj, ReadContext &ctx) {
   read_single_field_by_index<original_index>(obj, ctx);
 }
 
-/// Get the fixed size of a primitive type at compile time
+/// get the fixed size of a primitive type at compile time
 template <typename T> constexpr size_t fixed_primitive_size() {
   if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int8_t> ||
                 std::is_same_v<T, uint8_t>) {
@@ -2489,42 +2501,42 @@ template <typename T, size_t I> constexpr size_t compute_fixed_field_offset() {
 }
 
 /// Read a fixed-size primitive value at a given absolute offset using
-/// UnsafeGet. Does NOT update any offset - purely reads at the specified
+/// unsafe_get. Does NOT update any offset - purely reads at the specified
 /// position. Caller must ensure buffer bounds are pre-checked.
 template <typename T>
 FORY_ALWAYS_INLINE T read_fixed_primitive_at(Buffer &buffer, uint32_t offset) {
   if constexpr (std::is_same_v<T, bool>) {
-    return buffer.UnsafeGet<uint8_t>(offset) != 0;
+    return buffer.unsafe_get<uint8_t>(offset) != 0;
   } else if constexpr (std::is_same_v<T, int8_t>) {
-    return static_cast<int8_t>(buffer.UnsafeGet<uint8_t>(offset));
+    return static_cast<int8_t>(buffer.unsafe_get<uint8_t>(offset));
   } else if constexpr (std::is_same_v<T, uint8_t>) {
-    return buffer.UnsafeGet<uint8_t>(offset);
+    return buffer.unsafe_get<uint8_t>(offset);
   } else if constexpr (std::is_same_v<T, int16_t>) {
-    return buffer.UnsafeGet<int16_t>(offset);
+    return buffer.unsafe_get<int16_t>(offset);
   } else if constexpr (std::is_same_v<T, uint16_t>) {
-    return buffer.UnsafeGet<uint16_t>(offset);
+    return buffer.unsafe_get<uint16_t>(offset);
   } else if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int>) {
     // Handle both int32_t and int (different types on some platforms)
-    return static_cast<T>(buffer.UnsafeGet<int32_t>(offset));
+    return static_cast<T>(buffer.unsafe_get<int32_t>(offset));
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
     // Handle both uint32_t and unsigned int (different types on some platforms)
-    return static_cast<T>(buffer.UnsafeGet<uint32_t>(offset));
+    return static_cast<T>(buffer.unsafe_get<uint32_t>(offset));
   } else if constexpr (std::is_same_v<T, float>) {
-    return buffer.UnsafeGet<float>(offset);
+    return buffer.unsafe_get<float>(offset);
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
     // Handle both uint64_t and unsigned long long (different types on some
     // platforms)
-    return static_cast<T>(buffer.UnsafeGet<uint64_t>(offset));
+    return static_cast<T>(buffer.unsafe_get<uint64_t>(offset));
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
     // Handle both int64_t and long long (different types on some platforms)
     // Note: int64_t/long long uses varint, but if classified as fixed by
     // TypeId, we read as fixed 8 bytes
-    return static_cast<T>(buffer.UnsafeGet<int64_t>(offset));
+    return static_cast<T>(buffer.unsafe_get<int64_t>(offset));
   } else if constexpr (std::is_same_v<T, double>) {
-    return buffer.UnsafeGet<double>(offset);
+    return buffer.unsafe_get<double>(offset);
   } else {
     static_assert(sizeof(T) == 0, "Unsupported fixed-size primitive type");
     return T{};
@@ -2539,9 +2551,9 @@ FORY_ALWAYS_INLINE void read_single_fixed_field(T &obj, Buffer &buffer,
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedIdx];
   constexpr size_t field_offset = compute_fixed_field_offset<T, SortedIdx>();
-  const auto field_info = ForyFieldInfo(obj);
+  const auto field_info = fory_field_info(obj);
   const auto field_ptr =
-      std::get<original_index>(decltype(field_info)::PtrsRef());
+      std::get<original_index>(decltype(field_info)::ptrs_ref());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
@@ -2555,7 +2567,7 @@ FORY_ALWAYS_INLINE void read_single_fixed_field(T &obj, Buffer &buffer,
   }
 }
 
-/// Fast read leading fixed-size primitive fields using UnsafeGet.
+/// Fast read leading fixed-size primitive fields using unsafe_get.
 /// Caller must ensure buffer bounds are pre-checked.
 /// Optimized: uses compile-time offsets and updates reader_index once at end.
 template <typename T, size_t... Indices>
@@ -2569,7 +2581,7 @@ read_fixed_primitive_fields(T &obj, Buffer &buffer,
   (read_single_fixed_field<T, Indices>(obj, buffer, base_offset), ...);
 
   // Update reader_index once with total fixed bytes (compile-time constant)
-  buffer.ReaderIndex(base_offset + Helpers::leading_fixed_size_bytes);
+  buffer.reader_index(base_offset + Helpers::leading_fixed_size_bytes);
 }
 
 /// Read a single varint field at a given offset.
@@ -2580,28 +2592,28 @@ FORY_ALWAYS_INLINE T read_varint_at(Buffer &buffer, uint32_t &offset) {
   uint32_t bytes_read;
   if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int>) {
     // Handle both int32_t and int (different types on some platforms)
-    uint32_t raw = buffer.GetVarUint32(offset, &bytes_read);
+    uint32_t raw = buffer.get_var_uint32(offset, &bytes_read);
     offset += bytes_read;
     // Zigzag decode
     return static_cast<T>((raw >> 1) ^ (~(raw & 1) + 1));
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
     // Handle both int64_t and long long (different types on some platforms)
-    uint64_t raw = buffer.GetVarUint64(offset, &bytes_read);
+    uint64_t raw = buffer.get_var_uint64(offset, &bytes_read);
     offset += bytes_read;
     // Zigzag decode
     return static_cast<T>((raw >> 1) ^ (~(raw & 1) + 1));
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, unsigned int>) {
     // Unsigned 32-bit varint (no zigzag)
-    uint32_t raw = buffer.GetVarUint32(offset, &bytes_read);
+    uint32_t raw = buffer.get_var_uint32(offset, &bytes_read);
     offset += bytes_read;
     return raw;
   } else if constexpr (std::is_same_v<T, uint64_t> ||
                        std::is_same_v<T, unsigned long long>) {
     // Unsigned 64-bit varint (no zigzag) - used for VAR_UINT64 and
     // TAGGED_UINT64
-    uint64_t raw = buffer.GetVarUint64(offset, &bytes_read);
+    uint64_t raw = buffer.get_var_uint64(offset, &bytes_read);
     offset += bytes_read;
     return raw;
   } else {
@@ -2618,9 +2630,9 @@ FORY_ALWAYS_INLINE void read_single_varint_field(T &obj, Buffer &buffer,
                                                  uint32_t &offset) {
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
-  const auto field_info = ForyFieldInfo(obj);
+  const auto field_info = fory_field_info(obj);
   const auto field_ptr =
-      std::get<original_index>(decltype(field_info)::PtrsRef());
+      std::get<original_index>(decltype(field_info)::ptrs_ref());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
@@ -2707,11 +2719,11 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
       // Track offset locally for batch varint reading
       uint32_t offset = buffer.reader_index();
       // Fast read varint primitives (bounds checking happens in
-      // GetVarUint32/64)
+      // get_var_uint32/64)
       read_varint_primitive_fields<T, fixed_count>(
           obj, buffer, offset, std::make_index_sequence<varint_count>{});
       // Update reader_index once after all varints
-      buffer.ReaderIndex(offset);
+      buffer.reader_index(offset);
     }
 
     // Phase 3: Read remaining fields (if any) with normal path
@@ -2781,7 +2793,7 @@ template <typename T>
 struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   static constexpr TypeId type_id = TypeId::STRUCT;
 
-  /// Write type info only (type_id and meta index if applicable).
+  /// write type info only (type_id and meta index if applicable).
   /// This is used by collection serializers to write element type info.
   /// Matches Rust's struct_::write_type_info.
   static void write_type_info(WriteContext &ctx) {
@@ -2865,10 +2877,11 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       }
       int32_t local_version =
           TypeMeta::compute_struct_version(*type_info->type_meta);
-      ctx.buffer().WriteInt32(local_version);
+      ctx.buffer().write_int32(local_version);
     }
 
-    using FieldDescriptor = decltype(ForyFieldInfo(std::declval<const T &>()));
+    using FieldDescriptor =
+        decltype(fory_field_info(std::declval<const T &>()));
     constexpr size_t field_count = FieldDescriptor::Size;
     detail::write_struct_fields_impl(
         obj, ctx, std::make_index_sequence<field_count>{}, false);
@@ -2892,10 +2905,11 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       }
       int32_t local_version =
           TypeMeta::compute_struct_version(*type_info->type_meta);
-      ctx.buffer().WriteInt32(local_version);
+      ctx.buffer().write_int32(local_version);
     }
 
-    using FieldDescriptor = decltype(ForyFieldInfo(std::declval<const T &>()));
+    using FieldDescriptor =
+        decltype(fory_field_info(std::declval<const T &>()));
     constexpr size_t field_count = FieldDescriptor::Size;
     detail::write_struct_fields_impl(
         obj, ctx, std::make_index_sequence<field_count>{}, has_generics);
@@ -2931,45 +2945,26 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         // In compatible mode: always use remote TypeMeta for schema evolution
         if (read_type) {
           // Read type_id
-          uint32_t remote_type_id = ctx.read_varuint32(ctx.error());
+          uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
             return T{};
           }
-
-          // Check LOCAL type to decide if we should read meta_index (matches
-          // Rust logic)
-          auto local_type_info_res =
-              ctx.type_resolver().template get_type_info<T>();
-          if (!local_type_info_res.ok()) {
-            ctx.set_error(std::move(local_type_info_res).error());
-            return T{};
-          }
-          const TypeInfo *local_type_info = local_type_info_res.value();
-          uint32_t local_type_id = local_type_info->type_id;
-          uint8_t local_type_id_low = local_type_id & 0xff;
-
-          if (local_type_id_low ==
+          uint8_t remote_type_id_low = remote_type_id & 0xff;
+          const bool remote_has_meta =
+              remote_type_id_low ==
                   static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
-              local_type_id_low ==
-                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT)) {
+              remote_type_id_low ==
+                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
+          if (remote_has_meta) {
             // Read TypeMeta inline using streaming protocol
             auto remote_type_info_res = ctx.read_type_meta();
             if (!remote_type_info_res.ok()) {
               ctx.set_error(std::move(remote_type_info_res).error());
               return T{};
             }
-
             return read_compatible(ctx, remote_type_info_res.value());
-          } else {
-            // Local type is not compatible struct - verify type match and read
-            // data
-            if (remote_type_id != local_type_id) {
-              ctx.set_error(
-                  Error::type_mismatch(remote_type_id, local_type_id));
-              return T{};
-            }
-            return read_data(ctx);
           }
+          return read_data(ctx);
         } else {
           // read_type=false in compatible mode: same version, use sorted order
           // (fast path)
@@ -3005,7 +3000,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
               expected_type_id_low !=
                   static_cast<uint8_t>(TypeId::NAMED_STRUCT)) {
             // Simple type ID - just read and compare varint directly
-            uint32_t remote_type_id = ctx.read_varuint32(ctx.error());
+            uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
               return T{};
             }
@@ -3049,7 +3044,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   static T read_compatible(ReadContext &ctx, const TypeInfo *remote_type_info) {
     // Read and verify struct version if enabled (matches write_data behavior)
     if (ctx.check_struct_version()) {
-      int32_t read_version = ctx.buffer().ReadInt32(ctx.error());
+      int32_t read_version = ctx.buffer().read_int32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return T{};
       }
@@ -3076,7 +3071,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     }
 
     T obj{};
-    using FieldDescriptor = decltype(ForyFieldInfo(std::declval<const T &>()));
+    using FieldDescriptor =
+        decltype(fory_field_info(std::declval<const T &>()));
     constexpr size_t field_count = FieldDescriptor::Size;
 
     // remote_type_info is from the stream, with field_ids already assigned
@@ -3100,7 +3096,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     // Only read struct version hash when check_struct_version is enabled,
     // matching Java's behavior in ObjectSerializer.read().
     if (ctx.check_struct_version()) {
-      int32_t read_version = ctx.buffer().ReadInt32(ctx.error());
+      int32_t read_version = ctx.buffer().read_int32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return T{};
       }
@@ -3127,7 +3123,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     }
 
     T obj{};
-    using FieldDescriptor = decltype(ForyFieldInfo(std::declval<const T &>()));
+    using FieldDescriptor =
+        decltype(fory_field_info(std::declval<const T &>()));
     constexpr size_t field_count = FieldDescriptor::Size;
     detail::read_struct_fields_impl(obj, ctx,
                                     std::make_index_sequence<field_count>{});

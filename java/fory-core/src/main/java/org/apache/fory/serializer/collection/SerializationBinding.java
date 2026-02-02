@@ -22,6 +22,7 @@ package org.apache.fory.serializer.collection;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassInfoHolder;
+import org.apache.fory.resolver.RefMode;
 import org.apache.fory.serializer.Serializer;
 
 // This polymorphic interface has cost, do not expose it as a public class
@@ -73,7 +74,7 @@ interface SerializationBinding {
 
     @Override
     public <T> void writeRef(MemoryBuffer buffer, T obj, Serializer<T> serializer) {
-      fory.writeRef(buffer, obj, serializer);
+      serializer.write(buffer, RefMode.TRACKING, obj);
     }
 
     @Override
@@ -83,7 +84,9 @@ interface SerializationBinding {
 
     @Override
     public <T> T readRef(MemoryBuffer buffer, Serializer<T> serializer) {
-      return fory.readRef(buffer, serializer);
+      // must go with ref mode approach, since inner fread may invoke `reference()`
+      // Preserve a dummy ref ID so serializer.xread() can call reference() safely.
+      return serializer.read(buffer, RefMode.TRACKING);
     }
 
     @Override
@@ -113,7 +116,9 @@ interface SerializationBinding {
 
     @Override
     public Object read(MemoryBuffer buffer, Serializer serializer) {
-      return serializer.read(buffer);
+      // must go with ref mode approach, since inner fread may invoke `reference()`
+      // Preserve a dummy ref ID so serializer.xread() can call reference() safely.
+      return serializer.read(buffer, RefMode.NONE);
     }
 
     @Override
@@ -137,7 +142,7 @@ interface SerializationBinding {
 
     @Override
     public <T> void writeRef(MemoryBuffer buffer, T obj, Serializer<T> serializer) {
-      fory.xwriteRef(buffer, obj, serializer);
+      serializer.xwrite(buffer, RefMode.TRACKING, obj);
     }
 
     @Override
@@ -147,7 +152,9 @@ interface SerializationBinding {
 
     @Override
     public <T> T readRef(MemoryBuffer buffer, Serializer<T> serializer) {
-      return (T) fory.xreadRef(buffer, serializer);
+      // must go with ref mode approach, since inner fread may invoke `reference()`
+      // Preserve a dummy ref ID so serializer.xread() can call reference() safely.
+      return serializer.xread(buffer, RefMode.TRACKING);
     }
 
     @Override
@@ -177,7 +184,9 @@ interface SerializationBinding {
 
     @Override
     public Object read(MemoryBuffer buffer, Serializer serializer) {
-      return serializer.xread(buffer);
+      // must go with ref mode approach, since inner fread may invoke `reference()`
+      // Preserve a dummy ref ID so serializer.xread() can call reference() safely.
+      return serializer.xread(buffer, RefMode.NONE);
     }
 
     @Override

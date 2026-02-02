@@ -1043,6 +1043,11 @@ public class ArraySerializers {
     }
 
     @Override
+    public void write(MemoryBuffer buffer, Object value) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Object[] read(MemoryBuffer buffer) {
       switch (dims) {
         case 1:

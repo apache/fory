@@ -43,6 +43,7 @@ import org.apache.fory.codegen.Expression.BitAnd;
 import org.apache.fory.codegen.Expression.BitOr;
 import org.apache.fory.codegen.Expression.BitShift;
 import org.apache.fory.codegen.Expression.Cast;
+import org.apache.fory.codegen.Expression.EnumExpression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.ListExpression;
 import org.apache.fory.codegen.Expression.LogicalAnd;
@@ -64,6 +65,10 @@ public class ExpressionUtils {
 
   public static Expression newObjectArray(Expression... expressions) {
     return new NewArray(TypeRef.of(Object[].class), expressions);
+  }
+
+  public static Expression ofEnum(Enum<?> value) {
+    return new EnumExpression(value);
   }
 
   public static boolean isReturn(Expression expr) {

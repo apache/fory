@@ -24,9 +24,9 @@ from fory_compiler.frontend.fdl.parser import Parser, ParseError
 
 
 class FDLFrontend(BaseFrontend):
-    """Frontend for Fory Definition Language (.fdl)."""
+    """Frontend for Fory Definition Language (.fdl, .idl)."""
 
-    extensions = [".fdl"]
+    extensions = [".fdl", ".idl"]
 
     def parse(self, source: str, filename: str = "<input>") -> Schema:
         try:

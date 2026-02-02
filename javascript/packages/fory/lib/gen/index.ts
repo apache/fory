@@ -34,14 +34,13 @@ import "./set";
 import "./struct";
 import "./typedArray";
 import "./enum";
+import "./any";
 import Fory from "../fory";
-
-export { AnySerializer } from "./any";
 
 export class Gen {
   static external = CodegenRegistry.getExternal();
 
-  constructor(private fory: Fory, private replace = false, private regOptions: { [key: string]: any } = {}) {
+  constructor(private fory: Fory, private regOptions: { [key: string]: any } = {}) {
 
   }
 
@@ -72,8 +71,8 @@ export class Gen {
   }
 
   private traversalContainer(typeInfo: TypeInfo) {
-    if (typeInfo.typeId === TypeId.STRUCT || typeInfo.typeId === TypeId.NAMED_STRUCT) {
-      if (this.isRegistered(typeInfo) && !this.replace) {
+    if (TypeId.userDefinedType(typeInfo.typeId)) {
+      if (this.isRegistered(typeInfo)) {
         return;
       }
       const options = (<StructTypeInfo>typeInfo).options;
@@ -86,7 +85,7 @@ export class Gen {
         this.register(<StructTypeInfo>typeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
       }
     }
-    if (typeInfo.typeId === TypeId.ARRAY) {
+    if (typeInfo.typeId === TypeId.LIST) {
       this.traversalContainer((<ArrayTypeInfo>typeInfo).options.inner);
     }
     if (typeInfo.typeId === TypeId.SET) {
@@ -98,13 +97,17 @@ export class Gen {
     }
   }
 
+  reGenerateSerializer(typeInfo: TypeInfo) {
+    const func = this.generate(typeInfo);
+    return func()(this.fory, Gen.external, typeInfo, this.regOptions);
+  }
+
   generateSerializer(typeInfo: TypeInfo) {
     this.traversalContainer(typeInfo);
     const exists = this.isRegistered(typeInfo);
     if (exists) {
       return this.fory.classResolver.getSerializerByTypeInfo(typeInfo);
     }
-    const func = this.generate(typeInfo);
-    return func()(this.fory, Gen.external, typeInfo, this.regOptions);
+    return this.reGenerateSerializer(typeInfo);
   }
 }

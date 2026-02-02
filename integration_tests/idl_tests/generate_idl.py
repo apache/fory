@@ -26,9 +26,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 IDL_DIR = Path(__file__).resolve().parent
 SCHEMAS = [
     IDL_DIR / "idl" / "addressbook.fdl",
+    IDL_DIR / "idl" / "collection.fdl",
     IDL_DIR / "idl" / "optional_types.fdl",
     IDL_DIR / "idl" / "tree.fdl",
     IDL_DIR / "idl" / "graph.fdl",
+    IDL_DIR / "idl" / "root.idl",
     IDL_DIR / "idl" / "any_example.fdl",
     IDL_DIR / "idl" / "any_example.proto",
     IDL_DIR / "idl" / "monster.fbs",
@@ -44,13 +46,17 @@ LANG_OUTPUTS = {
 }
 
 GO_OUTPUT_OVERRIDES = {
+    "addressbook.fdl": IDL_DIR / "go" / "addressbook",
+    "collection.fdl": IDL_DIR / "go" / "collection",
     "monster.fbs": IDL_DIR / "go" / "monster",
     "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs",
     "optional_types.fdl": IDL_DIR / "go" / "optional_types",
     "tree.fdl": IDL_DIR / "go" / "tree",
     "graph.fdl": IDL_DIR / "go" / "graph",
+    "root.idl": IDL_DIR / "go" / "root",
     "any_example.fdl": IDL_DIR / "go" / "any_example",
     "any_example.proto": IDL_DIR / "go" / "any_example_pb",
+    "complex_pb.proto": IDL_DIR / "go" / "complex_pb",
 }
 
 

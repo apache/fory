@@ -62,7 +62,7 @@ TEST_F(ErrorTest, ErrorTypes) {
 
 TEST_F(ErrorTest, CopyAndMove) {
   Result<void, Error> err1 = Unexpected(Error::key_error("key not found"));
-  Result<void, Error> err2 = err1; // Copy
+  Result<void, Error> err2 = err1; // copy
   ASSERT_FALSE(err2.ok());
   ASSERT_EQ(err2.error().code(), ErrorCode::KeyError);
 

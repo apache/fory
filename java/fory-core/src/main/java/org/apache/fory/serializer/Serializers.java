@@ -176,6 +176,22 @@ public class Serializers {
     }
   }
 
+  public static <T> void write(MemoryBuffer buffer, Serializer<T> serializer, T obj) {
+    if (serializer.isJava) {
+      serializer.write(buffer, obj);
+    } else {
+      serializer.xwrite(buffer, obj);
+    }
+  }
+
+  public static <T> T read(MemoryBuffer buffer, Serializer<T> serializer) {
+    if (serializer.isJava) {
+      return serializer.read(buffer);
+    } else {
+      return serializer.xread(buffer);
+    }
+  }
+
   public abstract static class CrossLanguageCompatibleSerializer<T> extends Serializer<T> {
 
     public CrossLanguageCompatibleSerializer(Fory fory, Class<T> cls) {
@@ -185,10 +201,6 @@ public class Serializers {
     public CrossLanguageCompatibleSerializer(
         Fory fory, Class<T> cls, boolean needToWriteRef, boolean immutable) {
       super(fory, cls, needToWriteRef, immutable);
-    }
-
-    public CrossLanguageCompatibleSerializer(Fory fory, Class<T> cls, boolean needToWriteRef) {
-      super(fory, cls, needToWriteRef);
     }
 
     @Override
