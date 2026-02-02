@@ -326,10 +326,12 @@ fn skip_struct(
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
         let remote_type_info = context.read_any_typeinfo()?;
-        ensure!(
-            type_id_num == remote_type_info.get_type_id(),
-            Error::type_mismatch(type_id_num, remote_type_info.get_type_id())
-        );
+        if type_id_num != types::UNKNOWN && remote_type_info.get_type_id() != types::UNKNOWN {
+            ensure!(
+                type_id_num == remote_type_info.get_type_id(),
+                Error::type_mismatch(type_id_num, remote_type_info.get_type_id())
+            );
+        }
         type_info_rc = Some(remote_type_info);
         type_info_rc.as_ref().unwrap()
     } else {

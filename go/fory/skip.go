@@ -539,10 +539,8 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		return
 	}
 	if internalID == ENUM || internalID == NAMED_ENUM {
-		if internalID == ENUM {
-			_ = ctx.buffer.ReadVarUint32(err) // userTypeId
-		}
-		_ = ctx.buffer.ReadVarUint32(err) // enum ordinal
+		// Enum values are encoded as ordinal only (VarUint32Small7) for xlang.
+		_ = ctx.buffer.ReadVarUint32Small7(err)
 		return
 	}
 	if internalID == EXT || internalID == NAMED_EXT || internalID == TYPED_UNION || internalID == NAMED_UNION {

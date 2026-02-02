@@ -23,6 +23,7 @@
 #include "fory/serialization/config.h"
 #include "fory/serialization/ref_resolver.h"
 #include "fory/serialization/type_info.h"
+#include "fory/type/type.h"
 #include "fory/util/buffer.h"
 #include "fory/util/error.h"
 #include "fory/util/result.h"

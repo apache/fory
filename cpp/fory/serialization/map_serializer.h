@@ -218,8 +218,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
   bool need_write_header = true;
 
   // Track current chunk's types for polymorphic handling
-  uint32_t current_key_type_id = 0;
-  uint32_t current_val_type_id = 0;
+  const TypeInfo *current_key_type_info = nullptr;
+  const TypeInfo *current_val_type_info = nullptr;
 
   for (const auto &[key, value] : map) {
     // Check if key or value is null (for nullable types: optional, shared_ptr,
@@ -343,8 +343,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
     }
 
     // get type IDs for polymorphic types
-    uint32_t key_type_id = 0;
-    uint32_t val_type_id = 0;
+    const TypeInfo *key_type_info = nullptr;
+    const TypeInfo *val_type_info = nullptr;
     if constexpr (key_is_polymorphic) {
       auto concrete_type_id = get_concrete_type_id(key);
       auto key_type_info_res =
@@ -353,7 +353,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         ctx.set_error(std::move(key_type_info_res).error());
         return;
       }
-      key_type_id = key_type_info_res.value()->type_id;
+      key_type_info = key_type_info_res.value();
     }
     if constexpr (val_is_polymorphic) {
       auto concrete_type_id = get_concrete_type_id(value);
@@ -363,14 +363,19 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         ctx.set_error(std::move(val_type_info_res).error());
         return;
       }
-      val_type_id = val_type_info_res.value()->type_id;
+      val_type_info = val_type_info_res.value();
     }
 
     // Check if we need to start a new chunk due to type changes
     bool types_changed = false;
     if constexpr (key_is_polymorphic || val_is_polymorphic) {
-      types_changed = (key_type_id != current_key_type_id) ||
-                      (val_type_id != current_val_type_id);
+      if constexpr (key_is_polymorphic) {
+        types_changed = key_type_info != current_key_type_info;
+      }
+      if constexpr (val_is_polymorphic) {
+        types_changed =
+            types_changed || (val_type_info != current_val_type_info);
+      }
     }
 
     if (need_write_header || types_changed) {
@@ -440,8 +445,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       }
 
       need_write_header = false;
-      current_key_type_id = key_type_id;
-      current_val_type_id = val_type_id;
+      current_key_type_info = key_type_info;
+      current_val_type_info = val_type_info;
     }
 
     // write key-value pair
@@ -482,8 +487,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       write_chunk_size(ctx, header_offset, pair_counter);
       pair_counter = 0;
       need_write_header = true;
-      current_key_type_id = 0;
-      current_val_type_id = 0;
+      current_key_type_info = nullptr;
+      current_val_type_info = nullptr;
     }
   }
 

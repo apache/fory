@@ -132,6 +132,13 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         T::fory_get_type_id(type_resolver)
     }
 
+    fn fory_get_type_info(type_resolver: &TypeResolver) -> Result<Rc<TypeInfo>, Error> {
+        match type_resolver.get_type_info(&std::any::TypeId::of::<T>()) {
+            Ok(info) => Ok(info),
+            Err(e) => Err(Error::enhance_type_error::<T>(e)),
+        }
+    }
+
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         (**self).fory_type_id_dyn(type_resolver)
     }

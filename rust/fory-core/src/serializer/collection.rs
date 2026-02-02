@@ -288,12 +288,8 @@ where
     if is_same_type {
         let type_info = if !is_declared {
             context.read_any_typeinfo()?
-        } else if T::fory_is_shared_ref() {
-            let rs_type_id = std::any::TypeId::of::<T>();
-            context.get_type_resolver().get_type_info(&rs_type_id)?
         } else {
-            let rs_type_id = std::any::TypeId::of::<T>();
-            context.get_type_resolver().get_type_info(&rs_type_id)?
+            T::fory_get_type_info(context.get_type_resolver())?
         };
         // All elements are same type
         if elem_ref_mode == RefMode::None {

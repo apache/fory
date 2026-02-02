@@ -1105,6 +1105,17 @@ pub trait Serializer: 'static {
         }
     }
 
+    #[inline(always)]
+    fn fory_get_type_info(type_resolver: &TypeResolver) -> Result<Rc<TypeInfo>, Error>
+    where
+        Self: Sized,
+    {
+        match type_resolver.get_type_info(&std::any::TypeId::of::<Self>()) {
+            Ok(info) => Ok(info),
+            Err(e) => Err(Error::enhance_type_error::<Self>(e)),
+        }
+    }
+
     /// **[USER IMPLEMENTATION REQUIRED]** Get the runtime type ID for this instance.
     ///
     /// This method returns the type ID for the actual runtime type of the instance,

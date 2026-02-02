@@ -170,8 +170,8 @@ where
     let val_is_shared_ref = V::fory_is_shared_ref();
 
     // Track the current chunk's key and value types (for polymorphic types)
-    let mut current_key_type_id: Option<u32> = None;
-    let mut current_val_type_id: Option<u32> = None;
+    let mut current_key_type_id: Option<std::any::TypeId> = None;
+    let mut current_val_type_id: Option<std::any::TypeId> = None;
 
     for (key, value) in iter {
         // Handle null key/value entries (write as separate single-entry chunks)
@@ -242,12 +242,12 @@ where
 
         // Get type IDs for polymorphic types
         let key_type_id = if key_is_polymorphic {
-            Some(key.fory_type_id_dyn(context.get_type_resolver())?)
+            Some(key.fory_concrete_type_id())
         } else {
             None
         };
         let val_type_id = if val_is_polymorphic {
-            Some(value.fory_type_id_dyn(context.get_type_resolver())?)
+            Some(value.fory_concrete_type_id())
         } else {
             None
         };
