@@ -76,7 +76,7 @@ def test_alias_used_for_auto_id():
     assert msg.id_source == "demo.PersonAlias"
 
 
-def test_package_alias_used_for_auto_id():
+def test_package_alias_not_used_for_auto_id():
     source = """
     package demo alias alias_demo;
 
@@ -89,9 +89,9 @@ def test_package_alias_used_for_auto_id():
     assert validator.validate()
 
     msg = schema.messages[0]
-    assert msg.type_id == compute_registered_type_id("alias_demo.User")
+    assert msg.type_id == compute_registered_type_id("demo.User")
     assert msg.id_generated is True
-    assert msg.id_source == "alias_demo.User"
+    assert msg.id_source == "demo.User"
 
 
 def test_auto_id_generation_for_enum():

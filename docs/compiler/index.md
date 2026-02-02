@@ -156,8 +156,9 @@ data = fory.serialize(person)
 
 FDL uses numeric type IDs for message and union registration. IDs are mandatory; if
 you omit `id`, the compiler auto-generates one using
-`MurmurHash3(utf8(hash_namespace.typename))` (32-bit). `hash_namespace` is the
-package alias if specified, otherwise the package name.
+`MurmurHash3(utf8(package.name))` (32-bit). Package aliases do not affect
+auto-generated IDs; use `[alias="..."]` to change the hash source without
+renaming the type.
 
 ```protobuf
 message User [id=100] { ... }  // Registered with ID 100
@@ -165,10 +166,10 @@ message Config { ... }         // ID auto-generated
 ```
 
 Namespace-based registration is still available when calling runtime APIs
-directly. IDL-generated code uses explicit IDs when provided; for auto-generated
-IDs it registers by name using a hash-derived typename. If an auto-generated ID
-conflicts, the compiler falls back to name-based registration using the package
-and type name, so there is no runtime ID conflict risk.
+directly. IDL-generated code uses explicit IDs when provided; auto-generated IDs
+are also registered by numeric ID. If an auto-generated ID conflicts, the
+compiler falls back to name-based registration using the package and type name,
+so there is no runtime ID conflict risk.
 
 ### Field Modifiers
 
