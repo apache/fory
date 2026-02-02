@@ -572,14 +572,13 @@ class TypeResolver:
         self._types_info[cls] = typeinfo
         if type_id is not None and type_id != 0:
             if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
-                key = (type_id, user_type_id)
-                existing = self._user_type_id_to_typeinfo.get(key)
+                existing = self._user_type_id_to_typeinfo.get(user_type_id)
                 if existing is not None and existing.cls is not cls:
-                    raise TypeError(f"type id {type_id}/{user_type_id} already registered for {existing.cls}")
+                    raise TypeError(
+                        f"user_type_id {user_type_id} already registered for {existing.cls}")
             if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
-                key = (type_id, user_type_id)
-                if key not in self._user_type_id_to_typeinfo or not internal:
-                    self._user_type_id_to_typeinfo[key] = typeinfo
+                if user_type_id not in self._user_type_id_to_typeinfo or not internal:
+                    self._user_type_id_to_typeinfo[user_type_id] = typeinfo
                 self._used_user_type_ids.add(user_type_id)
             elif self.language == Language.PYTHON or not TypeId.is_namespaced_type(type_id):
                 if type_id not in self._type_id_to_typeinfo or not internal:
@@ -610,7 +609,7 @@ class TypeResolver:
         prev_type_id = typeinfo.type_id
         prev_user_type_id = typeinfo.user_type_id
         if needs_user_type_id(prev_type_id) and prev_user_type_id not in {None, NO_USER_TYPE_ID}:
-            self._user_type_id_to_typeinfo.pop((prev_type_id, prev_user_type_id), None)
+            self._user_type_id_to_typeinfo.pop(prev_user_type_id, None)
         else:
             self._type_id_to_typeinfo.pop(prev_type_id, None)
         if typeinfo.serializer is not serializer:
@@ -620,7 +619,7 @@ class TypeResolver:
             else:
                 typeinfo.type_id = TypeId.EXT
         if needs_user_type_id(typeinfo.type_id) and typeinfo.user_type_id not in {None, NO_USER_TYPE_ID}:
-            self._user_type_id_to_typeinfo[(typeinfo.type_id, typeinfo.user_type_id)] = typeinfo
+            self._user_type_id_to_typeinfo[typeinfo.user_type_id] = typeinfo
         else:
             self._type_id_to_typeinfo[typeinfo.type_id] = typeinfo
 
@@ -774,7 +773,7 @@ class TypeResolver:
             if needs_user_type_id(type_id):
                 if user_type_id in {None, NO_USER_TYPE_ID}:
                     return False
-                return (type_id, user_type_id) in self._user_type_id_to_typeinfo
+                return user_type_id in self._user_type_id_to_typeinfo
             return type_id in self._type_id_to_typeinfo
 
     def get_registered_name(self, cls):
@@ -887,7 +886,7 @@ class TypeResolver:
         if needs_user_type_id(type_id):
             if user_type_id in {None, NO_USER_TYPE_ID}:
                 raise TypeUnregisteredError(f"type id {type_id} missing user_type_id")
-            typeinfo = self._user_type_id_to_typeinfo.get((type_id, user_type_id))
+            typeinfo = self._user_type_id_to_typeinfo.get(user_type_id)
         else:
             typeinfo = self._type_id_to_typeinfo.get(type_id)
         if typeinfo is not None:
