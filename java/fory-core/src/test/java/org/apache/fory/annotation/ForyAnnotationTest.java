@@ -144,16 +144,14 @@ public class ForyAnnotationTest extends ForyTestBase {
   public void testForyFieldAnnotation(
       boolean trackingRef,
       boolean codeGen,
-      boolean scopedMetaShare,
-      CompatibleMode compatibleMode) {
+      boolean compatible) {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(trackingRef)
             .requireClassRegistration(false)
             .withCodegen(codeGen)
-            .withCompatibleMode(compatibleMode)
-            .withScopedMetaShare(scopedMetaShare)
+            .withCompatible(compatible)
             .build();
     BeanM o = new BeanM();
     byte[] bytes = fory.serialize(o);

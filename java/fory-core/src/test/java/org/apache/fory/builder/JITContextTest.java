@@ -52,8 +52,17 @@ public class JITContextTest extends ForyTestBase {
   public static Object[][] config1() {
     return Sets.cartesianProduct(
             ImmutableSet.of(true, false), // referenceTracking
-            ImmutableSet.of(true, false), // scoped meta share
-            ImmutableSet.of(CompatibleMode.COMPATIBLE, CompatibleMode.SCHEMA_CONSISTENT))
+            ImmutableSet.of(true, false)) // compatible
+        .stream()
+        .map(List::toArray)
+        .toArray(Object[][]::new);
+  }
+  @DataProvider
+  public static Object[][] config2() {
+    return Sets.cartesianProduct(
+            ImmutableSet.of(true, false), // referenceTracking
+            ImmutableSet.of(true, false), // compatible
+            ImmutableSet.of(true, false)) // scopedMetaShare
         .stream()
         .map(List::toArray)
         .toArray(Object[][]::new);
@@ -61,14 +70,13 @@ public class JITContextTest extends ForyTestBase {
 
   @Test(dataProvider = "config1", timeOut = 60_000)
   public void testAsyncCompilation(
-      boolean referenceTracking, boolean scopedMetaShare, CompatibleMode compatibleMode)
+      boolean referenceTracking, boolean compatible)
       throws InterruptedException {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(referenceTracking)
-            .withCompatibleMode(compatibleMode)
-            .withScopedMetaShare(scopedMetaShare)
+            .withCompatible(compatible)
             .requireClassRegistration(false)
             .withAsyncCompilation(true)
             .build();
@@ -101,15 +109,15 @@ public class JITContextTest extends ForyTestBase {
     }
   }
 
-  @Test(dataProvider = "config1", timeOut = 60_000)
+  @Test(dataProvider = "config2", timeOut = 60_000)
   public void testAsyncCompilationMetaShared(
-      boolean referenceTracking, boolean scopedMetaShare, CompatibleMode compatibleMode)
+      boolean referenceTracking, boolean compatible, boolean scopedMetaShare)
       throws InterruptedException {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(referenceTracking)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withScopedMetaShare(scopedMetaShare)
             .requireClassRegistration(false)
             .withAsyncCompilation(true)

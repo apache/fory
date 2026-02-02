@@ -251,9 +251,7 @@ public abstract class ForyTestBase {
     return Sets.cartesianProduct(
             ImmutableSet.of(true, false), // trackingRef
             ImmutableSet.of(true, false), // codeGen
-            ImmutableSet.of(true, false), // scoped meta share
-            ImmutableSet.of(
-                CompatibleMode.COMPATIBLE, CompatibleMode.SCHEMA_CONSISTENT)) // CompatibleMode
+            ImmutableSet.of(true, false)) // compatible
         .stream()
         .map(List::toArray)
         .toArray(Object[][]::new);

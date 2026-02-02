@@ -470,6 +470,7 @@ public final class ForyBuilder {
           metaShareEnabled = scopedMetaShareEnabled;
         }
       }
+      metaShareEnabled = true;
     } else {
       if (deserializeNonexistentClass == null) {
         deserializeNonexistentClass = false;
