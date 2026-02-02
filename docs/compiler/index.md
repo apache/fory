@@ -47,6 +47,21 @@ message Order {
     Status status = 3;
     map<string, int32> metadata = 4;
 }
+
+message Dog [id=104] {
+    string name = 1;
+    int32 bark_volume = 2;
+}
+
+message Cat [id=105] {
+    string name = 1;
+    int32 lives = 2;
+}
+
+union Animal [id=106] {
+    Dog dog = 1;
+    Cat cat = 2;
+}
 ```
 
 ## Why FDL?
