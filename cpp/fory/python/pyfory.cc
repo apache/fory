@@ -112,7 +112,7 @@ static inline uint32_t WriteVarint64ZigZag(uint8_t *arr, int64_t value) {
 
 Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
                                              Buffer *buffer) {
-  PyObject **items = PySequenceGetItems(collection);
+  PyObject **items = py_sequence_get_items(collection);
   if (items == nullptr) {
     return -1;
   }
@@ -131,7 +131,7 @@ Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
     total_bytes += bytes_written;
   }
 
-  buffer->IncreaseWriterIndex(total_bytes);
+  buffer->increase_writer_index(total_bytes);
   return total_bytes;
 }
 
@@ -199,7 +199,7 @@ Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
     PyList_SET_ITEM(list, i, py_int);
   }
 
-  buffer->IncreaseReaderIndex(total_bytes);
+  buffer->increase_reader_index(total_bytes);
   return total_bytes;
 }
 } // namespace fory
