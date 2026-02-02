@@ -695,19 +695,21 @@ cdef class TypeResolver:
             return
         cdef:
             int32_t type_id = typeinfo.type_id
-
-        if self.meta_share:
-            self.write_shared_type_meta(buffer, typeinfo)
-            return
-
         buffer.write_uint8(type_id)
-        if needs_user_type_id(type_id) and type_id != TypeId.COMPATIBLE_STRUCT:
+        if needs_user_type_id(type_id):
             if typeinfo.user_type_id == NO_USER_TYPE_ID:
                 raise ValueError(f"user_type_id required for type_id {type_id}")
             buffer.write_var_uint32(typeinfo.user_type_id)
+            return
+        if type_id == TypeId.COMPATIBLE_STRUCT or type_id == TypeId.NAMED_COMPATIBLE_STRUCT:
+            self.write_shared_type_meta(buffer, typeinfo)
+            return
         if is_namespaced_type(type_id):
-            self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
-            self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
+            if self.meta_share:
+                self.write_shared_type_meta(buffer, typeinfo)
+            else:
+                self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
+                self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
 
     cpdef inline TypeInfo read_typeinfo(self, Buffer buffer):
         cdef:
@@ -715,15 +717,16 @@ cdef class TypeResolver:
         cdef:
             uint32_t user_type_id = NO_USER_TYPE_ID
             MetaStringBytes namespace_bytes, typename_bytes
-        if self.meta_share:
+        if type_id == TypeId.COMPATIBLE_STRUCT or type_id == TypeId.NAMED_COMPATIBLE_STRUCT:
             return self.serialization_context.meta_context.read_shared_typeinfo_with_type_id(buffer, type_id)
-        if needs_user_type_id(type_id) and type_id != TypeId.COMPATIBLE_STRUCT:
-            user_type_id = buffer.read_var_uint32()
         if is_namespaced_type(type_id):
+            if self.meta_share:
+                return self.serialization_context.meta_context.read_shared_typeinfo_with_type_id(buffer, type_id)
             namespace_bytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             typename_bytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             return self._load_bytes_to_typeinfo(type_id, namespace_bytes, typename_bytes)
-        if needs_user_type_id(type_id) and type_id != TypeId.COMPATIBLE_STRUCT:
+        if needs_user_type_id(type_id):
+            user_type_id = buffer.read_var_uint32()
             return self.get_user_typeinfo_by_id(type_id, user_type_id)
         if type_id >= self._c_registered_id_to_type_info.size():
             raise ValueError(f"Unexpected type_id {type_id}")
@@ -819,11 +822,6 @@ cdef class MetaContext:
         """write type info with streaming inline TypeDef."""
         type_cls = typeinfo.cls
         cdef int32_t type_id = typeinfo.type_id
-        buffer.write_uint8(type_id)
-        if needs_user_type_id(type_id) and type_id != TypeId.COMPATIBLE_STRUCT:
-            if typeinfo.user_type_id == NO_USER_TYPE_ID:
-                raise ValueError(f"user_type_id required for type_id {type_id}")
-            buffer.write_var_uint32(typeinfo.user_type_id)
         if not is_type_share_meta(type_id):
             return
 
@@ -861,7 +859,7 @@ cdef class MetaContext:
     cpdef inline read_shared_typeinfo_with_type_id(self, Buffer buffer, int32_t type_id):
         """Read shared type info when type_id is already consumed."""
         cdef uint32_t user_type_id = NO_USER_TYPE_ID
-        if needs_user_type_id(type_id) and type_id != TypeId.COMPATIBLE_STRUCT:
+        if needs_user_type_id(type_id):
             user_type_id = buffer.read_var_uint32()
         if not is_type_share_meta(type_id):
             if needs_user_type_id(type_id):

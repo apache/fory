@@ -830,30 +830,30 @@ class TypeResolver:
     def write_typeinfo(self, buffer, typeinfo):
         if typeinfo.dynamic_type:
             return
-        # Check if meta share is enabled first
-        if self.meta_share:
-            self.write_shared_type_meta(buffer, typeinfo)
-            return
         type_id = typeinfo.type_id
         buffer.write_uint8(type_id)
         if needs_user_type_id(type_id):
             if typeinfo.user_type_id in {None, NO_USER_TYPE_ID}:
                 raise TypeError(f"user_type_id required for type_id {type_id}")
             buffer.write_var_uint32(typeinfo.user_type_id)
+            return
+        if type_id in {TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT}:
+            self.write_shared_type_meta(buffer, typeinfo)
+            return
         if TypeId.is_namespaced_type(type_id):
-            self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
-            self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
+            if self.meta_share:
+                self.write_shared_type_meta(buffer, typeinfo)
+            else:
+                self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
+                self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
 
     def read_typeinfo(self, buffer):
-        # Check if meta share is enabled first
-        if self.meta_share:
-            return self.read_shared_type_meta(buffer)
-
         type_id = buffer.read_uint8()
-        user_type_id = NO_USER_TYPE_ID
-        if needs_user_type_id(type_id):
-            user_type_id = buffer.read_var_uint32()
+        if type_id in {TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT}:
+            return self.serialization_context.meta_context.read_shared_typeinfo_with_type_id(buffer, type_id)
         if TypeId.is_namespaced_type(type_id):
+            if self.meta_share:
+                return self.serialization_context.meta_context.read_shared_typeinfo_with_type_id(buffer, type_id)
             ns_metabytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             type_metabytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             typeinfo = self._ns_type_to_typeinfo.get((ns_metabytes, type_metabytes))
@@ -884,8 +884,10 @@ class TypeResolver:
                 name = ns + "." + typename if ns else typename
                 raise TypeUnregisteredError(f"{name} not registered")
             return typeinfo
-        else:
+        if needs_user_type_id(type_id):
+            user_type_id = buffer.read_var_uint32()
             return self.get_typeinfo_by_id(type_id, user_type_id=user_type_id)
+        return self.get_typeinfo_by_id(type_id)
 
     def get_typeinfo_by_id(self, type_id, user_type_id=NO_USER_TYPE_ID):
         """Get typeinfo by type_id. Never returns None.

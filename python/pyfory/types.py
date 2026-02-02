@@ -423,7 +423,6 @@ _union_type_ids = {
 _user_type_id_required = {
     TypeId.ENUM,
     TypeId.STRUCT,
-    TypeId.COMPATIBLE_STRUCT,
     TypeId.EXT,
     TypeId.TYPED_UNION,
 }
