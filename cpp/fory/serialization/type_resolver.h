@@ -70,6 +70,10 @@ class TypeResolver;
 class WriteContext;
 class ReadContext;
 
+template <typename T>
+Result<const TypeInfo *, Error> get_type_info_with_resolver(
+    TypeResolver &resolver);
+
 // ============================================================================
 // TypeIndex primary template (fallback)
 // Specializations for primitives and containers are in serializer_traits.h
@@ -461,9 +465,9 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_tuple_v<decay_t<T>>>> {
     if constexpr (tuple_size > 0) {
       add_element_types(ft, std::make_index_sequence<tuple_size>{});
     } else {
-      // Empty tuple: use STRUCT as stub element type for schema encoding
+      // Empty tuple: use UNKNOWN as stub element type for schema encoding
       ft.generics.push_back(
-          FieldType(static_cast<uint32_t>(TypeId::STRUCT), false));
+          FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
     }
     return ft;
   }
@@ -541,6 +545,11 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
     inner.nullable = true;
     return inner;
+  } else if constexpr (::fory::detail::is_shared_weak_v<Decayed>) {
+    using Inner = nullable_element_t<Decayed>;
+    FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+    inner.nullable = true;
+    return inner;
   } else if constexpr (is_unique_ptr_v<Decayed>) {
     using Inner = typename Decayed::element_type;
     FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
@@ -601,16 +610,17 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     constexpr size_t tuple_size = std::tuple_size_v<Decayed>;
     FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
     if constexpr (tuple_size > 0) {
-      FORY_RETURN_IF_ERROR(add_tuple_element_types<Decayed, 0>(resolver, ft));
+      FORY_RETURN_IF_ERROR(
+          (add_tuple_element_types<Decayed, 0>(resolver, ft)));
     } else {
       ft.generics.push_back(
-          FieldType(static_cast<uint32_t>(TypeId::STRUCT), false));
+          FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
     }
     return ft;
   } else {
     FieldType ft = FieldTypeBuilder<Decayed>::build(nullable);
     if (is_user_type(static_cast<TypeId>(ft.type_id))) {
-      FORY_TRY(info, resolver.template get_type_info<Decayed>());
+      FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
       ft.type_id = info->type_id;
       ft.user_type_id = info->user_type_id;
     }
@@ -753,9 +763,9 @@ constexpr uint32_t compute_signed_type_id() {
 
 template <typename T, size_t Index> struct FieldInfoBuilder {
   static FieldInfo build() {
-    const auto meta = fory_field_info(T{});
-    const auto field_names = decltype(meta)::Names;
-    const auto &field_ptrs = decltype(meta)::ptrs_ref();
+    using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+    const auto field_names = MetaDesc::Names;
+    const auto &field_ptrs = MetaDesc::ptrs_ref();
 
     // Convert camel_case field name to snake_case for cross-language
     // compatibility
@@ -825,9 +835,9 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
   }
 
   static Result<FieldInfo, Error> build_with_resolver(TypeResolver &resolver) {
-    const auto meta = fory_field_info(T{});
-    const auto field_names = decltype(meta)::Names;
-    const auto &field_ptrs = decltype(meta)::ptrs_ref();
+    using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+    const auto field_names = MetaDesc::Names;
+    const auto &field_ptrs = MetaDesc::ptrs_ref();
 
     // Convert camel_case field name to snake_case for cross-language
     // compatibility
@@ -916,7 +926,8 @@ template <typename T, size_t Index, size_t... Rest>
 Result<void, Error> append_field_infos(TypeResolver &resolver,
                                        std::vector<FieldInfo> &fields,
                                        std::index_sequence<Index, Rest...>) {
-  FORY_TRY(info, FieldInfoBuilder<T, Index>::build_with_resolver(resolver));
+  FORY_TRY(info,
+           (FieldInfoBuilder<T, Index>::build_with_resolver(resolver)));
   fields.push_back(std::move(info));
   return append_field_infos<T>(resolver, fields,
                                std::index_sequence<Rest...>{});
@@ -1066,6 +1077,12 @@ private:
 
   template <typename T> static Harness make_struct_harness();
 
+  template <typename T>
+  static Harness make_struct_harness_impl(std::true_type);
+
+  template <typename T>
+  static Harness make_struct_harness_impl(std::false_type);
+
   template <typename T> static Harness make_serializer_harness();
 
   template <typename T>
@@ -1078,11 +1095,18 @@ private:
                                     bool read_type_info);
 
   template <typename T>
+  static void *harness_read_adapter_abstract(ReadContext &ctx, RefMode ref_mode,
+                                             bool read_type_info);
+
+  template <typename T>
   static void harness_write_data_adapter(const void *value, WriteContext &ctx,
                                          bool has_generics);
 
   template <typename T>
   static void *harness_read_data_adapter(ReadContext &ctx);
+
+  template <typename T>
+  static void *harness_read_data_adapter_abstract(ReadContext &ctx);
 
   template <typename T>
   static Result<std::vector<FieldInfo>, Error>
@@ -1095,6 +1119,10 @@ private:
   template <typename T>
   static void *harness_read_compatible_adapter(ReadContext &ctx,
                                                const TypeInfo *ti);
+
+  template <typename T>
+  static void *harness_read_compatible_adapter_abstract(ReadContext &ctx,
+                                                        const TypeInfo *ti);
 
   static std::string make_name_key(const std::string &ns,
                                    const std::string &name);
@@ -1198,6 +1226,12 @@ template <typename T> inline std::any any_read_adapter(ReadContext &ctx) {
   return std::any(std::make_shared<T>(std::move(value)));
 }
 
+template <typename T>
+inline std::any any_read_adapter_abstract(ReadContext &ctx) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return std::any();
+}
+
 } // namespace detail
 
 template <typename T> const TypeMeta &TypeResolver::struct_meta() {
@@ -1235,6 +1269,12 @@ Result<const TypeInfo *, Error> TypeResolver::get_type_info() const {
     return info;
   }
   return Unexpected(Error::type_error("Type not registered"));
+}
+
+template <typename T>
+Result<const TypeInfo *, Error> get_type_info_with_resolver(
+    TypeResolver &resolver) {
+  return resolver.get_type_info<T>();
 }
 
 template <typename T> Result<void, Error> TypeResolver::register_any_type() {
@@ -1469,13 +1509,13 @@ TypeResolver::build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
   entry->register_by_name = register_by_name;
   entry->is_external = false;
 
-  const auto meta_desc = fory_field_info(T{});
-  constexpr size_t field_count = decltype(meta_desc)::Size;
-  const auto field_names = decltype(meta_desc)::Names;
+  using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+  constexpr size_t field_count = MetaDesc::Size;
+  const auto field_names = MetaDesc::Names;
 
   std::string resolved_name = type_name;
   if (resolved_name.empty()) {
-    resolved_name = std::string(decltype(meta_desc)::Name);
+    resolved_name = std::string(MetaDesc::Name);
   }
   if (register_by_name && resolved_name.empty()) {
     return Unexpected(Error::invalid(
@@ -1508,18 +1548,6 @@ TypeResolver::build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
     entry->sorted_indices.push_back(it->second);
   }
 
-  TypeMeta meta = TypeMeta::from_fields(
-      type_id, entry->namespace_name, entry->type_name, register_by_name,
-      entry->user_type_id, std::move(sorted_fields));
-
-  FORY_TRY(type_def, meta.to_bytes());
-  entry->type_def = std::move(type_def);
-
-  Buffer buffer(entry->type_def.data(),
-                static_cast<uint32_t>(entry->type_def.size()), false);
-  buffer.writer_index(static_cast<uint32_t>(entry->type_def.size()));
-  FORY_TRY(parsed_meta, TypeMeta::from_bytes(buffer, nullptr));
-  entry->type_meta = std::move(parsed_meta);
   entry->harness = make_struct_harness<T>();
 
   // Pre-encode namespace and type_name for efficient writing
@@ -1642,6 +1670,27 @@ TypeResolver::build_union_type_info(uint32_t type_id, uint32_t user_type_id,
 }
 
 template <typename T> Harness TypeResolver::make_struct_harness() {
+  constexpr bool needs_abstract_harness =
+      std::is_abstract_v<T> || !std::is_default_constructible_v<T>;
+  return make_struct_harness_impl<T>(
+      std::bool_constant<needs_abstract_harness>{});
+}
+
+template <typename T>
+Harness TypeResolver::make_struct_harness_impl(std::true_type) {
+  Harness harness(&TypeResolver::harness_write_adapter<T>,
+                  &TypeResolver::harness_read_adapter_abstract<T>,
+                  &TypeResolver::harness_write_data_adapter<T>,
+                  &TypeResolver::harness_read_data_adapter_abstract<T>,
+                  &TypeResolver::harness_struct_sorted_fields<T>,
+                  &TypeResolver::harness_read_compatible_adapter_abstract<T>);
+  harness.any_write_fn = &detail::any_write_adapter<T>;
+  harness.any_read_fn = &detail::any_read_adapter_abstract<T>;
+  return harness;
+}
+
+template <typename T>
+Harness TypeResolver::make_struct_harness_impl(std::false_type) {
   Harness harness(&TypeResolver::harness_write_adapter<T>,
                   &TypeResolver::harness_read_adapter<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
@@ -1684,6 +1733,13 @@ void *TypeResolver::harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
 }
 
 template <typename T>
+void *TypeResolver::harness_read_adapter_abstract(ReadContext &ctx, RefMode,
+                                                  bool) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return nullptr;
+}
+
+template <typename T>
 void TypeResolver::harness_write_data_adapter(const void *value,
                                               WriteContext &ctx,
                                               bool has_generics) {
@@ -1701,6 +1757,12 @@ void *TypeResolver::harness_read_data_adapter(ReadContext &ctx) {
 }
 
 template <typename T>
+void *TypeResolver::harness_read_data_adapter_abstract(ReadContext &ctx) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return nullptr;
+}
+
+template <typename T>
 void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
                                                     const TypeInfo *ti) {
   T value = Serializer<T>::read_compatible(ctx, ti);
@@ -1711,12 +1773,19 @@ void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
 }
 
 template <typename T>
+void *TypeResolver::harness_read_compatible_adapter_abstract(ReadContext &ctx,
+                                                             const TypeInfo *) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return nullptr;
+}
+
+template <typename T>
 Result<std::vector<FieldInfo>, Error>
 TypeResolver::harness_struct_sorted_fields(TypeResolver &resolver) {
   static_assert(is_fory_serializable_v<T>,
                 "harness_struct_sorted_fields requires FORY_STRUCT types");
-  const auto meta_desc = fory_field_info(T{});
-  constexpr size_t field_count = decltype(meta_desc)::Size;
+  using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+  constexpr size_t field_count = MetaDesc::Size;
   FORY_TRY(fields, detail::build_field_infos_with_resolver<T>(
                        resolver, std::make_index_sequence<field_count>{}));
   auto sorted = TypeMeta::sort_field_infos(std::move(fields));

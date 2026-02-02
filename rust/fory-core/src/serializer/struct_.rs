@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;

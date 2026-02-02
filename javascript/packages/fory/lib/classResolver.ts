@@ -28,6 +28,9 @@ const uninitSerialize = {
   getTypeId: () => {
     throw new Error("uninitSerialize");
   },
+  getUserTypeId: () => {
+    throw new Error("uninitSerialize");
+  },
   needToWriteRef: () => {
     throw new Error("uninitSerialize");
   },

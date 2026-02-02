@@ -219,7 +219,6 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
   }
 
   uint32_t user_type_id = 0;
-  bool has_user_type_id = false;
   switch (static_cast<TypeId>(remote_type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
@@ -230,12 +229,15 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
-    has_user_type_id = true;
     break;
   default:
     break;
   }
   TypeId remote_tid = static_cast<TypeId>(remote_type_id);
+  bool has_user_type_id =
+      remote_tid == TypeId::ENUM || remote_tid == TypeId::STRUCT ||
+      remote_tid == TypeId::COMPATIBLE_STRUCT || remote_tid == TypeId::EXT ||
+      remote_tid == TypeId::TYPED_UNION;
 
   const TypeInfo *type_info = nullptr;
 
@@ -307,7 +309,6 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
   }
 
   uint32_t user_type_id = 0;
-  bool has_user_type_id = false;
   switch (static_cast<TypeId>(remote_type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
@@ -318,7 +319,6 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
-    has_user_type_id = true;
     break;
   default:
     break;

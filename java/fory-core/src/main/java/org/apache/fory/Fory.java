@@ -62,6 +62,7 @@ import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.BufferObject;
+import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
@@ -515,7 +516,14 @@ public final class Fory implements BaseFory {
 
   public void xwriteRef(MemoryBuffer buffer, Object obj) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
-      ClassInfo classInfo = xtypeResolver.writeClassInfo(buffer, obj);
+      ClassInfo classInfo = xtypeResolver.getClassInfo(obj.getClass());
+      if (classInfo.getCls() == NonexistentMetaShared.class) {
+        depth++;
+        classInfo.getSerializer().xwrite(buffer, obj);
+        depth--;
+        return;
+      }
+      xtypeResolver.writeClassInfo(buffer, classInfo);
       xwriteData(buffer, classInfo, obj);
     }
   }
@@ -523,14 +531,26 @@ public final class Fory implements BaseFory {
   public void xwriteRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
       ClassInfo classInfo = xtypeResolver.getClassInfo(obj.getClass(), classInfoHolder);
-      xtypeResolver.writeClassInfo(buffer, obj);
+      if (classInfo.getCls() == NonexistentMetaShared.class) {
+        depth++;
+        classInfo.getSerializer().xwrite(buffer, obj);
+        depth--;
+        return;
+      }
+      xtypeResolver.writeClassInfo(buffer, classInfo);
       xwriteData(buffer, classInfo, obj);
     }
   }
 
   public void xwriteRef(MemoryBuffer buffer, Object obj, ClassInfo classInfo) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
-      xtypeResolver.writeClassInfo(buffer, obj);
+      if (classInfo.getCls() == NonexistentMetaShared.class) {
+        depth++;
+        classInfo.getSerializer().xwrite(buffer, obj);
+        depth--;
+        return;
+      }
+      xtypeResolver.writeClassInfo(buffer, classInfo);
       xwriteData(buffer, classInfo, obj);
     }
   }
@@ -555,17 +575,36 @@ public final class Fory implements BaseFory {
   }
 
   public void xwriteNonRef(MemoryBuffer buffer, Object obj) {
-    ClassInfo classInfo = xtypeResolver.writeClassInfo(buffer, obj);
+    ClassInfo classInfo = xtypeResolver.getClassInfo(obj.getClass());
+    if (classInfo.getCls() == NonexistentMetaShared.class) {
+      depth++;
+      classInfo.getSerializer().xwrite(buffer, obj);
+      depth--;
+      return;
+    }
+    xtypeResolver.writeClassInfo(buffer, classInfo);
     xwriteData(buffer, classInfo, obj);
   }
 
   public void xwriteNonRef(MemoryBuffer buffer, Object obj, ClassInfoHolder holder) {
     ClassInfo classInfo = xtypeResolver.getClassInfo(obj.getClass(), holder);
-    xtypeResolver.writeClassInfo(buffer, obj);
+    if (classInfo.getCls() == NonexistentMetaShared.class) {
+      depth++;
+      classInfo.getSerializer().xwrite(buffer, obj);
+      depth--;
+      return;
+    }
+    xtypeResolver.writeClassInfo(buffer, classInfo);
     xwriteData(buffer, classInfo, obj);
   }
 
   public void xwriteNonRef(MemoryBuffer buffer, Object obj, ClassInfo classInfo) {
+    if (classInfo.getCls() == NonexistentMetaShared.class) {
+      depth++;
+      classInfo.getSerializer().xwrite(buffer, obj);
+      depth--;
+      return;
+    }
     xtypeResolver.writeClassInfo(buffer, classInfo);
     xwriteData(buffer, classInfo, obj);
   }

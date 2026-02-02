@@ -51,8 +51,8 @@ const (
 	useStringId             = 1
 	SMALL_STRING_THRESHOLD  = 16
 	// 0xffffffff is reserved for "unset".
-	maxUserTypeID       = 0xfffffffe
-	invalidUserTypeID   = 0xffffffff
+	maxUserTypeID       uint32 = 0xfffffffe
+	invalidUserTypeID   uint32 = 0xffffffff
 	internalTypeIDLimit = 0xFF
 )
 
@@ -1246,7 +1246,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	return r.registerType(
 		type_,
 		typeID,
-		-1,
+		invalidUserTypeID,
 		pkgPath,
 		typeName,
 		nil, // serializer will be created during registration
@@ -1355,14 +1355,16 @@ func (r *TypeResolver) registerType(
 
 	// Cache by type ID (for cross-language support)
 	if (TypeId(typeID) == ENUM || TypeId(typeID) == STRUCT ||
-		TypeId(typeID) == EXT || TypeId(typeID) == TYPED_UNION) &&
+		TypeId(typeID) == COMPATIBLE_STRUCT || TypeId(typeID) == EXT ||
+		TypeId(typeID) == TYPED_UNION) &&
 		userTypeID != invalidUserTypeID {
 		key := userTypeKey{typeID: TypeId(typeID), userTypeID: userTypeID}
 		if _, ok := r.userTypeIdToTypeInfo[key]; !ok {
 			r.userTypeIdToTypeInfo[key] = typeInfo
 		}
 	} else if TypeId(typeID) != ENUM && TypeId(typeID) != STRUCT &&
-		TypeId(typeID) != EXT && TypeId(typeID) != TYPED_UNION &&
+		TypeId(typeID) != COMPATIBLE_STRUCT && TypeId(typeID) != EXT &&
+		TypeId(typeID) != TYPED_UNION &&
 		!IsNamespacedType(TypeId(typeID)) {
 		/*
 		   This function is required to maintain the typeID registry: all types

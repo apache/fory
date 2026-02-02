@@ -948,7 +948,7 @@ public abstract class TypeResolver {
       return Types.NAMED_EXT;
     }
     if (fory.isCompatible()) {
-      return Types.NAMED_COMPATIBLE_STRUCT;
+      return metaContextShareEnabled ? Types.NAMED_COMPATIBLE_STRUCT : Types.NAMED_STRUCT;
     }
     return Types.NAMED_STRUCT;
   }

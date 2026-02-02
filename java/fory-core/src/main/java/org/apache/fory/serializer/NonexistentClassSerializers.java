@@ -149,25 +149,32 @@ public final class NonexistentClassSerializers {
       int userTypeId = value.classDef.isNamed() ? -1 : value.classDef.getUserTypeId();
       int typeIdSize = 1;
       int userTypeIdSize = userTypeId != -1 ? computeVarUint32Size(userTypeId) : 0;
-      int totalSize = typeIdSize + userTypeIdSize;
-      if (totalSize == NONEXISTENT_META_SHARED_ID_SIZE) {
-        buffer.increaseWriterIndex(-NONEXISTENT_META_SHARED_ID_SIZE);
+      if (fory.isCrossLanguage()) {
         buffer.writeUint8(typeId);
         if (userTypeIdSize > 0) {
           buffer.writeVarUint32(userTypeId);
         }
       } else {
-        int originalWriterIndex = buffer.writerIndex();
-        int placeholderStart = originalWriterIndex - NONEXISTENT_META_SHARED_ID_SIZE;
-        int payloadStart = placeholderStart + NONEXISTENT_META_SHARED_ID_SIZE;
-        int payloadLength = originalWriterIndex - payloadStart;
-        byte[] payload = buffer.getBytes(payloadStart, payloadLength);
-        buffer.writerIndex(placeholderStart);
-        buffer.writeUint8(typeId);
-        if (userTypeIdSize > 0) {
-          buffer.writeVarUint32(userTypeId);
+        int totalSize = typeIdSize + userTypeIdSize;
+        if (totalSize == NONEXISTENT_META_SHARED_ID_SIZE) {
+          buffer.increaseWriterIndex(-NONEXISTENT_META_SHARED_ID_SIZE);
+          buffer.writeUint8(typeId);
+          if (userTypeIdSize > 0) {
+            buffer.writeVarUint32(userTypeId);
+          }
+        } else {
+          int originalWriterIndex = buffer.writerIndex();
+          int placeholderStart = originalWriterIndex - NONEXISTENT_META_SHARED_ID_SIZE;
+          int payloadStart = placeholderStart + NONEXISTENT_META_SHARED_ID_SIZE;
+          int payloadLength = originalWriterIndex - payloadStart;
+          byte[] payload = buffer.getBytes(payloadStart, payloadLength);
+          buffer.writerIndex(placeholderStart);
+          buffer.writeUint8(typeId);
+          if (userTypeIdSize > 0) {
+            buffer.writeVarUint32(userTypeId);
+          }
+          buffer.writeBytes(payload);
         }
-        buffer.writeBytes(payload);
       }
       writeClassDef(buffer, value);
       ClassDef classDef = value.classDef;

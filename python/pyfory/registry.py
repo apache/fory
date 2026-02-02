@@ -247,7 +247,6 @@ class TypeResolver:
 
     def _initialize_py(self):
         register = functools.partial(self._register_type, internal=True)
-        register(type(None), serializer=NoneSerializer)
         register(tuple, serializer=TupleSerializer)
         register(slice, serializer=SliceSerializer)
         if np is not None:
@@ -437,6 +436,15 @@ class TypeResolver:
                     serializer = serializer(self.fory)
                 except BaseException:
                     serializer = serializer()
+        if (
+            cls in self._types_info
+            and type_id is None
+            and typename is None
+            and namespace is None
+            and serializer is None
+            and user_type_id in {None, NO_USER_TYPE_ID}
+        ):
+            return self._types_info[cls]
         n_params = len({typename, type_id, None}) - 1
         if n_params == 0 and typename is None:
             type_id = self._next_type_id()
@@ -820,7 +828,7 @@ class TypeResolver:
             return
         type_id = typeinfo.type_id
         buffer.write_uint8(type_id)
-        if needs_user_type_id(type_id):
+        if type_id in {TypeId.ENUM, TypeId.STRUCT, TypeId.EXT, TypeId.TYPED_UNION}:
             if typeinfo.user_type_id in {None, NO_USER_TYPE_ID}:
                 raise TypeError(f"user_type_id required for type_id {type_id}")
             buffer.write_var_uint32(typeinfo.user_type_id)
@@ -872,7 +880,7 @@ class TypeResolver:
                 name = ns + "." + typename if ns else typename
                 raise TypeUnregisteredError(f"{name} not registered")
             return typeinfo
-        if needs_user_type_id(type_id):
+        if type_id in {TypeId.ENUM, TypeId.STRUCT, TypeId.EXT, TypeId.TYPED_UNION}:
             user_type_id = buffer.read_var_uint32()
             return self.get_typeinfo_by_id(type_id, user_type_id=user_type_id)
         return self.get_typeinfo_by_id(type_id)

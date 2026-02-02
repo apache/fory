@@ -301,8 +301,11 @@ class ClassResolverBuilder {
     return this.holder;
   }
 
-  getSerializerById(id: string | number) {
-    return `${this.holder}.getSerializerById(${id})`;
+  getSerializerById(id: string | number, userTypeId?: string | number) {
+    if (userTypeId === undefined) {
+      return `${this.holder}.getSerializerById(${id})`;
+    }
+    return `${this.holder}.getSerializerById(${id}, ${userTypeId})`;
   }
 
   getSerializerByName(name: string) {

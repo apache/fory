@@ -189,9 +189,9 @@ class ClassDefDecoder {
 
       boolean nullable = (header & 0b010) != 0;
       boolean trackingRef = (header & 0b001) != 0;
-      int typeId = buffer.readVarUint32Small14();
-      FieldType fieldType =
-          FieldTypes.FieldType.read(buffer, resolver, nullable, trackingRef, typeId);
+      int kindHeader = buffer.readUint8();
+      int kind = kindHeader >>> 2;
+      FieldType fieldType = FieldTypes.FieldType.read(buffer, resolver, nullable, trackingRef, kind);
 
       if (useTagID) {
         fieldInfos.add(new FieldInfo(className, fieldName, fieldType, tagId));

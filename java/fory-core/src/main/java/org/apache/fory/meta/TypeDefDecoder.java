@@ -136,7 +136,7 @@ class TypeDefDecoder {
       fieldNameSize += 1;
       boolean nullable = (header & 0b10) != 0;
       boolean trackingRef = (header & 0b1) != 0;
-      int typeId = buffer.readVarUint32Small14();
+      int typeId = buffer.readUint8();
       FieldType fieldType =
           FieldTypes.FieldType.xread(buffer, resolver, typeId, nullable, trackingRef);
 

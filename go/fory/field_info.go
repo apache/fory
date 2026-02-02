@@ -608,7 +608,7 @@ func ComputeStructFingerprint(fields []FieldFingerprintInfo) string {
 // Field sorting helpers
 
 type triple struct {
-	typeID     int16
+	typeID     TypeId
 	serializer Serializer
 	name       string
 	nullable   bool
@@ -706,7 +706,7 @@ func sortFields(
 	// Java sorts by: compressed (varint) types last, then by size (largest first), then by type ID (descending)
 	// Fixed types: BOOL, INT8, UINT8, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT32, FLOAT64
 	// Varint types: VARINT32, VARINT64, VAR_UINT32, VAR_UINT64, TAGGED_INT64, TAGGED_UINT64
-	isVarintTypeId := func(typeID int16) bool {
+	isVarintTypeId := func(typeID TypeId) bool {
 		return typeID == VARINT32 || typeID == VARINT64 ||
 			typeID == VAR_UINT32 || typeID == VAR_UINT64 ||
 			typeID == TAGGED_INT64 || typeID == TAGGED_UINT64

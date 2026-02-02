@@ -122,7 +122,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testRegisterClassWithUserIds() {
-    // Test that user IDs 0 and 1 work correctly with unified type IDs.
+    // Test that user IDs 0 and 1 work correctly with separated user type IDs.
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
     ClassResolver classResolver = fory.getClassResolver();
 
@@ -131,17 +131,17 @@ public class ClassResolverTest extends ForyTestBase {
     // Register with user ID 1
     classResolver.register(Bar.class, 1);
 
-    // Verify registered IDs are user IDs and type IDs encode user ID and internal type.
+    // Verify registered IDs are user IDs and type IDs are internal types only.
     assertEquals(classResolver.getRegisteredClassId(Foo.class).shortValue(), (short) 0);
     assertEquals(classResolver.getRegisteredClassId(Bar.class).shortValue(), (short) 1);
-    int fooTypeId = classResolver.getClassInfo(Foo.class).getTypeId();
-    int barTypeId = classResolver.getClassInfo(Bar.class).getTypeId();
-    assertEquals(fooTypeId >>> 8, 0);
-    assertEquals(barTypeId >>> 8, 1);
-    int fooInternalType = fooTypeId & 0xff;
-    int barInternalType = barTypeId & 0xff;
-    assertTrue(fooInternalType == Types.STRUCT || fooInternalType == Types.COMPATIBLE_STRUCT);
-    assertTrue(barInternalType == Types.STRUCT || barInternalType == Types.COMPATIBLE_STRUCT);
+    ClassInfo fooClassInfo = classResolver.getClassInfo(Foo.class);
+    ClassInfo barClassInfo = classResolver.getClassInfo(Bar.class);
+    assertEquals(fooClassInfo.getUserTypeId(), 0);
+    assertEquals(barClassInfo.getUserTypeId(), 1);
+    int fooTypeId = fooClassInfo.getTypeId();
+    int barTypeId = barClassInfo.getTypeId();
+    assertTrue(fooTypeId == Types.STRUCT || fooTypeId == Types.COMPATIBLE_STRUCT);
+    assertTrue(barTypeId == Types.STRUCT || barTypeId == Types.COMPATIBLE_STRUCT);
 
     // Verify serialization/deserialization works
     Foo foo = new Foo();

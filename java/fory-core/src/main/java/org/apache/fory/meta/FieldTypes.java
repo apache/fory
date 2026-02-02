@@ -268,6 +268,13 @@ public class FieldTypes {
   }
 
   public abstract static class FieldType implements Serializable {
+    private static final int KIND_OBJECT = 0;
+    private static final int KIND_MAP = 1;
+    private static final int KIND_COLLECTION = 2;
+    private static final int KIND_ARRAY = 3;
+    private static final int KIND_ENUM = 4;
+    private static final int KIND_REGISTERED = 5;
+
     protected final int typeId;
     protected final int userTypeId;
     protected final boolean nullable;
@@ -286,6 +293,25 @@ public class FieldTypes {
 
     public boolean nullable() {
       return nullable;
+    }
+
+    private int typeKind() {
+      if (this instanceof RegisteredFieldType) {
+        return KIND_REGISTERED;
+      }
+      if (this instanceof EnumFieldType) {
+        return KIND_ENUM;
+      }
+      if (this instanceof ArrayFieldType) {
+        return KIND_ARRAY;
+      }
+      if (this instanceof CollectionFieldType) {
+        return KIND_COLLECTION;
+      }
+      if (this instanceof MapFieldType) {
+        return KIND_MAP;
+      }
+      return KIND_OBJECT;
     }
 
     /**
@@ -318,39 +344,41 @@ public class FieldTypes {
 
     /** Write field type info. */
     public void write(MemoryBuffer buffer, boolean writeHeader) {
-      // Header format for nested types (writeHeader=true):
+      // Header format:
       // - bit 0: trackingRef
       // - bit 1: nullable
-      // - bits 2+: typeId
+      // - bits 2+: type kind
       byte header = (byte) ((nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0));
+      byte kindHeader = (byte) ((typeKind() << 2) | (writeHeader ? header : 0));
       if (this instanceof RegisteredFieldType) {
         int typeId = ((RegisteredFieldType) this).getTypeId();
-        buffer.writeUint8(writeHeader ? ((5 + typeId) << 2) | header : 5 + typeId);
+        buffer.writeUint8(kindHeader);
+        buffer.writeUint8(typeId);
         if (needsUserTypeId(typeId)) {
           Preconditions.checkArgument(
               userTypeId != -1, "User type id is required for typeId %s", typeId);
           buffer.writeVarUint32(userTypeId);
         }
       } else if (this instanceof EnumFieldType) {
-        buffer.writeUint8(writeHeader ? ((4) << 2) | header : 4);
+        buffer.writeUint8(kindHeader);
       } else if (this instanceof ArrayFieldType) {
         ArrayFieldType arrayFieldType = (ArrayFieldType) this;
-        buffer.writeUint8(writeHeader ? ((3) << 2) | header : 3);
+        buffer.writeUint8(kindHeader);
         buffer.writeVarUint32Small7(arrayFieldType.getDimensions());
         (arrayFieldType).getComponentType().write(buffer);
       } else if (this instanceof CollectionFieldType) {
-        buffer.writeUint8(writeHeader ? ((2) << 2) | header : 2);
+        buffer.writeUint8(kindHeader);
         // TODO remove it when new collection deserialization jit finished.
         ((CollectionFieldType) this).getElementType().write(buffer);
       } else if (this instanceof MapFieldType) {
-        buffer.writeUint8(writeHeader ? ((1) << 2) | header : 1);
+        buffer.writeUint8(kindHeader);
         // TODO remove it when new map deserialization jit finished.
         MapFieldType mapFieldType = (MapFieldType) this;
         mapFieldType.getKeyType().write(buffer);
         mapFieldType.getValueType().write(buffer);
       } else {
         Preconditions.checkArgument(this instanceof ObjectFieldType);
-        buffer.writeUint8(writeHeader ? header : 0);
+        buffer.writeUint8(kindHeader);
       }
     }
 
@@ -359,15 +387,15 @@ public class FieldTypes {
     }
 
     public static FieldType read(MemoryBuffer buffer, TypeResolver resolver) {
-      // Header format for nested types:
+      // Header format:
       // - bit 0: trackingRef
       // - bit 1: nullable
-      // - bits 2+: typeId
+      // - bits 2+: type kind
       int header = buffer.readUint8();
       boolean trackingRef = (header & 0b1) != 0;
       boolean nullable = (header & 0b10) != 0;
-      int typeId = header >>> 2;
-      return read(buffer, resolver, nullable, trackingRef, typeId);
+      int kind = header >>> 2;
+      return read(buffer, resolver, nullable, trackingRef, kind);
     }
 
     /** Read field type info. */
@@ -376,41 +404,37 @@ public class FieldTypes {
         TypeResolver resolver,
         boolean nullable,
         boolean trackingRef,
-        int typeId) {
-      if (typeId == 0) {
-        return new ObjectFieldType(-1, nullable, trackingRef);
-      } else if (typeId == 1) {
+        int kind) {
+      if (kind == 0) {
+        return new ObjectFieldType(Types.UNKNOWN, nullable, trackingRef);
+      } else if (kind == 1) {
         return new MapFieldType(
             -1, nullable, trackingRef, read(buffer, resolver), read(buffer, resolver));
-      } else if (typeId == 2) {
+      } else if (kind == 2) {
         return new CollectionFieldType(-1, nullable, trackingRef, read(buffer, resolver));
-      } else if (typeId == 3) {
+      } else if (kind == 3) {
         int dims = buffer.readVarUint32Small7();
         return new ArrayFieldType(-1, nullable, trackingRef, read(buffer, resolver), dims);
-      } else if (typeId == 4) {
+      } else if (kind == 4) {
         return new EnumFieldType(nullable, -1, -1);
-      } else {
-        int actualTypeId = typeId - 5;
+      } else if (kind == 5) {
+        int actualTypeId = buffer.readUint8();
         int userTypeId = -1;
         if (needsUserTypeId(actualTypeId)) {
           userTypeId = buffer.readVarUint32();
         }
         return new RegisteredFieldType(nullable, trackingRef, actualTypeId, userTypeId);
+      } else {
+        throw new IllegalStateException("Unexpected field type kind: " + kind);
       }
     }
 
     public final void xwrite(MemoryBuffer buffer, boolean writeFlags) {
-      int typeId = this.typeId;
+      buffer.writeUint8(this.typeId);
       if (writeFlags) {
-        typeId = (typeId << 2);
-        if (nullable) {
-          typeId |= 0b10;
-        }
-        if (trackingRef) {
-          typeId |= 0b1;
-        }
+        int flags = (nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0);
+        buffer.writeUint8(flags);
       }
-      buffer.writeUint8(typeId);
       if (needsUserTypeId(this.typeId)) {
         Preconditions.checkArgument(
             userTypeId != -1, "User type id is required for typeId %s", this.typeId);
@@ -435,9 +459,9 @@ public class FieldTypes {
 
     public static FieldType xread(MemoryBuffer buffer, XtypeResolver resolver) {
       int typeId = buffer.readUint8();
-      boolean trackingRef = (typeId & 0b1) != 0;
-      boolean nullable = (typeId & 0b10) != 0;
-      typeId = typeId >>> 2;
+      int flags = buffer.readUint8();
+      boolean trackingRef = (flags & 0b1) != 0;
+      boolean nullable = (flags & 0b10) != 0;
       return xread(buffer, resolver, typeId, nullable, trackingRef);
     }
 

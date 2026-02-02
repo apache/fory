@@ -80,7 +80,6 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
 
     cdef c_bool is_namespaced_type(TypeId type_id)
     cdef c_bool is_type_share_meta(TypeId type_id)
-    cdef c_bool needs_user_type_id(TypeId type_id)
 
 cdef extern from "fory/python/pyfory.h" namespace "fory":
     int Fory_PyBooleanSequenceWriteToBuffer(object collection, CBuffer *buffer, Py_ssize_t start_index)
