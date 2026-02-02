@@ -28,20 +28,20 @@ FDL provides a simple, intuitive syntax for defining cross-language data structu
 ```protobuf
 package example;
 
-enum Status [id=100] {
+enum Status {
     PENDING = 0;
     ACTIVE = 1;
     COMPLETED = 2;
 }
 
-message User [id=101] {
+message User {
     string name = 1;
     int32 age = 2;
     optional string email = 3;
     repeated string tags = 4;
 }
 
-message Order [id=102] {
+message Order {
     ref User customer = 1;
     repeated Item items = 2;
     Status status = 3;
@@ -84,8 +84,7 @@ Generated code uses native language constructs:
 ### 1. Install the Compiler
 
 ```bash
-cd compiler
-pip install -e .
+pip install fory-compiler
 ```
 
 ### 2. Write Your Schema
@@ -95,7 +94,7 @@ Create `example.fdl`:
 ```protobuf
 package example;
 
-message Person [id=100] {
+message Person {
     string name = 1;
     int32 age = 2;
     optional string email = 3;
@@ -117,26 +116,20 @@ foryc example.fdl --lang java,python --output ./generated
 **Java:**
 
 ```java
-Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
-ExampleForyRegistration.register(fory);
-
 Person person = new Person();
 person.setName("Alice");
 person.setAge(30);
-byte[] data = fory.serialize(person);
+byte[] data = person.toBytes();
 ```
 
 **Python:**
 
 ```python
 import pyfory
-from example import Person, register_example_types
-
-fory = pyfory.Fory()
-register_example_types(fory)
+from example import Person
 
 person = Person(name="Alice", age=30)
-data = fory.serialize(person)
+data = bytes(person) # or `person.to_bytes()`
 ```
 
 ## Documentation
@@ -151,26 +144,6 @@ data = fory.serialize(person)
 | [FlatBuffers IDL Support](flatbuffers-idl.md)   | FlatBuffers mapping rules and codegen differences |
 
 ## Key Concepts
-
-### Type Registration
-
-FDL uses numeric type IDs for message, union, and enum registration. IDs are mandatory for
-messages and unions; enums may omit IDs and use auto-generated ones. If
-you omit `id`, the compiler auto-generates one using
-`MurmurHash3(utf8(package.name))` (32-bit). Package aliases do not affect
-auto-generated IDs; use `[alias="..."]` to change the hash source without
-renaming the type.
-
-```protobuf
-message User [id=100] { ... }  // Registered with ID 100
-message Config { ... }         // ID auto-generated
-```
-
-Namespace-based registration is still available when calling runtime APIs
-directly. IDL-generated code uses explicit IDs when provided; auto-generated IDs
-are also registered by numeric ID. If an auto-generated ID conflicts, the
-compiler raises an error and asks you to specify an explicit `id` or an `alias`
-to change the hash source.
 
 ### Field Modifiers
 

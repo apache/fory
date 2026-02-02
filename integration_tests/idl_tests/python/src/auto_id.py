@@ -19,10 +19,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from pyfory.union import Union, UnionSerializer
-from typing import Optional, cast
+from typing import Dict, List, Optional, cast
 import pyfory
 import threading
 
@@ -35,7 +35,6 @@ class Status(IntEnum):
 class WrapperCase(Enum):
     ENVELOPE = 1
     RAW = 2
-
 
 # Type ID 1471345060 is generated from auto_id.Wrapper
 class Wrapper(Union):
@@ -117,17 +116,14 @@ class Wrapper(Union):
     def __bytes__(self) -> bytes:
         return self.to_bytes()
 
-
 class WrapperSerializer(UnionSerializer):
+
     def __init__(self, fory: pyfory.Fory):
-        super().__init__(
-            fory,
-            Wrapper,
-            {
-                1: Envelope,
-                2: str,
-            },
-        )
+        super().__init__(fory, Wrapper, {
+            1: Envelope,
+            2: str,
+        })
+
 
 
 # Type ID 3022445236 is generated from auto_id.Envelope
@@ -163,13 +159,9 @@ class Envelope:
             raise ValueError("unknown Detail case id: {}".format(case_id))
 
         def _validate(self) -> None:
-            if self._case == Envelope.DetailCase.PAYLOAD and not isinstance(
-                self._value, Envelope.Payload
-            ):
+            if self._case == Envelope.DetailCase.PAYLOAD and not isinstance(self._value, Envelope.Payload):
                 raise TypeError("Detail.payload(...) requires Envelope.Payload")
-            if self._case == Envelope.DetailCase.NOTE and not isinstance(
-                self._value, str
-            ):
+            if self._case == Envelope.DetailCase.NOTE and not isinstance(self._value, str):
                 raise TypeError("Detail.note(...) requires str")
 
         def case(self) -> Envelope.DetailCase:
@@ -222,15 +214,13 @@ class Envelope:
             return self.to_bytes()
 
     class DetailSerializer(UnionSerializer):
+
         def __init__(self, fory: pyfory.Fory):
-            super().__init__(
-                fory,
-                Envelope.Detail,
-                {
-                    1: Envelope.Payload,
-                    2: str,
-                },
-            )
+            super().__init__(fory, Envelope.Detail, {
+                1: Envelope.Payload,
+                2: str,
+            })
+
 
     # Type ID 2862577837 is generated from auto_id.Envelope.Payload
     @dataclass
@@ -247,10 +237,9 @@ class Envelope:
         def __bytes__(self) -> bytes:
             return self.to_bytes()
 
+
     id: str = pyfory.field(id=1, default="")
-    payload: Optional[Envelope.Payload] = pyfory.field(
-        id=2, nullable=True, default=None
-    )
+    payload: Optional[Envelope.Payload] = pyfory.field(id=2, nullable=True, default=None)
     detail: Envelope.Detail = pyfory.field(id=3, default=None)
     status: Status = pyfory.field(id=4, default=None)
 
@@ -265,30 +254,21 @@ class Envelope:
         return self.to_bytes()
 
 
-def register_auto_id_types(fory: pyfory.Fory):
-    fory.register_type(Status, namespace="", typename="1124725126")
-    fory.register_union(
-        Wrapper, namespace="", typename="1471345060", serializer=WrapperSerializer(fory)
-    )
-    fory.register_type(Envelope, namespace="", typename="3022445236")
-    fory.register_union(
-        Envelope.Detail,
-        namespace="",
-        typename="1609214087",
-        serializer=Envelope.DetailSerializer(fory),
-    )
-    fory.register_type(Envelope.Payload, namespace="", typename="2862577837")
 
+def register_auto_id_types(fory: pyfory.Fory):
+    fory.register_type(Status, type_id=1124725126)
+    fory.register_union(Wrapper, type_id=1471345060, serializer=WrapperSerializer(fory))
+    fory.register_type(Envelope, type_id=3022445236)
+    fory.register_union(Envelope.Detail, type_id=1609214087, serializer=Envelope.DetailSerializer(fory))
+    fory.register_type(Envelope.Payload, type_id=2862577837)
 
 _fory_lock = threading.Lock()
 _threadsafe_fory = None
-
 
 def _create_fory() -> pyfory.Fory:
     fory = pyfory.Fory(xlang=True, ref=True, compatible=True)
     register_auto_id_types(fory)
     return fory
-
 
 def _get_fory() -> pyfory.ThreadSafeFory:
     global _threadsafe_fory

@@ -73,6 +73,7 @@ integration_tests/idl_tests/python/src/collection.py
 integration_tests/idl_tests/python/src/tree.py
 integration_tests/idl_tests/python/src/graph.py
 integration_tests/idl_tests/python/src/root.py
+integration_tests/idl_tests/python/src/auto_id.py
 integration_tests/idl_tests/rust/src/addressbook.rs
 integration_tests/idl_tests/rust/src/any_example.rs
 integration_tests/idl_tests/rust/src/any_example_pb.rs

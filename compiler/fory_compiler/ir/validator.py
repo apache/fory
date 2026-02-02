@@ -83,7 +83,7 @@ class SchemaValidator:
                 used_ids[t.type_id] = t
 
         def qualify(full_name: str) -> str:
-            package = self.schema.package
+            package = self.schema.package_alias or self.schema.package
             if package:
                 return f"{package}.{full_name}"
             return full_name
@@ -93,7 +93,7 @@ class SchemaValidator:
                 return qualify(full_name)
             if "." in alias:
                 return alias
-            package = self.schema.package
+            package = self.schema.package_alias or self.schema.package
             if package:
                 return f"{package}.{alias}"
             return alias

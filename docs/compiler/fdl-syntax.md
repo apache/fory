@@ -67,7 +67,7 @@ The package declaration defines the namespace for all types in the file.
 package com.example.models;
 ```
 
-You can optionally specify a package alias used only for generated code:
+You can optionally specify a package alias used for auto-generated type IDs:
 
 ```protobuf
 package com.example.models alias models_v1;
@@ -79,7 +79,7 @@ package com.example.models alias models_v1;
 - Must appear before any type definitions
 - Only one package declaration per file
 - Used for namespace-based type registration
-- Package alias does not affect auto-ID hashing
+- Package alias is used for auto-ID hashing
 
 **Language Mapping:**
 
@@ -562,10 +562,21 @@ message Person {
     int32 age = 2;
 }
 ```
+### Type Registration
 
-If `id` is omitted, the compiler generates one using
-`MurmurHash3(utf8(package.name))` (32-bit). Use `[alias="..."]` to change the
-hash source without renaming the type.
+FDL uses numeric type IDs for message, union, and enum registration. IDs are used
+for messages, unions, and enums; if omitted, the compiler auto-generates one. If
+you omit `id`, the compiler auto-generates one using
+`MurmurHash3(utf8(package.type_name))` (32-bit). If a package/type name alias is specified, the alias is used instead.
+
+```protobuf
+message User [id=100] { ... }  // Registered with ID 100
+message Config { ... }         // ID auto-generated
+```
+
+Namespace-based registration is still available when calling runtime APIs
+directly. IDL-generated code uses explicit IDs when provided; If an auto-generated ID conflicts, the
+compiler raises an error and asks you to specify an explicit `id` or an `alias` to change the hash source.
 
 ### Reserved Fields
 
@@ -729,7 +740,7 @@ message Person [id=100] {
 - Union cases do not support field options
 - Case types can be primitives, enums, messages, or other named types
 - Union type IDs (`[id=...]`) are mandatory; if omitted, the compiler auto-generates one
-  using `MurmurHash3(utf8(package.name))` (32-bit)
+  using `MurmurHash3(utf8(package.type_name))` (32-bit)
 - Use `[alias="..."]` to change the hash source without renaming the union
 
 **Grammar:**
@@ -964,10 +975,9 @@ message Example {
 ## Type IDs
 
 Type IDs enable efficient cross-language serialization and are used for
-messages, unions, and enums. IDs are mandatory for messages and unions; enums
-may omit IDs and use auto-generated ones. If `id` is omitted, the compiler
-auto-generates one using
-`MurmurHash3(utf8(package.name))` (32-bit) and annotates it in generated
+messages, unions, and enums. If `id` is omitted, the compiler auto-generates one
+using
+`MurmurHash3(utf8(package.type_name))` (32-bit) and annotates it in generated
 code. Collisions are detected at compile-time across the current file and all
 imports; when a collision occurs, the compiler raises an error and asks for an
 explicit `id` or an `alias`.
@@ -999,10 +1009,12 @@ You can set `[alias="..."]` to change the hash source without renaming the type.
 
 Type ID Specification
 
-- Mandatory IDs: Every message and union must have a unique ID. Enums use IDs for
-  registration and may omit IDs to use auto-generated ones.
+- IDs: Messages, unions, and enums use numeric IDs; if omitted, the compiler
+  auto-generates one.
 - Auto-generation: If no ID is provided, fory generates one using
-  MurmurHash3(utf8(package.name)) (32-bit).
+  MurmurHash3(utf8(package.type_name)) (32-bit). If a package alias is specified,
+  the alias is used instead of the package name; if a type alias is specified,
+  the alias is used instead of the type name.
 - Space Efficiency:
   - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
   - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
