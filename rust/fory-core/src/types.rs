@@ -96,7 +96,7 @@ impl RefMode {
 
 #[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[allow(non_camel_case_types)]
-#[repr(i16)]
+#[repr(u8)]
 pub enum TypeId {
     // Unknown/polymorphic type marker.
     UNKNOWN = 0,

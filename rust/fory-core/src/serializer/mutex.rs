@@ -132,12 +132,12 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         let guard = self.lock().unwrap();
         (*guard).fory_type_id_dyn(type_resolver)
     }

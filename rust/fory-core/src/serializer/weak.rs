@@ -417,7 +417,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         4
     }
 
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
@@ -428,7 +428,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         }
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         if let Some(rc) = self.upgrade() {
             (*rc).fory_type_id_dyn(type_resolver)
         } else {
@@ -590,7 +590,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         4
     }
 
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
@@ -601,7 +601,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         }
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         if let Some(arc) = self.upgrade() {
             (*arc).fory_type_id_dyn(type_resolver)
         } else {

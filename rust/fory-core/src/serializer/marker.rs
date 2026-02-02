@@ -43,15 +43,15 @@ impl<T: 'static> Serializer for PhantomData<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         // Use NONE - PhantomData<T> has no runtime data, skip can return early
-        Ok(TypeId::NONE as u32)
+        Ok(TypeId::NONE)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
         // Use NONE - PhantomData<T> has no runtime data, skip can return early
-        Ok(TypeId::NONE as u32)
+        Ok(TypeId::NONE)
     }
 
     #[inline(always)]

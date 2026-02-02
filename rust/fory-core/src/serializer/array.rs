@@ -283,13 +283,13 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(Self::fory_static_type_id() as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(Self::fory_static_type_id())
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(Self::fory_static_type_id() as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(Self::fory_static_type_id())
     }
 
     #[inline(always)]

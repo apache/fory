@@ -25,6 +25,7 @@ use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefMode;
 use crate::RefFlag;
+use crate::TypeId;
 use std::rc::Rc;
 
 /// Helper macro for common type resolution and downcasting pattern
@@ -40,24 +41,6 @@ macro_rules! downcast_and_serialize {
             }
         )*
         return Err(fory_core::Error::type_error(format!("Failed to downcast to any registered type for trait {}", stringify!($trait_name))));
-    }};
-}
-
-/// Helper macro for common type resolution and deserialization pattern
-#[macro_export]
-macro_rules! resolve_and_deserialize {
-    ($fory_type_id:expr, $context:expr, $constructor:expr, $trait_name:ident, $($impl_type:ty),+) => {{
-        $(
-            if let Some(registered_type_id) = $context.get_type_resolver().get_fory_type_id(std::any::TypeId::of::<$impl_type>()) {
-                if $fory_type_id == registered_type_id {
-                    let concrete_obj = <$impl_type as fory_core::Serializer>::fory_read_data($context)?;
-                    return Ok($constructor(concrete_obj));
-                }
-            }
-        )*
-        Err(fory_core::Error::type_error(
-            format!("Type ID {} not registered for trait {}", $fory_type_id, stringify!($trait_name))
-        ))
     }};
 }
 
@@ -173,7 +156,7 @@ macro_rules! register_trait_type {
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
+            fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
                 let concrete_type_id = any_ref.type_id();
                 type_resolver
@@ -237,7 +220,7 @@ macro_rules! register_trait_type {
                 $crate::not_allowed!("fory_read_data should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
             }
 
-            fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
+            fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 $crate::not_allowed!("fory_get_type_id should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
             }
 
@@ -381,9 +364,24 @@ macro_rules! read_ptr_trait_object {
                     $type_info.ok_or_else(|| fory_core::Error::type_error("No type info found for read"))?
                 };
                 let fory_type_id = typeinfo.get_type_id();
+                let user_type_id = typeinfo.get_user_type_id();
+                let registered_by_name = typeinfo.is_registered_by_name();
+                let namespace = typeinfo.get_namespace();
+                let type_name = typeinfo.get_type_name();
+                let matches_type = |local_info: &fory_core::TypeInfo| -> bool {
+                    if registered_by_name {
+                        local_info.is_registered_by_name()
+                            && local_info.get_namespace().original == namespace.original
+                            && local_info.get_type_name().original == type_name.original
+                    } else if user_type_id != u32::MAX {
+                        local_info.get_user_type_id() == user_type_id
+                    } else {
+                        local_info.get_type_id() == fory_type_id
+                    }
+                };
                 $(
-                    if let Some(registered_type_id) = $context.get_type_resolver().get_fory_type_id(std::any::TypeId::of::<$impl_type>()) {
-                        if fory_type_id == registered_type_id {
+                    if let Ok(local_info) = $context.get_type_resolver().get_type_info(&std::any::TypeId::of::<$impl_type>()) {
+                        if matches_type(&local_info) {
                             let concrete_obj = <$impl_type as fory_core::Serializer>::fory_read_data($context)?;
                             $context.dec_depth();
                             let ptr = $constructor_expr(concrete_obj) as $pointer_type;
@@ -404,9 +402,24 @@ macro_rules! read_ptr_trait_object {
                     $type_info.ok_or_else(|| fory_core::Error::type_error("No type info found for read"))?
                 };
                 let fory_type_id = typeinfo.get_type_id();
+                let user_type_id = typeinfo.get_user_type_id();
+                let registered_by_name = typeinfo.is_registered_by_name();
+                let namespace = typeinfo.get_namespace();
+                let type_name = typeinfo.get_type_name();
+                let matches_type = |local_info: &fory_core::TypeInfo| -> bool {
+                    if registered_by_name {
+                        local_info.is_registered_by_name()
+                            && local_info.get_namespace().original == namespace.original
+                            && local_info.get_type_name().original == type_name.original
+                    } else if user_type_id != u32::MAX {
+                        local_info.get_user_type_id() == user_type_id
+                    } else {
+                        local_info.get_type_id() == fory_type_id
+                    }
+                };
                 $(
-                    if let Some(registered_type_id) = $context.get_type_resolver().get_fory_type_id(std::any::TypeId::of::<$impl_type>()) {
-                        if fory_type_id == registered_type_id {
+                    if let Ok(local_info) = $context.get_type_resolver().get_type_info(&std::any::TypeId::of::<$impl_type>()) {
+                        if matches_type(&local_info) {
                             let concrete_obj = <$impl_type as fory_core::Serializer>::fory_read_data($context)?;
                             $context.dec_depth();
                             let ptr = $constructor_expr(concrete_obj) as $pointer_type;
@@ -485,8 +498,8 @@ macro_rules! impl_smart_pointer_serializer {
             }
 
             #[inline(always)]
-            fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
-                Ok(fory_core::TypeId::STRUCT as u32)
+            fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
+                Ok(fory_core::TypeId::STRUCT)
             }
 
             #[inline(always)]
@@ -515,7 +528,7 @@ macro_rules! impl_smart_pointer_serializer {
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
+            fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 let any_obj = <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0);
                 let concrete_type_id = any_obj.type_id();
                 type_resolver
@@ -608,7 +621,7 @@ impl Serializer for Box<dyn Serializer> {
         let fory_type_id_dyn = self.fory_type_id_dyn(context.get_type_resolver())?;
         let concrete_type_id = (**self).fory_concrete_type_id();
         if write_type_info {
-            context.write_any_typeinfo(fory_type_id_dyn, concrete_type_id)?;
+            context.write_any_typeinfo(fory_type_id_dyn as u32, concrete_type_id)?;
         };
         self.fory_write_data_generic(context, has_generics)
     }
@@ -628,7 +641,7 @@ impl Serializer for Box<dyn Serializer> {
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 

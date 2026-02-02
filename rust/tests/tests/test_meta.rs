@@ -21,6 +21,7 @@ use fory_core::meta::{FieldInfo, FieldType, MetaString, TypeMeta};
 fn test_meta_hash() {
     let meta = TypeMeta::new(
         42,
+        u32::MAX,
         MetaString::get_empty().clone(),
         MetaString::get_empty().clone(),
         false,

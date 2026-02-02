@@ -26,6 +26,16 @@ use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
 
+#[inline(always)]
+fn resolve_registered_type_id(
+    type_resolver: &TypeResolver,
+    concrete_type_id: std::any::TypeId,
+) -> Result<TypeId, Error> {
+    type_resolver
+        .get_fory_type_id(concrete_type_id)
+        .ok_or_else(|| Error::type_error("Type not registered"))
+}
+
 /// Check if the type info represents a generic container type (LIST, SET, MAP).
 /// These types cannot be deserialized polymorphically via `Box<dyn Any>` because
 /// different generic instantiations (e.g., `Vec<A>`, `Vec<B>`) share the same type ID.
@@ -124,17 +134,14 @@ impl Serializer for Box<dyn Any> {
         ))
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Err(Error::type_error(
             "Box<dyn Any> has no static type ID - use fory_type_id_dyn",
         ))
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
-        let concrete_type_id = (**self).type_id();
-        type_resolver
-            .get_fory_type_id(concrete_type_id)
-            .ok_or_else(|| Error::type_error("Type not registered"))
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
+        resolve_registered_type_id(type_resolver, (**self).type_id())
     }
 
     fn fory_concrete_type_id(&self) -> std::any::TypeId {
@@ -296,17 +303,14 @@ impl Serializer for Rc<dyn Any> {
         )))
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Err(Error::type_error(
             "Rc<dyn Any> has no static type ID - use fory_type_id_dyn",
         ))
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
-        let concrete_type_id = (**self).type_id();
-        type_resolver
-            .get_fory_type_id(concrete_type_id)
-            .ok_or_else(|| Error::type_error("Type not registered"))
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
+        resolve_registered_type_id(type_resolver, (**self).type_id())
     }
 
     fn fory_concrete_type_id(&self) -> std::any::TypeId {
@@ -471,17 +475,14 @@ impl Serializer for Arc<dyn Any> {
         )))
     }
 
-    fn fory_get_type_id(_type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         Err(Error::type_error(
             "Arc<dyn Any> has no static type ID - use fory_type_id_dyn",
         ))
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
-        let concrete_type_id = (**self).type_id();
-        type_resolver
-            .get_fory_type_id(concrete_type_id)
-            .ok_or_else(|| Error::type_error("Type not registered"))
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
+        resolve_registered_type_id(type_resolver, (**self).type_id())
     }
 
     fn fory_concrete_type_id(&self) -> std::any::TypeId {

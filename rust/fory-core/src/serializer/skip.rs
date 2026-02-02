@@ -410,13 +410,16 @@ fn skip_value(
     }
     let type_id_num = field_type.type_id;
 
+    if type_id_num == types::UNKNOWN {
+        return skip_any_value(context, false);
+    }
+
     // Handle user-defined types (struct/enum/ext/union)
-    if types::is_user_type(type_id_num) || type_id_num == types::UNKNOWN {
+    if types::is_user_type(type_id_num) {
         if type_id_num == types::COMPATIBLE_STRUCT
             || type_id_num == types::STRUCT
             || type_id_num == types::NAMED_STRUCT
             || type_id_num == types::NAMED_COMPATIBLE_STRUCT
-            || type_id_num == types::UNKNOWN
         {
             return skip_struct(context, type_id_num, type_info);
         } else if type_id_num == types::ENUM

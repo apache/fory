@@ -447,9 +447,21 @@ impl<'a> ReadContext<'a> {
             }
             _ => {
                 if let Some(user_type_id) = user_type_id {
-                    self.type_resolver
-                        .get_user_type_info_by_id(fory_type_id, user_type_id)
-                        .ok_or_else(|| Error::type_error("ID harness not found"))
+                    if let Some(type_info) =
+                        self.type_resolver
+                            .get_user_type_info_by_id(fory_type_id, user_type_id)
+                    {
+                        return Ok(type_info);
+                    }
+                    if self.is_compatible() && fory_type_id == types::STRUCT {
+                        if let Some(type_info) = self
+                            .type_resolver
+                            .get_user_type_info_by_id(types::COMPATIBLE_STRUCT, user_type_id)
+                        {
+                            return Ok(type_info);
+                        }
+                    }
+                    Err(Error::type_error("ID harness not found"))
                 } else {
                     self.type_resolver
                         .get_type_info_by_id(fory_type_id)

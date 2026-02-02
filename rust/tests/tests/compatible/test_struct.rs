@@ -645,7 +645,7 @@ fn test_struct_with_generic() {
             })
         }
 
-        fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+        fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<fory_core::TypeId, Error> {
             Self::fory_get_type_id(type_resolver)
         }
 

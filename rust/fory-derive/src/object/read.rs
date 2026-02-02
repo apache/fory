@@ -1011,8 +1011,66 @@ pub(crate) fn gen_read_compatible_with_construction(
         crate::util::ok_self_construction(is_tuple, &assign_ts)
     };
 
+    let variant_field_remap = if let Some(variant) = variant_ident {
+        let variant_name = variant.to_string();
+        quote! {
+            if let Ok(variants_info) =
+                <Self as fory_core::StructSerializer>::fory_variants_fields_info(
+                    context.get_type_resolver(),
+                )
+            {
+                if let Some((_, _, local_fields)) =
+                    variants_info.iter().find(|(name, _, _)| name == #variant_name)
+                {
+                    let field_index_by_name: std::collections::HashMap<_, _> = local_fields
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, f)| !f.field_name.is_empty())
+                        .map(|(i, f)| (f.field_name.clone(), (i, f)))
+                        .collect();
+
+                    let field_index_by_id: std::collections::HashMap<_, _> = local_fields
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, f)| f.field_id >= 0)
+                        .map(|(i, f)| (f.field_id, (i, f)))
+                        .collect();
+
+                    for field in fields.iter_mut() {
+                        let local_match = if field.field_id >= 0 && field.field_name.is_empty() {
+                            field_index_by_id.get(&field.field_id).copied()
+                        } else {
+                            let snake_case_name =
+                                fory_core::util::to_snake_case(&field.field_name);
+                            field_index_by_name.get(&snake_case_name).copied()
+                        };
+
+                        match local_match {
+                            Some((sorted_index, local_info)) => {
+                                if field.field_name.is_empty() {
+                                    field.field_name = local_info.field_name.clone();
+                                }
+                                if field.field_type != local_info.field_type {
+                                    field.field_id = -1;
+                                } else {
+                                    field.field_id = sorted_index as i16;
+                                }
+                            }
+                            None => {
+                                field.field_id = -1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     quote! {
-        let fields = type_info.get_type_meta().get_field_infos().clone();
+        let mut fields = type_info.get_type_meta().get_field_infos().clone();
+        #variant_field_remap
         #(#declare_ts)*
         let meta = context.get_type_info(&std::any::TypeId::of::<Self>())?.get_type_meta();
         let local_type_hash = meta.get_hash();

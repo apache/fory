@@ -633,7 +633,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
         ts
     } else {
         quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)?
+            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)? as u32
         }
     };
 
@@ -1035,7 +1035,10 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
 }
 
 fn get_primitive_type_size(type_id_num: u32) -> i32 {
-    let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+    if type_id_num > u8::MAX as u32 {
+        return 0;
+    }
+    let type_id = TypeId::try_from(type_id_num as u8).unwrap();
     match type_id {
         TypeId::BOOL => 1,
         TypeId::INT8 => 1,

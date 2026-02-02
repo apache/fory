@@ -643,7 +643,7 @@ impl TypeMeta {
         }
 
         fn get_primitive_type_size(type_id_num: u32) -> i32 {
-            let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+            let type_id = TypeId::try_from(type_id_num as u8).unwrap();
             match type_id {
                 TypeId::BOOL => 1,
                 TypeId::INT8 => 1,

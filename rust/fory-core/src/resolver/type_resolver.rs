@@ -392,7 +392,7 @@ fn build_struct_type_infos<T: StructSerializer>(
     if type_resolver.compatible && is_enum_type_id(T::fory_static_type_id()) {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
-        for (idx, (variant_name, variant_type_id, fields_info)) in
+        for (_idx, (variant_name, variant_type_id, fields_info)) in
             variants_info.into_iter().enumerate()
         {
             // Skip empty variant info (unit/unnamed variants)
@@ -639,10 +639,14 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<u32> {
-        self.type_info_map
-            .get(&rust_type_id)
-            .map(|info| info.get_type_id())
+    pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<TypeId> {
+        self.type_info_map.get(&rust_type_id).and_then(|info| {
+            let type_id = info.get_type_id();
+            if type_id > u8::MAX as u32 {
+                return None;
+            }
+            TypeId::try_from(type_id as u8).ok()
+        })
     }
 
     fn register_builtin_types(&mut self) -> Result<(), Error> {

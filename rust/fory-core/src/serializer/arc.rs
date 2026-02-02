@@ -129,7 +129,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         4
     }
 
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
@@ -140,7 +140,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         }
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 

@@ -966,8 +966,8 @@ pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
                 let expected_type_id = Self::fory_get_type_id(context.get_type_resolver())?;
                 let type_info = context.read_any_typeinfo()?;
                 let remote_type_id = type_info.get_type_id();
-                if remote_type_id != expected_type_id {
-                    return Err(fory_core::error::Error::type_mismatch(expected_type_id, remote_type_id));
+                if remote_type_id != expected_type_id as u32 {
+                    return Err(fory_core::error::Error::type_mismatch(expected_type_id as u32, remote_type_id));
                 }
                 Ok(())
             } else {
