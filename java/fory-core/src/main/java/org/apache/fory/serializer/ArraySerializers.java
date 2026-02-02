@@ -881,6 +881,52 @@ public class ArraySerializers {
     }
   }
 
+  public static final class Float16ArraySerializer
+      extends PrimitiveArraySerializer<org.apache.fory.type.Float16[]> {
+
+    public Float16ArraySerializer(Fory fory) {
+      super(fory, org.apache.fory.type.Float16[].class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, org.apache.fory.type.Float16[] value) {
+      int length = value.length;
+      int size = length * 2;
+      buffer.writeVarUint32Small7(size);
+
+      int writerIndex = buffer.writerIndex();
+      buffer.ensure(writerIndex + size);
+
+      for (int i = 0; i < length; i++) {
+        buffer._unsafePutInt16(writerIndex + i * 2, value[i].toBits());
+      }
+      buffer._unsafeWriterIndex(writerIndex + size);
+    }
+
+    @Override
+    public org.apache.fory.type.Float16[] copy(org.apache.fory.type.Float16[] originArray) {
+      return Arrays.copyOf(originArray, originArray.length);
+    }
+
+    @Override
+    public org.apache.fory.type.Float16[] read(MemoryBuffer buffer) {
+      int size = buffer.readVarUint32Small7();
+      int numElements = size / 2;
+      org.apache.fory.type.Float16[] values = new org.apache.fory.type.Float16[numElements];
+
+      int readerIndex = buffer.readerIndex();
+      buffer.checkReadableBytes(size);
+
+      for (int i = 0; i < numElements; i++) {
+        values[i] =
+            org.apache.fory.type.Float16.fromBits(buffer._unsafeGetInt16(readerIndex + i * 2));
+      }
+      buffer._increaseReaderIndexUnsafe(size);
+
+      return values;
+    }
+  }
+
   public static final class StringArraySerializer extends Serializer<String[]> {
     private final StringSerializer stringSerializer;
     private final ForyArrayAsListSerializer collectionSerializer;
@@ -1008,6 +1054,8 @@ public class ArraySerializers {
     resolver.registerInternalSerializer(double[].class, new DoubleArraySerializer(fory));
     resolver.registerInternalSerializer(
         Double[].class, new ObjectArraySerializer<>(fory, Double[].class));
+    resolver.registerInternalSerializer(
+        org.apache.fory.type.Float16[].class, new Float16ArraySerializer(fory));
     resolver.registerInternalSerializer(boolean[].class, new BooleanArraySerializer(fory));
     resolver.registerInternalSerializer(
         Boolean[].class, new ObjectArraySerializer<>(fory, Boolean[].class));

@@ -416,6 +416,7 @@ public class Types {
       case TAGGED_UINT64:
         return Long.class;
       case FLOAT16:
+        return org.apache.fory.type.Float16.class;
       case FLOAT32:
         return Float.class;
       case FLOAT64:

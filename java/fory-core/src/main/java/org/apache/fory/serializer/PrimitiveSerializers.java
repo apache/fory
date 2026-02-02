@@ -342,6 +342,23 @@ public class PrimitiveSerializers {
     }
   }
 
+  public static final class Float16Serializer
+      extends CrossLanguageCompatibleSerializer<org.apache.fory.type.Float16> {
+    public Float16Serializer(Fory fory, Class<?> cls) {
+      super(fory, (Class) cls, false, true);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, org.apache.fory.type.Float16 value) {
+      buffer.writeInt16(value.toBits());
+    }
+
+    @Override
+    public org.apache.fory.type.Float16 read(MemoryBuffer buffer) {
+      return org.apache.fory.type.Float16.fromBits(buffer.readInt16());
+    }
+  }
+
   public static void registerDefaultSerializers(Fory fory) {
     // primitive types will be boxed.
     TypeResolver resolver = fory.getTypeResolver();
@@ -361,5 +378,8 @@ public class PrimitiveSerializers {
     resolver.registerInternalSerializer(Long.class, new LongSerializer(fory, Long.class));
     resolver.registerInternalSerializer(Float.class, new FloatSerializer(fory, Float.class));
     resolver.registerInternalSerializer(Double.class, new DoubleSerializer(fory, Double.class));
+    resolver.registerInternalSerializer(
+        org.apache.fory.type.Float16.class,
+        new Float16Serializer(fory, org.apache.fory.type.Float16.class));
   }
 }
