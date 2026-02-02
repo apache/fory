@@ -41,7 +41,10 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 /// - Subnormals: exponent = 0, mantissa ≠ 0
 #[repr(transparent)]
 #[derive(Copy, Clone, Default)]
+<<<<<<< HEAD
 #[allow(non_camel_case_types)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
 pub struct float16(u16);
 
 // Bit layout constants
@@ -49,7 +52,10 @@ const SIGN_MASK: u16 = 0x8000;
 const EXP_MASK: u16 = 0x7C00;
 const MANTISSA_MASK: u16 = 0x03FF;
 const EXP_SHIFT: u32 = 10;
+<<<<<<< HEAD
 #[allow(dead_code)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
 const EXP_BIAS: i32 = 15;
 const MAX_EXP: i32 = 31;
 
@@ -350,35 +356,50 @@ impl float16 {
     // ============ Arithmetic (explicit methods) ============
 
     /// Add two `float16` values (via f32).
+<<<<<<< HEAD
     #[allow(clippy::should_implement_trait)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
     #[inline]
     pub fn add(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() + rhs.to_f32())
     }
 
     /// Subtract two `float16` values (via f32).
+<<<<<<< HEAD
     #[allow(clippy::should_implement_trait)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
     #[inline]
     pub fn sub(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() - rhs.to_f32())
     }
 
     /// Multiply two `float16` values (via f32).
+<<<<<<< HEAD
     #[allow(clippy::should_implement_trait)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
     #[inline]
     pub fn mul(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() * rhs.to_f32())
     }
 
     /// Divide two `float16` values (via f32).
+<<<<<<< HEAD
     #[allow(clippy::should_implement_trait)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
     #[inline]
     pub fn div(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() / rhs.to_f32())
     }
 
     /// Negate this `float16` value.
+<<<<<<< HEAD
     #[allow(clippy::should_implement_trait)]
+=======
+>>>>>>> fb468d95 (feat: Add IEEE 754 float16 (binary16) support to Rust runtime)
     #[inline]
     pub fn neg(self) -> Self {
         Self(self.0 ^ SIGN_MASK)
