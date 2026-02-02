@@ -734,8 +734,9 @@ public class XtypeResolver extends TypeResolver {
     } else {
       Class<Enum> enclosingClass = (Class<Enum>) cls.getEnclosingClass();
       if (enclosingClass != null && enclosingClass.isEnum()) {
-        serializer = new EnumSerializer(fory, (Class<Enum>) cls);
-        typeId = getClassInfo(enclosingClass).typeId;
+        ClassInfo enumInfo = getClassInfo(enclosingClass);
+        classInfoMap.put(cls, enumInfo);
+        return enumInfo;
       } else {
         throw new ClassUnregisteredException(cls);
       }

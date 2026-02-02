@@ -30,6 +30,7 @@ fn test_meta_hash() {
             field_name: "f1".to_string(),
             field_type: FieldType {
                 type_id: 44,
+                user_type_id: u32::MAX,
                 nullable: true,
                 ref_tracking: false,
                 generics: vec![],

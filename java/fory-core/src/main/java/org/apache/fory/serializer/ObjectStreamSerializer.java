@@ -512,25 +512,26 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     // For primitives, use RegisteredFieldType
     if (fieldType.isPrimitive()) {
       int typeId = Types.getTypeId(fory, fieldType);
-      return new FieldTypes.RegisteredFieldType(false, false, typeId);
+      return new FieldTypes.RegisteredFieldType(false, false, typeId, -1);
     }
 
     // For boxed primitives
     Class<?> unwrapped = TypeUtils.unwrap(fieldType);
     if (unwrapped.isPrimitive()) {
       int typeId = Types.getTypeId(fory, unwrapped);
-      return new FieldTypes.RegisteredFieldType(true, true, typeId);
+      return new FieldTypes.RegisteredFieldType(true, true, typeId, -1);
     }
 
     // For registered types
     if (fory.getClassResolver().isRegisteredById(fieldType)) {
       int typeId = fory.getClassResolver().getTypeIdForClassDef(fieldType);
-      return new FieldTypes.RegisteredFieldType(true, true, typeId);
+      int userTypeId = fory.getClassResolver().getUserTypeIdForClassDef(fieldType);
+      return new FieldTypes.RegisteredFieldType(true, true, typeId, userTypeId);
     }
 
     // For enums
     if (fieldType.isEnum()) {
-      return new FieldTypes.EnumFieldType(true, -1);
+      return new FieldTypes.EnumFieldType(true, -1, -1);
     }
 
     // For arrays, collections, maps - use ObjectFieldType as a fallback

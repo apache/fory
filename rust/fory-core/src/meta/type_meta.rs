@@ -97,6 +97,7 @@ static FIELD_NAME_ENCODINGS: &[Encoding] = &[
 #[derive(Debug, Eq, Clone)]
 pub struct FieldType {
     pub type_id: u32,
+    pub user_type_id: u32,
     pub nullable: bool,
     pub ref_tracking: bool,
     pub generics: Vec<FieldType>,
@@ -106,6 +107,7 @@ impl FieldType {
     pub fn new(type_id: u32, nullable: bool, generics: Vec<FieldType>) -> Self {
         FieldType {
             type_id,
+            user_type_id: NO_USER_TYPE_ID,
             nullable,
             ref_tracking: false,
             generics,
@@ -120,6 +122,7 @@ impl FieldType {
     ) -> Self {
         FieldType {
             type_id,
+            user_type_id: NO_USER_TYPE_ID,
             nullable,
             ref_tracking,
             generics,
@@ -138,6 +141,15 @@ impl FieldType {
             }
         }
         writer.write_var_uint32(header);
+        if crate::types::needs_user_type_id(self.type_id) {
+            if self.user_type_id == NO_USER_TYPE_ID {
+                return Err(Error::type_error(format!(
+                    "user_type_id required for type_id {}",
+                    self.type_id
+                )));
+            }
+            writer.write_var_uint32(self.user_type_id);
+        }
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 if let Some(generic) = self.generics.first() {
@@ -178,11 +190,16 @@ impl FieldType {
             _nullable = nullable.unwrap();
             _ref_tracking = false;
         }
+        let mut user_type_id = NO_USER_TYPE_ID;
+        if crate::types::needs_user_type_id(type_id) {
+            user_type_id = reader.read_varuint32()?;
+        }
         Ok(match type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None)?;
                 Self {
                     type_id,
+                    user_type_id,
                     nullable: _nullable,
                     ref_tracking: _ref_tracking,
                     generics: vec![generic],
@@ -193,6 +210,7 @@ impl FieldType {
                 let val_generic = Self::from_bytes(reader, true, None)?;
                 Self {
                     type_id,
+                    user_type_id,
                     nullable: _nullable,
                     ref_tracking: _ref_tracking,
                     generics: vec![key_generic, val_generic],
@@ -200,6 +218,7 @@ impl FieldType {
             }
             _ => Self {
                 type_id,
+                user_type_id,
                 nullable: _nullable,
                 ref_tracking: _ref_tracking,
                 generics: vec![],
@@ -399,8 +418,22 @@ impl PartialEq for FieldType {
     fn eq(&self, other: &Self) -> bool {
         // Normalize type IDs for comparison to handle cross-language schema evolution.
         // This allows UNKNOWN (0) polymorphic types to match STRUCT (15) in Rust.
-        normalize_type_id_for_eq(self.type_id) == normalize_type_id_for_eq(other.type_id)
-            && self.generics == other.generics
+        if normalize_type_id_for_eq(self.type_id) != normalize_type_id_for_eq(other.type_id) {
+            return false;
+        }
+        if self.generics != other.generics {
+            return false;
+        }
+        if crate::types::needs_user_type_id(self.type_id)
+            || crate::types::needs_user_type_id(other.type_id)
+        {
+            let self_has = self.user_type_id != NO_USER_TYPE_ID;
+            let other_has = other.user_type_id != NO_USER_TYPE_ID;
+            if self_has || other_has {
+                return self.user_type_id == other.user_type_id;
+            }
+        }
+        true
     }
 }
 

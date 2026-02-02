@@ -339,7 +339,9 @@ public abstract class TypeResolver {
         break;
       case Types.COMPATIBLE_STRUCT:
         if (metaContextShareEnabled) {
-          writeSharedClassMeta(buffer, classInfo);
+          if (!(classInfo.serializer instanceof NonexistentClassSerializer)) {
+            writeSharedClassMeta(buffer, classInfo);
+          }
         } else {
           buffer.writeVarUint32(classInfo.userTypeId);
         }

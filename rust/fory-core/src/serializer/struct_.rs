@@ -44,7 +44,9 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
     let type_id_u32 = type_id as u32;
     context.writer.write_u8(type_id as u8);
     let rs_type_id = std::any::TypeId::of::<T>();
-    if crate::types::needs_user_type_id(type_id_u32) {
+    if crate::types::needs_user_type_id(type_id_u32)
+        && type_id_u32 != TypeId::COMPATIBLE_STRUCT as u32
+    {
         let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
         let user_type_id = type_info.get_user_type_id();
         context.writer.write_var_uint32(user_type_id);
@@ -76,7 +78,9 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     let local_type_id_u32 = local_type_id as u32;
     let rs_type_id = std::any::TypeId::of::<T>();
-    if crate::types::needs_user_type_id(remote_type_id) {
+    if crate::types::needs_user_type_id(remote_type_id)
+        && remote_type_id != TypeId::COMPATIBLE_STRUCT as u32
+    {
         let remote_user_type_id = context.reader.read_varuint32()?;
         let local_user_type_id = context
             .get_type_resolver()
@@ -104,7 +108,18 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
         || local_type_id_u32 == TypeId::COMPATIBLE_STRUCT as u32
     {
         // Read type meta inline using streaming protocol
-        let _type_info = context.read_type_meta()?;
+        let type_info = context.read_type_meta()?;
+        if remote_type_id == TypeId::COMPATIBLE_STRUCT as u32 {
+            let local_user_type_id = context
+                .get_type_resolver()
+                .get_type_info(&rs_type_id)?
+                .get_user_type_id();
+            let remote_user_type_id = type_info.get_user_type_id();
+            ensure!(
+                local_user_type_id == remote_user_type_id,
+                Error::type_mismatch(local_user_type_id, remote_user_type_id)
+            );
+        }
     }
     Ok(())
 }

@@ -40,6 +40,7 @@ pub fn skip_field_value(
 
 const UNKNOWN_FIELD_TYPE: FieldType = FieldType {
     type_id: types::UNKNOWN,
+    user_type_id: u32::MAX,
     nullable: true,
     ref_tracking: false,
     generics: vec![],
@@ -63,7 +64,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     // Read type_id first
     let type_id = context.reader.read_u8()? as u32;
     let internal_id = type_id;
-    let _user_type_id = if types::needs_user_type_id(type_id) {
+    let _user_type_id = if types::needs_user_type_id(type_id) && type_id != types::COMPATIBLE_STRUCT {
         Some(context.reader.read_varuint32()?)
     } else {
         None
@@ -80,6 +81,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
         types::LIST | types::SET => (
             FieldType {
                 type_id,
+                user_type_id: u32::MAX,
                 nullable: true,
                 ref_tracking: false,
                 generics: vec![UNKNOWN_FIELD_TYPE],
@@ -89,6 +91,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
         types::MAP => (
             FieldType {
                 type_id,
+                user_type_id: u32::MAX,
                 nullable: true,
                 ref_tracking: false,
                 generics: vec![UNKNOWN_FIELD_TYPE, UNKNOWN_FIELD_TYPE],
@@ -101,6 +104,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
             (
                 FieldType {
                     type_id,
+                    user_type_id: u32::MAX,
                     nullable: true,
                     ref_tracking: false,
                     generics: vec![],
@@ -117,6 +121,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                 (
                     FieldType {
                         type_id,
+                        user_type_id: u32::MAX,
                         nullable: true,
                         ref_tracking: false,
                         generics: vec![],
@@ -135,6 +140,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                 (
                     FieldType {
                         type_id,
+                        user_type_id: u32::MAX,
                         nullable: true,
                         ref_tracking: false,
                         generics: vec![],
@@ -154,6 +160,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
             (
                 FieldType {
                     type_id,
+                    user_type_id: _user_type_id.unwrap_or(u32::MAX),
                     nullable: true,
                     ref_tracking: false,
                     generics: vec![],
@@ -183,6 +190,7 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
         let type_info_rc = context.read_any_typeinfo()?;
         elem_field_type = FieldType {
             type_id: type_info_rc.get_type_id(),
+            user_type_id: type_info_rc.get_user_type_id(),
             nullable: has_null,
             ref_tracking: false,
             generics: vec![],
@@ -228,6 +236,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 let type_info = context.read_any_typeinfo()?;
                 value_field_type = FieldType {
                     type_id: type_info.get_type_id(),
+                    user_type_id: type_info.get_user_type_id(),
                     nullable: true,
                     ref_tracking: false,
                     generics: vec![],
@@ -252,6 +261,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 let type_info = context.read_any_typeinfo()?;
                 key_field_type = FieldType {
                     type_id: type_info.get_type_id(),
+                    user_type_id: type_info.get_user_type_id(),
                     nullable: true,
                     ref_tracking: false,
                     generics: vec![],
@@ -279,6 +289,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let type_info = context.read_any_typeinfo()?;
             key_field_type = FieldType {
                 type_id: type_info.get_type_id(),
+                user_type_id: type_info.get_user_type_id(),
                 nullable: true,
                 ref_tracking: false,
                 generics: vec![],
@@ -296,6 +307,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let type_info = context.read_any_typeinfo()?;
             value_field_type = FieldType {
                 type_id: type_info.get_type_id(),
+                user_type_id: type_info.get_user_type_id(),
                 nullable: true,
                 ref_tracking: false,
                 generics: vec![],
@@ -764,6 +776,7 @@ pub fn skip_enum_variant(
             // Tuple uses collection format but doesn't write type info, so skip directly
             let field_type = FieldType {
                 type_id: types::LIST,
+                user_type_id: u32::MAX,
                 nullable: false,
                 ref_tracking: false,
                 generics: vec![UNKNOWN_FIELD_TYPE],

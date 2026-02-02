@@ -205,26 +205,19 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
   switch (static_cast<TypeId>(fory_type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::EXT:
   case TypeId::TYPED_UNION:
     buffer_.write_var_uint32(type_info->user_type_id);
     break;
-  default:
-    break;
-  }
-
-  switch (static_cast<TypeId>(fory_type_id)) {
+  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::NAMED_COMPATIBLE_STRUCT:
-  case TypeId::COMPATIBLE_STRUCT: {
     // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
     break;
-  }
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_EXT:
   case TypeId::NAMED_STRUCT:
-  case TypeId::NAMED_UNION: {
+  case TypeId::NAMED_UNION:
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
@@ -239,7 +232,6 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
       }
     }
     break;
-  }
   default:
     // For other types, just writing type_id is sufficient
     break;
@@ -264,10 +256,6 @@ WriteContext::write_struct_type_info(const std::type_index &type_id) {
     buffer_.write_var_uint32(type_info->user_type_id);
     break;
   case TypeId::COMPATIBLE_STRUCT:
-    buffer_.write_var_uint32(type_info->user_type_id);
-    // write type meta inline using streaming protocol
-    FORY_RETURN_NOT_OK(write_type_meta(type_id));
-    break;
   case TypeId::NAMED_COMPATIBLE_STRUCT:
     // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(type_id));
@@ -309,10 +297,6 @@ WriteContext::write_struct_type_info(const TypeInfo *type_info) {
     buffer_.write_var_uint32(type_info->user_type_id);
     break;
   case TypeId::COMPATIBLE_STRUCT:
-    buffer_.write_var_uint32(type_info->user_type_id);
-    // write type meta inline using streaming protocol
-    write_type_meta(type_info);
-    break;
   case TypeId::NAMED_COMPATIBLE_STRUCT:
     // write type meta inline using streaming protocol
     write_type_meta(type_info);
@@ -525,15 +509,7 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
              type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
     return type_info;
   }
-  case TypeId::COMPATIBLE_STRUCT: {
-    uint32_t user_type_id = buffer_->read_var_uint32(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
-      return Unexpected(std::move(error));
-    }
-    (void)user_type_id;
-    // Read type meta inline using streaming protocol
-    return read_type_meta();
-  }
+  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::NAMED_COMPATIBLE_STRUCT:
     // Read type meta inline using streaming protocol
     return read_type_meta();

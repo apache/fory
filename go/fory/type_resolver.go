@@ -1407,13 +1407,9 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 	switch TypeId(typeID) {
 	case ENUM, STRUCT, EXT, TYPED_UNION:
 		buffer.WriteVarUint32(typeInfo.UserTypeID)
-	case COMPATIBLE_STRUCT:
-		if r.metaShareEnabled() {
-			r.writeSharedTypeMeta(buffer, typeInfo, err)
-		} else {
-			buffer.WriteVarUint32(typeInfo.UserTypeID)
-		}
-	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION, NAMED_COMPATIBLE_STRUCT:
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		r.writeSharedTypeMeta(buffer, typeInfo, err)
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
 			r.writeSharedTypeMeta(buffer, typeInfo, err)
 			return
@@ -2198,9 +2194,14 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 // This is used by collection serializers that read typeID separately before deciding how to proceed.
 func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32, err *Error) *TypeInfo {
 	internalTypeID := TypeId(typeID)
-	userTypeID := invalidUserTypeID
-	if needsUserTypeID(internalTypeID) {
-		userTypeID = buffer.ReadVarUint32(err)
+
+	// Handle COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT with shared meta first (no user type id in stream)
+	if internalTypeID == COMPATIBLE_STRUCT || internalTypeID == NAMED_COMPATIBLE_STRUCT {
+		return r.readSharedTypeMeta(buffer, err)
+	}
+	// Handle STRUCT with meta share first (no user type id in stream)
+	if internalTypeID == STRUCT && r.metaShareEnabled() {
+		return r.readSharedTypeMeta(buffer, err)
 	}
 
 	if IsNamespacedType(internalTypeID) {
@@ -2238,12 +2239,12 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 		return nil
 	}
 
-	// Handle COMPATIBLE_STRUCT and STRUCT types - they also need to read shared type meta
-	if (internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT) && r.metaShareEnabled() {
-		return r.readSharedTypeMeta(buffer, err)
+	userTypeID := invalidUserTypeID
+	if needsUserTypeID(internalTypeID) && internalTypeID != COMPATIBLE_STRUCT {
+		userTypeID = buffer.ReadVarUint32(err)
 	}
 
-	if needsUserTypeID(internalTypeID) {
+	if needsUserTypeID(internalTypeID) && internalTypeID != COMPATIBLE_STRUCT {
 		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
 			return typeInfo
 		}
@@ -2329,7 +2330,7 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
 	typeID := uint32(buffer.ReadUint8(err))
 	internalTypeID := TypeId(typeID)
-	if needsUserTypeID(internalTypeID) {
+	if needsUserTypeID(internalTypeID) && internalTypeID != COMPATIBLE_STRUCT {
 		buffer.ReadVarUint32(err)
 	}
 
@@ -2347,19 +2348,11 @@ func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType refl
 
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		// Compatible mode: read type def from shared meta
-		if r.metaShareEnabled() {
-			typeInfo := r.readSharedTypeMeta(buffer, err)
-			if err.HasError() {
-				return nil
-			}
-			return typeInfo.Serializer
+		typeInfo := r.readSharedTypeMeta(buffer, err)
+		if err.HasError() {
+			return nil
 		}
-		// Fallback: skip namespace/typename and use expected type's serializer
-		if IsNamespacedType(internalTypeID) {
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-		}
-		return r.typeToSerializers[expectedType]
+		return typeInfo.Serializer
 	default:
 		// For other types, return nil - caller should handle
 		return nil

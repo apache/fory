@@ -221,19 +221,18 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     let readUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.STRUCT:
-      case TypeId.COMPATIBLE_STRUCT:
         readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
-        if (this.builder.fory.isCompatible()) {
-          typeMetaStmt = `
+        break;
+      case TypeId.NAMED_COMPATIBLE_STRUCT:
+      case TypeId.COMPATIBLE_STRUCT:
+        typeMetaStmt = `
           const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta(this.builder.reader.ownName())};
           if (getHash() !== ${typeMeta}.getHash()) {
             ${this.metaChangedSerializer} = ${this.builder.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta)}
           }
           `;
-        }
         break;
       case TypeId.NAMED_STRUCT:
-      case TypeId.NAMED_COMPATIBLE_STRUCT:
         if (!this.builder.fory.isCompatible()) {
           namesStmt = `
             ${
@@ -315,15 +314,16 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.STRUCT:
-      case TypeId.COMPATIBLE_STRUCT:
         writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
-        if (internalTypeId === TypeId.COMPATIBLE_STRUCT) {
+        break;
+      case TypeId.NAMED_COMPATIBLE_STRUCT:
+      case TypeId.COMPATIBLE_STRUCT:
+        {
           const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(<StructTypeInfo> this.typeInfo).toBytes().join(",")}])`);
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
         }
         break;
       case TypeId.NAMED_STRUCT:
-      case TypeId.NAMED_COMPATIBLE_STRUCT:
         if (this.builder.fory.config.mode !== Mode.Compatible) {
           const typeInfo = this.typeInfo.castToStruct();
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));

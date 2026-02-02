@@ -631,6 +631,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 // FieldType interface represents different field types, including object, collection, and map types
 type FieldType interface {
 	TypeId() TypeId
+	UserTypeId() uint32
 	String() string
 	write(*ByteBuffer)
 	writeWithFlags(*ByteBuffer, bool, bool)                  // writeWithFlags writes typeId with nullable/trackingRef flags
@@ -641,14 +642,19 @@ type FieldType interface {
 // BaseFieldType provides common functionality for field types
 type BaseFieldType struct {
 	typeId TypeId
+	userTypeId uint32
 }
 
 func (b *BaseFieldType) TypeId() TypeId { return b.typeId }
+func (b *BaseFieldType) UserTypeId() uint32 { return b.userTypeId }
 func (b *BaseFieldType) String() string {
 	return fmt.Sprintf("FieldType{typeId=%d}", b.typeId)
 }
 func (b *BaseFieldType) write(buffer *ByteBuffer) {
 	buffer.WriteVarUint32Small7(uint32(b.typeId))
+	if needsUserTypeID(b.typeId) {
+		buffer.WriteVarUint32(b.userTypeId)
+	}
 }
 
 // writeWithFlags writes the typeId with nullable and trackingRef flags packed into the value.
@@ -662,6 +668,9 @@ func (b *BaseFieldType) writeWithFlags(buffer *ByteBuffer, nullable bool, tracki
 		value |= 0b01
 	}
 	buffer.WriteVarUint32Small7(value)
+	if needsUserTypeID(b.typeId) {
+		buffer.WriteVarUint32(b.userTypeId)
+	}
 }
 
 func getFieldTypeSerializer(fory *Fory, ft FieldType) (Serializer, error) {
@@ -681,6 +690,13 @@ func getFieldTypeSerializerWithResolver(resolver *TypeResolver, ft FieldType) (S
 }
 
 func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
+	if needsUserTypeID(b.typeId) {
+		info := fory.typeResolver.getUserTypeInfoById(b.typeId, b.userTypeId)
+		if info == nil {
+			return TypeInfo{}, nil
+		}
+		return *info, nil
+	}
 	info, err := fory.typeResolver.getTypeInfoById(uint32(b.typeId))
 	if err != nil {
 		return TypeInfo{}, err
@@ -692,6 +708,13 @@ func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 }
 
 func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
+	if needsUserTypeID(b.typeId) {
+		info := resolver.getUserTypeInfoById(b.typeId, b.userTypeId)
+		if info == nil {
+			return TypeInfo{}, nil
+		}
+		return *info, nil
+	}
 	info, err := resolver.getTypeInfoById(uint32(b.typeId))
 	if err != nil {
 		return TypeInfo{}, err
@@ -707,6 +730,10 @@ func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInf
 func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	typeId := buffer.ReadVarUint32Small7(err)
 	internalTypeId := TypeId(typeId)
+	userTypeId := invalidUserTypeID
+	if needsUserTypeID(internalTypeId) {
+		userTypeId = buffer.ReadVarUint32(err)
+	}
 
 	switch internalTypeId {
 	case LIST, SET:
@@ -728,9 +755,13 @@ func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 		}
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
 	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return NewDynamicFieldType(TypeId(typeId)), nil
+		ft := NewDynamicFieldType(TypeId(typeId))
+		ft.userTypeId = userTypeId
+		return ft, nil
 	}
-	return NewSimpleFieldType(TypeId(typeId)), nil
+	ft := NewSimpleFieldType(TypeId(typeId))
+	ft.userTypeId = userTypeId
+	return ft, nil
 }
 
 // readFieldTypeWithFlags reads field type info where flags are embedded in the type ID
@@ -742,6 +773,10 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	// nullable := (rawValue & 0b10) != 0    // Not used currently
 	typeId := rawValue >> 2
 	internalTypeId := TypeId(typeId)
+	userTypeId := invalidUserTypeID
+	if needsUserTypeID(internalTypeId) {
+		userTypeId = buffer.ReadVarUint32(err)
+	}
 
 	switch internalTypeId {
 	case LIST, SET:
@@ -761,9 +796,13 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 		}
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
 	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return NewDynamicFieldType(TypeId(typeId)), nil
+		ft := NewDynamicFieldType(TypeId(typeId))
+		ft.userTypeId = userTypeId
+		return ft, nil
 	}
-	return NewSimpleFieldType(TypeId(typeId)), nil
+	ft := NewSimpleFieldType(TypeId(typeId))
+	ft.userTypeId = userTypeId
+	return ft, nil
 }
 
 // CollectionFieldType represents collection types like List, Slice
@@ -774,7 +813,7 @@ type CollectionFieldType struct {
 
 func NewCollectionFieldType(typeId TypeId, elementType FieldType) *CollectionFieldType {
 	return &CollectionFieldType{
-		BaseFieldType: BaseFieldType{typeId: typeId},
+		BaseFieldType: BaseFieldType{typeId: typeId, userTypeId: invalidUserTypeID},
 		elementType:   elementType,
 	}
 }
@@ -857,7 +896,7 @@ type MapFieldType struct {
 
 func NewMapFieldType(typeId TypeId, keyType, valueType FieldType) *MapFieldType {
 	return &MapFieldType{
-		BaseFieldType: BaseFieldType{typeId: typeId},
+		BaseFieldType: BaseFieldType{typeId: typeId, userTypeId: invalidUserTypeID},
 		keyType:       keyType,
 		valueType:     valueType,
 	}
@@ -952,7 +991,8 @@ type SimpleFieldType struct {
 func NewSimpleFieldType(typeId TypeId) *SimpleFieldType {
 	return &SimpleFieldType{
 		BaseFieldType: BaseFieldType{
-			typeId: typeId,
+			typeId:     typeId,
+			userTypeId: invalidUserTypeID,
 		},
 	}
 }
@@ -969,7 +1009,8 @@ type DynamicFieldType struct {
 func NewDynamicFieldType(typeId TypeId) *DynamicFieldType {
 	return &DynamicFieldType{
 		BaseFieldType: BaseFieldType{
-			typeId: typeId,
+			typeId:     typeId,
+			userTypeId: invalidUserTypeID,
 		},
 	}
 }
@@ -1095,16 +1136,26 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 		return nil, err
 	}
 	typeId = TypeId(typeInfo.TypeID)
+	userTypeId := invalidUserTypeID
+	if needsUserTypeID(typeId) {
+		userTypeId = typeInfo.UserTypeID
+	}
 
 	if isUserDefinedType(typeId) {
 		switch typeId {
 		case UNION, TYPED_UNION, NAMED_UNION, ENUM, NAMED_ENUM:
-			return NewSimpleFieldType(typeId), nil
+			ft := NewSimpleFieldType(typeId)
+			ft.userTypeId = userTypeId
+			return ft, nil
 		}
-		return NewDynamicFieldType(typeId), nil
+		ft := NewDynamicFieldType(typeId)
+		ft.userTypeId = userTypeId
+		return ft, nil
 	}
 
-	return NewSimpleFieldType(typeId), nil
+	ft := NewSimpleFieldType(typeId)
+	ft.userTypeId = userTypeId
+	return ft, nil
 }
 
 const (

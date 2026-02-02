@@ -29,17 +29,18 @@ export class AnyHelper {
   static detectSerializer(fory: Fory) {
     const typeId = fory.binaryReader.uint8();
     let userTypeId = -1;
-    if (TypeId.needsUserTypeId(typeId)) {
+    if (TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT) {
       userTypeId = fory.binaryReader.readVarUint32Small7();
     }
     let serializer: Serializer | undefined;
     switch (typeId) {
+      case TypeId.COMPATIBLE_STRUCT:
       case TypeId.NAMED_ENUM:
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_EXT:
       case TypeId.NAMED_UNION:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
-        if (fory.config.mode === Mode.Compatible) {
+        if (fory.config.mode === Mode.Compatible || typeId === TypeId.COMPATIBLE_STRUCT) {
           const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();
@@ -56,21 +57,6 @@ export class AnyHelper {
           const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
           const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);
           serializer = fory.classResolver.getSerializerByName(`${ns}$${typeName}`);
-        }
-        break;
-      case TypeId.COMPATIBLE_STRUCT:
-        if (fory.config.mode === Mode.Compatible) {
-          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
-          serializer = fory.classResolver.getSerializerById(typeId, userTypeId);
-          if (!serializer) {
-            throw new Error(`can't find implements of typeId: ${typeId}`);
-          }
-          const hash = serializer.getHash();
-          if (hash !== typeMeta.getHash()) {
-            serializer = fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
-          }
-        } else {
-          serializer = fory.classResolver.getSerializerById(typeId, userTypeId);
         }
         break;
       default:

@@ -2952,7 +2952,6 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
           switch (static_cast<TypeId>(remote_type_id)) {
           case TypeId::ENUM:
           case TypeId::STRUCT:
-          case TypeId::COMPATIBLE_STRUCT:
           case TypeId::EXT:
           case TypeId::TYPED_UNION:
             remote_user_type_id = ctx.read_var_uint32(ctx.error());
@@ -3014,7 +3013,9 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
               expected_type_id !=
                   static_cast<uint8_t>(TypeId::NAMED_UNION) &&
               expected_type_id !=
-                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT)) {
+                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT) &&
+              expected_type_id !=
+                  static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT)) {
             // Simple type ID - just read and compare varint directly
             uint32_t remote_type_id = ctx.read_uint8(ctx.error());
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -3024,7 +3025,6 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
             switch (static_cast<TypeId>(remote_type_id)) {
             case TypeId::ENUM:
             case TypeId::STRUCT:
-            case TypeId::COMPATIBLE_STRUCT:
             case TypeId::EXT:
             case TypeId::TYPED_UNION:
               remote_user_type_id = ctx.read_var_uint32(ctx.error());
@@ -3043,7 +3043,6 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
             switch (static_cast<TypeId>(expected_type_id)) {
             case TypeId::ENUM:
             case TypeId::STRUCT:
-            case TypeId::COMPATIBLE_STRUCT:
             case TypeId::EXT:
             case TypeId::TYPED_UNION:
               if (type_info->user_type_id == kInvalidUserTypeId ||

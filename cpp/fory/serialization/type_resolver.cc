@@ -57,6 +57,23 @@ Result<void, Error> FieldType::write_to(Buffer &buffer, bool write_flag,
   }
   buffer.write_var_uint32(header);
 
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    if (user_type_id == kInvalidUserTypeId) {
+      return Unexpected(Error::invalid(
+          "User type id is required for type_id " +
+          std::to_string(type_id)));
+    }
+    buffer.write_var_uint32(user_type_id);
+    break;
+  default:
+    break;
+  }
+
   // write generics for list/set/map
   if (type_id == static_cast<uint32_t>(TypeId::LIST) ||
       type_id == static_cast<uint32_t>(TypeId::SET)) {
@@ -102,6 +119,23 @@ Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
   }
 
   FieldType ft(tid, null, ref_track);
+  switch (static_cast<TypeId>(tid)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION: {
+    uint32_t user_type_id = buffer.read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    ft.user_type_id = user_type_id;
+    break;
+  }
+  default:
+    ft.user_type_id = kInvalidUserTypeId;
+    break;
+  }
 
   // Read generics for list/set/map
   if (tid == static_cast<uint32_t>(TypeId::LIST) ||
@@ -782,6 +816,19 @@ bool is_compress(uint32_t type_id) {
          type_id == static_cast<uint32_t>(TypeId::TAGGED_UINT64);
 }
 
+bool field_type_needs_user_type_id(uint32_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    return true;
+  default:
+    return false;
+  }
+}
+
 std::string field_sort_key(const FieldInfo &field) {
   if (field.field_id >= 0) {
     return std::to_string(field.field_id);
@@ -993,6 +1040,14 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
   types_match = [&](const FieldType &a, const FieldType &b) -> bool {
     if (normalize_type_id(a.type_id) != normalize_type_id(b.type_id)) {
       return false;
+    }
+    if (field_type_needs_user_type_id(a.type_id) ||
+        field_type_needs_user_type_id(b.type_id)) {
+      if ((a.user_type_id != kInvalidUserTypeId ||
+           b.user_type_id != kInvalidUserTypeId) &&
+          a.user_type_id != b.user_type_id) {
+        return false;
+      }
     }
     if (a.generics.size() != b.generics.size()) {
       return false;
