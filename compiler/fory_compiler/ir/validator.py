@@ -77,6 +77,9 @@ class SchemaValidator:
         self.warnings.append(ValidationIssue(message, location, "warning"))
 
     def _apply_type_id_defaults(self) -> None:
+        enable_auto_type_id = self.schema.get_option("enable_auto_type_id", True)
+        if enable_auto_type_id is False:
+            return
         used_ids = {}
         for t in self.schema.get_all_types():
             if t.type_id is not None:

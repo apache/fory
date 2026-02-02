@@ -131,6 +131,42 @@ def test_auto_id_generation_for_enum():
     assert enum.id_source == "demo.Status"
 
 
+def test_auto_id_disabled_keeps_name_registration():
+    source = """
+    option enable_auto_type_id = false;
+    package demo;
+
+    message User {
+        string name = 1;
+    }
+
+    union Item {
+        User user = 1;
+        string note = 2;
+    }
+
+    enum Status {
+        OK = 0;
+        ERROR = 1;
+    }
+    """
+    schema = parse_schema(source)
+    validator = SchemaValidator(schema)
+    assert validator.validate()
+
+    msg = schema.messages[0]
+    union = schema.unions[0]
+    enum = schema.enums[0]
+
+    assert msg.type_id is None
+    assert union.type_id is None
+    assert enum.type_id is None
+
+    assert msg.id_generated is False
+    assert union.id_generated is False
+    assert enum.id_generated is False
+
+
 def test_explicit_id_not_overwritten():
     source = """
     package demo;

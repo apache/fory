@@ -47,6 +47,7 @@ KNOWN_FILE_OPTIONS: Set[str] = {
     "deprecated",
     "use_record_for_java_message",
     "polymorphism",
+    "enable_auto_type_id",
     "go_nested_type_style",
 }
 

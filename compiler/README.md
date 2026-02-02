@@ -229,7 +229,11 @@ FDL uses plain option keys without a `(fory)` prefix:
 ```fdl
 option use_record_for_java_message = true;
 option polymorphism = true;
+option enable_auto_type_id = true;
 ```
+
+`enable_auto_type_id` defaults to `true`. Set it to `false` to keep namespace-based registration
+for types that omit explicit IDs.
 
 **Message/Enum options:**
 
