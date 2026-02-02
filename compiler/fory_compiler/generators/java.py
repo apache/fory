@@ -1529,6 +1529,7 @@ class JavaGenerator(BaseGenerator):
             m for m in self.schema.messages if not self.is_imported_type(m)
         ]
         lines.append("    public static void register(Fory fory) {")
+        lines.append("        org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();")
 
         # Register enums (top-level)
         for enum in local_enums:
@@ -1564,12 +1565,14 @@ class JavaGenerator(BaseGenerator):
         type_name = class_ref if parent_path else enum.name
 
         if self.should_register_by_id(enum):
-            lines.append(f"        fory.register({class_ref}.class, {enum.type_id});")
+            lines.append(
+                f"        resolver.register({class_ref}.class, {enum.type_id});"
+            )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
             lines.append(
-                f'        fory.register({class_ref}.class, "{ns}", "{type_name}");'
+                f'        resolver.register({class_ref}.class, "{ns}", "{type_name}");'
             )
 
     def generate_message_registration(
@@ -1582,13 +1585,13 @@ class JavaGenerator(BaseGenerator):
 
         if self.should_register_by_id(message):
             lines.append(
-                f"        fory.register({class_ref}.class, {message.type_id});"
+                f"        resolver.register({class_ref}.class, {message.type_id});"
             )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
             lines.append(
-                f'        fory.register({class_ref}.class, "{ns}", "{type_name}");'
+                f'        resolver.register({class_ref}.class, "{ns}", "{type_name}");'
             )
 
         # Register nested enums
@@ -1615,12 +1618,12 @@ class JavaGenerator(BaseGenerator):
 
         if self.should_register_by_id(union):
             lines.append(
-                f"        fory.registerUnion({class_ref}.class, {union.type_id}, {serializer_ref});"
+                f"        resolver.registerUnion({class_ref}.class, {union.type_id}, {serializer_ref});"
             )
         else:
             ns = self.schema.package or "default"
             if parent_path:
                 ns = f"{ns}.{parent_path}"
             lines.append(
-                f'        fory.registerUnion({class_ref}.class, "{ns}", "{type_name}", {serializer_ref});'
+                f'        resolver.registerUnion({class_ref}.class, "{ns}", "{type_name}", {serializer_ref});'
             )

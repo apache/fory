@@ -191,7 +191,7 @@ func NewFory(opts ...Option) *Fory {
 
 func validateUserTypeID(typeID uint32) error {
 	if typeID > maxUserTypeID {
-		return fmt.Errorf("typeID must be in range [0, 0x7fffffff], got %d", typeID)
+		return fmt.Errorf("typeID must be in range [0, 0xfffffffe], got %d", typeID)
 	}
 	return nil
 }
@@ -199,7 +199,7 @@ func validateUserTypeID(typeID uint32) error {
 // RegisterStruct registers a struct type with a numeric ID for cross-language serialization.
 // This is compatible with Java's fory.register(Class, int) method.
 // type_ can be either a reflect.Type or an instance of the type
-// typeID should be the user type ID in the range 0-0x7fffffff (the internal type ID will be added automatically)
+// typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
 // Note: For enum types, use RegisterEnum instead.
 func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 	if err := validateUserTypeID(typeID); err != nil {
@@ -235,7 +235,7 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 
 // RegisterUnion registers a union type with a numeric ID for cross-language serialization.
 // type_ can be either a reflect.Type or an instance of the union type.
-// typeID should be the user type ID in the range 0-0x7fffffff (the internal type ID will be added automatically).
+// typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
 // serializer must implement union payload encoding/decoding.
 func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) error {
 	if serializer == nil {
@@ -318,7 +318,7 @@ func (f *Fory) RegisterNamedStruct(type_ any, typeName string) error {
 // In Go, enums are typically defined as int-based types (e.g., type Color int32).
 // This method creates an enum serializer that writes/reads the enum value as VarUint32Small7.
 // type_ can be either a reflect.Type or an instance of the enum type
-// typeID should be the user type ID in the range 0-0x7fffffff (the internal type ID will be added automatically)
+// typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
 func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -381,7 +381,7 @@ func (f *Fory) RegisterNamedEnum(type_ any, typeName string) error {
 
 // RegisterExtension registers a type as an extension type with a numeric ID.
 // Extension types use a custom serializer provided by the user.
-// typeID should be the user type ID in the range 0-0x7fffffff.
+// typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
 func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionSerializer) error {
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -1005,47 +1005,47 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	switch t := any(target).(type) {
 	case *bool:
 		_ = buf.ReadInt8(err)            // null flag
-		_ = buf.ReadVarUint32Small7(err) // type ID
+		_ = buf.ReadUint8(err) // type ID
 		*t = buf.ReadBool(err)
 		return f.readCtx.CheckError()
 	case *int8:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = buf.ReadInt8(err)
 		return f.readCtx.CheckError()
 	case *int16:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = buf.ReadInt16(err)
 		return f.readCtx.CheckError()
 	case *int32:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = buf.ReadVarint32(err)
 		return f.readCtx.CheckError()
 	case *int64:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = buf.ReadVarint64(err)
 		return f.readCtx.CheckError()
 	case *int:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = int(buf.ReadVarint64(err))
 		return f.readCtx.CheckError()
 	case *float32:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = buf.ReadFloat32(err)
 		return f.readCtx.CheckError()
 	case *float64:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVarUint32Small7(err)
+		_ = buf.ReadUint8(err)
 		*t = buf.ReadFloat64(err)
 		return f.readCtx.CheckError()
 	case *string:
 		_ = buf.ReadInt8(err)            // null flag
-		_ = buf.ReadVarUint32Small7(err) // type ID
+		_ = buf.ReadUint8(err) // type ID
 		*t = f.readCtx.ReadString()
 		return f.readCtx.CheckError()
 	case *[]byte:

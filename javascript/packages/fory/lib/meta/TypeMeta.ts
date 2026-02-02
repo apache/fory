@@ -256,7 +256,7 @@ export class TypeMeta {
       typeName = this.readTypeName(reader);
       typeId = TypeId.NAMED_STRUCT; // Default for named types
     } else {
-      typeId = reader.varUInt32();
+      typeId = reader.uint8();
       if (TypeId.needsUserTypeId(typeId)) {
         userTypeId = reader.varUInt32();
       }
@@ -391,7 +391,7 @@ export class TypeMeta {
     }
 
     if (!TypeId.isNamedType(this.type.typeId)) {
-      writer.varUInt32(this.type.typeId);
+      writer.uint8(this.type.typeId);
       if (TypeId.needsUserTypeId(this.type.typeId)) {
         writer.varUInt32(this.type.userTypeId);
       }

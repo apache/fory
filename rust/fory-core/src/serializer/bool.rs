@@ -61,7 +61,7 @@ impl Serializer for bool {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::BOOL as u32);
+        context.writer.write_u8(TypeId::BOOL as u8);
         Ok(())
     }
 

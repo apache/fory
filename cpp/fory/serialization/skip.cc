@@ -213,18 +213,27 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
   }
 
   // Read remote type_id
-  uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
+  uint32_t remote_type_id = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
 
   uint32_t user_type_id = 0;
-  bool has_user_type_id = ::fory::needs_user_type_id(remote_type_id);
-  if (has_user_type_id) {
+  bool has_user_type_id = false;
+  switch (static_cast<TypeId>(remote_type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
     user_type_id = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
+    has_user_type_id = true;
+    break;
+  default:
+    break;
   }
   TypeId remote_tid = static_cast<TypeId>(remote_type_id);
 
@@ -292,18 +301,27 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
   }
 
   // Read remote type_id from buffer - Java always writes type_id for ext
-  uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
+  uint32_t remote_type_id = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
 
   uint32_t user_type_id = 0;
-  bool has_user_type_id = ::fory::needs_user_type_id(remote_type_id);
-  if (has_user_type_id) {
+  bool has_user_type_id = false;
+  switch (static_cast<TypeId>(remote_type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
     user_type_id = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
+    has_user_type_id = true;
+    break;
+  default:
+    break;
   }
   TypeId remote_tid = static_cast<TypeId>(remote_type_id);
 

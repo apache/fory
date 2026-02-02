@@ -18,7 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::TypeMeta;
-use crate::resolver::type_resolver::TypeInfo;
+use crate::resolver::type_resolver::{TypeInfo, NO_USER_TYPE_ID};
 use crate::TypeResolver;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -145,9 +145,9 @@ impl MetaReaderResolver {
                     // Registered by ID
                     let type_id = type_meta.get_type_id();
                     let user_type_id = type_meta.get_user_type_id();
-                    if user_type_id >= 0 {
+                    if user_type_id != NO_USER_TYPE_ID {
                         if let Some(local_type_info) = type_resolver
-                            .get_user_type_info_by_id(type_id, user_type_id as u32)
+                            .get_user_type_info_by_id(type_id, user_type_id)
                         {
                             // Use local harness with remote metadata
                             Rc::new(TypeInfo::from_remote_meta(

@@ -104,6 +104,7 @@ public abstract class TypeResolver {
           + "please set meta context by SerializationContext.setMetaContext";
   private static final GenericType OBJECT_GENERIC_TYPE = GenericType.build(Object.class);
   private static final float TYPE_ID_MAP_LOAD_FACTOR = 0.5f;
+  static final long MAX_USER_TYPE_ID = 0xffff_fffEL;
 
   final Fory fory;
   final boolean metaContextShareEnabled;
@@ -143,12 +144,13 @@ public abstract class TypeResolver {
   public abstract void register(Class<?> type);
 
   /**
-   * Registers a class with a user-specified ID. Valid ID range is [0, 32510].
+   * Registers a class with a user-specified ID. Valid ID range is [0, 0xfffffffe] (0xffffffff is
+   * reserved for "unset").
    *
    * @param type the class to register
    * @param id the user ID to assign (0-based)
    */
-  public abstract void register(Class<?> type, int id);
+  public abstract void register(Class<?> type, long id);
 
   /**
    * Registers a class with a namespace and type name for cross-language serialization.
@@ -165,7 +167,7 @@ public abstract class TypeResolver {
   }
 
   /** Registers a class by name with a user-specified ID. */
-  public void register(String className, int classId) {
+  public void register(String className, long classId) {
     register(loadClass(className), classId);
   }
 
@@ -181,7 +183,7 @@ public abstract class TypeResolver {
    * @param id the user ID to assign (0-based)
    * @param serializer serializer for the union
    */
-  public abstract void registerUnion(Class<?> type, int id, Serializer<?> serializer);
+  public abstract void registerUnion(Class<?> type, long id, Serializer<?> serializer);
 
   /**
    * Registers a union type with a namespace and type name and serializer.
@@ -327,7 +329,7 @@ public abstract class TypeResolver {
    */
   public final void writeClassInfo(MemoryBuffer buffer, ClassInfo classInfo) {
     int typeId = classInfo.getTypeId();
-    buffer.writeVarUint32Small7(typeId);
+    buffer.writeUint8(typeId);
 
     if (needsUserTypeId(typeId)) {
       buffer.writeVarUint32(classInfo.userTypeId);
@@ -369,6 +371,17 @@ public abstract class TypeResolver {
       default:
         return false;
     }
+  }
+
+  static int toUserTypeId(long userTypeId) {
+    Preconditions.checkArgument(
+        userTypeId >= 0 && userTypeId <= MAX_USER_TYPE_ID,
+        "User type id must be in range [0, 0xfffffffe]");
+    return (int) userTypeId;
+  }
+
+  static long userTypeIdToKey(int userTypeId) {
+    return userTypeId & 0xffffffffL;
   }
 
   /**
@@ -424,7 +437,7 @@ public abstract class TypeResolver {
    * class info cache.
    */
   public final ClassInfo readClassInfo(MemoryBuffer buffer) {
-    int typeId = buffer.readVarUint32Small14();
+    int typeId = buffer.readUint8();
     int userTypeId = -1;
     if (needsUserTypeId(typeId)) {
       userTypeId = buffer.readVarUint32();
@@ -470,7 +483,7 @@ public abstract class TypeResolver {
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
     }
-    if (userTypeId >= 0 && classInfo.userTypeId != userTypeId) {
+    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
       classInfo.userTypeId = userTypeId;
     }
     classInfoCache = classInfo;
@@ -482,7 +495,7 @@ public abstract class TypeResolver {
    * pass an expected class for meta share resolution.
    */
   public final ClassInfo readClassInfo(MemoryBuffer buffer, Class<?> targetClass) {
-    int typeId = buffer.readVarUint32Small14();
+    int typeId = buffer.readUint8();
     int userTypeId = -1;
     if (needsUserTypeId(typeId)) {
       userTypeId = buffer.readVarUint32();
@@ -528,7 +541,7 @@ public abstract class TypeResolver {
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
     }
-    if (userTypeId >= 0 && classInfo.userTypeId != userTypeId) {
+    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
       classInfo.userTypeId = userTypeId;
     }
     classInfoCache = classInfo;
@@ -546,7 +559,7 @@ public abstract class TypeResolver {
    */
   @CodegenInvoke
   public final ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfo classInfoCache) {
-    int typeId = buffer.readVarUint32Small14();
+    int typeId = buffer.readUint8();
     int userTypeId = -1;
     if (needsUserTypeId(typeId)) {
       userTypeId = buffer.readVarUint32();
@@ -592,7 +605,7 @@ public abstract class TypeResolver {
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
     }
-    if (userTypeId >= 0 && classInfo.userTypeId != userTypeId) {
+    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
       classInfo.userTypeId = userTypeId;
     }
     return classInfo;
@@ -608,7 +621,7 @@ public abstract class TypeResolver {
    */
   @CodegenInvoke
   public final ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
-    int typeId = buffer.readVarUint32Small14();
+    int typeId = buffer.readUint8();
     int userTypeId = -1;
     if (needsUserTypeId(typeId)) {
       userTypeId = buffer.readVarUint32();
@@ -656,7 +669,7 @@ public abstract class TypeResolver {
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
     }
-    if (userTypeId >= 0 && classInfo.userTypeId != userTypeId) {
+    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
       classInfo.userTypeId = userTypeId;
     }
     if (updateCache) {
@@ -802,10 +815,10 @@ public abstract class TypeResolver {
   }
 
   protected final ClassInfo getUserTypeInfoByTypeId(int typeId, int userTypeId) {
-    if (userTypeId < 0) {
+    if (userTypeId == -1) {
       return null;
     }
-    ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeId);
+    ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeIdToKey(userTypeId));
     if (classInfo == null) {
       return null;
     }
@@ -848,11 +861,11 @@ public abstract class TypeResolver {
   }
 
   protected final void putUserTypeInfo(int userId, ClassInfo classInfo) {
-    userTypeIdToClassInfo.put(userId, classInfo);
+    userTypeIdToClassInfo.put(userTypeIdToKey(userId), classInfo);
   }
 
   protected final boolean containsUserTypeId(int userId) {
-    return userTypeIdToClassInfo.containsKey(userId);
+    return userTypeIdToClassInfo.containsKey(userTypeIdToKey(userId));
   }
 
   final ClassInfo buildMetaSharedClassInfo(
@@ -888,7 +901,7 @@ public abstract class TypeResolver {
       clz = NonexistentMetaShared.class;
     }
     Class<?> cls = clz;
-    Short classId = extRegistry.registeredClassIdMap.get(cls);
+    Integer classId = extRegistry.registeredClassIdMap.get(cls);
     int typeId;
     if (classId != null) {
       ClassInfo registeredInfo = classInfoMap.get(cls);
@@ -1545,10 +1558,10 @@ public abstract class TypeResolver {
 
   static class ExtRegistry {
     // Here we set it to 1 to avoid calculating it again in `register(Class<?> cls)`.
-    short classIdGenerator = 1;
-    short userIdGenerator = 0;
+    int classIdGenerator = 1;
+    int userIdGenerator = 0;
     SerializerFactory serializerFactory;
-    final IdentityMap<Class<?>, Short> registeredClassIdMap =
+    final IdentityMap<Class<?>, Integer> registeredClassIdMap =
         new IdentityMap<>(estimatedNumRegistered);
     final BiMap<String, Class<?>> registeredClasses = HashBiMap.create(estimatedNumRegistered);
     // cache absClassInfo, support customized serializer for abstract or interface.

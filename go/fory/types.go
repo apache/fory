@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-type TypeId = int16
+type TypeId = uint8
 
 const (
 	// UNKNOWN Unknown/polymorphic type marker
@@ -163,7 +163,7 @@ func needsUserTypeID(typeID TypeId) bool {
 	}
 }
 
-func isPrimitiveType(typeID int16) bool {
+func isPrimitiveType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL,
 		INT8,
@@ -203,23 +203,23 @@ func NeedWriteRef(typeID TypeId) bool {
 	}
 }
 
-func isListType(typeID int16) bool {
+func isListType(typeID TypeId) bool {
 	return typeID == LIST
 }
 
-func isSetType(typeID int16) bool {
+func isSetType(typeID TypeId) bool {
 	return typeID == SET
 }
 
-func isMapType(typeID int16) bool {
+func isMapType(typeID TypeId) bool {
 	return typeID == MAP
 }
 
-func isCollectionType(typeID int16) bool {
+func isCollectionType(typeID TypeId) bool {
 	return typeID == LIST || typeID == SET || typeID == MAP
 }
 
-func isPrimitiveArrayType(typeID int16) bool {
+func isPrimitiveArrayType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL_ARRAY,
 		INT8_ARRAY,
@@ -239,7 +239,7 @@ func isPrimitiveArrayType(typeID int16) bool {
 	}
 }
 
-var primitiveTypeSizes = map[int16]int{
+var primitiveTypeSizes = map[TypeId]int{
 	BOOL:          1,
 	INT8:          1,
 	UINT8:         1,
@@ -269,14 +269,14 @@ const MinInt31 int64 = -0x40000000 // -2^30
 // MaxInt31Signed is MaxInt31 as a signed int64 for TAGGED_INT64 encoding
 const MaxInt31Signed int64 = 0x3FFFFFFF // 2^30 - 1
 
-func getPrimitiveTypeSize(typeID int16) int {
+func getPrimitiveTypeSize(typeID TypeId) int {
 	if sz, ok := primitiveTypeSizes[typeID]; ok {
 		return sz
 	}
 	return -1
 }
 
-func isUserDefinedType(typeID int16) bool {
+func isUserDefinedType(typeID TypeId) bool {
 	return typeID == STRUCT ||
 		typeID == COMPATIBLE_STRUCT ||
 		typeID == NAMED_STRUCT ||

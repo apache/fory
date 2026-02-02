@@ -45,7 +45,8 @@ typeDef are layout as following:
 */
 type TypeDef struct {
 	typeId         uint32
-	userTypeId     int32
+	// User type ID is stored as unsigned uint32; 0xffffffff means unset.
+	userTypeId     uint32
 	nsName         *MetaStringBytes
 	typeName       *MetaStringBytes
 	compressed     bool
@@ -55,7 +56,7 @@ type TypeDef struct {
 	type_          reflect.Type
 }
 
-func NewTypeDef(typeId uint32, userTypeId int32, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
+func NewTypeDef(typeId uint32, userTypeId uint32, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
 	return &TypeDef{
 		typeId:         typeId,
 		userTypeId:     userTypeId,
@@ -531,8 +532,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		//   so they are nullable by default.
 		// Can be overridden by explicit fory tag `fory:"nullable"`
 		typeId := ft.TypeId()
-		internalId := TypeId(typeId)
-		isEnumField := internalId == ENUM || internalId == NAMED_ENUM
+		isEnumField := typeId == ENUM || typeId == NAMED_ENUM
 		// Determine nullable based on mode
 		// In xlang mode: only pointer types are nullable by default (per xlang spec)
 		// In native mode: Go's natural semantics - all nil-able types are nullable
@@ -1251,14 +1251,12 @@ func encodingTypeDef(typeResolver *TypeResolver, typeDef *TypeDef) ([]byte, erro
 			return nil, fmt.Errorf("failed to write typename: %w", err)
 		}
 	} else {
-		// Java uses WriteVarUint32 for type ID (unsigned varint)
-		// typeDef.typeId is already int32, no need for conversion
-		buffer.WriteVarUint32(uint32(typeDef.typeId))
+		buffer.WriteUint8(uint8(typeDef.typeId))
 		if needsUserTypeID(TypeId(typeDef.typeId)) {
-			if typeDef.userTypeId < 0 {
+			if typeDef.userTypeId == invalidUserTypeID {
 				return nil, fmt.Errorf("missing user type ID for typeID %d", typeDef.typeId)
 			}
-			buffer.WriteVarUint32(uint32(typeDef.userTypeId))
+			buffer.WriteVarUint32(typeDef.userTypeId)
 		}
 	}
 
@@ -1454,7 +1452,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 
 	// ReadData name or type ID according to the registerByName flag
 	var typeId uint32
-	userTypeId := int32(-1)
+	userTypeId := invalidUserTypeID
 	var nsBytes, nameBytes *MetaStringBytes
 	var type_ reflect.Type
 	if registeredByName {
@@ -1560,10 +1558,9 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			type_ = nil
 		}
 	} else {
-		// Java uses WriteVarUint32 for type ID in TypeDef
-		typeId = metaBuffer.ReadVarUint32(&metaErr)
+		typeId = uint32(metaBuffer.ReadUint8(&metaErr))
 		if needsUserTypeID(TypeId(typeId)) {
-			userTypeId = int32(metaBuffer.ReadVarUint32(&metaErr))
+			userTypeId = metaBuffer.ReadVarUint32(&metaErr)
 			if info, exists := fory.typeResolver.userTypeIdToTypeInfo[userTypeKey{typeID: TypeId(typeId), userTypeID: userTypeId}]; exists {
 				type_ = info.Type
 			}

@@ -240,7 +240,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       : "";
     return `
       ${
-        this.builder.reader.readVarUint32Small7()
+        this.builder.reader.uint8()
       };
       ${readUserTypeIdStmt}
       ${
@@ -316,7 +316,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       ? this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId)
       : "";
     return ` 
-      ${this.builder.writer.writeVarUint32Small7(this.getTypeId())};
+      ${this.builder.writer.uint8(this.getTypeId())};
       ${writeUserTypeIdStmt}
       ${typeMeta}
     `;

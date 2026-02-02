@@ -96,7 +96,7 @@ class ClassDefDecoder {
       boolean isRegistered = (currentClassHeader & 0b1) != 0;
       int numFields = currentClassHeader >>> 1;
       if (isRegistered) {
-        int typeId = classDefBuf.readVarUint32Small7();
+        int typeId = classDefBuf.readUint8();
         int userTypeId = -1;
         if (needsUserTypeId(typeId)) {
           userTypeId = classDefBuf.readVarUint32();

@@ -46,7 +46,7 @@ public class ClassInfo {
   // - Types 0-30: Shared internal types (Types.BOOL, Types.STRING, etc.)
   // - Types 31-255: Native-only internal types (VOID_ID, CHAR_ID, etc.)
   int typeId;
-  // User-registered type ID for types registered by numeric id, or -1 if not registered by id.
+  // User-registered type ID stored as unsigned int. -1 (0xffffffff) means "unset".
   int userTypeId = -1;
   Serializer<?> serializer;
   ClassDef classDef;

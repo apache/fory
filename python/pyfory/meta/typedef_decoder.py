@@ -136,7 +136,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
             # Fallback to COMPATIBLE_STRUCT if not found
             type_id = TypeId.COMPATIBLE_STRUCT
     else:
-        type_id = meta_buffer.read_var_uint32()
+        type_id = meta_buffer.read_uint8()
         if needs_user_type_id(type_id):
             user_type_id = meta_buffer.read_var_uint32()
         if resolver.is_registered_by_id(type_id=type_id, user_type_id=user_type_id):

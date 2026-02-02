@@ -25,7 +25,7 @@ use crate::types::{is_user_type, ENUM, NAMED_ENUM, UNION};
 #[inline(always)]
 pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    let remote_type_id = context.reader.read_varuint32()?;
+    let remote_type_id = context.reader.read_u8()? as u32;
     ensure!(
         local_type_id == remote_type_id,
         Error::type_mismatch(local_type_id, remote_type_id)

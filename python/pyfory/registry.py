@@ -430,8 +430,12 @@ class TypeResolver:
             if type_id is not None and type_id >= 0 and type_id > 0xFF:
                 raise ValueError(f"Internal type id overflow: {type_id}")
         else:
-            if user_type_id not in {None, NO_USER_TYPE_ID} and user_type_id > 0x7FFFFFFF:
-                raise ValueError(f"user_type_id must be in range [0, 0x7fffffff], got {user_type_id}")
+            if user_type_id not in {None, NO_USER_TYPE_ID} and (
+                user_type_id < 0 or user_type_id > 0xFFFFFFFE
+            ):
+                raise ValueError(
+                    f"user_type_id must be in range [0, 0xfffffffe], got {user_type_id}"
+                )
         if serializer is not None and not isinstance(serializer, Serializer):
             try:
                 serializer = serializer(self.fory, cls)
@@ -831,7 +835,7 @@ class TypeResolver:
             self.write_shared_type_meta(buffer, typeinfo)
             return
         type_id = typeinfo.type_id
-        buffer.write_var_uint32(type_id)
+        buffer.write_uint8(type_id)
         if needs_user_type_id(type_id):
             if typeinfo.user_type_id in {None, NO_USER_TYPE_ID}:
                 raise TypeError(f"user_type_id required for type_id {type_id}")
@@ -845,7 +849,7 @@ class TypeResolver:
         if self.meta_share:
             return self.read_shared_type_meta(buffer)
 
-        type_id = buffer.read_var_uint32()
+        type_id = buffer.read_uint8()
         user_type_id = NO_USER_TYPE_ID
         if needs_user_type_id(type_id):
             user_type_id = buffer.read_var_uint32()

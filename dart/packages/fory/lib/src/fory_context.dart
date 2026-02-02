@@ -78,7 +78,7 @@ class ForyContext {
     }
     tag2TypeInfo[typeInfo.tag!] = typeInfo;
     type2TypeInfo[typeInfo.dartType] = typeInfo;
-    if (typeInfo.objType.needsUserTypeId() && typeInfo.userTypeId >= 0) {
+    if (typeInfo.objType.needsUserTypeId() && typeInfo.userTypeId != kInvalidUserTypeId) {
       userTypeId2TypeInfo[LongLongKey(typeInfo.objType.id, typeInfo.userTypeId)] = typeInfo;
     }
   }

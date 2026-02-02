@@ -155,7 +155,7 @@ export default class ClassResolver {
   registerSerializer(typeInfo: TypeInfo, serializer: Serializer = uninitSerialize) {
     const typeId = typeInfo.typeId;
     if (!TypeId.isNamedType(typeId)) {
-      if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId >= 0) {
+      if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId !== -1) {
         const key = this.makeUserTypeKey(typeId, typeInfo.userTypeId);
         this.typeInfoMap.set(key, typeInfo);
         if (this.customSerializer.has(key)) {
@@ -198,7 +198,7 @@ export default class ClassResolver {
     if (typeInfo.isNamedType()) {
       return this.typeInfoMap.has((typeInfo.castToStruct()).named!);
     }
-    if (TypeId.needsUserTypeId(typeInfo.typeId) && typeInfo.userTypeId >= 0) {
+    if (TypeId.needsUserTypeId(typeInfo.typeId) && typeInfo.userTypeId !== -1) {
       return this.typeInfoMap.has(this.makeUserTypeKey(typeInfo.typeId, typeInfo.userTypeId));
     }
     return this.typeInfoMap.has(typeInfo.typeId);
@@ -213,7 +213,7 @@ export default class ClassResolver {
   }
 
   getSerializerById(id: number, userTypeId?: number) {
-    if (TypeId.needsUserTypeId(id) && userTypeId !== undefined && userTypeId >= 0) {
+    if (TypeId.needsUserTypeId(id) && userTypeId !== undefined && userTypeId !== -1) {
       return this.customSerializer.get(this.makeUserTypeKey(id, userTypeId))!;
     }
     if (id <= 0xff) {

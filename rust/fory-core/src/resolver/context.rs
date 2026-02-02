@@ -25,7 +25,7 @@ use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver, NO_USER_TYPE_ID};
 use crate::types;
 use std::rc::Rc;
 
@@ -227,7 +227,7 @@ impl<'a> WriteContext<'a> {
         concrete_type_id: std::any::TypeId,
     ) -> Result<Rc<TypeInfo>, Error> {
         if types::is_internal_type(fory_type_id) {
-            self.writer.write_var_uint32(fory_type_id);
+            self.writer.write_u8(fory_type_id as u8);
             return self
                 .type_resolver
                 .get_type_info_by_id(fory_type_id)
@@ -237,13 +237,13 @@ impl<'a> WriteContext<'a> {
         let fory_type_id = type_info.get_type_id();
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
-        self.writer.write_var_uint32(fory_type_id);
+        self.writer.write_u8(fory_type_id as u8);
         if types::needs_user_type_id(fory_type_id) {
             let user_type_id = type_info.get_user_type_id();
-            if user_type_id < 0 {
+            if user_type_id == NO_USER_TYPE_ID {
                 return Err(Error::type_error("User type id is required for this type"));
             }
-            self.writer.write_var_uint32(user_type_id as u32);
+            self.writer.write_var_uint32(user_type_id);
         }
         // should be compiled to jump table generation
         match fory_type_id {
@@ -419,7 +419,7 @@ impl<'a> ReadContext<'a> {
     }
 
     pub fn read_any_typeinfo(&mut self) -> Result<Rc<TypeInfo>, Error> {
-        let fory_type_id = self.reader.read_varuint32()?;
+        let fory_type_id = self.reader.read_u8()? as u32;
         let user_type_id = if types::needs_user_type_id(fory_type_id) {
             Some(self.reader.read_varuint32()?)
         } else {

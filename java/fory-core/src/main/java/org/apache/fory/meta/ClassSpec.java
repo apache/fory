@@ -30,6 +30,7 @@ public class ClassSpec {
   public final boolean isArray;
   public final int dimension;
   public final int typeId;
+  // Stored as unsigned int. -1 (0xffffffff) means "unset".
   public final int userTypeId;
   public Class<?> type;
 

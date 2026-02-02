@@ -90,7 +90,7 @@ impl Serializer for String {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::STRING as u32);
+        context.writer.write_u8(TypeId::STRING as u8);
         Ok(())
     }
 

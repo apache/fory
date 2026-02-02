@@ -64,7 +64,8 @@ public interface BaseFory {
 
   /**
    * Register class with specified id. This method has been deprecated, please use {@link
-   * #register(Class, int)} instead, and invoke {@link #ensureSerializersCompiled} after all classes
+   * #register(Class, int)} instead, and invoke {@link #ensureSerializersCompiled} after all
+   * classes
    * has been registered.
    *
    * @param cls class to register.

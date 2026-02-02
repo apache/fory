@@ -179,19 +179,21 @@ class TypeMeta {
 public:
   int64_t hash;                       // Type hash for fast comparison
   uint32_t type_id;                   // Type ID (for non-named registration)
-  int32_t user_type_id;               // User type ID (for non-named registration)
+  // Stored as unsigned; 0xffffffff means "unset".
+  uint32_t user_type_id;              // User type ID (for non-named registration)
   std::string namespace_str;          // Namespace (for named registration)
   std::string type_name;              // Type name (for named registration)
   bool register_by_name;              // Whether registered by name
   std::vector<FieldInfo> field_infos; // Field information
 
   TypeMeta()
-      : hash(0), type_id(0), user_type_id(-1), register_by_name(false) {}
+      : hash(0), type_id(0), user_type_id(kInvalidUserTypeId),
+        register_by_name(false) {}
 
   /// Create TypeMeta from field information
   static TypeMeta from_fields(uint32_t tid, const std::string &ns,
                               const std::string &name, bool by_name,
-                              int32_t user_type_id,
+                              uint32_t user_type_id,
                               std::vector<FieldInfo> fields);
 
   /// write type meta to buffer (for serialization)
@@ -815,23 +817,23 @@ private:
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_struct_type_info(uint32_t type_id, int32_t user_type_id,
+  build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
                          std::string ns,
                          std::string type_name, bool register_by_name);
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_enum_type_info(uint32_t type_id, int32_t user_type_id, std::string ns,
+  build_enum_type_info(uint32_t type_id, uint32_t user_type_id, std::string ns,
                        std::string type_name, bool register_by_name);
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_ext_type_info(uint32_t type_id, int32_t user_type_id, std::string ns,
+  build_ext_type_info(uint32_t type_id, uint32_t user_type_id, std::string ns,
                       std::string type_name, bool register_by_name);
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_union_type_info(uint32_t type_id, int32_t user_type_id, std::string ns,
+  build_union_type_info(uint32_t type_id, uint32_t user_type_id, std::string ns,
                         std::string type_name, bool register_by_name);
 
   template <typename T> static Harness make_struct_harness();
@@ -1035,9 +1037,9 @@ template <typename T> Result<void, Error> TypeResolver::register_any_type() {
 template <typename T>
 Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
   check_registration_thread();
-  if (type_id > 0x7FFFFFFF) {
+  if (type_id == kInvalidUserTypeId) {
     return Unexpected(Error::invalid(
-        "type_id must be in range [0, 0x7fffffff] for register_by_id"));
+        "type_id must be in range [0, 0xfffffffe] for register_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
@@ -1046,7 +1048,7 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
     uint32_t actual_type_id =
         compatible_ ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
                     : static_cast<uint32_t>(TypeId::STRUCT);
-    int32_t user_type_id = static_cast<int32_t>(type_id);
+    uint32_t user_type_id = type_id;
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, user_type_id, "",
                                              "", false));
@@ -1063,7 +1065,7 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
     return Result<void, Error>();
   } else if constexpr (std::is_enum_v<T>) {
     uint32_t actual_type_id = static_cast<uint32_t>(TypeId::ENUM);
-    int32_t user_type_id = static_cast<int32_t>(type_id);
+    uint32_t user_type_id = type_id;
 
     FORY_TRY(info, build_enum_type_info<T>(actual_type_id, user_type_id, "",
                                            "", false));
@@ -1101,8 +1103,8 @@ TypeResolver::register_by_name(const std::string &ns,
         compatible_ ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
                     : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
 
-    FORY_TRY(info, build_struct_type_info<T>(actual_type_id, -1, ns, type_name,
-                                             true));
+    FORY_TRY(info, build_struct_type_info<T>(actual_type_id, kInvalidUserTypeId,
+                                             ns, type_name, true));
     if (!info->harness.valid()) {
       return Unexpected(
           Error::invalid("Harness for registered type is incomplete"));
@@ -1114,8 +1116,8 @@ TypeResolver::register_by_name(const std::string &ns,
     return Result<void, Error>();
   } else if constexpr (std::is_enum_v<T>) {
     uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_ENUM);
-    FORY_TRY(info,
-             build_enum_type_info<T>(actual_type_id, -1, ns, type_name, true));
+    FORY_TRY(info, build_enum_type_info<T>(actual_type_id, kInvalidUserTypeId,
+                                           ns, type_name, true));
     if (!info->harness.valid()) {
       return Unexpected(
           Error::invalid("Harness for registered enum type is incomplete"));
@@ -1136,15 +1138,15 @@ TypeResolver::register_by_name(const std::string &ns,
 template <typename T>
 Result<void, Error> TypeResolver::register_ext_type_by_id(uint32_t type_id) {
   check_registration_thread();
-  if (type_id > 0x7FFFFFFF) {
-    return Unexpected(Error::invalid("type_id must be in range [0, 0x7fffffff] "
+  if (type_id == kInvalidUserTypeId) {
+    return Unexpected(Error::invalid("type_id must be in range [0, 0xfffffffe] "
                                      "for register_ext_type_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
 
   uint32_t actual_type_id = static_cast<uint32_t>(TypeId::EXT);
-  int32_t user_type_id = static_cast<int32_t>(type_id);
+  uint32_t user_type_id = type_id;
 
   FORY_TRY(
       info, build_ext_type_info<T>(actual_type_id, user_type_id, "", "", false));
@@ -1168,8 +1170,8 @@ TypeResolver::register_ext_type_by_name(const std::string &ns,
   constexpr uint64_t ctid = type_index<T>();
 
   uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_EXT);
-  FORY_TRY(info,
-           build_ext_type_info<T>(actual_type_id, -1, ns, type_name, true));
+  FORY_TRY(info, build_ext_type_info<T>(actual_type_id, kInvalidUserTypeId, ns,
+                                        type_name, true));
 
   FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
   partial_type_infos_.put(ctid, stored_ptr);
@@ -1180,14 +1182,14 @@ TypeResolver::register_ext_type_by_name(const std::string &ns,
 template <typename T>
 Result<void, Error> TypeResolver::register_union_by_id(uint32_t type_id) {
   check_registration_thread();
-  if (type_id > 0x7FFFFFFF) {
+  if (type_id == kInvalidUserTypeId) {
     return Unexpected(Error::invalid(
-        "type_id must be in range [0, 0x7fffffff] for register_union_by_id"));
+        "type_id must be in range [0, 0xfffffffe] for register_union_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
   uint32_t actual_type_id = static_cast<uint32_t>(TypeId::TYPED_UNION);
-  int32_t user_type_id = static_cast<int32_t>(type_id);
+  uint32_t user_type_id = type_id;
 
   FORY_TRY(info, build_union_type_info<T>(actual_type_id, user_type_id, "", "",
                                           false));
@@ -1211,8 +1213,8 @@ TypeResolver::register_union_by_name(const std::string &ns,
   constexpr uint64_t ctid = type_index<T>();
 
   uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_UNION);
-  FORY_TRY(info,
-           build_union_type_info<T>(actual_type_id, -1, ns, type_name, true));
+  FORY_TRY(info, build_union_type_info<T>(actual_type_id, kInvalidUserTypeId,
+                                          ns, type_name, true));
 
   FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
   partial_type_infos_.put(ctid, stored_ptr);
@@ -1222,7 +1224,7 @@ TypeResolver::register_union_by_name(const std::string &ns,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_struct_type_info(uint32_t type_id, int32_t user_type_id,
+TypeResolver::build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
                                      std::string ns,
                                      std::string type_name,
                                      bool register_by_name) {
@@ -1304,7 +1306,7 @@ TypeResolver::build_struct_type_info(uint32_t type_id, int32_t user_type_id,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_enum_type_info(uint32_t type_id, int32_t user_type_id,
+TypeResolver::build_enum_type_info(uint32_t type_id, uint32_t user_type_id,
                                    std::string ns,
                                    std::string type_name,
                                    bool register_by_name) {
@@ -1349,7 +1351,7 @@ TypeResolver::build_enum_type_info(uint32_t type_id, int32_t user_type_id,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_ext_type_info(uint32_t type_id, int32_t user_type_id,
+TypeResolver::build_ext_type_info(uint32_t type_id, uint32_t user_type_id,
                                   std::string ns,
                                   std::string type_name,
                                   bool register_by_name) {
@@ -1387,7 +1389,7 @@ TypeResolver::build_ext_type_info(uint32_t type_id, int32_t user_type_id,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_union_type_info(uint32_t type_id, int32_t user_type_id,
+TypeResolver::build_union_type_info(uint32_t type_id, uint32_t user_type_id,
                                     std::string ns,
                                     std::string type_name,
                                     bool register_by_name) {
@@ -1541,9 +1543,10 @@ TypeResolver::register_type_internal(uint64_t ctid,
                                        std::to_string(raw_ptr->type_id)));
     }
     type_info_by_id_.put(raw_ptr->type_id, raw_ptr);
-  } else if (!raw_ptr->register_by_name && raw_ptr->user_type_id >= 0) {
-    uint64_t key = make_user_type_key(
-        raw_ptr->type_id, static_cast<uint32_t>(raw_ptr->user_type_id));
+  } else if (!raw_ptr->register_by_name &&
+             raw_ptr->user_type_id != kInvalidUserTypeId) {
+    uint64_t key =
+        make_user_type_key(raw_ptr->type_id, raw_ptr->user_type_id);
     TypeInfo *existing = user_type_info_by_id_.get_or_default(key, nullptr);
     if (existing != nullptr && existing != raw_ptr) {
       return Unexpected(

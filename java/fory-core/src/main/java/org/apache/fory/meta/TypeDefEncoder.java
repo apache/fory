@@ -159,7 +159,7 @@ class TypeDefEncoder {
       buffer.writeVarUint32(fields.size() - SMALL_NUM_FIELDS_THRESHOLD);
     }
     if (resolver.isRegisteredById(type)) {
-      buffer.writeVarUint32Small7(classInfo.getTypeId());
+      buffer.writeUint8(classInfo.getTypeId());
       if (needsUserTypeId(classInfo.getTypeId())) {
         buffer.writeVarUint32(classInfo.getUserTypeId());
       }

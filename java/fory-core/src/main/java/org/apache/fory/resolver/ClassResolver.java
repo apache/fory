@@ -176,12 +176,12 @@ import org.apache.fory.util.record.RecordUtils;
  *
  * <ul>
  *   <li>{@link #register(Class)} - Auto-assigns the next available user ID
- *   <li>{@link #register(Class, int)} - Registers with a user-specified ID (0-based)
+ *   <li>{@link #register(Class, long)} - Registers with a user-specified ID (0-based)
  *   <li>{@link #register(Class, String, String)} - Registers with namespace and type name
  * </ul>
  *
  * @see #register(Class)
- * @see #register(Class, int)
+ * @see #register(Class, long)
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class ClassResolver extends TypeResolver {
@@ -441,10 +441,10 @@ public class ClassResolver extends TypeResolver {
    *
    * @param className the fully qualified class name
    * @param classId the user ID to assign (0-based, in user ID space)
-   * @see #register(Class, int)
+   * @see #register(Class, long)
    */
   @Override
-  public void register(String className, int classId) {
+  public void register(String className, long classId) {
     register(loadClass(className, false, 0, false), classId);
   }
 
@@ -455,12 +455,12 @@ public class ClassResolver extends TypeResolver {
    * tag (STRUCT/ENUM/EXT/UNION) in {@code typeId} and the provided value in {@code userTypeId}.
    *
    * @param cls the class to register
-   * @param id the user ID to assign (0-based)
+   * @param id the user ID to assign (0-based, range [0, 0xfffffffe], 0xffffffff reserved)
    * @throws IllegalArgumentException if the ID is out of valid range or already in use
    */
   @Override
-  public void register(Class<?> cls, int id) {
-    registerUserImpl(cls, id);
+  public void register(Class<?> cls, long id) {
+    registerUserImpl(cls, toUserTypeId(id));
   }
 
   /**
@@ -481,7 +481,7 @@ public class ClassResolver extends TypeResolver {
     if (!StringUtils.isBlank(namespace)) {
       fullname = namespace + "." + name;
     }
-    checkRegistration(cls, (short) -1, fullname, false);
+    checkRegistration(cls, -1, fullname, false);
     MetaStringBytes fullNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
             GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
@@ -501,13 +501,12 @@ public class ClassResolver extends TypeResolver {
   }
 
   @Override
-  public void registerUnion(Class<?> cls, int userId, Serializer<?> serializer) {
+  public void registerUnion(Class<?> cls, long userId, Serializer<?> serializer) {
     checkRegisterAllowed();
-    Preconditions.checkArgument(userId >= 0 && userId < Short.MAX_VALUE);
+    int checkedUserId = toUserTypeId(userId);
     Preconditions.checkNotNull(serializer);
-    short id = (short) userId;
-    checkRegistration(cls, id, cls.getName(), false);
-    extRegistry.registeredClassIdMap.put(cls, id);
+    checkRegistration(cls, checkedUserId, cls.getName(), false);
+    extRegistry.registeredClassIdMap.put(cls, checkedUserId);
     int typeId = Types.TYPED_UNION;
     ClassInfo classInfo = classInfoMap.get(cls);
     if (classInfo == null) {
@@ -517,8 +516,8 @@ public class ClassResolver extends TypeResolver {
       classInfo.typeId = typeId;
       classInfo.setSerializer(this, serializer);
     }
-    classInfo.userTypeId = userId;
-    putUserTypeInfo(id, classInfo);
+    classInfo.userTypeId = checkedUserId;
+    putUserTypeInfo(checkedUserId, classInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
     GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
   }
@@ -537,7 +536,7 @@ public class ClassResolver extends TypeResolver {
     if (!StringUtils.isBlank(namespace)) {
       fullname = namespace + "." + name;
     }
-    checkRegistration(cls, (short) -1, fullname, false);
+    checkRegistration(cls, -1, fullname, false);
     MetaStringBytes fullNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
             GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
@@ -599,7 +598,7 @@ public class ClassResolver extends TypeResolver {
    * Registers a class for internal use with a specified internal ID.
    *
    * <p><b>Internal API</b>: This method is for Fory's internal use only. Users should use {@link
-   * #register(Class, int)} instead.
+   * #register(Class, long)} instead.
    *
    * <p>Internal IDs are reserved for Fory's built-in types and must be in the range [0, 255].
    *
@@ -615,9 +614,8 @@ public class ClassResolver extends TypeResolver {
   private void registerInternalImpl(Class<?> cls, int classId) {
     checkRegisterAllowed();
     Preconditions.checkArgument(classId >= 0 && classId < INTERNAL_ID_LIMIT);
-    short id = (short) classId;
-    checkRegistration(cls, id, cls.getName(), true);
-    extRegistry.registeredClassIdMap.put(cls, id);
+    checkRegistration(cls, classId, cls.getName(), true);
+    extRegistry.registeredClassIdMap.put(cls, classId);
     int typeId = classId;
     ClassInfo classInfo = classInfoMap.get(cls);
     if (classInfo != null) {
@@ -629,17 +627,16 @@ public class ClassResolver extends TypeResolver {
       classInfoMap.put(cls, classInfo);
     }
     // serializer will be set lazily in `addSerializer` method if it's null.
-    putInternalTypeInfo(id, classInfo);
+    putInternalTypeInfo(classId, classInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
     GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
   }
 
   private void registerUserImpl(Class<?> cls, int userId) {
     checkRegisterAllowed();
-    Preconditions.checkArgument(userId >= 0 && userId < Short.MAX_VALUE);
-    short id = (short) userId;
-    checkRegistration(cls, id, cls.getName(), false);
-    extRegistry.registeredClassIdMap.put(cls, id);
+    Preconditions.checkArgument(userId != -1, "User type id 0xffffffff is reserved");
+    checkRegistration(cls, userId, cls.getName(), false);
+    extRegistry.registeredClassIdMap.put(cls, userId);
     int typeId = buildUserTypeId(cls, null);
     ClassInfo classInfo = classInfoMap.get(cls);
     if (classInfo != null) {
@@ -649,7 +646,7 @@ public class ClassResolver extends TypeResolver {
       classInfoMap.put(cls, classInfo);
     }
     classInfo.userTypeId = userId;
-    putUserTypeInfo(id, classInfo);
+    putUserTypeInfo(userId, classInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
     GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
   }
@@ -672,14 +669,14 @@ public class ClassResolver extends TypeResolver {
     return super.buildUnregisteredTypeId(cls, serializer);
   }
 
-  private void checkRegistration(Class<?> cls, short classId, String name, boolean internal) {
+  private void checkRegistration(Class<?> cls, int classId, String name, boolean internal) {
     if (extRegistry.registeredClassIdMap.containsKey(cls)) {
       throw new IllegalArgumentException(
           String.format(
               "Class %s already registered with id %s.",
               cls, extRegistry.registeredClassIdMap.get(cls)));
     }
-    if (classId >= 0) {
+    if (classId != -1) {
       if (internal) {
         if (classId < typeIdToClassInfo.length && typeIdToClassInfo[classId] != null) {
           throw new IllegalArgumentException(
@@ -688,7 +685,7 @@ public class ClassResolver extends TypeResolver {
                   typeIdToClassInfo[classId].getCls(), classId, cls.getName()));
         }
       } else {
-        ClassInfo existingInfo = userTypeIdToClassInfo.get(classId);
+        ClassInfo existingInfo = userTypeIdToClassInfo.get(userTypeIdToKey(classId));
         if (existingInfo != null) {
           throw new IllegalArgumentException(
               String.format(
@@ -706,7 +703,7 @@ public class ClassResolver extends TypeResolver {
     }
   }
 
-  private boolean isInternalRegisteredClassId(Class<?> cls, short classId) {
+  private boolean isInternalRegisteredClassId(Class<?> cls, int classId) {
     if (classId < 0 || classId >= typeIdToClassInfo.length) {
       return false;
     }
@@ -749,7 +746,7 @@ public class ClassResolver extends TypeResolver {
     return extRegistry.registeredClassIdMap.get(cls) != null;
   }
 
-  public Short getRegisteredClassId(Class<?> cls) {
+  public Integer getRegisteredClassId(Class<?> cls) {
     return extRegistry.registeredClassIdMap.get(cls);
   }
 
@@ -782,10 +779,10 @@ public class ClassResolver extends TypeResolver {
       return null;
     }
     if (needsUserTypeId(typeId)) {
-      if (userTypeId < 0) {
+      if (userTypeId == -1) {
         return null;
       }
-      ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeId);
+      ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeIdToKey(userTypeId));
       if (classInfo == null) {
         return null;
       }
@@ -807,9 +804,9 @@ public class ClassResolver extends TypeResolver {
   }
 
   public String getTypeAlias(Class<?> cls) {
-    Short id = extRegistry.registeredClassIdMap.get(cls);
+    Integer id = extRegistry.registeredClassIdMap.get(cls);
     if (id != null) {
-      return String.valueOf(id);
+      return Integer.toUnsignedString(id);
     }
     String name = extRegistry.registeredClasses.inverse().get(cls);
     if (name != null) {
@@ -827,7 +824,7 @@ public class ClassResolver extends TypeResolver {
     if (classInfo != null) {
       return classInfo.typeId;
     }
-    Short classId = extRegistry.registeredClassIdMap.get(cls);
+    Integer classId = extRegistry.registeredClassIdMap.get(cls);
     if (classId != null) {
       classInfo = classInfoMap.get(cls);
       if (classInfo == null) {
@@ -855,7 +852,7 @@ public class ClassResolver extends TypeResolver {
     if (classInfo != null) {
       return classInfo.userTypeId;
     }
-    Short classId = extRegistry.registeredClassIdMap.get(cls);
+    Integer classId = extRegistry.registeredClassIdMap.get(cls);
     if (classId != null && !isInternalRegisteredClassId(cls, classId)) {
       return classId;
     }
@@ -1007,7 +1004,7 @@ public class ClassResolver extends TypeResolver {
    */
   @Override
   public void registerInternalSerializer(Class<?> type, Serializer<?> serializer) {
-    Short classId = extRegistry.registeredClassIdMap.get(type);
+    Integer classId = extRegistry.registeredClassIdMap.get(type);
     if (classId != null && !isInternalRegisteredClassId(type, classId)) {
       throw new IllegalArgumentException(
           String.format(
@@ -1133,7 +1130,7 @@ public class ClassResolver extends TypeResolver {
   public void addSerializer(Class<?> type, Serializer<?> serializer) {
     Preconditions.checkNotNull(serializer);
     ClassInfo classInfo;
-    Short classId = extRegistry.registeredClassIdMap.get(type);
+    Integer classId = extRegistry.registeredClassIdMap.get(type);
     boolean registered = classId != null;
     if (registered) {
       int id = classId;
@@ -1724,7 +1721,7 @@ public class ClassResolver extends TypeResolver {
   public void writeClassInternal(MemoryBuffer buffer, Class<?> cls) {
     ClassInfo classInfo = classInfoMap.get(cls);
     if (classInfo == null) {
-      Short classId = extRegistry.registeredClassIdMap.get(cls);
+      Integer classId = extRegistry.registeredClassIdMap.get(cls);
       // Don't create serializer in case the object for class is non-serializable,
       // Or class is abstract or interface.
       int typeId;

@@ -73,6 +73,7 @@ const META_SIZE_MASK: i64 = 0xff;
 const COMPRESS_META_FLAG: i64 = 0b1 << 9;
 const HAS_FIELDS_META_FLAG: i64 = 0b1 << 8;
 const NUM_HASH_BITS: i8 = 50;
+const NO_USER_TYPE_ID: u32 = u32::MAX;
 
 pub static NAMESPACE_ENCODINGS: &[Encoding] = &[
     Encoding::Utf8,
@@ -408,7 +409,7 @@ pub struct TypeMeta {
     // assigned valid value and used, only during deserializing
     hash: i64,
     type_id: u32,
-    user_type_id: i32,
+    user_type_id: u32,
     namespace: Rc<MetaString>,
     type_name: Rc<MetaString>,
     register_by_name: bool,
@@ -419,7 +420,7 @@ pub struct TypeMeta {
 impl TypeMeta {
     pub fn new(
         type_id: u32,
-        user_type_id: i32,
+        user_type_id: u32,
         namespace: MetaString,
         type_name: MetaString,
         register_by_name: bool,
@@ -452,7 +453,7 @@ impl TypeMeta {
     }
 
     #[inline(always)]
-    pub fn get_user_type_id(&self) -> i32 {
+    pub fn get_user_type_id(&self) -> u32 {
         self.user_type_id
     }
 
@@ -481,7 +482,7 @@ impl TypeMeta {
         let mut meta = TypeMeta {
             hash: 0,
             type_id: 0,
-            user_type_id: -1,
+            user_type_id: NO_USER_TYPE_ID,
             namespace: Rc::from(MetaString::get_empty().clone()),
             type_name: Rc::from(MetaString::get_empty().clone()),
             register_by_name: false,
@@ -511,7 +512,7 @@ impl TypeMeta {
 
     pub(crate) fn from_fields(
         type_id: u32,
-        user_type_id: i32,
+        user_type_id: u32,
         namespace: MetaString,
         type_name: MetaString,
         register_by_name: bool,
@@ -591,14 +592,14 @@ impl TypeMeta {
             self.write_namespace(&mut writer);
             self.write_type_name(&mut writer);
         } else {
-            writer.write_var_uint32(self.type_id);
+            writer.write_u8(self.type_id as u8);
             if crate::types::needs_user_type_id(self.type_id) {
-                if self.user_type_id < 0 {
+                if self.user_type_id == NO_USER_TYPE_ID {
                     return Err(Error::type_error(
                         "User type id is required for this type id",
                     ));
                 }
-                writer.write_var_uint32(self.user_type_id as u32);
+                writer.write_var_uint32(self.user_type_id);
             }
         }
         for field in self.field_infos.iter() {
@@ -737,7 +738,7 @@ impl TypeMeta {
             num_fields += reader.read_varuint32()? as usize;
         }
         let mut type_id;
-        let mut user_type_id = -1;
+        let mut user_type_id = NO_USER_TYPE_ID;
         let namespace;
         let type_name;
         if register_by_name {
@@ -745,9 +746,9 @@ impl TypeMeta {
             type_name = Self::read_type_name(reader)?;
             type_id = 0;
         } else {
-            type_id = reader.read_varuint32()?;
+            type_id = reader.read_u8()? as u32;
             if crate::types::needs_user_type_id(type_id) {
-                user_type_id = reader.read_varuint32()? as i32;
+                user_type_id = reader.read_varuint32()?;
             }
             let empty_name = MetaString::default();
             namespace = empty_name.clone();
@@ -768,9 +769,9 @@ impl TypeMeta {
                 Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if crate::types::needs_user_type_id(type_id) {
-            if user_type_id >= 0 {
+            if user_type_id != NO_USER_TYPE_ID {
                 if let Some(type_info_current) =
-                    type_resolver.get_user_type_info_by_id(type_id, user_type_id as u32)
+                    type_resolver.get_user_type_info_by_id(type_id, user_type_id)
                 {
                     Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
                 }

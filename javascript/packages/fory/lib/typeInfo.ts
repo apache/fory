@@ -71,6 +71,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   named = "";
   namespace = "";
   typeName = "";
+  // Stored as unsigned 32-bit; -1 (0xffffffff) means "unset".
   userTypeId = -1;
   options?: any;
   dynamic: "TRUE" | "FALSE" | "AUTO" = "AUTO";
@@ -98,6 +99,11 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     });
     // eslint-disable-next-line
     const that = this;
+    if (userTypeId !== -1) {
+      if (!Number.isInteger(userTypeId) || userTypeId < 0 || userTypeId > 0xFFFFFFFE) {
+        throw new Error("userTypeId must be in range [0, 0xfffffffe]");
+      }
+    }
     this.userTypeId = userTypeId;
   }
 

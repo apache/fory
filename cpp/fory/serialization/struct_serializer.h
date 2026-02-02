@@ -2944,16 +2944,24 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         // In compatible mode: always use remote TypeMeta for schema evolution
         if (read_type) {
           // Read type_id
-          uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
+          uint32_t remote_type_id = ctx.read_uint8(ctx.error());
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
             return T{};
           }
           uint32_t remote_user_type_id = 0;
-          if (::fory::needs_user_type_id(remote_type_id)) {
+          switch (static_cast<TypeId>(remote_type_id)) {
+          case TypeId::ENUM:
+          case TypeId::STRUCT:
+          case TypeId::COMPATIBLE_STRUCT:
+          case TypeId::EXT:
+          case TypeId::TYPED_UNION:
             remote_user_type_id = ctx.read_var_uint32(ctx.error());
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
               return T{};
             }
+            break;
+          default:
+            break;
           }
           const bool remote_has_meta =
               remote_type_id ==
@@ -3008,31 +3016,45 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
               expected_type_id !=
                   static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT)) {
             // Simple type ID - just read and compare varint directly
-            uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
+            uint32_t remote_type_id = ctx.read_uint8(ctx.error());
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
               return T{};
             }
             uint32_t remote_user_type_id = 0;
-            if (::fory::needs_user_type_id(remote_type_id)) {
+            switch (static_cast<TypeId>(remote_type_id)) {
+            case TypeId::ENUM:
+            case TypeId::STRUCT:
+            case TypeId::COMPATIBLE_STRUCT:
+            case TypeId::EXT:
+            case TypeId::TYPED_UNION:
               remote_user_type_id = ctx.read_var_uint32(ctx.error());
               if (FORY_PREDICT_FALSE(ctx.has_error())) {
                 return T{};
               }
+              break;
+            default:
+              break;
             }
             if (remote_type_id != expected_type_id) {
               ctx.set_error(
                   Error::type_mismatch(remote_type_id, expected_type_id));
               return T{};
             }
-            if (::fory::needs_user_type_id(expected_type_id)) {
-              if (type_info->user_type_id < 0 ||
-                  remote_user_type_id !=
-                      static_cast<uint32_t>(type_info->user_type_id)) {
-                ctx.set_error(Error::type_mismatch(
-                    remote_user_type_id,
-                    static_cast<uint32_t>(type_info->user_type_id)));
+            switch (static_cast<TypeId>(expected_type_id)) {
+            case TypeId::ENUM:
+            case TypeId::STRUCT:
+            case TypeId::COMPATIBLE_STRUCT:
+            case TypeId::EXT:
+            case TypeId::TYPED_UNION:
+              if (type_info->user_type_id == kInvalidUserTypeId ||
+                  remote_user_type_id != type_info->user_type_id) {
+                ctx.set_error(Error::type_mismatch(remote_user_type_id,
+                                                   type_info->user_type_id));
                 return T{};
               }
+              break;
+            default:
+              break;
             }
           } else {
             // Named type - need to parse full type info

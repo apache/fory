@@ -30,7 +30,7 @@ func writeArrayRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, va
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.Buffer().WriteVarUint32Small7(uint32(typeId))
+		ctx.Buffer().WriteUint8(uint8(typeId))
 	}
 	return false
 }
@@ -55,7 +55,7 @@ func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		}
 	}
 	if readType {
-		typeID := buf.ReadVarUint32Small7(err)
+		typeID := uint32(buf.ReadUint8(err))
 		if ctx.HasError() {
 			return false
 		}
@@ -82,7 +82,7 @@ func (s arraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 }
 
 func (s arraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, -LIST)
+	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
 	if ctx.HasError() {
 		return
 	}
@@ -178,7 +178,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 	if IsNamespacedType(TypeId(internalTypeID)) || needsUserTypeID(TypeId(internalTypeID)) {
 		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
 	} else {
-		buf.WriteVarUint32Small7(uint32(internalTypeID))
+		buf.WriteUint8(uint8(internalTypeID))
 	}
 
 	// Write elements
@@ -216,7 +216,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 }
 
 func (s *arrayConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, -LIST)
+	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
 	if ctx.HasError() {
 		return
 	}

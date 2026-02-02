@@ -94,7 +94,7 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
         write_typename(buffer, typename)
     else:
         assert type_resolver.is_registered_by_id(cls=cls), "Class must be registered by name or id"
-        buffer.write_var_uint32(type_id)
+        buffer.write_uint8(type_id)
         if needs_user_type_id(type_id):
             if user_type_id in {None, NO_USER_TYPE_ID}:
                 raise ValueError(f"user_type_id required for type_id {type_id}")

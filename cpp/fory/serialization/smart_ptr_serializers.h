@@ -270,7 +270,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
   static inline void write_type_info(WriteContext &ctx) {
     if constexpr (std::is_polymorphic_v<T>) {
       // For polymorphic types, type info must be written dynamically
-      ctx.write_var_uint32(static_cast<uint32_t>(TypeId::UNKNOWN));
+      ctx.write_uint8(static_cast<uint8_t>(TypeId::UNKNOWN));
     } else {
       Serializer<T>::write_type_info(ctx);
     }
@@ -309,8 +309,8 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         }
         const TypeInfo *type_info = type_info_res.value();
         if (write_type) {
-          auto write_res = ctx.write_any_typeinfo(
-              static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+          auto write_res =
+              ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
           if (!write_res.ok()) {
             ctx.set_error(std::move(write_res).error());
             return;
@@ -354,8 +354,8 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
 
       // write type info if requested
       if (write_type) {
-        auto write_res = ctx.write_any_typeinfo(
-            static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+        auto write_res =
+            ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
         if (!write_res.ok()) {
           ctx.set_error(std::move(write_res).error());
           return;
@@ -775,8 +775,8 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         }
         const TypeInfo *type_info = type_info_res.value();
         if (write_type) {
-          auto write_res = ctx.write_any_typeinfo(
-              static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+          auto write_res =
+              ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
           if (!write_res.ok()) {
             ctx.set_error(std::move(write_res).error());
             return;
@@ -809,8 +809,8 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       }
       const TypeInfo *type_info = type_info_res.value();
       if (write_type) {
-        auto write_res = ctx.write_any_typeinfo(
-            static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+        auto write_res =
+            ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
         if (!write_res.ok()) {
           ctx.set_error(std::move(write_res).error());
           return;

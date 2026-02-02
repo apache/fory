@@ -290,17 +290,17 @@ func getFieldCategory(field *FieldInfo) int {
 	if isNullableFixedSizePrimitive(field.DispatchId) || isNullableVarintPrimitive(field.DispatchId) {
 		return 0
 	}
-	internalId := int16(field.Meta.TypeId)
-	if internalId == UNKNOWN {
+	typeId := field.Meta.TypeId
+	if typeId == UNKNOWN {
 		return 4
 	}
-	if isUserDefinedType(internalId) {
+	if isUserDefinedType(typeId) {
 		return 4
 	}
-	if internalId == LIST || internalId == SET {
+	if typeId == LIST || typeId == SET {
 		return 2
 	}
-	if internalId == MAP {
+	if typeId == MAP {
 		return 3
 	}
 	// Internal build-in types: sorted by typeId, then sort key (matches Java build-in group)

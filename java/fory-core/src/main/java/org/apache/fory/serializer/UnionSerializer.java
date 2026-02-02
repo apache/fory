@@ -225,7 +225,7 @@ public class UnionSerializer extends Serializer<Union> {
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
     if (!Types.isUserDefinedType(internalTypeId)) {
-      buffer.writeVarUint32Small7(typeId);
+      buffer.writeUint8(typeId);
     } else {
       resolver.writeClassInfo(buffer, classInfo);
     }

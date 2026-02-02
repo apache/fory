@@ -287,7 +287,7 @@ func (s *optionalSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 		// No null flag.
 	}
 	if readType {
-		typeID := buf.ReadVarUint32Small7(ctx.Err())
+		typeID := uint32(buf.ReadUint8(ctx.Err()))
 		if ctx.HasError() {
 			return
 		}

@@ -27,7 +27,7 @@ import Fory from "../fory";
 
 export class AnyHelper {
   static detectSerializer(fory: Fory) {
-    const typeId = fory.binaryReader.readVarUint32Small7();
+    const typeId = fory.binaryReader.uint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId)) {
       userTypeId = fory.binaryReader.readVarUint32Small7();

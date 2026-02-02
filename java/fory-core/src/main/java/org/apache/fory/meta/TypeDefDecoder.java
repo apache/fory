@@ -87,7 +87,7 @@ class TypeDefDecoder {
         classSpec = new ClassSpec(userTypeInfo.getCls());
       }
     } else {
-      int typeId = buffer.readVarUint32Small7();
+      int typeId = buffer.readUint8();
       int userTypeId = -1;
       if (needsUserTypeId(typeId)) {
         userTypeId = buffer.readVarUint32();

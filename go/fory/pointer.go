@@ -142,7 +142,7 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 	}
 	if readType {
 		// Read type info - in compatible mode this contains the serializer with fieldDefs
-		typeID := buf.ReadVarUint32Small7(ctxErr)
+		typeID := uint32(buf.ReadUint8(ctxErr))
 		if ctx.HasError() {
 			return
 		}

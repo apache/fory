@@ -279,12 +279,20 @@ public:
   ///
   /// @param type_id The pre-computed Fory type_id
   inline void write_struct_type_id_direct(uint32_t type_id,
-                                          int32_t user_type_id) {
-    buffer_.write_var_uint32(type_id);
-    if (::fory::needs_user_type_id(type_id)) {
-      FORY_CHECK(user_type_id >= 0)
+                                          uint32_t user_type_id) {
+    buffer_.write_uint8(static_cast<uint8_t>(type_id));
+    switch (static_cast<TypeId>(type_id)) {
+    case TypeId::ENUM:
+    case TypeId::STRUCT:
+    case TypeId::COMPATIBLE_STRUCT:
+    case TypeId::EXT:
+    case TypeId::TYPED_UNION:
+      FORY_CHECK(user_type_id != kInvalidUserTypeId)
           << "User type id is required for struct type";
-      buffer_.write_var_uint32(static_cast<uint32_t>(user_type_id));
+      buffer_.write_var_uint32(user_type_id);
+      break;
+    default:
+      break;
     }
   }
 

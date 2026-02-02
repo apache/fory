@@ -41,12 +41,12 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) ->
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    context.writer.write_var_uint32(type_id);
+    context.writer.write_u8(type_id as u8);
     let rs_type_id = std::any::TypeId::of::<T>();
     if crate::types::needs_user_type_id(type_id) {
         let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
         let user_type_id = type_info.get_user_type_id();
-        context.writer.write_var_uint32(user_type_id as u32);
+        context.writer.write_var_uint32(user_type_id);
     }
 
     if type_id == TypeId::NAMED_STRUCT as u32 {
@@ -71,7 +71,7 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
 
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
-    let remote_type_id = context.reader.read_varuint32()?;
+    let remote_type_id = context.reader.read_u8()? as u32;
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     let rs_type_id = std::any::TypeId::of::<T>();
     if crate::types::needs_user_type_id(remote_type_id) {
@@ -81,8 +81,8 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
             .get_type_info(&rs_type_id)?
             .get_user_type_id();
         ensure!(
-            local_user_type_id as u32 == remote_user_type_id,
-            Error::type_mismatch(local_user_type_id as u32, remote_user_type_id)
+            local_user_type_id == remote_user_type_id,
+            Error::type_mismatch(local_user_type_id, remote_user_type_id)
         );
     }
     ensure!(

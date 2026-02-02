@@ -47,7 +47,8 @@ USE_TYPE_NAME = 0
 USE_TYPE_ID = 1
 # preserve 0 as flag for type id not set in TypeInfo`
 NO_TYPE_ID = 0
-NO_USER_TYPE_ID = -1
+# 0xffffffff means "unset" for user type id.
+NO_USER_TYPE_ID = 0xFFFFFFFF
 INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
@@ -531,15 +532,15 @@ class Fory:
     def write_no_ref(self, buffer, obj):
         cls = type(obj)
         if cls is str:
-            buffer.write_var_uint32(STRING_TYPE_ID)
+            buffer.write_uint8(STRING_TYPE_ID)
             buffer.write_string(obj)
             return
         elif cls is int:
-            buffer.write_var_uint32(INT64_TYPE_ID)
+            buffer.write_uint8(INT64_TYPE_ID)
             buffer.write_varint64(obj)
             return
         elif cls is bool:
-            buffer.write_var_uint32(BOOL_TYPE_ID)
+            buffer.write_uint8(BOOL_TYPE_ID)
             buffer.write_bool(obj)
             return
         else:

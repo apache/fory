@@ -61,7 +61,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     }
 
     // Read type_id first
-    let type_id = context.reader.read_varuint32()?;
+    let type_id = context.reader.read_u8()? as u32;
     let internal_id = type_id;
     let _user_type_id = if types::needs_user_type_id(type_id) {
         Some(context.reader.read_varuint32()?)

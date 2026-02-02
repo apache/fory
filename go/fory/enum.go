@@ -85,7 +85,7 @@ func (s *enumSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, 
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return

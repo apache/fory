@@ -205,7 +205,7 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 		if IsNamespacedType(TypeId(elemTypeInfo.TypeID)) || needsUserTypeID(TypeId(elemTypeInfo.TypeID)) {
 			ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
 		} else {
-			buf.WriteVarUint32Small7(uint32(elemTypeInfo.TypeID))
+			buf.WriteUint8(uint8(elemTypeInfo.TypeID))
 		}
 	}
 
@@ -276,7 +276,7 @@ func (s setSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, k
 			if IsNamespacedType(TypeId(typeInfo.TypeID)) || needsUserTypeID(TypeId(typeInfo.TypeID)) {
 				ctx.TypeResolver().WriteTypeInfo(buf, typeInfo, ctx.Err())
 			} else {
-				buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+				buf.WriteUint8(uint8(typeInfo.TypeID))
 			}
 			if !refWritten {
 				typeInfo.Serializer.WriteData(ctx, key)
@@ -290,7 +290,7 @@ func (s setSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, k
 			if IsNamespacedType(TypeId(typeInfo.TypeID)) || needsUserTypeID(TypeId(typeInfo.TypeID)) {
 				ctx.TypeResolver().WriteTypeInfo(buf, typeInfo, ctx.Err())
 			} else {
-				buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+				buf.WriteUint8(uint8(typeInfo.TypeID))
 			}
 			typeInfo.Serializer.WriteData(ctx, key)
 			if ctx.HasError() {
@@ -301,7 +301,7 @@ func (s setSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, k
 			if IsNamespacedType(TypeId(typeInfo.TypeID)) || needsUserTypeID(TypeId(typeInfo.TypeID)) {
 				ctx.TypeResolver().WriteTypeInfo(buf, typeInfo, ctx.Err())
 			} else {
-				buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+				buf.WriteUint8(uint8(typeInfo.TypeID))
 			}
 			typeInfo.Serializer.WriteData(ctx, key)
 			if ctx.HasError() {
@@ -499,7 +499,7 @@ func (s setSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, ha
 	}
 	if readType {
 		// ReadData and discard type info for sets
-		typeID := uint32(buf.ReadVarUint32Small7(ctxErr))
+		typeID := uint32(buf.ReadUint8(ctxErr))
 		if IsNamespacedType(TypeId(typeID)) || needsUserTypeID(TypeId(typeID)) {
 			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
 		}

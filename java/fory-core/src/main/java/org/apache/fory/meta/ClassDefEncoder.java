@@ -194,7 +194,7 @@ public class ClassDefEncoder {
         currentClassHeader |= 1;
         classDefBuf.writeVarUint32Small7(currentClassHeader);
         int typeId = classResolver.getTypeIdForClassDef(currentType);
-        classDefBuf.writeVarUint32Small7(typeId);
+        classDefBuf.writeUint8(typeId);
         if (needsUserTypeId(typeId)) {
           int userTypeId = classResolver.getUserTypeIdForClassDef(currentType);
           classDefBuf.writeVarUint32(userTypeId);

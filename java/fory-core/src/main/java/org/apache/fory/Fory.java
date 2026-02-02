@@ -174,7 +174,7 @@ public final class Fory implements BaseFory {
 
   @Override
   public void register(Class<?> cls, int id) {
-    getTypeResolver().register(cls, id);
+    getTypeResolver().register(cls, Integer.toUnsignedLong(id));
   }
 
   @Deprecated
@@ -186,7 +186,7 @@ public final class Fory implements BaseFory {
   @Deprecated
   @Override
   public void register(Class<?> cls, int id, boolean createSerializer) {
-    getTypeResolver().register(cls, id);
+    getTypeResolver().register(cls, Integer.toUnsignedLong(id));
   }
 
   /**
@@ -215,7 +215,7 @@ public final class Fory implements BaseFory {
 
   @Override
   public void register(String className, int classId) {
-    getTypeResolver().register(className, classId);
+    getTypeResolver().register(className, Integer.toUnsignedLong(classId));
   }
 
   @Override
@@ -225,7 +225,7 @@ public final class Fory implements BaseFory {
 
   @Override
   public void registerUnion(Class<?> cls, int id, Serializer<?> serializer) {
-    getTypeResolver().registerUnion(cls, id, serializer);
+    getTypeResolver().registerUnion(cls, Integer.toUnsignedLong(id), serializer);
   }
 
   @Override

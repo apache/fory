@@ -153,9 +153,9 @@ final class XtypeResolverImpl extends XtypeResolver {
 
   @override
   TypeInfo readTypeInfo(ByteReader br) {
-    int xtypeId = br.readVarUint32Small14();
+    int xtypeId = br.readUint8();
     ObjType xtype = ObjType.fromId(xtypeId)!;
-    int userTypeId = -1;
+    int userTypeId = kInvalidUserTypeId;
     if (xtype.needsUserTypeId()) {
       userTypeId = br.readVarUint32();
     }
@@ -220,9 +220,9 @@ final class XtypeResolverImpl extends XtypeResolver {
     if (typeInfo == null){
       throw UnregisteredTypeException(dartType);
     }
-    bw.writeVarUint32Small7(typeInfo.objType.id);
+    bw.writeUint8(typeInfo.objType.id);
     if (typeInfo.objType.needsUserTypeId()) {
-      if (typeInfo.userTypeId < 0) {
+      if (typeInfo.userTypeId == kInvalidUserTypeId) {
         throw UnregisteredTypeException(dartType);
       }
       bw.writeVarUint32(typeInfo.userTypeId);

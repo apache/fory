@@ -45,7 +45,7 @@ type structSerializer struct {
 	type_      reflect.Type
 	structHash int32
 	typeID     uint32
-	userTypeID int32
+	userTypeID uint32
 
 	// Pre-sorted and categorized fields (embedded for cache locality)
 	fieldGroup FieldGroup
@@ -73,9 +73,10 @@ func newStructSerializerFromTypeDef(type_ reflect.Type, name string, fieldDefs [
 		name = type_.Name()
 	}
 	return &structSerializer{
-		type_:     type_,
-		name:      name,
-		fieldDefs: fieldDefs,
+		type_:      type_,
+		name:       name,
+		userTypeID: invalidUserTypeID,
+		fieldDefs:  fieldDefs,
 	}
 }
 
@@ -87,8 +88,9 @@ func newStructSerializer(type_ reflect.Type, name string) *structSerializer {
 		name = type_.Name()
 	}
 	return &structSerializer{
-		type_: type_,
-		name:  name,
+		type_:      type_,
+		name:       name,
+		userTypeID: invalidUserTypeID,
 	}
 }
 
@@ -136,8 +138,7 @@ func computeLocalNullable(typeResolver *TypeResolver, field reflect.StructField,
 		fieldType = optionalInfo.valueType
 	}
 	typeId := typeResolver.getTypeIdByType(fieldType)
-	internalId := TypeId(typeId)
-	isEnum := internalId == ENUM || internalId == NAMED_ENUM
+	isEnum := typeId == ENUM || typeId == NAMED_ENUM
 	var nullableFlag bool
 	if typeResolver.fory.config.IsXlang {
 		nullableFlag = isOptional || field.Type.Kind() == reflect.Ptr
@@ -377,8 +378,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		// - In native mode: Go's natural semantics apply - slice/map/interface can be nil,
 		//   so they are nullable by default.
 		// Can be overridden by explicit fory tag `fory:"nullable"`.
-		internalId := fieldTypeId
-		isEnum := internalId == ENUM || internalId == NAMED_ENUM
+		isEnum := fieldTypeId == ENUM || fieldTypeId == NAMED_ENUM
 
 		// Determine nullable based on mode
 		// In xlang mode: only pointer types are nullable by default (per xlang spec)
@@ -735,7 +735,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					shouldRead = true
 					fieldType = localType
 				}
-			} else if typeLookupFailed && isPrimitiveType(int16(internalDefTypeId)) {
+			} else if typeLookupFailed && isPrimitiveType(TypeId(internalDefTypeId)) {
 				baseLocal := localType
 				if optInfo, ok := getOptionalInfo(baseLocal); ok {
 					baseLocal = optInfo.valueType
@@ -747,7 +747,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					shouldRead = true
 					fieldType = localType
 				}
-			} else if typeLookupFailed && isPrimitiveArrayType(int16(internalDefTypeId)) {
+			} else if typeLookupFailed && isPrimitiveArrayType(TypeId(internalDefTypeId)) {
 				// Primitive arrays/slices use array type IDs but may not be registered in typeIDToTypeInfo.
 				// Allow reading using the local slice/array type when the type IDs match.
 				localTypeId := typeIdFromKind(localType)
@@ -1083,8 +1083,7 @@ func (s *structSerializer) computeHash() int32 {
 				}
 			}
 			// Unions use UNION type ID in fingerprints, regardless of typed/named variants.
-			internalId := typeId
-			if internalId == TYPED_UNION || internalId == NAMED_UNION || internalId == UNION {
+			if typeId == TYPED_UNION || typeId == NAMED_UNION || typeId == UNION {
 				typeId = UNION
 			}
 			// For user-defined types (struct, ext types), use UNKNOWN in fingerprint
@@ -1125,7 +1124,7 @@ func (s *structSerializer) computeHash() int32 {
 					typeId = LIST
 				}
 			} else if fieldTypeForHash.Kind() == reflect.Slice {
-				if !isPrimitiveArrayType(int16(typeId)) && typeId != BINARY {
+				if !isPrimitiveArrayType(TypeId(typeId)) && typeId != BINARY {
 					typeId = LIST
 				}
 			} else if fieldTypeForHash.Kind() == reflect.Map {
@@ -2386,14 +2385,14 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 	}
 	if readType {
 		if !ctx.Compatible() && s.type_ != nil {
-			typeID := buf.ReadVarUint32Small7(ctxErr)
+			typeID := uint32(buf.ReadUint8(ctxErr))
 			if ctxErr.HasError() {
 				return
 			}
 			internalTypeID := TypeId(typeID)
-			userTypeID := int32(-1)
+			userTypeID := invalidUserTypeID
 			if needsUserTypeID(internalTypeID) {
-				userTypeID = int32(buf.ReadVarUint32(ctxErr))
+				userTypeID = buf.ReadVarUint32(ctxErr)
 				if ctxErr.HasError() {
 					return
 				}
@@ -2449,7 +2448,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 			return
 		}
 		// Fallback: read type info based on typeID when expected type is unknown
-		typeID := buf.ReadVarUint32Small7(ctxErr)
+		typeID := uint32(buf.ReadUint8(ctxErr))
 		internalTypeID := TypeId(typeID)
 		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)

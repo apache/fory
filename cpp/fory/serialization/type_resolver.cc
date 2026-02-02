@@ -366,7 +366,7 @@ read_meta_name(Buffer &buffer, const MetaStringDecoder &decoder,
 
 TypeMeta TypeMeta::from_fields(uint32_t tid, const std::string &ns,
                                const std::string &name, bool by_name,
-                               int32_t user_type_id,
+                               uint32_t user_type_id,
                                std::vector<FieldInfo> fields) {
   for (const auto &field : fields) {
     FORY_CHECK(!field.field_name.empty())
@@ -411,13 +411,21 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
         k_type_name_encodings,
         sizeof(k_type_name_encodings) / sizeof(k_type_name_encodings[0])));
   } else {
-    layer_buffer.write_var_uint32(type_id);
-    if (::fory::needs_user_type_id(type_id)) {
-      if (user_type_id < 0) {
+    layer_buffer.write_uint8(static_cast<uint8_t>(type_id));
+    switch (static_cast<TypeId>(type_id)) {
+    case TypeId::ENUM:
+    case TypeId::STRUCT:
+    case TypeId::COMPATIBLE_STRUCT:
+    case TypeId::EXT:
+    case TypeId::TYPED_UNION:
+      if (user_type_id == kInvalidUserTypeId) {
         return Unexpected(
             Error::type_error("User type id is required for this type"));
       }
-      layer_buffer.write_var_uint32(static_cast<uint32_t>(user_type_id));
+      layer_buffer.write_var_uint32(user_type_id);
+      break;
+    default:
+      break;
     }
   }
 
@@ -499,7 +507,7 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
 
   // Read type ID or namespace/type name
   uint32_t type_id = 0;
-  int32_t user_type_id = -1;
+  uint32_t user_type_id = kInvalidUserTypeId;
   std::string namespace_str;
   std::string type_name;
 
@@ -519,17 +527,26 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
                                 sizeof(k_type_name_encodings[0])));
     type_name = std::move(tn);
   } else {
-    uint32_t tid = buffer.read_var_uint32(error);
+    uint32_t tid = buffer.read_uint8(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
     type_id = tid;
-    if (::fory::needs_user_type_id(type_id)) {
+    switch (static_cast<TypeId>(type_id)) {
+    case TypeId::ENUM:
+    case TypeId::STRUCT:
+    case TypeId::COMPATIBLE_STRUCT:
+    case TypeId::EXT:
+    case TypeId::TYPED_UNION: {
       uint32_t uid = buffer.read_var_uint32(error);
       if (FORY_PREDICT_FALSE(!error.ok())) {
         return Unexpected(std::move(error));
       }
-      user_type_id = static_cast<int32_t>(uid);
+      user_type_id = uid;
+      break;
+    }
+    default:
+      break;
     }
   }
 
@@ -607,7 +624,7 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
 
   // Read type ID or namespace/type name
   uint32_t type_id = 0;
-  int32_t user_type_id = -1;
+  uint32_t user_type_id = kInvalidUserTypeId;
   std::string namespace_str;
   std::string type_name;
 
@@ -627,17 +644,26 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
                                 sizeof(k_type_name_encodings[0])));
     type_name = std::move(tn);
   } else {
-    uint32_t tid = buffer.read_var_uint32(error);
+    uint32_t tid = buffer.read_uint8(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
     type_id = tid;
-    if (::fory::needs_user_type_id(type_id)) {
+    switch (static_cast<TypeId>(type_id)) {
+    case TypeId::ENUM:
+    case TypeId::STRUCT:
+    case TypeId::COMPATIBLE_STRUCT:
+    case TypeId::EXT:
+    case TypeId::TYPED_UNION: {
       uint32_t uid = buffer.read_var_uint32(error);
       if (FORY_PREDICT_FALSE(!error.ok())) {
         return Unexpected(std::move(error));
       }
-      user_type_id = static_cast<int32_t>(uid);
+      user_type_id = uid;
+      break;
+    }
+    default:
+      break;
     }
   }
 
@@ -1346,12 +1372,8 @@ TypeResolver::build_final_type_resolver() {
   for (const auto &[rust_type_id, partial_ptr] :
        final_resolver->partial_type_infos_) {
     // Call the harness's sorted_field_infos function to get complete field info
-    auto fields_result =
-        partial_ptr->harness.sorted_field_infos_fn(*final_resolver);
-    if (!fields_result.ok()) {
-      return Unexpected(fields_result.error());
-    }
-    auto sorted_fields = std::move(fields_result).value();
+    FORY_TRY(sorted_fields,
+             partial_ptr->harness.sorted_field_infos_fn(*final_resolver));
 
     // Build complete TypeMeta
     TypeMeta meta = TypeMeta::from_fields(
@@ -1360,23 +1382,17 @@ TypeResolver::build_final_type_resolver() {
         partial_ptr->user_type_id, std::move(sorted_fields));
 
     // Serialize TypeMeta to bytes
-    auto type_def_result = meta.to_bytes();
-    if (!type_def_result.ok()) {
-      return Unexpected(type_def_result.error());
-    }
+    FORY_TRY(type_def, meta.to_bytes());
 
     // Update the TypeInfo in place
-    partial_ptr->type_def = std::move(type_def_result).value();
+    partial_ptr->type_def = std::move(type_def);
 
     // Parse the serialized TypeMeta back to create unique_ptr<TypeMeta>
     Buffer buffer(partial_ptr->type_def.data(),
                   static_cast<uint32_t>(partial_ptr->type_def.size()), false);
     buffer.writer_index(static_cast<uint32_t>(partial_ptr->type_def.size()));
-    auto parsed_meta_result = TypeMeta::from_bytes(buffer, nullptr);
-    if (!parsed_meta_result.ok()) {
-      return Unexpected(parsed_meta_result.error());
-    }
-    partial_ptr->type_meta = std::move(parsed_meta_result).value();
+    FORY_TRY(parsed_meta, TypeMeta::from_bytes(buffer, nullptr));
+    partial_ptr->type_meta = std::move(parsed_meta);
   }
 
   // Clear partial_type_infos in the final resolver since they're all completed

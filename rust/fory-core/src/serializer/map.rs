@@ -666,7 +666,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::MAP as u32);
+        context.writer.write_u8(TypeId::MAP as u8);
         Ok(())
     }
 
@@ -816,7 +816,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::MAP as u32);
+        context.writer.write_u8(TypeId::MAP as u8);
         Ok(())
     }
 

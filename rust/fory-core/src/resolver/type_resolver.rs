@@ -54,8 +54,8 @@ type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 type BuildTypeInfosFn = fn(&TypeResolver) -> Result<Vec<(std::any::TypeId, TypeInfo)>, Error>;
 const EMPTY_STRING: String = String::new();
 const INTERNAL_TYPE_ID_LIMIT: usize = 256;
-const MAX_USER_TYPE_ID: u32 = 0x7fffffff;
-const NO_USER_TYPE_ID: i32 = -1;
+const MAX_USER_TYPE_ID: u32 = 0xfffffffe;
+pub(crate) const NO_USER_TYPE_ID: u32 = u32::MAX;
 
 #[derive(Clone, Debug)]
 pub struct Harness {
@@ -155,7 +155,7 @@ pub struct TypeInfo {
     type_def: Rc<Vec<u8>>,
     type_meta: Rc<TypeMeta>,
     type_id: u32,
-    user_type_id: i32,
+    user_type_id: u32,
     namespace: Rc<MetaString>,
     type_name: Rc<MetaString>,
     register_by_name: bool,
@@ -165,7 +165,7 @@ pub struct TypeInfo {
 impl TypeInfo {
     fn new(
         type_id: u32,
-        user_type_id: i32,
+        user_type_id: u32,
         namespace: &str,
         type_name: &str,
         register_by_name: bool,
@@ -212,7 +212,7 @@ impl TypeInfo {
     }
 
     #[inline(always)]
-    pub fn get_user_type_id(&self) -> i32 {
+    pub fn get_user_type_id(&self) -> u32 {
         self.user_type_id
     }
 
@@ -267,7 +267,7 @@ impl TypeInfo {
         remote_meta: Rc<TypeMeta>,
         local_harness: Option<&Harness>,
         type_id_override: Option<u32>,
-        user_type_id_override: Option<i32>,
+        user_type_id_override: Option<u32>,
     ) -> TypeInfo {
         let type_id = type_id_override.unwrap_or_else(|| remote_meta.get_type_id());
         let user_type_id = user_type_id_override.unwrap_or_else(|| remote_meta.get_user_type_id());
@@ -416,7 +416,7 @@ fn build_struct_type_infos<T: StructSerializer>(
                     fields_info.clone(),
                 )?
             } else {
-                if partial_info.user_type_id < 0 {
+                if partial_info.user_type_id == NO_USER_TYPE_ID {
                     return Err(Error::type_error(
                         "Enum variant metadata requires a user type id",
                     ));
@@ -743,7 +743,7 @@ impl TypeResolver {
         let register_by_name = !type_name.is_empty();
         if !register_by_name && id > MAX_USER_TYPE_ID {
             return Err(Error::not_allowed(format!(
-                "type id must be in range [0, 0x7fffffff], got {}",
+                "type id must be in range [0, 0xfffffffe], got {}",
                 id
             )));
         }
@@ -752,7 +752,7 @@ impl TypeResolver {
         let user_type_id = if register_by_name || crate::types::is_internal_type(actual_type_id) {
             NO_USER_TYPE_ID
         } else {
-            id as i32
+            id
         };
 
         fn write<T2: 'static + Serializer>(
@@ -864,7 +864,7 @@ impl TypeResolver {
                 .user_type_info_by_id
                 .contains_key(&UserTypeKey {
                     type_id: actual_type_id,
-                    user_type_id: user_type_id as u32,
+                    user_type_id: user_type_id,
                 })
         {
             return Err(Error::type_error(format!(
@@ -895,11 +895,11 @@ impl TypeResolver {
                 )));
             }
             self.internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
-        } else if user_type_id >= 0 {
+        } else if user_type_id != NO_USER_TYPE_ID {
             self.user_type_info_by_id.insert(
                 UserTypeKey {
                     type_id: actual_type_id,
-                    user_type_id: user_type_id as u32,
+                    user_type_id: user_type_id,
                 },
                 Rc::new(type_info.clone()),
             );
@@ -964,7 +964,7 @@ impl TypeResolver {
         let register_by_name = !type_name.is_empty();
         if !register_by_name && id > MAX_USER_TYPE_ID {
             return Err(Error::not_allowed(format!(
-                "type id must be in range [0, 0x7fffffff], got {}",
+                "type id must be in range [0, 0xfffffffe], got {}",
                 id
             )));
         }
@@ -1058,7 +1058,7 @@ impl TypeResolver {
         let user_type_id = if register_by_name {
             NO_USER_TYPE_ID
         } else {
-            id as i32
+            id
         };
         let type_info = TypeInfo::new(
             actual_type_id,
@@ -1080,12 +1080,12 @@ impl TypeResolver {
         // Check if type_id conflicts with any already registered type
         // Skip check for internal types as they can be shared
         if !crate::types::is_internal_type(actual_type_id)
-            && user_type_id >= 0
+            && user_type_id != NO_USER_TYPE_ID
             && self
                 .user_type_info_by_id
                 .contains_key(&UserTypeKey {
                     type_id: actual_type_id,
-                    user_type_id: user_type_id as u32,
+                    user_type_id: user_type_id,
                 })
         {
             return Err(Error::type_error(format!(
@@ -1104,11 +1104,11 @@ impl TypeResolver {
                 )));
             }
             self.internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
-        } else if user_type_id >= 0 {
+        } else if user_type_id != NO_USER_TYPE_ID {
             self.user_type_info_by_id.insert(
                 UserTypeKey {
                     type_id: actual_type_id,
-                    user_type_id: user_type_id as u32,
+                    user_type_id: user_type_id,
                 },
                 Rc::new(type_info.clone()),
             );
@@ -1194,11 +1194,11 @@ impl TypeResolver {
                     if index < internal_type_info_by_id.len() {
                         internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
                     }
-                } else if type_info.user_type_id >= 0 {
+                } else if type_info.user_type_id != NO_USER_TYPE_ID {
                     user_type_info_by_id.insert(
                         UserTypeKey {
                             type_id: type_info.type_id,
-                            user_type_id: type_info.user_type_id as u32,
+                            user_type_id: type_info.user_type_id,
                         },
                         Rc::new(type_info.clone()),
                     );

@@ -27,7 +27,7 @@ import { BinaryWriter } from "../writer";
 export const makeHead = (flag: RefFlags, typeId: number) => {
   const writer = new BinaryWriter();
   writer.uint8(flag);
-  writer.writeVarUint32Small7(typeId);
+  writer.uint8(typeId);
   const buffer = writer.dump();
   return buffer;
 };
@@ -155,7 +155,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       ? this.builder.writer.writeVarUint32Small7(userTypeId)
       : "";
     return ` 
-      ${this.builder.writer.writeVarUint32Small7(typeId)};
+      ${this.builder.writer.uint8(typeId)};
       ${userTypeStmt}
     `;
   }
@@ -184,7 +184,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       ? `${this.builder.reader.readVarUint32Small7()};`
       : "";
     return `
-      ${this.builder.reader.readVarUint32Small7()};
+      ${this.builder.reader.uint8()};
       ${readUserTypeStmt}
     `;
   }

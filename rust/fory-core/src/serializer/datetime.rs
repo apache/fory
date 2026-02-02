@@ -75,7 +75,7 @@ impl Serializer for NaiveDateTime {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::TIMESTAMP as u32);
+        context.writer.write_u8(TypeId::TIMESTAMP as u8);
         Ok(())
     }
 
@@ -129,7 +129,7 @@ impl Serializer for NaiveDate {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::DATE as u32);
+        context.writer.write_u8(TypeId::DATE as u8);
         Ok(())
     }
 
@@ -197,7 +197,7 @@ impl Serializer for Duration {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::DURATION as u32);
+        context.writer.write_u8(TypeId::DURATION as u8);
         Ok(())
     }
 

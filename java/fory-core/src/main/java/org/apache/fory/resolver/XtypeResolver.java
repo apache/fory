@@ -177,13 +177,13 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public void register(Class<?> type, int userTypeId) {
+  public void register(Class<?> type, long userTypeId) {
     checkRegisterAllowed();
-    // ClassInfo[] has length of max type id. If the type id is too big, Fory will waste many
-    // memory. We can relax this limit in the future.
-    Preconditions.checkArgument(userTypeId < MAX_TYPE_ID, "Too big type id %s", userTypeId);
+    int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
-        !containsUserTypeId(userTypeId), "Type id %s has been registered", userTypeId);
+        !containsUserTypeId(checkedUserTypeId),
+        "Type id %s has been registered",
+        userTypeId);
     ClassInfo classInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildClassInfo(type);
@@ -227,7 +227,7 @@ public class XtypeResolver extends TypeResolver {
         ReflectionUtils.getPackage(type),
         ReflectionUtils.getClassNameWithoutPackage(type),
         typeId,
-        userTypeId);
+        checkedUserTypeId);
   }
 
   @Override
@@ -324,12 +324,14 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public void registerUnion(Class<?> type, int userTypeId, Serializer<?> serializer) {
+  public void registerUnion(Class<?> type, long userTypeId, Serializer<?> serializer) {
     checkRegisterAllowed();
     Preconditions.checkNotNull(serializer);
-    Preconditions.checkArgument(userTypeId < MAX_TYPE_ID, "Too big type id %s", userTypeId);
+    int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
-        !containsUserTypeId(userTypeId), "Type id %s has been registered", userTypeId);
+        !containsUserTypeId(checkedUserTypeId),
+        "Type id %s has been registered",
+        userTypeId);
     ClassInfo classInfo = classInfoMap.get(type);
     if (classInfo != null && classInfo.typeId != 0) {
       throw new IllegalArgumentException(
@@ -342,7 +344,7 @@ public class XtypeResolver extends TypeResolver {
         ReflectionUtils.getPackage(type),
         ReflectionUtils.getClassNameWithoutPackage(type),
         xtypeId,
-        userTypeId);
+        checkedUserTypeId);
   }
 
   @Override
@@ -373,7 +375,7 @@ public class XtypeResolver extends TypeResolver {
    * Register type with given type id and serializer for type in fory type system.
    *
    * <p>Do not use this method to register custom type in java type system. Use {@link
-   * #register(Class, String, String)} or {@link #register(Class, int)} instead.
+   * #register(Class, String, String)} or {@link #register(Class, long)} instead.
    *
    * @param type type to register.
    * @param serializer serializer to register.
@@ -676,7 +678,7 @@ public class XtypeResolver extends TypeResolver {
   }
 
   public ClassInfo getUserTypeInfo(int userTypeId) {
-    return userTypeIdToClassInfo.get(userTypeId);
+    return userTypeIdToClassInfo.get(userTypeIdToKey(userTypeId));
   }
 
   // buildGenericType methods are inherited from TypeResolver

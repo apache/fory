@@ -81,10 +81,7 @@ template <> struct Serializer<std::any> {
 
     if (write_type) {
       uint32_t fory_type_id = type_info->type_id;
-      uint32_t type_id_arg = is_internal_type(fory_type_id)
-                                 ? fory_type_id
-                                 : static_cast<uint32_t>(TypeId::UNKNOWN);
-      auto write_res = ctx.write_any_typeinfo(type_id_arg, concrete_type_id);
+      auto write_res = ctx.write_any_typeinfo(fory_type_id, concrete_type_id);
       if (FORY_PREDICT_FALSE(!write_res.ok())) {
         ctx.set_error(std::move(write_res).error());
         return;

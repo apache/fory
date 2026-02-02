@@ -488,7 +488,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
                                               nullable)) {
               return;
             }
-            ctx.write_var_uint32(field_type_id);
+            ctx.write_uint8(static_cast<uint8_t>(field_type_id));
             detail::write_union_value_data(value, ctx, field_type_id);
             return;
           }
@@ -573,7 +573,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
               detail::default_union_case_value<CaseT>());
           return;
         }
-        uint32_t actual_type_id = ctx.read_var_uint32(ctx.error());
+        uint32_t actual_type_id = ctx.read_uint8(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           result = default_value();
           return;

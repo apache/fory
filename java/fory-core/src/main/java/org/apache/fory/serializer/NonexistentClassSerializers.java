@@ -147,12 +147,12 @@ public final class NonexistentClassSerializers {
       NonexistentClass.NonexistentMetaShared value = (NonexistentClass.NonexistentMetaShared) v;
       int typeId = resolveTypeId(value.classDef);
       int userTypeId = value.classDef.isNamed() ? -1 : value.classDef.getUserTypeId();
-      int typeIdSize = computeVarUint32Size(typeId);
-      int userTypeIdSize = userTypeId >= 0 ? computeVarUint32Size(userTypeId) : 0;
+      int typeIdSize = 1;
+      int userTypeIdSize = userTypeId != -1 ? computeVarUint32Size(userTypeId) : 0;
       int totalSize = typeIdSize + userTypeIdSize;
       if (totalSize == NONEXISTENT_META_SHARED_ID_SIZE) {
         buffer.increaseWriterIndex(-NONEXISTENT_META_SHARED_ID_SIZE);
-        buffer.writeVarUint32Small7(typeId);
+        buffer.writeUint8(typeId);
         if (userTypeIdSize > 0) {
           buffer.writeVarUint32(userTypeId);
         }
@@ -163,7 +163,7 @@ public final class NonexistentClassSerializers {
         int payloadLength = originalWriterIndex - payloadStart;
         byte[] payload = buffer.getBytes(payloadStart, payloadLength);
         buffer.writerIndex(placeholderStart);
-        buffer.writeVarUint32Small7(typeId);
+        buffer.writeUint8(typeId);
         if (userTypeIdSize > 0) {
           buffer.writeVarUint32(userTypeId);
         }

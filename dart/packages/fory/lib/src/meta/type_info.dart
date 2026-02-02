@@ -27,6 +27,7 @@ class TypeInfo {
   final String? tag;
   final MetaStringBytes? typeNameBytes;
   final MetaStringBytes? nsBytes;
+  // Stored as unsigned 32-bit; -1 (0xffffffff) means "unset".
   final int userTypeId;
   late Serializer ser;
 
@@ -36,7 +37,7 @@ class TypeInfo {
     this.tag,
     this.typeNameBytes,
     this.nsBytes,
-    {this.userTypeId = -1}
+    {this.userTypeId = kInvalidUserTypeId}
   );
 
   TypeInfo.fromInnerType(
@@ -46,5 +47,5 @@ class TypeInfo {
   ) : tag = null,
       typeNameBytes = null,
       nsBytes = null,
-      userTypeId = -1;
+      userTypeId = kInvalidUserTypeId;
 }

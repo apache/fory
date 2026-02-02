@@ -36,7 +36,7 @@ pub fn write_collection_type_info(
     context: &mut WriteContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    context.writer.write_var_uint32(collection_type_id);
+    context.writer.write_u8(collection_type_id as u8);
     Ok(())
 }
 
@@ -206,7 +206,7 @@ pub fn read_collection_type_info(
     context: &mut ReadContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    let remote_collection_type_id = context.reader.read_varuint32()?;
+    let remote_collection_type_id = context.reader.read_u8()? as u32;
     if PRIMITIVE_ARRAY_TYPES.contains(&remote_collection_type_id) {
         return Err(Error::type_error(
             "Vec<number> belongs to the `number_array` type, \
