@@ -120,13 +120,7 @@ func (s setSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool,
 		}
 	}
 	if writeType {
-		// For polymorphic set elements, need to write full type info
-		typeInfo, err := ctx.TypeResolver().getTypeInfo(value, true)
-		if err != nil {
-			ctx.SetError(FromError(err))
-			return
-		}
-		ctx.TypeResolver().WriteTypeInfo(ctx.buffer, typeInfo, ctx.Err())
+		ctx.buffer.WriteUint8(uint8(SET))
 	}
 	s.writeDataWithGenerics(ctx, value, hasGenerics)
 }
@@ -498,10 +492,14 @@ func (s setSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, ha
 		}
 	}
 	if readType {
-		// ReadData and discard type info for sets
+		// Read and discard type ID for sets
 		typeID := uint32(buf.ReadUint8(ctxErr))
-		if IsNamespacedType(TypeId(typeID)) || needsUserTypeID(TypeId(typeID)) {
-			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+		if ctx.HasError() {
+			return
+		}
+		if typeID != uint32(SET) {
+			ctx.SetError(DeserializationErrorf("set type mismatch: expected SET (%d), got %d", SET, typeID))
+			return
 		}
 	}
 	s.ReadData(ctx, value)

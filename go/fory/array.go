@@ -59,8 +59,9 @@ func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		if ctx.HasError() {
 			return false
 		}
-		if IsNamespacedType(TypeId(typeID)) || needsUserTypeID(TypeId(typeID)) {
-			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, err)
+		if typeID != uint32(LIST) {
+			ctx.SetError(DeserializationErrorf("array type mismatch: expected LIST (%d), got %d", LIST, typeID))
+			return false
 		}
 	}
 	return false
