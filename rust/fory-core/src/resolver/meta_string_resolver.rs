@@ -288,7 +288,12 @@ impl MetaStringReaderResolver {
     ) -> Result<&MetaStringBytes, Error> {
         if len == 0 {
             let empty = MetaStringBytes::get_empty();
-            // empty must be a static or globally unique instance
+            let id = self.dynamic_read_id;
+            self.dynamic_read_id += 1;
+            if id >= self.dynamic_read.len() {
+                self.dynamic_read.resize(id * 2 + 1, None);
+            }
+            self.dynamic_read[id] = Some(empty as *const MetaStringBytes);
             return Ok(empty);
         }
         let encoding_val = reader.read_u8()?;

@@ -25,7 +25,7 @@ use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver, NO_USER_TYPE_ID};
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
 use std::rc::Rc;
 
@@ -242,27 +242,9 @@ impl<'a> WriteContext<'a> {
         match fory_type_id {
             types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
                 let user_type_id = type_info.get_user_type_id();
-                if user_type_id == NO_USER_TYPE_ID {
-                    return Err(Error::type_error("User type id is required for this type"));
-                }
                 self.writer.write_var_uint32(user_type_id);
             }
-            types::COMPATIBLE_STRUCT => {
-                if !self.is_share_meta() {
-                    let user_type_id = type_info.get_user_type_id();
-                    if user_type_id == NO_USER_TYPE_ID {
-                        return Err(Error::type_error("User type id is required for this type"));
-                    }
-                    self.writer.write_var_uint32(user_type_id);
-                }
-                // Write type meta inline using streaming protocol
-                self.meta_resolver.write_type_meta(
-                    &mut self.writer,
-                    concrete_type_id,
-                    &self.type_resolver,
-                )?;
-            }
-            types::NAMED_COMPATIBLE_STRUCT => {
+            types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {
                 // Write type meta inline using streaming protocol
                 self.meta_resolver.write_type_meta(
                     &mut self.writer,
@@ -439,27 +421,11 @@ impl<'a> ReadContext<'a> {
         match fory_type_id {
             types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
                 let user_type_id = self.reader.read_varuint32()?;
-                if let Some(type_info) =
-                    self.type_resolver
-                        .get_user_type_info_by_id(fory_type_id, user_type_id)
-                {
-                    Ok(type_info)
-                } else if self.is_compatible() && fory_type_id == types::STRUCT {
-                    self.type_resolver
-                        .get_user_type_info_by_id(types::COMPATIBLE_STRUCT, user_type_id)
-                        .ok_or_else(|| Error::type_error("ID harness not found"))
-                } else {
-                    Err(Error::type_error("ID harness not found"))
-                }
+                self.type_resolver
+                    .get_user_type_info_by_id(fory_type_id, user_type_id)
+                    .ok_or_else(|| Error::type_error("ID harness not found"))
             }
-            types::COMPATIBLE_STRUCT => {
-                if !self.is_share_meta() {
-                    let _user_type_id = self.reader.read_varuint32()?;
-                }
-                // Read type meta inline using streaming protocol
-                self.read_type_meta()
-            }
-            types::NAMED_COMPATIBLE_STRUCT => {
+            types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {
                 // Read type meta inline using streaming protocol
                 self.read_type_meta()
             }
@@ -470,11 +436,22 @@ impl<'a> ReadContext<'a> {
                 } else {
                     let namespace = self.read_meta_string()?.to_owned();
                     let type_name = self.read_meta_string()?.to_owned();
-                    let rc_namespace = Rc::from(namespace);
-                    let rc_type_name = Rc::from(type_name);
+                    let rc_namespace = Rc::from(namespace.clone());
+                    let rc_type_name = Rc::from(type_name.clone());
                     self.type_resolver
                         .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
-                        .ok_or_else(|| Error::type_error("Name harness not found"))
+                        .or_else(|| {
+                            self.type_resolver.get_type_info_by_name(
+                                namespace.original.as_str(),
+                                type_name.original.as_str(),
+                            )
+                        })
+                        .ok_or_else(|| {
+                            Error::type_error(format!(
+                                "Name harness not found: namespace='{}', type='{}'",
+                                namespace.original, type_name.original
+                            ))
+                        })
                 }
             }
             _ => self

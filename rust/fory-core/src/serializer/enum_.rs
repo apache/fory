@@ -51,16 +51,12 @@ pub fn write<T: Serializer>(
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    let type_id_u32 = type_id as u32;
     context.writer.write_u8(type_id as u8);
     let rs_type_id = std::any::TypeId::of::<T>();
-    if crate::types::needs_user_type_id(type_id_u32) {
+    if type_id == TypeId::ENUM {
         let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
-        let user_type_id = type_info.get_user_type_id();
-        context.writer.write_var_uint32(user_type_id);
-    }
-    let is_named_enum = type_id_u32 == TypeId::NAMED_ENUM as u32;
-    if !is_named_enum {
+        context.writer
+            .write_var_uint32(type_info.get_user_type_id());
         return Ok(());
     }
     if context.is_share_meta() {
@@ -107,34 +103,21 @@ pub fn read<T: Serializer + ForyDefault>(
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    let local_type_id_u32 = local_type_id as u32;
-    let remote_type_id = context.reader.read_u8()? as u32;
-    let rs_type_id = std::any::TypeId::of::<T>();
-    if crate::types::needs_user_type_id(remote_type_id) {
-        let remote_user_type_id = context.reader.read_varuint32()?;
-        let local_user_type_id = context
-            .get_type_resolver()
-            .get_type_info(&rs_type_id)?
-            .get_user_type_id();
-        ensure!(
-            local_user_type_id == remote_user_type_id,
-            Error::type_mismatch(local_user_type_id, remote_user_type_id)
-        );
-    }
+    let remote_type_id = context.reader.read_u8()?;
     ensure!(
-        local_type_id_u32 == remote_type_id,
-        Error::type_mismatch(local_type_id_u32, remote_type_id)
+        local_type_id as u8 == remote_type_id,
+        Error::type_mismatch(local_type_id as u32, remote_type_id as u32)
     );
-    let is_named_enum = local_type_id_u32 == TypeId::NAMED_ENUM as u32;
-    if !is_named_enum {
-        return Ok(());
-    }
-    if context.is_share_meta() {
-        // Read type meta inline using streaming protocol
-        let _type_info = context.read_type_meta()?;
+    if remote_type_id == TypeId::NAMED_ENUM as u8 {
+        if context.is_share_meta() {
+            // Read type meta inline using streaming protocol
+            let _type_info = context.read_type_meta()?;
+        } else {
+            let _namespace_msb = context.read_meta_string()?;
+            let _type_name_msb = context.read_meta_string()?;
+        }
     } else {
-        let _namespace_msb = context.read_meta_string()?;
-        let _type_name_msb = context.read_meta_string()?;
+       context.reader.read_varuint32()?;
     }
     Ok(())
 }
