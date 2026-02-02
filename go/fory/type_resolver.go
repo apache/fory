@@ -1996,7 +1996,6 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 	typeID := uint32(buffer.ReadUint8(err))
 	internalTypeID := TypeId(typeID)
 
-	// Handle type meta based on internal type ID (matching Java XtypeResolver.readClassInfo)
 	switch internalTypeID {
 	case ENUM, STRUCT, EXT, TYPED_UNION:
 		userTypeID := buffer.ReadVarUint32(err)
@@ -2006,21 +2005,9 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
 			return typeInfo
 		}
-	case COMPATIBLE_STRUCT:
-		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
-		}
-		userTypeID := buffer.ReadVarUint32(err)
-		if err.HasError() {
-			return nil
-		}
-		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
-			return typeInfo
-		}
-	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION, NAMED_COMPATIBLE_STRUCT:
-		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
-		}
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		return r.readSharedTypeMeta(buffer, err)
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		// ReadData namespace and type name metadata bytes
 		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
 		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2330,22 +2317,30 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
 	typeID := uint32(buffer.ReadUint8(err))
 	internalTypeID := TypeId(typeID)
-	if needsUserTypeID(internalTypeID) && internalTypeID != COMPATIBLE_STRUCT {
-		buffer.ReadVarUint32(err)
-	}
-
 	switch internalTypeID {
-	case STRUCT, NAMED_STRUCT:
-		// Non-compatible mode: skip namespace/typename meta strings if present
-		if IsNamespacedType(internalTypeID) {
-			// Skip namespace meta string
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-			// Skip typename meta string
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		buffer.ReadVarUint32(err)
+		if internalTypeID == STRUCT {
+			return r.typeToSerializers[expectedType]
 		}
-		// Get serializer directly by the expected type - no map lookup needed
-		return r.typeToSerializers[expectedType]
-
+		return nil
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+		if r.metaShareEnabled() {
+			typeInfo := r.readSharedTypeMeta(buffer, err)
+			if err.HasError() {
+				return nil
+			}
+			if internalTypeID == NAMED_STRUCT {
+				return typeInfo.Serializer
+			}
+			return nil
+		}
+		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		if internalTypeID == NAMED_STRUCT {
+			return r.typeToSerializers[expectedType]
+		}
+		return nil
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		// Compatible mode: read type def from shared meta
 		typeInfo := r.readSharedTypeMeta(buffer, err)

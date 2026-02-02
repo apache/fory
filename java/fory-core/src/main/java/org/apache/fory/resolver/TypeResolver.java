@@ -338,19 +338,13 @@ public abstract class TypeResolver {
         buffer.writeVarUint32(classInfo.userTypeId);
         break;
       case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          if (!(classInfo.serializer instanceof NonexistentClassSerializer)) {
-            writeSharedClassMeta(buffer, classInfo);
-          }
-        } else {
-          buffer.writeVarUint32(classInfo.userTypeId);
-        }
+      case Types.NAMED_COMPATIBLE_STRUCT:
+        writeSharedClassMeta(buffer, classInfo);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
-      case Types.NAMED_COMPATIBLE_STRUCT:
         if (!metaContextShareEnabled) {
           Preconditions.checkNotNull(classInfo.namespaceBytes);
           metaStringResolver.writeMetaStringBytes(buffer, classInfo.namespaceBytes);
@@ -362,19 +356,6 @@ public abstract class TypeResolver {
         break;
       default:
         break;
-    }
-  }
-
-  private static boolean needsUserTypeId(int typeId) {
-    switch (typeId) {
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.COMPATIBLE_STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        return true;
-      default:
-        return false;
     }
   }
 
@@ -454,18 +435,14 @@ public abstract class TypeResolver {
         classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
         break;
       case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer);
-        } else {
+      case Types.NAMED_COMPATIBLE_STRUCT:
           userTypeId = buffer.readVarUint32();
           classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
-      case Types.NAMED_COMPATIBLE_STRUCT:
         if (!metaContextShareEnabled) {
           classInfo = readClassInfoFromBytes(buffer, classInfoCache, typeId);
         } else {
