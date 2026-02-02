@@ -178,7 +178,8 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 			nullable:  true,
 		}
 	default:
-		if needsUserTypeID(internalID) {
+		if internalID == ENUM || internalID == STRUCT ||
+			internalID == EXT || internalID == TYPED_UNION {
 			ctx.buffer.ReadVarUint32(err)
 			if ctx.HasError() {
 				return

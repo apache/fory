@@ -1354,12 +1354,16 @@ func (r *TypeResolver) registerType(
 	}
 
 	// Cache by type ID (for cross-language support)
-	if needsUserTypeID(TypeId(typeID)) && userTypeID != invalidUserTypeID {
+	if (TypeId(typeID) == ENUM || TypeId(typeID) == STRUCT ||
+		TypeId(typeID) == EXT || TypeId(typeID) == TYPED_UNION) &&
+		userTypeID != invalidUserTypeID {
 		key := userTypeKey{typeID: TypeId(typeID), userTypeID: userTypeID}
 		if _, ok := r.userTypeIdToTypeInfo[key]; !ok {
 			r.userTypeIdToTypeInfo[key] = typeInfo
 		}
-	} else if r.isXlang && !IsNamespacedType(TypeId(typeID)) {
+	} else if TypeId(typeID) != ENUM && TypeId(typeID) != STRUCT &&
+		TypeId(typeID) != EXT && TypeId(typeID) != TYPED_UNION &&
+		!IsNamespacedType(TypeId(typeID)) {
 		/*
 		   This function is required to maintain the typeID registry: all types
 		   are registered at startup, and we keep this table updated.
@@ -1990,6 +1994,38 @@ func (r *TypeResolver) readTypeByReadTag(buffer *ByteBuffer, err *Error) reflect
 	return nil
 }
 
+func (r *TypeResolver) resolveTypeInfoByMetaBytes(nsBytes, typeBytes *MetaStringBytes,
+	compositeKey nsTypeKey, typeID uint32, err *Error) *TypeInfo {
+	if typeInfo, exists := r.nsTypeToTypeInfo[compositeKey]; exists {
+		return typeInfo
+	}
+
+	ns, decErr := r.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
+	if decErr != nil {
+		err.SetError(fmt.Errorf("namespace decode failed: %w", decErr))
+		return nil
+	}
+
+	typeName, decErr := r.typeNameDecoder.Decode(typeBytes.Data, typeBytes.Encoding)
+	if decErr != nil {
+		err.SetError(fmt.Errorf("typename decode failed: %w", decErr))
+		return nil
+	}
+
+	nameKey := [2]string{ns, typeName}
+	if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
+		r.nsTypeToTypeInfo[compositeKey] = typeInfo
+		return typeInfo
+	}
+
+	fullName := typeName
+	if ns != "" {
+		fullName = ns + "." + typeName
+	}
+	err.SetError(fmt.Errorf("unregistered type: %s (typeID: %d)", fullName, typeID))
+	return nil
+}
+
 // ReadTypeInfo reads type info from buffer and returns it.
 // This is exported for use by generated code.
 func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
@@ -2018,35 +2054,7 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		compositeKey := nsTypeKey{nsBytes.Hashcode, typeBytes.Hashcode}
 		// For pointer and value types, use the negative ID system
 		// to obtain the correct TypeInfo for subsequent deserialization
-		if typeInfo, exists := r.nsTypeToTypeInfo[compositeKey]; exists {
-			return typeInfo
-		}
-
-		// If not found, decode the bytes to strings and try again
-		ns, decErr := r.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
-		if decErr != nil {
-			err.SetError(fmt.Errorf("namespace decode failed: %w", decErr))
-			return nil
-		}
-
-		typeName, decErr := r.typeNameDecoder.Decode(typeBytes.Data, typeBytes.Encoding)
-		if decErr != nil {
-			err.SetError(fmt.Errorf("typename decode failed: %w", decErr))
-			return nil
-		}
-
-		nameKey := [2]string{ns, typeName}
-		if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
-			r.nsTypeToTypeInfo[compositeKey] = typeInfo
-			return typeInfo
-		}
-		// Type not found
-		fullName := typeName
-		if ns != "" {
-			fullName = ns + "." + typeName
-		}
-		err.SetError(fmt.Errorf("unregistered type: %s (typeID: %d)", fullName, typeID))
-		return nil
+		return r.resolveTypeInfoByMetaBytes(nsBytes, typeBytes, compositeKey, typeID, err)
 	default:
 		break
 	}
@@ -2056,119 +2064,11 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		return typeInfo
 	}
 
-	// Handle collection types (LIST, SET, MAP) that don't have specific registration
-	// Use generic types that can hold any element type
-	switch TypeId(typeID) {
-	case LIST:
+	// Handle UNKNOWN type (0) - used for polymorphic types
+	if typeID == 0 {
 		return &TypeInfo{
-			Type:       interfaceSliceType,
+			Type:       interfaceType,
 			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceSliceType],
-			DispatchId: UnknownDispatchId,
-		}
-	case SET:
-		return &TypeInfo{
-			Type:       genericSetType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[genericSetType],
-			DispatchId: UnknownDispatchId,
-		}
-	case MAP:
-		return &TypeInfo{
-			Type:       interfaceMapType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceMapType],
-			DispatchId: UnknownDispatchId,
-		}
-	case BOOL:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(false),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(false)],
-			DispatchId: PrimitiveBoolDispatchId,
-		}
-	case INT8:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int8(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int8(0))],
-			DispatchId: PrimitiveInt8DispatchId,
-		}
-	case UINT8:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint8(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint8(0))],
-			DispatchId: PrimitiveInt8DispatchId, // Use Int8 static ID for uint8
-		}
-	case INT16:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int16(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int16(0))],
-			DispatchId: PrimitiveInt16DispatchId,
-		}
-	case UINT16:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint16(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint16(0))],
-			DispatchId: PrimitiveInt16DispatchId, // Use Int16 static ID for uint16
-		}
-	case INT32, VARINT32:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int32(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int32(0))],
-			DispatchId: PrimitiveInt32DispatchId,
-		}
-	case UINT32:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint32(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint32(0))],
-			DispatchId: PrimitiveInt32DispatchId, // Use Int32 static ID for uint32
-		}
-	case INT64, VARINT64, TAGGED_INT64:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int64(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int64(0))],
-			DispatchId: PrimitiveInt64DispatchId,
-		}
-	case UINT64:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint64(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint64(0))],
-			DispatchId: PrimitiveInt64DispatchId, // Use Int64 static ID for uint64
-		}
-	case FLOAT32:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(float32(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(float32(0))],
-			DispatchId: PrimitiveFloat32DispatchId,
-		}
-	case FLOAT64:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(float64(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(float64(0))],
-			DispatchId: PrimitiveFloat64DispatchId,
-		}
-	case STRING:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(""),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf("")],
-			DispatchId: StringDispatchId,
-		}
-	case BINARY:
-		return &TypeInfo{
-			Type:       reflect.TypeOf([]byte(nil)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf([]byte(nil))],
 			DispatchId: UnknownDispatchId,
 		}
 	}
@@ -2182,117 +2082,34 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32, err *Error) *TypeInfo {
 	internalTypeID := TypeId(typeID)
 
-	// Handle COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT with shared meta first (no user type id in stream)
-	if internalTypeID == COMPATIBLE_STRUCT || internalTypeID == NAMED_COMPATIBLE_STRUCT {
-		return r.readSharedTypeMeta(buffer, err)
-	}
-	// Handle STRUCT with meta share first (no user type id in stream)
-	if internalTypeID == STRUCT && r.metaShareEnabled() {
-		return r.readSharedTypeMeta(buffer, err)
-	}
-
-	if IsNamespacedType(internalTypeID) {
-		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
-		}
-		// ReadData namespace and type name metadata bytes
-		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-
-		compositeKey := nsTypeKey{nsBytes.Hashcode, typeBytes.Hashcode}
-		if typeInfo, exists := r.nsTypeToTypeInfo[compositeKey]; exists {
-			return typeInfo
-		}
-
-		// If not found, decode the bytes to strings and try again
-		ns, nsErr := r.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
-		if nsErr != nil {
-			err.SetError(fmt.Errorf("namespace decode failed: %w", nsErr))
+	switch internalTypeID {
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		userTypeID := buffer.ReadVarUint32(err)
+		if err.HasError() {
 			return nil
 		}
-
-		typeName, tnErr := r.typeNameDecoder.Decode(typeBytes.Data, typeBytes.Encoding)
-		if tnErr != nil {
-			err.SetError(fmt.Errorf("typename decode failed: %w", tnErr))
-			return nil
-		}
-
-		nameKey := [2]string{ns, typeName}
-		if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
-			r.nsTypeToTypeInfo[compositeKey] = typeInfo
-			return typeInfo
-		}
-		err.SetError(fmt.Errorf("namespaced type not found: %s.%s", ns, typeName))
-		return nil
-	}
-
-	userTypeID := invalidUserTypeID
-	if needsUserTypeID(internalTypeID) && internalTypeID != COMPATIBLE_STRUCT {
-		userTypeID = buffer.ReadVarUint32(err)
-	}
-
-	if needsUserTypeID(internalTypeID) && internalTypeID != COMPATIBLE_STRUCT {
 		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
 			return typeInfo
 		}
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		return r.readSharedTypeMeta(buffer, err)
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+		// ReadData namespace and type name metadata bytes
+		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		if err.HasError() {
+			return nil
+		}
+
+		compositeKey := nsTypeKey{nsBytes.Hashcode, typeBytes.Hashcode}
+		return r.resolveTypeInfoByMetaBytes(nsBytes, typeBytes, compositeKey, typeID, err)
+	default:
+		break
 	}
 
 	// Handle simple type IDs (non-namespaced types)
 	if typeInfo, exists := r.typeIDToTypeInfo[typeID]; exists {
 		return typeInfo
-	}
-
-	// Handle collection types (LIST, SET, MAP) that don't have specific registration
-	// Use generic types that can hold any element type
-	switch TypeId(typeID) {
-	case LIST:
-		return &TypeInfo{
-			Type:       interfaceSliceType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceSliceType],
-			DispatchId: UnknownDispatchId,
-		}
-	case SET:
-		return &TypeInfo{
-			Type:       genericSetType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[genericSetType],
-			DispatchId: UnknownDispatchId,
-		}
-	case MAP:
-		return &TypeInfo{
-			Type:       interfaceMapType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceMapType],
-			DispatchId: UnknownDispatchId,
-		}
-	// Handle primitive types that may not be explicitly registered
-	case BOOL:
-		return &TypeInfo{Type: boolType, TypeID: typeID, Serializer: r.typeToSerializers[boolType], DispatchId: PrimitiveBoolDispatchId}
-	case INT8:
-		return &TypeInfo{Type: int8Type, TypeID: typeID, Serializer: r.typeToSerializers[int8Type], DispatchId: PrimitiveInt8DispatchId}
-	case INT16:
-		return &TypeInfo{Type: int16Type, TypeID: typeID, Serializer: r.typeToSerializers[int16Type], DispatchId: PrimitiveInt16DispatchId}
-	case INT32, VARINT32:
-		return &TypeInfo{Type: int32Type, TypeID: typeID, Serializer: r.typeToSerializers[int32Type], DispatchId: PrimitiveInt32DispatchId}
-	case INT64, VARINT64, TAGGED_INT64:
-		return &TypeInfo{Type: int64Type, TypeID: typeID, Serializer: r.typeToSerializers[int64Type], DispatchId: PrimitiveInt64DispatchId}
-	case UINT8:
-		return &TypeInfo{Type: uint8Type, TypeID: typeID, Serializer: r.typeToSerializers[uint8Type], DispatchId: PrimitiveInt8DispatchId}
-	case UINT16:
-		return &TypeInfo{Type: uint16Type, TypeID: typeID, Serializer: r.typeToSerializers[uint16Type], DispatchId: PrimitiveInt16DispatchId}
-	case UINT32, VAR_UINT32:
-		return &TypeInfo{Type: uint32Type, TypeID: typeID, Serializer: r.typeToSerializers[uint32Type], DispatchId: PrimitiveInt32DispatchId}
-	case UINT64, VAR_UINT64, TAGGED_UINT64:
-		return &TypeInfo{Type: uint64Type, TypeID: typeID, Serializer: r.typeToSerializers[uint64Type], DispatchId: PrimitiveInt64DispatchId}
-	case FLOAT32:
-		return &TypeInfo{Type: float32Type, TypeID: typeID, Serializer: r.typeToSerializers[float32Type], DispatchId: PrimitiveFloat32DispatchId}
-	case FLOAT64:
-		return &TypeInfo{Type: float64Type, TypeID: typeID, Serializer: r.typeToSerializers[float64Type], DispatchId: PrimitiveFloat64DispatchId}
-	case STRING:
-		return &TypeInfo{Type: stringType, TypeID: typeID, Serializer: r.typeToSerializers[stringType], DispatchId: StringDispatchId}
-	case BINARY:
-		return &TypeInfo{Type: byteSliceType, TypeID: typeID, Serializer: r.typeToSerializers[byteSliceType], DispatchId: ByteSliceDispatchId}
 	}
 
 	// Handle UNKNOWN type (0) - used for polymorphic types

@@ -281,9 +281,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// We must consume these bytes for protocol compliance
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
-			typeID := uint32(buf.ReadUint8(ctxErr))
-			// ReadData additional metadata for namespaced types
-			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+			ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
 		}
 	}
 

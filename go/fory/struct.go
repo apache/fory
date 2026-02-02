@@ -2384,53 +2384,6 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 	}
 	if readType {
-		if !ctx.Compatible() && s.type_ != nil {
-			typeID := uint32(buf.ReadUint8(ctxErr))
-			if ctxErr.HasError() {
-				return
-			}
-			internalTypeID := TypeId(typeID)
-			userTypeID := invalidUserTypeID
-			if needsUserTypeID(internalTypeID) {
-				userTypeID = buf.ReadVarUint32(ctxErr)
-				if ctxErr.HasError() {
-					return
-				}
-			}
-			if s.typeID != 0 && typeID == s.typeID && !IsNamespacedType(internalTypeID) {
-				if !needsUserTypeID(internalTypeID) || s.userTypeID == userTypeID {
-					s.ReadData(ctx, value)
-					return
-				}
-			}
-			if IsNamespacedType(internalTypeID) {
-				// Expected type is known: skip namespace/type meta and read data directly.
-				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
-				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
-				if ctxErr.HasError() {
-					return
-				}
-				s.ReadData(ctx, value)
-				return
-			}
-			if internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
-				if needsUserTypeID(internalTypeID) {
-					typeInfo := ctx.TypeResolver().getUserTypeInfoById(internalTypeID, userTypeID)
-					if typeInfo != nil {
-						if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
-							structSer.ReadData(ctx, value)
-							return
-						}
-						if s.typeID != 0 && typeID == s.typeID && s.userTypeID == userTypeID {
-							s.ReadData(ctx, value)
-							return
-						}
-					}
-				}
-			}
-			ctx.SetError(DeserializationError("unexpected type id for struct"))
-			return
-		}
 		if s.type_ != nil {
 			serializer := ctx.TypeResolver().ReadTypeInfoForType(buf, s.type_, ctxErr)
 			if ctxErr.HasError() {
@@ -2447,11 +2400,12 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 			s.ReadData(ctx, value)
 			return
 		}
-		// Fallback: read type info based on typeID when expected type is unknown
-		typeID := uint32(buf.ReadUint8(ctxErr))
-		internalTypeID := TypeId(typeID)
-		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
-			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+		// Fallback: read type info when expected type is unknown
+		typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
+		if ctxErr.HasError() {
+			return
+		}
+		if typeInfo != nil {
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				structSer.ReadData(ctx, value)
 				return
