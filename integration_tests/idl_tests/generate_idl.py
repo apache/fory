@@ -39,26 +39,26 @@ SCHEMAS = [
 ]
 
 LANG_OUTPUTS = {
-    "java": REPO_ROOT / "integration_tests/idl_tests/java/src/main/java",
-    "python": REPO_ROOT / "integration_tests/idl_tests/python/src",
+    "java": REPO_ROOT / "integration_tests/idl_tests/java/src/main/java/generated",
+    "python": REPO_ROOT / "integration_tests/idl_tests/python/idl_tests/generated",
     "cpp": REPO_ROOT / "integration_tests/idl_tests/cpp/generated",
-    "go": REPO_ROOT / "integration_tests/idl_tests/go",
-    "rust": REPO_ROOT / "integration_tests/idl_tests/rust/src",
+    "go": REPO_ROOT / "integration_tests/idl_tests/go/generated",
+    "rust": REPO_ROOT / "integration_tests/idl_tests/rust/src/generated",
 }
 
 GO_OUTPUT_OVERRIDES = {
-    "addressbook.fdl": IDL_DIR / "go" / "addressbook",
-    "collection.fdl": IDL_DIR / "go" / "collection",
-    "monster.fbs": IDL_DIR / "go" / "monster",
-    "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs",
-    "optional_types.fdl": IDL_DIR / "go" / "optional_types",
-    "tree.fdl": IDL_DIR / "go" / "tree",
-    "graph.fdl": IDL_DIR / "go" / "graph",
-    "root.idl": IDL_DIR / "go" / "root",
-    "any_example.fdl": IDL_DIR / "go" / "any_example",
-    "any_example.proto": IDL_DIR / "go" / "any_example_pb",
-    "complex_pb.proto": IDL_DIR / "go" / "complex_pb",
-    "auto_id.fdl": IDL_DIR / "go" / "auto_id",
+    "addressbook.fdl": IDL_DIR / "go" / "addressbook" / "generated",
+    "collection.fdl": IDL_DIR / "go" / "collection" / "generated",
+    "monster.fbs": IDL_DIR / "go" / "monster" / "generated",
+    "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs" / "generated",
+    "optional_types.fdl": IDL_DIR / "go" / "optional_types" / "generated",
+    "tree.fdl": IDL_DIR / "go" / "tree" / "generated",
+    "graph.fdl": IDL_DIR / "go" / "graph" / "generated",
+    "root.idl": IDL_DIR / "go" / "root" / "generated",
+    "any_example.fdl": IDL_DIR / "go" / "any_example" / "generated",
+    "any_example.proto": IDL_DIR / "go" / "any_example_pb" / "generated",
+    "complex_pb.proto": IDL_DIR / "go" / "complex_pb" / "generated",
+    "auto_id.fdl": IDL_DIR / "go" / "auto_id" / "generated",
 }
 
 

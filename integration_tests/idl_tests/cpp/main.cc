@@ -28,19 +28,19 @@
 #include <string>
 #include <vector>
 
-#include "addressbook.h"
-#include "any_example.h"
-#include "auto_id.h"
-#include "collection.h"
-#include "complex_fbs.h"
-#include "complex_pb.h"
+#include "generated/addressbook.h"
+#include "generated/any_example.h"
+#include "generated/auto_id.h"
+#include "generated/collection.h"
+#include "generated/complex_fbs.h"
+#include "generated/complex_pb.h"
 #include "fory/serialization/any_serializer.h"
 #include "fory/serialization/fory.h"
-#include "graph.h"
-#include "monster.h"
-#include "optional_types.h"
-#include "root.h"
-#include "tree.h"
+#include "generated/graph.h"
+#include "generated/monster.h"
+#include "generated/optional_types.h"
+#include "generated/root.h"
+#include "generated/tree.h"
 
 namespace {
 

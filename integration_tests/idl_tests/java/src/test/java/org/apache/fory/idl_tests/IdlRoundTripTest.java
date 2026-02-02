@@ -591,8 +591,11 @@ public class IdlRoundTripTest {
     switch (peer) {
       case "python":
         command = Arrays.asList("python", "-m", "idl_tests.roundtrip");
+        Path pythonRoot = idlRoot.resolve("python");
         String pythonPath =
-            idlRoot.resolve("python").resolve("src")
+            pythonRoot.resolve("idl_tests").resolve("generated")
+                + File.pathSeparator
+                + pythonRoot
                 + File.pathSeparator
                 + repoRoot.resolve("python");
         String existingPythonPath = System.getenv("PYTHONPATH");

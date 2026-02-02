@@ -21,20 +21,23 @@ use std::{env, fs};
 
 use chrono::NaiveDate;
 use fory::{ArcWeak, Fory};
-use idl_tests::addressbook::{
+use idl_tests::generated::addressbook::{
     self,
     person::{PhoneNumber, PhoneType},
     AddressBook, Animal, Cat, Dog, Person,
 };
-use idl_tests::auto_id;
-use idl_tests::complex_pb::{self, PrimitiveTypes};
-use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
-use idl_tests::collection::{self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections, NumericCollectionsArray};
-use idl_tests::monster::{self, Color, Monster, Vec3};
-use idl_tests::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
-use idl_tests::any_example::{self, AnyHolder, AnyInner, AnyUnion};
-use idl_tests::root;
-use idl_tests::{graph, tree};
+use idl_tests::generated::any_example::{self, AnyHolder, AnyInner, AnyUnion};
+use idl_tests::generated::auto_id;
+use idl_tests::generated::collection::{
+    self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections,
+    NumericCollectionsArray,
+};
+use idl_tests::generated::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
+use idl_tests::generated::complex_pb::{self, PrimitiveTypes};
+use idl_tests::generated::monster::{self, Color, Monster, Vec3};
+use idl_tests::generated::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
+use idl_tests::generated::root;
+use idl_tests::generated::{graph, tree};
 
 fn build_address_book() -> AddressBook {
     let mobile = PhoneNumber {

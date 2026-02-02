@@ -1905,7 +1905,7 @@ public class ClassResolver extends TypeResolver {
     return new ClassInfo(this, cls, serializer, typeId);
   }
 
-  public boolean isPrimitive(short classId) {
+  public boolean isPrimitive(int classId) {
     return classId >= PRIMITIVE_VOID_ID && classId <= PRIMITIVE_FLOAT64_ID;
   }
 

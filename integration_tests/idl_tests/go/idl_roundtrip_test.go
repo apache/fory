@@ -25,16 +25,16 @@ import (
 
 	fory "github.com/apache/fory/go/fory"
 	"github.com/apache/fory/go/fory/optional"
-	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
-	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
-	autoid "github.com/apache/fory/integration_tests/idl_tests/go/auto_id"
-	collection "github.com/apache/fory/integration_tests/idl_tests/go/collection"
-	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs"
-	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb"
-	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph"
-	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster"
-	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types"
-	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree"
+	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook/generated"
+	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example/generated"
+	autoid "github.com/apache/fory/integration_tests/idl_tests/go/auto_id/generated"
+	collection "github.com/apache/fory/integration_tests/idl_tests/go/collection/generated"
+	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs/generated"
+	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb/generated"
+	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph/generated"
+	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster/generated"
+	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types/generated"
+	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree/generated"
 )
 
 func buildAddressBook() addressbook.AddressBook {
