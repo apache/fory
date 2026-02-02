@@ -238,16 +238,31 @@ impl<'a> WriteContext<'a> {
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
         self.writer.write_u8(fory_type_id as u8);
-        if types::needs_user_type_id(fory_type_id) {
-            let user_type_id = type_info.get_user_type_id();
-            if user_type_id == NO_USER_TYPE_ID {
-                return Err(Error::type_error("User type id is required for this type"));
-            }
-            self.writer.write_var_uint32(user_type_id);
-        }
         // should be compiled to jump table generation
         match fory_type_id {
-            types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
+            types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
+                let user_type_id = type_info.get_user_type_id();
+                if user_type_id == NO_USER_TYPE_ID {
+                    return Err(Error::type_error("User type id is required for this type"));
+                }
+                self.writer.write_var_uint32(user_type_id);
+            }
+            types::COMPATIBLE_STRUCT => {
+                if !self.is_share_meta() {
+                    let user_type_id = type_info.get_user_type_id();
+                    if user_type_id == NO_USER_TYPE_ID {
+                        return Err(Error::type_error("User type id is required for this type"));
+                    }
+                    self.writer.write_var_uint32(user_type_id);
+                }
+                // Write type meta inline using streaming protocol
+                self.meta_resolver.write_type_meta(
+                    &mut self.writer,
+                    concrete_type_id,
+                    &self.type_resolver,
+                )?;
+            }
+            types::NAMED_COMPATIBLE_STRUCT => {
                 // Write type meta inline using streaming protocol
                 self.meta_resolver.write_type_meta(
                     &mut self.writer,
@@ -420,14 +435,31 @@ impl<'a> ReadContext<'a> {
 
     pub fn read_any_typeinfo(&mut self) -> Result<Rc<TypeInfo>, Error> {
         let fory_type_id = self.reader.read_u8()? as u32;
-        let user_type_id = if types::needs_user_type_id(fory_type_id) {
-            Some(self.reader.read_varuint32()?)
-        } else {
-            None
-        };
         // should be compiled to jump table generation
         match fory_type_id {
-            types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
+            types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
+                let user_type_id = self.reader.read_varuint32()?;
+                if let Some(type_info) =
+                    self.type_resolver
+                        .get_user_type_info_by_id(fory_type_id, user_type_id)
+                {
+                    Ok(type_info)
+                } else if self.is_compatible() && fory_type_id == types::STRUCT {
+                    self.type_resolver
+                        .get_user_type_info_by_id(types::COMPATIBLE_STRUCT, user_type_id)
+                        .ok_or_else(|| Error::type_error("ID harness not found"))
+                } else {
+                    Err(Error::type_error("ID harness not found"))
+                }
+            }
+            types::COMPATIBLE_STRUCT => {
+                if !self.is_share_meta() {
+                    let _user_type_id = self.reader.read_varuint32()?;
+                }
+                // Read type meta inline using streaming protocol
+                self.read_type_meta()
+            }
+            types::NAMED_COMPATIBLE_STRUCT => {
                 // Read type meta inline using streaming protocol
                 self.read_type_meta()
             }
@@ -445,29 +477,10 @@ impl<'a> ReadContext<'a> {
                         .ok_or_else(|| Error::type_error("Name harness not found"))
                 }
             }
-            _ => {
-                if let Some(user_type_id) = user_type_id {
-                    if let Some(type_info) =
-                        self.type_resolver
-                            .get_user_type_info_by_id(fory_type_id, user_type_id)
-                    {
-                        return Ok(type_info);
-                    }
-                    if self.is_compatible() && fory_type_id == types::STRUCT {
-                        if let Some(type_info) = self
-                            .type_resolver
-                            .get_user_type_info_by_id(types::COMPATIBLE_STRUCT, user_type_id)
-                        {
-                            return Ok(type_info);
-                        }
-                    }
-                    Err(Error::type_error("ID harness not found"))
-                } else {
-                    self.type_resolver
-                        .get_type_info_by_id(fory_type_id)
-                        .ok_or_else(|| Error::type_error("ID harness not found"))
-                }
-            }
+            _ => self
+                .type_resolver
+                .get_type_info_by_id(fory_type_id)
+                .ok_or_else(|| Error::type_error("ID harness not found")),
         }
     }
 

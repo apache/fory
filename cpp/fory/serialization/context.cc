@@ -259,28 +259,20 @@ WriteContext::write_struct_type_info(const std::type_index &type_id) {
   switch (static_cast<TypeId>(fory_type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::EXT:
   case TypeId::TYPED_UNION:
-    if (type_info->user_type_id == kInvalidUserTypeId) {
-      return Unexpected(
-          Error::type_error("User type id is required for struct"));
-    }
     buffer_.write_var_uint32(type_info->user_type_id);
     break;
-  default:
-    break;
-  }
-
-  // Handle different struct type categories based on low byte
-  switch (static_cast<TypeId>(fory_type_id)) {
-  case TypeId::NAMED_COMPATIBLE_STRUCT:
-  case TypeId::COMPATIBLE_STRUCT: {
+  case TypeId::COMPATIBLE_STRUCT:
+    buffer_.write_var_uint32(type_info->user_type_id);
     // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(type_id));
     break;
-  }
-  case TypeId::NAMED_STRUCT: {
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+    // write type meta inline using streaming protocol
+    FORY_RETURN_NOT_OK(write_type_meta(type_id));
+    break;
+  case TypeId::NAMED_STRUCT:
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(type_id));
@@ -295,7 +287,6 @@ WriteContext::write_struct_type_info(const std::type_index &type_id) {
       }
     }
     break;
-  }
   default:
     // STRUCT type - just writing type_id is sufficient
     break;
@@ -313,28 +304,20 @@ WriteContext::write_struct_type_info(const TypeInfo *type_info) {
   switch (static_cast<TypeId>(fory_type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::EXT:
   case TypeId::TYPED_UNION:
-    if (type_info->user_type_id == kInvalidUserTypeId) {
-      return Unexpected(
-          Error::type_error("User type id is required for struct"));
-    }
     buffer_.write_var_uint32(type_info->user_type_id);
     break;
-  default:
-    break;
-  }
-
-  // Handle different struct type categories based on low byte
-  switch (static_cast<TypeId>(fory_type_id)) {
-  case TypeId::NAMED_COMPATIBLE_STRUCT:
-  case TypeId::COMPATIBLE_STRUCT: {
+  case TypeId::COMPATIBLE_STRUCT:
+    buffer_.write_var_uint32(type_info->user_type_id);
     // write type meta inline using streaming protocol
     write_type_meta(type_info);
     break;
-  }
-  case TypeId::NAMED_STRUCT: {
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+    // write type meta inline using streaming protocol
+    write_type_meta(type_info);
+    break;
+  case TypeId::NAMED_STRUCT:
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       write_type_meta(type_info);
@@ -349,7 +332,6 @@ WriteContext::write_struct_type_info(const TypeInfo *type_info) {
       }
     }
     break;
-  }
   default:
     // STRUCT type - just writing type_id is sufficient
     break;
@@ -530,31 +512,31 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
-  uint32_t user_type_id = 0;
-  bool has_user_type_id = false;
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::EXT:
-  case TypeId::TYPED_UNION:
-    user_type_id = buffer_->read_var_uint32(error);
+  case TypeId::TYPED_UNION: {
+    uint32_t user_type_id = buffer_->read_var_uint32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
-    has_user_type_id = true;
-    break;
-  default:
-    break;
+    FORY_TRY(type_info,
+             type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
+    return type_info;
   }
-
-  // Use streaming protocol for type meta
-  switch (static_cast<TypeId>(type_id)) {
-  case TypeId::NAMED_COMPATIBLE_STRUCT:
   case TypeId::COMPATIBLE_STRUCT: {
+    uint32_t user_type_id = buffer_->read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    (void)user_type_id;
     // Read type meta inline using streaming protocol
     return read_type_meta();
   }
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+    // Read type meta inline using streaming protocol
+    return read_type_meta();
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_EXT:
   case TypeId::NAMED_STRUCT:
@@ -573,11 +555,6 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
   }
   default: {
     // All types must be registered in type_resolver
-    if (has_user_type_id) {
-      FORY_TRY(type_info,
-               type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
-      return type_info;
-    }
     FORY_TRY(type_info, type_resolver_->get_type_info_by_id(type_id));
     return type_info;
   }

@@ -58,19 +58,15 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readClassInfo(): string {
-    const readUserTypeIdStmt = TypeId.needsUserTypeId(this.getTypeId())
-      ? `${this.builder.reader.readVarUint32Small7()};`
-      : "";
-    return `
-      ${
-      // skip the typeId
-      this.builder.reader.uint8()
-      }
-      ${readUserTypeIdStmt}
-
-      ${
-        TypeId.isNamedType(this.getTypeId())
-        ? `
+    const internalTypeId = this.getInternalTypeId();
+    let readUserTypeIdStmt = "";
+    let namesStmt = "";
+    switch (internalTypeId) {
+      case TypeId.ENUM:
+        readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
+        break;
+      case TypeId.NAMED_ENUM:
+        namesStmt = `
           ${
             // skip the namespace
             this.builder.metaStringResolver.readNamespace(this.builder.reader.ownName())
@@ -80,15 +76,29 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
           // skip the namespace
           this.builder.metaStringResolver.readTypeName(this.builder.reader.ownName())
           }
-        `
-        : ""}
+        `;
+        break;
+      default:
+        break;
+    }
+    return `
+      ${
+      // skip the typeId
+      this.builder.reader.uint8()
+      }
+      ${readUserTypeIdStmt}
+      ${namesStmt}
     `;
   }
 
   writeClassInfo(): string {
     const internalTypeId = this.getInternalTypeId();
     let typeMeta = "";
+    let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
+      case TypeId.ENUM:
+        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        break;
       case TypeId.NAMED_ENUM:
         {
           const typeInfo = this.typeInfo.castToStruct();
@@ -103,9 +113,6 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
       default:
         break;
     }
-    const writeUserTypeIdStmt = TypeId.needsUserTypeId(this.getTypeId())
-      ? this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId)
-      : "";
     return ` 
         ${this.builder.writer.uint8(this.getTypeId())};
         ${writeUserTypeIdStmt}

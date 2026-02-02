@@ -155,15 +155,12 @@ final class XtypeResolverImpl extends XtypeResolver {
   TypeInfo readTypeInfo(ByteReader br) {
     int xtypeId = br.readUint8();
     ObjType xtype = ObjType.fromId(xtypeId)!;
-    int userTypeId = kInvalidUserTypeId;
-    if (xtype.needsUserTypeId()) {
-      userTypeId = br.readVarUint32();
-    }
     switch(xtype){
       case ObjType.ENUM:
       case ObjType.STRUCT:
       case ObjType.COMPATIBLE_STRUCT:
       case ObjType.EXT:
+        int userTypeId = br.readVarUint32();
         TypeInfo? idTypeInfo = _ctx.userTypeId2TypeInfo[LongLongKey(xtypeId, userTypeId)];
         if (idTypeInfo != null) {
           return idTypeInfo;
@@ -221,13 +218,13 @@ final class XtypeResolverImpl extends XtypeResolver {
       throw UnregisteredTypeException(dartType);
     }
     bw.writeUint8(typeInfo.objType.id);
-    if (typeInfo.objType.needsUserTypeId()) {
-      if (typeInfo.userTypeId == kInvalidUserTypeId) {
-        throw UnregisteredTypeException(dartType);
-      }
-      bw.writeVarUint32(typeInfo.userTypeId);
-    }
     switch(typeInfo.objType){
+      case ObjType.ENUM:
+      case ObjType.STRUCT:
+      case ObjType.COMPATIBLE_STRUCT:
+      case ObjType.EXT:
+        bw.writeVarUint32(typeInfo.userTypeId);
+        break;
       case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:

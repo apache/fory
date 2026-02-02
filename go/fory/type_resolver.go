@@ -1402,17 +1402,18 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 	}
 	typeID := typeInfo.TypeID
 	buffer.WriteUint8(uint8(typeID))
-	if needsUserTypeID(TypeId(typeID)) {
-		if typeInfo.UserTypeID == invalidUserTypeID {
-			err.SetError(fmt.Errorf("missing user type ID for type %v (typeID=%d)", typeInfo.Type, typeID))
-			return
-		}
-		buffer.WriteVarUint32(typeInfo.UserTypeID)
-	}
 
 	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeClassInfo)
 	switch TypeId(typeID) {
-	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		buffer.WriteVarUint32(typeInfo.UserTypeID)
+	case COMPATIBLE_STRUCT:
+		if r.metaShareEnabled() {
+			r.writeSharedTypeMeta(buffer, typeInfo, err)
+		} else {
+			buffer.WriteVarUint32(typeInfo.UserTypeID)
+		}
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION, NAMED_COMPATIBLE_STRUCT:
 		if r.metaShareEnabled() {
 			r.writeSharedTypeMeta(buffer, typeInfo, err)
 			return
@@ -1421,11 +1422,8 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 		r.metaStringResolver.WriteMetaStringBytes(buffer, typeInfo.PkgPathBytes, err)
 		// WriteData type name metadata
 		r.metaStringResolver.WriteMetaStringBytes(buffer, typeInfo.NameBytes, err)
-	case NAMED_COMPATIBLE_STRUCT, COMPATIBLE_STRUCT:
-		// Meta share must be enabled for compatible mode
-		if r.metaShareEnabled() {
-			r.writeSharedTypeMeta(buffer, typeInfo, err)
-		}
+	default:
+		break
 	}
 }
 
@@ -2001,14 +1999,29 @@ func (r *TypeResolver) readTypeByReadTag(buffer *ByteBuffer, err *Error) reflect
 func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 	typeID := uint32(buffer.ReadUint8(err))
 	internalTypeID := TypeId(typeID)
-	userTypeID := invalidUserTypeID
-	if needsUserTypeID(internalTypeID) {
-		userTypeID = buffer.ReadVarUint32(err)
-	}
 
 	// Handle type meta based on internal type ID (matching Java XtypeResolver.readClassInfo)
 	switch internalTypeID {
-	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		userTypeID := buffer.ReadVarUint32(err)
+		if err.HasError() {
+			return nil
+		}
+		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
+			return typeInfo
+		}
+	case COMPATIBLE_STRUCT:
+		if r.metaShareEnabled() {
+			return r.readSharedTypeMeta(buffer, err)
+		}
+		userTypeID := buffer.ReadVarUint32(err)
+		if err.HasError() {
+			return nil
+		}
+		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
+			return typeInfo
+		}
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION, NAMED_COMPATIBLE_STRUCT:
 		if r.metaShareEnabled() {
 			return r.readSharedTypeMeta(buffer, err)
 		}
@@ -2051,18 +2064,8 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		}
 		err.SetError(fmt.Errorf("unregistered type: %s (typeID: %d)", fullName, typeID))
 		return nil
-
-	case NAMED_COMPATIBLE_STRUCT, COMPATIBLE_STRUCT:
-		// Meta share must be enabled for compatible mode
-		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
-		}
-	}
-
-	if needsUserTypeID(internalTypeID) {
-		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
-			return typeInfo
-		}
+	default:
+		break
 	}
 
 	// Handle simple type IDs (non-namespaced types)

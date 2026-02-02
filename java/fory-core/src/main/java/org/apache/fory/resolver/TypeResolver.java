@@ -330,12 +330,20 @@ public abstract class TypeResolver {
   public final void writeClassInfo(MemoryBuffer buffer, ClassInfo classInfo) {
     int typeId = classInfo.getTypeId();
     buffer.writeUint8(typeId);
-
-    if (needsUserTypeId(typeId)) {
-      buffer.writeVarUint32(classInfo.userTypeId);
-    }
-
     switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        buffer.writeVarUint32(classInfo.userTypeId);
+        break;
+      case Types.COMPATIBLE_STRUCT:
+        if (metaContextShareEnabled) {
+          writeSharedClassMeta(buffer, classInfo);
+        } else {
+          buffer.writeVarUint32(classInfo.userTypeId);
+        }
+        break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
@@ -347,11 +355,6 @@ public abstract class TypeResolver {
           Preconditions.checkNotNull(classInfo.typeNameBytes);
           metaStringResolver.writeMetaStringBytes(buffer, classInfo.typeNameBytes);
         } else {
-          writeSharedClassMeta(buffer, classInfo);
-        }
-        break;
-      case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled && classInfo.cls != NonexistentMetaShared.class) {
           writeSharedClassMeta(buffer, classInfo);
         }
         break;
@@ -439,11 +442,23 @@ public abstract class TypeResolver {
   public final ClassInfo readClassInfo(MemoryBuffer buffer) {
     int typeId = buffer.readUint8();
     int userTypeId = -1;
-    if (needsUserTypeId(typeId)) {
-      userTypeId = buffer.readVarUint32();
-    }
     ClassInfo classInfo;
     switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        userTypeId = buffer.readVarUint32();
+        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        break;
+      case Types.COMPATIBLE_STRUCT:
+        if (metaContextShareEnabled) {
+          classInfo = readSharedClassMeta(buffer);
+        } else {
+          userTypeId = buffer.readVarUint32();
+          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        }
+        break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
@@ -454,19 +469,6 @@ public abstract class TypeResolver {
         } else {
           classInfo = readSharedClassMeta(buffer);
         }
-        break;
-      case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer);
-        } else {
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
-        break;
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
         break;
       case Types.UNION:
         classInfo = requireInternalTypeInfoByTypeId(typeId);
@@ -497,11 +499,23 @@ public abstract class TypeResolver {
   public final ClassInfo readClassInfo(MemoryBuffer buffer, Class<?> targetClass) {
     int typeId = buffer.readUint8();
     int userTypeId = -1;
-    if (needsUserTypeId(typeId)) {
-      userTypeId = buffer.readVarUint32();
-    }
     ClassInfo classInfo;
     switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        userTypeId = buffer.readVarUint32();
+        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        break;
+      case Types.COMPATIBLE_STRUCT:
+        if (metaContextShareEnabled) {
+          classInfo = readSharedClassMeta(buffer, targetClass);
+        } else {
+          userTypeId = buffer.readVarUint32();
+          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        }
+        break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
@@ -512,19 +526,6 @@ public abstract class TypeResolver {
         } else {
           classInfo = readSharedClassMeta(buffer, targetClass);
         }
-        break;
-      case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer, targetClass);
-        } else {
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
-        break;
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
         break;
       case Types.UNION:
         classInfo = requireInternalTypeInfoByTypeId(typeId);
@@ -561,11 +562,23 @@ public abstract class TypeResolver {
   public final ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfo classInfoCache) {
     int typeId = buffer.readUint8();
     int userTypeId = -1;
-    if (needsUserTypeId(typeId)) {
-      userTypeId = buffer.readVarUint32();
-    }
     ClassInfo classInfo;
     switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        userTypeId = buffer.readVarUint32();
+        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        break;
+      case Types.COMPATIBLE_STRUCT:
+        if (metaContextShareEnabled) {
+          classInfo = readSharedClassMeta(buffer);
+        } else {
+          userTypeId = buffer.readVarUint32();
+          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        }
+        break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
@@ -576,19 +589,6 @@ public abstract class TypeResolver {
         } else {
           classInfo = readSharedClassMeta(buffer);
         }
-        break;
-      case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer);
-        } else {
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
-        break;
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
         break;
       case Types.UNION:
         classInfo = requireInternalTypeInfoByTypeId(typeId);
@@ -623,12 +623,24 @@ public abstract class TypeResolver {
   public final ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
     int typeId = buffer.readUint8();
     int userTypeId = -1;
-    if (needsUserTypeId(typeId)) {
-      userTypeId = buffer.readVarUint32();
-    }
     ClassInfo classInfo;
     boolean updateCache = false;
     switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        userTypeId = buffer.readVarUint32();
+        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        break;
+      case Types.COMPATIBLE_STRUCT:
+        if (metaContextShareEnabled) {
+          classInfo = readSharedClassMeta(buffer);
+        } else {
+          userTypeId = buffer.readVarUint32();
+          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        }
+        break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
@@ -640,19 +652,6 @@ public abstract class TypeResolver {
         } else {
           classInfo = readSharedClassMeta(buffer);
         }
-        break;
-      case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer);
-        } else {
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
-        break;
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
         break;
       case Types.UNION:
         classInfo = requireInternalTypeInfoByTypeId(typeId);
