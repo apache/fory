@@ -267,7 +267,7 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-pub static BASIC_TYPES: [TypeId; 33] = [
+pub static BASIC_TYPES: [TypeId; 34] = [
     TypeId::BOOL,
     TypeId::INT8,
     TypeId::INT16,
@@ -277,6 +277,7 @@ pub static BASIC_TYPES: [TypeId; 33] = [
     TypeId::UINT16,
     TypeId::UINT32,
     TypeId::UINT64,
+    TypeId::FLOAT16,
     TypeId::FLOAT32,
     TypeId::FLOAT64,
     TypeId::STRING,
@@ -330,7 +331,7 @@ pub static PRIMITIVE_TYPES: [u32; 22] = [
     TypeId::ISIZE as u32,
 ];
 
-pub static PRIMITIVE_ARRAY_TYPES: [u32; 15] = [
+pub static PRIMITIVE_ARRAY_TYPES: [u32; 16] = [
     TypeId::BOOL_ARRAY as u32,
     TypeId::BINARY as u32,
     TypeId::INT8_ARRAY as u32,
@@ -341,6 +342,7 @@ pub static PRIMITIVE_ARRAY_TYPES: [u32; 15] = [
     TypeId::UINT16_ARRAY as u32,
     TypeId::UINT32_ARRAY as u32,
     TypeId::UINT64_ARRAY as u32,
+    TypeId::FLOAT16_ARRAY as u32,
     TypeId::FLOAT32_ARRAY as u32,
     TypeId::FLOAT64_ARRAY as u32,
     // Rust-specific
@@ -348,8 +350,7 @@ pub static PRIMITIVE_ARRAY_TYPES: [u32; 15] = [
     TypeId::INT128_ARRAY as u32,
     TypeId::USIZE_ARRAY as u32,
 ];
-
-pub static BASIC_TYPE_NAMES: [&str; 18] = [
+pub static BASIC_TYPE_NAMES: [&str; 19] = [
     "bool",
     "i8",
     "i16",
@@ -365,6 +366,7 @@ pub static BASIC_TYPE_NAMES: [&str; 18] = [
     "u16",
     "u32",
     "u64",
+    "float16",
     "u128",
     "usize",
     "isize",
@@ -384,6 +386,7 @@ pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
     ("u16", TypeId::UINT16_ARRAY as u32, "Vec<u16>"),
     ("u32", TypeId::UINT32_ARRAY as u32, "Vec<u32>"),
     ("u64", TypeId::UINT64_ARRAY as u32, "Vec<u64>"),
+    ("float16", TypeId::FLOAT16_ARRAY as u32, "Vec<float16>"),
     ("f32", TypeId::FLOAT32_ARRAY as u32, "Vec<f32>"),
     ("f64", TypeId::FLOAT64_ARRAY as u32, "Vec<f64>"),
     // Rust-specific
@@ -407,6 +410,7 @@ pub const fn is_primitive_type_id(type_id: TypeId) -> bool {
             | TypeId::UINT16
             | TypeId::UINT32
             | TypeId::UINT64
+            | TypeId::FLOAT16
             | TypeId::FLOAT32
             | TypeId::FLOAT64
             // Rust-specific
