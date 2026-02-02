@@ -116,18 +116,12 @@ WriteContext::write_enum_typeinfo(const std::type_index &type) {
   FORY_TRY(type_info, type_resolver_->get_type_info(type));
   uint32_t type_id = type_info->type_id;
   buffer_.write_uint8(static_cast<uint8_t>(type_id));
-  switch (static_cast<TypeId>(type_id)) {
-  case TypeId::ENUM:
+  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
     if (type_info->user_type_id == kInvalidUserTypeId) {
       return Unexpected(Error::type_error("User type id is required for enum"));
     }
     buffer_.write_var_uint32(type_info->user_type_id);
-    break;
-  default:
-    break;
-  }
-
-  if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(type));
@@ -156,18 +150,12 @@ WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
   uint32_t type_id = type_info->type_id;
 
   buffer_.write_uint8(static_cast<uint8_t>(type_id));
-  switch (static_cast<TypeId>(type_id)) {
-  case TypeId::ENUM:
+  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
     if (type_info->user_type_id == kInvalidUserTypeId) {
       return Unexpected(Error::type_error("User type id is required for enum"));
     }
     buffer_.write_var_uint32(type_info->user_type_id);
-    break;
-  default:
-    break;
-  }
-
-  if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       write_type_meta(type_info);
@@ -368,13 +356,31 @@ ReadContext::read_enum_type_info(const std::type_index &type,
 
 Result<const TypeInfo *, Error>
 ReadContext::read_enum_type_info(uint32_t base_type_id) {
-  FORY_TRY(type_info, read_any_typeinfo());
-  // Accept both ENUM and NAMED_ENUM as compatible types
-  if (type_info->type_id != static_cast<uint32_t>(TypeId::ENUM) &&
-      type_info->type_id != static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
-    return Unexpected(Error::type_mismatch(type_info->type_id, base_type_id));
+  Error error;
+  uint32_t type_id = buffer_->read_uint8(error);
+  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
+    uint32_t user_type_id = buffer_->read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    FORY_TRY(type_info,
+             type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
+    return type_info;
+  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+    if (config_->compatible) {
+      // Read type meta inline using streaming protocol
+      return read_type_meta();
+    }
+    FORY_TRY(namespace_str,
+             meta_string_table_.read_string(*buffer_, k_namespace_decoder));
+    FORY_TRY(type_name,
+             meta_string_table_.read_string(*buffer_, k_type_name_decoder));
+    FORY_TRY(type_info,
+             type_resolver_->get_type_info_by_name(namespace_str, type_name));
+    return type_info;
   }
-  return type_info;
+
+  return Unexpected(Error::type_mismatch(type_id, base_type_id));
 }
 
 // Maximum number of parsed type defs to cache (avoid OOM from malicious input)
