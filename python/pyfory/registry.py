@@ -162,10 +162,7 @@ else:
             self.type_def = type_def
 
         def __repr__(self):
-            return (
-                f"TypeInfo(cls={self.cls}, type_id={self.type_id}, "
-                f"user_type_id={self.user_type_id}, serializer={self.serializer})"
-            )
+            return f"TypeInfo(cls={self.cls}, type_id={self.type_id}, user_type_id={self.user_type_id}, serializer={self.serializer})"
 
         def decode_namespace(self) -> str:
             if self.namespace_bytes is None:
@@ -430,12 +427,8 @@ class TypeResolver:
             if type_id is not None and type_id >= 0 and type_id > 0xFF:
                 raise ValueError(f"Internal type id overflow: {type_id}")
         else:
-            if user_type_id not in {None, NO_USER_TYPE_ID} and (
-                user_type_id < 0 or user_type_id > 0xFFFFFFFE
-            ):
-                raise ValueError(
-                    f"user_type_id must be in range [0, 0xfffffffe], got {user_type_id}"
-                )
+            if user_type_id not in {None, NO_USER_TYPE_ID} and (user_type_id < 0 or user_type_id > 0xFFFFFFFE):
+                raise ValueError(f"user_type_id must be in range [0, 0xfffffffe], got {user_type_id}")
         if serializer is not None and not isinstance(serializer, Serializer):
             try:
                 serializer = serializer(self.fory, cls)
@@ -555,9 +548,7 @@ class TypeResolver:
         # In metashare mode, for struct types, we want to keep serializer=None
         # so that _set_typeinfo will be called to create the TypeDef-based serializer
         # This applies to both types registered by name and by ID
-        should_create_serializer = (
-            not internal and serializer is None and not (self.meta_share and type_id is not None and is_struct_type(type_id))
-        )
+        should_create_serializer = not internal and serializer is None and not (self.meta_share and type_id is not None and is_struct_type(type_id))
 
         if should_create_serializer:
             serializer = self._create_serializer(cls)
@@ -584,9 +575,7 @@ class TypeResolver:
                 key = (type_id, user_type_id)
                 existing = self._user_type_id_to_typeinfo.get(key)
                 if existing is not None and existing.cls is not cls:
-                    raise TypeError(
-                        f"type id {type_id}/{user_type_id} already registered for {existing.cls}"
-                    )
+                    raise TypeError(f"type id {type_id}/{user_type_id} already registered for {existing.cls}")
             if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
                 key = (type_id, user_type_id)
                 if key not in self._user_type_id_to_typeinfo or not internal:

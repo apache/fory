@@ -436,8 +436,8 @@ public abstract class TypeResolver {
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-          userTypeId = buffer.readVarUint32();
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        userTypeId = buffer.readVarUint32();
+        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:

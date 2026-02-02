@@ -28,14 +28,14 @@
 #include <string>
 #include <vector>
 
+#include "fory/serialization/any_serializer.h"
+#include "fory/serialization/fory.h"
 #include "generated/addressbook.h"
 #include "generated/any_example.h"
 #include "generated/auto_id.h"
 #include "generated/collection.h"
 #include "generated/complex_fbs.h"
 #include "generated/complex_pb.h"
-#include "fory/serialization/any_serializer.h"
-#include "fory/serialization/fory.h"
 #include "generated/graph.h"
 #include "generated/monster.h"
 #include "generated/optional_types.h"

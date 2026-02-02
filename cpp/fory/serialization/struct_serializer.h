@@ -3005,13 +3005,10 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
           // FAST PATH: For simple numeric type IDs (not named types), we can
           // just read the varint and compare directly without hash lookup.
           // Named types require metadata parsing.
-          if (expected_type_id !=
-                  static_cast<uint8_t>(TypeId::NAMED_ENUM) &&
+          if (expected_type_id != static_cast<uint8_t>(TypeId::NAMED_ENUM) &&
               expected_type_id != static_cast<uint8_t>(TypeId::NAMED_EXT) &&
-              expected_type_id !=
-                  static_cast<uint8_t>(TypeId::NAMED_STRUCT) &&
-              expected_type_id !=
-                  static_cast<uint8_t>(TypeId::NAMED_UNION) &&
+              expected_type_id != static_cast<uint8_t>(TypeId::NAMED_STRUCT) &&
+              expected_type_id != static_cast<uint8_t>(TypeId::NAMED_UNION) &&
               expected_type_id !=
                   static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT) &&
               expected_type_id !=

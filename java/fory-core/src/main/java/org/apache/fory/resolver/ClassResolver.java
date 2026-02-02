@@ -451,8 +451,8 @@ public class ClassResolver extends TypeResolver {
   /**
    * Registers a class with a user-specified ID.
    *
-   * <p>The ID is in the user ID space, starting from 0. The class will store the internal type
-   * tag (STRUCT/ENUM/EXT/UNION) in {@code typeId} and the provided value in {@code userTypeId}.
+   * <p>The ID is in the user ID space, starting from 0. The class will store the internal type tag
+   * (STRUCT/ENUM/EXT/UNION) in {@code typeId} and the provided value in {@code userTypeId}.
    *
    * @param cls the class to register
    * @param id the user ID to assign (0-based, range [0, 0xfffffffe], 0xffffffff reserved)

@@ -1639,8 +1639,8 @@ struct Serializer<std::forward_list<T, Alloc>> {
             ctx.set_error(std::move(type_info_res).error());
             return;
           }
-          auto write_res =
-              ctx.write_any_typeinfo(type_info_res.value()->type_id, first_type);
+          auto write_res = ctx.write_any_typeinfo(
+              type_info_res.value()->type_id, first_type);
           if (FORY_PREDICT_FALSE(!write_res.ok())) {
             ctx.set_error(std::move(write_res).error());
             return;

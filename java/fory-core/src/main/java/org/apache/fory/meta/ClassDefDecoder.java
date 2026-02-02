@@ -103,7 +103,8 @@ class ClassDefDecoder {
         }
         Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);
         if (cls == null) {
-          classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);
+          classSpec =
+              new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);
           className = classSpec.entireClassName;
         } else {
           className = cls.getName();
@@ -118,7 +119,8 @@ class ClassDefDecoder {
           Class<?> cls = resolver.getRegisteredClass(className);
           className = cls.getName();
           classSpec =
-              new ClassSpec(cls, resolver.getTypeIdForClassDef(cls), resolver.getUserTypeIdForClassDef(cls));
+              new ClassSpec(
+                  cls, resolver.getTypeIdForClassDef(cls), resolver.getUserTypeIdForClassDef(cls));
         } else {
           Class<?> cls =
               resolver.loadClassForMeta(

@@ -51,9 +51,9 @@ const (
 	useStringId             = 1
 	SMALL_STRING_THRESHOLD  = 16
 	// 0xffffffff is reserved for "unset".
-	maxUserTypeID           = 0xfffffffe
-	invalidUserTypeID       = 0xffffffff
-	internalTypeIDLimit     = 0xFF
+	maxUserTypeID       = 0xfffffffe
+	invalidUserTypeID   = 0xffffffff
+	internalTypeIDLimit = 0xFF
 )
 
 var (
@@ -136,13 +136,13 @@ type TypeInfo struct {
 	IsDynamic     bool
 	TypeID        uint32
 	// User type ID is stored as unsigned uint32; 0xffffffff means unset.
-	UserTypeID    uint32
-	DispatchId    DispatchId
-	Serializer    Serializer
-	NeedWriteDef  bool
-	NeedWriteRef  bool // Whether this type needs reference tracking
-	hashValue     uint64
-	TypeDef       *TypeDef
+	UserTypeID   uint32
+	DispatchId   DispatchId
+	Serializer   Serializer
+	NeedWriteDef bool
+	NeedWriteRef bool // Whether this type needs reference tracking
+	hashValue    uint64
+	TypeDef      *TypeDef
 }
 type (
 	namedTypeKey [2]string

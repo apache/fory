@@ -44,7 +44,7 @@ typeDef are layout as following:
   - next variable bytes: field definitions (see below)
 */
 type TypeDef struct {
-	typeId         uint32
+	typeId uint32
 	// User type ID is stored as unsigned uint32; 0xffffffff means unset.
 	userTypeId     uint32
 	nsName         *MetaStringBytes
@@ -96,7 +96,7 @@ func (td *TypeDef) String() string {
 	for i, fd := range td.fieldDefs {
 		fieldStrs[i] = fd.String()
 	}
-return fmt.Sprintf("TypeDef{typeId=%d, userTypeId=%d, ns=%s, type=%s, registerByName=%v, compressed=%v, fields=[%s]}",
+	return fmt.Sprintf("TypeDef{typeId=%d, userTypeId=%d, ns=%s, type=%s, registerByName=%v, compressed=%v, fields=[%s]}",
 		td.typeId, td.userTypeId, nsStr, typeStr, td.registerByName, td.compressed, strings.Join(fieldStrs, ", "))
 }
 
@@ -641,11 +641,11 @@ type FieldType interface {
 
 // BaseFieldType provides common functionality for field types
 type BaseFieldType struct {
-	typeId TypeId
+	typeId     TypeId
 	userTypeId uint32
 }
 
-func (b *BaseFieldType) TypeId() TypeId { return b.typeId }
+func (b *BaseFieldType) TypeId() TypeId     { return b.typeId }
 func (b *BaseFieldType) UserTypeId() uint32 { return b.userTypeId }
 func (b *BaseFieldType) String() string {
 	return fmt.Sprintf("FieldType{typeId=%d}", b.typeId)

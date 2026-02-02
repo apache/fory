@@ -300,8 +300,8 @@ TEST(SerializationTest, EnumOrdinalMappingRejectsInvalidOrdinal) {
 
   std::vector<uint8_t> bytes = bytes_result.value();
   size_t offset = 2;
-  // With registration, type_id + user_type_id take 2 bytes, ordinal is at offset + 3
-  // Replace the valid ordinal with an invalid one (99 as varuint32)
+  // With registration, type_id + user_type_id take 2 bytes, ordinal is at
+  // offset + 3 Replace the valid ordinal with an invalid one (99 as varuint32)
   bytes[offset + 3] = 99;
 
   auto decode = fory.deserialize<LegacyStatus>(bytes.data(), bytes.size());

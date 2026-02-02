@@ -181,9 +181,7 @@ public class XtypeResolver extends TypeResolver {
     checkRegisterAllowed();
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
-        !containsUserTypeId(checkedUserTypeId),
-        "Type id %s has been registered",
-        userTypeId);
+        !containsUserTypeId(checkedUserTypeId), "Type id %s has been registered", userTypeId);
     ClassInfo classInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildClassInfo(type);
@@ -329,9 +327,7 @@ public class XtypeResolver extends TypeResolver {
     Preconditions.checkNotNull(serializer);
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
-        !containsUserTypeId(checkedUserTypeId),
-        "Type id %s has been registered",
-        userTypeId);
+        !containsUserTypeId(checkedUserTypeId), "Type id %s has been registered", userTypeId);
     ClassInfo classInfo = classInfoMap.get(type);
     if (classInfo != null && classInfo.typeId != 0) {
       throw new IllegalArgumentException(

@@ -64,9 +64,8 @@ Result<void, Error> FieldType::write_to(Buffer &buffer, bool write_flag,
   case TypeId::EXT:
   case TypeId::TYPED_UNION:
     if (user_type_id == kInvalidUserTypeId) {
-      return Unexpected(Error::invalid(
-          "User type id is required for type_id " +
-          std::to_string(type_id)));
+      return Unexpected(Error::invalid("User type id is required for type_id " +
+                                       std::to_string(type_id)));
     }
     buffer.write_var_uint32(user_type_id);
     break;

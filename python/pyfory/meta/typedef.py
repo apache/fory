@@ -642,9 +642,7 @@ def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_null
     """Build field type from type hint."""
     type_ids = infer_field(field_name, type_hint, visitor)
     try:
-        return build_field_type_from_type_ids(
-            type_resolver, field_name, type_ids, visitor, is_nullable, type_hint=type_hint
-        )
+        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor, is_nullable, type_hint=type_hint)
     except Exception as e:
         raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
@@ -675,17 +673,11 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
-        elem_type = build_field_type_from_type_ids(
-            type_resolver, field_name, type_ids[1], visitor, is_nullable=False
-        )
+        elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
         return CollectionFieldType(type_id, morphic, is_nullable, tracking_ref, elem_type)
     elif type_id == TypeId.MAP:
-        key_type = build_field_type_from_type_ids(
-            type_resolver, field_name, type_ids[1], visitor, is_nullable=False
-        )
-        value_type = build_field_type_from_type_ids(
-            type_resolver, field_name, type_ids[2], visitor, is_nullable=False
-        )
+        key_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
+        value_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[2], visitor, is_nullable=False)
         return MapFieldType(type_id, morphic, is_nullable, tracking_ref, key_type, value_type)
     elif type_id in [
         TypeId.UNKNOWN,

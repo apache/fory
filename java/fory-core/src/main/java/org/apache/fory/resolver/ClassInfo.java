@@ -149,9 +149,7 @@ public class ClassInfo {
     this.classDef = classDef;
   }
 
-  /**
-   * Returns the fory type ID for this class.
-   */
+  /** Returns the fory type ID for this class. */
   public int getTypeId() {
     return typeId;
   }

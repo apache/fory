@@ -1529,7 +1529,9 @@ class JavaGenerator(BaseGenerator):
             m for m in self.schema.messages if not self.is_imported_type(m)
         ]
         lines.append("    public static void register(Fory fory) {")
-        lines.append("        org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();")
+        lines.append(
+            "        org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();"
+        )
 
         # Register enums (top-level)
         for enum in local_enums:

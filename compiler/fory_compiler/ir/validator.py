@@ -109,7 +109,7 @@ class SchemaValidator:
                     (
                         "Auto-generated type id collision for "
                         f"'{source_name}'. Specify an explicit [id=...] or "
-                        "use [alias=\"...\"] to change the hash source."
+                        'use [alias="..."] to change the hash source.'
                     ),
                     type_def.location,
                 )
