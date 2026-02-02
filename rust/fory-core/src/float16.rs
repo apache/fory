@@ -41,6 +41,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 /// - Subnormals: exponent = 0, mantissa ≠ 0
 #[repr(transparent)]
 #[derive(Copy, Clone, Default)]
+#[allow(non_camel_case_types)]
 pub struct float16(u16);
 
 // Bit layout constants
@@ -48,6 +49,7 @@ const SIGN_MASK: u16 = 0x8000;
 const EXP_MASK: u16 = 0x7C00;
 const MANTISSA_MASK: u16 = 0x03FF;
 const EXP_SHIFT: u32 = 10;
+#[allow(dead_code)]
 const EXP_BIAS: i32 = 15;
 const MAX_EXP: i32 = 31;
 
