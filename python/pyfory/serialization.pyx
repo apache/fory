@@ -469,7 +469,7 @@ cdef class TypeInfo:
     when serializing the actual data.
     """
     cdef public object cls
-    cdef public int32_t type_id
+    cdef public uint8_t type_id
     cdef public uint32_t user_type_id
     cdef public Serializer serializer
     cdef public MetaStringBytes namespace_bytes

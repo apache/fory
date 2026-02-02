@@ -55,7 +55,7 @@ Result<void, Error> FieldType::write_to(Buffer &buffer, bool write_flag,
       header |= 2;
     }
   }
-  buffer.write_var_uint32(header);
+  buffer.write_uint8(static_cast<uint8_t>(header));
 
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::ENUM:
@@ -98,7 +98,7 @@ Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
                                               bool nullable_val,
                                               bool ref_tracking_val) {
   Error error;
-  uint32_t header = buffer.read_var_uint32(error);
+  uint32_t header = buffer.read_uint8(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }

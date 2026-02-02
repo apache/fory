@@ -250,7 +250,7 @@ class FieldType:
                 xtype_id |= 0b10
             if self.is_tracking_ref:
                 xtype_id |= 0b1
-        buffer.write_var_uint32(xtype_id)
+        buffer.write_uint8(xtype_id)
         if needs_user_type_id(self.type_id):
             if self.user_type_id in {None, NO_USER_TYPE_ID}:
                 raise ValueError(f"user_type_id required for type_id {self.type_id}")
@@ -264,7 +264,7 @@ class FieldType:
 
     @classmethod
     def xread(cls, buffer: Buffer, resolver):
-        xtype_id = buffer.read_var_uint32()
+        xtype_id = buffer.read_uint8()
         is_tracking_ref = (xtype_id & 0b1) != 0
         is_nullable = (xtype_id & 0b10) != 0
         xtype_id = xtype_id >> 2

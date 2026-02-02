@@ -325,32 +325,32 @@ public class FieldTypes {
       byte header = (byte) ((nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0));
       if (this instanceof RegisteredFieldType) {
         int typeId = ((RegisteredFieldType) this).getTypeId();
-        buffer.writeVarUint32Small7(writeHeader ? ((5 + typeId) << 2) | header : 5 + typeId);
+        buffer.writeUint8(writeHeader ? ((5 + typeId) << 2) | header : 5 + typeId);
         if (needsUserTypeId(typeId)) {
           Preconditions.checkArgument(
               userTypeId != -1, "User type id is required for typeId %s", typeId);
           buffer.writeVarUint32(userTypeId);
         }
       } else if (this instanceof EnumFieldType) {
-        buffer.writeVarUint32Small7(writeHeader ? ((4) << 2) | header : 4);
+        buffer.writeUint8(writeHeader ? ((4) << 2) | header : 4);
       } else if (this instanceof ArrayFieldType) {
         ArrayFieldType arrayFieldType = (ArrayFieldType) this;
-        buffer.writeVarUint32Small7(writeHeader ? ((3) << 2) | header : 3);
+        buffer.writeUint8(writeHeader ? ((3) << 2) | header : 3);
         buffer.writeVarUint32Small7(arrayFieldType.getDimensions());
         (arrayFieldType).getComponentType().write(buffer);
       } else if (this instanceof CollectionFieldType) {
-        buffer.writeVarUint32Small7(writeHeader ? ((2) << 2) | header : 2);
+        buffer.writeUint8(writeHeader ? ((2) << 2) | header : 2);
         // TODO remove it when new collection deserialization jit finished.
         ((CollectionFieldType) this).getElementType().write(buffer);
       } else if (this instanceof MapFieldType) {
-        buffer.writeVarUint32Small7(writeHeader ? ((1) << 2) | header : 1);
+        buffer.writeUint8(writeHeader ? ((1) << 2) | header : 1);
         // TODO remove it when new map deserialization jit finished.
         MapFieldType mapFieldType = (MapFieldType) this;
         mapFieldType.getKeyType().write(buffer);
         mapFieldType.getValueType().write(buffer);
       } else {
         Preconditions.checkArgument(this instanceof ObjectFieldType);
-        buffer.writeVarUint32Small7(writeHeader ? header : 0);
+        buffer.writeUint8(writeHeader ? header : 0);
       }
     }
 
@@ -363,7 +363,7 @@ public class FieldTypes {
       // - bit 0: trackingRef
       // - bit 1: nullable
       // - bits 2+: typeId
-      int header = buffer.readVarUint32Small7();
+      int header = buffer.readUint8();
       boolean trackingRef = (header & 0b1) != 0;
       boolean nullable = (header & 0b10) != 0;
       int typeId = header >>> 2;
@@ -410,7 +410,7 @@ public class FieldTypes {
           typeId |= 0b1;
         }
       }
-      buffer.writeVarUint32Small7(typeId);
+      buffer.writeUint8(typeId);
       if (needsUserTypeId(this.typeId)) {
         Preconditions.checkArgument(
             userTypeId != -1, "User type id is required for typeId %s", this.typeId);
@@ -434,7 +434,7 @@ public class FieldTypes {
     }
 
     public static FieldType xread(MemoryBuffer buffer, XtypeResolver resolver) {
-      int typeId = buffer.readVarUint32Small7();
+      int typeId = buffer.readUint8();
       boolean trackingRef = (typeId & 0b1) != 0;
       boolean nullable = (typeId & 0b10) != 0;
       typeId = typeId >>> 2;

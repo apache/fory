@@ -261,7 +261,7 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
             tag_id = size_or_tag
 
         # Read field type info (no field name to read for TAG_ID)
-        xtype_id = buffer.read_var_uint32()
+        xtype_id = buffer.read_uint8()
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # For TAG_ID encoding, use tag_id as field name placeholder
@@ -276,7 +276,7 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
         encoding = FIELD_NAME_ENCODINGS[encoding_type]
 
         # Read field type info BEFORE field name (matching Java TypeDefDecoder order)
-        xtype_id = buffer.read_var_uint32()
+        xtype_id = buffer.read_uint8()
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # Read field name meta string

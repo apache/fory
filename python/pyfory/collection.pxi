@@ -345,7 +345,7 @@ cdef class ListSerializer(CollectionSerializer):
         ref_resolver.reference(list_)
         cdef c_bool is_py = self.is_py
         cdef TypeInfo typeinfo
-        cdef int32_t type_id = -1
+        cdef uint8_t type_id = 0
         cdef c_bool tracking_ref
         cdef c_bool has_null
         cdef int8_t head_flag
@@ -356,16 +356,16 @@ cdef class ListSerializer(CollectionSerializer):
                 typeinfo = self.elem_typeinfo
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
-                if type_id == <int32_t>TypeId.STRING:
+                if type_id == <uint8_t>TypeId.STRING:
                     self._read_string(buffer, len_, list_)
                     return list_
-                elif type_id == <int32_t>TypeId.VARINT64:
+                elif type_id == <uint8_t>TypeId.VARINT64:
                     self._read_int(buffer, len_, list_)
                     return list_
-                elif type_id == <int32_t>TypeId.BOOL:
+                elif type_id == <uint8_t>TypeId.BOOL:
                     self._read_bool(buffer, len_, list_)
                     return list_
-                elif type_id == <int32_t>TypeId.FLOAT64:
+                elif type_id == <uint8_t>TypeId.FLOAT64:
                     self._read_float(buffer, len_, list_)
                     return list_
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
@@ -434,17 +434,17 @@ cdef inline get_next_element(
         return ref_resolver.get_read_object()
     # indicates that the object is first read.
     typeinfo = type_resolver.read_typeinfo(buffer)
-    cdef int32_t type_id = typeinfo.type_id
+    cdef uint8_t type_id = typeinfo.type_id
     # Note that all read operations in fast paths of list/tuple/set/dict/sub_dict
     # must match corresponding writing operations. Otherwise, ref tracking will
     # error.
-    if type_id == <int32_t>TypeId.STRING:
+    if type_id == <uint8_t>TypeId.STRING:
         return buffer.read_string()
-    elif type_id == <int32_t>TypeId.VARINT32:
+    elif type_id == <uint8_t>TypeId.VARINT32:
         return buffer.read_varint64()
-    elif type_id == <int32_t>TypeId.BOOL:
+    elif type_id == <uint8_t>TypeId.BOOL:
         return buffer.read_bool()
-    elif type_id == <int32_t>TypeId.FLOAT64:
+    elif type_id == <uint8_t>TypeId.FLOAT64:
         return buffer.read_double()
     else:
         if is_py:
@@ -467,7 +467,7 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef int8_t collect_flag = buffer.read_int8()
         cdef c_bool is_py = self.is_py
         cdef TypeInfo typeinfo
-        cdef int32_t type_id = -1
+        cdef uint8_t type_id = 0
         cdef c_bool tracking_ref
         cdef c_bool has_null
         cdef int8_t head_flag
@@ -478,16 +478,16 @@ cdef class TupleSerializer(CollectionSerializer):
                 typeinfo = self.elem_typeinfo
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
-                if type_id == <int32_t>TypeId.STRING:
+                if type_id == <uint8_t>TypeId.STRING:
                     self._read_string(buffer, len_, tuple_)
                     return tuple_
-                if type_id == <int32_t>TypeId.VARINT64:
+                if type_id == <uint8_t>TypeId.VARINT64:
                     self._read_int(buffer, len_, tuple_)
                     return tuple_
-                if type_id == <int32_t>TypeId.BOOL:
+                if type_id == <uint8_t>TypeId.BOOL:
                     self._read_bool(buffer, len_, tuple_)
                     return tuple_
-                if type_id == <int32_t>TypeId.FLOAT64:
+                if type_id == <uint8_t>TypeId.FLOAT64:
                     self._read_float(buffer, len_, tuple_)
                     return tuple_
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
@@ -563,7 +563,7 @@ cdef class SetSerializer(CollectionSerializer):
         cdef int8_t collect_flag = buffer.read_int8()
         cdef int32_t ref_id
         cdef TypeInfo typeinfo
-        cdef int32_t type_id = -1
+        cdef uint8_t type_id = 0
         cdef c_bool is_py = self.is_py
         cdef c_bool tracking_ref
         cdef c_bool has_null
@@ -575,16 +575,16 @@ cdef class SetSerializer(CollectionSerializer):
                 typeinfo = self.elem_typeinfo
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
-                if type_id == <int32_t>TypeId.STRING:
+                if type_id == <uint8_t>TypeId.STRING:
                     self._read_string(buffer, len_, instance)
                     return instance
-                if type_id == <int32_t>TypeId.VARINT64:
+                if type_id == <uint8_t>TypeId.VARINT64:
                     self._read_int(buffer, len_, instance)
                     return instance
-                if type_id == <int32_t>TypeId.BOOL:
+                if type_id == <uint8_t>TypeId.BOOL:
                     self._read_bool(buffer, len_, instance)
                     return instance
-                if type_id == <int32_t>TypeId.FLOAT64:
+                if type_id == <uint8_t>TypeId.FLOAT64:
                     self._read_float(buffer, len_, instance)
                     return instance
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
@@ -610,13 +610,13 @@ cdef class SetSerializer(CollectionSerializer):
                     # indicates that the object is first read.
                     typeinfo = type_resolver.read_typeinfo(buffer)
                     type_id = typeinfo.type_id
-                    if type_id == <int32_t>TypeId.STRING:
+                    if type_id == <uint8_t>TypeId.STRING:
                         instance.add(buffer.read_string())
-                    elif type_id == <int32_t>TypeId.VARINT64:
+                    elif type_id == <uint8_t>TypeId.VARINT64:
                         instance.add(buffer.read_varint64())
-                    elif type_id == <int32_t>TypeId.BOOL:
+                    elif type_id == <uint8_t>TypeId.BOOL:
                         instance.add(buffer.read_bool())
-                    elif type_id == <int32_t>TypeId.FLOAT64:
+                    elif type_id == <uint8_t>TypeId.FLOAT64:
                         instance.add(buffer.read_double())
                     else:
                         if is_py:
@@ -630,13 +630,13 @@ cdef class SetSerializer(CollectionSerializer):
                 for i in range(len_):
                     typeinfo = type_resolver.read_typeinfo(buffer)
                     type_id = typeinfo.type_id
-                    if type_id == <int32_t>TypeId.STRING:
+                    if type_id == <uint8_t>TypeId.STRING:
                         instance.add(buffer.read_string())
-                    elif type_id == <int32_t>TypeId.VARINT64:
+                    elif type_id == <uint8_t>TypeId.VARINT64:
                         instance.add(buffer.read_varint64())
-                    elif type_id == <int32_t>TypeId.BOOL:
+                    elif type_id == <uint8_t>TypeId.BOOL:
                         instance.add(buffer.read_bool())
-                    elif type_id == <int32_t>TypeId.FLOAT64:
+                    elif type_id == <uint8_t>TypeId.FLOAT64:
                         instance.add(buffer.read_double())
                     else:
                         if is_py:
@@ -652,13 +652,13 @@ cdef class SetSerializer(CollectionSerializer):
                     else:
                         typeinfo = type_resolver.read_typeinfo(buffer)
                         type_id = typeinfo.type_id
-                        if type_id == <int32_t>TypeId.STRING:
+                        if type_id == <uint8_t>TypeId.STRING:
                             instance.add(buffer.read_string())
-                        elif type_id == <int32_t>TypeId.VARINT64:
+                        elif type_id == <uint8_t>TypeId.VARINT64:
                             instance.add(buffer.read_varint64())
-                        elif type_id == <int32_t>TypeId.BOOL:
+                        elif type_id == <uint8_t>TypeId.BOOL:
                             instance.add(buffer.read_bool())
-                        elif type_id == <int32_t>TypeId.FLOAT64:
+                        elif type_id == <uint8_t>TypeId.FLOAT64:
                             instance.add(buffer.read_double())
                         else:
                             if is_py:

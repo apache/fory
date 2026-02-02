@@ -165,7 +165,7 @@ class FieldInfo {
         typeId |= 0b1;
       }
     }
-    writer.writeVarUint32Small7(typeId);
+    writer.uint8(typeId);
     if (TypeId.needsUserTypeId(typeInfo.typeId)) {
       if (userTypeId === undefined || userTypeId === -1) {
         throw new Error(`userTypeId required for typeId ${typeInfo.typeId}`);
@@ -323,7 +323,7 @@ export class TypeMeta {
 
   private static readTypeId(reader: BinaryReader, readFlag = false): InnerFieldInfo {
     const options: InnerFieldInfoOptions = {};
-    let typeId = reader.readVarUint32Small7();
+    let typeId = reader.uint8();
     let nullable = false;
     let trackingRef = false;
     if (readFlag) {
