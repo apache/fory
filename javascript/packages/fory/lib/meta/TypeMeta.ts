@@ -51,7 +51,7 @@ export const isPrimitiveTypeId = (typeId: number): boolean => {
 };
 
 export const refTrackingAbleTypeId = (typeId: number): boolean => {
-  return PRIMITIVE_TYPE_IDS.includes(typeId as any) || [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP].includes(typeId as any);
+  return PRIMITIVE_TYPE_IDS.includes(typeId as any) || [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP, TypeId.STRING].includes(typeId as any);
 };
 
 export const isInternalTypeId = (typeId: number): boolean => {
