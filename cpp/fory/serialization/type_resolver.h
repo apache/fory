@@ -141,8 +141,8 @@ public:
 
   bool operator==(const FieldType &other) const {
     return type_id == other.type_id && nullable == other.nullable &&
-           user_type_id == other.user_type_id &&
-           track_ref == other.track_ref && generics == other.generics;
+           user_type_id == other.user_type_id && track_ref == other.track_ref &&
+           generics == other.generics;
   }
 
   bool operator!=(const FieldType &other) const { return !(*this == other); }

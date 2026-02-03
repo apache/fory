@@ -268,9 +268,7 @@ public final class ForyBuilder {
    * class won't evolve.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
-    if (xlang
-        && compatibleMode == CompatibleMode.SCHEMA_CONSISTENT
-        && !checkClassVersion) {
+    if (xlang && compatibleMode == CompatibleMode.SCHEMA_CONSISTENT && !checkClassVersion) {
       throw new IllegalArgumentException(
           "XLANG Schema consistent mode must enable class version check");
     }

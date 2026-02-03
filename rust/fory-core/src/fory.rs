@@ -861,9 +861,6 @@ impl Fory {
             bitmap |= IS_NULL_FLAG;
         }
         writer.write_u8(bitmap);
-        if is_none {
-            return;
-        }
     }
 
     /// Deserializes data from a byte slice into a value of type `T`.
