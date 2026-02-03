@@ -89,6 +89,29 @@ def main() -> int:
     compiler_path = str(REPO_ROOT / "compiler")
     env["PYTHONPATH"] = compiler_path + os.pathsep + env.get("PYTHONPATH", "")
 
+    generated_roots = set()
+    for lang in langs:
+        out_dir = LANG_OUTPUTS[lang]
+        if lang == "go":
+            for schema in SCHEMAS:
+                generated_roots.add(GO_OUTPUT_OVERRIDES.get(schema.name, out_dir))
+        else:
+            generated_roots.add(out_dir)
+
+    for root in sorted(generated_roots):
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "fory_compiler",
+                "--scan-generated",
+                "--delete",
+                "--root",
+                str(root),
+            ],
+            env=env,
+        )
+
     for schema in SCHEMAS:
         cmd = [
             sys.executable,

@@ -505,6 +505,9 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 	// Check if already registered
 	key := userTypeKey{typeID: typeID, userTypeID: userTypeID}
 	if info, ok := r.userTypeIdToTypeInfo[key]; ok {
+		if info.Type == type_ {
+			return nil
+		}
 		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
 	}
 
@@ -519,10 +522,6 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 		tag := type_.Name()
 		serializer := newStructSerializer(type_, tag)
 		r.typeToSerializers[type_] = serializer
-		if err := serializer.initialize(r); err != nil {
-			delete(r.typeToSerializers, type_)
-			return err
-		}
 		r.typeToTypeInfo[type_] = "@" + tag
 		r.typeInfoToType["@"+tag] = type_
 
