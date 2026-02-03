@@ -174,7 +174,6 @@ type TypeResolver struct {
 	metaStrToStr     map[string]string
 	metaStrToClass   map[string]reflect.Type
 	hashToMetaString map[uint64]string
-	hashToClassInfo  map[uint64]*TypeInfo
 
 	// Type tracking
 	dynamicWrittenMetaStr []string
@@ -228,7 +227,6 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		metaStrToStr:     make(map[string]string),
 		metaStrToClass:   make(map[string]reflect.Type),
 		hashToMetaString: make(map[uint64]string),
-		hashToClassInfo:  make(map[uint64]*TypeInfo),
 
 		dynamicWrittenMetaStr: make([]string, 0),
 		typeIDToTypeInfo:      make(map[uint32]*TypeInfo),
@@ -1408,7 +1406,7 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 	typeID := typeInfo.TypeID
 	buffer.WriteUint8(uint8(typeID))
 
-	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeClassInfo)
+	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeTypeInfo)
 	switch TypeId(typeID) {
 	case ENUM, STRUCT, EXT, TYPED_UNION:
 		buffer.WriteVarUint32(typeInfo.UserTypeID)

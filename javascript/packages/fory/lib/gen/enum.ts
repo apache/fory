@@ -57,7 +57,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
-  readClassInfo(): string {
+  readTypeInfo(): string {
     const internalTypeId = this.getInternalTypeId();
     let readUserTypeIdStmt = "";
     let namesStmt = "";
@@ -91,7 +91,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
-  writeClassInfo(): string {
+  writeTypeInfo(): string {
     const internalTypeId = this.getInternalTypeId();
     let typeMeta = "";
     let writeUserTypeIdStmt = "";

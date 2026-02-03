@@ -122,7 +122,7 @@ export default class {
       read: serializer.read,
       readNoRef: serializer.readNoRef,
       readRef: serializer.readRef,
-      readClassInfo: serializer.readClassInfo,
+      readTypeInfo: serializer.readTypeInfo,
     } as any)!;
     TypeInfo.detach();
     return result;

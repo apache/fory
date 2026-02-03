@@ -100,14 +100,14 @@ class AnySerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
-  writeClassInfo(accessor: string): string {
+  writeTypeInfo(accessor: string): string {
     return `
       ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getForyName()}, ${accessor});
-      ${this.writerSerializer}.writeClassInfo();
+      ${this.writerSerializer}.writeTypeInfo();
     `;
   }
 
-  readClassInfo(): string {
+  readTypeInfo(): string {
     return `
       ${this.detectedSerializer} = ${this.builder.getExternal(AnyHelper.name)}.detectSerializer(${this.builder.getForyName()});
     `;

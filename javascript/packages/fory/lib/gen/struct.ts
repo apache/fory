@@ -204,7 +204,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     return `
-      ${this.readClassInfo()}
+      ${this.readTypeInfo()}
       if (${this.metaChangedSerializer} !== null) {
         ${assignStmt(`${this.metaChangedSerializer}.read(${refState})`)}
       } else {
@@ -213,7 +213,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
-  readClassInfo(): string {
+  readTypeInfo(): string {
     const typeMeta = this.scope.uniqueName("typeMeta");
     const internalTypeId = this.getInternalTypeId();
     let namesStmt = "";
@@ -308,7 +308,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     });
   }
 
-  writeClassInfo(): string {
+  writeTypeInfo(): string {
     const internalTypeId = this.getInternalTypeId();
     let typeMeta = "";
     let writeUserTypeIdStmt = "";

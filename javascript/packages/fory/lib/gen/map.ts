@@ -97,10 +97,10 @@ class MapChunkWriter {
     // chunkSize default 0 | KV header
     this.fory.binaryWriter.uint16(header);
     if (this.keySerializer) {
-      this.keySerializer.writeClassInfo(null);
+      this.keySerializer.writeTypeInfo(null);
     }
     if (this.valueSerializer) {
-      this.valueSerializer.writeClassInfo(null);
+      this.valueSerializer.writeTypeInfo(null);
     }
     return header;
   }

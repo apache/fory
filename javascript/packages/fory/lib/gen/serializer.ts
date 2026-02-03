@@ -36,7 +36,7 @@ export interface SerializerGenerator {
   writeRef(accessor: string): string;
   writeNoRef(accessor: string): string;
   writeRefOrNull(assignStmt: (v: string) => string, accessor: string): string;
-  writeClassInfo(accessor: string): string;
+  writeTypeInfo(accessor: string): string;
   write(accessor: string): string;
   writeEmbed(): any;
 
@@ -44,9 +44,9 @@ export interface SerializerGenerator {
   getFixedSize(): number;
   needToWriteRef(): boolean;
 
-  readRef(assignStmt: (v: string) => string, withoutClassInfo?: boolean): string;
+  readRef(assignStmt: (v: string) => string, withoutTypeInfo?: boolean): string;
   readNoRef(assignStmt: (v: string) => string, refState: string): string;
-  readClassInfo(): string;
+  readTypeInfo(): string;
   read(assignStmt: (v: string) => string, refState: string): string;
   readEmbed(): any;
   getHash(): string;
@@ -115,7 +115,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   writeNoRef(accessor: string) {
     return `
-      ${this.writeClassInfo(accessor)};
+      ${this.writeTypeInfo(accessor)};
       ${this.write(accessor)};
     `;
   }
@@ -148,7 +148,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     `;
   }
 
-  writeClassInfo(accessor: string) {
+  writeTypeInfo(accessor: string) {
     void accessor;
     const typeId = this.getTypeId();
     const userTypeId = this.typeInfo.userTypeId;
@@ -179,7 +179,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   abstract read(assignStmt: (v: string) => string, refState: string): string;
 
-  readClassInfo(): string {
+  readTypeInfo(): string {
     const typeId = this.getTypeId();
     const readUserTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
       ? `${this.builder.reader.readVarUint32Small7()};`
@@ -192,19 +192,19 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     return `
-      ${this.readClassInfo()}
+      ${this.readTypeInfo()}
       ${this.read(assignStmt, refState)};
     `;
   }
 
-  readRef(assignStmt: (v: string) => string, withoutClassInfo = false): string {
+  readRef(assignStmt: (v: string) => string, withoutTypeInfo = false): string {
     const refFlag = this.scope.uniqueName("refFlag");
     return `
         const ${refFlag} = ${this.builder.reader.int8()};
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                ${!withoutClassInfo ? this.readNoRef(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`) : this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                ${!withoutTypeInfo ? this.readNoRef(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`) : this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
                 ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()))}
@@ -260,8 +260,8 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       const writeRefOrNull = (v) => {
         ${this.writeRefOrNull(expr => `return ${expr};`, "v")}
       };
-      const writeClassInfo = (v) => {
-        ${this.writeClassInfo("v")}
+      const writeTypeInfo = (v) => {
+        ${this.writeTypeInfo("v")}
       };
       const read = (fromRef) => {
         ${this.read(assignStmt => `return ${assignStmt}`, "fromRef")}
@@ -272,8 +272,8 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       const readNoRef = (fromRef) => {
         ${this.readNoRef(assignStmt => `return ${assignStmt}`, "fromRef")}
       };
-      const readClassInfo = () => {
-        ${this.readClassInfo()}
+      const readTypeInfo = () => {
+        ${this.readTypeInfo()}
       };
     `;
     return `
@@ -291,12 +291,12 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               writeRef,
               writeNoRef,
               writeRefOrNull,
-              writeClassInfo,
+              writeTypeInfo,
 
               read,
               readRef,
               readNoRef,
-              readClassInfo,
+              readTypeInfo,
             };
         }
         `;

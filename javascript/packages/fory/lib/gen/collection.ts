@@ -95,7 +95,7 @@ class CollectionAnySerializer {
     this.fory.binaryWriter.writeVarUint32Small7(size);
     const { serializer, isSame, includeNone, trackingRef } = this.writeElementsHeader(value);
     if (isSame) {
-      serializer!.writeClassInfo(value);
+      serializer!.writeTypeInfo(value);
       if (trackingRef) {
         for (const item of value) {
           if (!serializer!.writeRefOrNull(item)) {

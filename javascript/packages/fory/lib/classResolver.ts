@@ -53,7 +53,7 @@ const uninitSerialize = {
     void v;
     throw new Error("uninitSerialize");
   },
-  writeClassInfo: (v: any) => {
+  writeTypeInfo: (v: any) => {
     void v;
     throw new Error("uninitSerialize");
   },
@@ -68,7 +68,7 @@ const uninitSerialize = {
     void fromRef;
     throw new Error("uninitSerialize");
   },
-  readClassInfo: () => {
+  readTypeInfo: () => {
     throw new Error("uninitSerialize");
   },
 };

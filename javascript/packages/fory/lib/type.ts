@@ -191,12 +191,12 @@ export type Serializer<T = any> = {
   writeRef: (v: T) => void;
   writeNoRef: (v: T) => void;
   writeRefOrNull: (v: T) => boolean;
-  writeClassInfo: (v: T) => void;
+  writeTypeInfo: (v: T) => void;
 
   read: (fromRef: boolean) => T;
   readRef: () => T;
   readNoRef: (fromRef: boolean) => T;
-  readClassInfo: () => void;
+  readTypeInfo: () => void;
 };
 
 export enum RefFlags {

@@ -42,6 +42,7 @@ java/**/generated
 javascript/**/dist/
 javascript/**/node_modules/
 javascript/**/build
+javascript/junit.xml
 MODULE.bazel.lock
 .DS_Store
 **/.DS_Store
