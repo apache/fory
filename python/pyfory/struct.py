@@ -268,17 +268,11 @@ def _extract_field_infos(
         elif xlang:
             # Xlang mode: write type info only when the declared type isn't registered by id.
             # Registered-by-id types have stable serializers, so no per-field type info is needed.
-            effective_dynamic = is_polymorphic_type(type_id) and not fory.type_resolver.is_registered_by_id(
-                unwrapped_type
-            )
+            effective_dynamic = is_polymorphic_type(type_id) and not fory.type_resolver.is_registered_by_id(unwrapped_type)
         else:
             # Native mode: False for numeric/str/time types, True for other object types
             # Check if the type is a primitive, string, or time type
-            is_non_dynamic_type = (
-                is_primitive_type(unwrapped_type)
-                or unwrapped_type in (str, bytes)
-                or unwrapped_type in _time_types
-            )
+            is_non_dynamic_type = is_primitive_type(unwrapped_type) or unwrapped_type in (str, bytes) or unwrapped_type in _time_types
             effective_dynamic = not is_non_dynamic_type
 
         field_info = FieldInfo(

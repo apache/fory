@@ -647,15 +647,6 @@ public abstract class TypeResolver {
   }
 
   /**
-   * Load class info from namespace and type name bytes, with the type id from the stream.
-   * Subclasses can override this to use the incoming type id (e.g. NAMED_EXT/NAMED_ENUM).
-   */
-  protected TypeInfo loadBytesToTypeInfo(
-      int typeId, MetaStringBytes namespaceBytes, MetaStringBytes simpleClassNameBytes) {
-    return loadBytesToTypeInfo(namespaceBytes, simpleClassNameBytes);
-  }
-
-  /**
    * Reads shared class metadata from buffer. This is the shared implementation used by both
    * ClassResolver and XtypeResolver.
    */
@@ -751,6 +742,15 @@ public abstract class TypeResolver {
    */
   protected abstract TypeInfo loadBytesToTypeInfo(
       MetaStringBytes namespaceBytes, MetaStringBytes simpleClassNameBytes);
+
+  /**
+   * Load class info from namespace and type name bytes, with the type id from the stream.
+   * Subclasses can override this to use the incoming type id (e.g. NAMED_EXT/NAMED_ENUM).
+   */
+  protected TypeInfo loadBytesToTypeInfo(
+      int typeId, MetaStringBytes namespaceBytes, MetaStringBytes simpleClassNameBytes) {
+    return loadBytesToTypeInfo(namespaceBytes, simpleClassNameBytes);
+  }
 
   /**
    * Ensure the TypeInfo has a serializer set. Called after loading class info for deserialization.

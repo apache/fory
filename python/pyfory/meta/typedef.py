@@ -171,9 +171,7 @@ class TypeDef:
         for i, field_info in enumerate(self.fields):
             resolved_name = field_names[i]
             type_id = field_info.field_type.type_id
-            if (
-                is_polymorphic_type(type_id)
-            ):
+            if is_polymorphic_type(type_id):
                 dynamic_fields[resolved_name] = True
 
         return DataClassSerializer(
