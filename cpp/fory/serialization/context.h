@@ -258,6 +258,10 @@ public:
   write_any_typeinfo(uint32_t fory_type_id,
                      const std::type_index &concrete_type_id);
 
+  /// write type information using an existing TypeInfo.
+  /// Avoids extra type lookup when the TypeInfo is already known.
+  Result<void, Error> write_any_typeinfo(const TypeInfo *type_info);
+
   /// Fast path for writing struct type info - does a single type lookup
   /// and handles all struct type categories (STRUCT, NAMED_STRUCT,
   /// COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT).

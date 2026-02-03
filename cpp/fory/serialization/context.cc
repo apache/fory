@@ -233,6 +233,52 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
 }
 
 Result<void, Error>
+WriteContext::write_any_typeinfo(const TypeInfo *type_info) {
+  if (FORY_PREDICT_FALSE(type_info == nullptr)) {
+    return Unexpected(Error::invalid("TypeInfo is null"));
+  }
+  uint32_t type_id = type_info->type_id;
+  buffer_.write_uint8(static_cast<uint8_t>(type_id));
+
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    buffer_.write_var_uint32(type_info->user_type_id);
+    break;
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+    // write type meta inline using streaming protocol
+    write_type_meta(type_info);
+    break;
+  case TypeId::NAMED_ENUM:
+  case TypeId::NAMED_EXT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_UNION:
+    if (config_->compatible) {
+      // write type meta inline using streaming protocol
+      write_type_meta(type_info);
+    } else {
+      // write pre-encoded namespace and type_name
+      if (type_info->encoded_namespace && type_info->encoded_type_name) {
+        write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
+        write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
+      } else {
+        return Unexpected(
+            Error::invalid("Encoded meta strings not initialized for type"));
+      }
+    }
+    break;
+  default:
+    // For other types, just writing type_id is sufficient
+    break;
+  }
+
+  return Result<void, Error>();
+}
+
+Result<void, Error>
 WriteContext::write_struct_type_info(const std::type_index &type_id) {
   // get type info with single lookup
   FORY_TRY(type_info, type_resolver_->get_type_info(type_id));

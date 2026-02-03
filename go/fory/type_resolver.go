@@ -500,6 +500,35 @@ func (r *TypeResolver) registerSerializer(type_ reflect.Type, typeId TypeId, s S
 	return nil
 }
 
+func validateOptionalFields(type_ reflect.Type) error {
+	if type_ == nil {
+		return nil
+	}
+	if type_.Kind() == reflect.Ptr {
+		type_ = type_.Elem()
+	}
+	if type_.Kind() != reflect.Struct {
+		return nil
+	}
+	for i := 0; i < type_.NumField(); i++ {
+		field := type_.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		foryTag := parseForyTag(field)
+		if foryTag.Ignore {
+			continue
+		}
+		optionalInfo, isOptional := getOptionalInfo(field.Type)
+		if isOptional {
+			if err := validateOptionalValueType(optionalInfo.valueType); err != nil {
+				return fmt.Errorf("field %s: %w", field.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
 // RegisterStruct registers a type with a numeric user type ID for cross-language serialization.
 func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTypeID uint32) error {
 	// Check if already registered
@@ -513,6 +542,9 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 
 	switch type_.Kind() {
 	case reflect.Struct:
+		if err := validateOptionalFields(type_); err != nil {
+			return err
+		}
 		// For struct types, check if serializer already registered
 		if prev, ok := r.typeToSerializers[type_]; ok {
 			return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)

@@ -536,7 +536,10 @@ def compile_file_recursive(
     effective_outputs = lang_output_dirs
     if "go" in lang_output_dirs:
         go_root = go_module_root or lang_output_dirs["go"]
-        if schema.get_option("go_package") is None and lang_output_dirs["go"] != go_root:
+        if (
+            schema.get_option("go_package") is None
+            and lang_output_dirs["go"] != go_root
+        ):
             go_out = lang_output_dirs["go"]
         else:
             go_out = resolve_go_output_dir(go_root, schema)

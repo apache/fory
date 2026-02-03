@@ -421,8 +421,12 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
   static constexpr TypeId type_id = TypeId::UNION;
 
   static inline void write_type_info(WriteContext &ctx) {
-    auto result = ctx.write_any_typeinfo(static_cast<uint32_t>(type_id),
-                                         std::type_index(typeid(T)));
+    auto type_info_res = ctx.type_resolver().template get_type_info<T>();
+    if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+      ctx.set_error(std::move(type_info_res).error());
+      return;
+    }
+    auto result = ctx.write_any_typeinfo(type_info_res.value());
     if (FORY_PREDICT_FALSE(!result.ok())) {
       ctx.set_error(std::move(result).error());
     }

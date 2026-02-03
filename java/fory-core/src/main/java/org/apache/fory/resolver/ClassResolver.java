@@ -1892,7 +1892,7 @@ public class ClassResolver extends TypeResolver {
   }
 
   public TypeInfo newTypeInfo(Class<?> cls, Serializer<?> serializer, int typeId) {
-    return new TypeInfo(this, cls, serializer, typeId, INVALID_USER_TYPE_ID);
+    return new TypeInfo(this, cls, serializer, typeId, getUserTypeIdForTypeDef(cls));
   }
 
   public boolean isPrimitive(int classId) {

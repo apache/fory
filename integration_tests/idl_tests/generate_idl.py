@@ -99,6 +99,7 @@ def main() -> int:
             generated_roots.add(out_dir)
 
     for root in sorted(generated_roots):
+        Path(root).mkdir(parents=True, exist_ok=True)
         subprocess.check_call(
             [
                 sys.executable,
