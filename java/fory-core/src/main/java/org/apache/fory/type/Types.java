@@ -211,6 +211,8 @@ public class Types {
   /** Bound value for range checks (types with id >= BOUND are not internal types). */
   public static final int BOUND = 64;
 
+  public static final int INVALID_USER_TYPE_ID = -1;
+
   // Helper methods
   public static boolean isNamedType(int value) {
     assert value < 0xff;
@@ -435,6 +437,19 @@ public class Types {
       case VAR_UINT64:
       case TAGGED_INT64:
       case TAGGED_UINT64:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  public static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
         return true;
       default:
         return false;

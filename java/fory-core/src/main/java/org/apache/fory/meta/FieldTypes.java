@@ -63,19 +63,6 @@ import org.apache.fory.util.Preconditions;
 public class FieldTypes {
   private static final Logger LOG = LoggerFactory.getLogger(FieldTypes.class);
 
-  private static boolean needsUserTypeId(int typeId) {
-    switch (typeId) {
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.COMPATIBLE_STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        return true;
-      default:
-        return false;
-    }
-  }
-
   /** Returns true if can use current field type. */
   static boolean useFieldType(Class<?> parsedType, Descriptor descriptor) {
     if (parsedType.isEnum() || parsedType.isAssignableFrom(descriptor.getRawType())) {
@@ -108,7 +95,6 @@ public class FieldTypes {
     // Get type ID for both xlang and native mode
     // This supports unsigned types and field-configurable compression in both modes
     int typeId;
-    int userTypeId = -1;
     if (TypeUtils.unwrap(rawType).isPrimitive()) {
       if (field != null) {
         typeId = Types.getDescriptorTypeId(resolver.getFory(), field);
@@ -124,8 +110,8 @@ public class FieldTypes {
           isXlang && rawType == Object.class ? null : resolver.getClassInfo(rawType, false);
       if (info != null) {
         typeId = info.getTypeId();
-        if (needsUserTypeId(typeId)) {
-          userTypeId = info.getUserTypeId();
+        if (Types.isEnumType(typeId)) {
+          typeId = Types.ENUM;
         }
       } else if (isXlang) {
         if (rawType.isArray()) {
@@ -137,7 +123,7 @@ public class FieldTypes {
             typeId = Types.LIST;
           }
         } else if (rawType.isEnum()) {
-          typeId = Types.NAMED_ENUM;
+          typeId = Types.ENUM;
         } else if (resolver.isSet(rawType)) {
           typeId = Types.SET;
         } else if (resolver.isCollection(rawType)) {
@@ -149,9 +135,6 @@ public class FieldTypes {
         }
       } else if (resolver instanceof ClassResolver) {
         typeId = ((ClassResolver) resolver).getTypeIdForClassDef(rawType);
-        if (needsUserTypeId(typeId)) {
-          userTypeId = ((ClassResolver) resolver).getUserTypeIdForClassDef(rawType);
-        }
       } else {
         typeId = Types.UNKNOWN;
       }
@@ -227,10 +210,7 @@ public class FieldTypes {
       return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
     } else {
       if (rawType.isEnum()) {
-        if (resolver.isRegisteredById(rawType) && needsUserTypeId(typeId)) {
-          return new RegisteredFieldType(nullable, trackingRef, typeId, userTypeId);
-        }
-        return new EnumFieldType(nullable, typeId, userTypeId);
+        return new EnumFieldType(nullable, Types.ENUM, -1);
       }
       if (rawType.isArray()) {
         Class<?> elemType = rawType.getComponentType();
@@ -260,7 +240,7 @@ public class FieldTypes {
         }
       }
       if (resolver.isRegisteredById(rawType)) {
-        return new RegisteredFieldType(nullable, trackingRef, typeId, userTypeId);
+        return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
       } else {
         return new ObjectFieldType(typeId, nullable, trackingRef);
       }
@@ -354,11 +334,6 @@ public class FieldTypes {
         int typeId = ((RegisteredFieldType) this).getTypeId();
         buffer.writeUint8(kindHeader);
         buffer.writeUint8(typeId);
-        if (needsUserTypeId(typeId)) {
-          Preconditions.checkArgument(
-              userTypeId != -1, "User type id is required for typeId %s", typeId);
-          buffer.writeVarUint32(userTypeId);
-        }
       } else if (this instanceof EnumFieldType) {
         buffer.writeUint8(kindHeader);
       } else if (this instanceof ArrayFieldType) {
@@ -419,11 +394,7 @@ public class FieldTypes {
         return new EnumFieldType(nullable, -1, -1);
       } else if (kind == 5) {
         int actualTypeId = buffer.readUint8();
-        int userTypeId = -1;
-        if (needsUserTypeId(actualTypeId)) {
-          userTypeId = buffer.readVarUint32();
-        }
-        return new RegisteredFieldType(nullable, trackingRef, actualTypeId, userTypeId);
+        return new RegisteredFieldType(nullable, trackingRef, actualTypeId, -1);
       } else {
         throw new IllegalStateException("Unexpected field type kind: " + kind);
       }
@@ -441,11 +412,6 @@ public class FieldTypes {
         buffer.writeVarUint32Small7(typeId);
       } else {
         buffer.writeUint8(this.typeId);
-      }
-      if (needsUserTypeId(this.typeId)) {
-        Preconditions.checkArgument(
-            userTypeId != -1, "User type id is required for typeId %s", this.typeId);
-        buffer.writeVarUint32(userTypeId);
       }
       // Use the original typeId for the switch (not the one with flags)
       switch (this.typeId) {
@@ -478,10 +444,6 @@ public class FieldTypes {
         int typeId,
         boolean nullable,
         boolean trackingRef) {
-      int userTypeId = -1;
-      if (needsUserTypeId(typeId)) {
-        userTypeId = buffer.readVarUint32();
-      }
       switch (typeId) {
         case Types.LIST:
         case Types.SET:
@@ -490,11 +452,6 @@ public class FieldTypes {
           return new MapFieldType(
               typeId, nullable, trackingRef, xread(buffer, resolver), xread(buffer, resolver));
         case Types.ENUM:
-          if (userTypeId != -1) {
-            return new RegisteredFieldType(nullable, trackingRef, typeId, userTypeId);
-          }
-          return new EnumFieldType(nullable, typeId, userTypeId);
-        case Types.NAMED_ENUM:
           return new EnumFieldType(nullable, typeId, -1);
         case Types.UNION:
           return new UnionFieldType(nullable, trackingRef);
@@ -518,9 +475,6 @@ public class FieldTypes {
               }
               return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
             } else {
-              if (userTypeId != -1) {
-                return new RegisteredFieldType(nullable, trackingRef, typeId, userTypeId);
-              }
               return new ObjectFieldType(typeId, nullable, trackingRef);
             }
           }
@@ -533,10 +487,6 @@ public class FieldTypes {
     public RegisteredFieldType(boolean nullable, boolean trackingRef, int typeId, int userTypeId) {
       super(typeId, userTypeId, nullable, trackingRef);
       Preconditions.checkArgument(typeId > 0);
-      if (needsUserTypeId(typeId)) {
-        Preconditions.checkArgument(
-            userTypeId != -1, "User type id is required for typeId %s", typeId);
-      }
     }
 
     public int getTypeId() {
@@ -594,21 +544,21 @@ public class FieldTypes {
           return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
         }
       }
+      if (Types.isUserDefinedType((byte) internalTypeId)) {
+        if (declared != null) {
+          return TypeRef.of(declared.getRawType(), new TypeExtMeta(typeId, nullable, trackingRef));
+        }
+        LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);
+        boolean isEnum = internalTypeId == Types.ENUM;
+        cls = NonexistentClass.getNonexistentClass(isEnum, 0, resolver.getFory().isShareMeta());
+        return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
+      }
       if (resolver instanceof XtypeResolver) {
-        if (needsUserTypeId(typeId)) {
-          ClassInfo xtypeInfo = ((XtypeResolver) resolver).getUserTypeInfo(userTypeId);
-          cls = xtypeInfo == null ? null : xtypeInfo.getCls();
-        } else {
-          ClassInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
-          Preconditions.checkNotNull(xtypeInfo);
-          cls = xtypeInfo.getCls();
-        }
+        ClassInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
+        Preconditions.checkNotNull(xtypeInfo);
+        cls = xtypeInfo.getCls();
       } else {
-        if (needsUserTypeId(typeId)) {
-          cls = ((ClassResolver) resolver).getRegisteredClassByTypeId(typeId, userTypeId);
-        } else {
-          cls = ((ClassResolver) resolver).getRegisteredClassByTypeId(typeId);
-        }
+        cls = ((ClassResolver) resolver).getRegisteredClassByTypeId(typeId);
       }
       if (cls == null) {
         LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);

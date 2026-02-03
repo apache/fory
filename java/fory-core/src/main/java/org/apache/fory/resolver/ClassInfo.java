@@ -45,9 +45,9 @@ public class ClassInfo {
   // Fory type ID for both native and xlang modes.
   // - Types 0-30: Shared internal types (Types.BOOL, Types.STRING, etc.)
   // - Types 31-255: Native-only internal types (VOID_ID, CHAR_ID, etc.)
-  int typeId;
+  final int typeId;
   // User-registered type ID stored as unsigned int. -1 (0xffffffff) means "unset".
-  int userTypeId = -1;
+  final int userTypeId;
   Serializer<?> serializer;
   ClassDef classDef;
   boolean needToWriteClassDef;
@@ -59,13 +59,15 @@ public class ClassInfo {
       MetaStringBytes typeNameBytes,
       boolean isDynamicGeneratedClass,
       Serializer<?> serializer,
-      int typeId) {
+      int typeId,
+      int userTypeId) {
     this.cls = cls;
     this.fullNameBytes = fullNameBytes;
     this.namespaceBytes = namespaceBytes;
     this.typeNameBytes = typeNameBytes;
     this.isDynamicGeneratedClass = isDynamicGeneratedClass;
     this.typeId = typeId;
+    this.userTypeId = userTypeId;
     this.serializer = serializer;
   }
 
@@ -88,7 +90,7 @@ public class ClassInfo {
     this.userTypeId = classDef == null ? -1 : classDef.getClassSpec().userTypeId;
   }
 
-  ClassInfo(TypeResolver classResolver, Class<?> cls, Serializer<?> serializer, int typeId) {
+  ClassInfo(TypeResolver classResolver, Class<?> cls, Serializer<?> serializer, int typeId, int userTypeId) {
     this.cls = cls;
     this.serializer = serializer;
     needToWriteClassDef = serializer != null && classResolver.needToWriteClassDef(serializer);
@@ -121,20 +123,37 @@ public class ClassInfo {
       this.namespaceBytes = null;
       this.typeNameBytes = null;
     }
-    this.typeId = typeId;
     if (cls != null) {
       boolean isLambda = Functions.isLambda(cls);
       boolean isProxy = typeId != ClassResolver.REPLACE_STUB_ID && ReflectionUtils.isJdkProxy(cls);
       this.isDynamicGeneratedClass = isLambda || isProxy;
       if (isLambda) {
-        this.typeId = ClassResolver.LAMBDA_STUB_ID;
+        typeId = ClassResolver.LAMBDA_STUB_ID;
       }
       if (isProxy) {
-        this.typeId = ClassResolver.JDK_PROXY_STUB_ID;
+        typeId = ClassResolver.JDK_PROXY_STUB_ID;
       }
     } else {
       this.isDynamicGeneratedClass = false;
     }
+    this.typeId = typeId;
+    this.userTypeId = userTypeId;
+  }
+
+  public ClassInfo copy(int typeId) {
+    if (typeId == this.typeId) {
+      return this;
+    }
+    return new ClassInfo(cls, fullNameBytes, namespaceBytes,
+        typeNameBytes, isDynamicGeneratedClass, serializer, typeId, userTypeId);
+  }
+
+  public ClassInfo copy(int typeId, int userTypeId) {
+    if (typeId == this.typeId && userTypeId == this.userTypeId) {
+      return this;
+    }
+    return new ClassInfo(cls, fullNameBytes, namespaceBytes,
+        typeNameBytes, isDynamicGeneratedClass, serializer, typeId,userTypeId);
   }
 
   public Class<?> getCls() {

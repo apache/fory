@@ -46,19 +46,6 @@ import org.apache.fory.util.Preconditions;
  * href="https://fory.apache.org/docs/specification/fory_java_serialization_spec">...</a>
  */
 class ClassDefDecoder {
-  private static boolean needsUserTypeId(int typeId) {
-    switch (typeId) {
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.COMPATIBLE_STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        return true;
-      default:
-        return false;
-    }
-  }
-
   static Tuple2<byte[], byte[]> decodeClassDefBuf(
       MemoryBuffer inputBuffer, TypeResolver resolver, long id) {
     MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
@@ -98,7 +85,7 @@ class ClassDefDecoder {
       if (isRegistered) {
         int typeId = classDefBuf.readUint8();
         int userTypeId = -1;
-        if (needsUserTypeId(typeId)) {
+        if (Types.needsUserTypeId(typeId)) {
           userTypeId = classDefBuf.readVarUint32();
         }
         Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);

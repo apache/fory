@@ -39,7 +39,6 @@ import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.NonexistentClass;
-import org.apache.fory.type.Types;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 

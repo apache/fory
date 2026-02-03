@@ -148,7 +148,9 @@ class TypeDefEncoder {
     if (resolver.isRegisteredById(type)) {
       buffer.writeUint8(classInfo.getTypeId());
       Preconditions.checkArgument(
-          classInfo.getUserTypeId() != -1, "User type id is required for typeId %s", classInfo.getTypeId());
+          classInfo.getUserTypeId() != -1,
+          "User type id is required for typeId %s",
+          classInfo.getTypeId());
       buffer.writeVarUint32(classInfo.getUserTypeId());
     } else {
       Preconditions.checkArgument(resolver.isRegisteredByName(type));

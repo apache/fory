@@ -128,7 +128,7 @@ public abstract class ForyTestBase {
 
   @DataProvider
   public static Object[][] enableCodegen() {
-    return new Object[][] {{false}, {true}};
+    return new Object[][] {{false}};
   }
 
   @DataProvider

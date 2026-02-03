@@ -20,6 +20,7 @@
 package org.apache.fory.resolver;
 
 import static org.apache.fory.type.TypeUtils.getSizeOfPrimitiveType;
+import static org.apache.fory.type.Types.INVALID_USER_TYPE_ID;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
@@ -95,7 +96,8 @@ public abstract class TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
   static final ClassInfo NIL_CLASS_INFO =
-      new ClassInfo(null, null, null, null, false, null, Types.UNKNOWN);
+      new ClassInfo(null, null, null, null,
+          false, null, Types.UNKNOWN, INVALID_USER_TYPE_ID);
   // use a lower load factor to minimize hash collision
   static final float foryMapLoadFactor = 0.25f;
   static final int estimatedNumRegistered = 150;
@@ -366,10 +368,6 @@ public abstract class TypeResolver {
     return (int) userTypeId;
   }
 
-  static long userTypeIdToKey(int userTypeId) {
-    return userTypeId & 0xffffffffL;
-  }
-
   /**
    * Native code for ClassResolver.writeClassInfo is too big to inline, so inline it manually.
    *
@@ -424,15 +422,13 @@ public abstract class TypeResolver {
    */
   public final ClassInfo readClassInfo(MemoryBuffer buffer) {
     int typeId = buffer.readUint8();
-    int userTypeId = -1;
     ClassInfo classInfo;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        userTypeId = buffer.readVarUint32();
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        classInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -463,9 +459,6 @@ public abstract class TypeResolver {
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
     }
-    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
-      classInfo.userTypeId = userTypeId;
-    }
     classInfoCache = classInfo;
     return classInfo;
   }
@@ -476,37 +469,27 @@ public abstract class TypeResolver {
    */
   public final ClassInfo readClassInfo(MemoryBuffer buffer, Class<?> targetClass) {
     int typeId = buffer.readUint8();
-    int userTypeId = -1;
     ClassInfo classInfo;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        userTypeId = buffer.readVarUint32();
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        classInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
         break;
       case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer, targetClass);
-        } else {
-          userTypeId = buffer.readVarUint32();
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
+      case Types.NAMED_COMPATIBLE_STRUCT:
+        classInfo = readSharedClassMeta(buffer, targetClass);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
-      case Types.NAMED_COMPATIBLE_STRUCT:
         if (!metaContextShareEnabled) {
           classInfo = readClassInfoFromBytes(buffer, classInfoCache, typeId);
         } else {
           classInfo = readSharedClassMeta(buffer, targetClass);
         }
-        break;
-      case Types.UNION:
-        classInfo = requireInternalTypeInfoByTypeId(typeId);
         break;
       case Types.LIST:
         classInfo = getListClassInfo();
@@ -519,9 +502,6 @@ public abstract class TypeResolver {
     }
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
-    }
-    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
-      classInfo.userTypeId = userTypeId;
     }
     classInfoCache = classInfo;
     return classInfo;
@@ -539,37 +519,27 @@ public abstract class TypeResolver {
   @CodegenInvoke
   public final ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfo classInfoCache) {
     int typeId = buffer.readUint8();
-    int userTypeId = -1;
     ClassInfo classInfo;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        userTypeId = buffer.readVarUint32();
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        classInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
         break;
       case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer);
-        } else {
-          userTypeId = buffer.readVarUint32();
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
+      case Types.NAMED_COMPATIBLE_STRUCT:
+        classInfo = readSharedClassMeta(buffer);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
-      case Types.NAMED_COMPATIBLE_STRUCT:
         if (!metaContextShareEnabled) {
           classInfo = readClassInfoFromBytes(buffer, classInfoCache, typeId);
         } else {
           classInfo = readSharedClassMeta(buffer);
         }
-        break;
-      case Types.UNION:
-        classInfo = requireInternalTypeInfoByTypeId(typeId);
         break;
       case Types.LIST:
         classInfo = getListClassInfo();
@@ -582,9 +552,6 @@ public abstract class TypeResolver {
     }
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
-    }
-    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
-      classInfo.userTypeId = userTypeId;
     }
     return classInfo;
   }
@@ -600,7 +567,6 @@ public abstract class TypeResolver {
   @CodegenInvoke
   public final ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
     int typeId = buffer.readUint8();
-    int userTypeId = -1;
     ClassInfo classInfo;
     boolean updateCache = false;
     switch (typeId) {
@@ -608,31 +574,22 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        userTypeId = buffer.readVarUint32();
-        classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
+        classInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
         break;
       case Types.COMPATIBLE_STRUCT:
-        if (metaContextShareEnabled) {
-          classInfo = readSharedClassMeta(buffer);
-        } else {
-          userTypeId = buffer.readVarUint32();
-          classInfo = requireUserTypeInfoByTypeId(typeId, userTypeId);
-        }
+      case Types.NAMED_COMPATIBLE_STRUCT:
+        classInfo = readSharedClassMeta(buffer);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
-      case Types.NAMED_COMPATIBLE_STRUCT:
         if (!metaContextShareEnabled) {
           classInfo = readClassInfoFromBytes(buffer, classInfoHolder.classInfo, typeId);
           updateCache = true;
         } else {
           classInfo = readSharedClassMeta(buffer);
         }
-        break;
-      case Types.UNION:
-        classInfo = requireInternalTypeInfoByTypeId(typeId);
         break;
       case Types.LIST:
         classInfo = getListClassInfo();
@@ -645,9 +602,6 @@ public abstract class TypeResolver {
     }
     if (classInfo.serializer == null) {
       classInfo = ensureSerializerForClassInfo(classInfo);
-    }
-    if (userTypeId != -1 && classInfo.userTypeId != userTypeId) {
-      classInfo.userTypeId = userTypeId;
     }
     if (updateCache) {
       classInfoHolder.classInfo = classInfo;
@@ -791,28 +745,8 @@ public abstract class TypeResolver {
     return typeIdToClassInfo[typeId];
   }
 
-  protected final ClassInfo getUserTypeInfoByTypeId(int typeId, int userTypeId) {
-    if (userTypeId == -1) {
-      return null;
-    }
-    ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeIdToKey(userTypeId));
-    if (classInfo == null) {
-      return null;
-    }
-    int registeredTypeId = classInfo.typeId;
-    if (registeredTypeId != typeId) {
-      if (classInfo.serializer == null) {
-        classInfo.typeId = typeId;
-      } else {
-        return null;
-      }
-    }
-    classInfo.userTypeId = userTypeId;
-    return classInfo;
-  }
-
   protected final ClassInfo requireUserTypeInfoByTypeId(int typeId, int userTypeId) {
-    ClassInfo classInfo = getUserTypeInfoByTypeId(typeId, userTypeId);
+    ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeId);
     if (classInfo == null) {
       throw new IllegalStateException(
           String.format("Type id %s with user type id %s not registered", typeId, userTypeId));
@@ -828,6 +762,21 @@ public abstract class TypeResolver {
     return classInfo;
   }
 
+  protected void updateClassInfo(Class<?> cls, ClassInfo classInfo) {
+    // make `extRegistry.registeredClassIdMap` and `classInfoMap` share same classInfo
+    // instances.
+    classInfoMap.put(cls, classInfo);
+    if (classInfo.userTypeId != INVALID_USER_TYPE_ID) {
+      // serializer will be set lazily in `addSerializer` method if it's null.
+      putUserTypeInfo(classInfo.userTypeId, classInfo);
+    } else  {
+      if (Types.isUserDefinedType((byte) classInfo.typeId)) {
+        return;
+      }
+      putInternalTypeInfo(classInfo.typeId, classInfo);
+    }
+  }
+
   protected final void putInternalTypeInfo(int typeId, ClassInfo classInfo) {
     if (typeIdToClassInfo.length <= typeId) {
       ClassInfo[] tmp = new ClassInfo[(typeId + 1) * 2];
@@ -838,11 +787,11 @@ public abstract class TypeResolver {
   }
 
   protected final void putUserTypeInfo(int userId, ClassInfo classInfo) {
-    userTypeIdToClassInfo.put(userTypeIdToKey(userId), classInfo);
+    userTypeIdToClassInfo.put(userId, classInfo);
   }
 
   protected final boolean containsUserTypeId(int userId) {
-    return userTypeIdToClassInfo.containsKey(userTypeIdToKey(userId));
+    return userTypeIdToClassInfo.containsKey(userId);
   }
 
   final ClassInfo buildMetaSharedClassInfo(
@@ -894,9 +843,8 @@ public abstract class TypeResolver {
         typeId = buildUnregisteredTypeId(cls, null);
       }
     }
-    ClassInfo classInfo = new ClassInfo(this, cls, null, typeId);
+    ClassInfo classInfo = new ClassInfo(this, cls, null, typeId, classDef.getClassSpec().userTypeId);
     classInfo.classDef = classDef;
-    classInfo.userTypeId = classDef.getClassSpec().userTypeId;
     if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       if (cls == NonexistentMetaShared.class) {
         classInfo.setSerializer(this, new NonexistentClassSerializer(fory, classDef));
