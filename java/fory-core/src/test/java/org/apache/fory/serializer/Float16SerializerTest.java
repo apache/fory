@@ -29,14 +29,12 @@ import org.apache.fory.config.Language;
 import org.apache.fory.type.Float16;
 import org.testng.annotations.Test;
 
-/** 测试 Float16 序列化器。 */
 public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16Serialization() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
 
-    // 测试特殊值 - 直接序列化和反序列化
     byte[] bytes = fory.serialize(Float16.NaN);
     Float16 result = (Float16) fory.deserialize(bytes);
     assertTrue(result.isNaN());
@@ -57,7 +55,6 @@ public class Float16SerializerTest extends ForyTestBase {
     result = (Float16) fory.deserialize(bytes);
     assertEquals(Float16.ONE.toBits(), result.toBits());
 
-    // 测试正常值
     bytes = fory.serialize(Float16.valueOf(1.5f));
     result = (Float16) fory.deserialize(bytes);
     assertEquals(1.5f, result.floatValue(), 0.01f);
@@ -186,13 +183,11 @@ public class Float16SerializerTest extends ForyTestBase {
 
     fory.register(StructWithNullableFloat16.class);
 
-    // 非空值
     StructWithNullableFloat16 obj1 = new StructWithNullableFloat16(Float16.valueOf(1.5f));
     byte[] bytes = fory.serialize(obj1);
     StructWithNullableFloat16 result = (StructWithNullableFloat16) fory.deserialize(bytes);
     assertEquals(obj1.nullableField.toBits(), result.nullableField.toBits());
 
-    // null 值
     StructWithNullableFloat16 obj2 = new StructWithNullableFloat16(null);
     bytes = fory.serialize(obj2);
     result = (StructWithNullableFloat16) fory.deserialize(bytes);
@@ -237,18 +232,17 @@ public class Float16SerializerTest extends ForyTestBase {
   public void testFloat16BitPatternPreservation() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
 
-    // 测试位模式是否精确保留
     short[] testBits = {
-      (short) 0x0000, // +0
-      (short) 0x8000, // -0
-      (short) 0x3c00, // 1.0
-      (short) 0xbc00, // -1.0
-      (short) 0x7bff, // max
-      (short) 0x0001, // min subnormal
-      (short) 0x0400, // min normal
-      (short) 0x7c00, // +Inf
-      (short) 0xfc00, // -Inf
-      (short) 0x7e00 // NaN
+      (short) 0x0000,
+      (short) 0x8000,
+      (short) 0x3c00,
+      (short) 0xbc00,
+      (short) 0x7bff,
+      (short) 0x0001,
+      (short) 0x0400,
+      (short) 0x7c00,
+      (short) 0xfc00,
+      (short) 0x7e00
     };
 
     for (short bits : testBits) {
