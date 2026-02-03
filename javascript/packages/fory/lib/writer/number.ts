@@ -36,11 +36,9 @@ export function toFloat16(value: number) {
   }
 
   if (exponent < -14) {
-    return sign | 0x3ff; // returns ±max subnormal
-  }
-
-  if (exponent <= 0) {
-    return sign | ((significand | 0x800000) >> (1 - exponent + 10));
+    // subnormal
+    // shift amount = 13 - 14 - exponent = -1 - exponent
+    return sign | ((significand | 0x800000) >> (13 - 14 - exponent));
   }
 
   return sign | ((exponent + 15) << 10) | (significand >> 13);

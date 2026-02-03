@@ -22,8 +22,8 @@ import { describe, expect, test } from '@jest/globals';
 
 describe('number', () => {
   test('should i8 work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+
+    const fory = new Fory({ refTracking: true });
     const serialize = fory.registerSerializer(Type.struct({
       typeName: "example.foo"
     }, {
@@ -36,8 +36,8 @@ describe('number', () => {
     expect(result).toEqual({ a: 1 })
   });
   test('should i16 work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+
+    const fory = new Fory({ refTracking: true });
     const serialize = fory.registerSerializer(Type.struct({
       typeName: "example.foo"
     }, {
@@ -50,8 +50,8 @@ describe('number', () => {
     expect(result).toEqual({ a: 1 })
   });
   test('should i32 work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+
+    const fory = new Fory({ refTracking: true });
     const serializer = fory.registerSerializer(Type.struct({
       typeName: "example.foo"
     }, {
@@ -64,8 +64,8 @@ describe('number', () => {
     expect(result).toEqual({ a: 1 })
   });
   test('should i64 work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+
+    const fory = new Fory({ refTracking: true });
     const serializer = fory.registerSerializer(Type.struct({
       typeName: "example.foo"
     }, {
@@ -80,8 +80,8 @@ describe('number', () => {
   });
 
   test('should float work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+
+    const fory = new Fory({ refTracking: true });
     const serializer = fory.registerSerializer(Type.struct({
       typeName: "example.foo"
     }, {
@@ -94,8 +94,8 @@ describe('number', () => {
     expect(result.a).toBeCloseTo(1.2)
   });
   test('should float64 work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+
+    const fory = new Fory({ refTracking: true });
     const serializer = fory.registerSerializer(Type.struct({
       typeName: "example.foo"
     }, {
@@ -106,6 +106,21 @@ describe('number', () => {
       input
     );
     expect(result.a).toBeCloseTo(1.2)
+  });
+
+  test('should float16 work', () => {
+
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.float16()
+    })).serializer;
+    const input = fory.serialize({ a: 1.2 }, serializer);
+    const result = fory.deserialize(
+      input
+    );
+    expect(result.a).toBeCloseTo(1.2, 1)
   });
 
   test('should uint8 work', () => {
