@@ -1256,7 +1256,9 @@ class CppGenerator(BaseGenerator):
         lines.append("      return;")
         lines.append("    }")
         lines.append("    const TypeInfo *expected = type_info_res.value();")
-        lines.append("    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());")
+        lines.append(
+            "    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());"
+        )
         lines.append("    if (FORY_PREDICT_FALSE(ctx.has_error())) {")
         lines.append("      return;")
         lines.append("    }")

@@ -151,8 +151,8 @@ enum class TypeRegistrationKind : int32_t {
   BY_NAME = 2
 };
 
-inline constexpr TypeRegistrationKind get_type_registration_kind(
-    TypeId type_id) {
+inline constexpr TypeRegistrationKind
+get_type_registration_kind(TypeId type_id) {
   switch (type_id) {
   case TypeId::ENUM:
   case TypeId::STRUCT:

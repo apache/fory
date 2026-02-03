@@ -256,7 +256,7 @@ public:
   /// @return TypeInfo for the written type, or error
   Result<const TypeInfo *, Error>
   write_any_type_info(uint32_t fory_type_id,
-                     const std::type_index &concrete_type_id);
+                      const std::type_index &concrete_type_id);
 
   /// write type information using an existing TypeInfo.
   /// Avoids extra type lookup when the TypeInfo is already known.

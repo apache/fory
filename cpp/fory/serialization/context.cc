@@ -177,7 +177,7 @@ WriteContext::write_enum_type_info(const TypeInfo *type_info) {
 
 Result<const TypeInfo *, Error>
 WriteContext::write_any_type_info(uint32_t fory_type_id,
-                                 const std::type_index &concrete_type_id) {
+                                  const std::type_index &concrete_type_id) {
   // Check if it's an internal type
   if (is_internal_type(fory_type_id)) {
     // write type_id

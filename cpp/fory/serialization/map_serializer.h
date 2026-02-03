@@ -281,7 +281,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
               return;
             }
             auto res = ctx.write_any_type_info(type_info_res.value()->type_id,
-                                              concrete_type_id);
+                                               concrete_type_id);
             if (!res.ok()) {
               ctx.set_error(std::move(res).error());
               return;
@@ -334,7 +334,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
               return;
             }
             auto res = ctx.write_any_type_info(type_info_res.value()->type_id,
-                                              concrete_type_id);
+                                               concrete_type_id);
             if (!res.ok()) {
               ctx.set_error(std::move(res).error());
               return;

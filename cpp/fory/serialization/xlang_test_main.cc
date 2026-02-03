@@ -769,7 +769,7 @@ template <> struct Serializer<MyExt> {
         return;
       }
       auto result = ctx.write_any_type_info(type_info_res.value()->type_id,
-                                           std::type_index(typeid(MyExt)));
+                                            std::type_index(typeid(MyExt)));
       if (!result.ok()) {
         ctx.set_error(std::move(result).error());
         return;
