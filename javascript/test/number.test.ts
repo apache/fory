@@ -79,7 +79,7 @@ describe('number', () => {
     expect(result).toEqual({ a: 1 })
   });
 
-  test('should float work', () => {
+  test('should float32 work', () => {
 
     const fory = new Fory({ refTracking: true });
     const serializer = fory.registerSerializer(Type.struct({
