@@ -422,7 +422,7 @@ impl<'a> ReadContext<'a> {
             types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
                 let user_type_id = self.reader.read_varuint32()?;
                 self.type_resolver
-                    .get_user_type_info_by_id(fory_type_id, user_type_id)
+                    .get_user_type_info_by_id(user_type_id)
                     .ok_or_else(|| Error::type_error("ID harness not found"))
             }
             types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {

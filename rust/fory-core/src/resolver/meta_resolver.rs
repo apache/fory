@@ -147,7 +147,7 @@ impl MetaReaderResolver {
                     let user_type_id = type_meta.get_user_type_id();
                     if user_type_id != NO_USER_TYPE_ID {
                         if let Some(local_type_info) =
-                            type_resolver.get_user_type_info_by_id(type_id, user_type_id)
+                            type_resolver.get_user_type_info_by_id(user_type_id)
                         {
                             // Use local harness with remote metadata
                             Rc::new(TypeInfo::from_remote_meta(

@@ -151,7 +151,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
             let type_info = if let Some(user_type_id) = _user_type_id {
                 context
                     .get_type_resolver()
-                    .get_user_type_info_by_id(type_id, user_type_id)
+                    .get_user_type_info_by_id(user_type_id)
             } else {
                 None
             };

@@ -31,12 +31,6 @@ use std::vec;
 
 use std::{any::Any, collections::HashMap};
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct UserTypeKey {
-    type_id: u32,
-    user_type_id: u32,
-}
-
 type WriteFn = fn(
     &dyn Any,
     &mut WriteContext,
@@ -489,7 +483,7 @@ fn build_serializer_type_infos(
 /// TypeResolver is a resolver for fast type/serializer dispatch.
 pub struct TypeResolver {
     internal_type_info_by_id: Vec<Option<Rc<TypeInfo>>>,
-    user_type_info_by_id: HashMap<UserTypeKey, Rc<TypeInfo>>,
+    user_type_info_by_id: HashMap<u32, Rc<TypeInfo>>,
     type_info_map: HashMap<std::any::TypeId, Rc<TypeInfo>>,
     type_info_map_by_name: HashMap<(String, String), Rc<TypeInfo>>,
     type_info_map_by_meta_string_name: HashMap<(Rc<MetaString>, Rc<MetaString>), Rc<TypeInfo>>,
@@ -551,17 +545,8 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_user_type_info_by_id(
-        &self,
-        type_id: u32,
-        user_type_id: u32,
-    ) -> Option<Rc<TypeInfo>> {
-        self.user_type_info_by_id
-            .get(&UserTypeKey {
-                type_id,
-                user_type_id,
-            })
-            .cloned()
+    pub fn get_user_type_info_by_id(&self, user_type_id: u32) -> Option<Rc<TypeInfo>> {
+        self.user_type_info_by_id.get(&user_type_id).cloned()
     }
 
     #[inline(always)]
@@ -617,8 +602,8 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_ext_harness(&self, type_id: u32, user_type_id: u32) -> Result<Rc<Harness>, Error> {
-        self.get_user_type_info_by_id(type_id, user_type_id)
+    pub fn get_ext_harness(&self, _type_id: u32, user_type_id: u32) -> Result<Rc<Harness>, Error> {
+        self.get_user_type_info_by_id(user_type_id)
             .map(|info| Rc::new(info.get_harness().clone()))
             .ok_or_else(|| Error::type_error("ext type must be registered in both peers"))
     }
@@ -862,10 +847,7 @@ impl TypeResolver {
         // 2. Types registered by name (they use shared type IDs like NAMED_STRUCT)
         if !register_by_name
             && !crate::types::is_internal_type(actual_type_id)
-            && self.user_type_info_by_id.contains_key(&UserTypeKey {
-                type_id: actual_type_id,
-                user_type_id,
-            })
+            && self.user_type_info_by_id.contains_key(&user_type_id)
         {
             return Err(Error::type_error(format!(
                 "Type ID {} conflicts with already registered type. Please use a different type ID.",
@@ -896,13 +878,8 @@ impl TypeResolver {
             }
             self.internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
         } else if user_type_id != NO_USER_TYPE_ID {
-            self.user_type_info_by_id.insert(
-                UserTypeKey {
-                    type_id: actual_type_id,
-                    user_type_id,
-                },
-                Rc::new(type_info.clone()),
-            );
+            self.user_type_info_by_id
+                .insert(user_type_id, Rc::new(type_info.clone()));
         }
         self.type_info_map
             .insert(rs_type_id, Rc::new(type_info.clone()));
@@ -1081,10 +1058,7 @@ impl TypeResolver {
         // Skip check for internal types as they can be shared
         if !crate::types::is_internal_type(actual_type_id)
             && user_type_id != NO_USER_TYPE_ID
-            && self.user_type_info_by_id.contains_key(&UserTypeKey {
-                type_id: actual_type_id,
-                user_type_id,
-            })
+            && self.user_type_info_by_id.contains_key(&user_type_id)
         {
             return Err(Error::type_error(format!(
                 "Type ID {} conflicts with already registered type. Please use a different type ID.",
@@ -1103,13 +1077,8 @@ impl TypeResolver {
             }
             self.internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
         } else if user_type_id != NO_USER_TYPE_ID {
-            self.user_type_info_by_id.insert(
-                UserTypeKey {
-                    type_id: actual_type_id,
-                    user_type_id,
-                },
-                Rc::new(type_info.clone()),
-            );
+            self.user_type_info_by_id
+                .insert(user_type_id, Rc::new(type_info.clone()));
         }
         self.type_info_map
             .insert(rs_type_id, Rc::new(type_info.clone()));
@@ -1193,13 +1162,7 @@ impl TypeResolver {
                         internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
                     }
                 } else if type_info.user_type_id != NO_USER_TYPE_ID {
-                    user_type_info_by_id.insert(
-                        UserTypeKey {
-                            type_id: type_info.type_id,
-                            user_type_id: type_info.user_type_id,
-                        },
-                        Rc::new(type_info.clone()),
-                    );
+                    user_type_info_by_id.insert(type_info.user_type_id, Rc::new(type_info.clone()));
                 }
 
                 // Insert into type_info_map with the TypeId
@@ -1275,7 +1238,7 @@ impl TypeResolver {
             .map(|opt| opt.as_ref().map(&mut get_or_clone_type_info))
             .collect();
 
-        let user_type_info_by_id: HashMap<UserTypeKey, Rc<TypeInfo>> = self
+        let user_type_info_by_id: HashMap<u32, Rc<TypeInfo>> = self
             .user_type_info_by_id
             .iter()
             .map(|(k, v)| (*k, get_or_clone_type_info(v)))
