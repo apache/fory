@@ -1568,7 +1568,7 @@ class JavaGenerator(BaseGenerator):
 
         if self.should_register_by_id(enum):
             lines.append(
-                f"        resolver.register({class_ref}.class, {enum.type_id});"
+                f"        resolver.register({class_ref}.class, {enum.type_id}L);"
             )
         else:
             # Use FDL package for namespace (consistent across languages)
@@ -1587,7 +1587,7 @@ class JavaGenerator(BaseGenerator):
 
         if self.should_register_by_id(message):
             lines.append(
-                f"        resolver.register({class_ref}.class, {message.type_id});"
+                f"        resolver.register({class_ref}.class, {message.type_id}L);"
             )
         else:
             # Use FDL package for namespace (consistent across languages)
@@ -1620,7 +1620,7 @@ class JavaGenerator(BaseGenerator):
 
         if self.should_register_by_id(union):
             lines.append(
-                f"        resolver.registerUnion({class_ref}.class, {union.type_id}, {serializer_ref});"
+                f"        resolver.registerUnion({class_ref}.class, {union.type_id}L, {serializer_ref});"
             )
         else:
             ns = self.schema.package or "default"
