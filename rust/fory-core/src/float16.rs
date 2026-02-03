@@ -350,31 +350,35 @@ impl float16 {
     // ============ Arithmetic (explicit methods) ============
 
     /// Add two `float16` values (via f32).
-#[allow(clippy::should_implement_trait)]
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn add(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() + rhs.to_f32())
     }
 
     /// Subtract two `float16` values (via f32).
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn sub(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() - rhs.to_f32())
     }
 
     /// Multiply two `float16` values (via f32).
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn mul(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() * rhs.to_f32())
     }
 
     /// Divide two `float16` values (via f32).
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn div(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() / rhs.to_f32())
     }
 
     /// Negate this `float16` value.
+    #[allow(clippy::should_implement_trait)]
     #[inline]
     pub fn neg(self) -> Self {
         Self(self.0 ^ SIGN_MASK)
