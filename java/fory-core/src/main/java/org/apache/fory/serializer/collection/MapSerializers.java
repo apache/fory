@@ -37,7 +37,7 @@ import org.apache.fory.collection.MapSnapshot;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
@@ -327,7 +327,7 @@ public class MapSerializers {
     @Override
     public EnumMap newMap(MemoryBuffer buffer) {
       setNumElements(buffer.readVarUint32Small7());
-      Class<?> keyType = fory.getClassResolver().readClassInfo(buffer).getCls();
+      Class<?> keyType = fory.getClassResolver().readTypeInfo(buffer).getCls();
       return new EnumMap(keyType);
     }
 
@@ -349,10 +349,10 @@ public class MapSerializers {
       for (Entry<K, V> entry : originMap.entrySet()) {
         V value = entry.getValue();
         if (value != null) {
-          ClassInfo classInfo =
-              classResolver.getClassInfo(value.getClass(), valueClassInfoWriteCache);
-          if (!classInfo.getSerializer().isImmutable()) {
-            value = fory.copyObject(value, classInfo.getTypeId());
+          TypeInfo typeInfo =
+              classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
+          if (!typeInfo.getSerializer().isImmutable()) {
+            value = fory.copyObject(value, typeInfo.getTypeId());
           }
         }
         newMap.put(entry.getKey(), value);

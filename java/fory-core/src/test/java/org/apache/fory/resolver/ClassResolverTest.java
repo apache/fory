@@ -134,12 +134,12 @@ public class ClassResolverTest extends ForyTestBase {
     // Verify registered IDs are user IDs and type IDs are internal types only.
     assertEquals(classResolver.getRegisteredClassId(Foo.class).shortValue(), (short) 0);
     assertEquals(classResolver.getRegisteredClassId(Bar.class).shortValue(), (short) 1);
-    ClassInfo fooClassInfo = classResolver.getClassInfo(Foo.class);
-    ClassInfo barClassInfo = classResolver.getClassInfo(Bar.class);
-    assertEquals(fooClassInfo.getUserTypeId(), 0);
-    assertEquals(barClassInfo.getUserTypeId(), 1);
-    int fooTypeId = fooClassInfo.getTypeId();
-    int barTypeId = barClassInfo.getTypeId();
+    TypeInfo fooTypeInfo = classResolver.getTypeInfo(Foo.class);
+    TypeInfo barTypeInfo = classResolver.getTypeInfo(Bar.class);
+    assertEquals(fooTypeInfo.getUserTypeId(), 0);
+    assertEquals(barTypeInfo.getUserTypeId(), 1);
+    int fooTypeId = fooTypeInfo.getTypeId();
+    int barTypeId = barTypeInfo.getTypeId();
     assertTrue(fooTypeId == Types.STRUCT || fooTypeId == Types.COMPATIBLE_STRUCT);
     assertTrue(barTypeId == Types.STRUCT || barTypeId == Types.COMPATIBLE_STRUCT);
 
@@ -277,8 +277,8 @@ public class ClassResolverTest extends ForyTestBase {
       MemoryBuffer buffer = MemoryUtils.buffer(32);
       classResolver.writeClassAndUpdateCache(buffer, getClass());
       classResolver.writeClassAndUpdateCache(buffer, getClass());
-      Assert.assertSame(classResolver.readClassInfo(buffer).getCls(), getClass());
-      Assert.assertSame(classResolver.readClassInfo(buffer).getCls(), getClass());
+      Assert.assertSame(classResolver.readTypeInfo(buffer).getCls(), getClass());
+      Assert.assertSame(classResolver.readTypeInfo(buffer).getCls(), getClass());
       classResolver.reset();
       buffer.writerIndex(0);
       buffer.readerIndex(0);
@@ -336,7 +336,7 @@ public class ClassResolverTest extends ForyTestBase {
     ClassResolver classResolver = fory.getClassResolver();
     Assert.assertFalse(
         classResolver.needToWriteRef(TypeRef.of(TestNeedToWriteReferenceClass.class)));
-    assertNull(classResolver.getClassInfo(TestNeedToWriteReferenceClass.class, false));
+    assertNull(classResolver.getTypeInfo(TestNeedToWriteReferenceClass.class, false));
   }
 
   @Test
@@ -350,23 +350,23 @@ public class ClassResolverTest extends ForyTestBase {
     ClassResolver classResolver = fory.getClassResolver();
     {
       classResolver.setSerializer(Foo.class, new ObjectSerializer<>(fory, Foo.class));
-      ClassInfo classInfo = classResolver.getClassInfo(Foo.class);
-      assertSame(classInfo.getSerializer().getClass(), ObjectSerializer.class);
+      TypeInfo typeInfo = classResolver.getTypeInfo(Foo.class);
+      assertSame(typeInfo.getSerializer().getClass(), ObjectSerializer.class);
       // Create another ObjectSerializer to test setSerializer updates the existing classInfo
       classResolver.setSerializer(Foo.class, new ObjectSerializer<>(fory, Foo.class, true));
-      Assert.assertSame(classResolver.getClassInfo(Foo.class), classInfo);
-      assertSame(classInfo.getSerializer().getClass(), ObjectSerializer.class);
+      Assert.assertSame(classResolver.getTypeInfo(Foo.class), typeInfo);
+      assertSame(typeInfo.getSerializer().getClass(), ObjectSerializer.class);
     }
     {
       classResolver.registerInternal(Bar.class);
-      ClassInfo classInfo = classResolver.getClassInfo(Bar.class);
+      TypeInfo typeInfo = classResolver.getTypeInfo(Bar.class);
       classResolver.setSerializer(Bar.class, new ObjectSerializer<>(fory, Bar.class));
-      Assert.assertSame(classResolver.getClassInfo(Bar.class), classInfo);
-      assertSame(classInfo.getSerializer().getClass(), ObjectSerializer.class);
+      Assert.assertSame(classResolver.getTypeInfo(Bar.class), typeInfo);
+      assertSame(typeInfo.getSerializer().getClass(), ObjectSerializer.class);
       // Create another ObjectSerializer to test setSerializer updates the existing classInfo
       classResolver.setSerializer(Bar.class, new ObjectSerializer<>(fory, Bar.class, true));
-      Assert.assertSame(classResolver.getClassInfo(Bar.class), classInfo);
-      assertSame(classInfo.getSerializer().getClass(), ObjectSerializer.class);
+      Assert.assertSame(classResolver.getTypeInfo(Bar.class), typeInfo);
+      assertSame(typeInfo.getSerializer().getClass(), ObjectSerializer.class);
     }
   }
 

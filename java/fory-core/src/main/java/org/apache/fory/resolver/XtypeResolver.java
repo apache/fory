@@ -75,7 +75,7 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -131,15 +131,15 @@ public class XtypeResolver extends TypeResolver {
 
   private final Config config;
   private final Fory fory;
-  private final ClassInfoHolder classInfoCache = new ClassInfoHolder(NIL_CLASS_INFO);
+  private final TypeInfoHolder classInfoCache = new TypeInfoHolder(NIL_CLASS_INFO);
   private final MetaStringResolver metaStringResolver;
 
   // Every deserialization for unregistered class will query it, performance is important.
-  private final ObjectMap<TypeNameBytes, ClassInfo> compositeClassNameBytes2ClassInfo =
+  private final ObjectMap<TypeNameBytes, TypeInfo> compositeClassNameBytes2TypeInfo =
       new ObjectMap<>(16, loadFactor);
-  private final ObjectMap<String, ClassInfo> qualifiedType2ClassInfo =
+  private final ObjectMap<String, TypeInfo> qualifiedType2TypeInfo =
       new ObjectMap<>(16, loadFactor);
-  // classDefMap is inherited from TypeResolver
+  // typeDefMap is inherited from TypeResolver
   private final boolean shareMeta;
   private int xtypeIdGenerator = 64;
 
@@ -183,21 +183,21 @@ public class XtypeResolver extends TypeResolver {
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
         !containsUserTypeId(checkedUserTypeId), "Type id %s has been registered", userTypeId);
-    ClassInfo classInfo = classInfoMap.get(type);
+    TypeInfo typeInfo = classInfoMap.get(type);
     if (type.isArray()) {
-      buildClassInfo(type);
+      buildTypeInfo(type);
       GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
       return;
     }
     Serializer<?> serializer = null;
-    if (classInfo != null) {
-      serializer = classInfo.serializer;
-      if (classInfo.typeId != 0) {
+    if (typeInfo != null) {
+      serializer = typeInfo.serializer;
+      if (typeInfo.typeId != 0) {
         throw new IllegalArgumentException(
-            String.format("Type %s has been registered with id %s", type, classInfo.typeId));
+            String.format("Type %s has been registered with id %s", type, typeInfo.typeId));
       }
-      String prevNamespace = classInfo.decodeNamespace();
-      String prevTypeName = classInfo.decodeTypeName();
+      String prevNamespace = typeInfo.decodeNamespace();
+      String prevTypeName = typeInfo.decodeTypeName();
       if (!type.getSimpleName().equals(prevTypeName)) {
         throw new IllegalArgumentException(
             String.format(
@@ -236,13 +236,13 @@ public class XtypeResolver extends TypeResolver {
         !typeName.contains("."),
         "Typename %s should not contains `.`, please put it into namespace",
         typeName);
-    ClassInfo classInfo = classInfoMap.get(type);
+    TypeInfo typeInfo = classInfoMap.get(type);
     Serializer<?> serializer = null;
-    if (classInfo != null) {
-      serializer = classInfo.serializer;
-      if (classInfo.typeNameBytes != null) {
-        String prevNamespace = classInfo.decodeNamespace();
-        String prevTypeName = classInfo.decodeTypeName();
+    if (typeInfo != null) {
+      serializer = typeInfo.serializer;
+      if (typeInfo.typeNameBytes != null) {
+        String prevNamespace = typeInfo.decodeNamespace();
+        String prevTypeName = typeInfo.decodeTypeName();
         if (!namespace.equals(prevNamespace) || typeName.equals(prevTypeName)) {
           throw new IllegalArgumentException(
               String.format(
@@ -277,18 +277,18 @@ public class XtypeResolver extends TypeResolver {
       String typeName,
       int typeId,
       int userTypeId) {
-    ClassInfo classInfo = newClassInfo(type, serializer, namespace, typeName, typeId, userTypeId);
+    TypeInfo typeInfo = newTypeInfo(type, serializer, namespace, typeName, typeId, userTypeId);
     String qualifiedName = qualifiedName(namespace, typeName);
-    qualifiedType2ClassInfo.put(qualifiedName, classInfo);
+    qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
     extRegistry.registeredClasses.put(qualifiedName, type);
     GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
     if (serializer == null) {
       if (type.isEnum()) {
-        classInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);
+        typeInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);
       } else {
         AtomicBoolean updated = new AtomicBoolean(false);
         AtomicReference<Serializer> ref = new AtomicReference(null);
-        classInfo.serializer =
+        typeInfo.serializer =
             new DeferedLazySerializer.DeferredLazyObjectSerializer(
                 fory,
                 type,
@@ -309,7 +309,7 @@ public class XtypeResolver extends TypeResolver {
                 });
       }
     }
-    updateClassInfo(type, classInfo);
+    updateTypeInfo(type, typeInfo);
   }
 
   @Override
@@ -319,10 +319,10 @@ public class XtypeResolver extends TypeResolver {
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
         !containsUserTypeId(checkedUserTypeId), "Type id %s has been registered", userTypeId);
-    ClassInfo classInfo = classInfoMap.get(type);
-    if (classInfo != null && classInfo.typeId != 0) {
+    TypeInfo typeInfo = classInfoMap.get(type);
+    if (typeInfo != null && typeInfo.typeId != 0) {
       throw new IllegalArgumentException(
-          String.format("Type %s has been registered with id %s", type, classInfo.typeId));
+          String.format("Type %s has been registered with id %s", type, typeInfo.typeId));
     }
     int xtypeId = Types.TYPED_UNION;
     register(
@@ -343,10 +343,10 @@ public class XtypeResolver extends TypeResolver {
         !typeName.contains("."),
         "Typename %s should not contains `.`, please put it into namespace",
         typeName);
-    ClassInfo classInfo = classInfoMap.get(type);
-    if (classInfo != null && classInfo.typeNameBytes != null) {
-      String prevNamespace = classInfo.decodeNamespace();
-      String prevTypeName = classInfo.decodeTypeName();
+    TypeInfo typeInfo = classInfoMap.get(type);
+    if (typeInfo != null && typeInfo.typeNameBytes != null) {
+      String prevNamespace = typeInfo.decodeNamespace();
+      String prevTypeName = typeInfo.decodeTypeName();
       if (!namespace.equals(prevNamespace) || typeName.equals(prevTypeName)) {
         throw new IllegalArgumentException(
             String.format(
@@ -388,12 +388,12 @@ public class XtypeResolver extends TypeResolver {
     return serializer instanceof DeferredLazyObjectSerializer;
   }
 
-  private ClassInfo newClassInfo(Class<?> type, Serializer<?> serializer, int typeId) {
-    return newClassInfo(type, serializer, typeId, INVALID_USER_TYPE_ID);
+  private TypeInfo newTypeInfo(Class<?> type, Serializer<?> serializer, int typeId) {
+    return newTypeInfo(type, serializer, typeId, INVALID_USER_TYPE_ID);
   }
 
-  private ClassInfo newClassInfo(Class<?> type, Serializer<?> serializer, int typeId, int userTypeId) {
-    return newClassInfo(
+  private TypeInfo newTypeInfo(Class<?> type, Serializer<?> serializer, int typeId, int userTypeId) {
+    return newTypeInfo(
         type,
         serializer,
         ReflectionUtils.getPackage(type),
@@ -402,9 +402,9 @@ public class XtypeResolver extends TypeResolver {
         userTypeId);
   }
 
-  private ClassInfo newClassInfo(
+  private TypeInfo newTypeInfo(
       Class<?> type, Serializer<?> serializer, String namespace, String typeName, int typeId) {
-    return newClassInfo(
+    return newTypeInfo(
         type,
         serializer,
         namespace,
@@ -413,7 +413,7 @@ public class XtypeResolver extends TypeResolver {
         INVALID_USER_TYPE_ID);
   }
 
-  private ClassInfo newClassInfo(
+  private TypeInfo newTypeInfo(
       Class<?> type, Serializer<?> serializer, String namespace, String typeName, int typeId, int userTypeId) {
     MetaStringBytes fullClassNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
@@ -422,7 +422,7 @@ public class XtypeResolver extends TypeResolver {
         metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodePackage(namespace));
     MetaStringBytes classNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodeTypeName(typeName));
-    return new ClassInfo(
+    return new TypeInfo(
         type, fullClassNameBytes, nsBytes, classNameBytes, false, serializer, typeId, userTypeId);
   }
 
@@ -433,11 +433,11 @@ public class XtypeResolver extends TypeResolver {
 
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
     checkRegisterAllowed();
-    ClassInfo classInfo = checkClassRegistration(type);
+    TypeInfo typeInfo = checkClassRegistration(type);
     if (!serializer.getClass().getPackage().getName().startsWith("org.apache.fory")) {
       SerializationUtils.validate(type, serializer.getClass());
     }
-    int oldTypeId = classInfo.typeId;
+    int oldTypeId = typeInfo.typeId;
     int foryId = oldTypeId;
 
     if (foryId != Types.EXT && foryId != Types.NAMED_EXT) {
@@ -450,9 +450,9 @@ public class XtypeResolver extends TypeResolver {
             String.format("Can't register serializer for type %s with id %s", type, oldTypeId));
       }
     }
-    classInfo = classInfo.copy(foryId);
-    classInfo.serializer = serializer;
-    updateClassInfo(type, classInfo);
+    typeInfo = typeInfo.copy(foryId);
+    typeInfo.serializer = serializer;
+    updateTypeInfo(type, typeInfo);
   }
 
   @Override
@@ -465,17 +465,17 @@ public class XtypeResolver extends TypeResolver {
         || type == Character[].class) {
       return;
     }
-    ClassInfo classInfo = classInfoMap.get(type);
-    if (classInfo != null) {
-      if (classInfo.serializer == null) {
-        classInfo.serializer = serializer;
+    TypeInfo typeInfo = classInfoMap.get(type);
+    if (typeInfo != null) {
+      if (typeInfo.serializer == null) {
+        typeInfo.serializer = serializer;
       }
       return;
     }
     // Determine appropriate type ID based on the type
     int typeId = determineTypeIdForClass(type);
-    classInfo = newClassInfo(type, serializer, typeId);
-    classInfoMap.put(type, classInfo);
+    typeInfo = newTypeInfo(type, serializer, typeId);
+    classInfoMap.put(type, typeInfo);
   }
 
   /**
@@ -506,14 +506,14 @@ public class XtypeResolver extends TypeResolver {
     }
   }
 
-  private ClassInfo checkClassRegistration(Class<?> type) {
-    ClassInfo classInfo = classInfoMap.get(type);
+  private TypeInfo checkClassRegistration(Class<?> type) {
+    TypeInfo typeInfo = classInfoMap.get(type);
     Preconditions.checkArgument(
-        classInfo != null
-            && (classInfo.typeId != 0 || !type.getSimpleName().equals(classInfo.decodeTypeName())),
+        typeInfo != null
+            && (typeInfo.typeId != 0 || !type.getSimpleName().equals(typeInfo.decodeTypeName())),
         "Type %s should be registered with id or namespace+typename before register serializer",
         type);
-    return classInfo;
+    return typeInfo;
   }
 
   @Override
@@ -523,11 +523,11 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public boolean isRegisteredById(Class<?> cls) {
-    ClassInfo classInfo = classInfoMap.get(cls);
-    if (classInfo == null) {
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo == null) {
       return false;
     }
-    int typeId = classInfo.typeId;
+    int typeId = typeInfo.typeId;
     switch (typeId) {
       case Types.NAMED_COMPATIBLE_STRUCT:
       case Types.NAMED_ENUM:
@@ -542,11 +542,11 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public boolean isRegisteredByName(Class<?> cls) {
-    ClassInfo classInfo = classInfoMap.get(cls);
-    if (classInfo == null) {
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo == null) {
       return false;
     }
-    int typeId = classInfo.typeId;
+    int typeId = typeInfo.typeId;
     switch (typeId) {
       case Types.NAMED_COMPATIBLE_STRUCT:
       case Types.NAMED_ENUM:
@@ -613,9 +613,9 @@ public class XtypeResolver extends TypeResolver {
     if (clz == NonexistentMetaShared.class) {
       return false;
     }
-    ClassInfo classInfo = getClassInfo(clz, false);
-    if (classInfo != null) {
-      Serializer<?> s = classInfo.serializer;
+    TypeInfo typeInfo = getTypeInfo(clz, false);
+    if (typeInfo != null) {
+      Serializer<?> s = typeInfo.serializer;
       if (s instanceof TimeSerializers.TimeSerializer
           || s instanceof MapLikeSerializer
           || s instanceof CollectionLikeSerializer
@@ -644,51 +644,51 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public ClassInfo getClassInfo(Class<?> cls) {
-    ClassInfo classInfo = classInfoMap.get(cls);
-    if (classInfo == null) {
-      classInfo = buildClassInfo(cls);
+  public TypeInfo getTypeInfo(Class<?> cls) {
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo == null) {
+      typeInfo = buildTypeInfo(cls);
     }
-    return classInfo;
+    return typeInfo;
   }
 
   @Override
-  public ClassInfo getClassInfo(Class<?> cls, boolean createIfAbsent) {
+  public TypeInfo getTypeInfo(Class<?> cls, boolean createIfAbsent) {
     if (createIfAbsent) {
-      return getClassInfo(cls);
+      return getTypeInfo(cls);
     }
     return classInfoMap.get(cls);
   }
 
-  public ClassInfo getClassInfo(Class<?> cls, ClassInfoHolder classInfoHolder) {
-    ClassInfo classInfo = classInfoHolder.classInfo;
-    if (classInfo.getCls() != cls) {
-      classInfo = classInfoMap.get(cls);
-      if (classInfo == null) {
-        classInfo = buildClassInfo(cls);
+  public TypeInfo getTypeInfo(Class<?> cls, TypeInfoHolder classInfoHolder) {
+    TypeInfo typeInfo = classInfoHolder.typeInfo;
+    if (typeInfo.getCls() != cls) {
+      typeInfo = classInfoMap.get(cls);
+      if (typeInfo == null) {
+        typeInfo = buildTypeInfo(cls);
       }
-      classInfoHolder.classInfo = classInfo;
+      classInfoHolder.typeInfo = typeInfo;
     }
-    assert classInfo.serializer != null;
-    return classInfo;
+    assert typeInfo.serializer != null;
+    return typeInfo;
   }
 
-  public ClassInfo getXtypeInfo(int typeId) {
+  public TypeInfo getXtypeInfo(int typeId) {
     return getInternalTypeInfoByTypeId(typeId);
   }
 
-  public ClassInfo getUserTypeInfo(String namespace, String typeName) {
+  public TypeInfo getUserTypeInfo(String namespace, String typeName) {
     String name = qualifiedName(namespace, typeName);
-    return qualifiedType2ClassInfo.get(name);
+    return qualifiedType2TypeInfo.get(name);
   }
 
-  public ClassInfo getUserTypeInfo(int userTypeId) {
-    return userTypeIdToClassInfo.get(userTypeId);
+  public TypeInfo getUserTypeInfo(int userTypeId) {
+    return userTypeIdToTypeInfo.get(userTypeId);
   }
 
   // buildGenericType methods are inherited from TypeResolver
 
-  private ClassInfo buildClassInfo(Class<?> cls) {
+  private TypeInfo buildTypeInfo(Class<?> cls) {
     Serializer serializer;
     int typeId;
     if (isSet(cls)) {
@@ -715,12 +715,12 @@ public class XtypeResolver extends TypeResolver {
         cls = HashMap.class;
         serializer = new HashMapSerializer(fory);
       } else {
-        ClassInfo classInfo = classInfoMap.get(cls);
-        if (classInfo != null
-            && classInfo.serializer != null
-            && classInfo.serializer instanceof MapLikeSerializer
-            && ((MapLikeSerializer) classInfo.serializer).supportCodegenHook()) {
-          serializer = classInfo.serializer;
+        TypeInfo typeInfo = classInfoMap.get(cls);
+        if (typeInfo != null
+            && typeInfo.serializer != null
+            && typeInfo.serializer instanceof MapLikeSerializer
+            && ((MapLikeSerializer) typeInfo.serializer).supportCodegenHook()) {
+          serializer = typeInfo.serializer;
         } else {
           serializer = new MapSerializer(fory, cls);
         }
@@ -735,29 +735,29 @@ public class XtypeResolver extends TypeResolver {
       }
     } else if (cls == Object.class) {
       // Object.class is handled as unknown type in xlang
-      return getClassInfo(cls);
+      return getTypeInfo(cls);
     } else {
       Class<Enum> enclosingClass = (Class<Enum>) cls.getEnclosingClass();
       if (enclosingClass != null && enclosingClass.isEnum()) {
-        ClassInfo enumInfo = getClassInfo(enclosingClass);
+        TypeInfo enumInfo = getTypeInfo(enclosingClass);
         classInfoMap.put(cls, enumInfo);
         return enumInfo;
       } else {
         throw new ClassUnregisteredException(cls);
       }
     }
-    ClassInfo info = newClassInfo(cls, serializer, typeId);
+    TypeInfo info = newTypeInfo(cls, serializer, typeId);
     classInfoMap.put(cls, info);
     return info;
   }
 
   private Serializer<?> getCollectionSerializer(Class<?> cls) {
-    ClassInfo classInfo = classInfoMap.get(cls);
-    if (classInfo != null
-        && classInfo.serializer != null
-        && classInfo.serializer instanceof CollectionLikeSerializer
-        && ((CollectionLikeSerializer) (classInfo.serializer)).supportCodegenHook()) {
-      return classInfo.serializer;
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo != null
+        && typeInfo.serializer != null
+        && typeInfo.serializer instanceof CollectionLikeSerializer
+        && ((CollectionLikeSerializer) (typeInfo.serializer)).supportCodegenHook()) {
+      return typeInfo.serializer;
     }
     return new CollectionSerializer(fory, cls);
   }
@@ -966,10 +966,10 @@ public class XtypeResolver extends TypeResolver {
   }
 
   private void registerType(int xtypeId, Class<?> type, Serializer<?> serializer) {
-    ClassInfo classInfo = newClassInfo(type, serializer,  xtypeId, INVALID_USER_TYPE_ID);
-    classInfoMap.put(type, classInfo);
+    TypeInfo typeInfo = newTypeInfo(type, serializer,  xtypeId, INVALID_USER_TYPE_ID);
+    classInfoMap.put(type, typeInfo);
     if (getInternalTypeInfoByTypeId(xtypeId) == null) {
-      putInternalTypeInfo(xtypeId, classInfo);
+      putInternalTypeInfo(xtypeId, typeInfo);
     }
   }
 
@@ -988,122 +988,122 @@ public class XtypeResolver extends TypeResolver {
       Class<? extends org.apache.fory.type.union.Union> unionCls =
           (Class<? extends org.apache.fory.type.union.Union>) cls;
       UnionSerializer serializer = new UnionSerializer(fory, unionCls);
-      ClassInfo classInfo = newClassInfo(cls, serializer, Types.UNION, INVALID_USER_TYPE_ID);
-      classInfoMap.put(cls, classInfo);
+      TypeInfo typeInfo = newTypeInfo(cls, serializer, Types.UNION, INVALID_USER_TYPE_ID);
+      classInfoMap.put(cls, typeInfo);
     }
     putInternalTypeInfo(Types.UNION, classInfoMap.get(org.apache.fory.type.union.Union.class));
   }
 
-  public ClassInfo writeClassInfo(MemoryBuffer buffer, Object obj) {
-    ClassInfo classInfo = getClassInfo(obj.getClass(), classInfoCache);
-    writeClassInfo(buffer, classInfo);
-    return classInfo;
+  public TypeInfo writeTypeInfo(MemoryBuffer buffer, Object obj) {
+    TypeInfo typeInfo = getTypeInfo(obj.getClass(), classInfoCache);
+    writeTypeInfo(buffer, typeInfo);
+    return typeInfo;
   }
 
   @Override
-  protected ClassDef buildClassDef(ClassInfo classInfo) {
-    ClassDef classDef =
-        classDefMap.computeIfAbsent(classInfo.cls, cls -> ClassDef.buildClassDef(fory, cls));
-    classInfo.classDef = classDef;
-    return classDef;
+  protected TypeDef buildTypeDef(TypeInfo typeInfo) {
+    TypeDef typeDef =
+        typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls));
+    typeInfo.typeDef = typeDef;
+    return typeDef;
   }
 
   @Override
   public <T> Serializer<T> getSerializer(Class<T> cls) {
-    return (Serializer) getClassInfo(cls).serializer;
+    return (Serializer) getTypeInfo(cls).serializer;
   }
 
   @Override
   public Serializer<?> getRawSerializer(Class<?> cls) {
-    return getClassInfo(cls).serializer;
+    return getTypeInfo(cls).serializer;
   }
 
   @Override
   public <T> void setSerializer(Class<T> cls, Serializer<T> serializer) {
-    getClassInfo(cls).serializer = serializer;
+    getTypeInfo(cls).serializer = serializer;
   }
 
   @Override
   public <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer) {
-    ClassInfo classInfo = classInfoMap.get(cls);
-    Preconditions.checkNotNull(classInfo);
-    Preconditions.checkNotNull(classInfo.serializer);
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    Preconditions.checkNotNull(typeInfo);
+    Preconditions.checkNotNull(typeInfo.serializer);
   }
 
-  // nilClassInfo and nilClassInfoHolder are inherited from TypeResolver
+  // nilTypeInfo and nilTypeInfoHolder are inherited from TypeResolver
 
   @Override
-  protected ClassInfo getListClassInfo() {
+  protected TypeInfo getListTypeInfo() {
     fory.incReadDepth();
     GenericType genericType = generics.nextGenericType();
     fory.decDepth();
     if (genericType != null) {
-      return getOrBuildClassInfo(genericType.getCls());
+      return getOrBuildTypeInfo(genericType.getCls());
     }
     return requireInternalTypeInfoByTypeId(Types.LIST);
   }
 
   @Override
-  protected ClassInfo getTimestampClassInfo() {
+  protected TypeInfo getTimestampTypeInfo() {
     fory.incReadDepth();
     GenericType genericType = generics.nextGenericType();
     fory.decDepth();
     if (genericType != null) {
-      return getOrBuildClassInfo(genericType.getCls());
+      return getOrBuildTypeInfo(genericType.getCls());
     }
     return requireInternalTypeInfoByTypeId(Types.TIMESTAMP);
   }
 
-  private ClassInfo getOrBuildClassInfo(Class<?> cls) {
-    ClassInfo classInfo = classInfoMap.get(cls);
-    if (classInfo == null) {
-      classInfo = buildClassInfo(cls);
-      classInfoMap.put(cls, classInfo);
+  private TypeInfo getOrBuildTypeInfo(Class<?> cls) {
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo == null) {
+      typeInfo = buildTypeInfo(cls);
+      classInfoMap.put(cls, typeInfo);
     }
-    return classInfo;
+    return typeInfo;
   }
 
   @Override
-  protected ClassInfo loadBytesToClassInfo(
+  protected TypeInfo loadBytesToTypeInfo(
       MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
     // Default to NAMED_STRUCT when called without internalTypeId
-    return loadBytesToClassInfoWithTypeId(Types.NAMED_STRUCT, packageBytes, simpleClassNameBytes);
+    return loadBytesToTypeInfoWithTypeId(Types.NAMED_STRUCT, packageBytes, simpleClassNameBytes);
   }
 
   @Override
-  protected ClassInfo ensureSerializerForClassInfo(ClassInfo classInfo) {
-    if (classInfo.serializer == null) {
-      Class<?> cls = classInfo.cls;
+  protected TypeInfo ensureSerializerForTypeInfo(TypeInfo typeInfo) {
+    if (typeInfo.serializer == null) {
+      Class<?> cls = typeInfo.cls;
       if (cls != null && (ReflectionUtils.isAbstract(cls) || cls.isInterface())) {
-        return classInfo;
+        return typeInfo;
       }
-      // Get or create ClassInfo with serializer
-      ClassInfo newClassInfo = getClassInfo(classInfo.cls);
-      // Update the cache with the correct ClassInfo that has a serializer
-      if (classInfo.typeNameBytes != null) {
+      // Get or create TypeInfo with serializer
+      TypeInfo newTypeInfo = getTypeInfo(typeInfo.cls);
+      // Update the cache with the correct TypeInfo that has a serializer
+      if (typeInfo.typeNameBytes != null) {
         TypeNameBytes typeNameBytes =
-            new TypeNameBytes(classInfo.namespaceBytes.hashCode, classInfo.typeNameBytes.hashCode);
-        compositeClassNameBytes2ClassInfo.put(typeNameBytes, newClassInfo);
+            new TypeNameBytes(typeInfo.namespaceBytes.hashCode, typeInfo.typeNameBytes.hashCode);
+        compositeClassNameBytes2TypeInfo.put(typeNameBytes, newTypeInfo);
       }
-      return newClassInfo;
+      return newTypeInfo;
     }
-    return classInfo;
+    return typeInfo;
   }
 
-  private ClassInfo loadBytesToClassInfoWithTypeId(
+  private TypeInfo loadBytesToTypeInfoWithTypeId(
       int internalTypeId, MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
     TypeNameBytes typeNameBytes =
         new TypeNameBytes(packageBytes.hashCode, simpleClassNameBytes.hashCode);
-    ClassInfo classInfo = compositeClassNameBytes2ClassInfo.get(typeNameBytes);
-    if (classInfo == null) {
-      classInfo =
-          populateBytesToClassInfo(
+    TypeInfo typeInfo = compositeClassNameBytes2TypeInfo.get(typeNameBytes);
+    if (typeInfo == null) {
+      typeInfo =
+          populateBytesToTypeInfo(
               internalTypeId, typeNameBytes, packageBytes, simpleClassNameBytes);
     }
-    return classInfo;
+    return typeInfo;
   }
 
-  private ClassInfo populateBytesToClassInfo(
+  private TypeInfo populateBytesToTypeInfo(
       int typeId,
       TypeNameBytes typeNameBytes,
       MetaStringBytes packageBytes,
@@ -1111,8 +1111,8 @@ public class XtypeResolver extends TypeResolver {
     String namespace = packageBytes.decode(PACKAGE_DECODER);
     String typeName = simpleClassNameBytes.decode(TYPE_NAME_DECODER);
     String qualifiedName = qualifiedName(namespace, typeName);
-    ClassInfo classInfo = qualifiedType2ClassInfo.get(qualifiedName);
-    if (classInfo == null) {
+    TypeInfo typeInfo = qualifiedType2TypeInfo.get(qualifiedName);
+    if (typeInfo == null) {
       String msg = String.format("Class %s not registered", qualifiedName);
       Class<?> type = null;
       if (config.deserializeNonexistentClass()) {
@@ -1136,8 +1136,8 @@ public class XtypeResolver extends TypeResolver {
       MetaStringBytes fullClassNameBytes =
           metaStringResolver.getOrCreateMetaStringBytes(
               PACKAGE_ENCODER.encode(qualifiedName, MetaString.Encoding.UTF_8));
-      classInfo =
-          new ClassInfo(
+      typeInfo =
+          new TypeInfo(
               type,
               fullClassNameBytes,
               packageBytes,
@@ -1147,11 +1147,11 @@ public class XtypeResolver extends TypeResolver {
               NOT_SUPPORT_XLANG,
               INVALID_USER_TYPE_ID);
       if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
-        classInfo.serializer = NonexistentClassSerializers.getSerializer(fory, qualifiedName, type);
+        typeInfo.serializer = NonexistentClassSerializers.getSerializer(fory, qualifiedName, type);
       }
     }
-    compositeClassNameBytes2ClassInfo.put(typeNameBytes, classInfo);
-    return classInfo;
+    compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
+    return typeInfo;
   }
 
   @Override
@@ -1203,7 +1203,7 @@ public class XtypeResolver extends TypeResolver {
       return Types.MAP;
     }
     if (isRegistered(cls)) {
-      return (byte) getClassInfo(cls).getTypeId();
+      return (byte) getTypeInfo(cls).getTypeId();
     } else {
       if (cls.isEnum()) {
         return Types.ENUM;

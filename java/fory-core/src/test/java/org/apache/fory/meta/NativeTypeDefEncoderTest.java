@@ -19,8 +19,8 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.ClassDefEncoder.buildFieldsInfo;
-import static org.apache.fory.meta.ClassDefEncoder.getClassFields;
+import static org.apache.fory.meta.NativeTypeDefEncoder.buildFieldsInfo;
+import static org.apache.fory.meta.NativeTypeDefEncoder.getClassFields;
 
 import java.io.Serializable;
 import java.util.List;
@@ -36,20 +36,20 @@ import org.apache.fory.test.bean.Struct;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ClassDefEncoderTest {
+public class NativeTypeDefEncoderTest {
 
   @Test
-  public void testBasicClassDef() {
+  public void testBasicTypeDef() {
     Fory fory = Fory.builder().withMetaShare(true).build();
-    Class<ClassDefTest.TestFieldsOrderClass1> type = ClassDefTest.TestFieldsOrderClass1.class;
+    Class<TypeDefTest.TestFieldsOrderClass1> type = TypeDefTest.TestFieldsOrderClass1.class;
     List<FieldInfo> fieldsInfo = buildFieldsInfo(fory.getClassResolver(), type);
     MemoryBuffer buffer =
-        ClassDefEncoder.encodeClassDef(
+        NativeTypeDefEncoder.encodeTypeDef(
             fory.getClassResolver(), type, getClassFields(type, fieldsInfo), true);
-    ClassDef classDef = ClassDef.readClassDef(fory, buffer);
-    Assert.assertEquals(classDef.getClassName(), type.getName());
-    Assert.assertEquals(classDef.getFieldsInfo().size(), type.getDeclaredFields().length);
-    Assert.assertEquals(classDef.getFieldsInfo(), fieldsInfo);
+    TypeDef typeDef = TypeDef.readTypeDef(fory, buffer);
+    Assert.assertEquals(typeDef.getClassName(), type.getName());
+    Assert.assertEquals(typeDef.getFieldsInfo().size(), type.getDeclaredFields().length);
+    Assert.assertEquals(typeDef.getFieldsInfo(), fieldsInfo);
   }
 
   @Test
@@ -59,10 +59,10 @@ public class ClassDefEncoderTest {
           MapFields.class, BeanA.class, Struct.createStructClass("TestBigMetaEncoding", 5)
         }) {
       Fory fory = Fory.builder().withMetaShare(true).build();
-      ClassDef classDef = ClassDef.buildClassDef(fory, type);
-      ClassDef classDef1 =
-          ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
-      Assert.assertEquals(classDef1, classDef);
+      TypeDef typeDef = TypeDef.buildTypeDef(fory, type);
+      TypeDef typeDef1 =
+          TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+      Assert.assertEquals(typeDef1, typeDef);
     }
   }
 
@@ -76,23 +76,23 @@ public class ClassDefEncoderTest {
   @Test
   public void testEmptySubClassSerializer() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
-    ClassDef classDef = ClassDef.buildClassDef(fory, Foo2.class);
-    ClassDef classDef1 =
-        ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
-    Assert.assertEquals(classDef, classDef1);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory, Foo2.class);
+    TypeDef typeDef1 =
+        TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    Assert.assertEquals(typeDef, typeDef1);
   }
 
   @Test
   public void testBigClassNameObject() {
     Fory fory = Fory.builder().withMetaShare(true).build();
-    ClassDef classDef =
-        ClassDef.buildClassDef(
+    TypeDef typeDef =
+        TypeDef.buildTypeDef(
             fory,
             TestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLength
                 .InnerClassTestLengthInnerClassTestLengthInnerClassTestLength.class);
-    ClassDef classDef1 =
-        ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
-    Assert.assertEquals(classDef1, classDef);
+    TypeDef typeDef1 =
+        TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    Assert.assertEquals(typeDef1, typeDef);
   }
 
   @Data
@@ -112,14 +112,14 @@ public class ClassDefEncoderTest {
 
   @Test
   public void testPrependHeader() {
-    MemoryBuffer inputBuffer = MemoryBuffer.newHeapBuffer(ClassDef.META_SIZE_MASKS + 1);
-    inputBuffer.writerIndex(ClassDef.META_SIZE_MASKS + 1);
-    MemoryBuffer outputBuffer = ClassDefEncoder.prependHeader(inputBuffer, true, false);
+    MemoryBuffer inputBuffer = MemoryBuffer.newHeapBuffer(TypeDef.META_SIZE_MASKS + 1);
+    inputBuffer.writerIndex(TypeDef.META_SIZE_MASKS + 1);
+    MemoryBuffer outputBuffer = NativeTypeDefEncoder.prependHeader(inputBuffer, true, false);
 
     long header = outputBuffer.readInt64();
-    Assert.assertEquals(header & ClassDef.META_SIZE_MASKS, ClassDef.META_SIZE_MASKS);
-    Assert.assertEquals(header & ClassDef.COMPRESS_META_FLAG, ClassDef.COMPRESS_META_FLAG);
-    Assert.assertEquals(header & ClassDef.HAS_FIELDS_META_FLAG, 0);
+    Assert.assertEquals(header & TypeDef.META_SIZE_MASKS, TypeDef.META_SIZE_MASKS);
+    Assert.assertEquals(header & TypeDef.COMPRESS_META_FLAG, TypeDef.COMPRESS_META_FLAG);
+    Assert.assertEquals(header & TypeDef.HAS_FIELDS_META_FLAG, 0);
   }
 
   @Test
@@ -140,10 +140,10 @@ public class ClassDefEncoderTest {
     fory1.register(BaseAbstractClass.class);
     fory1.register(ChildClass.class);
     for (Fory fory : new Fory[] {fory0, fory1}) {
-      ClassDef classDef = ClassDef.buildClassDef(fory, ChildClass.class);
-      ClassDef classDef1 =
-          ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
-      Assert.assertEquals(classDef, classDef1);
+      TypeDef typeDef = TypeDef.buildTypeDef(fory, ChildClass.class);
+      TypeDef typeDef1 =
+          TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+      Assert.assertEquals(typeDef, typeDef1);
       ChildClass c = new ChildClass();
       c.setId("123");
       c.setName("test");
@@ -172,7 +172,7 @@ public class ClassDefEncoderTest {
     private String name;
   }
 
-  // Test classes for duplicate tag ID validation in ClassDefEncoder
+  // Test classes for duplicate tag ID validation in TypeDefEncoder
   @Data
   public static class ClassWithDuplicateTagIds {
     @ForyField(id = 10)

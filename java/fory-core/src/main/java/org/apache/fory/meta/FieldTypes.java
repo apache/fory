@@ -48,7 +48,7 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
@@ -106,8 +106,8 @@ public class FieldTypes {
       // This allows @Uint8ArrayType etc. to override the default INT8_ARRAY type
       typeId = Types.getDescriptorTypeId(resolver.getFory(), field);
     } else {
-      ClassInfo info =
-          isXlang && rawType == Object.class ? null : resolver.getClassInfo(rawType, false);
+      TypeInfo info =
+          isXlang && rawType == Object.class ? null : resolver.getTypeInfo(rawType, false);
       if (info != null) {
         typeId = info.getTypeId();
         if (Types.isEnumType(typeId)) {
@@ -134,7 +134,7 @@ public class FieldTypes {
           typeId = Types.UNKNOWN;
         }
       } else if (resolver instanceof ClassResolver) {
-        typeId = ((ClassResolver) resolver).getTypeIdForClassDef(rawType);
+        typeId = ((ClassResolver) resolver).getTypeIdForTypeDef(rawType);
       } else {
         typeId = Types.UNKNOWN;
       }
@@ -465,8 +465,8 @@ public class FieldTypes {
               return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
             }
             if (!Types.isUserDefinedType((byte) typeId)) {
-              ClassInfo classInfo = resolver.getXtypeInfo(typeId);
-              if (classInfo == null) {
+              TypeInfo typeInfo = resolver.getXtypeInfo(typeId);
+              if (typeInfo == null) {
                 // Type not registered locally - this can happen in compatible mode
                 // when remote sends a type ID that's not registered here.
                 // Fall back to ObjectFieldType to handle gracefully.
@@ -502,7 +502,7 @@ public class FieldTypes {
       }
       if (Types.isPrimitiveType(internalTypeId)) {
         if (declared != null) {
-          ClassInfo declaredInfo = resolver.getClassInfo(declared.getRawType(), false);
+          TypeInfo declaredInfo = resolver.getTypeInfo(declared.getRawType(), false);
           if (declaredInfo != null && declaredInfo.getTypeId() == typeId) {
             return TypeRef.of(
                 declared.getRawType(), new TypeExtMeta(typeId, nullable, trackingRef));
@@ -554,7 +554,7 @@ public class FieldTypes {
         return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
       }
       if (resolver instanceof XtypeResolver) {
-        ClassInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
+        TypeInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
         Preconditions.checkNotNull(xtypeInfo);
         cls = xtypeInfo.getCls();
       } else {

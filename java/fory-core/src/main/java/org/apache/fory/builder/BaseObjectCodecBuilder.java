@@ -117,8 +117,8 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
@@ -376,7 +376,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   protected void addCommonImports() {
     ctx.addImports(
         Fory.class, MemoryBuffer.class, fory.getRefResolver().getClass(), Platform.class);
-    ctx.addImports(ClassInfo.class, ClassInfoHolder.class, ClassResolver.class);
+    ctx.addImports(TypeInfo.class, TypeInfoHolder.class, ClassResolver.class);
     ctx.addImport(Generated.class);
     ctx.addImports(LazyInitBeanSerializer.class, EnumSerializer.class);
     ctx.addImports(Serializer.class, StringSerializer.class);
@@ -708,7 +708,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     Class<?> clz = getRawType(typeRef);
     Expression clsExpr = new Invoke(inputObject, "getClass", "cls", CLASS_TYPE);
     ListExpression writeClassAndObject = new ListExpression();
-    Tuple2<Reference, Boolean> classInfoRef = addClassInfoField(clz);
+    Tuple2<Reference, Boolean> classInfoRef = addTypeInfoField(clz);
     Expression classInfo = classInfoRef.f0;
     if (classInfoRef.f1) {
       writeClassAndObject.add(
@@ -716,7 +716,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
               neq(new Invoke(classInfo, "getCls", CLASS_TYPE), clsExpr),
               new Assign(
                   classInfo,
-                  inlineInvoke(typeResolverRef, "getClassInfo", classInfoTypeRef, clsExpr))));
+                  inlineInvoke(typeResolverRef, "getTypeInfo", classInfoTypeRef, clsExpr))));
     }
     writeClassAndObject.add(
         typeResolver(r -> r.writeClassExpr(typeResolverRef, buffer, classInfo)));
@@ -731,17 +731,17 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         ctx, ofHashSet(buffer, inputObject), writeClassAndObject, "writeClassAndObject", false);
   }
 
-  protected Expression writeClassInfo(
+  protected Expression writeTypeInfo(
       Expression buffer, Expression clsExpr, Class<?> declaredClass, boolean returnSerializer) {
     ListExpression writeClassAction = new ListExpression();
-    Tuple2<Reference, Boolean> classInfoRef = addClassInfoField(declaredClass);
+    Tuple2<Reference, Boolean> classInfoRef = addTypeInfoField(declaredClass);
     Expression classInfo = classInfoRef.f0;
     writeClassAction.add(
         new If(
             neq(inlineInvoke(classInfo, "getCls", CLASS_TYPE), clsExpr),
             new Assign(
                 classInfo,
-                inlineInvoke(typeResolverRef, "getClassInfo", classInfoTypeRef, clsExpr))));
+                inlineInvoke(typeResolverRef, "getTypeInfo", classInfoTypeRef, clsExpr))));
     writeClassAction.add(typeResolver(r -> r.writeClassExpr(typeResolverRef, buffer, classInfo)));
     if (returnSerializer) {
       writeClassAction.add(
@@ -895,7 +895,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    *
    * @return false for tuple field1 if the classinfo doesn't need update.
    */
-  protected Tuple2<Reference, Boolean> addClassInfoField(Class<?> cls) {
+  protected Tuple2<Reference, Boolean> addTypeInfoField(Class<?> cls) {
     Expression classInfoExpr;
     boolean needUpdate = !ReflectionUtils.isMonomorphic(cls);
     String key;
@@ -910,15 +910,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     }
     if (!needUpdate) {
       Expression clsExpr = getClassExpr(cls);
-      classInfoExpr = inlineInvoke(typeResolverRef, "getClassInfo", classInfoTypeRef, clsExpr);
+      classInfoExpr = inlineInvoke(typeResolverRef, "getTypeInfo", classInfoTypeRef, clsExpr);
       // Use `ctx.freshName(cls)` to avoid wrong name for arr type.
-      String name = ctx.newName(ctx.newName(cls) + "ClassInfo");
-      ctx.addField(true, ctx.type(ClassInfo.class), name, classInfoExpr);
+      String name = ctx.newName(ctx.newName(cls) + "TypeInfo");
+      ctx.addField(true, ctx.type(TypeInfo.class), name, classInfoExpr);
       classInfoRef = Tuple2.of(fieldRef(name, classInfoTypeRef), false);
     } else {
-      classInfoExpr = inlineInvoke(typeResolverRef, "nilClassInfo", classInfoTypeRef);
-      String name = ctx.newName(cls, "ClassInfo");
-      ctx.addField(false, ctx.type(ClassInfo.class), name, classInfoExpr);
+      classInfoExpr = inlineInvoke(typeResolverRef, "nilTypeInfo", classInfoTypeRef);
+      String name = ctx.newName(cls, "TypeInfo");
+      ctx.addField(false, ctx.type(TypeInfo.class), name, classInfoExpr);
       // Can't use fieldRef, since the field is not final.
       classInfoRef = Tuple2.of(new Reference(name, classInfoTypeRef), true);
     }
@@ -926,7 +926,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return classInfoRef;
   }
 
-  protected Reference addClassInfoHolderField(Class<?> cls) {
+  protected Reference addTypeInfoHolderField(Class<?> cls) {
     // Final type need to write classinfo when meta share enabled.
     String key;
     if (ReflectionUtils.isMonomorphic(cls)) {
@@ -939,36 +939,36 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       return reference;
     }
     Expression classInfoHolderExpr =
-        inlineInvoke(typeResolverRef, "nilClassInfoHolder", classInfoHolderTypeRef);
-    String name = ctx.newName(cls, "ClassInfoHolder");
-    ctx.addField(true, ctx.type(ClassInfoHolder.class), name, classInfoHolderExpr);
+        inlineInvoke(typeResolverRef, "nilTypeInfoHolder", classInfoHolderTypeRef);
+    String name = ctx.newName(cls, "TypeInfoHolder");
+    ctx.addField(true, ctx.type(TypeInfoHolder.class), name, classInfoHolderExpr);
     // The class info field read only once, no need to shallow.
     reference = new Reference(name, classInfoHolderTypeRef);
     sharedFieldMap.put(key, reference);
     return reference;
   }
 
-  protected Expression readClassInfo(Class<?> cls, Expression buffer) {
-    return readClassInfo(cls, buffer, true);
+  protected Expression readTypeInfo(Class<?> cls, Expression buffer) {
+    return readTypeInfo(cls, buffer, true);
   }
 
-  protected Expression readClassInfo(Class<?> cls, Expression buffer, boolean inlineReadClassInfo) {
+  protected Expression readTypeInfo(Class<?> cls, Expression buffer, boolean inlineReadTypeInfo) {
     if (ReflectionUtils.isMonomorphic(cls)) {
-      Reference classInfoRef = addClassInfoField(cls).f0;
-      if (inlineReadClassInfo) {
+      Reference classInfoRef = addTypeInfoField(cls).f0;
+      if (inlineReadTypeInfo) {
         return inlineInvoke(
-            typeResolverRef, "readClassInfo", classInfoTypeRef, buffer, classInfoRef);
+            typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, classInfoRef);
       } else {
-        return new Invoke(typeResolverRef, "readClassInfo", classInfoTypeRef, buffer, classInfoRef);
+        return new Invoke(typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, classInfoRef);
       }
     }
-    Reference classInfoHolderRef = addClassInfoHolderField(cls);
-    if (inlineReadClassInfo) {
+    Reference classInfoHolderRef = addTypeInfoHolderField(cls);
+    if (inlineReadTypeInfo) {
       return inlineInvoke(
-          typeResolverRef, "readClassInfo", classInfoTypeRef, buffer, classInfoHolderRef);
+          typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, classInfoHolderRef);
     } else {
       return new Invoke(
-          typeResolverRef, "readClassInfo", classInfoTypeRef, buffer, classInfoHolderRef);
+          typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, classInfoHolderRef);
     }
   }
 
@@ -1006,7 +1006,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         serializer = getOrCreateSerializer(clz);
       } else {
         ListExpression writeClassAction = new ListExpression();
-        Tuple2<Reference, Boolean> classInfoRef = addClassInfoField(clz);
+        Tuple2<Reference, Boolean> classInfoRef = addTypeInfoField(clz);
         Expression classInfo = classInfoRef.f0;
         Expression clsExpr = new Invoke(collection, "getClass", "cls", CLASS_TYPE);
         writeClassAction.add(
@@ -1014,7 +1014,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 neq(new Invoke(classInfo, "getCls", CLASS_TYPE), clsExpr),
                 new Assign(
                     classInfo,
-                    inlineInvoke(typeResolverRef, "getClassInfo", classInfoTypeRef, clsExpr))));
+                    inlineInvoke(typeResolverRef, "getTypeInfo", classInfoTypeRef, clsExpr))));
         writeClassAction.add(
             typeResolver(r -> r.writeClassExpr(typeResolverRef, buffer, classInfo)));
         writeClassAction.add(
@@ -1025,7 +1025,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 ctx,
                 ofHashSet(buffer, collection),
                 writeClassAction,
-                "writeCollectionClassInfo",
+                "writeCollectionTypeInfo",
                 false);
       }
     } else if (!TypeRef.of(CollectionLikeSerializer.class).isSupertypeOf(serializer.type())) {
@@ -1204,7 +1204,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       return Tuple2.of(bitmap, null);
     } else {
       Expression elementTypeExpr = getClassExpr(elementType);
-      Expression classInfoHolder = addClassInfoHolderField(elementType);
+      Expression classInfoHolder = addTypeInfoHolderField(elementType);
       Expression bitmap;
       if (trackingRef) {
         if (elementType == Object.class) {
@@ -1359,7 +1359,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         serializer = getOrCreateSerializer(clz);
       } else {
         ListExpression writeClassAction = new ListExpression();
-        Tuple2<Reference, Boolean> classInfoRef = addClassInfoField(clz);
+        Tuple2<Reference, Boolean> classInfoRef = addTypeInfoField(clz);
         Expression classInfo = classInfoRef.f0;
         Expression clsExpr = new Invoke(map, "getClass", "cls", CLASS_TYPE);
         writeClassAction.add(
@@ -1367,7 +1367,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 neq(new Invoke(classInfo, "getCls", CLASS_TYPE), clsExpr),
                 new Assign(
                     classInfo,
-                    inlineInvoke(typeResolverRef, "getClassInfo", classInfoTypeRef, clsExpr))));
+                    inlineInvoke(typeResolverRef, "getTypeInfo", classInfoTypeRef, clsExpr))));
         // Note: writeClassExpr is thread safe.
         writeClassAction.add(
             typeResolver(r -> r.writeClassExpr(typeResolverRef, buffer, classInfo)));
@@ -1376,7 +1376,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         // Spit this into a separate method to avoid method too big to inline.
         serializer =
             invokeGenerated(
-                ctx, ofHashSet(buffer, map), writeClassAction, "writeMapClassInfo", false);
+                ctx, ofHashSet(buffer, map), writeClassAction, "writeMapTypeInfo", false);
       }
     } else if (!MapLikeSerializer.class.isAssignableFrom(serializer.type().getRawType())) {
       serializer = cast(serializer, TypeRef.of(MapLikeSerializer.class), "mapSerializer");
@@ -1569,7 +1569,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       }
       keySerializer = getOrCreateSerializer(keyTypeRawType);
       walkPath.add("value:" + valueType);
-      valueSerializer = writeClassInfo(buffer, valueTypeExpr, valueTypeRawType, true);
+      valueSerializer = writeTypeInfo(buffer, valueTypeExpr, valueTypeRawType, true);
       walkPath.removeLast();
       chunkHeader = ExpressionUtils.ofInt("chunkHeader", header);
       expressions.add(chunkHeader);
@@ -1584,7 +1584,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       }
     } else if (valueMonomorphic) {
       walkPath.add("key:" + keyType);
-      keySerializer = writeClassInfo(buffer, keyTypeExpr, keyTypeRawType, true);
+      keySerializer = writeTypeInfo(buffer, keyTypeExpr, keyTypeRawType, true);
       walkPath.removeLast();
       valueSerializer = getOrCreateSerializer(valueTypeRawType);
       int header = VALUE_DECL_TYPE;
@@ -1603,10 +1603,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       }
     } else {
       walkPath.add("key:" + keyType);
-      keySerializer = writeClassInfo(buffer, keyTypeExpr, keyTypeRawType, true);
+      keySerializer = writeTypeInfo(buffer, keyTypeExpr, keyTypeRawType, true);
       walkPath.removeLast();
       walkPath.add("value:" + valueType);
-      valueSerializer = writeClassInfo(buffer, valueTypeExpr, valueTypeRawType, true);
+      valueSerializer = writeTypeInfo(buffer, valueTypeExpr, valueTypeRawType, true);
       walkPath.removeLast();
       chunkHeader = ExpressionUtils.ofInt("chunkHeader", 0);
       expressions.add(chunkHeader);
@@ -2120,7 +2120,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   protected Expression readForNotNullNonFinal(
       Expression buffer, TypeRef<?> typeRef, Expression serializer) {
     if (serializer == null) {
-      Expression classInfo = readClassInfo(getRawType(typeRef), buffer);
+      Expression classInfo = readTypeInfo(getRawType(typeRef), buffer);
       serializer = inlineInvoke(classInfo, "getSerializer", SERIALIZER_TYPE);
     }
     return read(serializer, buffer, OBJECT_TYPE);
@@ -2138,7 +2138,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       if (isMonomorphic(cls)) {
         serializer = getOrCreateSerializer(cls);
       } else {
-        Expression classInfo = readClassInfo(cls, buffer);
+        Expression classInfo = readTypeInfo(cls, buffer);
         serializer =
             invoke(classInfo, "getSerializer", "collectionSerializer", COLLECTION_SERIALIZER_TYPE);
       }
@@ -2208,7 +2208,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Literal isDeclTypeFlag = ofInt(CollectionFlags.IS_DECL_ELEMENT_TYPE);
       Expression isDeclType = eq(new BitAnd(flags, isDeclTypeFlag), isDeclTypeFlag);
       Invoke serializer =
-          inlineInvoke(readClassInfo(elemClass, buffer), "getSerializer", SERIALIZER_TYPE);
+          inlineInvoke(readTypeInfo(elemClass, buffer), "getSerializer", SERIALIZER_TYPE);
       TypeRef<?> serializerType = getSerializerType(elementType);
       Expression elemSerializer; // make it in scope of `if(sameElementClass)`
       boolean maybeDecl = typeResolver(r -> r.isSerializable(elemClass));
@@ -2384,7 +2384,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       if (isMonomorphic(cls)) {
         serializer = getOrCreateSerializer(cls);
       } else {
-        Expression classInfo = readClassInfo(cls, buffer);
+        Expression classInfo = readTypeInfo(cls, buffer);
         serializer = invoke(classInfo, "getSerializer", "mapSerializer", MAP_SERIALIZER_TYPE);
       }
     } else {
@@ -2634,12 +2634,12 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     }
     TypeRef<?> serializerType = getSerializerType(type);
     if (ReflectionUtils.isAbstract(type) || type.isInterface()) {
-      return invoke(readClassInfo(type, buffer), "getSerializer", "serializer", serializerType);
+      return invoke(readTypeInfo(type, buffer), "getSerializer", "serializer", serializerType);
     } else {
       return new If(
           isDeclaredType,
           getOrCreateSerializer(type),
-          invokeInline(readClassInfo(type, buffer), "getSerializer", serializerType),
+          invokeInline(readTypeInfo(type, buffer), "getSerializer", serializerType),
           false);
     }
   }

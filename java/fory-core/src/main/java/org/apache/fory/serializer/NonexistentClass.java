@@ -22,7 +22,7 @@ package org.apache.fory.serializer;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Config;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.type.TypeUtils;
 
 /**
@@ -106,10 +106,10 @@ public interface NonexistentClass {
   class NonexistentSkip implements NonexistentClass {}
 
   class NonexistentMetaShared extends LazyMap implements NonexistentClass {
-    final ClassDef classDef;
+    final TypeDef typeDef;
 
-    public NonexistentMetaShared(ClassDef classDef) {
-      this.classDef = classDef;
+    public NonexistentMetaShared(TypeDef typeDef) {
+      this.typeDef = typeDef;
     }
   }
 

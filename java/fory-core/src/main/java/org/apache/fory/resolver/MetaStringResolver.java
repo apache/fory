@@ -20,6 +20,8 @@
 package org.apache.fory.resolver;
 
 import java.util.Arrays;
+import java.util.Objects;
+
 import org.apache.fory.collection.LongLongByteMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectMap;
@@ -71,6 +73,7 @@ public final class MetaStringResolver {
   }
 
   public void writeMetaStringBytesWithFlag(MemoryBuffer buffer, MetaStringBytes byteString) {
+    Objects.requireNonNull(byteString);
     short id = byteString.dynamicWriteStringId;
     if (id == MetaStringBytes.DEFAULT_DYNAMIC_WRITE_STRING_ID) {
       // noinspection Duplicates

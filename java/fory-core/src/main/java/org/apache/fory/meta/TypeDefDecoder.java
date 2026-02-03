@@ -19,10 +19,10 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.ClassDef.HAS_FIELDS_META_FLAG;
-import static org.apache.fory.meta.ClassDefDecoder.decodeClassDefBuf;
-import static org.apache.fory.meta.ClassDefDecoder.readPkgName;
-import static org.apache.fory.meta.ClassDefDecoder.readTypeName;
+import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
+import static org.apache.fory.meta.NativeTypeDefDecoder.decodeTypeDefBuf;
+import static org.apache.fory.meta.NativeTypeDefDecoder.readPkgName;
+import static org.apache.fory.meta.NativeTypeDefDecoder.readTypeName;
 import static org.apache.fory.meta.Encoders.fieldNameEncodings;
 import static org.apache.fory.meta.TypeDefEncoder.FIELD_NAME_SIZE_THRESHOLD;
 import static org.apache.fory.meta.TypeDefEncoder.REGISTER_BY_NAME_FLAG;
@@ -36,14 +36,14 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.FieldTypes.FieldType;
 import org.apache.fory.meta.MetaString.Encoding;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.NonexistentClass;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
 /**
- * A decoder which decode binary into {@link ClassDef}. Global header layout follows the xlang spec
+ * A decoder which decode binary into {@link TypeDef}. Global header layout follows the xlang spec
  * with an 8-bit meta size and flags at bits 8/9. See spec documentation:
  * docs/specification/fory_xlang_serialization_spec.md <a
  * href="https://fory.apache.org/docs/specification/fory_xlang_serialization_spec">...</a>
@@ -51,8 +51,8 @@ import org.apache.fory.util.Utils;
 class TypeDefDecoder {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDefDecoder.class);
 
-  public static ClassDef decodeClassDef(XtypeResolver resolver, MemoryBuffer inputBuffer, long id) {
-    Tuple2<byte[], byte[]> decoded = decodeClassDefBuf(inputBuffer, resolver, id);
+  public static TypeDef decodeTypeDef(XtypeResolver resolver, MemoryBuffer inputBuffer, long id) {
+    Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(inputBuffer, resolver, id);
     MemoryBuffer buffer = MemoryBuffer.fromByteArray(decoded.f0);
     byte header = buffer.readByte();
     int numFields = header & SMALL_NUM_FIELDS_THRESHOLD;
@@ -66,7 +66,7 @@ class TypeDefDecoder {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
         LOG.info("Decode class {} using namespace {}", typeName, namespace);
       }
-      ClassInfo userTypeInfo = resolver.getUserTypeInfo(namespace, typeName);
+      TypeInfo userTypeInfo = resolver.getUserTypeInfo(namespace, typeName);
       if (userTypeInfo == null) {
         classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class);
       } else {
@@ -75,7 +75,7 @@ class TypeDefDecoder {
     } else {
       int typeId = buffer.readUint8();
       int userTypeId = buffer.readVarUint32();
-      ClassInfo userTypeInfo = resolver.getUserTypeInfo(userTypeId);
+      TypeInfo userTypeInfo = resolver.getUserTypeInfo(userTypeId);
       if (userTypeInfo == null) {
         classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);
       } else {
@@ -85,14 +85,14 @@ class TypeDefDecoder {
     List<FieldInfo> classFields =
         readFieldsInfo(buffer, resolver, classSpec.entireClassName, numFields);
     boolean hasFieldsMeta = (id & HAS_FIELDS_META_FLAG) != 0;
-    ClassDef classDef = new ClassDef(classSpec, classFields, hasFieldsMeta, id, decoded.f1);
+    TypeDef typeDef = new TypeDef(classSpec, classFields, hasFieldsMeta, id, decoded.f1);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
-      LOG.info("[Java TypeDef DECODED] " + classDef);
+      LOG.info("[Java TypeDef DECODED] " + typeDef);
       // Compute and print diff with local TypeDef
       Class<?> cls = classSpec.type;
       if (cls != null && cls != NonexistentClass.NonexistentMetaShared.class) {
-        ClassDef localDef = ClassDef.buildClassDef(resolver.getFory(), cls);
-        String diff = classDef.computeDiff(localDef);
+        TypeDef localDef = TypeDef.buildTypeDef(resolver.getFory(), cls);
+        String diff = typeDef.computeDiff(localDef);
         if (diff != null) {
           LOG.info("[Java TypeDef DIFF] " + classSpec.entireClassName + ":\n" + diff);
         } else {
@@ -100,7 +100,7 @@ class TypeDefDecoder {
         }
       }
     }
-    return classDef;
+    return typeDef;
   }
 
   // | header + type info + field name | ... | header + type info + field name |

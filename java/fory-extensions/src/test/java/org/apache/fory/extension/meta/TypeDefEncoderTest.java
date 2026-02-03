@@ -19,19 +19,19 @@
 
 package org.apache.fory.extension.meta;
 
-import static org.apache.fory.meta.ClassDefEncoder.buildFieldsInfo;
-import static org.apache.fory.meta.ClassDefEncoder.getClassFields;
+import static org.apache.fory.meta.NativeTypeDefEncoder.buildFieldsInfo;
+import static org.apache.fory.meta.NativeTypeDefEncoder.getClassFields;
 
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
-import org.apache.fory.meta.ClassDefEncoder;
+import org.apache.fory.meta.TypeDef;
+import org.apache.fory.meta.NativeTypeDefEncoder;
 import org.apache.fory.meta.FieldInfo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ClassDefEncoderTest {
+public class TypeDefEncoderTest {
 
   static class TestFieldsOrderClass1 {
     private int intField2;
@@ -41,17 +41,17 @@ public class ClassDefEncoderTest {
   }
 
   @Test
-  public void testBasicClassDef_zstdMetaCompressor() throws Exception {
+  public void testBasicTypeDefZstdMetaCompressor() throws Exception {
     Fory fory =
         Fory.builder().withMetaShare(true).withMetaCompressor(new ZstdMetaCompressor()).build();
     Class<TestFieldsOrderClass1> type = TestFieldsOrderClass1.class;
     List<FieldInfo> fieldsInfo = buildFieldsInfo(fory.getClassResolver(), type);
     MemoryBuffer buffer =
-        ClassDefEncoder.encodeClassDef(
+        NativeTypeDefEncoder.encodeTypeDef(
             fory.getClassResolver(), type, getClassFields(type, fieldsInfo), true);
-    ClassDef classDef = ClassDef.readClassDef(fory, buffer);
-    Assert.assertEquals(classDef.getClassName(), type.getName());
-    Assert.assertEquals(classDef.getFieldsInfo().size(), type.getDeclaredFields().length);
-    Assert.assertEquals(classDef.getFieldsInfo(), fieldsInfo);
+    TypeDef typeDef = TypeDef.readTypeDef(fory, buffer);
+    Assert.assertEquals(typeDef.getClassName(), type.getName());
+    Assert.assertEquals(typeDef.getFieldsInfo().size(), type.getDeclaredFields().length);
+    Assert.assertEquals(typeDef.getFieldsInfo(), fieldsInfo);
   }
 }

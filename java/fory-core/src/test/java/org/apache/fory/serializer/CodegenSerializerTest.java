@@ -175,7 +175,7 @@ public class CodegenSerializerTest extends ForyTestBase {
   @EqualsAndHashCode(callSuper = true)
   private static class NonFinalPrivate extends NonFinalPublic {}
 
-  public static class TestCacheNonFinalClassInfo {
+  public static class TestCacheNonFinalTypeInfo {
     public String str;
     public NonFinalPublic nonFinalPublic;
     public List<String> finalList;
@@ -185,9 +185,9 @@ public class CodegenSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testCacheNonFinalClassInfo() {
+  public void testCacheNonFinalTypeInfo() {
     Fory fory = builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    TestCacheNonFinalClassInfo obj = new TestCacheNonFinalClassInfo();
+    TestCacheNonFinalTypeInfo obj = new TestCacheNonFinalTypeInfo();
     obj.finalList = new ArrayList<>(ImmutableList.of("a", "b"));
     obj.nonFinalPublicList =
         new ArrayList<>(

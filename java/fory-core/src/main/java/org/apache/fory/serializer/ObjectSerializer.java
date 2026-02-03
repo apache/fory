@@ -31,7 +31,7 @@ import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
@@ -89,15 +89,15 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     Collection<Descriptor> descriptors;
     boolean shareMeta = fory.getConfig().isMetaShareEnabled();
     if (shareMeta) {
-      ClassDef classDef = typeResolver.getTypeDef(cls, resolveParent);
+      TypeDef typeDef = typeResolver.getTypeDef(cls, resolveParent);
       if (Utils.DEBUG_OUTPUT_ENABLED) {
-        LOG.info("========== ObjectSerializer ClassDef for {} ==========", cls.getName());
-        LOG.info("ClassDef fieldsInfo count: {}", classDef.getFieldsInfo().size());
-        for (int i = 0; i < classDef.getFieldsInfo().size(); i++) {
-          LOG.info("  [{}] {}", i, classDef.getFieldsInfo().get(i));
+        LOG.info("========== ObjectSerializer TypeDef for {} ==========", cls.getName());
+        LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldsInfo().size());
+        for (int i = 0; i < typeDef.getFieldsInfo().size(); i++) {
+          LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
         }
       }
-      descriptors = classDef.getDescriptors(typeResolver, cls);
+      descriptors = typeDef.getDescriptors(typeResolver, cls);
     } else {
       descriptors = typeResolver.getFieldDescriptors(cls, resolveParent);
     }
@@ -153,14 +153,26 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     writeOtherFields(buffer, value);
   }
 
+  private void printWriteFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
+    LOG.info(
+        "[Java] write field {} of type {}, writer index {}",
+        fieldInfo.descriptor.getName(),
+        fieldInfo.typeRef,
+        buffer.writerIndex());
+  }
+
+  private void printReadFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
+    LOG.info(
+        "[Java] read field {} of type {}, reader index {}",
+        fieldInfo.descriptor.getName(),
+        fieldInfo.typeRef,
+        buffer.readerIndex());
+  }
+
   private void writeOtherFields(MemoryBuffer buffer, T value) {
     for (SerializationFieldInfo fieldInfo : otherFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
-        LOG.info(
-            "[Java] write field {} of type {}, writer index {}",
-            fieldInfo.descriptor.getName(),
-            fieldInfo.typeRef,
-            buffer.writerIndex());
+        printWriteFieldDebugInfo(fieldInfo, buffer);
       }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       Object fieldValue = fieldAccessor.getObject(value);
@@ -171,11 +183,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   private void writeBuildInFields(MemoryBuffer buffer, T value, Fory fory) {
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
-        LOG.info(
-            "[Java] write field {} of type {}, writer index {}",
-            fieldInfo.descriptor.getName(),
-            fieldInfo.typeRef,
-            buffer.writerIndex());
+        printWriteFieldDebugInfo(fieldInfo, buffer);
       }
       AbstractObjectSerializer.writeBuildInField(binding, fieldInfo, buffer, value);
     }
@@ -186,11 +194,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
-        LOG.info(
-            "[Java] write field {} of type {}, writer index {}",
-            fieldInfo.descriptor.getName(),
-            fieldInfo.typeRef,
-            buffer.writerIndex());
+        printWriteFieldDebugInfo(fieldInfo, buffer);
       }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       Object fieldValue = fieldAccessor.getObject(value);
@@ -228,14 +232,23 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     int counter = 0;
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printReadFieldDebugInfo(fieldInfo, buffer);
+      }
       fieldValues[counter++] = readBuildInFieldValue(binding, fieldInfo, buffer);
     }
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printReadFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue = readContainerFieldValue(binding, generics, fieldInfo, buffer);
       fieldValues[counter++] = fieldValue;
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printReadFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue = binding.readField(fieldInfo, buffer);
       fieldValues[counter++] = fieldValue;
     }
@@ -250,17 +263,25 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     }
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
-      FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printReadFieldDebugInfo(fieldInfo, buffer);
+      }
       // a numeric type can have only three kinds: primitive, not_null_boxed, nullable_boxed
       readBuildInFieldValue(binding, fieldInfo, buffer, obj);
     }
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printReadFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue = readContainerFieldValue(binding, generics, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       fieldAccessor.putObject(obj, fieldValue);
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printReadFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue = binding.readField(fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       fieldAccessor.putObject(obj, fieldValue);

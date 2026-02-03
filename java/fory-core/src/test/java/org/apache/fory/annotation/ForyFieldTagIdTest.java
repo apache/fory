@@ -30,7 +30,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.FieldInfo;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -65,8 +65,8 @@ public class ForyFieldTagIdTest extends ForyTestBase {
       fory.register(TestClass.class, "test.TestClass");
     }
 
-    ClassDef classDef = ClassDef.buildClassDef(fory, TestClass.class);
-    List<FieldInfo> fieldsInfo = classDef.getFieldsInfo();
+    TypeDef typeDef = TypeDef.buildTypeDef(fory, TestClass.class);
+    List<FieldInfo> fieldsInfo = typeDef.getFieldsInfo();
 
     // Should have 4 fields
     assertEquals(fieldsInfo.size(), 4);

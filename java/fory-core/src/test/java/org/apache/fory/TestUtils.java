@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.fory.collection.Tuple3;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.type.Descriptor;
@@ -344,8 +344,8 @@ public class TestUtils {
    */
   public static Map<String, Object> objectToMap(Fory fory, Object obj) {
     Class<?> cls = obj.getClass();
-    ClassDef classDef = fory.getClassResolver().getTypeDef(cls, true);
-    List<Descriptor> descriptors = classDef.getDescriptors(fory.getTypeResolver(), cls);
+    TypeDef typeDef = fory.getClassResolver().getTypeDef(cls, true);
+    List<Descriptor> descriptors = typeDef.getDescriptors(fory.getTypeResolver(), cls);
     Map<String, Object> result = new LinkedHashMap<>();
     for (Descriptor descriptor : descriptors) {
       Field field = descriptor.getField();

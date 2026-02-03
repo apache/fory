@@ -33,7 +33,7 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.util.Preconditions;
@@ -213,8 +213,8 @@ public class ReplaceResolveSerializer extends Serializer {
   protected final RefResolver refResolver;
   protected final ClassResolver classResolver;
   protected final MethodInfoCache jdkMethodInfoWriteCache;
-  protected final ClassInfo writeClassInfo;
-  protected final Map<Class<?>, MethodInfoCache> classClassInfoHolderMap = new HashMap<>();
+  protected final TypeInfo writeTypeInfo;
+  protected final Map<Class<?>, MethodInfoCache> classTypeInfoHolderMap = new HashMap<>();
 
   public ReplaceResolveSerializer(Fory fory, Class type) {
     this(fory, type, false, true);
@@ -235,17 +235,17 @@ public class ReplaceResolveSerializer extends Serializer {
     }
     if (type != ReplaceStub.class) {
       jdkMethodInfoWriteCache = newJDKMethodInfoCache(type, fory);
-      classClassInfoHolderMap.put(type, jdkMethodInfoWriteCache);
+      classTypeInfoHolderMap.put(type, jdkMethodInfoWriteCache);
       if (isFinalField) {
-        writeClassInfo = null;
+        writeTypeInfo = null;
       } else {
         // FIXME new classinfo may miss serializer update in async compilation mode.
-        int typeId = classResolver.getTypeIdForClassDef(type);
-        writeClassInfo = classResolver.newClassInfo(type, this, typeId);
+        int typeId = classResolver.getTypeIdForTypeDef(type);
+        writeTypeInfo = classResolver.newTypeInfo(type, this, typeId);
       }
     } else {
       jdkMethodInfoWriteCache = null;
-      writeClassInfo = null;
+      writeTypeInfo = null;
     }
   }
 
@@ -295,7 +295,7 @@ public class ReplaceResolveSerializer extends Serializer {
 
   protected void writeObject(
       MemoryBuffer buffer, Object value, MethodInfoCache jdkMethodInfoCache) {
-    classResolver.writeClassInternal(buffer, writeClassInfo);
+    classResolver.writeClassInternal(buffer, writeTypeInfo);
     jdkMethodInfoCache.objectSerializer.write(buffer, value);
   }
 
@@ -308,7 +308,7 @@ public class ReplaceResolveSerializer extends Serializer {
       int nextReadRefId = refResolver.tryPreserveRefId(buffer);
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
         // ref value or not-null value
-        Object o = fory.readData(buffer, classResolver.readClassInfo(buffer));
+        Object o = fory.readData(buffer, classResolver.readTypeInfo(buffer));
         refResolver.setReadObject(nextReadRefId, o);
         refResolver.setReadObject(outerRefId, o);
         return o;
@@ -365,10 +365,10 @@ public class ReplaceResolveSerializer extends Serializer {
   }
 
   protected MethodInfoCache getMethodInfoCache(Class<?> cls) {
-    MethodInfoCache jdkMethodInfoCache = classClassInfoHolderMap.get(cls);
+    MethodInfoCache jdkMethodInfoCache = classTypeInfoHolderMap.get(cls);
     if (jdkMethodInfoCache == null) {
       jdkMethodInfoCache = newJDKMethodInfoCache(cls, fory);
-      classClassInfoHolderMap.put(cls, jdkMethodInfoCache);
+      classTypeInfoHolderMap.put(cls, jdkMethodInfoCache);
     }
     return jdkMethodInfoCache;
   }

@@ -60,8 +60,8 @@ import org.apache.fory.reflect.ObjectCreator;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
@@ -87,8 +87,8 @@ public abstract class CodecBuilder {
   protected static final String FORY_NAME = "_f_fory";
   static TypeRef<Object[]> objectArrayTypeRef = TypeRef.of(Object[].class);
   static TypeRef<MemoryBuffer> bufferTypeRef = TypeRef.of(MemoryBuffer.class);
-  static TypeRef<ClassInfo> classInfoTypeRef = TypeRef.of(ClassInfo.class);
-  static TypeRef<ClassInfoHolder> classInfoHolderTypeRef = TypeRef.of(ClassInfoHolder.class);
+  static TypeRef<TypeInfo> classInfoTypeRef = TypeRef.of(TypeInfo.class);
+  static TypeRef<TypeInfoHolder> classInfoHolderTypeRef = TypeRef.of(TypeInfoHolder.class);
 
   protected final CodegenContext ctx;
   protected final TypeRef<?> beanType;

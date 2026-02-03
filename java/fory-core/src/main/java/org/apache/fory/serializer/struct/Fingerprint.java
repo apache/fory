@@ -37,7 +37,7 @@ import org.apache.fory.collection.Uint8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.TypeUtils;
@@ -170,8 +170,8 @@ public class Fingerprint {
       if (ReflectionUtils.isAbstract(cls) || cls.isInterface() || cls.isEnum()) {
         return Types.UNKNOWN;
       }
-      ClassInfo classInfo = resolver.getClassInfo(cls, false);
-      if (classInfo == null) {
+      TypeInfo typeInfo = resolver.getTypeInfo(cls, false);
+      if (typeInfo == null) {
         return Types.UNKNOWN;
       }
       int typeId = Types.getDescriptorTypeId(fory, descriptor);

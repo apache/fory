@@ -19,9 +19,9 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.ClassDefEncoder.prependHeader;
-import static org.apache.fory.meta.ClassDefEncoder.writePkgName;
-import static org.apache.fory.meta.ClassDefEncoder.writeTypeName;
+import static org.apache.fory.meta.NativeTypeDefEncoder.prependHeader;
+import static org.apache.fory.meta.NativeTypeDefEncoder.writePkgName;
+import static org.apache.fory.meta.NativeTypeDefEncoder.writeTypeName;
 import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
 
 import java.lang.reflect.Field;
@@ -40,7 +40,7 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.FieldTypes.FieldType;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.type.Descriptor;
@@ -51,7 +51,7 @@ import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
 /**
- * An encoder which encode {@link ClassDef} into binary. Global header layout follows the xlang spec
+ * An encoder which encode {@link TypeDef} into binary. Global header layout follows the xlang spec
  * with an 8-bit meta size and flags at bits 8/9. See spec documentation:
  * docs/specification/fory_xlang_serialization_spec.md <a
  * href="https://fory.apache.org/docs/specification/fory_xlang_serialization_spec">...</a>
@@ -60,16 +60,16 @@ class TypeDefEncoder {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDefEncoder.class);
 
   /** Build class definition from fields of class. */
-  static ClassDef buildTypeDef(Fory fory, Class<?> type) {
+  static TypeDef buildTypeDef(Fory fory, Class<?> type) {
     DescriptorGrouper descriptorGrouper =
         fory.getXtypeResolver()
             .createDescriptorGrouper(
                 fory.getXtypeResolver().getFieldDescriptors(type, true),
                 false,
                 Function.identity());
-    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(type);
+    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(type);
     List<Field> fields;
-    int typeId = classInfo.getTypeId();
+    int typeId = typeInfo.getTypeId();
     if (Types.isStructType(typeId)) {
       fields =
           descriptorGrouper.getSortedDescriptors().stream()
@@ -78,7 +78,7 @@ class TypeDefEncoder {
     } else {
       fields = new ArrayList<>();
     }
-    return buildClassDefWithFieldInfos(
+    return buildTypeDefWithFieldInfos(
         fory.getXtypeResolver(), type, buildFieldsInfo(fory.getXtypeResolver(), type, fields));
   }
 
@@ -110,23 +110,23 @@ class TypeDefEncoder {
         .collect(Collectors.toList());
   }
 
-  static ClassDef buildClassDefWithFieldInfos(
+  static TypeDef buildTypeDefWithFieldInfos(
       XtypeResolver resolver, Class<?> type, List<FieldInfo> fieldInfos) {
     fieldInfos = new ArrayList<>(getClassFields(type, fieldInfos).values());
-    ClassInfo classInfo = resolver.getClassInfo(type);
-    MemoryBuffer encodeClassDef = encodeClassDef(resolver, type, fieldInfos);
-    byte[] classDefBytes = encodeClassDef.getBytes(0, encodeClassDef.writerIndex());
-    ClassDef classDef =
-        new ClassDef(
-            new ClassSpec(type, classInfo.getTypeId(), classInfo.getUserTypeId()),
+    TypeInfo typeInfo = resolver.getTypeInfo(type);
+    MemoryBuffer encodeTypeDef = encodeTypeDef(resolver, type, fieldInfos);
+    byte[] typeDefBytes = encodeTypeDef.getBytes(0, encodeTypeDef.writerIndex());
+    TypeDef typeDef =
+        new TypeDef(
+            new ClassSpec(type, typeInfo.getTypeId(), typeInfo.getUserTypeId()),
             fieldInfos,
             true,
-            encodeClassDef.getInt64(0),
-            classDefBytes);
+            encodeTypeDef.getInt64(0),
+            typeDefBytes);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
-      LOG.info("[Java TypeDef BUILT] " + classDef);
+      LOG.info("[Java TypeDef BUILT] " + typeDef);
     }
-    return classDef;
+    return typeDef;
   }
 
   static final int SMALL_NUM_FIELDS_THRESHOLD = 0b11111;
@@ -135,9 +135,9 @@ class TypeDefEncoder {
 
   // see spec documentation: docs/specification/xlang_serialization_spec.md
   // https://fory.apache.org/docs/specification/fory_xlang_serialization_spec
-  static MemoryBuffer encodeClassDef(
+  static MemoryBuffer encodeTypeDef(
       XtypeResolver resolver, Class<?> type, List<FieldInfo> fields) {
-    ClassInfo classInfo = resolver.getClassInfo(type);
+    TypeInfo typeInfo = resolver.getTypeInfo(type);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
     buffer.writeByte(-1); // placeholder for header, update later
     int currentClassHeader = fields.size();
@@ -146,17 +146,17 @@ class TypeDefEncoder {
       buffer.writeVarUint32(fields.size() - SMALL_NUM_FIELDS_THRESHOLD);
     }
     if (resolver.isRegisteredById(type)) {
-      buffer.writeUint8(classInfo.getTypeId());
+      buffer.writeUint8(typeInfo.getTypeId());
       Preconditions.checkArgument(
-          classInfo.getUserTypeId() != -1,
+          typeInfo.getUserTypeId() != -1,
           "User type id is required for typeId %s",
-          classInfo.getTypeId());
-      buffer.writeVarUint32(classInfo.getUserTypeId());
+          typeInfo.getTypeId());
+      buffer.writeVarUint32(typeInfo.getUserTypeId());
     } else {
       Preconditions.checkArgument(resolver.isRegisteredByName(type));
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
-      String ns = classInfo.decodeNamespace();
-      String typename = classInfo.decodeTypeName();
+      String ns = typeInfo.decodeNamespace();
+      String typename = typeInfo.decodeTypeName();
       writePkgName(buffer, ns);
       writeTypeName(buffer, typename);
     }
@@ -179,7 +179,7 @@ class TypeDefEncoder {
 
   static Map<String, FieldInfo> getClassFields(Class<?> type, List<FieldInfo> fieldsInfo) {
     Map<String, FieldInfo> sortedClassFields = new LinkedHashMap<>();
-    Map<String, List<FieldInfo>> classFields = ClassDefEncoder.groupClassFields(fieldsInfo);
+    Map<String, List<FieldInfo>> classFields = NativeTypeDefEncoder.groupClassFields(fieldsInfo);
     for (Class<?> clz : ReflectionUtils.getAllClasses(type, true)) {
       List<FieldInfo> fieldInfos = classFields.get(clz.getName());
       if (fieldInfos != null) {

@@ -19,11 +19,11 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.ClassDef.COMPRESS_META_FLAG;
-import static org.apache.fory.meta.ClassDef.HAS_FIELDS_META_FLAG;
-import static org.apache.fory.meta.ClassDef.META_SIZE_MASKS;
-import static org.apache.fory.meta.ClassDefEncoder.BIG_NAME_THRESHOLD;
-import static org.apache.fory.meta.ClassDefEncoder.NUM_CLASS_THRESHOLD;
+import static org.apache.fory.meta.TypeDef.COMPRESS_META_FLAG;
+import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
+import static org.apache.fory.meta.TypeDef.META_SIZE_MASKS;
+import static org.apache.fory.meta.NativeTypeDefEncoder.BIG_NAME_THRESHOLD;
+import static org.apache.fory.meta.NativeTypeDefEncoder.NUM_CLASS_THRESHOLD;
 import static org.apache.fory.meta.Encoders.fieldNameEncodings;
 import static org.apache.fory.meta.Encoders.pkgEncodings;
 import static org.apache.fory.meta.Encoders.typeNameEncodings;
@@ -41,12 +41,12 @@ import org.apache.fory.type.Types;
 import org.apache.fory.util.Preconditions;
 
 /**
- * An decoder which decode binary into {@link ClassDef}. See spec documentation:
+ * An decoder which decode binary into {@link TypeDef}. See spec documentation:
  * docs/specification/java_serialization_spec.md <a
  * href="https://fory.apache.org/docs/specification/fory_java_serialization_spec">...</a>
  */
-class ClassDefDecoder {
-  static Tuple2<byte[], byte[]> decodeClassDefBuf(
+class NativeTypeDefDecoder {
+  static Tuple2<byte[], byte[]> decodeTypeDefBuf(
       MemoryBuffer inputBuffer, TypeResolver resolver, long id) {
     MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
     encoded.writeInt64(id);
@@ -56,21 +56,21 @@ class ClassDefDecoder {
       encoded.writeVarUint32(moreSize);
       size += moreSize;
     }
-    byte[] encodedClassDef = inputBuffer.readBytes(size);
-    encoded.writeBytes(encodedClassDef);
+    byte[] encodedTypeDef = inputBuffer.readBytes(size);
+    encoded.writeBytes(encodedTypeDef);
     if ((id & COMPRESS_META_FLAG) != 0) {
-      encodedClassDef =
-          resolver.getFory().getConfig().getMetaCompressor().decompress(encodedClassDef, 0, size);
+      encodedTypeDef =
+          resolver.getFory().getConfig().getMetaCompressor().decompress(encodedTypeDef, 0, size);
     }
-    return Tuple2.of(encodedClassDef, encoded.getBytes(0, encoded.writerIndex()));
+    return Tuple2.of(encodedTypeDef, encoded.getBytes(0, encoded.writerIndex()));
   }
 
-  public static ClassDef decodeClassDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
-    Tuple2<byte[], byte[]> decoded = decodeClassDefBuf(buffer, resolver, id);
-    MemoryBuffer classDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
-    int numClasses = classDefBuf.readByte();
+  public static TypeDef decodeTypeDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
+    Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(buffer, resolver, id);
+    MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
+    int numClasses = typeDefBuf.readByte();
     if (numClasses == NUM_CLASS_THRESHOLD) {
-      numClasses += classDefBuf.readVarUint32Small7();
+      numClasses += typeDefBuf.readVarUint32Small7();
     }
     numClasses += 1;
     String className;
@@ -79,14 +79,14 @@ class ClassDefDecoder {
     for (int i = 0; i < numClasses; i++) {
       // | num fields + register flag | header + package name | header + class name
       // | header + type id + field name | next field info | ... |
-      int currentClassHeader = classDefBuf.readVarUint32Small7();
+      int currentClassHeader = typeDefBuf.readVarUint32Small7();
       boolean isRegistered = (currentClassHeader & 0b1) != 0;
       int numFields = currentClassHeader >>> 1;
       if (isRegistered) {
-        int typeId = classDefBuf.readUint8();
+        int typeId = typeDefBuf.readUint8();
         int userTypeId = -1;
-        if (Types.needsUserTypeId(typeId)) {
-          userTypeId = classDefBuf.readVarUint32();
+        if (Types.isUserTypeRegisteredById(typeId)) {
+          userTypeId = typeDefBuf.readVarUint32();
         }
         Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);
         if (cls == null) {
@@ -98,8 +98,8 @@ class ClassDefDecoder {
           classSpec = new ClassSpec(cls, typeId, userTypeId);
         }
       } else {
-        String pkg = readPkgName(classDefBuf);
-        String typeName = readTypeName(classDefBuf);
+        String pkg = readPkgName(typeDefBuf);
+        String typeName = readTypeName(typeDefBuf);
         ClassSpec decodedSpec = Encoders.decodePkgAndClass(pkg, typeName);
         className = decodedSpec.entireClassName;
         if (resolver.isRegisteredByName(className)) {
@@ -107,7 +107,7 @@ class ClassDefDecoder {
           className = cls.getName();
           classSpec =
               new ClassSpec(
-                  cls, resolver.getTypeIdForClassDef(cls), resolver.getUserTypeIdForClassDef(cls));
+                  cls, resolver.getTypeIdForTypeDef(cls), resolver.getUserTypeIdForTypeDef(cls));
         } else {
           Class<?> cls =
               resolver.loadClassForMeta(
@@ -133,18 +133,18 @@ class ClassDefDecoder {
             classSpec.type = cls;
             className = classSpec.entireClassName;
           } else {
-            int typeId = resolver.getTypeIdForClassDef(cls);
-            classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForClassDef(cls));
+            int typeId = resolver.getTypeIdForTypeDef(cls);
+            classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForTypeDef(cls));
             className = classSpec.entireClassName;
           }
         }
       }
-      List<FieldInfo> fieldInfos = readFieldsInfo(classDefBuf, resolver, className, numFields);
+      List<FieldInfo> fieldInfos = readFieldsInfo(typeDefBuf, resolver, className, numFields);
       classFields.addAll(fieldInfos);
     }
     Preconditions.checkNotNull(classSpec);
     boolean hasFieldsMeta = (id & HAS_FIELDS_META_FLAG) != 0;
-    return new ClassDef(classSpec, classFields, hasFieldsMeta, id, decoded.f1);
+    return new TypeDef(classSpec, classFields, hasFieldsMeta, id, decoded.f1);
   }
 
   private static List<FieldInfo> readFieldsInfo(

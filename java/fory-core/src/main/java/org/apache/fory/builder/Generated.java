@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.AbstractObjectSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -100,7 +100,7 @@ public interface Generated {
     }
   }
 
-  /** Base class for all serializers with meta shared by {@link ClassDef}. */
+  /** Base class for all serializers with meta shared by {@link TypeDef}. */
   abstract class GeneratedMetaSharedSerializer extends GeneratedSerializer implements Generated {
     public static final String SERIALIZER_FIELD_NAME = "serializer";
 
@@ -118,7 +118,7 @@ public interface Generated {
   }
 
   /**
-   * Base class for layer serializers with meta shared by {@link ClassDef}. Unlike {@link
+   * Base class for layer serializers with meta shared by {@link TypeDef}. Unlike {@link
    * GeneratedMetaSharedSerializer}, this serializer only handles fields from a single class layer
    * and does not include parent class fields.
    */

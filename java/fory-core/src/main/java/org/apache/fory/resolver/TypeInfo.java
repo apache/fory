@@ -24,7 +24,7 @@ import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -36,7 +36,7 @@ import org.apache.fory.util.function.Functions;
  * This class put together object type related information to reduce array/map loop up when
  * serialization.
  */
-public class ClassInfo {
+public class TypeInfo {
   final Class<?> cls;
   final MetaStringBytes fullNameBytes;
   final MetaStringBytes namespaceBytes;
@@ -49,10 +49,10 @@ public class ClassInfo {
   // User-registered type ID stored as unsigned int. -1 (0xffffffff) means "unset".
   final int userTypeId;
   Serializer<?> serializer;
-  ClassDef classDef;
-  boolean needToWriteClassDef;
+  TypeDef typeDef;
+  boolean needToWriteTypeDef;
 
-  ClassInfo(
+  TypeInfo(
       Class<?> cls,
       MetaStringBytes fullNameBytes,
       MetaStringBytes namespaceBytes,
@@ -72,28 +72,28 @@ public class ClassInfo {
   }
 
   /**
-   * Creates a ClassInfo for deserialization with a ClassDef. Used when reading class meta from
-   * stream where the ClassDef specifies the field layout.
+   * Creates a TypeInfo for deserialization with a TypeDef. Used when reading class meta from
+   * stream where the TypeDef specifies the field layout.
    *
    * @param cls the class
-   * @param classDef the class definition from stream
+   * @param typeDef the class definition from stream
    */
-  public ClassInfo(Class<?> cls, ClassDef classDef) {
+  public TypeInfo(Class<?> cls, TypeDef typeDef) {
     this.cls = cls;
-    this.classDef = classDef;
+    this.typeDef = typeDef;
     this.fullNameBytes = null;
     this.namespaceBytes = null;
     this.typeNameBytes = null;
     this.isDynamicGeneratedClass = false;
     this.serializer = null;
-    this.typeId = classDef == null ? Types.UNKNOWN : classDef.getClassSpec().typeId;
-    this.userTypeId = classDef == null ? -1 : classDef.getClassSpec().userTypeId;
+    this.typeId = typeDef == null ? Types.UNKNOWN : typeDef.getClassSpec().typeId;
+    this.userTypeId = typeDef == null ? -1 : typeDef.getClassSpec().userTypeId;
   }
 
-  ClassInfo(TypeResolver classResolver, Class<?> cls, Serializer<?> serializer, int typeId, int userTypeId) {
+  TypeInfo(TypeResolver classResolver, Class<?> cls, Serializer<?> serializer, int typeId, int userTypeId) {
     this.cls = cls;
     this.serializer = serializer;
-    needToWriteClassDef = serializer != null && classResolver.needToWriteClassDef(serializer);
+    needToWriteTypeDef = serializer != null && classResolver.needToWriteTypeDef(serializer);
     MetaStringResolver metaStringResolver = classResolver.getMetaStringResolver();
     if (cls != null && classResolver.getFory().isCrossLanguage()) {
       this.fullNameBytes =
@@ -140,19 +140,19 @@ public class ClassInfo {
     this.userTypeId = userTypeId;
   }
 
-  public ClassInfo copy(int typeId) {
+  public TypeInfo copy(int typeId) {
     if (typeId == this.typeId) {
       return this;
     }
-    return new ClassInfo(cls, fullNameBytes, namespaceBytes,
+    return new TypeInfo(cls, fullNameBytes, namespaceBytes,
         typeNameBytes, isDynamicGeneratedClass, serializer, typeId, userTypeId);
   }
 
-  public ClassInfo copy(int typeId, int userTypeId) {
+  public TypeInfo copy(int typeId, int userTypeId) {
     if (typeId == this.typeId && userTypeId == this.userTypeId) {
       return this;
     }
-    return new ClassInfo(cls, fullNameBytes, namespaceBytes,
+    return new TypeInfo(cls, fullNameBytes, namespaceBytes,
         typeNameBytes, isDynamicGeneratedClass, serializer, typeId,userTypeId);
   }
 
@@ -160,12 +160,12 @@ public class ClassInfo {
     return cls;
   }
 
-  public ClassDef getClassDef() {
-    return classDef;
+  public TypeDef getTypeDef() {
+    return typeDef;
   }
 
-  void setClassDef(ClassDef classDef) {
-    this.classDef = classDef;
+  void setTypeDef(TypeDef typeDef) {
+    this.typeDef = typeDef;
   }
 
   /** Returns the fory type ID for this class. */
@@ -188,7 +188,7 @@ public class ClassInfo {
 
   void setSerializer(TypeResolver resolver, Serializer<?> serializer) {
     this.serializer = serializer;
-    needToWriteClassDef = serializer != null && resolver.needToWriteClassDef(serializer);
+    needToWriteTypeDef = serializer != null && resolver.needToWriteTypeDef(serializer);
   }
 
   public String decodeNamespace() {
@@ -201,7 +201,7 @@ public class ClassInfo {
 
   @Override
   public String toString() {
-    return "ClassInfo{"
+    return "TypeInfo{"
         + "cls="
         + cls
         + ", fullClassNameBytes="
