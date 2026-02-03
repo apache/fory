@@ -49,7 +49,9 @@ public class RegisterTest extends ForyTestBase {
 
     A a1 = fory1.deserialize(fory2.serialize(a), A.class);
     Assert.assertNotNull(a1);
-    Assert.assertNull(a1.b);
+    Object b = a1.b;
+    Assert.assertNotNull(b);
+    Assert.assertEquals(b.getClass(), B.class);
 
     Fory fory3 = builder.requireClassRegistration(false).build();
     fory3.register(A.class, (short) 1000);

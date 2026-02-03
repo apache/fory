@@ -139,6 +139,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
@@ -2120,7 +2121,22 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   protected Expression readForNotNullNonFinal(
       Expression buffer, TypeRef<?> typeRef, Expression serializer) {
     if (serializer == null) {
-      Expression classInfo = readTypeInfo(getRawType(typeRef), buffer);
+      Expression classInfo;
+      if (fory.isCompatible()) {
+        Class<?> rawType = typeRef.getRawType();
+        TypeInfo typeInfo = typeResolver(r -> r.getTypeInfo(rawType, false));
+        if (typeInfo == null || (typeInfo.getTypeId() == Types.COMPATIBLE_STRUCT ||
+            typeInfo.getTypeId() == Types.NAMED_COMPATIBLE_STRUCT)) {
+          String name = ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName()) + "Class");
+          Expression clsExpr = staticClassFieldExpr(rawType, name);
+          classInfo = inlineInvoke(
+              typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, clsExpr);
+        } else {
+          classInfo = readTypeInfo(getRawType(typeRef), buffer);
+        }
+      } else{
+        classInfo = readTypeInfo(getRawType(typeRef), buffer);
+      }
       serializer = inlineInvoke(classInfo, "getSerializer", SERIALIZER_TYPE);
     }
     return read(serializer, buffer, OBJECT_TYPE);

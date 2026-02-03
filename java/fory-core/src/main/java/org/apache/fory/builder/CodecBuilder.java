@@ -575,8 +575,9 @@ public abstract class CodecBuilder {
   }
 
   protected Expression staticClassFieldExpr(Class<?> cls, String fieldName) {
-    Preconditions.checkArgument(
-        !sourcePublicAccessible(cls), "Public class %s should use class literal instead", cls);
+    if (sourcePublicAccessible(cls)) {
+      return Literal.ofClass(cls);
+    }
     return getOrCreateField(
         true,
         Class.class,

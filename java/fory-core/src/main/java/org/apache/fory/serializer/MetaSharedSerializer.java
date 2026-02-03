@@ -288,10 +288,10 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
 
   private void printFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
     LOG.info(
-        "[Java] read field {} of type {}, writer index {}",
+        "[Java] read field {} of type {}, reader index {}",
         fieldInfo.descriptor.getName(),
         fieldInfo.typeRef,
-        buffer.writerIndex());
+        buffer.readerIndex());
   }
 
   public static Collection<Descriptor> consolidateFields(

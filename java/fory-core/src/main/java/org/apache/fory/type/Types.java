@@ -263,7 +263,7 @@ public class Types {
     return value == UNION || value == TYPED_UNION || value == NAMED_UNION;
   }
 
-  public static boolean isUserDefinedType(byte typeId) {
+  public static boolean isUserDefinedType(int typeId) {
     return isStructType(typeId)
         || isExtType(typeId)
         || isEnumType(typeId)

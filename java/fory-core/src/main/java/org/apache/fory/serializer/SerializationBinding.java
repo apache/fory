@@ -282,14 +282,19 @@ abstract class SerializationBinding {
         }
       } else {
         if (refMode == RefMode.TRACKING) {
-          return fory.readRef(buffer, fieldInfo.classInfoHolder);
+          int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+          if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
+            // ref value or not-null value
+            Object o = classResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().read(buffer);
+            refResolver.setReadObject(nextReadRefId, o);
+            return o;
+          } else {
+            return refResolver.getReadObject();
+          }
         } else {
           if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-            // Preserve a dummy ref ID so ObjectSerializer.read() can pop it.
-            // This is needed when global ref tracking is enabled but field ref tracking is
-            // disabled.
-            refResolver.preserveRefId(-1);
-            return fory.readNonRef(buffer, fieldInfo.classInfoHolder);
+            TypeInfo typeInfo = classResolver.readTypeInfo(buffer, fieldInfo.type);
+            return typeInfo.getSerializer().read(buffer, RefMode.NONE);
           }
         }
       }
@@ -613,12 +618,20 @@ abstract class SerializationBinding {
         return fieldInfo.typeInfo.getSerializer().xread(buffer, refMode);
       } else {
         if (refMode == RefMode.TRACKING) {
-          return fory.xreadRef(buffer, fieldInfo.classInfoHolder);
+          int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+          if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
+            // ref value or not-null value
+            Object o = xtypeResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().xread(buffer);
+            refResolver.setReadObject(nextReadRefId, o);
+            return o;
+          } else {
+            return refResolver.getReadObject();
+          }
         } else {
           if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-            TypeInfo typeInfo = xtypeResolver.readTypeInfo(buffer, fieldInfo.classInfoHolder);
+            TypeInfo typeInfo = xtypeResolver.readTypeInfo(buffer, fieldInfo.type);
             Serializer<?> serializer = typeInfo.getSerializer();
-            return serializer.xread(buffer, refMode);
+            return serializer.xread(buffer, RefMode.NONE);
           }
         }
       }

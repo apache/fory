@@ -692,19 +692,23 @@ public abstract class TypeResolver {
     Class<?> readClass = typeInfo.getCls();
     // replace target class if needed
     if (targetClass != readClass) {
-      Tuple2<Class<?>, Class<?>> key = Tuple2.of(readClass, targetClass);
-      TypeInfo newTypeInfo = extRegistry.transformedTypeInfo.get(key);
-      if (newTypeInfo == null) {
-        // similar to create serializer for `NonexistentMetaShared`
-        newTypeInfo =
-            getMetaSharedTypeInfo(
-                typeInfo.typeDef.replaceRootClassTo((ClassResolver) this, targetClass),
-                targetClass);
-        extRegistry.transformedTypeInfo.put(key, newTypeInfo);
-      }
-      return newTypeInfo;
+      return getTargetTypeInfo(typeInfo, targetClass);
     }
     return typeInfo;
+  }
+
+  private TypeInfo getTargetTypeInfo(TypeInfo typeInfo, Class<?> targetClass) {
+    Tuple2<Class<?>, Class<?>> key = Tuple2.of(typeInfo.getCls(), targetClass);
+    TypeInfo newTypeInfo = extRegistry.transformedTypeInfo.get(key);
+    if (newTypeInfo == null) {
+      // similar to create serializer for `NonexistentMetaShared`
+      newTypeInfo =
+          getMetaSharedTypeInfo(
+              typeInfo.typeDef.replaceRootClassTo(this, targetClass),
+              targetClass);
+      extRegistry.transformedTypeInfo.put(key, newTypeInfo);
+    }
+    return newTypeInfo;
   }
 
   /**

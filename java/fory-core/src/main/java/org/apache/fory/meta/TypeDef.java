@@ -445,7 +445,7 @@ public class TypeDef implements Serializable {
     return NativeTypeDefEncoder.buildTypeDef(classResolver, type, fields, hasFieldsMeta);
   }
 
-  public TypeDef replaceRootClassTo(ClassResolver classResolver, Class<?> targetCls) {
+  public TypeDef replaceRootClassTo(TypeResolver resolver, Class<?> targetCls) {
     String name = targetCls.getName();
     List<FieldInfo> fieldInfos =
         fieldsInfo.stream()
@@ -458,7 +458,11 @@ public class TypeDef implements Serializable {
                   }
                 })
             .collect(Collectors.toList());
+    if (resolver.getFory().isCrossLanguage()) {
+      return TypeDefEncoder.buildTypeDefWithFieldInfos(
+          (org.apache.fory.resolver.XtypeResolver) resolver, targetCls, fieldInfos);
+    }
     return NativeTypeDefEncoder.buildTypeDefWithFieldInfos(
-        classResolver, targetCls, fieldInfos, hasFieldsMeta);
+        (ClassResolver) resolver, targetCls, fieldInfos, hasFieldsMeta);
   }
 }

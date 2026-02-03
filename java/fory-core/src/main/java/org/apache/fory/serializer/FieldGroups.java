@@ -120,6 +120,7 @@ public class FieldGroups {
 
   public static final class SerializationFieldInfo {
     public final Descriptor descriptor;
+    public final Class<?> type;
     public final TypeRef<?> typeRef;
     public final int dispatchId;
     public final TypeInfo typeInfo;
@@ -141,6 +142,7 @@ public class FieldGroups {
 
     SerializationFieldInfo(Fory fory, Descriptor d) {
       this.descriptor = d;
+      this.type = descriptor.getRawType();
       this.typeRef = d.getTypeRef();
       this.dispatchId = DispatchId.getDispatchId(fory, d);
       TypeResolver resolver = fory.getTypeResolver();
