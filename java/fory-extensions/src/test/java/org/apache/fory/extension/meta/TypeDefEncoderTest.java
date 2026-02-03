@@ -25,9 +25,9 @@ import static org.apache.fory.meta.NativeTypeDefEncoder.getClassFields;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.TypeDef;
-import org.apache.fory.meta.NativeTypeDefEncoder;
 import org.apache.fory.meta.FieldInfo;
+import org.apache.fory.meta.NativeTypeDefEncoder;
+import org.apache.fory.meta.TypeDef;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

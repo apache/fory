@@ -99,10 +99,10 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.ClassSpec;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.ArraySerializers;
@@ -1688,8 +1688,7 @@ public class ClassResolver extends TypeResolver {
     Serializer<?> serializer = typeInfo.serializer;
     Preconditions.checkArgument(serializer.getClass() != NonexistentClassSerializer.class);
     if (needToWriteTypeDef(serializer)) {
-      typeDef =
-          typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls));
+      typeDef = typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls));
     } else {
       // Some type will use other serializers such MapSerializer and so on.
       typeDef =
@@ -1745,13 +1744,14 @@ public class ClassResolver extends TypeResolver {
         metaStringResolver.writeMetaStringBytes(buffer, typeInfo.namespaceBytes);
         metaStringResolver.writeMetaStringBytes(buffer, typeInfo.typeNameBytes);
         break;
+      default:
     }
   }
 
   /**
    * Read serialized java classname. Note that the object of the class can be non-serializable. For
-   * serializable object, {@link #readTypeInfo(MemoryBuffer)} or {@link
-   * #readTypeInfo(MemoryBuffer, TypeInfoHolder)} should be invoked.
+   * serializable object, {@link #readTypeInfo(MemoryBuffer)} or {@link #readTypeInfo(MemoryBuffer,
+   * TypeInfoHolder)} should be invoked.
    */
   public Class<?> readClassInternal(MemoryBuffer buffer) {
     int typeId = buffer.readUint8();
@@ -1771,11 +1771,12 @@ public class ClassResolver extends TypeResolver {
         // whether need to read class by name in advance
         MetaStringBytes packageBytes = metaStringResolver.readMetaStringBytes(buffer);
         MetaStringBytes simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer);
-       return loadBytesToTypeInfo(packageBytes, simpleClassNameBytes).cls;
+        return loadBytesToTypeInfo(packageBytes, simpleClassNameBytes).cls;
+      default:
+        TypeInfo internalTypeInfoByTypeId = getInternalTypeInfoByTypeId(typeId);
+        Preconditions.checkNotNull(internalTypeInfoByTypeId);
+        return internalTypeInfoByTypeId.cls;
     }
-    TypeInfo internalTypeInfoByTypeId = getInternalTypeInfoByTypeId(typeId);
-    Preconditions.checkNotNull(internalTypeInfoByTypeId);
-    return internalTypeInfoByTypeId.cls;
   }
 
   private TypeInfo getTypeInfoByTypeIdForReadClassInternal(int typeId, int userTypeId) {
@@ -1838,7 +1839,14 @@ public class ClassResolver extends TypeResolver {
     int typeId = buildUnregisteredTypeId(cls, null);
     TypeInfo typeInfo =
         new TypeInfo(
-            cls, fullClassNameBytes, packageBytes, simpleClassNameBytes, false, null, typeId, INVALID_USER_TYPE_ID);
+            cls,
+            fullClassNameBytes,
+            packageBytes,
+            simpleClassNameBytes,
+            false,
+            null,
+            typeId,
+            INVALID_USER_TYPE_ID);
     if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       typeInfo.serializer =
           NonexistentClassSerializers.getSerializer(fory, classSpec.entireClassName, cls);

@@ -44,9 +44,9 @@ import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
-import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
@@ -550,8 +550,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       }
       V value = entry.getValue();
       if (value != null) {
-        TypeInfo typeInfo =
-            classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
+        TypeInfo typeInfo = classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
         if (!typeInfo.getSerializer().isImmutable()) {
           value = fory.copyObject(value, typeInfo.getTypeId());
         }
@@ -572,8 +571,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       }
       V value = entry.getValue();
       if (value != null) {
-        TypeInfo typeInfo =
-            classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
+        TypeInfo typeInfo = classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
         if (!typeInfo.getSerializer().isImmutable()) {
           value = fory.copyObject(value, typeInfo.getTypeId());
         }
@@ -595,8 +593,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       }
       V value = entry.getValue();
       if (value != null) {
-        TypeInfo typeInfo =
-            classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
+        TypeInfo typeInfo = classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
         if (!typeInfo.getSerializer().isImmutable()) {
           value = fory.copyObject(value, typeInfo.getTypeId());
         }

@@ -24,9 +24,9 @@ import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString.Encoding;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.Types;
@@ -72,8 +72,8 @@ public class TypeInfo {
   }
 
   /**
-   * Creates a TypeInfo for deserialization with a TypeDef. Used when reading class meta from
-   * stream where the TypeDef specifies the field layout.
+   * Creates a TypeInfo for deserialization with a TypeDef. Used when reading class meta from stream
+   * where the TypeDef specifies the field layout.
    *
    * @param cls the class
    * @param typeDef the class definition from stream
@@ -90,7 +90,12 @@ public class TypeInfo {
     this.userTypeId = typeDef == null ? -1 : typeDef.getClassSpec().userTypeId;
   }
 
-  TypeInfo(TypeResolver classResolver, Class<?> cls, Serializer<?> serializer, int typeId, int userTypeId) {
+  TypeInfo(
+      TypeResolver classResolver,
+      Class<?> cls,
+      Serializer<?> serializer,
+      int typeId,
+      int userTypeId) {
     this.cls = cls;
     this.serializer = serializer;
     needToWriteTypeDef = serializer != null && classResolver.needToWriteTypeDef(serializer);
@@ -144,16 +149,30 @@ public class TypeInfo {
     if (typeId == this.typeId) {
       return this;
     }
-    return new TypeInfo(cls, fullNameBytes, namespaceBytes,
-        typeNameBytes, isDynamicGeneratedClass, serializer, typeId, userTypeId);
+    return new TypeInfo(
+        cls,
+        fullNameBytes,
+        namespaceBytes,
+        typeNameBytes,
+        isDynamicGeneratedClass,
+        serializer,
+        typeId,
+        userTypeId);
   }
 
   public TypeInfo copy(int typeId, int userTypeId) {
     if (typeId == this.typeId && userTypeId == this.userTypeId) {
       return this;
     }
-    return new TypeInfo(cls, fullNameBytes, namespaceBytes,
-        typeNameBytes, isDynamicGeneratedClass, serializer, typeId,userTypeId);
+    return new TypeInfo(
+        cls,
+        fullNameBytes,
+        namespaceBytes,
+        typeNameBytes,
+        isDynamicGeneratedClass,
+        serializer,
+        typeId,
+        userTypeId);
   }
 
   public Class<?> getCls() {

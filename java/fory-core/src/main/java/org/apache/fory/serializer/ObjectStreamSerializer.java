@@ -52,15 +52,15 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.NativeTypeDefEncoder;
-import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.FieldInfo;
 import org.apache.fory.meta.FieldTypes;
+import org.apache.fory.meta.NativeTypeDefEncoder;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ObjectCreator;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.MetaContext;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
@@ -421,8 +421,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     if (skipSerializer == null) {
       Class<?> layerMarkerClass = LayerMarkerClassGenerator.getOrCreate(fory, senderClass, 0);
       MetaSharedLayerSerializer<?> newSerializer =
-          new MetaSharedLayerSerializer(
-              fory, senderClass, typeInfo.getTypeDef(), layerMarkerClass);
+          new MetaSharedLayerSerializer(fory, senderClass, typeInfo.getTypeDef(), layerMarkerClass);
       typeInfo.setSerializer(newSerializer);
       skipSerializer = newSerializer;
     }
@@ -460,8 +459,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    */
   private static void ensureFieldSerializersGenerated(
       Fory fory, TypeDef layerTypeDef, Class<?> type) {
-    Collection<Descriptor> descriptors =
-        layerTypeDef.getDescriptors(fory.getClassResolver(), type);
+    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(fory.getClassResolver(), type);
     for (Descriptor descriptor : descriptors) {
       Class<?> fieldType = descriptor.getRawType();
       if (fieldType != null && !fieldType.isPrimitive()) {

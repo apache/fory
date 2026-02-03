@@ -21,8 +21,8 @@ package org.apache.fory.serializer.collection;
 
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.RefMode;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.serializer.Serializer;
 
 // This polymorphic interface has cost, do not expose it as a public class

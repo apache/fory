@@ -19,11 +19,11 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
+import static org.apache.fory.meta.Encoders.fieldNameEncodings;
 import static org.apache.fory.meta.NativeTypeDefDecoder.decodeTypeDefBuf;
 import static org.apache.fory.meta.NativeTypeDefDecoder.readPkgName;
 import static org.apache.fory.meta.NativeTypeDefDecoder.readTypeName;
-import static org.apache.fory.meta.Encoders.fieldNameEncodings;
+import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
 import static org.apache.fory.meta.TypeDefEncoder.FIELD_NAME_SIZE_THRESHOLD;
 import static org.apache.fory.meta.TypeDefEncoder.REGISTER_BY_NAME_FLAG;
 import static org.apache.fory.meta.TypeDefEncoder.SMALL_NUM_FIELDS_THRESHOLD;

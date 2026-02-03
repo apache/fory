@@ -33,9 +33,9 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 

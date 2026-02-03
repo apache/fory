@@ -19,13 +19,13 @@
 
 package org.apache.fory.meta;
 
+import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
+import static org.apache.fory.meta.Encoders.pkgEncodingsList;
+import static org.apache.fory.meta.Encoders.typeNameEncodingsList;
 import static org.apache.fory.meta.TypeDef.COMPRESS_META_FLAG;
 import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
 import static org.apache.fory.meta.TypeDef.META_SIZE_MASKS;
 import static org.apache.fory.meta.TypeDef.NUM_HASH_BITS;
-import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
-import static org.apache.fory.meta.Encoders.pkgEncodingsList;
-import static org.apache.fory.meta.Encoders.typeNameEncodingsList;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;

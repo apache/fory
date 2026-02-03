@@ -24,8 +24,8 @@ import java.lang.reflect.Field;
 import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.util.Preconditions;
 
 public class Types {
@@ -227,7 +227,7 @@ public class Types {
     }
   }
 
-  /** Return true if type is user type and registered by id */
+  /** Return true if type is user type and registered by id. */
   public static boolean isUserTypeRegisteredById(int typeId) {
     switch (typeId) {
       case Types.ENUM:

@@ -37,8 +37,8 @@ import org.apache.fory.collection.MapSnapshot;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -349,8 +349,7 @@ public class MapSerializers {
       for (Entry<K, V> entry : originMap.entrySet()) {
         V value = entry.getValue();
         if (value != null) {
-          TypeInfo typeInfo =
-              classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
+          TypeInfo typeInfo = classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
           if (!typeInfo.getSerializer().isImmutable()) {
             value = fory.copyObject(value, typeInfo.getTypeId());
           }

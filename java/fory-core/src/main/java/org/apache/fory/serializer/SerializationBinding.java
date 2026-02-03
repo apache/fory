@@ -25,11 +25,11 @@ import org.apache.fory.Fory;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.TypeInfo;
-import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
@@ -285,7 +285,8 @@ abstract class SerializationBinding {
           int nextReadRefId = refResolver.tryPreserveRefId(buffer);
           if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
             // ref value or not-null value
-            Object o = classResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().read(buffer);
+            Object o =
+                classResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().read(buffer);
             refResolver.setReadObject(nextReadRefId, o);
             return o;
           } else {
@@ -621,7 +622,8 @@ abstract class SerializationBinding {
           int nextReadRefId = refResolver.tryPreserveRefId(buffer);
           if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
             // ref value or not-null value
-            Object o = xtypeResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().xread(buffer);
+            Object o =
+                xtypeResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().xread(buffer);
             refResolver.setReadObject(nextReadRefId, o);
             return o;
           } else {

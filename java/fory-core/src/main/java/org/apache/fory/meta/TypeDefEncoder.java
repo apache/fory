@@ -19,10 +19,10 @@
 
 package org.apache.fory.meta;
 
+import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
 import static org.apache.fory.meta.NativeTypeDefEncoder.prependHeader;
 import static org.apache.fory.meta.NativeTypeDefEncoder.writePkgName;
 import static org.apache.fory.meta.NativeTypeDefEncoder.writeTypeName;
-import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -135,8 +135,7 @@ class TypeDefEncoder {
 
   // see spec documentation: docs/specification/xlang_serialization_spec.md
   // https://fory.apache.org/docs/specification/fory_xlang_serialization_spec
-  static MemoryBuffer encodeTypeDef(
-      XtypeResolver resolver, Class<?> type, List<FieldInfo> fields) {
+  static MemoryBuffer encodeTypeDef(XtypeResolver resolver, Class<?> type, List<FieldInfo> fields) {
     TypeInfo typeInfo = resolver.getTypeInfo(type);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
     buffer.writeByte(-1); // placeholder for header, update later

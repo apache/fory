@@ -59,8 +59,8 @@ import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.ClassSpec;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
@@ -96,8 +96,7 @@ public abstract class TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
   static final TypeInfo NIL_CLASS_INFO =
-      new TypeInfo(null, null, null, null,
-          false, null, Types.UNKNOWN, INVALID_USER_TYPE_ID);
+      new TypeInfo(null, null, null, null, false, null, Types.UNKNOWN, INVALID_USER_TYPE_ID);
   // use a lower load factor to minimize hash collision
   static final float foryMapLoadFactor = 0.25f;
   static final int estimatedNumRegistered = 150;
@@ -408,8 +407,8 @@ public abstract class TypeResolver {
   }
 
   /**
-   * Build TypeDef for the given TypeInfo. Used by writeSharedClassMeta when the typeDef is not
-   * yet created.
+   * Build TypeDef for the given TypeInfo. Used by writeSharedClassMeta when the typeDef is not yet
+   * created.
    */
   protected abstract TypeDef buildTypeDef(TypeInfo typeInfo);
 
@@ -554,8 +553,8 @@ public abstract class TypeResolver {
   }
 
   /**
-   * Read class info from buffer with TypeInfoHolder cache. This version updates the
-   * classInfoHolder if the cache doesn't hit, allowing callers to maintain the cache across calls.
+   * Read class info from buffer with TypeInfoHolder cache. This version updates the classInfoHolder
+   * if the cache doesn't hit, allowing callers to maintain the cache across calls.
    *
    * @param buffer the buffer to read from
    * @param classInfoHolder holder containing cache, will be updated on cache miss
@@ -621,8 +620,7 @@ public abstract class TypeResolver {
    */
   protected final TypeInfo readTypeInfoFromBytes(
       MemoryBuffer buffer, TypeInfo typeInfoCache, int header) {
-    MetaStringBytes typeNameBytesCache =
-        typeInfoCache != null ? typeInfoCache.typeNameBytes : null;
+    MetaStringBytes typeNameBytesCache = typeInfoCache != null ? typeInfoCache.typeNameBytes : null;
     MetaStringBytes namespaceBytes;
     MetaStringBytes simpleClassNameBytes;
 
@@ -704,8 +702,7 @@ public abstract class TypeResolver {
       // similar to create serializer for `NonexistentMetaShared`
       newTypeInfo =
           getMetaSharedTypeInfo(
-              typeInfo.typeDef.replaceRootClassTo(this, targetClass),
-              targetClass);
+              typeInfo.typeDef.replaceRootClassTo(this, targetClass), targetClass);
       extRegistry.transformedTypeInfo.put(key, newTypeInfo);
     }
     return newTypeInfo;
@@ -715,8 +712,8 @@ public abstract class TypeResolver {
    * Load class info from namespace and type name bytes. Subclasses implement this to resolve the
    * class and create/lookup TypeInfo.
    *
-   * <p>Note: This method should NOT create serializers. It's used by both readTypeInfo (which
-   * needs serializers) and readClassInternal (which doesn't need serializers). Use {@link
+   * <p>Note: This method should NOT create serializers. It's used by both readTypeInfo (which needs
+   * serializers) and readClassInternal (which doesn't need serializers). Use {@link
    * #ensureSerializerForTypeInfo} after calling this if a serializer is needed.
    */
   protected abstract TypeInfo loadBytesToTypeInfo(
@@ -770,7 +767,7 @@ public abstract class TypeResolver {
     if (typeInfo.userTypeId != INVALID_USER_TYPE_ID) {
       // serializer will be set lazily in `addSerializer` method if it's null.
       putUserTypeInfo(typeInfo.userTypeId, typeInfo);
-    } else  {
+    } else {
       if (Types.isUserDefinedType((byte) typeInfo.typeId)) {
         return;
       }
@@ -795,8 +792,7 @@ public abstract class TypeResolver {
     return userTypeIdToTypeInfo.containsKey(userId);
   }
 
-  final TypeInfo buildMetaSharedTypeInfo(
-      Tuple2<TypeDef, TypeInfo> typeDefTuple, TypeDef typeDef) {
+  final TypeInfo buildMetaSharedTypeInfo(Tuple2<TypeDef, TypeInfo> typeDefTuple, TypeDef typeDef) {
     TypeInfo typeInfo;
     if (typeDefTuple != null) {
       typeDef = typeDefTuple.f0;

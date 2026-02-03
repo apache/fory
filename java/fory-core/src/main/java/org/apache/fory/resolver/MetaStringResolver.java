@@ -21,7 +21,6 @@ package org.apache.fory.resolver;
 
 import java.util.Arrays;
 import java.util.Objects;
-
 import org.apache.fory.collection.LongLongByteMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectMap;

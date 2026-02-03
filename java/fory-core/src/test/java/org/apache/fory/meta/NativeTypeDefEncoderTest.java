@@ -77,8 +77,7 @@ public class NativeTypeDefEncoderTest {
   public void testEmptySubClassSerializer() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory, Foo2.class);
-    TypeDef typeDef1 =
-        TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    TypeDef typeDef1 = TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
     Assert.assertEquals(typeDef, typeDef1);
   }
 
@@ -90,8 +89,7 @@ public class NativeTypeDefEncoderTest {
             fory,
             TestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLength
                 .InnerClassTestLengthInnerClassTestLengthInnerClassTestLength.class);
-    TypeDef typeDef1 =
-        TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    TypeDef typeDef1 = TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
     Assert.assertEquals(typeDef1, typeDef);
   }
 

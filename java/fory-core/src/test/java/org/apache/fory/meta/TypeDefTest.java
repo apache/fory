@@ -171,8 +171,7 @@ public class TypeDefTest extends ForyTestBase {
   public void testContainerClass() {
     Fory fory = Fory.builder().withMetaShare(true).build();
     List<Field> fields = ReflectionUtils.getFields(ContainerClass.class, true);
-    TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), ContainerClass.class, fields);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getClassResolver(), ContainerClass.class, fields);
     assertEquals(typeDef.getClassName(), ContainerClass.class.getName());
     assertEquals(typeDef.getFieldsInfo().size(), fields.size());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
@@ -244,8 +243,7 @@ public class TypeDefTest extends ForyTestBase {
     Assert.assertThrows(
         IllegalArgumentException.class,
         () ->
-            TypeDef.buildTypeDef(
-                fory.getClassResolver(), ClassWithDuplicateTagIds.class, fields));
+            TypeDef.buildTypeDef(fory.getClassResolver(), ClassWithDuplicateTagIds.class, fields));
   }
 
   @Test
@@ -327,8 +325,7 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with tagged fields
     List<Field> sourceFields = ReflectionUtils.getFields(TargetClassWithValidTags.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(
-            fory.getClassResolver(), TargetClassWithValidTags.class, sourceFields);
+        TypeDef.buildTypeDef(fory.getClassResolver(), TargetClassWithValidTags.class, sourceFields);
 
     // Get descriptors should succeed
     List<Descriptor> descriptors =
@@ -344,8 +341,7 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with mixed tagged and non-tagged fields
     List<Field> sourceFields = ReflectionUtils.getFields(TargetClassWithMixedTags.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(
-            fory.getClassResolver(), TargetClassWithMixedTags.class, sourceFields);
+        TypeDef.buildTypeDef(fory.getClassResolver(), TargetClassWithMixedTags.class, sourceFields);
 
     // Get descriptors should succeed
     List<Descriptor> descriptors =
@@ -448,8 +444,7 @@ public class TypeDefTest extends ForyTestBase {
 
     // Build a TypeDef with no fields
     List<Field> sourceFields = ReflectionUtils.getFields(EmptyClass.class, true);
-    TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), EmptyClass.class, sourceFields);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getClassResolver(), EmptyClass.class, sourceFields);
 
     // Get descriptors should succeed and return empty list
     List<Descriptor> descriptors =

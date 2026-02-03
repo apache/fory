@@ -75,9 +75,9 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.DeferedLazySerializer;
@@ -392,7 +392,8 @@ public class XtypeResolver extends TypeResolver {
     return newTypeInfo(type, serializer, typeId, INVALID_USER_TYPE_ID);
   }
 
-  private TypeInfo newTypeInfo(Class<?> type, Serializer<?> serializer, int typeId, int userTypeId) {
+  private TypeInfo newTypeInfo(
+      Class<?> type, Serializer<?> serializer, int typeId, int userTypeId) {
     return newTypeInfo(
         type,
         serializer,
@@ -404,17 +405,16 @@ public class XtypeResolver extends TypeResolver {
 
   private TypeInfo newTypeInfo(
       Class<?> type, Serializer<?> serializer, String namespace, String typeName, int typeId) {
-    return newTypeInfo(
-        type,
-        serializer,
-        namespace,
-        typeName,
-        typeId,
-        INVALID_USER_TYPE_ID);
+    return newTypeInfo(type, serializer, namespace, typeName, typeId, INVALID_USER_TYPE_ID);
   }
 
   private TypeInfo newTypeInfo(
-      Class<?> type, Serializer<?> serializer, String namespace, String typeName, int typeId, int userTypeId) {
+      Class<?> type,
+      Serializer<?> serializer,
+      String namespace,
+      String typeName,
+      int typeId,
+      int userTypeId) {
     MetaStringBytes fullClassNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
             GENERIC_ENCODER.encode(type.getName(), MetaString.Encoding.UTF_8));
@@ -966,7 +966,7 @@ public class XtypeResolver extends TypeResolver {
   }
 
   private void registerType(int xtypeId, Class<?> type, Serializer<?> serializer) {
-    TypeInfo typeInfo = newTypeInfo(type, serializer,  xtypeId, INVALID_USER_TYPE_ID);
+    TypeInfo typeInfo = newTypeInfo(type, serializer, xtypeId, INVALID_USER_TYPE_ID);
     classInfoMap.put(type, typeInfo);
     if (getInternalTypeInfoByTypeId(xtypeId) == null) {
       putInternalTypeInfo(xtypeId, typeInfo);

@@ -61,11 +61,11 @@ import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordUtils;
 
 /**
- * A meta-shared compatible deserializer builder based on {@link TypeDef}. This builder will
- * compare fields between {@link TypeDef} and class fields, then create serializer to read and
- * set/skip corresponding fields to support type forward/backward compatibility. Serializer are
- * forward to {@link ObjectCodecBuilder} for now. We can consolidate fields between peers to create
- * better serializers to serialize common fields between peers for efficiency.
+ * A meta-shared compatible deserializer builder based on {@link TypeDef}. This builder will compare
+ * fields between {@link TypeDef} and class fields, then create serializer to read and set/skip
+ * corresponding fields to support type forward/backward compatibility. Serializer are forward to
+ * {@link ObjectCodecBuilder} for now. We can consolidate fields between peers to create better
+ * serializers to serialize common fields between peers for efficiency.
  *
  * <p>With meta context share enabled and compatible mode, the {@link ObjectCodecBuilder} will take
  * all non-inner final types as non-final, so that fory can write class definition when write class

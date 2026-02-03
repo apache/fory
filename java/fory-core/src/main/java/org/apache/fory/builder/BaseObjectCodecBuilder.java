@@ -117,11 +117,11 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.TypeInfo;
-import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
@@ -2125,16 +2125,17 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       if (fory.isCompatible()) {
         Class<?> rawType = typeRef.getRawType();
         TypeInfo typeInfo = typeResolver(r -> r.getTypeInfo(rawType, false));
-        if (typeInfo == null || (typeInfo.getTypeId() == Types.COMPATIBLE_STRUCT ||
-            typeInfo.getTypeId() == Types.NAMED_COMPATIBLE_STRUCT)) {
+        if (typeInfo == null
+            || (typeInfo.getTypeId() == Types.COMPATIBLE_STRUCT
+                || typeInfo.getTypeId() == Types.NAMED_COMPATIBLE_STRUCT)) {
           String name = ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName()) + "Class");
           Expression clsExpr = staticClassFieldExpr(rawType, name);
-          classInfo = inlineInvoke(
-              typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, clsExpr);
+          classInfo =
+              inlineInvoke(typeResolverRef, "readTypeInfo", classInfoTypeRef, buffer, clsExpr);
         } else {
           classInfo = readTypeInfo(getRawType(typeRef), buffer);
         }
-      } else{
+      } else {
         classInfo = readTypeInfo(getRawType(typeRef), buffer);
       }
       serializer = inlineInvoke(classInfo, "getSerializer", SERIALIZER_TYPE);

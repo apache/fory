@@ -19,14 +19,14 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.TypeDef.COMPRESS_META_FLAG;
-import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
-import static org.apache.fory.meta.TypeDef.META_SIZE_MASKS;
-import static org.apache.fory.meta.NativeTypeDefEncoder.BIG_NAME_THRESHOLD;
-import static org.apache.fory.meta.NativeTypeDefEncoder.NUM_CLASS_THRESHOLD;
 import static org.apache.fory.meta.Encoders.fieldNameEncodings;
 import static org.apache.fory.meta.Encoders.pkgEncodings;
 import static org.apache.fory.meta.Encoders.typeNameEncodings;
+import static org.apache.fory.meta.NativeTypeDefEncoder.BIG_NAME_THRESHOLD;
+import static org.apache.fory.meta.NativeTypeDefEncoder.NUM_CLASS_THRESHOLD;
+import static org.apache.fory.meta.TypeDef.COMPRESS_META_FLAG;
+import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
+import static org.apache.fory.meta.TypeDef.META_SIZE_MASKS;
 
 import java.util.ArrayList;
 import java.util.List;

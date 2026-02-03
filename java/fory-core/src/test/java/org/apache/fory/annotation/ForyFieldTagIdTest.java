@@ -30,8 +30,8 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
-import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.FieldInfo;
+import org.apache.fory.meta.TypeDef;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
