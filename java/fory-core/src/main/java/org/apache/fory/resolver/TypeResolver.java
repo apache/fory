@@ -451,7 +451,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = getInternalTypeInfoByTypeId(typeId);
+        typeInfo = Objects.requireNonNull(getInternalTypeInfoByTypeId(typeId));
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -495,7 +495,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = getInternalTypeInfoByTypeId(typeId);
+        typeInfo = Objects.requireNonNull(getInternalTypeInfoByTypeId(typeId));
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -545,7 +545,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = getInternalTypeInfoByTypeId(typeId);
+        typeInfo = Objects.requireNonNull(getInternalTypeInfoByTypeId(typeId));
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -595,7 +595,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
+        typeInfo = Objects.requireNonNull(getInternalTypeInfoByTypeId(typeId));
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
