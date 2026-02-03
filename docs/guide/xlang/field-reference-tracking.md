@@ -43,7 +43,7 @@ Fory fory = Fory.builder()
 ### Python
 
 ```python
-fory = pyfory.Fory(xlang=True, ref_tracking=True)
+fory = pyfory.Fory(xlang=True, ref=True)
 ```
 
 ### Go

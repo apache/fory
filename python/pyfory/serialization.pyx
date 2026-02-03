@@ -29,7 +29,6 @@ from typing import TypeVar, Union, Iterable
 
 from pyfory.buffer import get_bit, set_bit, clear_bit
 from pyfory import _fory as fmod
-from pyfory._fory import Language
 from pyfory._fory import _ENABLE_TYPE_REGISTRATION_FORCIBLY
 from pyfory.lib import mmh3
 from pyfory.meta.metastring import Encoding
@@ -101,7 +100,7 @@ cdef class MapRefResolver:
     efficient serialization of object graphs with duplicate references and prevents
     infinite recursion with circular references.
 
-    When ref_tracking is enabled, duplicate object references are serialized only once,
+    When track_ref is enabled, duplicate object references are serialized only once,
     with subsequent references storing only the reference ID. During deserialization,
     the resolver maintains a mapping to reconstruct the exact same object graph structure.
 
@@ -115,18 +114,18 @@ cdef class MapRefResolver:
     cdef vector[PyObject *] read_objects
     cdef vector[int32_t] read_ref_ids
     cdef object read_object
-    cdef c_bool ref_tracking
+    cdef c_bool track_ref
 
     def __cinit__(self, c_bool ref):
         self.read_object = None
-        self.ref_tracking = ref
+        self.track_ref = ref
 
     # Special methods of extension types must be declared with def, not cdef.
     def __dealloc__(self):
         self.reset()
 
     cpdef inline c_bool write_ref_or_null(self, Buffer buffer, obj):
-        if not self.ref_tracking:
+        if not self.track_ref:
             if obj is None:
                 buffer.write_int8(NULL_FLAG)
                 return True
@@ -155,7 +154,7 @@ cdef class MapRefResolver:
 
     cpdef inline int8_t read_ref_or_null(self, Buffer buffer):
         cdef int8_t head_flag = buffer.read_int8()
-        if not self.ref_tracking:
+        if not self.track_ref:
             return head_flag
         cdef int32_t ref_id
         cdef PyObject * obj
@@ -172,7 +171,7 @@ cdef class MapRefResolver:
             return head_flag
 
     cpdef inline int32_t preserve_ref_id(self):
-        if not self.ref_tracking:
+        if not self.track_ref:
             return -1
         next_read_ref_id = self.read_objects.size()
         self.read_objects.push_back(NULL)
@@ -180,7 +179,7 @@ cdef class MapRefResolver:
         return next_read_ref_id
 
     cpdef inline int32_t try_preserve_ref_id(self, Buffer buffer):
-        if not self.ref_tracking:
+        if not self.track_ref:
             # `NOT_NULL_VALUE_FLAG` can be used as stub reference id because we use
             # `ref_id >= NOT_NULL_VALUE_FLAG` to read data.
             return buffer.read_int8()
@@ -213,7 +212,7 @@ cdef class MapRefResolver:
         return self.read_ref_ids[length - 1]
 
     cpdef inline reference(self, obj):
-        if not self.ref_tracking:
+        if not self.track_ref:
             return
         cdef int32_t ref_id = self.read_ref_ids.back()
         self.read_ref_ids.pop_back()
@@ -228,7 +227,7 @@ cdef class MapRefResolver:
         self.read_objects[ref_id] = <PyObject *> obj
 
     cpdef inline get_read_object(self, id_=None):
-        if not self.ref_tracking:
+        if not self.track_ref:
             return None
         if id_ is None:
             return self.read_object
@@ -239,7 +238,7 @@ cdef class MapRefResolver:
         return <object> obj
 
     cpdef inline set_read_object(self, int32_t ref_id, obj):
-        if not self.ref_tracking:
+        if not self.track_ref:
             return
         if ref_id >= 0:
             need_inc = self.read_objects[ref_id] == NULL
@@ -258,7 +257,7 @@ cdef class MapRefResolver:
         self.written_objects.clear()
 
     cpdef inline reset_read(self):
-        if not self.ref_tracking:
+        if not self.track_ref:
             return
         for item in self.read_objects:
             Py_XDECREF(item)
@@ -627,7 +626,7 @@ cdef class TypeResolver:
         else:
             if type_id >= self._c_registered_id_to_type_info.size():
                 self._c_registered_id_to_type_info.resize(type_id * 2, NULL)
-            if type_id > 0 and (self.fory.language == Language.PYTHON or not is_namespaced_type(<TypeId>type_id)):
+            if type_id > 0 and (self.fory.is_py or not is_namespaced_type(<TypeId>type_id)):
                 self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
         # Resize if load factor >= 0.4 (using integer arithmetic: size/capacity >= 4/10)
@@ -1020,8 +1019,8 @@ cdef class Fory:
     See Also:
         ThreadSafeFory: Thread-safe wrapper for concurrent usage
     """
-    cdef readonly object language
-    cdef readonly c_bool ref_tracking
+    cdef readonly c_bool xlang
+    cdef readonly c_bool track_ref
     cdef readonly c_bool strict
     cdef readonly c_bool is_py
     cdef readonly c_bool compatible
@@ -1036,7 +1035,6 @@ cdef class Fory:
     cdef object _buffers  # iterator
     cdef object _unsupported_callback
     cdef object _unsupported_objects  # iterator
-    cdef object _peer_language
     cdef public bint is_peer_out_of_band_enabled
     cdef int32_t max_depth
     cdef int32_t depth
@@ -1051,7 +1049,6 @@ cdef class Fory:
             max_depth: int = 50,
             field_nullable: bool = False,
             meta_compressor=None,
-            **kwargs,
     ):
         """
         Initialize a Fory serialization instance.
@@ -1098,22 +1095,16 @@ cdef class Fory:
             >>> # Cross-language mode with schema evolution
             >>> fory = Fory(xlang=True, compatible=True)
         """
-        self.language = Language.XLANG if xlang else Language.PYTHON
-        if kwargs.get("language") is not None:
-            self.language = kwargs.get("language")
-        if kwargs.get("ref_tracking") is not None:
-            ref = kwargs.get("ref_tracking")
-        if kwargs.get("require_type_registration") is not None:
-            strict = kwargs.get("require_type_registration")
+        self.xlang = xlang
         if _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict:
             self.strict = True
         else:
             self.strict = False
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
-        self.ref_tracking = ref
+        self.track_ref = ref
         self.ref_resolver = MapRefResolver(ref)
-        self.is_py = self.language == Language.PYTHON
+        self.is_py = not self.xlang
         self.field_nullable = field_nullable if self.is_py else False
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
@@ -1124,7 +1115,6 @@ cdef class Fory:
         self._buffers = None
         self._unsupported_callback = None
         self._unsupported_objects = None
-        self._peer_language = None
         self.is_peer_out_of_band_enabled = False
         self.depth = 0
         self.max_depth = max_depth
@@ -1327,7 +1317,7 @@ cdef class Fory:
         else:
             clear_bit(buffer, mask_index, 0)
 
-        if self.language == Language.XLANG:
+        if self.xlang:
             # set reader as x_lang.
             set_bit(buffer, mask_index, 1)
         else:
@@ -1338,7 +1328,7 @@ cdef class Fory:
         else:
             clear_bit(buffer, mask_index, 2)
         cdef int32_t start_offset
-        if self.language == Language.PYTHON:
+        if self.is_py:
             self.write_ref(buffer, obj)
         else:
             self.xwrite_ref(buffer, obj)
@@ -1552,7 +1542,7 @@ cdef class Fory:
             serializer = self.type_resolver.read_type_info(buffer).serializer
         # Push -1 to read_ref_ids so reference() can pop it and skip reference tracking
         # This handles the case where xread_no_ref is called directly without xread_ref
-        if self.ref_resolver.ref_tracking:
+        if self.ref_resolver.track_ref:
             self.ref_resolver.read_ref_ids.push_back(-1)
         return self._xread_no_ref_internal(buffer, serializer)
 
@@ -1835,7 +1825,7 @@ cdef class Serializer:
     def __init__(self, fory, type_: Union[type, TypeVar]):
         self.fory = fory
         self.type_ = type_
-        self.need_to_write_ref = fory.ref_tracking and not is_primitive_type(type_)
+        self.need_to_write_ref = fory.track_ref and not is_primitive_type(type_)
 
     cpdef write(self, Buffer buffer, value):
         raise NotImplementedError(f"write method not implemented in {type(self)}")

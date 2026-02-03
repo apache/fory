@@ -24,7 +24,7 @@ use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_NULL_FLAG};
-use crate::types::{Language, RefMode, SIZE_OF_REF_AND_TYPE};
+use crate::types::{RefMode, SIZE_OF_REF_AND_TYPE};
 use std::cell::UnsafeCell;
 use std::mem;
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -37,15 +37,6 @@ var ErrNoSerializer = errors.New("fory: no serializer registered for type")
 // Constants
 // ============================================================================
 
-// Language constants (reserved for compatibility; header does not write them)
-const (
-	LangXLANG uint8 = iota
-	LangJAVA
-	LangPYTHON
-	LangCPP
-	LangGO
-)
-
 // Bitmap flags for protocol header
 const (
 	IsNilFlag     = 1 << 0

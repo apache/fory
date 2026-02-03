@@ -85,7 +85,7 @@ cdef class CollectionSerializer(Serializer):
                     break
         if has_null:
             collect_flag |= COLL_HAS_NULL
-        if self.fory.ref_tracking:
+        if self.fory.track_ref:
             if self.elem_tracking_ref == 1:
                 collect_flag |= COLL_TRACKING_REF
             elif self.elem_tracking_ref == -1:
@@ -732,11 +732,11 @@ cdef class MapSerializer(Serializer):
         if key_serializer is not None:
             self.key_tracking_ref = <int8_t> (key_serializer.need_to_write_ref)
             if key_tracking_ref is not None:
-                self.key_tracking_ref = <int8_t> (1 if key_tracking_ref and fory.ref_tracking else 0)
+                self.key_tracking_ref = <int8_t> (1 if key_tracking_ref and fory.track_ref else 0)
         if value_serializer is not None:
             self.value_tracking_ref = <int8_t> (value_serializer.need_to_write_ref)
             if value_tracking_ref is not None:
-                self.value_tracking_ref = <int8_t> (1 if value_tracking_ref and fory.ref_tracking else 0)
+                self.value_tracking_ref = <int8_t> (1 if value_tracking_ref and fory.track_ref else 0)
 
     cpdef inline write(self, Buffer buffer, o):
         cdef dict obj = o

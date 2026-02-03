@@ -60,21 +60,6 @@ namespace serialization {
 // Protocol Constants
 // ============================================================================
 
-/// Language identifiers
-/// Must match Java's Language enum ordinal values
-enum class Language : uint8_t {
-  XLANG = 0,
-  JAVA = 1,
-  PYTHON = 2,
-  CPP = 3,
-  GO = 4,
-  JAVASCRIPT = 5,
-  RUST = 6,
-  DART = 7,
-  SCALA = 8,
-  KOTLIN = 9,
-};
-
 /// Detect if system is little endian
 inline bool is_little_endian_system() {
   uint32_t test = 1;

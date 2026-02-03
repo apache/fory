@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import enum
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -59,17 +58,6 @@ NOT_NULL_FLOAT64_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (FLOAT64_TYPE_ID << 8
 NOT_NULL_BOOL_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (BOOL_TYPE_ID << 8)
 NOT_NULL_STRING_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (STRING_TYPE_ID << 8)
 SMALL_STRING_THRESHOLD = 16
-
-
-class Language(enum.Enum):
-    XLANG = 0
-    JAVA = 1
-    PYTHON = 2
-    CPP = 3
-    GO = 4
-    JAVA_SCRIPT = 5
-    RUST = 6
-    DART = 7
 
 
 class BufferObject(ABC):
@@ -147,10 +135,10 @@ class Fory:
     """
 
     __slots__ = (
-        "language",
+        "xlang",
         "is_py",
         "compatible",
-        "ref_tracking",
+        "track_ref",
         "ref_resolver",
         "type_resolver",
         "serialization_context",
@@ -161,7 +149,6 @@ class Fory:
         "metastring_resolver",
         "_unsupported_callback",
         "_unsupported_objects",
-        "_peer_language",
         "is_peer_out_of_band_enabled",
         "max_depth",
         "depth",
@@ -179,7 +166,6 @@ class Fory:
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
-        **kwargs,
     ):
         """
         Initialize a Fory serialization instance.
@@ -226,19 +212,13 @@ class Fory:
             >>> # Cross-language mode with schema evolution
             >>> fory = Fory(xlang=True, compatible=True)
         """
-        self.language = Language.XLANG if xlang else Language.PYTHON
-        if kwargs.get("language") is not None:
-            self.language = kwargs.get("language")
-        self.is_py = self.language == Language.PYTHON
-        if kwargs.get("ref_tracking") is not None:
-            ref = kwargs.get("ref_tracking")
-        self.ref_tracking = ref
-        if self.ref_tracking:
+        self.xlang = xlang
+        self.is_py = not self.xlang
+        self.track_ref = ref
+        if self.track_ref:
             self.ref_resolver = MapRefResolver()
         else:
             self.ref_resolver = NoRefResolver()
-        if kwargs.get("require_type_registration") is not None:
-            strict = kwargs.get("require_type_registration")
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
@@ -256,7 +236,6 @@ class Fory:
         self._buffers = None
         self._unsupported_callback = None
         self._unsupported_objects = None
-        self._peer_language = None
         self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
@@ -485,7 +464,7 @@ class Fory:
         else:
             clear_bit(buffer, mask_index, 0)
 
-        if self.language == Language.XLANG:
+        if self.xlang:
             # set reader as x_lang.
             set_bit(buffer, mask_index, 1)
         else:
@@ -497,7 +476,7 @@ class Fory:
             clear_bit(buffer, mask_index, 2)
         # Type definitions are now written inline (streaming) instead of deferred to end
 
-        if self.language == Language.PYTHON:
+        if self.is_py:
             self.write_ref(buffer, obj)
         else:
             self.xwrite_ref(buffer, obj)
@@ -676,7 +655,7 @@ class Fory:
             serializer = self.type_resolver.read_type_info(buffer).serializer
         # Push -1 to read_ref_ids so reference() can pop it and skip reference tracking
         # This handles the case where xread_no_ref is called directly without xread_ref
-        if self.ref_tracking:
+        if self.track_ref:
             self.ref_resolver.read_ref_ids.append(-1)
         return self._xread_no_ref_internal(buffer, serializer)
 

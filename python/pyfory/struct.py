@@ -109,7 +109,7 @@ class FieldInfo:
     dynamic: bool  # Whether type info is written for this field
 
     # Runtime flags (combines field metadata with global Fory config)
-    runtime_ref_tracking: bool  # Actual ref tracking: field.ref AND fory.ref_tracking
+    runtime_ref_tracking: bool  # Actual ref tracking: field.ref AND fory.track_ref
 
     # Derived info
     type_id: int  # Fory TypeId
@@ -158,7 +158,7 @@ def _default_field_meta(type_hint: type, field_nullable: bool = False, xlang: bo
         nullable = is_optional or not is_primitive_type(unwrapped_type) or field_nullable
     # Default ref=False to preserve original serialization behavior where non-nullable
     # fields use xwrite_no_ref. Users can explicitly set ref=True in pyfory.field()
-    # to enable per-field ref tracking when fory.ref_tracking is enabled.
+    # to enable per-field ref tracking when fory.track_ref is enabled.
     # Default dynamic=None for auto-detection based on type and mode
     return ForyFieldMeta(id=-1, nullable=nullable, ref=False, ignore=False, dynamic=None)
 
@@ -226,7 +226,7 @@ def _extract_field_infos(
     # Build FieldInfo list
     field_infos: List[FieldInfo] = []
     visitor = StructFieldSerializerVisitor(fory)
-    global_ref_tracking = fory.ref_tracking
+    global_ref_tracking = fory.track_ref
 
     for index, (field_name, dc_field) in enumerate(active_fields):
         meta = field_metas[field_name]

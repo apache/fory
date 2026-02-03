@@ -18,12 +18,8 @@
 from pyfory.lib import mmh3
 from pyfory._fory import (
     Fory,
-    Language,
     ThreadSafeFory,
 )
-
-PYTHON = Language.PYTHON
-XLANG = Language.XLANG
 
 try:
     from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
@@ -128,16 +124,12 @@ __version__ = "0.14.1.dev"
 __all__ = [
     # Core classes
     "Fory",
-    "Language",
     "ThreadSafeFory",
     "TypeInfo",
     "Buffer",
     "DeserializationPolicy",
     # Field metadata
     "field",
-    # Language constants
-    "PYTHON",
-    "XLANG",
     # Type utilities
     "record_class_factory",
     "get_qualified_classname",

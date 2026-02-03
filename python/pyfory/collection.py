@@ -98,7 +98,7 @@ class CollectionSerializer(Serializer):
 
         if has_null:
             collect_flag |= COLL_HAS_NULL
-        if self.fory.ref_tracking:
+        if self.fory.track_ref:
             if self.elem_tracking_ref == 1:
                 collect_flag |= COLL_TRACKING_REF
             elif self.elem_tracking_ref == -1:
@@ -409,11 +409,11 @@ class MapSerializer(Serializer):
         if key_serializer is not None:
             self.key_tracking_ref = bool(key_serializer.need_to_write_ref)
             if key_tracking_ref is not None:
-                self.key_tracking_ref = bool(key_tracking_ref) and fory.ref_tracking
+                self.key_tracking_ref = bool(key_tracking_ref) and fory.track_ref
         if value_serializer is not None:
             self.value_tracking_ref = bool(value_serializer.need_to_write_ref)
             if value_tracking_ref is not None:
-                self.value_tracking_ref = bool(value_tracking_ref) and fory.ref_tracking
+                self.value_tracking_ref = bool(value_tracking_ref) and fory.track_ref
 
     def write(self, buffer, o):
         obj = o
