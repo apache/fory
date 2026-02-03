@@ -108,19 +108,19 @@ public:
   // Stored as unsigned; 0xffffffff means "unset".
   uint32_t user_type_id;
   bool nullable;
-  bool ref_tracking;
-  RefMode ref_mode; // Precomputed from nullable and ref_tracking
+  bool track_ref;
+  RefMode ref_mode; // Precomputed from nullable and track_ref
   std::vector<FieldType> generics;
 
   FieldType()
       : type_id(0), user_type_id(kInvalidUserTypeId), nullable(false),
-        ref_tracking(false), ref_mode(RefMode::None) {}
+        track_ref(false), ref_mode(RefMode::None) {}
 
   FieldType(uint32_t tid, bool null, bool ref_track = false,
             std::vector<FieldType> gens = {},
             uint32_t user_tid = kInvalidUserTypeId)
       : type_id(tid), user_type_id(user_tid), nullable(null),
-        ref_tracking(ref_track), ref_mode(make_ref_mode(null, ref_track)),
+        track_ref(ref_track), ref_mode(make_ref_mode(null, ref_track)),
         generics(std::move(gens)) {}
 
   /// write field type to buffer
@@ -141,8 +141,8 @@ public:
 
   bool operator==(const FieldType &other) const {
     return type_id == other.type_id && nullable == other.nullable &&
-           user_type_id == other.user_type_id &&
-           ref_tracking == other.ref_tracking && generics == other.generics;
+           user_type_id == other.user_type_id && track_ref == other.track_ref &&
+           generics == other.generics;
   }
 
   bool operator!=(const FieldType &other) const { return !(*this == other); }
@@ -630,20 +630,31 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
   } else {
     FieldType ft = FieldTypeBuilder<Decayed>::build(nullable);
     if (is_user_type(static_cast<TypeId>(ft.type_id))) {
-      FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
-      uint32_t resolved_type_id = info->type_id;
-      switch (static_cast<TypeId>(resolved_type_id)) {
-      case TypeId::NAMED_ENUM:
-        resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
-        break;
-      case TypeId::TYPED_UNION:
-      case TypeId::NAMED_UNION:
-        resolved_type_id = static_cast<uint32_t>(TypeId::UNION);
-        break;
-      default:
-        break;
+      if constexpr (std::is_enum_v<Decayed>) {
+        auto info_result = get_type_info_with_resolver<Decayed>(resolver);
+        if (info_result.ok()) {
+          uint32_t resolved_type_id = info_result.value()->type_id;
+          if (resolved_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+            resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+          }
+          ft.type_id = resolved_type_id;
+        }
+      } else {
+        FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
+        uint32_t resolved_type_id = info->type_id;
+        switch (static_cast<TypeId>(resolved_type_id)) {
+        case TypeId::NAMED_ENUM:
+          resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+          break;
+        case TypeId::TYPED_UNION:
+        case TypeId::NAMED_UNION:
+          resolved_type_id = static_cast<uint32_t>(TypeId::UNION);
+          break;
+        default:
+          break;
+        }
+        ft.type_id = resolved_type_id;
       }
-      ft.type_id = resolved_type_id;
     }
     return ft;
   }
@@ -838,9 +849,9 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
       }
     }
 
-    // Override nullable and ref_tracking from field-level metadata
+    // Override nullable and track_ref from field-level metadata
     field_type.nullable = is_nullable;
-    field_type.ref_tracking = track_ref;
+    field_type.track_ref = track_ref;
     field_type.ref_mode = make_ref_mode(is_nullable, track_ref);
 #ifdef FORY_DEBUG
     // DEBUG: Print field info for debugging fingerprint mismatch
@@ -911,9 +922,9 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
       }
     }
 
-    // Override nullable and ref_tracking from field-level metadata
+    // Override nullable and track_ref from field-level metadata
     field_type.nullable = is_nullable;
-    field_type.ref_tracking = track_ref;
+    field_type.track_ref = track_ref;
     field_type.ref_mode = make_ref_mode(is_nullable, track_ref);
 #ifdef FORY_DEBUG
     // DEBUG: Print field info for debugging fingerprint mismatch

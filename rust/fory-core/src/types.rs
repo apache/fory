@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::error::Error;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::mem;
 
@@ -497,43 +496,12 @@ pub mod config_flags {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Language {
-    Xlang = 0,
-    Java = 1,
-    Python = 2,
-    Cpp = 3,
-    Go = 4,
-    Javascript = 5,
-    Rust = 6,
-    Dart = 7,
-}
-
-#[derive(PartialEq)]
 pub enum Mode {
     // Type declaration must be consistent between serialization peer and deserialization peer.
     SchemaConsistent,
     // Type declaration can be different between serialization peer and deserialization peer.
     // They can add/delete fields independently.
     Compatible,
-}
-
-impl TryFrom<u8> for Language {
-    type Error = Error;
-
-    fn try_from(num: u8) -> Result<Self, Error> {
-        match num {
-            0 => Ok(Language::Xlang),
-            1 => Ok(Language::Java),
-            2 => Ok(Language::Python),
-            3 => Ok(Language::Cpp),
-            4 => Ok(Language::Go),
-            5 => Ok(Language::Javascript),
-            6 => Ok(Language::Rust),
-            _ => Err(Error::invalid_data(format!(
-                "Unsupported language code, value:{num}"
-            ))),
-        }
-    }
 }
 
 // every object start with i8 i16 reference flag and type flag

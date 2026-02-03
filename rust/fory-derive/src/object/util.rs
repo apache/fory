@@ -593,7 +593,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     };
 
     // If Rc or Arc, unwrap to inner type - these are reference wrappers
-    // that don't add type info to the field type (handled by ref_tracking flag)
+    // that don't add type info to the field type (handled by track_ref flag)
     let base_node = if base_node.name == "Rc" || base_node.name == "Arc" {
         if let Some(inner) = base_node.generics.first() {
             inner
@@ -674,7 +674,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                 type_id,
                 user_type_id,
                 nullable: #nullable,
-                ref_tracking: false,
+                track_ref: false,
                 generics,
             }
         }
@@ -1321,7 +1321,7 @@ struct FieldFingerprintInfo {
     /// Whether the field has explicit nullable=true/false set via #[fory(nullable)]
     explicit_nullable: Option<bool>,
     /// Whether reference tracking is enabled
-    ref_tracking: bool,
+    track_ref: bool,
     /// The type ID (UNKNOWN for user-defined types including enums/unions)
     type_id: u32,
     /// Whether the field type is `Option<T>`
@@ -1409,7 +1409,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         };
 
         let type_class = classify_field_type(&field.ty);
-        let ref_tracking = meta.effective_ref(type_class);
+        let track_ref = meta.effective_ref(type_class);
         let explicit_nullable = meta.nullable;
 
         // Get compile-time TypeId, considering encoding attributes for u32/u64 fields
@@ -1429,7 +1429,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         field_infos.push(FieldFingerprintInfo {
             name_or_id,
             explicit_nullable,
-            ref_tracking,
+            track_ref,
             type_id,
             is_option_type,
         });
@@ -1441,7 +1441,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
     // Build fingerprint string
     let mut fingerprint = String::new();
     for info in &field_infos {
-        let ref_flag = if info.ref_tracking { "1" } else { "0" };
+        let ref_flag = if info.track_ref { "1" } else { "0" };
         let nullable = match info.explicit_nullable {
             Some(true) => true,
             Some(false) => false,
@@ -1522,9 +1522,9 @@ pub(crate) fn determine_field_ref_mode(field: &syn::Field) -> FieldRefMode {
     let meta = parse_field_meta(field).unwrap_or_default();
     let type_class = classify_field_type(&field.ty);
     let nullable = meta.effective_nullable(type_class);
-    let ref_tracking = meta.effective_ref(type_class);
+    let track_ref = meta.effective_ref(type_class);
 
-    if ref_tracking {
+    if track_ref {
         FieldRefMode::Tracking
     } else if nullable {
         FieldRefMode::NullOnly

@@ -60,21 +60,6 @@ namespace serialization {
 // Protocol Constants
 // ============================================================================
 
-/// Language identifiers
-/// Must match Java's Language enum ordinal values
-enum class Language : uint8_t {
-  XLANG = 0,
-  JAVA = 1,
-  PYTHON = 2,
-  CPP = 3,
-  GO = 4,
-  JAVASCRIPT = 5,
-  RUST = 6,
-  DART = 7,
-  SCALA = 8,
-  KOTLIN = 9,
-};
-
 /// Detect if system is little endian
 inline bool is_little_endian_system() {
   uint32_t test = 1;
@@ -90,7 +75,6 @@ struct HeaderInfo {
   bool is_null;
   bool is_xlang;
   bool is_oob;
-  Language language;
   uint32_t meta_start_offset; // 0 if not present
 };
 
@@ -116,18 +100,6 @@ inline Result<HeaderInfo, Error> read_header(Buffer &buffer) {
 
   // Update reader index (1 byte consumed: flags)
   buffer.increase_reader_index(1);
-
-  // Language byte after header in xlang mode
-  if (info.is_xlang) {
-    Error error;
-    uint8_t lang_byte = buffer.read_uint8(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
-      return Unexpected(std::move(error));
-    }
-    info.language = static_cast<Language>(lang_byte);
-  } else {
-    info.language = Language::JAVA;
-  }
 
   // Note: Meta start offset would be read here if present
   info.meta_start_offset = 0;

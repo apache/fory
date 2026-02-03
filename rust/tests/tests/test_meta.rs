@@ -33,7 +33,7 @@ fn test_meta_hash() {
                 type_id: TypeId::BOOL as u32,
                 user_type_id: u32::MAX,
                 nullable: true,
-                ref_tracking: false,
+                track_ref: false,
                 generics: vec![],
             },
         }],

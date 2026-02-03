@@ -24,7 +24,7 @@ use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_NULL_FLAG};
-use crate::types::{Language, RefMode, SIZE_OF_REF_AND_TYPE};
+use crate::types::{RefMode, SIZE_OF_REF_AND_TYPE};
 use std::cell::UnsafeCell;
 use std::mem;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -150,9 +150,8 @@ impl Fory {
     ///
     /// # Arguments
     ///
-    /// * `xlang` - If `true`, uses the cross-language serialization format that includes
-    ///   language metadata and magic numbers for compatibility with Fory implementations
-    ///   in other languages (Java, Python, C++, etc.). If `false`, uses a Rust-only
+    /// * `xlang` - If `true`, uses the cross-language serialization format compatible with
+    ///   other Fory implementations (Java, Python, C++, etc.). If `false`, uses a Rust-only
     ///   optimized format.
     ///
     /// # Returns
@@ -862,12 +861,6 @@ impl Fory {
             bitmap |= IS_NULL_FLAG;
         }
         writer.write_u8(bitmap);
-        if is_none {
-            return;
-        }
-        if self.config.xlang {
-            writer.write_u8(Language::Rust as u8);
-        }
     }
 
     /// Deserializes data from a byte slice into a value of type `T`.
@@ -1046,9 +1039,6 @@ impl Fory {
         let is_none = (bitmap & IS_NULL_FLAG) != 0;
         if is_none {
             return Ok(true);
-        }
-        if peer_is_xlang {
-            let _peer_lang = reader.read_u8()?;
         }
         Ok(false)
     }

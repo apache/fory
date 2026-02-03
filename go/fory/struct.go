@@ -1159,7 +1159,7 @@ func (s *structSerializer) computeHash() int32 {
 			FieldID:   field.Meta.TagID,
 			FieldName: SnakeCase(field.Meta.Name),
 			TypeID:    typeId,
-			// Ref is based on explicit tag annotation only, NOT runtime ref_tracking config
+			// Ref is based on explicit tag annotation only, NOT runtime track_ref config
 			// This allows fingerprint to be computed at compile time for C++/Rust
 			Ref:      field.Meta.TagRefSet && field.Meta.TagRef,
 			Nullable: nullable,

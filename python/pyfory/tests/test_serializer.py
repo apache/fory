@@ -34,7 +34,7 @@ import pytest
 
 import pyfory
 from pyfory.buffer import Buffer
-from pyfory import Fory, Language, serialization, EnumSerializer
+from pyfory import Fory, serialization, EnumSerializer
 from pyfory.serializer import (
     TimestampSerializer,
     DateSerializer,
@@ -126,16 +126,16 @@ def test_big_chunk_dict(track_ref):
     assert ser_de(fory, dict0) == dict0
 
 
-@pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
-def test_basic_serializer(language):
-    fory = Fory(language=language, ref=True)
+@pytest.mark.parametrize("xlang", [True, False])
+def test_basic_serializer(xlang):
+    fory = Fory(xlang=xlang, ref=True)
     typeinfo = fory.type_resolver.get_type_info(datetime.datetime)
     assert isinstance(typeinfo.serializer, (TimestampSerializer, serialization.TimestampSerializer))
-    if language == Language.XLANG:
+    if xlang:
         assert typeinfo.type_id == TypeId.TIMESTAMP
     typeinfo = fory.type_resolver.get_type_info(datetime.date)
     assert isinstance(typeinfo.serializer, (DateSerializer, serialization.DateSerializer))
-    if language == Language.XLANG:
+    if xlang:
         assert typeinfo.type_id == TypeId.DATE
     assert ser_de(fory, True) is True
     assert ser_de(fory, False) is False
@@ -164,14 +164,14 @@ def test_basic_serializer(language):
     assert ser_de(fory, set_) == set_
 
 
-@pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
-def test_ref_tracking(language):
-    fory = Fory(language=language, ref=True)
+@pytest.mark.parametrize("xlang", [True, False])
+def test_ref_tracking(xlang):
+    fory = Fory(xlang=xlang, ref=True)
 
     # Circular reference test - only works for Python language mode
     # XLANG mode doesn't support true circular references during deserialization
     # because the object must be registered after it's fully constructed
-    if language == Language.PYTHON:
+    if not xlang:
         simple_list = []
         simple_list.append(simple_list)
         new_simple_list = ser_de(fory, simple_list)
@@ -191,7 +191,7 @@ def test_ref_tracking(language):
         "dict2_1": dict2,
     }
     # Circular reference in dict3 - only works for Python language mode
-    if language == Language.PYTHON:
+    if not xlang:
         dict3["dict3_0"] = dict3
         dict3["dict3_1"] = dict3
     new_dict3 = ser_de(fory, dict3)
@@ -201,16 +201,16 @@ def test_ref_tracking(language):
     assert new_dict3["dict1_0"] is new_dict3["dict1_1"]
     assert new_dict3["dict2_0"] == dict2
     assert new_dict3["dict2_0"] is new_dict3["dict2_1"]
-    if language == Language.PYTHON:
+    if not xlang:
         assert new_dict3["dict3_0"] is new_dict3
         assert new_dict3["dict3_0"] is new_dict3["dict3_0"]
 
 
-@pytest.mark.parametrize("language", [Language.PYTHON, Language.XLANG])
-def test_tmp_ref(language):
+@pytest.mark.parametrize("xlang", [False, True])
+def test_tmp_ref(xlang):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(language=language, ref=True)
+    fory = Fory(xlang=xlang, ref=True)
     buffer = Buffer.allocate(128)
     writer_index = buffer.get_writer_index()
     x = 1
@@ -230,11 +230,11 @@ def test_tmp_ref(language):
     assert l2 is not l3
 
 
-@pytest.mark.parametrize("language", [Language.PYTHON, Language.XLANG])
-def test_multiple_ref(language):
+@pytest.mark.parametrize("xlang", [False, True])
+def test_multiple_ref(xlang):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(language=language, ref=True)
+    fory = Fory(xlang=xlang, ref=True)
     buffer = Buffer.allocate(128)
     for i in range(1000):
         fory.serialize([], buffer)
@@ -254,12 +254,10 @@ class RefTestClass2:
         self.f1 = f1
 
 
-@pytest.mark.parametrize("language", [Language.PYTHON])
-def test_ref_cleanup(language):
+def test_ref_cleanup():
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(language=language, ref=True, strict=False)
-    # TODO support Language.XLANG, current unpickler will error for xlang,
+    fory = Fory(xlang=False, ref=True, strict=False)
     o1 = RefTestClass1()
     o2 = RefTestClass2(f1=o1)
     pickle.loads(pickle.dumps(o2))
@@ -273,9 +271,9 @@ def test_ref_cleanup(language):
     fory.deserialize(data)
 
 
-@pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
-def test_array_serializer(language):
-    fory = Fory(language=language, ref=True, strict=False)
+@pytest.mark.parametrize("xlang", [True, False])
+def test_array_serializer(xlang):
+    fory = Fory(xlang=xlang, ref=True, strict=False)
     for typecode in PyArraySerializer.typecode_dict.keys():
         arr = array.array(typecode, list(range(10)))
         new_arr = ser_de(fory, arr)

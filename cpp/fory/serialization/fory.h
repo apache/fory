@@ -586,16 +586,14 @@ private:
   /// Constructor for ForyBuilder - resolver will be finalized lazily.
   explicit Fory(const Config &config, std::shared_ptr<TypeResolver> resolver)
       : BaseFory(config, std::move(resolver)), finalized_(false),
-        precomputed_header_(compute_header(config.xlang)),
-        header_length_(config.xlang ? 2 : 1) {}
+        precomputed_header_(compute_header(config.xlang)) {}
 
   /// Constructor for ThreadSafeFory pool - resolver is already finalized.
   struct PreFinalized {};
   explicit Fory(const Config &config, std::shared_ptr<TypeResolver> resolver,
                 PreFinalized)
       : BaseFory(config, std::move(resolver)), finalized_(false),
-        precomputed_header_(compute_header(config.xlang)),
-        header_length_(config.xlang ? 2 : 1) {
+        precomputed_header_(compute_header(config.xlang)) {
     // Pre-finalized, immediately create contexts
     ensure_finalized();
   }
@@ -619,17 +617,12 @@ private:
   }
 
   /// Compute the precomputed header value.
-  static uint16_t compute_header(bool xlang) {
-    uint16_t header = 0;
-    // Flags byte at position 0
+  static uint8_t compute_header(bool xlang) {
     uint8_t flags = 0;
     if (xlang) {
       flags |= (1 << 1); // bit 1: xlang flag
     }
-    header |= flags;
-    // Language byte at position 1 (only used if xlang)
-    header |= (static_cast<uint16_t>(Language::CPP) << 8);
-    return header;
+    return flags;
   }
 
   /// Core serialization implementation.
@@ -638,10 +631,10 @@ private:
   Result<size_t, Error> serialize_impl(const T &obj, Buffer &buffer) {
     size_t start_pos = buffer.writer_index();
 
-    // write precomputed header (2 bytes), then adjust index if not xlang
-    buffer.grow(2);
-    buffer.unsafe_put<uint16_t>(buffer.writer_index(), precomputed_header_);
-    buffer.increase_writer_index(header_length_);
+    // write precomputed header (1 byte flags)
+    buffer.grow(1);
+    buffer.unsafe_put_byte(buffer.writer_index(), precomputed_header_);
+    buffer.increase_writer_index(1);
 
     // Top-level serialization: use Tracking if ref tracking is enabled,
     // otherwise NullOnly for nullable handling
@@ -676,8 +669,7 @@ private:
   }
 
   bool finalized_;
-  uint16_t precomputed_header_;
-  uint8_t header_length_;
+  uint8_t precomputed_header_;
   std::optional<WriteContext> write_ctx_;
   std::optional<ReadContext> read_ctx_;
 

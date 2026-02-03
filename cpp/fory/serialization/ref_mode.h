@@ -48,11 +48,11 @@ enum class RefMode : uint8_t {
   Tracking = 2,
 };
 
-/// Create RefMode from nullable and ref_tracking flags.
+/// Create RefMode from nullable and track_ref flags.
 /// This is a constexpr function for compile-time field metadata conversion.
 FORY_ALWAYS_INLINE constexpr RefMode make_ref_mode(bool nullable,
-                                                   bool ref_tracking) {
-  if (ref_tracking) {
+                                                   bool track_ref) {
+  if (track_ref) {
     return RefMode::Tracking;
   }
   if (nullable) {

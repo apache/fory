@@ -29,7 +29,7 @@ namespace {
 // Compute RefMode from field type at runtime.
 //
 // Per xlang protocol and Java's ObjectSerializer.write_other_field_value:
-// - In xlang mode with ref_tracking=false (default), fields only write
+// - In xlang mode with ref=false (default), fields only write
 //   ref/null flag if they are nullable
 // - Primitives never have ref flags (handled separately)
 } // namespace

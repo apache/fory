@@ -177,7 +177,7 @@ class TypeDef:
         return DataClassSerializer(
             fory,
             self.cls,
-            xlang=not fory.is_py,
+            xlang=fory.xlang,
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
@@ -465,7 +465,7 @@ def build_field_infos(type_resolver, cls):
     nullable_map = {}
     visitor = StructTypeIdVisitor(type_resolver.fory, cls)
     field_nullable = type_resolver.fory.field_nullable
-    global_ref_tracking = type_resolver.fory.ref_tracking
+    global_ref_tracking = type_resolver.fory.track_ref
 
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
@@ -483,21 +483,21 @@ def build_field_infos(type_resolver, cls):
         else:
             # For xlang mode: only Optional[T] types are nullable by default
             # For native mode: all reference types are nullable by default
-            if type_resolver.fory.is_py:
+            if not type_resolver.fory.xlang:
                 is_nullable = is_optional or not is_primitive_type(unwrapped_type)
             else:
                 # For xlang: only Optional[T] types are nullable
                 is_nullable = is_optional
 
-        # Determine ref tracking: field.ref AND global ref_tracking
+        # Determine ref tracking: field.ref AND global track_ref
         # For xlang mode: ref tracking defaults to false unless explicitly annotated
         # This matches Java's behavior in TypeResolver.getFieldDescriptors()
         if fory_meta is not None:
             is_tracking_ref = fory_meta.ref and global_ref_tracking
         else:
             # In xlang mode, default to false (matches Java's xlang behavior)
-            # In native mode, use global ref_tracking setting
-            is_tracking_ref = global_ref_tracking if type_resolver.fory.is_py else False
+            # In native mode, use global track_ref setting
+            is_tracking_ref = global_ref_tracking if not type_resolver.fory.xlang else False
 
         # Get tag_id from metadata (-1 if not specified)
         tag_id = fory_meta.id if fory_meta is not None else -1
@@ -656,7 +656,7 @@ def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_null
 
 
 def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor, is_nullable=False, type_hint=None):
-    tracking_ref = type_resolver.fory.ref_tracking
+    tracking_ref = type_resolver.fory.track_ref
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN

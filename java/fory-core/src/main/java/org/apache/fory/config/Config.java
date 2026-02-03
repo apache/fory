@@ -34,7 +34,7 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings({"rawtypes"})
 public class Config implements Serializable {
   private final String name;
-  private final Language language;
+  private final boolean xlang;
   private final boolean trackingRef;
   private final boolean stringRefIgnored;
   private final boolean timeRefIgnored;
@@ -69,7 +69,7 @@ public class Config implements Serializable {
 
   public Config(ForyBuilder builder) {
     name = builder.name;
-    language = builder.language;
+    xlang = builder.xlang;
     trackingRef = builder.trackingRef;
     stringRefIgnored = !trackingRef || builder.stringRefIgnored;
     timeRefIgnored = !trackingRef || builder.timeRefIgnored;
@@ -114,8 +114,8 @@ public class Config implements Serializable {
     return name;
   }
 
-  public Language getLanguage() {
-    return language;
+  public boolean isXlang() {
+    return xlang;
   }
 
   public boolean trackingRef() {
@@ -324,7 +324,7 @@ public class Config implements Serializable {
         && asyncCompilationEnabled == config.asyncCompilationEnabled
         && deserializeNonexistentClass == config.deserializeNonexistentClass
         && scalaOptimizationEnabled == config.scalaOptimizationEnabled
-        && language == config.language
+        && xlang == config.xlang
         && compatibleMode == config.compatibleMode
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding;
@@ -334,7 +334,7 @@ public class Config implements Serializable {
   public int hashCode() {
     return Objects.hash(
         name,
-        language,
+        xlang,
         mapRefLoadFactor,
         trackingRef,
         stringRefIgnored,
