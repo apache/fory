@@ -177,7 +177,7 @@ class TypeDef:
         return DataClassSerializer(
             fory,
             self.cls,
-            xlang=not fory.is_py,
+            xlang=fory.xlang,
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
@@ -483,7 +483,7 @@ def build_field_infos(type_resolver, cls):
         else:
             # For xlang mode: only Optional[T] types are nullable by default
             # For native mode: all reference types are nullable by default
-            if type_resolver.fory.is_py:
+            if not type_resolver.fory.xlang:
                 is_nullable = is_optional or not is_primitive_type(unwrapped_type)
             else:
                 # For xlang: only Optional[T] types are nullable
@@ -497,7 +497,7 @@ def build_field_infos(type_resolver, cls):
         else:
             # In xlang mode, default to false (matches Java's xlang behavior)
             # In native mode, use global track_ref setting
-            is_tracking_ref = global_ref_tracking if type_resolver.fory.is_py else False
+            is_tracking_ref = global_ref_tracking if not type_resolver.fory.xlang else False
 
         # Get tag_id from metadata (-1 if not specified)
         tag_id = fory_meta.id if fory_meta is not None else -1

@@ -404,7 +404,7 @@ class DataClassSerializer(Serializer):
             if _ENABLE_FORY_PYTHON_JIT:
                 self.xwrite = self._generated_xwrite_method
                 self.xread = self._generated_xread_method
-            if self.fory.is_py:
+            if not self.fory.xlang:
                 logger.warning(
                     "Type of class %s shouldn't be serialized using cross-language serializer",
                     clz,

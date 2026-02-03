@@ -59,7 +59,7 @@ public final class ForyBuilder {
 
   String name;
   boolean checkClassVersion = false;
-  Language language = Language.JAVA;
+  boolean xlang = false;
   boolean trackingRef = false;
   boolean copyRef = false;
   boolean stringRefIgnored = true;
@@ -93,16 +93,16 @@ public final class ForyBuilder {
   public ForyBuilder() {}
 
   /**
-   * Whether cross-language serialize the object. If you used fory for java only, please set
-   * language to {@link Language#JAVA}, which will have much better performance.
+   * Whether cross-language serialize the object. If you used fory for java only, please keep it in
+   * java mode, which will have much better performance.
    */
   public ForyBuilder withLanguage(Language language) {
-    this.language = language;
+    this.xlang = language == Language.XLANG;
     return this;
   }
 
   public ForyBuilder withXlang(boolean xlang) {
-    this.language = xlang ? Language.XLANG : Language.JAVA;
+    this.xlang = xlang;
     return this;
   }
 
@@ -268,7 +268,7 @@ public final class ForyBuilder {
    * class won't evolve.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
-    if (language == Language.XLANG
+    if (xlang
         && compatibleMode == CompatibleMode.SCHEMA_CONSISTENT
         && !checkClassVersion) {
       throw new IllegalArgumentException(
@@ -430,7 +430,7 @@ public final class ForyBuilder {
         classLoader = Fory.class.getClassLoader();
       }
     }
-    if (language != Language.JAVA) {
+    if (xlang) {
       stringRefIgnored = true;
       longEncoding = LongEncoding.VARINT;
       compressInt = true;
@@ -451,7 +451,7 @@ public final class ForyBuilder {
           Serializer.class);
     }
     if (writeNumUtf16BytesForUtf8Encoding == null) {
-      writeNumUtf16BytesForUtf8Encoding = language == Language.JAVA;
+      writeNumUtf16BytesForUtf8Encoding = !xlang;
     }
     if (compatibleMode == CompatibleMode.COMPATIBLE) {
       checkClassVersion = false;
@@ -481,7 +481,7 @@ public final class ForyBuilder {
       if (metaShareEnabled == null) {
         metaShareEnabled = false;
       }
-      if (language != Language.JAVA) {
+      if (xlang) {
         checkClassVersion = true;
       }
     }

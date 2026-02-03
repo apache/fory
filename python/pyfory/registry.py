@@ -196,7 +196,6 @@ class TypeResolver:
         "meta_compressor",
         "require_registration",
         "metastring_resolver",
-        "is_py",
         "_type_id_to_type_info",
         "_user_type_id_to_type_info",
         "_used_user_type_ids",
@@ -209,7 +208,6 @@ class TypeResolver:
     def __init__(self, fory, meta_share=False, meta_compressor=None):
         self.fory = fory
         self.metastring_resolver = fory.metastring_resolver
-        self.is_py = fory.is_py
         self.require_registration = fory.strict
         self._metastr_to_str = dict()
         self._metastr_to_type = dict()
@@ -238,7 +236,7 @@ class TypeResolver:
 
     def initialize(self):
         self._initialize_common()
-        if self.fory.is_py:
+        if not self.fory.xlang:
             self._initialize_py()
         else:
             self._initialize_xlang()
@@ -586,7 +584,7 @@ class TypeResolver:
                 if user_type_id not in self._user_type_id_to_type_info or not internal:
                     self._user_type_id_to_type_info[user_type_id] = typeinfo
                 self._used_user_type_ids.add(user_type_id)
-            elif self.is_py or not TypeId.is_namespaced_type(type_id):
+            elif not self.fory.xlang or not TypeId.is_namespaced_type(type_id):
                 if type_id not in self._type_id_to_type_info or not internal:
                     self._type_id_to_type_info[type_id] = typeinfo
         self._types_info[cls] = typeinfo
@@ -609,7 +607,7 @@ class TypeResolver:
         if cls not in self._types_info:
             raise TypeUnregisteredError(f"{cls} not registered")
         typeinfo = self._types_info[cls]
-        if self.fory.is_py:
+        if not self.fory.xlang:
             typeinfo.serializer = serializer
             return
         prev_type_id = typeinfo.type_id
@@ -652,7 +650,7 @@ class TypeResolver:
         logger.info("Type %s not registered", cls)
         serializer = self._create_serializer(cls)
         type_id = None
-        if self.is_py:
+        if not self.fory.xlang:
             if isinstance(serializer, EnumSerializer):
                 type_id = TypeId.NAMED_ENUM
             elif isinstance(serializer, (ObjectSerializer, StatefulSerializer)):
@@ -682,7 +680,7 @@ class TypeResolver:
             # Set a stub serializer FIRST to break recursion for self-referencing types.
             # get_type_info() only calls _set_type_info when serializer is None,
             # so setting stub first prevents re-entry for circular type references.
-            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls, xlang=not self.fory.is_py)
+            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
 
             if self.meta_share:
                 type_def = encode_typedef(self, typeinfo.cls)
@@ -690,9 +688,9 @@ class TypeResolver:
                     typeinfo.serializer = type_def.create_serializer(self)
                     typeinfo.type_def = type_def
                 else:
-                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=not self.fory.is_py)
+                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
             else:
-                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=not self.fory.is_py)
+                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
         else:
             typeinfo.serializer = self._create_serializer(typeinfo.cls)
 
@@ -729,7 +727,7 @@ class TypeResolver:
                 # lazy create serializer to handle nested struct fields.
                 from pyfory.struct import DataClassStubSerializer
 
-                serializer = DataClassStubSerializer(self.fory, cls, xlang=not self.fory.is_py)
+                serializer = DataClassStubSerializer(self.fory, cls, xlang=self.fory.xlang)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
             elif ("builtin_function_or_method" in str(cls) or "cython_function_or_method" in str(cls)) and "<locals>" not in str(cls):

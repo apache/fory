@@ -136,7 +136,6 @@ class Fory:
 
     __slots__ = (
         "xlang",
-        "is_py",
         "compatible",
         "track_ref",
         "ref_resolver",
@@ -213,7 +212,6 @@ class Fory:
             >>> fory = Fory(xlang=True, compatible=True)
         """
         self.xlang = xlang
-        self.is_py = not self.xlang
         self.track_ref = ref
         if self.track_ref:
             self.ref_resolver = MapRefResolver()
@@ -222,7 +220,7 @@ class Fory:
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
-        self.field_nullable = field_nullable if self.is_py else False
+        self.field_nullable = field_nullable if not self.xlang else False
         from pyfory.serialization import MetaStringResolver, SerializationContext
         from pyfory.registry import TypeResolver
 
@@ -476,7 +474,7 @@ class Fory:
             clear_bit(buffer, mask_index, 2)
         # Type definitions are now written inline (streaming) instead of deferred to end
 
-        if self.is_py:
+        if not self.xlang:
             self.write_ref(buffer, obj)
         else:
             self.xwrite_ref(buffer, obj)

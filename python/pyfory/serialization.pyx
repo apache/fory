@@ -626,7 +626,7 @@ cdef class TypeResolver:
         else:
             if type_id >= self._c_registered_id_to_type_info.size():
                 self._c_registered_id_to_type_info.resize(type_id * 2, NULL)
-            if type_id > 0 and (self.fory.is_py or not is_namespaced_type(<TypeId>type_id)):
+            if type_id > 0 and (not self.fory.xlang or not is_namespaced_type(<TypeId>type_id)):
                 self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
         # Resize if load factor >= 0.4 (using integer arithmetic: size/capacity >= 4/10)
@@ -1022,7 +1022,6 @@ cdef class Fory:
     cdef readonly c_bool xlang
     cdef readonly c_bool track_ref
     cdef readonly c_bool strict
-    cdef readonly c_bool is_py
     cdef readonly c_bool compatible
     cdef readonly c_bool field_nullable
     cdef readonly object policy
@@ -1104,8 +1103,7 @@ cdef class Fory:
         self.compatible = compatible
         self.track_ref = ref
         self.ref_resolver = MapRefResolver(ref)
-        self.is_py = not self.xlang
-        self.field_nullable = field_nullable if self.is_py else False
+        self.field_nullable = field_nullable if not self.xlang else False
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
@@ -1328,7 +1326,7 @@ cdef class Fory:
         else:
             clear_bit(buffer, mask_index, 2)
         cdef int32_t start_offset
-        if self.is_py:
+        if not self.xlang:
             self.write_ref(buffer, obj)
         else:
             self.xwrite_ref(buffer, obj)

@@ -131,7 +131,7 @@ public final class Fory implements BaseFory {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
     config = new Config(builder);
-    crossLanguage = config.getLanguage() != Language.JAVA;
+    crossLanguage = config.isXlang();
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
     this.shareMeta = config.isMetaShareEnabled();
