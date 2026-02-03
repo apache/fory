@@ -99,7 +99,7 @@ pub struct FieldType {
     pub type_id: u32,
     pub user_type_id: u32,
     pub nullable: bool,
-    pub ref_tracking: bool,
+    pub track_ref: bool,
     pub generics: Vec<FieldType>,
 }
 
@@ -109,7 +109,7 @@ impl FieldType {
             type_id,
             user_type_id: NO_USER_TYPE_ID,
             nullable,
-            ref_tracking: false,
+            track_ref: false,
             generics,
         }
     }
@@ -117,14 +117,14 @@ impl FieldType {
     pub fn new_with_ref(
         type_id: u32,
         nullable: bool,
-        ref_tracking: bool,
+        track_ref: bool,
         generics: Vec<FieldType>,
     ) -> Self {
         FieldType {
             type_id,
             user_type_id: NO_USER_TYPE_ID,
             nullable,
-            ref_tracking,
+            track_ref,
             generics,
         }
     }
@@ -141,7 +141,7 @@ impl FieldType {
             if nullable {
                 header |= 2;
             }
-            if self.ref_tracking {
+            if self.track_ref {
                 header |= 1;
             }
             writer.write_var_uint32(header);
@@ -205,7 +205,7 @@ impl FieldType {
                     type_id,
                     user_type_id,
                     nullable: _nullable,
-                    ref_tracking: _ref_tracking,
+                    track_ref: _ref_tracking,
                     generics: vec![generic],
                 }
             }
@@ -216,7 +216,7 @@ impl FieldType {
                     type_id,
                     user_type_id,
                     nullable: _nullable,
-                    ref_tracking: _ref_tracking,
+                    track_ref: _ref_tracking,
                     generics: vec![key_generic, val_generic],
                 }
             }
@@ -224,7 +224,7 @@ impl FieldType {
                 type_id,
                 user_type_id,
                 nullable: _nullable,
-                ref_tracking: _ref_tracking,
+                track_ref: _ref_tracking,
                 generics: vec![],
             },
         })
@@ -269,19 +269,19 @@ impl FieldInfo {
     pub fn from_bytes(reader: &mut Reader) -> Result<FieldInfo, Error> {
         let header = reader.read_u8()?;
         let nullable = (header & 2) != 0;
-        let ref_tracking = (header & 1) != 0;
+        let track_ref = (header & 1) != 0;
         let encoding_bits = (header >> 6) & 0b11;
 
         // Check if this is field ID mode (encoding bits == 0b11)
         if encoding_bits == FIELD_ID_ENCODING_MARKER {
-            // Field ID mode: | 0b11:2bits | field_id_low:4bits | nullable:1bit | ref_tracking:1bit |
+            // Field ID mode: | 0b11:2bits | field_id_low:4bits | nullable:1bit | track_ref:1bit |
             let mut field_id = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as i16;
             if field_id == SMALL_FIELD_ID_THRESHOLD {
                 field_id += reader.read_varuint32()? as i16;
             }
 
             let mut field_type = FieldType::from_bytes(reader, false, Option::from(nullable))?;
-            field_type.ref_tracking = ref_tracking;
+            field_type.track_ref = track_ref;
 
             Ok(FieldInfo {
                 field_id,
@@ -298,7 +298,7 @@ impl FieldInfo {
             name_size += 1;
 
             let mut field_type = FieldType::from_bytes(reader, false, Option::from(nullable))?;
-            field_type.ref_tracking = ref_tracking;
+            field_type.track_ref = track_ref;
 
             let field_name_bytes = reader.read_bytes(name_size)?;
 
@@ -317,17 +317,17 @@ impl FieldInfo {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
         let nullable = self.field_type.nullable;
-        let ref_tracking = self.field_type.ref_tracking;
+        let track_ref = self.field_type.track_ref;
 
         // Use field ID encoding if:
         // 1. field_id >= 0 (user-set or matched from local type), OR
         // 2. field_name is empty (ID-encoded field that couldn't be matched - use ID even if -1)
         if self.field_id >= 0 || self.field_name.is_empty() {
-            // Field ID mode: | 0b11:2bits | field_id_low:4bits | nullable:1bit | ref_tracking:1bit |
+            // Field ID mode: | 0b11:2bits | field_id_low:4bits | nullable:1bit | track_ref:1bit |
             // Use max(0, field_id) to handle unmatched fields that have field_id = -1
             let field_id = std::cmp::max(0, self.field_id);
             let mut header: u8 = (min(SMALL_FIELD_ID_THRESHOLD, field_id) as u8) << 2;
-            if ref_tracking {
+            if track_ref {
                 header |= 1;
             }
             if nullable {
@@ -344,13 +344,13 @@ impl FieldInfo {
         } else {
             // Field name mode (original behavior)
             // field_bytes: | header | type_info | field_name |
-            // header: | field_name_encoding:2bits | size:4bits | nullability:1bit | ref_tracking:1bit |
+            // header: | field_name_encoding:2bits | size:4bits | nullability:1bit | track_ref:1bit |
             let meta_string =
                 FIELD_NAME_ENCODER.encode_with_encodings(&self.field_name, FIELD_NAME_ENCODINGS)?;
             let name_encoded = meta_string.bytes.as_slice();
             let name_size = name_encoded.len() - 1;
             let mut header: u8 = (min(FIELD_NAME_SIZE_THRESHOLD, name_size) as u8) << 2;
-            if ref_tracking {
+            if track_ref {
                 header |= 1;
             }
             if nullable {

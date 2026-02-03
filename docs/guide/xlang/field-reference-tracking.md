@@ -56,7 +56,7 @@ fory := forygo.NewFory(true)  // true enables ref tracking
 
 ```cpp
 auto fory = fory::Fory::create(fory::Config{
-    .ref_tracking = true
+    .track_ref = true
 });
 ```
 
