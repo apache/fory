@@ -630,20 +630,31 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
   } else {
     FieldType ft = FieldTypeBuilder<Decayed>::build(nullable);
     if (is_user_type(static_cast<TypeId>(ft.type_id))) {
-      FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
-      uint32_t resolved_type_id = info->type_id;
-      switch (static_cast<TypeId>(resolved_type_id)) {
-      case TypeId::NAMED_ENUM:
-        resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
-        break;
-      case TypeId::TYPED_UNION:
-      case TypeId::NAMED_UNION:
-        resolved_type_id = static_cast<uint32_t>(TypeId::UNION);
-        break;
-      default:
-        break;
+      if constexpr (std::is_enum_v<Decayed>) {
+        auto info_result = get_type_info_with_resolver<Decayed>(resolver);
+        if (info_result.ok()) {
+          uint32_t resolved_type_id = info_result.value()->type_id;
+          if (resolved_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+            resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+          }
+          ft.type_id = resolved_type_id;
+        }
+      } else {
+        FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
+        uint32_t resolved_type_id = info->type_id;
+        switch (static_cast<TypeId>(resolved_type_id)) {
+        case TypeId::NAMED_ENUM:
+          resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+          break;
+        case TypeId::TYPED_UNION:
+        case TypeId::NAMED_UNION:
+          resolved_type_id = static_cast<uint32_t>(TypeId::UNION);
+          break;
+        default:
+          break;
+        }
+        ft.type_id = resolved_type_id;
       }
-      ft.type_id = resolved_type_id;
     }
     return ft;
   }

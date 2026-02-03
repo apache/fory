@@ -496,7 +496,6 @@ pub mod config_flags {
 }
 
 #[derive(Debug, PartialEq)]
-#[derive(PartialEq)]
 pub enum Mode {
     // Type declaration must be consistent between serialization peer and deserialization peer.
     SchemaConsistent,
