@@ -283,8 +283,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           const name = this.scope.declare(
             "tag_ser",
             TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.classResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.classResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
+              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
+              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
           );
           return accessor(`${name}.${prop}(${args.join(",")})`);
         };
@@ -299,8 +299,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           const name = this.scope.declare(
             "tag_ser",
             TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.classResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.classResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
+              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
+              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
           );
           return `${name}.${prop}(${accessor})`;
         };
@@ -357,7 +357,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         fixedSize += propGenerator.getFixedSize();
       });
     } else {
-      fixedSize += this.builder.fory.classResolver.getSerializerByName(typeInfo.named!)!.fixedSize;
+      fixedSize += this.builder.fory.typeResolver.getSerializerByName(typeInfo.named!)!.fixedSize;
     }
     return fixedSize;
   }

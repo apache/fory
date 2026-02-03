@@ -137,10 +137,10 @@ class MapAnySerializer {
 
   constructor(private fory: Fory, keySerializerId: null | number, valueSerializerId: null | number) {
     if (keySerializerId !== null) {
-      fory.classResolver.getSerializerById(keySerializerId);
+      fory.typeResolver.getSerializerById(keySerializerId);
     }
     if (valueSerializerId !== null) {
-      fory.classResolver.getSerializerById(valueSerializerId);
+      fory.typeResolver.getSerializerById(valueSerializerId);
     }
   }
 
@@ -175,8 +175,8 @@ class MapAnySerializer {
     const mapChunkWriter = new MapChunkWriter(this.fory, this.keySerializer, this.valueSerializer);
     this.fory.binaryWriter.writeVarUint32Small7(value.size);
     for (const [k, v] of value.entries()) {
-      const keySerializer = this.keySerializer !== null ? this.keySerializer : this.fory.classResolver.getSerializerByData(k);
-      const valueSerializer = this.valueSerializer !== null ? this.valueSerializer : this.fory.classResolver.getSerializerByData(v);
+      const keySerializer = this.keySerializer !== null ? this.keySerializer : this.fory.typeResolver.getSerializerByData(k);
+      const valueSerializer = this.valueSerializer !== null ? this.valueSerializer : this.fory.typeResolver.getSerializerByData(v);
 
       const header = mapChunkWriter.next(
         MapHeadUtil.elementInfo(keySerializer!.getTypeId()!, k == null ? 1 : 0, keySerializer!.needToWriteRef() ? 1 : 0),

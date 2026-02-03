@@ -45,7 +45,7 @@ export class AnyHelper {
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();
           const named = `${ns}$${typeName}`;
-          serializer = fory.classResolver.getSerializerByName(named);
+          serializer = fory.typeResolver.getSerializerByName(named);
           if (!serializer) {
             throw new Error(`can't find implements of typeId: ${typeId}`);
           }
@@ -56,11 +56,11 @@ export class AnyHelper {
         } else {
           const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
           const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);
-          serializer = fory.classResolver.getSerializerByName(`${ns}$${typeName}`);
+          serializer = fory.typeResolver.getSerializerByName(`${ns}$${typeName}`);
         }
         break;
       default:
-        serializer = fory.classResolver.getSerializerById(typeId, userTypeId);
+        serializer = fory.typeResolver.getSerializerById(typeId, userTypeId);
         break;
     }
     if (!serializer) {
@@ -74,7 +74,7 @@ export class AnyHelper {
       throw new Error("can not guess the type of null or undefined");
     }
 
-    const serializer = fory.classResolver.getSerializerByData(v);
+    const serializer = fory.typeResolver.getSerializerByData(v);
     if (!serializer) {
       throw new Error(`Failed to detect the Fory serializer from JavaScript type: ${typeof v}`);
     }

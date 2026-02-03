@@ -38,7 +38,7 @@ export class TypeMetaResolver {
       const typeId = x.getTypeId();
       const fieldName = x.getFieldName();
       const declared = typeInfo.options.props?.[fieldName];
-      const fieldTypeInfo = declared ?? this.fory.classResolver.getTypeInfo(typeId);
+      const fieldTypeInfo = declared ?? this.fory.typeResolver.getTypeInfo(typeId);
       if (!fieldTypeInfo) {
         throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
       }
@@ -61,9 +61,9 @@ export class TypeMetaResolver {
     const userTypeId = typeMeta.getUserTypeId();
     let typeInfo;
     if (!TypeId.isNamedType(typeId)) {
-      typeInfo = this.fory.classResolver.getTypeInfo(typeId, userTypeId);
+      typeInfo = this.fory.typeResolver.getTypeInfo(typeId, userTypeId);
     } else {
-      typeInfo = this.fory.classResolver.getTypeInfo(`${ns}$${typeName}`);
+      typeInfo = this.fory.typeResolver.getTypeInfo(`${ns}$${typeName}`);
     }
     if (!typeInfo) {
       throw new Error(`${typeId} not registered`); // todo

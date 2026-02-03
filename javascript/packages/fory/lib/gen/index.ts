@@ -63,11 +63,11 @@ export class Gen {
   }
 
   private register(typeInfo: StructTypeInfo, serializer?: Serializer) {
-    this.fory.classResolver.registerSerializer(typeInfo, serializer);
+    this.fory.typeResolver.registerSerializer(typeInfo, serializer);
   }
 
   private isRegistered(typeInfo: TypeInfo) {
-    return !!this.fory.classResolver.typeInfoExists(typeInfo);
+    return !!this.fory.typeResolver.typeInfoExists(typeInfo);
   }
 
   private traversalContainer(typeInfo: TypeInfo) {
@@ -106,7 +106,7 @@ export class Gen {
     this.traversalContainer(typeInfo);
     const exists = this.isRegistered(typeInfo);
     if (exists) {
-      return this.fory.classResolver.getSerializerByTypeInfo(typeInfo);
+      return this.fory.typeResolver.getSerializerByTypeInfo(typeInfo);
     }
     return this.reGenerateSerializer(typeInfo);
   }

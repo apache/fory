@@ -73,7 +73,7 @@ const uninitSerialize = {
   },
 };
 
-export default class ClassResolver {
+export default class TypeResolver {
   private internalSerializer: Serializer[] = new Array(300);
   private customSerializer: Map<number | string, Serializer> = new Map();
   private typeInfoMap: Map<number | string, TypeInfo> = new Map();

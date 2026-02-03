@@ -56,7 +56,7 @@ class CollectionAnySerializer {
       if ((item === undefined || item === null) && !includeNone) {
         includeNone = true;
       }
-      const current = this.fory.classResolver.getSerializerByData(item);
+      const current = this.fory.typeResolver.getSerializerByData(item);
       if (!current) {
         throw new Error("can't detect the type of item in list");
       }
@@ -119,7 +119,7 @@ class CollectionAnySerializer {
     } else {
       if (trackingRef) {
         for (const item of value) {
-          const serializer = this.fory.classResolver.getSerializerByData(item);
+          const serializer = this.fory.typeResolver.getSerializerByData(item);
           serializer?.writeRef(item);
         }
       } else if (includeNone) {
@@ -127,7 +127,7 @@ class CollectionAnySerializer {
           if (item === null || item === undefined) {
             this.fory.binaryWriter.uint8(RefFlags.NullFlag);
           } else {
-            const serializer = this.fory.classResolver.getSerializerByData(item);
+            const serializer = this.fory.typeResolver.getSerializerByData(item);
             this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
