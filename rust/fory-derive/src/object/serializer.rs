@@ -190,7 +190,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         impl #impl_generics fory_core::Serializer for #name #ty_generics #where_clause {
             #[inline(always)]
             fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::error::Error> {
-                type_resolver
+                let type_id = type_resolver
                     .get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
                     .map_err(fory_core::error::Error::enhance_type_error::<Self>)?;
                 Ok(type_id)
