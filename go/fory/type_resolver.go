@@ -178,7 +178,7 @@ type TypeResolver struct {
 	// Type tracking
 	dynamicWrittenMetaStr []string
 	typeIDToTypeInfo      map[uint32]*TypeInfo
-	userTypeIdToTypeInfo  map[userTypeKey]*TypeInfo
+	userTypeIdToTypeInfo  map[uint32]*TypeInfo
 	typeIDCounter         uint32
 	dynamicWriteStringID  uint32
 
@@ -204,11 +204,6 @@ type TypeResolver struct {
 	unionTypeCache map[reflect.Type]bool
 }
 
-type userTypeKey struct {
-	typeID     TypeId
-	userTypeID uint32
-}
-
 func newTypeResolver(fory *Fory) *TypeResolver {
 	r := &TypeResolver{
 		typeTagToSerializers: map[string]Serializer{},
@@ -230,7 +225,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 
 		dynamicWrittenMetaStr: make([]string, 0),
 		typeIDToTypeInfo:      make(map[uint32]*TypeInfo),
-		userTypeIdToTypeInfo:  make(map[userTypeKey]*TypeInfo),
+		userTypeIdToTypeInfo:  make(map[uint32]*TypeInfo),
 		typeIDCounter:         300,
 		dynamicWriteStringID:  0,
 
@@ -532,8 +527,7 @@ func validateOptionalFields(type_ reflect.Type) error {
 // RegisterStruct registers a type with a numeric user type ID for cross-language serialization.
 func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTypeID uint32) error {
 	// Check if already registered
-	key := userTypeKey{typeID: typeID, userTypeID: userTypeID}
-	if info, ok := r.userTypeIdToTypeInfo[key]; ok {
+	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 		if info.Type == type_ {
 			return nil
 		}
@@ -594,8 +588,7 @@ func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, seri
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
 	}
-	key := userTypeKey{typeID: TYPED_UNION, userTypeID: userTypeID}
-	if info, ok := r.userTypeIdToTypeInfo[key]; ok {
+	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
 	}
 	if type_.Kind() != reflect.Struct {
@@ -631,8 +624,7 @@ func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, seri
 // RegisterEnum registers an enum type (numeric type in Go) with a user type ID.
 func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error {
 	// Check if already registered
-	key := userTypeKey{typeID: ENUM, userTypeID: userTypeID}
-	if info, ok := r.userTypeIdToTypeInfo[key]; ok {
+	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
 	}
 
@@ -663,7 +655,7 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error
 		DispatchId: GetDispatchId(type_),
 		hashValue:  calcTypeHash(type_),
 	}
-	r.userTypeIdToTypeInfo[key] = typeInfo
+	r.userTypeIdToTypeInfo[userTypeID] = typeInfo
 	r.typesInfo[type_] = typeInfo
 
 	return nil
@@ -782,8 +774,7 @@ func (r *TypeResolver) RegisterNamedStruct(
 		userTypeID = typeId
 	}
 	if registerById {
-		key := userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}
-		if info, ok := r.userTypeIdToTypeInfo[key]; ok {
+		if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 			return fmt.Errorf("type %s with id %d has been registered", info.Type, typeId)
 		}
 	}
@@ -949,7 +940,7 @@ func (r *TypeResolver) RegisterExtension(
 		UserTypeID: userTypeID,
 		Serializer: serializer,
 	}
-	r.userTypeIdToTypeInfo[userTypeKey{typeID: EXT, userTypeID: userTypeID}] = typeInfo
+	r.userTypeIdToTypeInfo[userTypeID] = typeInfo
 	r.typesInfo[type_] = typeInfo
 	r.typesInfo[ptrType] = typeInfo
 
@@ -1386,9 +1377,8 @@ func (r *TypeResolver) registerType(
 		TypeId(typeID) == COMPATIBLE_STRUCT || TypeId(typeID) == EXT ||
 		TypeId(typeID) == TYPED_UNION) &&
 		userTypeID != invalidUserTypeID {
-		key := userTypeKey{typeID: TypeId(typeID), userTypeID: userTypeID}
-		if _, ok := r.userTypeIdToTypeInfo[key]; !ok {
-			r.userTypeIdToTypeInfo[key] = typeInfo
+		if _, ok := r.userTypeIdToTypeInfo[userTypeID]; !ok {
+			r.userTypeIdToTypeInfo[userTypeID] = typeInfo
 		}
 	} else if TypeId(typeID) != ENUM && TypeId(typeID) != STRUCT &&
 		TypeId(typeID) != COMPATIBLE_STRUCT && TypeId(typeID) != EXT &&
@@ -2068,7 +2058,7 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		if err.HasError() {
 			return nil
 		}
-		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
+		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
 			return typeInfo
 		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
@@ -2121,7 +2111,7 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 		if err.HasError() {
 			return nil
 		}
-		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: internalTypeID, userTypeID: userTypeID}]; exists {
+		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
 			return typeInfo
 		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
@@ -2223,11 +2213,11 @@ func (r *TypeResolver) getTypeInfoById(id uint32) (*TypeInfo, error) {
 	}
 }
 
-func (r *TypeResolver) getUserTypeInfoById(typeID TypeId, userTypeID uint32) *TypeInfo {
+func (r *TypeResolver) getUserTypeInfoById(userTypeID uint32) *TypeInfo {
 	if userTypeID == invalidUserTypeID {
 		return nil
 	}
-	if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeKey{typeID: typeID, userTypeID: userTypeID}]; exists {
+	if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
 		return typeInfo
 	}
 	return nil

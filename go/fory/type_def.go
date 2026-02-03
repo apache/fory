@@ -1582,7 +1582,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	} else {
 		typeId = uint32(metaBuffer.ReadUint8(&metaErr))
 		userTypeId = metaBuffer.ReadVarUint32(&metaErr)
-		if info, exists := fory.typeResolver.userTypeIdToTypeInfo[userTypeKey{typeID: TypeId(typeId), userTypeID: userTypeId}]; exists {
+		if info, exists := fory.typeResolver.userTypeIdToTypeInfo[userTypeId]; exists {
 			type_ = info.Type
 		} else if info, exists := fory.typeResolver.typeIDToTypeInfo[typeId]; exists {
 			type_ = info.Type
