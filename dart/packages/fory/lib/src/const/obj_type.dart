@@ -21,6 +21,9 @@
 /// TODO: foryJava manages writeRef for these types more precisely, such as control for time types and strings, not just basic types. Here we only control basic types.
 library;
 
+// 0xffffffff means "unset" for user type id.
+const int kInvalidUserTypeId = 0xFFFFFFFF;
+
 enum ObjType {
   /// Unknown/polymorphic type marker. For example, a field is a parent class/non-specific class,
   /// which cannot be analyzed during static code generation.
@@ -209,6 +212,13 @@ enum ObjType {
         || this == COMPATIBLE_STRUCT
         || this == NAMED_STRUCT
         || this == NAMED_COMPATIBLE_STRUCT;
+  }
+
+  bool needsUserTypeId() {
+    return this == ENUM
+        || this == STRUCT
+        || this == COMPATIBLE_STRUCT
+        || this == EXT;
   }
 
   bool isTimeType() {

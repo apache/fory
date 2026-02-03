@@ -18,7 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::TypeMeta;
-use crate::resolver::type_resolver::TypeInfo;
+use crate::resolver::type_resolver::{TypeInfo, NO_USER_TYPE_ID};
 use crate::TypeResolver;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -117,23 +117,11 @@ impl MetaReaderResolver {
                 )?);
 
                 // Try to find local type info
-                let type_info = if type_meta.get_namespace().original.is_empty() {
-                    // Registered by ID
-                    let type_id = type_meta.get_type_id();
-                    if let Some(local_type_info) = type_resolver.get_type_info_by_id(type_id) {
-                        // Use local harness with remote metadata
-                        Rc::new(TypeInfo::from_remote_meta(
-                            type_meta.clone(),
-                            Some(local_type_info.get_harness()),
-                        ))
-                    } else {
-                        // No local type found, use stub harness
-                        Rc::new(TypeInfo::from_remote_meta(type_meta.clone(), None))
-                    }
-                } else {
-                    // Registered by name
-                    let namespace = &type_meta.get_namespace().original;
-                    let type_name = &type_meta.get_type_name().original;
+                let namespace = &type_meta.get_namespace().original;
+                let type_name = &type_meta.get_type_name().original;
+                let register_by_name = !namespace.is_empty() || !type_name.is_empty();
+                let type_info = if register_by_name {
+                    // Registered by name (namespace can be empty)
                     if let Some(local_type_info) =
                         type_resolver.get_type_info_by_name(namespace, type_name)
                     {
@@ -141,10 +129,59 @@ impl MetaReaderResolver {
                         Rc::new(TypeInfo::from_remote_meta(
                             type_meta.clone(),
                             Some(local_type_info.get_harness()),
+                            Some(local_type_info.get_type_id() as u32),
+                            Some(local_type_info.get_user_type_id()),
                         ))
                     } else {
                         // No local type found, use stub harness
-                        Rc::new(TypeInfo::from_remote_meta(type_meta.clone(), None))
+                        Rc::new(TypeInfo::from_remote_meta(
+                            type_meta.clone(),
+                            None,
+                            None,
+                            None,
+                        ))
+                    }
+                } else {
+                    // Registered by ID
+                    let type_id = type_meta.get_type_id();
+                    let user_type_id = type_meta.get_user_type_id();
+                    if user_type_id != NO_USER_TYPE_ID {
+                        if let Some(local_type_info) =
+                            type_resolver.get_user_type_info_by_id(user_type_id)
+                        {
+                            // Use local harness with remote metadata
+                            Rc::new(TypeInfo::from_remote_meta(
+                                type_meta.clone(),
+                                Some(local_type_info.get_harness()),
+                                Some(local_type_info.get_type_id() as u32),
+                                Some(local_type_info.get_user_type_id()),
+                            ))
+                        } else {
+                            // No local type found, use stub harness
+                            Rc::new(TypeInfo::from_remote_meta(
+                                type_meta.clone(),
+                                None,
+                                None,
+                                None,
+                            ))
+                        }
+                    } else if let Some(local_type_info) = type_resolver.get_type_info_by_id(type_id)
+                    {
+                        // Use local harness with remote metadata
+                        Rc::new(TypeInfo::from_remote_meta(
+                            type_meta.clone(),
+                            Some(local_type_info.get_harness()),
+                            Some(local_type_info.get_type_id() as u32),
+                            Some(local_type_info.get_user_type_id()),
+                        ))
+                    } else {
+                        // No local type found, use stub harness
+                        Rc::new(TypeInfo::from_remote_meta(
+                            type_meta.clone(),
+                            None,
+                            None,
+                            None,
+                        ))
                     }
                 };
 

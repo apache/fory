@@ -35,28 +35,30 @@ SCHEMAS = [
     IDL_DIR / "idl" / "any_example.proto",
     IDL_DIR / "idl" / "monster.fbs",
     IDL_DIR / "idl" / "complex_fbs.fbs",
+    IDL_DIR / "idl" / "auto_id.fdl",
 ]
 
 LANG_OUTPUTS = {
-    "java": REPO_ROOT / "integration_tests/idl_tests/java/src/main/java",
-    "python": REPO_ROOT / "integration_tests/idl_tests/python/src",
+    "java": REPO_ROOT / "integration_tests/idl_tests/java/src/main/java/generated",
+    "python": REPO_ROOT / "integration_tests/idl_tests/python/idl_tests/generated",
     "cpp": REPO_ROOT / "integration_tests/idl_tests/cpp/generated",
-    "go": REPO_ROOT / "integration_tests/idl_tests/go",
-    "rust": REPO_ROOT / "integration_tests/idl_tests/rust/src",
+    "go": REPO_ROOT / "integration_tests/idl_tests/go/generated",
+    "rust": REPO_ROOT / "integration_tests/idl_tests/rust/src/generated",
 }
 
 GO_OUTPUT_OVERRIDES = {
-    "addressbook.fdl": IDL_DIR / "go" / "addressbook",
-    "collection.fdl": IDL_DIR / "go" / "collection",
-    "monster.fbs": IDL_DIR / "go" / "monster",
-    "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs",
-    "optional_types.fdl": IDL_DIR / "go" / "optional_types",
-    "tree.fdl": IDL_DIR / "go" / "tree",
-    "graph.fdl": IDL_DIR / "go" / "graph",
-    "root.idl": IDL_DIR / "go" / "root",
-    "any_example.fdl": IDL_DIR / "go" / "any_example",
-    "any_example.proto": IDL_DIR / "go" / "any_example_pb",
-    "complex_pb.proto": IDL_DIR / "go" / "complex_pb",
+    "addressbook.fdl": IDL_DIR / "go" / "addressbook" / "generated",
+    "collection.fdl": IDL_DIR / "go" / "collection" / "generated",
+    "monster.fbs": IDL_DIR / "go" / "monster" / "generated",
+    "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs" / "generated",
+    "optional_types.fdl": IDL_DIR / "go" / "optional_types" / "generated",
+    "tree.fdl": IDL_DIR / "go" / "tree" / "generated",
+    "graph.fdl": IDL_DIR / "go" / "graph" / "generated",
+    "root.idl": IDL_DIR / "go" / "root" / "generated",
+    "any_example.fdl": IDL_DIR / "go" / "any_example" / "generated",
+    "any_example.proto": IDL_DIR / "go" / "any_example_pb" / "generated",
+    "complex_pb.proto": IDL_DIR / "go" / "complex_pb" / "generated",
+    "auto_id.fdl": IDL_DIR / "go" / "auto_id" / "generated",
 }
 
 
@@ -86,6 +88,30 @@ def main() -> int:
     env = os.environ.copy()
     compiler_path = str(REPO_ROOT / "compiler")
     env["PYTHONPATH"] = compiler_path + os.pathsep + env.get("PYTHONPATH", "")
+
+    generated_roots = set()
+    for lang in langs:
+        out_dir = LANG_OUTPUTS[lang]
+        if lang == "go":
+            for schema in SCHEMAS:
+                generated_roots.add(GO_OUTPUT_OVERRIDES.get(schema.name, out_dir))
+        else:
+            generated_roots.add(out_dir)
+
+    for root in sorted(generated_roots):
+        Path(root).mkdir(parents=True, exist_ok=True)
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "fory_compiler",
+                "--scan-generated",
+                "--delete",
+                "--root",
+                str(root),
+            ],
+            env=env,
+        )
 
     for schema in SCHEMAS:
         cmd = [

@@ -288,7 +288,7 @@ fn test_unregistered_type_error_message() {
 }
 
 #[test]
-fn test_type_mismatch_error_shows_registered_id() {
+fn test_type_mismatch_error_shows_type_name() {
     use fory_core::error::Error;
     use fory_core::types::{format_type_id, TypeId};
 
@@ -296,32 +296,32 @@ fn test_type_mismatch_error_shows_registered_id() {
     let formatted = format_type_id(TypeId::BOOL as u32);
     assert_eq!(formatted, "BOOL");
 
-    // Test user registered struct with id=3: (3 << 8) + STRUCT
-    let struct_type_id = (3 << 8) + TypeId::STRUCT as u32;
+    // Test struct type
+    let struct_type_id = TypeId::STRUCT as u32;
     let formatted = format_type_id(struct_type_id);
-    assert_eq!(formatted, "registered_id=3(STRUCT)");
+    assert_eq!(formatted, "STRUCT");
 
-    // Test user registered enum with id=1: (1 << 8) + ENUM
-    let enum_type_id = (1 << 8) + TypeId::ENUM as u32;
+    // Test enum type
+    let enum_type_id = TypeId::ENUM as u32;
     let formatted = format_type_id(enum_type_id);
-    assert_eq!(formatted, "registered_id=1(ENUM)");
+    assert_eq!(formatted, "ENUM");
 
-    // Test user registered EXT with id=3: (3 << 8) + EXT
-    let ext_type_id = (3 << 8) + TypeId::EXT as u32;
+    // Test EXT type
+    let ext_type_id = TypeId::EXT as u32;
     let formatted = format_type_id(ext_type_id);
-    assert_eq!(formatted, "registered_id=3(EXT)");
+    assert_eq!(formatted, "EXT");
 
     // Test error message format
     let err = Error::type_mismatch(struct_type_id, enum_type_id);
     let err_str = format!("{}", err);
     assert!(
-        err_str.contains("registered_id=3(STRUCT)"),
-        "error should contain registered_id=3(STRUCT), got: {}",
+        err_str.contains("STRUCT"),
+        "error should contain STRUCT, got: {}",
         err_str
     );
     assert!(
-        err_str.contains("registered_id=1(ENUM)"),
-        "error should contain registered_id=1(ENUM), got: {}",
+        err_str.contains("ENUM"),
+        "error should contain ENUM, got: {}",
         err_str
     );
     // Check the message contains "local" and "remote" for clarity

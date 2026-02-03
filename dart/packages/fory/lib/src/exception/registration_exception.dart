@@ -33,7 +33,7 @@ class UnregisteredTagException extends ForyException {
 }
 
 class UnregisteredTypeException extends ForyException {
-  final Type _type;
+  final Object _type;
 
   UnregisteredTypeException(this._type);
 

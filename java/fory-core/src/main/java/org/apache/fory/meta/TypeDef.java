@@ -19,7 +19,7 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.ClassDefEncoder.buildFields;
+import static org.apache.fory.meta.NativeTypeDefEncoder.buildFields;
 
 import java.io.ObjectStreamClass;
 import java.io.Serializable;
@@ -66,8 +66,8 @@ import org.apache.fory.util.StringUtils;
  * @see ForyBuilder#withMetaShare
  * @see ReflectionUtils#getFieldOffset
  */
-public class ClassDef implements Serializable {
-  private static final Logger LOG = LoggerFactory.getLogger(ClassDef.class);
+public class TypeDef implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(TypeDef.class);
 
   static final int COMPRESS_META_FLAG = 0b1 << 9;
   static final int HAS_FIELDS_META_FLAG = 0b1 << 8;
@@ -108,7 +108,7 @@ public class ClassDef implements Serializable {
   private final byte[] encoded;
   private transient List<Descriptor> descriptors;
 
-  ClassDef(
+  TypeDef(
       ClassSpec classSpec,
       List<FieldInfo> fieldsInfo,
       boolean hasFieldsMeta,
@@ -121,7 +121,7 @@ public class ClassDef implements Serializable {
     this.encoded = encoded;
   }
 
-  public static void skipClassDef(MemoryBuffer buffer, long id) {
+  public static void skipTypeDef(MemoryBuffer buffer, long id) {
     int size = (int) (id & META_SIZE_MASKS);
     if (size == META_SIZE_MASKS) {
       size += buffer.readVarUint32Small14();
@@ -169,21 +169,20 @@ public class ClassDef implements Serializable {
   }
 
   public boolean isNamed() {
-    return classSpec.typeId < 0 || Types.isNamedType(classSpec.typeId & 0xff);
+    return classSpec.typeId < 0 || Types.isNamedType(classSpec.typeId);
   }
 
   public boolean isCompatible() {
     if (classSpec.typeId < 0) {
       return false;
     }
-    int internalTypeId = classSpec.typeId & 0xff;
-    return internalTypeId == Types.COMPATIBLE_STRUCT
-        || internalTypeId == Types.NAMED_COMPATIBLE_STRUCT;
+    return classSpec.typeId == Types.COMPATIBLE_STRUCT
+        || classSpec.typeId == Types.NAMED_COMPATIBLE_STRUCT;
   }
 
   public int getUserTypeId() {
     Preconditions.checkArgument(!isNamed(), "Named types don't have user type id");
-    return classSpec.typeId >>> 8;
+    return classSpec.userTypeId;
   }
 
   @Override
@@ -191,11 +190,11 @@ public class ClassDef implements Serializable {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    ClassDef classDef = (ClassDef) o;
-    return hasFieldsMeta == classDef.hasFieldsMeta
-        && id == classDef.id
-        && Objects.equals(classSpec, classDef.classSpec)
-        && Objects.equals(fieldsInfo, classDef.fieldsInfo);
+    TypeDef typeDef = (TypeDef) o;
+    return hasFieldsMeta == typeDef.hasFieldsMeta
+        && id == typeDef.id
+        && Objects.equals(classSpec, typeDef.classSpec)
+        && Objects.equals(fieldsInfo, typeDef.fieldsInfo);
   }
 
   @Override
@@ -205,7 +204,7 @@ public class ClassDef implements Serializable {
 
   @Override
   public String toString() {
-    return "ClassDef{"
+    return "TypeDef{"
         + "className='"
         + classSpec.entireClassName
         + '\''
@@ -219,10 +218,10 @@ public class ClassDef implements Serializable {
   }
 
   /**
-   * Compute diff between this (decoded/remote) ClassDef and a local ClassDef. Returns a string
+   * Compute diff between this (decoded/remote) TypeDef and a local TypeDef. Returns a string
    * describing the differences, or null if they are identical.
    */
-  public String computeDiff(ClassDef localDef) {
+  public String computeDiff(TypeDef localDef) {
     if (localDef == null) {
       return "Local TypeDef is null (type not registered locally)";
     }
@@ -341,30 +340,30 @@ public class ClassDef implements Serializable {
   }
 
   /** Write class definition to buffer. */
-  public void writeClassDef(MemoryBuffer buffer) {
+  public void writeTypeDef(MemoryBuffer buffer) {
     buffer.writeBytes(encoded, 0, encoded.length);
   }
 
   /** Read class definition from buffer. */
-  public static ClassDef readClassDef(Fory fory, MemoryBuffer buffer) {
+  public static TypeDef readTypeDef(Fory fory, MemoryBuffer buffer) {
     if (fory.isCrossLanguage()) {
-      return TypeDefDecoder.decodeClassDef(fory.getXtypeResolver(), buffer, buffer.readInt64());
+      return TypeDefDecoder.decodeTypeDef(fory.getXtypeResolver(), buffer, buffer.readInt64());
     }
-    return ClassDefDecoder.decodeClassDef(fory.getClassResolver(), buffer, buffer.readInt64());
+    return NativeTypeDefDecoder.decodeTypeDef(fory.getClassResolver(), buffer, buffer.readInt64());
   }
 
   /** Read class definition from buffer. */
-  public static ClassDef readClassDef(Fory fory, MemoryBuffer buffer, long header) {
+  public static TypeDef readTypeDef(Fory fory, MemoryBuffer buffer, long header) {
     if (fory.isCrossLanguage()) {
-      return TypeDefDecoder.decodeClassDef(fory.getXtypeResolver(), buffer, header);
+      return TypeDefDecoder.decodeTypeDef(fory.getXtypeResolver(), buffer, header);
     }
-    return ClassDefDecoder.decodeClassDef(fory.getClassResolver(), buffer, header);
+    return NativeTypeDefDecoder.decodeTypeDef(fory.getClassResolver(), buffer, header);
   }
 
   /**
-   * Consolidate fields of <code>classDef</code> with <code>cls</code>. If some field exists in
-   * <code>cls</code> but not in <code>classDef</code>, it won't be returned in final collection. If
-   * some field exists in <code>classDef</code> but not in <code> cls</code>, it will be added to
+   * Consolidate fields of <code>typeDef</code> with <code>cls</code>. If some field exists in
+   * <code>cls</code> but not in <code>typeDef</code>, it won't be returned in final collection. If
+   * some field exists in <code>typeDef</code> but not in <code> cls</code>, it will be added to
    * final collection.
    *
    * @param cls class load in current process.
@@ -424,29 +423,29 @@ public class ClassDef implements Serializable {
     return descriptors;
   }
 
-  public static ClassDef buildClassDef(Fory fory, Class<?> cls) {
-    return buildClassDef(fory, cls, true);
+  public static TypeDef buildTypeDef(Fory fory, Class<?> cls) {
+    return buildTypeDef(fory, cls, true);
   }
 
-  public static ClassDef buildClassDef(Fory fory, Class<?> cls, boolean resolveParent) {
+  public static TypeDef buildTypeDef(Fory fory, Class<?> cls, boolean resolveParent) {
     if (fory.isCrossLanguage()) {
       return TypeDefEncoder.buildTypeDef(fory, cls);
     }
-    return ClassDefEncoder.buildClassDef(
+    return NativeTypeDefEncoder.buildTypeDef(
         fory.getClassResolver(), cls, buildFields(fory, cls, resolveParent), true);
   }
 
   /** Build class definition from fields of class. */
-  static ClassDef buildClassDef(ClassResolver classResolver, Class<?> type, List<Field> fields) {
-    return buildClassDef(classResolver, type, fields, true);
+  static TypeDef buildTypeDef(ClassResolver classResolver, Class<?> type, List<Field> fields) {
+    return buildTypeDef(classResolver, type, fields, true);
   }
 
-  public static ClassDef buildClassDef(
+  public static TypeDef buildTypeDef(
       ClassResolver classResolver, Class<?> type, List<Field> fields, boolean hasFieldsMeta) {
-    return ClassDefEncoder.buildClassDef(classResolver, type, fields, hasFieldsMeta);
+    return NativeTypeDefEncoder.buildTypeDef(classResolver, type, fields, hasFieldsMeta);
   }
 
-  public ClassDef replaceRootClassTo(ClassResolver classResolver, Class<?> targetCls) {
+  public TypeDef replaceRootClassTo(TypeResolver resolver, Class<?> targetCls) {
     String name = targetCls.getName();
     List<FieldInfo> fieldInfos =
         fieldsInfo.stream()
@@ -459,7 +458,11 @@ public class ClassDef implements Serializable {
                   }
                 })
             .collect(Collectors.toList());
-    return ClassDefEncoder.buildClassDefWithFieldInfos(
-        classResolver, targetCls, fieldInfos, hasFieldsMeta);
+    if (resolver.getFory().isCrossLanguage()) {
+      return TypeDefEncoder.buildTypeDefWithFieldInfos(
+          (org.apache.fory.resolver.XtypeResolver) resolver, targetCls, fieldInfos);
+    }
+    return NativeTypeDefEncoder.buildTypeDefWithFieldInfos(
+        (ClassResolver) resolver, targetCls, fieldInfos, hasFieldsMeta);
   }
 }

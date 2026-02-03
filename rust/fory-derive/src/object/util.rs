@@ -507,12 +507,11 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
             fory_core::meta::FieldType::new(
                 fory_core::types::TypeId::LIST as u32,
                 true,
-                vec![fory_core::meta::FieldType {
-                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                    nullable: true,
-                    ref_tracking: false,
-                    generics: vec![],
-                }]
+                vec![fory_core::meta::FieldType::new(
+                    fory_core::types::TypeId::UNKNOWN as u32,
+                    true,
+                    vec![]
+                )]
             )
         };
     }
@@ -576,12 +575,11 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     fory_core::meta::FieldType::new(
                         fory_core::types::TypeId::LIST as u32,
                         true,
-                        vec![fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                            nullable: true,
-                            ref_tracking: false,
-                            generics: vec![],
-                        }]
+                        vec![fory_core::meta::FieldType::new(
+                            fory_core::types::TypeId::UNKNOWN as u32,
+                            true,
+                            vec![]
+                        )]
                     )
                 };
             }
@@ -633,18 +631,14 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
         ts
     } else {
         quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)?
+            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)? as u32
         }
     };
 
     quote! {
         {
             let mut type_id = #get_type_id;
-            let internal_type_id = type_id & 0xff;
-            if internal_type_id == fory_core::types::TypeId::TYPED_UNION as u32
-                || internal_type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
-                type_id = fory_core::types::TypeId::UNION as u32;
-            }
+            let mut user_type_id = u32::MAX;
             let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
             // For tuples and sets, if no generic info is available, add UNKNOWN element
             // This handles type aliases to tuples where we can't detect the tuple at macro time
@@ -657,15 +651,32 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     vec![]
                 ));
             }
-            let is_custom = !fory_core::types::is_internal_type(type_id & 0xff);
+            let is_custom = !fory_core::types::is_internal_type(type_id);
             if is_custom {
+                let type_info = <#ty as fory_core::serializer::Serializer>::fory_get_type_info(type_resolver)?;
+                type_id = type_info.get_type_id() as u32;
+                user_type_id = type_info.get_user_type_id();
+                if type_id == fory_core::types::TypeId::TYPED_UNION as u32
+                    || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
+                    type_id = fory_core::types::TypeId::UNION as u32;
+                    user_type_id = u32::MAX;
+                }
                 if type_resolver.is_xlang() && generics.len() > 0 {
                     return Err(fory_core::error::Error::unsupported("serialization of generic structs and enums is not supported in xlang mode"));
                 } else {
                     generics = vec![];
                 }
+            } else if type_id == fory_core::types::TypeId::TYPED_UNION as u32
+                || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
+                type_id = fory_core::types::TypeId::UNION as u32;
             }
-            fory_core::meta::FieldType::new(type_id, #nullable, generics)
+            fory_core::meta::FieldType {
+                type_id,
+                user_type_id,
+                nullable: #nullable,
+                ref_tracking: false,
+                generics,
+            }
         }
     }
 }
@@ -1036,7 +1047,10 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
 }
 
 fn get_primitive_type_size(type_id_num: u32) -> i32 {
-    let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+    if type_id_num > u8::MAX as u32 {
+        return 0;
+    }
+    let type_id = TypeId::try_from(type_id_num as u8).unwrap();
     match type_id {
         TypeId::BOOL => 1,
         TypeId::INT8 => 1,

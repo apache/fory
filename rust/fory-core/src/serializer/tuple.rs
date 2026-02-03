@@ -44,15 +44,15 @@ impl Serializer for () {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         // Use NONE - unit type has no runtime data, skip can return early
-        Ok(TypeId::NONE as u32)
+        Ok(TypeId::NONE)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
         // Use NONE - unit type has no runtime data, skip can return early
-        Ok(TypeId::NONE as u32)
+        Ok(TypeId::NONE)
     }
 
     #[inline(always)]
@@ -170,13 +170,13 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
@@ -438,13 +438,13 @@ macro_rules! impl_tuple_serializer {
             }
 
             #[inline(always)]
-            fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-                Ok(TypeId::LIST as u32)
+            fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+                Ok(TypeId::LIST)
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-                Ok(TypeId::LIST as u32)
+            fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+                Ok(TypeId::LIST)
             }
 
             #[inline(always)]

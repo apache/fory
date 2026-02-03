@@ -18,7 +18,7 @@
 """Recursive descent parser for FDL."""
 
 import warnings
-from typing import List, Set
+from typing import List, Set, Optional
 
 from fory_compiler.ir.ast import (
     Schema,
@@ -47,6 +47,7 @@ KNOWN_FILE_OPTIONS: Set[str] = {
     "deprecated",
     "use_record_for_java_message",
     "polymorphism",
+    "enable_auto_type_id",
     "go_nested_type_style",
 }
 
@@ -92,6 +93,7 @@ KNOWN_ENUM_OPTIONS: Set[str] = {
 
 KNOWN_MESSAGE_OPTIONS: Set[str] = {
     "id",
+    "alias",
     "evolving",
     "use_record_for_java",
     "deprecated",
@@ -100,6 +102,7 @@ KNOWN_MESSAGE_OPTIONS: Set[str] = {
 
 KNOWN_UNION_OPTIONS: Set[str] = {
     "id",
+    "alias",
     "deprecated",
 }
 
@@ -187,6 +190,7 @@ class Parser:
     def parse(self) -> Schema:
         """Parse the entire input and return a Schema."""
         package = None
+        package_alias = None
         imports = []
         enums = []
         messages = []
@@ -197,7 +201,7 @@ class Parser:
             if self.check(TokenType.PACKAGE):
                 if package is not None:
                     raise self.error("Duplicate package declaration")
-                package = self.parse_package()
+                package, package_alias = self.parse_package()
             elif self.check(TokenType.IMPORT):
                 imports.append(self.parse_import())
             elif self.check(TokenType.OPTION):
@@ -215,6 +219,7 @@ class Parser:
 
         return Schema(
             package=package,
+            package_alias=package_alias,
             imports=imports,
             enums=enums,
             messages=messages,
@@ -233,8 +238,8 @@ class Parser:
             source_format=self.source_format,
         )
 
-    def parse_package(self) -> str:
-        """Parse a package declaration: package foo.bar;"""
+    def parse_package(self) -> tuple[str, Optional[str]]:
+        """Parse a package declaration: package foo.bar [alias baz];"""
         self.consume(TokenType.PACKAGE)
 
         # Package name can be dotted: foo.bar.baz
@@ -245,8 +250,23 @@ class Parser:
                 self.consume(TokenType.IDENT, "Expected identifier after '.'").value
             )
 
-        self.consume(TokenType.SEMI, "Expected ';' after package name")
-        return ".".join(parts)
+        alias = None
+        if self.check(TokenType.IDENT) and self.current().value == "alias":
+            self.advance()  # consume alias keyword
+            alias_parts = [
+                self.consume(TokenType.IDENT, "Expected identifier after 'alias'").value
+            ]
+            while self.check(TokenType.DOT):
+                self.advance()
+                alias_parts.append(
+                    self.consume(
+                        TokenType.IDENT, "Expected identifier after '.' in alias"
+                    ).value
+                )
+            alias = ".".join(alias_parts)
+
+        self.consume(TokenType.SEMI, "Expected ';' after package declaration")
+        return ".".join(parts), alias
 
     def parse_option_value(self):
         """Parse an option value (string, bool, int, or identifier)."""

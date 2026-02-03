@@ -382,7 +382,7 @@ class DynamicPyArraySerializer(Serializer):
         itemsize, ftype, type_id = typecode_dict[value.typecode]
         view = memoryview(value)
         nbytes = len(value) * itemsize
-        buffer.write_var_uint32(type_id)
+        buffer.write_uint8(type_id)
         buffer.write_var_uint32(nbytes)
         if not view.c_contiguous:
             data = value.tobytes()
@@ -401,7 +401,7 @@ class DynamicPyArraySerializer(Serializer):
             buffer.write_buffer(swapped)
 
     def xread(self, buffer):
-        type_id = buffer.read_varint32()
+        type_id = buffer.read_uint8()
         typecode = typeid_code[type_id]
         itemsize = typecode_dict[typecode][0]
         data = buffer.read_bytes_and_size()
@@ -507,7 +507,7 @@ class NDArraySerializer(Serializer):
         itemsize, typecode, ftype, type_id = _np_dtypes_dict[value.dtype]
         view = memoryview(value)
         nbytes = len(value) * itemsize
-        buffer.write_var_uint32(type_id)
+        buffer.write_uint8(type_id)
         buffer.write_var_uint32(nbytes)
         if value.dtype == np.dtype("bool") or not view.c_contiguous:
             buffer.write_bytes(value.tobytes())

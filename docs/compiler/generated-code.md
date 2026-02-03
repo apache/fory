@@ -832,7 +832,8 @@ int main() {
 
 ## Name-Based Registration
 
-When types don't have explicit type IDs, they use namespace-based registration:
+When types don't have explicit type IDs and `enable_auto_type_id = false`, they use
+namespace-based registration:
 
 ### FDL
 

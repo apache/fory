@@ -50,8 +50,8 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 			// Write type info for generic reader compatibility
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(STRING)) // key type
-			buf.WriteVarUint32Small7(uint32(STRING)) // value type
+			buf.WriteUint8(uint8(STRING)) // key type
+			buf.WriteUint8(uint8(STRING)) // value type
 		}
 
 		// WriteData chunk entries
@@ -92,7 +92,7 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 			// Null key with non-null value
 			valueDeclared := (chunkHeader & VALUE_DECL_TYPE) != 0
 			if !valueDeclared {
-				buf.ReadVarUint32Small7(err) // skip value type
+				buf.ReadUint8(err) // skip value type
 			}
 			v := readString(buf, err)
 			result[""] = v // empty string as null key
@@ -102,7 +102,7 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 			// Non-null key with null value
 			keyDeclared := (chunkHeader & KEY_DECL_TYPE) != 0
 			if !keyDeclared {
-				buf.ReadVarUint32Small7(err) // skip key type
+				buf.ReadUint8(err) // skip key type
 			}
 			k := readString(buf, err)
 			result[k] = "" // empty string as null value
@@ -115,10 +115,10 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 
 		// Read type info if not DECL_TYPE
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err) // skip key type
+			buf.ReadUint8(err) // skip key type
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err) // skip value type
+			buf.ReadUint8(err) // skip value type
 		}
 
 		// ReadData chunk entries
@@ -154,8 +154,8 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(STRING))   // key type
-			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type
+			buf.WriteUint8(uint8(STRING))   // key type
+			buf.WriteUint8(uint8(VARINT64)) // value type
 		}
 
 		count := 0
@@ -191,10 +191,10 @@ func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -228,8 +228,8 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(STRING))   // key type
-			buf.WriteVarUint32Small7(uint32(VARINT32)) // value type
+			buf.WriteUint8(uint8(STRING))   // key type
+			buf.WriteUint8(uint8(VARINT32)) // value type
 		}
 
 		count := 0
@@ -265,10 +265,10 @@ func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -302,8 +302,8 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(STRING))   // key type
-			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type (int serialized as varint64)
+			buf.WriteUint8(uint8(STRING))   // key type
+			buf.WriteUint8(uint8(VARINT64)) // value type (int serialized as varint64)
 		}
 
 		count := 0
@@ -339,10 +339,10 @@ func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -376,8 +376,8 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(STRING))  // key type
-			buf.WriteVarUint32Small7(uint32(FLOAT64)) // value type
+			buf.WriteUint8(uint8(STRING))  // key type
+			buf.WriteUint8(uint8(FLOAT64)) // value type
 		}
 
 		count := 0
@@ -413,10 +413,10 @@ func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := readString(buf, err)
@@ -450,8 +450,8 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(STRING)) // key type
-			buf.WriteVarUint32Small7(uint32(BOOL))   // value type
+			buf.WriteUint8(uint8(STRING)) // key type
+			buf.WriteUint8(uint8(BOOL))   // value type
 		}
 
 		count := 0
@@ -491,10 +491,10 @@ func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
 		keyDeclType := (chunkHeader & KEY_DECL_TYPE) != 0
 		valDeclType := (chunkHeader & VALUE_DECL_TYPE) != 0
 		if !keyDeclType {
-			buf.ReadVarUint32Small7(err) // skip key type info
+			buf.ReadUint8(err) // skip key type info
 		}
 		if !valDeclType {
-			buf.ReadVarUint32Small7(err) // skip value type info
+			buf.ReadUint8(err) // skip value type info
 		}
 
 		for i := 0; i < chunkSize && size > 0; i++ {
@@ -529,8 +529,8 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(VARINT32)) // key type
-			buf.WriteVarUint32Small7(uint32(VARINT32)) // value type
+			buf.WriteUint8(uint8(VARINT32)) // key type
+			buf.WriteUint8(uint8(VARINT32)) // value type
 		}
 
 		count := 0
@@ -566,10 +566,10 @@ func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := buf.ReadVarint32(err)
@@ -603,8 +603,8 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(VARINT64)) // key type
-			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type
+			buf.WriteUint8(uint8(VARINT64)) // key type
+			buf.WriteUint8(uint8(VARINT64)) // value type
 		}
 
 		count := 0
@@ -640,10 +640,10 @@ func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := buf.ReadVarint64(err)
@@ -677,8 +677,8 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 		} else {
 			buf.WriteUint8(0)
 			buf.WriteUint8(uint8(chunkSize))
-			buf.WriteVarUint32Small7(uint32(VARINT64)) // key type (int serialized as varint64)
-			buf.WriteVarUint32Small7(uint32(VARINT64)) // value type
+			buf.WriteUint8(uint8(VARINT64)) // key type (int serialized as varint64)
+			buf.WriteUint8(uint8(VARINT64)) // value type
 		}
 
 		count := 0
@@ -714,10 +714,10 @@ func readMapIntInt(buf *ByteBuffer, err *Error) map[int]int {
 
 		chunkSize := int(buf.ReadUint8(err))
 		if (chunkHeader & KEY_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		if (chunkHeader & VALUE_DECL_TYPE) == 0 {
-			buf.ReadVarUint32Small7(err)
+			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
 			k := buf.ReadVarint64(err)

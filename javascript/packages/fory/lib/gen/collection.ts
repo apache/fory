@@ -56,7 +56,7 @@ class CollectionAnySerializer {
       if ((item === undefined || item === null) && !includeNone) {
         includeNone = true;
       }
-      const current = this.fory.classResolver.getSerializerByData(item);
+      const current = this.fory.typeResolver.getSerializerByData(item);
       if (!current) {
         throw new Error("can't detect the type of item in list");
       }
@@ -95,7 +95,7 @@ class CollectionAnySerializer {
     this.fory.binaryWriter.writeVarUint32Small7(size);
     const { serializer, isSame, includeNone, trackingRef } = this.writeElementsHeader(value);
     if (isSame) {
-      serializer!.writeClassInfo(value);
+      serializer!.writeTypeInfo(value);
       if (trackingRef) {
         for (const item of value) {
           if (!serializer!.writeRefOrNull(item)) {
@@ -119,7 +119,7 @@ class CollectionAnySerializer {
     } else {
       if (trackingRef) {
         for (const item of value) {
-          const serializer = this.fory.classResolver.getSerializerByData(item);
+          const serializer = this.fory.typeResolver.getSerializerByData(item);
           serializer?.writeRef(item);
         }
       } else if (includeNone) {
@@ -127,7 +127,7 @@ class CollectionAnySerializer {
           if (item === null || item === undefined) {
             this.fory.binaryWriter.uint8(RefFlags.NullFlag);
           } else {
-            const serializer = this.fory.classResolver.getSerializerByData(item);
+            const serializer = this.fory.typeResolver.getSerializerByData(item);
             this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
@@ -141,6 +141,7 @@ class CollectionAnySerializer {
   }
 
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
+    void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
     const flags = this.fory.binaryReader.uint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;

@@ -18,9 +18,10 @@
 use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
+use std::rc::Rc;
 
 impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     #[inline(always)]
@@ -52,12 +53,20 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_info(type_resolver: &TypeResolver) -> Result<Rc<TypeInfo>, Error> {
+        match type_resolver.get_type_info(&std::any::TypeId::of::<T>()) {
+            Ok(info) => Ok(info),
+            Err(e) => Err(Error::enhance_type_error::<T>(e)),
+        }
+    }
+
+    #[inline(always)]
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 

@@ -15,14 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from libc.stdint cimport int32_t
+from libc.stdint cimport int32_t, uint8_t
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport CBuffer
 
 cdef extern from "fory/type/type.h" namespace "fory" nogil:
 
     # Declare the C++ TypeId enum
-    cdef enum class TypeId(int32_t):
+    cdef enum class TypeId(uint8_t):
         UNKNOWN = 0
         BOOL = 1
         INT8 = 2
@@ -78,8 +78,14 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
         FLOAT64_ARRAY = 52
         BOUND = 64
 
-    cdef c_bool is_namespaced_type(int32_t type_id)
-    cdef c_bool is_type_share_meta(int32_t type_id)
+    cdef enum class TypeRegistrationKind(int32_t):
+        INTERNAL = 0
+        BY_ID = 1
+        BY_NAME = 2
+
+    cdef TypeRegistrationKind get_type_registration_kind(TypeId type_id)
+    cdef c_bool is_namespaced_type(TypeId type_id)
+    cdef c_bool is_type_share_meta(TypeId type_id)
 
 cdef extern from "fory/python/pyfory.h" namespace "fory":
     int Fory_PyBooleanSequenceWriteToBuffer(object collection, CBuffer *buffer, Py_ssize_t start_index)

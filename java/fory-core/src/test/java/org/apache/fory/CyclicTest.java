@@ -27,8 +27,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.test.bean.FinalCyclic;
@@ -46,33 +44,28 @@ public class CyclicTest extends ForyTestBase {
   }
 
   @DataProvider
-  public static Object[][] fory() {
+  public static Object[][] config() {
     return Sets.cartesianProduct(
             ImmutableSet.of(true, false), // enableCodegen
             ImmutableSet.of(true, false), // async compilation
-            ImmutableSet.of(true, false), // scoped meta share
-            ImmutableSet.of(
-                CompatibleMode.SCHEMA_CONSISTENT, CompatibleMode.COMPATIBLE) // structFieldsRepeat
+            ImmutableSet.of(true, false) // compatible
             )
         .stream()
         .map(List::toArray)
-        .map(
-            c ->
-                new Object[] {
-                  Fory.builder()
-                      .withLanguage(Language.JAVA)
-                      .withCodegen((Boolean) c[0])
-                      .withAsyncCompilation((Boolean) c[1])
-                      .withScopedMetaShare((Boolean) c[2])
-                      .withCompatibleMode((CompatibleMode) c[3])
-                      .requireClassRegistration(false)
-                })
         .toArray(Object[][]::new);
   }
 
-  @Test(dataProvider = "fory")
-  public void testBean(ForyBuilder builder) {
-    Fory fory = builder.withMetaShare(false).withRefTracking(true).build();
+  @Test(dataProvider = "config")
+  public void testBean(boolean enableCodegen, boolean asyncCompilation, boolean compatible) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .withAsyncCompilation(asyncCompilation)
+            .withCompatible(compatible)
+            .build();
     for (Object[] objects : beans()) {
       Object notCyclic = objects[0];
       Object cyclic = objects[1];

@@ -22,7 +22,7 @@
 #include <cstdint> // For fixed-width integer types
 
 namespace fory {
-enum class TypeId : int32_t {
+enum class TypeId : uint8_t {
   // Unknown/polymorphic type marker.
   UNKNOWN = 0,
   // a boolean value (true or false).
@@ -145,8 +145,34 @@ enum class TypeId : int32_t {
   BOUND = 67
 };
 
-inline bool is_user_type(int32_t type_id) {
-  switch (static_cast<TypeId>(type_id)) {
+enum class TypeRegistrationKind : int32_t {
+  INTERNAL = 0,
+  BY_ID = 1,
+  BY_NAME = 2
+};
+
+inline constexpr TypeRegistrationKind
+get_type_registration_kind(TypeId type_id) {
+  switch (type_id) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    return TypeRegistrationKind::BY_ID;
+  case TypeId::NAMED_ENUM:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::NAMED_EXT:
+  case TypeId::NAMED_UNION:
+    return TypeRegistrationKind::BY_NAME;
+  default:
+    return TypeRegistrationKind::INTERNAL;
+  }
+}
+
+inline bool is_user_type(TypeId type_id) {
+  switch (type_id) {
   case TypeId::ENUM:
   case TypeId::NAMED_ENUM:
   case TypeId::STRUCT:
@@ -163,8 +189,8 @@ inline bool is_user_type(int32_t type_id) {
   }
 }
 
-inline bool is_namespaced_type(int32_t type_id) {
-  switch (static_cast<TypeId>(type_id)) {
+inline bool is_namespaced_type(TypeId type_id) {
+  switch (type_id) {
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_STRUCT:
   case TypeId::NAMED_COMPATIBLE_STRUCT:
@@ -176,8 +202,8 @@ inline bool is_namespaced_type(int32_t type_id) {
   }
 }
 
-inline bool is_type_share_meta(int32_t type_id) {
-  switch (static_cast<TypeId>(type_id)) {
+inline bool is_type_share_meta(TypeId type_id) {
+  switch (type_id) {
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_STRUCT:
   case TypeId::NAMED_EXT:
@@ -215,17 +241,6 @@ inline constexpr bool is_internal_type(uint32_t type_id) {
     return false;
   }
   // Internal types are all types that are NOT user types or UNKNOWN
-  uint32_t tid_low = type_id & 0xff;
-  return tid_low != static_cast<uint32_t>(TypeId::ENUM) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_ENUM) &&
-         tid_low != static_cast<uint32_t>(TypeId::STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::EXT) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_EXT) &&
-         tid_low != static_cast<uint32_t>(TypeId::TYPED_UNION) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_UNION) &&
-         tid_low != static_cast<uint32_t>(TypeId::UNKNOWN);
+  return !is_user_type(static_cast<TypeId>(type_id));
 }
 } // namespace fory

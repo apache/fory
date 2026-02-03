@@ -43,7 +43,7 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
                 if register_by_name {
                     fory_core::types::TypeId::NAMED_UNION as u32
                 } else {
-                    (type_id << 8) | (fory_core::types::TypeId::TYPED_UNION as u32)
+                    fory_core::types::TypeId::TYPED_UNION as u32
                 }
             } else {
                 fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
@@ -462,7 +462,7 @@ pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
         quote! {
             if context.is_xlang() {
                 let rs_type_id = std::any::TypeId::of::<Self>();
-                context.write_any_typeinfo(fory_core::types::UNKNOWN, rs_type_id)?;
+                context.write_any_type_info(fory_core::types::UNKNOWN, rs_type_id)?;
                 Ok(())
             } else {
                 fory_core::serializer::enum_::write_type_info::<Self>(context)
@@ -964,10 +964,13 @@ pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
         quote! {
             if context.is_xlang() {
                 let expected_type_id = Self::fory_get_type_id(context.get_type_resolver())?;
-                let type_info = context.read_any_typeinfo()?;
+                let type_info = context.read_any_type_info()?;
                 let remote_type_id = type_info.get_type_id();
                 if remote_type_id != expected_type_id {
-                    return Err(fory_core::error::Error::type_mismatch(expected_type_id, remote_type_id));
+                    return Err(fory_core::error::Error::type_mismatch(
+                        expected_type_id as u32,
+                        remote_type_id as u32,
+                    ));
                 }
                 Ok(())
             } else {

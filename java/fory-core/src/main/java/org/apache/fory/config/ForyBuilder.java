@@ -500,7 +500,7 @@ public final class ForyBuilder {
 
   /**
    * Create Fory and print exception when failed. Many application will create fory as a static
-   * variable, Fory creation exception will be swallowed by {@link NoClassDefFoundError}. We print
+   * variable, Fory creation exception will be swallowed by {@link NoTypeDefFoundError}. We print
    * exception explicitly for better debugging.
    */
   private static Fory newFory(ForyBuilder builder, ClassLoader classLoader) {

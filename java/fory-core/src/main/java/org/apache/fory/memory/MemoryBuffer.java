@@ -673,6 +673,10 @@ public final class MemoryBuffer {
     writerIndex = newIdx;
   }
 
+  public void writeUint8(int value) {
+    writeByte((byte) value);
+  }
+
   public void writeByte(byte value) {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 1;
@@ -1423,7 +1427,7 @@ public final class MemoryBuffer {
     return UNSAFE.getByte(heapMemory, address + readerIdx) != 0;
   }
 
-  public int readUnsignedByte() {
+  public int readUint8() {
     int readerIdx = readerIndex;
     if (readerIdx > size - 1) {
       streamReader.fillBuffer(1);
@@ -1432,6 +1436,10 @@ public final class MemoryBuffer {
     int v = UNSAFE.getByte(heapMemory, address + readerIdx);
     v &= 0b11111111;
     return v;
+  }
+
+  public int readUnsignedByte() {
+    return readUint8();
   }
 
   public byte readByte() {

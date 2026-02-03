@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-type TypeId = int16
+type TypeId = uint8
 
 const (
 	// UNKNOWN Unknown/polymorphic type marker
@@ -135,7 +135,7 @@ const (
 
 // IsNamespacedType checks whether the given type ID is a namespace type
 func IsNamespacedType(typeID TypeId) bool {
-	switch typeID & 0xFF {
+	switch typeID {
 	case NAMED_EXT, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_UNION:
 		return true
 	default:
@@ -146,8 +146,7 @@ func IsNamespacedType(typeID TypeId) bool {
 // NeedsTypeMetaWrite checks whether a type needs additional type meta written after type ID
 // This includes namespaced types and struct types that need meta share in compatible mode
 func NeedsTypeMetaWrite(typeID TypeId) bool {
-	internalID := typeID & 0xFF
-	switch TypeId(internalID) {
+	switch typeID {
 	case NAMED_EXT, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_UNION, COMPATIBLE_STRUCT, STRUCT:
 		return true
 	default:
@@ -155,7 +154,16 @@ func NeedsTypeMetaWrite(typeID TypeId) bool {
 	}
 }
 
-func isPrimitiveType(typeID int16) bool {
+func isUserTypeRegisteredById(typeID TypeId) bool {
+	switch typeID {
+	case ENUM, STRUCT, COMPATIBLE_STRUCT, EXT, TYPED_UNION:
+		return true
+	default:
+		return false
+	}
+}
+
+func isPrimitiveType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL,
 		INT8,
@@ -195,23 +203,23 @@ func NeedWriteRef(typeID TypeId) bool {
 	}
 }
 
-func isListType(typeID int16) bool {
+func isListType(typeID TypeId) bool {
 	return typeID == LIST
 }
 
-func isSetType(typeID int16) bool {
+func isSetType(typeID TypeId) bool {
 	return typeID == SET
 }
 
-func isMapType(typeID int16) bool {
+func isMapType(typeID TypeId) bool {
 	return typeID == MAP
 }
 
-func isCollectionType(typeID int16) bool {
+func isCollectionType(typeID TypeId) bool {
 	return typeID == LIST || typeID == SET || typeID == MAP
 }
 
-func isPrimitiveArrayType(typeID int16) bool {
+func isPrimitiveArrayType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL_ARRAY,
 		INT8_ARRAY,
@@ -231,7 +239,7 @@ func isPrimitiveArrayType(typeID int16) bool {
 	}
 }
 
-var primitiveTypeSizes = map[int16]int{
+var primitiveTypeSizes = map[TypeId]int{
 	BOOL:          1,
 	INT8:          1,
 	UINT8:         1,
@@ -261,26 +269,25 @@ const MinInt31 int64 = -0x40000000 // -2^30
 // MaxInt31Signed is MaxInt31 as a signed int64 for TAGGED_INT64 encoding
 const MaxInt31Signed int64 = 0x3FFFFFFF // 2^30 - 1
 
-func getPrimitiveTypeSize(typeID int16) int {
+func getPrimitiveTypeSize(typeID TypeId) int {
 	if sz, ok := primitiveTypeSizes[typeID]; ok {
 		return sz
 	}
 	return -1
 }
 
-func isUserDefinedType(typeID int16) bool {
-	id := int(typeID & 0xff)
-	return id == STRUCT ||
-		id == COMPATIBLE_STRUCT ||
-		id == NAMED_STRUCT ||
-		id == NAMED_COMPATIBLE_STRUCT ||
-		id == EXT ||
-		id == NAMED_EXT ||
-		id == ENUM ||
-		id == NAMED_ENUM ||
-		id == UNION ||
-		id == TYPED_UNION ||
-		id == NAMED_UNION
+func isUserDefinedType(typeID TypeId) bool {
+	return typeID == STRUCT ||
+		typeID == COMPATIBLE_STRUCT ||
+		typeID == NAMED_STRUCT ||
+		typeID == NAMED_COMPATIBLE_STRUCT ||
+		typeID == EXT ||
+		typeID == NAMED_EXT ||
+		typeID == ENUM ||
+		typeID == NAMED_ENUM ||
+		typeID == UNION ||
+		typeID == TYPED_UNION ||
+		typeID == NAMED_UNION
 }
 
 // ============================================================================
@@ -728,8 +735,7 @@ func getVarintMaxSizeByDispatchId(dispatchId DispatchId) int {
 
 // getEncodingFromTypeId returns the encoding string ("fixed", "varint", "tagged") from a TypeId.
 func getEncodingFromTypeId(typeId TypeId) string {
-	internalId := typeId & 0xFF
-	switch TypeId(internalId) {
+	switch typeId {
 	case INT32, INT64, UINT32, UINT64:
 		return "fixed"
 	case VARINT32, VARINT64, VAR_UINT32, VAR_UINT64:

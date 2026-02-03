@@ -19,18 +19,23 @@
 
 package org.apache.fory.resolver;
 
-import static org.testng.Assert.assertNotNull;
+import org.apache.fory.serializer.Serializer;
 
-import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
-import org.testng.annotations.Test;
+/** A helper class for holding and update {@link TypeInfo} to reduce map look-up. */
+@SuppressWarnings("rawtypes")
+public class TypeInfoHolder {
+  public TypeInfo typeInfo;
 
-public class ClassInfoTest {
-  @Test
-  public void testEncodePackageNameAndTypeName() {
-    Fory fory1 = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    ClassInfo info1 = fory1.getClassResolver().getClassInfo(org.apache.fory.test.bean.Foo.class);
-    assertNotNull(info1.namespaceBytes);
-    assertNotNull(info1.typeNameBytes);
+  public TypeInfoHolder(TypeInfo typeInfo) {
+    this.typeInfo = typeInfo;
+  }
+
+  public Serializer getSerializer() {
+    return typeInfo.serializer;
+  }
+
+  @Override
+  public String toString() {
+    return "Holder{" + typeInfo + '}';
   }
 }

@@ -34,6 +34,8 @@
 namespace fory {
 namespace serialization {
 
+constexpr uint32_t kInvalidUserTypeId = 0xFFFFFFFFu;
+
 // Forward declarations - these allow Harness function pointers to compile
 // without including the full headers
 class WriteContext;
@@ -111,10 +113,12 @@ struct CachedMetaString {
 };
 
 /// TypeInfo holds metadata about a type for serialization purposes.
-/// This is used by read_any_typeinfo() and write_any_typeinfo() to track
+/// This is used by read_any_type_info() and write_any_type_info() to track
 /// type information across language boundaries (xlang serialization).
 struct TypeInfo {
   uint32_t type_id = 0;
+  // Stored as unsigned; 0xffffffff means "unset".
+  uint32_t user_type_id = kInvalidUserTypeId;
   std::string namespace_name;
   std::string type_name;
   bool register_by_name = false;

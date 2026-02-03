@@ -40,6 +40,7 @@ from pyfory.meta.typedef import (
     TAG_ID_SIZE_THRESHOLD,
 )
 from pyfory.types import TypeId
+from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.meta.metastring import MetaStringDecoder, Encoding
 
 
@@ -121,12 +122,13 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     is_registered_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0
 
     type_cls = None
+    user_type_id = NO_USER_TYPE_ID
     # Read type info
     if is_registered_by_name:
         namespace = read_namespace(meta_buffer)
         typename = read_typename(meta_buffer)
         # Look up the type_id from namespace and typename
-        type_info = resolver.get_typeinfo_by_name(namespace, typename)
+        type_info = resolver.get_type_info_by_name(namespace, typename)
         if type_info:
             type_id = type_info.type_id
             type_cls = type_info.cls
@@ -134,15 +136,16 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
             # Fallback to COMPATIBLE_STRUCT if not found
             type_id = TypeId.COMPATIBLE_STRUCT
     else:
-        type_id = meta_buffer.read_var_uint32()
-        if resolver.is_registered_by_id(type_id=type_id):
-            type_info = resolver.get_typeinfo_by_id(type_id)
+        type_id = meta_buffer.read_uint8()
+        user_type_id = meta_buffer.read_var_uint32()
+        if resolver.is_registered_by_id(type_id=type_id, user_type_id=user_type_id):
+            type_info = resolver.get_type_info_by_id(type_id, user_type_id=user_type_id)
             type_cls = type_info.cls
             namespace = type_info.decode_namespace()
             typename = type_info.decode_typename()
         else:
             namespace = "fory"
-            typename = f"Nonexistent{type_id}"
+            typename = f"Nonexistent{user_type_id if user_type_id != NO_USER_TYPE_ID else type_id}"
     name = namespace + "." + typename if namespace else typename
     # Read fields info if present
     field_infos = []
@@ -163,7 +166,16 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         type_cls = make_dataclass(class_name, field_definitions)
 
     # Create TypeDef object
-    type_def = TypeDef(namespace, typename, type_cls, type_id, field_infos, meta_data, is_compressed)
+    type_def = TypeDef(
+        namespace,
+        typename,
+        type_cls,
+        type_id,
+        field_infos,
+        meta_data,
+        is_compressed,
+        user_type_id=user_type_id,
+    )
     return type_def
 
 
@@ -248,7 +260,7 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
             tag_id = size_or_tag
 
         # Read field type info (no field name to read for TAG_ID)
-        xtype_id = buffer.read_var_uint32()
+        xtype_id = buffer.read_uint8()
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # For TAG_ID encoding, use tag_id as field name placeholder
@@ -263,7 +275,7 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
         encoding = FIELD_NAME_ENCODINGS[encoding_type]
 
         # Read field type info BEFORE field name (matching Java TypeDefDecoder order)
-        xtype_id = buffer.read_var_uint32()
+        xtype_id = buffer.read_uint8()
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # Read field name meta string

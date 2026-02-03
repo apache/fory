@@ -36,7 +36,7 @@ pub fn write_collection_type_info(
     context: &mut WriteContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    context.writer.write_var_uint32(collection_type_id);
+    context.writer.write_u8(collection_type_id as u8);
     Ok(())
 }
 
@@ -164,7 +164,7 @@ where
                     "Unable to determine concrete type for polymorphic collection elements",
                 )
             })?;
-            context.write_any_typeinfo(T::fory_static_type_id() as u32, type_id)?;
+            context.write_any_type_info(T::fory_static_type_id() as u32, type_id)?;
         } else {
             T::fory_write_type_info(context)?;
         }
@@ -206,7 +206,7 @@ pub fn read_collection_type_info(
     context: &mut ReadContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    let remote_collection_type_id = context.reader.read_varuint32()?;
+    let remote_collection_type_id = context.reader.read_u8()? as u32;
     if PRIMITIVE_ARRAY_TYPES.contains(&remote_collection_type_id) {
         return Err(Error::type_error(
             "Vec<number> belongs to the `number_array` type, \
@@ -236,7 +236,7 @@ where
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
     if !declared {
-        // context.read_any_typeinfo();
+        // context.read_any_type_info();
         // TODO check whether type info consistent with T
         T::fory_read_type_info(context)?;
     }
@@ -287,21 +287,9 @@ where
     // Read elements
     if is_same_type {
         let type_info = if !is_declared {
-            context.read_any_typeinfo()?
-        } else if T::fory_is_shared_ref() {
-            let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-            context
-                .get_type_resolver()
-                .get_type_info_by_id(type_id)
-                .ok_or_else(|| {
-                    Error::type_error(format!(
-                        "Type ID {} not found for shared ref element",
-                        type_id
-                    ))
-                })?
+            context.read_any_type_info()?
         } else {
-            let rs_type_id = std::any::TypeId::of::<T>();
-            context.get_type_resolver().get_type_info(&rs_type_id)?
+            T::fory_get_type_info(context.get_type_resolver())?
         };
         // All elements are same type
         if elem_ref_mode == RefMode::None {

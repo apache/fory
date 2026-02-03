@@ -17,7 +17,7 @@
 
 package addressbook;
 
-option go_package = "github.com/apache/fory/integration_tests/idl_tests/go/addressbook;addressbook";
+option go_package = "github.com/apache/fory/integration_tests/idl_tests/go/addressbook/generated;addressbook";
 
 import "complex_pb.proto";
 

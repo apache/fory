@@ -24,8 +24,8 @@ import java.lang.reflect.Field;
 import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.util.Preconditions;
 
 public class Types {
@@ -211,9 +211,10 @@ public class Types {
   /** Bound value for range checks (types with id >= BOUND are not internal types). */
   public static final int BOUND = 64;
 
+  public static final int INVALID_USER_TYPE_ID = -1;
+
   // Helper methods
   public static boolean isNamedType(int value) {
-    assert value < 0xff;
     switch (value) {
       case NAMED_STRUCT:
       case NAMED_COMPATIBLE_STRUCT:
@@ -226,8 +227,21 @@ public class Types {
     }
   }
 
+  /** Return true if type is user type and registered by id. */
+  public static boolean isUserTypeRegisteredById(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   public static boolean isStructType(int value) {
-    assert value < 0xff;
     return value == STRUCT
         || value == COMPATIBLE_STRUCT
         || value == NAMED_STRUCT
@@ -249,7 +263,7 @@ public class Types {
     return value == UNION || value == TYPED_UNION || value == NAMED_UNION;
   }
 
-  public static boolean isUserDefinedType(byte typeId) {
+  public static boolean isUserDefinedType(int typeId) {
     return isStructType(typeId)
         || isExtType(typeId)
         || isEnumType(typeId)
@@ -352,12 +366,12 @@ public class Types {
   }
 
   private static int getUnionDescriptorTypeId(Fory fory, Class<?> rawType) {
-    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(rawType, false);
-    if (classInfo == null) {
+    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(rawType, false);
+    if (typeInfo == null) {
       return -1;
     }
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    if (Types.isUnionType(internalTypeId)) {
+    int typeId = typeInfo.getTypeId();
+    if (Types.isUnionType(typeId)) {
       return Types.UNION;
     }
     return -1;
@@ -386,9 +400,9 @@ public class Types {
         return Types.FLOAT64;
       }
     }
-    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(clz, false);
-    if (classInfo != null) {
-      return classInfo.getTypeId();
+    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(clz, false);
+    if (typeInfo != null) {
+      return typeInfo.getTypeId();
     }
     return Types.UNKNOWN;
   }

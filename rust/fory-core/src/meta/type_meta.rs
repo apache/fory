@@ -34,23 +34,22 @@ use crate::util::to_snake_case;
 /// UNKNOWN (0) is used for polymorphic types (interfaces) in cross-language serialization.
 /// Similarly for ENUM and EXT variants, and byte array encodings.
 fn normalize_type_id_for_eq(type_id: u32) -> u32 {
-    let low = type_id & 0xff;
-    match low {
+    match type_id {
         // All struct variants and UNKNOWN normalize to STRUCT
-        _ if low == STRUCT
-            || low == COMPATIBLE_STRUCT
-            || low == NAMED_STRUCT
-            || low == NAMED_COMPATIBLE_STRUCT
-            || low == UNKNOWN =>
+        _ if type_id == STRUCT
+            || type_id == COMPATIBLE_STRUCT
+            || type_id == NAMED_STRUCT
+            || type_id == NAMED_COMPATIBLE_STRUCT
+            || type_id == UNKNOWN =>
         {
             STRUCT
         }
         // All enum variants normalize to ENUM
-        _ if low == ENUM || low == NAMED_ENUM => ENUM,
+        _ if type_id == ENUM || type_id == NAMED_ENUM => ENUM,
         // All ext variants normalize to EXT
-        _ if low == EXT || low == NAMED_EXT => EXT,
+        _ if type_id == EXT || type_id == NAMED_EXT => EXT,
         // Byte array encodings normalize to BINARY
-        _ if low == BINARY || low == INT8_ARRAY || low == UINT8_ARRAY => BINARY,
+        _ if type_id == BINARY || type_id == INT8_ARRAY || type_id == UINT8_ARRAY => BINARY,
         // Everything else stays the same
         _ => type_id,
     }
@@ -74,6 +73,7 @@ const META_SIZE_MASK: i64 = 0xff;
 const COMPRESS_META_FLAG: i64 = 0b1 << 9;
 const HAS_FIELDS_META_FLAG: i64 = 0b1 << 8;
 const NUM_HASH_BITS: i8 = 50;
+const NO_USER_TYPE_ID: u32 = u32::MAX;
 
 pub static NAMESPACE_ENCODINGS: &[Encoding] = &[
     Encoding::Utf8,
@@ -97,6 +97,7 @@ static FIELD_NAME_ENCODINGS: &[Encoding] = &[
 #[derive(Debug, Eq, Clone)]
 pub struct FieldType {
     pub type_id: u32,
+    pub user_type_id: u32,
     pub nullable: bool,
     pub ref_tracking: bool,
     pub generics: Vec<FieldType>,
@@ -106,6 +107,7 @@ impl FieldType {
     pub fn new(type_id: u32, nullable: bool, generics: Vec<FieldType>) -> Self {
         FieldType {
             type_id,
+            user_type_id: NO_USER_TYPE_ID,
             nullable,
             ref_tracking: false,
             generics,
@@ -120,6 +122,7 @@ impl FieldType {
     ) -> Self {
         FieldType {
             type_id,
+            user_type_id: NO_USER_TYPE_ID,
             nullable,
             ref_tracking,
             generics,
@@ -128,6 +131,11 @@ impl FieldType {
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
         let mut header = self.type_id;
+        if header == NAMED_ENUM {
+            header = ENUM;
+        } else if header == TypeId::NAMED_UNION as u32 || header == TypeId::TYPED_UNION as u32 {
+            header = TypeId::UNION as u32;
+        }
         if write_flag {
             header <<= 2;
             if nullable {
@@ -136,8 +144,10 @@ impl FieldType {
             if self.ref_tracking {
                 header |= 1;
             }
+            writer.write_var_uint32(header);
+        } else {
+            writer.write_u8(header as u8);
         }
-        writer.write_var_uint32(header);
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 if let Some(generic) = self.generics.first() {
@@ -165,8 +175,12 @@ impl FieldType {
         read_flag: bool,
         nullable: Option<bool>,
     ) -> Result<Self, Error> {
-        let header = reader.read_varuint32()?;
-        let type_id;
+        let header = if read_flag {
+            reader.read_varuint32()?
+        } else {
+            reader.read_u8()? as u32
+        };
+        let mut type_id;
         let _nullable;
         let _ref_tracking;
         if read_flag {
@@ -178,11 +192,18 @@ impl FieldType {
             _nullable = nullable.unwrap();
             _ref_tracking = false;
         }
+        if type_id == NAMED_ENUM {
+            type_id = ENUM;
+        } else if type_id == TypeId::NAMED_UNION as u32 || type_id == TypeId::TYPED_UNION as u32 {
+            type_id = TypeId::UNION as u32;
+        }
+        let user_type_id = NO_USER_TYPE_ID;
         Ok(match type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None)?;
                 Self {
                     type_id,
+                    user_type_id,
                     nullable: _nullable,
                     ref_tracking: _ref_tracking,
                     generics: vec![generic],
@@ -193,6 +214,7 @@ impl FieldType {
                 let val_generic = Self::from_bytes(reader, true, None)?;
                 Self {
                     type_id,
+                    user_type_id,
                     nullable: _nullable,
                     ref_tracking: _ref_tracking,
                     generics: vec![key_generic, val_generic],
@@ -200,6 +222,7 @@ impl FieldType {
             }
             _ => Self {
                 type_id,
+                user_type_id,
                 nullable: _nullable,
                 ref_tracking: _ref_tracking,
                 generics: vec![],
@@ -399,8 +422,13 @@ impl PartialEq for FieldType {
     fn eq(&self, other: &Self) -> bool {
         // Normalize type IDs for comparison to handle cross-language schema evolution.
         // This allows UNKNOWN (0) polymorphic types to match STRUCT (15) in Rust.
-        normalize_type_id_for_eq(self.type_id) == normalize_type_id_for_eq(other.type_id)
-            && self.generics == other.generics
+        if normalize_type_id_for_eq(self.type_id) != normalize_type_id_for_eq(other.type_id) {
+            return false;
+        }
+        if self.generics != other.generics {
+            return false;
+        }
+        true
     }
 }
 
@@ -409,6 +437,7 @@ pub struct TypeMeta {
     // assigned valid value and used, only during deserializing
     hash: i64,
     type_id: u32,
+    user_type_id: u32,
     namespace: Rc<MetaString>,
     type_name: Rc<MetaString>,
     register_by_name: bool,
@@ -419,6 +448,7 @@ pub struct TypeMeta {
 impl TypeMeta {
     pub fn new(
         type_id: u32,
+        user_type_id: u32,
         namespace: MetaString,
         type_name: MetaString,
         register_by_name: bool,
@@ -427,6 +457,7 @@ impl TypeMeta {
         let mut meta = TypeMeta {
             hash: 0,
             type_id,
+            user_type_id,
             namespace: Rc::from(namespace),
             type_name: Rc::from(type_name),
             register_by_name,
@@ -447,6 +478,11 @@ impl TypeMeta {
     #[inline(always)]
     pub fn get_type_id(&self) -> u32 {
         self.type_id
+    }
+
+    #[inline(always)]
+    pub fn get_user_type_id(&self) -> u32 {
+        self.user_type_id
     }
 
     #[inline(always)]
@@ -471,19 +507,16 @@ impl TypeMeta {
 
     #[inline(always)]
     pub fn empty() -> Result<TypeMeta, Error> {
-        let mut meta = TypeMeta {
+        Ok(TypeMeta {
             hash: 0,
             type_id: 0,
+            user_type_id: NO_USER_TYPE_ID,
             namespace: Rc::from(MetaString::get_empty().clone()),
             type_name: Rc::from(MetaString::get_empty().clone()),
             register_by_name: false,
             field_infos: vec![],
             bytes: vec![],
-        };
-        let (bytes, meta_hash) = meta.to_bytes()?;
-        meta.bytes = bytes;
-        meta.hash = meta_hash;
-        Ok(meta)
+        })
     }
 
     /// Creates a deep clone with new Rc instances.
@@ -492,6 +525,7 @@ impl TypeMeta {
         TypeMeta {
             hash: self.hash,
             type_id: self.type_id,
+            user_type_id: self.user_type_id,
             namespace: Rc::new((*self.namespace).clone()),
             type_name: Rc::new((*self.type_name).clone()),
             register_by_name: self.register_by_name,
@@ -502,12 +536,20 @@ impl TypeMeta {
 
     pub(crate) fn from_fields(
         type_id: u32,
+        user_type_id: u32,
         namespace: MetaString,
         type_name: MetaString,
         register_by_name: bool,
         field_infos: Vec<FieldInfo>,
     ) -> Result<TypeMeta, Error> {
-        TypeMeta::new(type_id, namespace, type_name, register_by_name, field_infos)
+        TypeMeta::new(
+            type_id,
+            user_type_id,
+            namespace,
+            type_name,
+            register_by_name,
+            field_infos,
+        )
     }
 
     fn write_name(writer: &mut Writer, name: &MetaString, encodings: &[Encoding]) {
@@ -561,7 +603,6 @@ impl TypeMeta {
         // meta_bytes:| meta_header | fields meta |
         let mut writer = Writer::from_buffer(&mut buffer);
         let num_fields = self.field_infos.len();
-        let _internal_id = self.type_id & 0xff;
         // meta_header: | unuse:2 bits | is_register_by_id:1 bit | num_fields:4 bits |
         let mut meta_header: u8 = min(num_fields, SMALL_NUM_FIELDS_THRESHOLD) as u8;
         if self.register_by_name {
@@ -575,7 +616,13 @@ impl TypeMeta {
             self.write_namespace(&mut writer);
             self.write_type_name(&mut writer);
         } else {
-            writer.write_var_uint32(self.type_id);
+            writer.write_u8(self.type_id as u8);
+            if self.user_type_id == NO_USER_TYPE_ID {
+                return Err(Error::type_error(
+                    "User type id is required for this type id",
+                ));
+            }
+            writer.write_var_uint32(self.user_type_id);
         }
         for field in self.field_infos.iter() {
             writer.write_bytes(field.to_bytes()?.as_slice());
@@ -618,7 +665,7 @@ impl TypeMeta {
         }
 
         fn get_primitive_type_size(type_id_num: u32) -> i32 {
-            let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+            let type_id = TypeId::try_from(type_id_num as u8).unwrap();
             match type_id {
                 TypeId::BOOL => 1,
                 TypeId::INT8 => 1,
@@ -712,7 +759,8 @@ impl TypeMeta {
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
             num_fields += reader.read_varuint32()? as usize;
         }
-        let type_id;
+        let mut type_id;
+        let mut user_type_id = NO_USER_TYPE_ID;
         let namespace;
         let type_name;
         if register_by_name {
@@ -720,7 +768,8 @@ impl TypeMeta {
             type_name = Self::read_type_name(reader)?;
             type_id = 0;
         } else {
-            type_id = reader.read_varuint32()?;
+            type_id = reader.read_u8()? as u32;
+            user_type_id = reader.read_varuint32()?;
             let empty_name = MetaString::default();
             namespace = empty_name.clone();
             type_name = empty_name;
@@ -736,6 +785,11 @@ impl TypeMeta {
             if let Some(type_info_current) =
                 type_resolver.get_type_info_by_name(&namespace.original, &type_name.original)
             {
+                type_id = type_info_current.get_type_id() as u32;
+                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
+            }
+        } else if user_type_id != NO_USER_TYPE_ID {
+            if let Some(type_info_current) = type_resolver.get_user_type_info_by_id(user_type_id) {
                 Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {
@@ -744,6 +798,7 @@ impl TypeMeta {
         // if no type found, keep all fields id as -1 to be skipped.
         TypeMeta::new(
             type_id,
+            user_type_id,
             namespace,
             type_name,
             register_by_name,

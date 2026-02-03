@@ -129,11 +129,11 @@ def test_big_chunk_dict(track_ref):
 @pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
 def test_basic_serializer(language):
     fory = Fory(language=language, ref=True)
-    typeinfo = fory.type_resolver.get_typeinfo(datetime.datetime)
+    typeinfo = fory.type_resolver.get_type_info(datetime.datetime)
     assert isinstance(typeinfo.serializer, (TimestampSerializer, serialization.TimestampSerializer))
     if language == Language.XLANG:
         assert typeinfo.type_id == TypeId.TIMESTAMP
-    typeinfo = fory.type_resolver.get_typeinfo(datetime.date)
+    typeinfo = fory.type_resolver.get_type_info(datetime.date)
     assert isinstance(typeinfo.serializer, (DateSerializer, serialization.DateSerializer))
     if language == Language.XLANG:
         assert typeinfo.type_id == TypeId.DATE

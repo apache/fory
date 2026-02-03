@@ -175,10 +175,14 @@ public final class LoaderBinding {
     bindingCallback = bindingCallback.andThen(fory -> fory.register(clz));
   }
 
-  public void register(Class<?> clz, int id) {
-    Preconditions.checkArgument(id < Short.MAX_VALUE);
-    foryMap.values().forEach(fory -> fory.register(clz, (short) id));
-    bindingCallback = bindingCallback.andThen(fory -> fory.register(clz, (short) id));
+  public void register(Class<?> clz, long id) {
+    long unsignedId = id < 0 ? id & 0xffff_ffffL : id;
+    Preconditions.checkArgument(
+        unsignedId >= 0 && unsignedId <= 0xffff_fffEL,
+        "User type id must be in range [0, 0xfffffffe]");
+    int checkedId = (int) unsignedId;
+    foryMap.values().forEach(fory -> fory.register(clz, checkedId));
+    bindingCallback = bindingCallback.andThen(fory -> fory.register(clz, checkedId));
   }
 
   public void setBindingCallback(Consumer<Fory> bindingCallback) {

@@ -173,7 +173,7 @@ inline Tuple read_tuple_elements_heterogeneous(ReadContext &ctx,
   // skip any extra elements beyond tuple size
   while (index < length && !ctx.has_error()) {
     // skip value - read type and skip data
-    ctx.read_any_typeinfo(ctx.error());
+    ctx.read_any_type_info(ctx.error());
     ++index;
   }
 
@@ -220,11 +220,11 @@ template <> struct Serializer<std::tuple<>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -239,7 +239,7 @@ template <> struct Serializer<std::tuple<>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
     write_data(std::tuple<>(), ctx);
   }
@@ -261,7 +261,7 @@ template <> struct Serializer<std::tuple<>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::tuple<>();
       }
@@ -296,11 +296,11 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
   using IndexSeq = std::index_sequence_for<Ts...>;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -315,7 +315,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
     write_data_generic(tuple, ctx, has_generics);
   }
@@ -357,7 +357,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return TupleType{};
       }
@@ -397,7 +397,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
 
     if (is_same_type) {
       // Read element type info once
-      ctx.read_any_typeinfo(ctx.error());
+      ctx.read_any_type_info(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return TupleType{};
       }

@@ -15,14 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package tree;
+package auto_id;
 
-option go_package = "github.com/apache/fory/integration_tests/idl_tests/go/tree/generated;tree";
+enum Status {
+    UNKNOWN = 0;
+    OK = 1;
+}
 
-message TreeNode {
+message Envelope {
     string id = 1;
-    string name = 2;
 
-    repeated ref TreeNode children = 3;
-    ref(weak=true) TreeNode parent = 4; // back-pointer
+    message Payload {
+        int32 value = 1;
+    }
+
+    union Detail {
+        Payload payload = 1;
+        string note = 2;
+    }
+
+    Payload payload = 2;
+    Detail detail = 3;
+    Status status = 4;
+}
+
+union Wrapper {
+    Envelope envelope = 1;
+    string raw = 2;
 }

@@ -521,6 +521,9 @@ class GoGenerator(BaseGenerator):
         lines.append(")")
         lines.append("")
 
+        comment = self.format_type_id_comment(union, "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"type {type_name} struct {{")
         lines.append(f"\tcase_ {case_type}")
         lines.append("\tvalue any")
@@ -745,6 +748,9 @@ class GoGenerator(BaseGenerator):
         type_name = self.get_type_name(message.name, parent_stack)
         lineage = (parent_stack or []) + [message]
 
+        comment = self.format_type_id_comment(message, "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"type {type_name} struct {{")
 
         # Fields
@@ -1167,7 +1173,7 @@ class GoGenerator(BaseGenerator):
         code_name = self.get_type_name(enum.name, parent_stack)
         type_name = self.get_registration_type_name(enum.name, parent_stack)
 
-        if enum.type_id is not None:
+        if self.should_register_by_id(enum):
             lines.append(
                 f"\tif err := f.RegisterEnum({code_name}(0), {enum.type_id}); err != nil {{"
             )
@@ -1210,7 +1216,7 @@ class GoGenerator(BaseGenerator):
             )
 
         # Register this message
-        if message.type_id is not None:
+        if self.should_register_by_id(message):
             lines.append(
                 f"\tif err := f.RegisterStruct({code_name}{{}}, {message.type_id}); err != nil {{"
             )
@@ -1243,7 +1249,7 @@ class GoGenerator(BaseGenerator):
             )
         serializer_expr = f"fory.NewUnionSerializer({', '.join(cases)})"
 
-        if union.type_id is not None:
+        if self.should_register_by_id(union):
             lines.append(
                 f"\tif err := f.RegisterUnion({code_name}{{}}, {union.type_id}, {serializer_expr}); err != nil {{"
             )

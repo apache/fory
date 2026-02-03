@@ -67,18 +67,14 @@ public class MapSerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "basicMultiConfigFory")
   public void basicTestCaseWithMultiConfig(
-      boolean trackingRef,
-      boolean codeGen,
-      boolean scopedMetaShare,
-      CompatibleMode compatibleMode) {
+      boolean trackingRef, boolean codeGen, boolean compatible) {
     Fory fory =
         builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(trackingRef)
             .requireClassRegistration(false)
             .withCodegen(codeGen)
-            .withCompatibleMode(compatibleMode)
-            .withScopedMetaShare(scopedMetaShare)
+            .withCompatible(compatible)
             .build();
 
     // testBasicMap

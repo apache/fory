@@ -47,6 +47,8 @@ USE_TYPE_NAME = 0
 USE_TYPE_ID = 1
 # preserve 0 as flag for type id not set in TypeInfo`
 NO_TYPE_ID = 0
+# 0xffffffff means "unset" for user type id.
+NO_USER_TYPE_ID = 0xFFFFFFFF
 INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
@@ -523,27 +525,27 @@ class Fory:
         if self.ref_resolver.write_ref_or_null(buffer, obj):
             return
         if typeinfo is None:
-            typeinfo = self.type_resolver.get_typeinfo(cls)
-        self.type_resolver.write_typeinfo(buffer, typeinfo)
+            typeinfo = self.type_resolver.get_type_info(cls)
+        self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.write(buffer, obj)
 
     def write_no_ref(self, buffer, obj):
         cls = type(obj)
         if cls is str:
-            buffer.write_var_uint32(STRING_TYPE_ID)
+            buffer.write_uint8(STRING_TYPE_ID)
             buffer.write_string(obj)
             return
         elif cls is int:
-            buffer.write_var_uint32(INT64_TYPE_ID)
+            buffer.write_uint8(INT64_TYPE_ID)
             buffer.write_varint64(obj)
             return
         elif cls is bool:
-            buffer.write_var_uint32(BOOL_TYPE_ID)
+            buffer.write_uint8(BOOL_TYPE_ID)
             buffer.write_bool(obj)
             return
         else:
-            typeinfo = self.type_resolver.get_typeinfo(cls)
-            self.type_resolver.write_typeinfo(buffer, typeinfo)
+            typeinfo = self.type_resolver.get_type_info(cls)
+            self.type_resolver.write_type_info(buffer, typeinfo)
             typeinfo.serializer.write(buffer, obj)
 
     def xwrite_ref(self, buffer, obj, serializer=None):
@@ -562,8 +564,8 @@ class Fory:
             serializer.xwrite(buffer, obj)
             return
         cls = type(obj)
-        typeinfo = self.type_resolver.get_typeinfo(cls)
-        self.type_resolver.write_typeinfo(buffer, typeinfo)
+        typeinfo = self.type_resolver.get_type_info(cls)
+        self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.xwrite(buffer, obj)
 
     def deserialize(
@@ -641,7 +643,7 @@ class Fory:
         ref_id = ref_resolver.try_preserve_ref_id(buffer)
         # indicates that the object is first read.
         if ref_id >= NOT_NULL_VALUE_FLAG:
-            typeinfo = self.type_resolver.read_typeinfo(buffer)
+            typeinfo = self.type_resolver.read_type_info(buffer)
             self.inc_depth()
             o = typeinfo.serializer.read(buffer)
             self.dec_depth()
@@ -652,7 +654,7 @@ class Fory:
 
     def read_no_ref(self, buffer):
         """Deserialize not-null and non-reference object from buffer."""
-        typeinfo = self.type_resolver.read_typeinfo(buffer)
+        typeinfo = self.type_resolver.read_type_info(buffer)
         self.inc_depth()
         o = typeinfo.serializer.read(buffer)
         self.dec_depth()
@@ -677,7 +679,7 @@ class Fory:
 
     def xread_no_ref(self, buffer, serializer=None):
         if serializer is None:
-            serializer = self.type_resolver.read_typeinfo(buffer).serializer
+            serializer = self.type_resolver.read_type_info(buffer).serializer
         # Push -1 to read_ref_ids so reference() can pop it and skip reference tracking
         # This handles the case where xread_no_ref is called directly without xread_ref
         if self.ref_tracking:
@@ -687,7 +689,7 @@ class Fory:
     def _xread_no_ref_internal(self, buffer, serializer):
         """Internal method to read without pushing to read_ref_ids."""
         if serializer is None:
-            serializer = self.type_resolver.read_typeinfo(buffer).serializer
+            serializer = self.type_resolver.read_type_info(buffer).serializer
         self.inc_depth()
         o = serializer.xread(buffer)
         self.dec_depth()
@@ -746,8 +748,8 @@ class Fory:
         if self.ref_resolver.write_ref_or_null(buffer, value):
             return
         if typeinfo is None:
-            typeinfo = self.type_resolver.get_typeinfo(type(value))
-        self.type_resolver.write_typeinfo(buffer, typeinfo)
+            typeinfo = self.type_resolver.get_type_info(type(value))
+        self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.write(buffer, value)
 
     def read_ref_pyobject(self, buffer):

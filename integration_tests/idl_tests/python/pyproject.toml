@@ -29,5 +29,5 @@ license = {text = "Apache-2.0"}
 dependencies = ["pyfory"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 include = ["idl_tests"]

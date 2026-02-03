@@ -20,6 +20,7 @@
 import 'dart:collection';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/exception/registration_exception.dart' show DuplicatedTagRegistrationException, DuplicatedTypeRegistrationException;
+import 'package:fory/src/collection/long_long_key.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_pool.dart';
@@ -41,6 +42,7 @@ class ForyContext {
   final ForyConfig conf;
   final Map<String, TypeInfo> tag2TypeInfo;
   final Map<Type, TypeInfo> type2TypeInfo;
+  final Map<LongLongKey, TypeInfo> userTypeId2TypeInfo;
   late final List<TypeInfo?> objTypeId2TypeInfo;
 
   late final Serializer abstractListSer;
@@ -48,7 +50,8 @@ class ForyContext {
 
   ForyContext(this.conf)
     : tag2TypeInfo = HashMap(),
-    type2TypeInfo = HashMap();
+    type2TypeInfo = HashMap(),
+    userTypeId2TypeInfo = HashMap();
 
   void initForDefaultTypes() {
     type2TypeInfo.addEntries(_defaultTypeInfos);
@@ -75,5 +78,8 @@ class ForyContext {
     }
     tag2TypeInfo[typeInfo.tag!] = typeInfo;
     type2TypeInfo[typeInfo.dartType] = typeInfo;
+    if (typeInfo.objType.needsUserTypeId() && typeInfo.userTypeId != kInvalidUserTypeId) {
+      userTypeId2TypeInfo[LongLongKey(typeInfo.objType.id, typeInfo.userTypeId)] = typeInfo;
+    }
   }
 }

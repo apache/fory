@@ -67,12 +67,19 @@ The package declaration defines the namespace for all types in the file.
 package com.example.models;
 ```
 
+You can optionally specify a package alias used for auto-generated type IDs:
+
+```protobuf
+package com.example.models alias models_v1;
+```
+
 **Rules:**
 
 - Optional but recommended
 - Must appear before any type definitions
 - Only one package declaration per file
 - Used for namespace-based type registration
+- Package alias is used for auto-ID hashing
 
 **Language Mapping:**
 
@@ -262,6 +269,7 @@ FDL supports protobuf-style extension options for Fory-specific configuration:
 ```protobuf
 option (fory).use_record_for_java_message = true;
 option (fory).polymorphism = true;
+option (fory).enable_auto_type_id = true;
 ```
 
 **Available File Options:**
@@ -270,6 +278,7 @@ option (fory).polymorphism = true;
 | ----------------------------- | ------ | ------------------------------------------------------------ |
 | `use_record_for_java_message` | bool   | Generate Java records instead of classes                     |
 | `polymorphism`                | bool   | Enable polymorphism for all types                            |
+| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)  |
 | `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase` |
 
 See the [Fory Extension Options](#fory-extension-options) section for complete documentation of message, enum, and field options.
@@ -426,7 +435,7 @@ enum Status {
 }
 ```
 
-### With Type ID
+### With Explicit Type ID
 
 ```protobuf
 enum Status [id=100] {
@@ -508,7 +517,7 @@ enum_value   := IDENTIFIER '=' INTEGER ';'
 - Enum names must be unique within the file
 - Enum values must have explicit integer assignments
 - Value integers must be unique within the enum (no aliases)
-- Type ID (`[id=100]`) is optional but recommended for cross-language use
+- Type ID (`[id=100]`) is optional for enums but recommended for cross-language use
 
 **Example with All Features:**
 
@@ -538,7 +547,7 @@ message Person {
 }
 ```
 
-### With Type ID
+### With Explicit Type ID
 
 ```protobuf
 message Person [id=101] {
@@ -546,6 +555,34 @@ message Person [id=101] {
     int32 age = 2;
 }
 ```
+
+### Without Explicit Type ID
+
+```protobuf
+message Person {  // Auto-generated when enable_auto_type_id = true
+    string name = 1;
+    int32 age = 2;
+}
+```
+
+### Type Registration
+
+FDL uses numeric type IDs for message, union, and enum registration. By default,
+if you omit `id`, the compiler auto-generates one using
+`MurmurHash3(utf8(package.type_name))` (32-bit). If a package/type name alias is
+specified, the alias is used instead. When `enable_auto_type_id = false`, types
+without explicit IDs are registered by namespace and name instead of receiving
+generated IDs.
+
+```protobuf
+message User [id=100] { ... }  // Registered with ID 100
+message Config { ... }         // ID auto-generated when enable_auto_type_id = true
+```
+
+Namespace-based registration is still available when calling runtime APIs
+directly. IDL-generated code uses explicit IDs when provided. If an auto-generated ID
+conflicts, the compiler raises an error and asks you to specify an explicit `id` or an
+`alias` to change the hash source.
 
 ### Reserved Fields
 
@@ -581,6 +618,15 @@ type_option  := IDENTIFIER '=' option_value
 message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
 nested_type  := enum_def | message_def
 ```
+
+**Rules:**
+
+- Message and union type IDs are required for ID-based registration. If omitted and
+  `enable_auto_type_id = true` (default), they are auto-generated (see [Type IDs](#type-ids));
+  if `enable_auto_type_id = false`, they are registered by namespace and name.
+- Numeric type IDs (manual or auto-generated) must be globally unique (including nested types).
+  If an auto-generated ID conflicts, the compiler raises an error and asks for an explicit `id`
+  or an `alias` to change the hash source.
 
 ## Nested Types
 
@@ -668,7 +714,9 @@ message OtherMessage {
 
 - Nested type names must be unique within their parent message
 - Nested types can have their own type IDs
-- Type IDs must be globally unique (including nested types)
+- Numeric type IDs must be globally unique (including nested types); if an auto-generated ID
+  conflicts, the compiler raises an error and asks for an explicit `id` or an `alias`
+  (auto-generation happens only when `enable_auto_type_id = true`)
 - Within a message, you can reference nested types by simple name
 - From outside, use the qualified name (Parent.Child)
 
@@ -700,7 +748,11 @@ message Person [id=100] {
 - Cases cannot be `optional`, `repeated`, or `ref`
 - Union cases do not support field options
 - Case types can be primitives, enums, messages, or other named types
-- Union type IDs (`[id=...]`) are optional but recommended for cross-language use
+- Union type IDs (`[id=...]`) are required for ID-based registration. If omitted and
+  `enable_auto_type_id = true`, the compiler auto-generates one using
+  `MurmurHash3(utf8(package.type_name))` (32-bit); otherwise, unions are registered
+  by namespace and name.
+- Use `[alias="..."]` to change the hash source without renaming the union
 
 **Grammar:**
 
@@ -933,36 +985,57 @@ message Example {
 
 ## Type IDs
 
-Type IDs enable efficient cross-language serialization:
+Type IDs enable efficient cross-language serialization and are used for
+messages, unions, and enums. When `enable_auto_type_id = true` (default) and
+`id` is omitted, the compiler auto-generates one using
+`MurmurHash3(utf8(package.type_name))` (32-bit) and annotates it in generated
+code. When `enable_auto_type_id = false`, types without explicit IDs are
+registered by namespace and name instead. Collisions are detected at
+compile-time across the current file and all imports; when a collision occurs,
+the compiler raises an error and asks for an explicit `id` or an `alias`.
 
 ```protobuf
 enum Color [id=100] { ... }
 message User [id=101] { ... }
-message Order [id=102] { ... }
+union Event [id=102] { ... }
 ```
 
-### With Type ID (Recommended)
+Enum type IDs remain optional; if omitted they are auto-generated using the same
+hash when `enable_auto_type_id = true`.
+
+### With Explicit Type ID
 
 ```protobuf
 message User [id=101] { ... }
 message User [id=101, deprecated=true] { ... }  // Multiple options
 ```
 
-- Serialized as compact integer
-- Fast lookup during deserialization
-- Must be globally unique across all types
-- Recommended for production use
-
-### Without Type ID
+### Without Explicit Type ID
 
 ```protobuf
-message Config { ... }
+message Config { ... }  // Auto-generated when enable_auto_type_id = true
 ```
 
-- Registered using namespace + name
-- More flexible for development
-- Slightly larger serialized size
-- Uses package as namespace: `"package.Config"`
+You can set `[alias="..."]` to change the hash source without renaming the type.
+
+### Pay-as-you-go principle
+
+Type ID Specification
+
+- IDs: Messages, unions, and enums use numeric IDs; if omitted and
+  `enable_auto_type_id = true`, the compiler auto-generates one.
+- Auto-generation: If no ID is provided, fory generates one using
+  MurmurHash3(utf8(package.type_name)) (32-bit). If a package alias is specified,
+  the alias is used instead of the package name; if a type alias is specified,
+  the alias is used instead of the type name.
+- Space Efficiency:
+  - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
+  - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
+- Conflict Resolution: While the collision probability is extremely low, conflicts are detected
+  at compile-time. The compiler raises an error and asks you to specify an explicit `id` or use
+  the `alias` option to change the hash source.
+
+Explicit is better than implicit, but automation is better than toil.
 
 ### ID Assignment Strategy
 
@@ -1048,7 +1121,7 @@ message Order [id=204] {
     optional timestamp shipped_at = 9;
 }
 
-// Config without type ID (uses namespace registration)
+// Config without explicit type ID (auto-generated when enable_auto_type_id = true)
 message ShopConfig {
     string store_name = 1;
     string currency = 2;
@@ -1066,12 +1139,13 @@ FDL supports protobuf-style extension options for Fory-specific configuration. T
 ```protobuf
 option (fory).use_record_for_java_message = true;
 option (fory).polymorphism = true;
+option (fory).enable_auto_type_id = true;
 ```
 
-| Option                        | Type | Description                              |
-| ----------------------------- | ---- | ---------------------------------------- |
-| `use_record_for_java_message` | bool | Generate Java records instead of classes |
-| `polymorphism`                | bool | Enable polymorphism for all types        |
+| Option                        | Type | Description                                                 |
+| ----------------------------- | ---- | ----------------------------------------------------------- |
+| `use_record_for_java_message` | bool | Generate Java records instead of classes                    |
+| `enable_auto_type_id`         | bool | Auto-generate numeric type IDs when omitted (default: true) |
 
 ### Message-Level Fory Options
 
@@ -1086,15 +1160,30 @@ message MyMessage {
 }
 ```
 
-| Option                | Type   | Description                                                                         |
-| --------------------- | ------ | ----------------------------------------------------------------------------------- |
-| `id`                  | int    | Type ID for serialization (sets type_id)                                            |
-| `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct |
-| `use_record_for_java` | bool   | Generate Java record for this message                                               |
-| `deprecated`          | bool   | Mark this message as deprecated                                                     |
-| `namespace`           | string | Custom namespace for type registration                                              |
+| Option                | Type   | Description                                                                          |
+| --------------------- | ------ | ------------------------------------------------------------------------------------ |
+| `id`                  | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true) |
+| `alias`               | string | Alternate name used as hash source for auto-generated IDs                            |
+| `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct  |
+| `use_record_for_java` | bool   | Generate Java record for this message                                                |
+| `deprecated`          | bool   | Mark this message as deprecated                                                      |
+| `namespace`           | string | Custom namespace for type registration                                               |
 
 **Note:** `option (fory).id = 100` is equivalent to the inline syntax `message MyMessage [id=100]`.
+
+### Union-Level Fory Options
+
+```protobuf
+union MyUnion [id=100, alias="MyUnionAlias"] {
+    string text = 1;
+}
+```
+
+| Option       | Type   | Description                                                                          |
+| ------------ | ------ | ------------------------------------------------------------------------------------ |
+| `id`         | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true) |
+| `alias`      | string | Alternate name used as hash source for auto-generated IDs                            |
+| `deprecated` | bool   | Mark this union as deprecated                                                        |
 
 ### Enum-Level Fory Options
 
@@ -1209,7 +1298,7 @@ message ForyFieldOptions {
 ```
 file         := [package_decl] file_option* import_decl* type_def*
 
-package_decl := 'package' package_name ';'
+package_decl := 'package' package_name ['alias' package_name] ';'
 package_name := IDENTIFIER ('.' IDENTIFIER)*
 
 file_option  := 'option' option_name '=' option_value ';'

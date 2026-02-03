@@ -121,6 +121,7 @@ function getPrimitiveTypeSize(typeId: number) {
 type InnerFieldInfoOptions = { key?: InnerFieldInfo; value?: InnerFieldInfo; inner?: InnerFieldInfo };
 interface InnerFieldInfo {
   typeId: number;
+  userTypeId: number;
   trackingRef: boolean;
   nullable: boolean;
   options?: InnerFieldInfoOptions;
@@ -129,6 +130,7 @@ class FieldInfo {
   constructor(
     public fieldName: string,
     public typeId: number,
+    public userTypeId = -1,
     public trackingRef = false,
     public nullable = false,
     public options: InnerFieldInfoOptions = {},
@@ -153,6 +155,11 @@ class FieldInfo {
 
   static writeTypeId(writer: BinaryWriter, typeInfo: InnerFieldInfo, writeFlags = false) {
     let { typeId } = typeInfo;
+    if (typeId === TypeId.NAMED_ENUM) {
+      typeId = TypeId.ENUM;
+    } else if (typeId === TypeId.NAMED_UNION || typeId === TypeId.TYPED_UNION) {
+      typeId = TypeId.UNION;
+    }
     const { trackingRef, nullable } = typeInfo;
     if (writeFlags) {
       typeId = (typeId << 2);
@@ -162,9 +169,11 @@ class FieldInfo {
       if (trackingRef) {
         typeId |= 0b1;
       }
+      writer.writeVarUint32Small7(typeId);
+    } else {
+      writer.uint8(typeId);
     }
-    writer.writeVarUint32Small7(typeId);
-    switch (typeInfo.typeId & 0xff) {
+    switch (typeInfo.typeId) {
       case TypeId.LIST:
         FieldInfo.writeTypeId(writer, typeInfo.options!.inner!, true);
         break;
@@ -204,6 +213,7 @@ export class TypeMeta {
     typeId: number;
     typeName: string;
     namespace: string;
+    userTypeId: number;
   }) {
   }
 
@@ -213,13 +223,27 @@ export class TypeMeta {
 
   static fromTypeInfo(typeInfo: StructTypeInfo) {
     let fieldInfo = Object.entries(typeInfo.options.props!).map(([fieldName, typeInfo]) => {
-      return new FieldInfo(fieldName, typeInfo.typeId, false, false, typeInfo.options);
+      let fieldTypeId = typeInfo.typeId;
+      if (fieldTypeId === TypeId.NAMED_ENUM) {
+        fieldTypeId = TypeId.ENUM;
+      } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
+        fieldTypeId = TypeId.UNION;
+      }
+      return new FieldInfo(
+        fieldName,
+        fieldTypeId,
+        -1,
+        false,
+        false,
+        typeInfo.options,
+      );
     });
     fieldInfo = TypeMeta.groupFieldsByType(fieldInfo);
     return new TypeMeta(fieldInfo, {
       typeId: typeInfo.typeId,
       namespace: typeInfo.namespace,
       typeName: typeInfo.typeName,
+      userTypeId: typeInfo.userTypeId ?? -1,
     });
   }
 
@@ -244,6 +268,7 @@ export class TypeMeta {
     }
 
     let typeId: number;
+    let userTypeId = -1;
     let namespace = "";
     let typeName = "";
 
@@ -253,7 +278,8 @@ export class TypeMeta {
       typeName = this.readTypeName(reader);
       typeId = TypeId.NAMED_STRUCT; // Default for named types
     } else {
-      typeId = reader.varUInt32();
+      typeId = reader.uint8();
+      userTypeId = reader.varUInt32();
     }
 
     // Read fields
@@ -268,6 +294,7 @@ export class TypeMeta {
       typeId,
       namespace,
       typeName,
+      userTypeId,
     };
 
     return new TypeMeta(fields, typeInfo);
@@ -284,7 +311,7 @@ export class TypeMeta {
     }
 
     // Read type ID
-    const { typeId, trackingRef, nullable, options } = this.readTypeId(reader);
+    const { typeId, userTypeId, trackingRef, nullable, options } = this.readTypeId(reader);
 
     let fieldName: string;
     if (encodingFlags === 3) {
@@ -296,29 +323,42 @@ export class TypeMeta {
       fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
     }
 
-    return new FieldInfo(fieldName, typeId, trackingRef, nullable, options);
+    return new FieldInfo(fieldName, typeId, userTypeId, trackingRef, nullable, options);
   }
 
   private static readTypeId(reader: BinaryReader, readFlag = false): InnerFieldInfo {
     const options: InnerFieldInfoOptions = {};
-    let typeId = reader.readVarUint32Small7();
     let nullable = false;
     let trackingRef = false;
     if (readFlag) {
+      let typeId = reader.readVarUint32Small7();
       nullable = Boolean(typeId & 0b10);
       trackingRef = Boolean(typeId & 0b1);
       typeId = typeId >> 2;
+      if (typeId === TypeId.NAMED_ENUM) {
+        typeId = TypeId.ENUM;
+      } else if (typeId === TypeId.NAMED_UNION || typeId === TypeId.TYPED_UNION) {
+        typeId = TypeId.UNION;
+      }
+      this.readNestedTypeInfo(reader, typeId, options);
+      return { typeId, userTypeId: -1, nullable, trackingRef, options };
     }
+    let typeId = reader.uint8();
+    if (typeId === TypeId.NAMED_ENUM) {
+      typeId = TypeId.ENUM;
+    } else if (typeId === TypeId.NAMED_UNION || typeId === TypeId.TYPED_UNION) {
+      typeId = TypeId.UNION;
+    }
+    this.readNestedTypeInfo(reader, typeId, options);
+    return { typeId, userTypeId: -1, nullable, trackingRef, options };
+  }
 
-    const baseTypeId = typeId & 0xff;
-
-    // Handle nested type IDs for collections
-    switch (baseTypeId) {
+  private static readNestedTypeInfo(reader: BinaryReader, typeId: number, options: InnerFieldInfoOptions) {
+    switch (typeId) {
       case TypeId.LIST:
         options.inner = this.readTypeId(reader, true);
         break;
       case TypeId.SET:
-        // Read inner type
         options.key = this.readTypeId(reader, true);
         break;
       case TypeId.MAP:
@@ -328,8 +368,6 @@ export class TypeMeta {
       default:
         break;
     }
-
-    return { typeId, nullable, trackingRef, options };
   }
 
   private static readPkgName(reader: BinaryReader): string {
@@ -365,6 +403,10 @@ export class TypeMeta {
     return this.type.typeName;
   }
 
+  getUserTypeId(): number {
+    return this.type.userTypeId;
+  }
+
   getFieldInfo(): FieldInfo[] {
     return this.fields;
   }
@@ -380,7 +422,11 @@ export class TypeMeta {
     }
 
     if (!TypeId.isNamedType(this.type.typeId)) {
-      writer.varUInt32(this.type.typeId);
+      writer.uint8(this.type.typeId);
+      if (this.type.userTypeId === undefined || this.type.userTypeId === -1) {
+        throw new Error(`userTypeId required for typeId ${this.type.typeId}`);
+      }
+      writer.varUInt32(this.type.userTypeId);
     } else {
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
       const ns = this.type.namespace;
