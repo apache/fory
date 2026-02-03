@@ -143,6 +143,43 @@ public class Float16Test {
 
     assertTrue(one.equals(Float16.ONE));
     assertFalse(Float16.ZERO.equals(Float16.NEGATIVE_ZERO));
+
+    assertTrue(one.lessThan(two));
+    assertFalse(two.lessThan(one));
+    assertFalse(nan.lessThan(one));
+    assertFalse(one.lessThan(nan));
+
+    assertTrue(one.lessThanOrEqual(two));
+    assertTrue(one.lessThanOrEqual(Float16.ONE));
+    assertFalse(nan.lessThanOrEqual(one));
+
+    assertTrue(two.greaterThan(one));
+    assertFalse(one.greaterThan(two));
+    assertFalse(nan.greaterThan(one));
+
+    assertTrue(two.greaterThanOrEqual(one));
+    assertTrue(one.greaterThanOrEqual(Float16.ONE));
+    assertFalse(nan.greaterThanOrEqual(one));
+
+    assertTrue(Float16.compare(one, two) < 0);
+    assertTrue(Float16.compare(two, one) > 0);
+    assertEquals(0, Float16.compare(one, Float16.ONE));
+  }
+
+  @Test
+  public void testParse() {
+    assertEquals(1.0f, Float16.parse("1.0").floatValue(), 0.0f);
+    assertEquals(2.5f, Float16.parse("2.5").floatValue(), 0.01f);
+    assertEquals(-3.14f, Float16.parse("-3.14").floatValue(), 0.01f);
+    assertTrue(Float16.parse("NaN").isNaN());
+    assertTrue(Float16.parse("Infinity").isInfinite());
+    assertTrue(Float16.parse("-Infinity").isInfinite());
+  }
+
+  @Test
+  public void testToFloat() {
+    Float16 f16 = Float16.valueOf(3.14f);
+    assertEquals(f16.floatValue(), f16.toFloat(), 0.0f);
   }
 
   @Test

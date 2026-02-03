@@ -79,6 +79,10 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
     return bits;
   }
 
+  public float toFloat() {
+    return floatValue();
+  }
+
   private static short floatToFloat16Bits(float f32) {
     int bits32 = Float.floatToRawIntBits(f32);
     int sign = (bits32 >>> 31) & 0x1;
@@ -279,9 +283,45 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
     return bits == other.bits;
   }
 
+  public boolean lessThan(Float16 other) {
+    if (isNaN() || other.isNaN()) {
+      return false;
+    }
+    return floatValue() < other.floatValue();
+  }
+
+  public boolean lessThanOrEqual(Float16 other) {
+    if (isNaN() || other.isNaN()) {
+      return false;
+    }
+    return floatValue() <= other.floatValue();
+  }
+
+  public boolean greaterThan(Float16 other) {
+    if (isNaN() || other.isNaN()) {
+      return false;
+    }
+    return floatValue() > other.floatValue();
+  }
+
+  public boolean greaterThanOrEqual(Float16 other) {
+    if (isNaN() || other.isNaN()) {
+      return false;
+    }
+    return floatValue() >= other.floatValue();
+  }
+
+  public static int compare(Float16 a, Float16 b) {
+    return Float.compare(a.floatValue(), b.floatValue());
+  }
+
+  public static Float16 parse(String s) {
+    return valueOf(Float.parseFloat(s));
+  }
+
   @Override
   public int compareTo(Float16 other) {
-    return Float.compare(floatValue(), other.floatValue());
+    return compare(this, other);
   }
 
   @Override
