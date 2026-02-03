@@ -37,7 +37,6 @@ cdef class CollectionSerializer(Serializer):
     cdef TypeResolver type_resolver
     cdef MapRefResolver ref_resolver
     cdef Serializer elem_serializer
-    cdef c_bool is_py
     cdef int8_t elem_tracking_ref
     cdef elem_type
     cdef TypeInfo elem_type_info
@@ -57,7 +56,6 @@ cdef class CollectionSerializer(Serializer):
             self.elem_tracking_ref = <int8_t> (elem_serializer.need_to_write_ref)
             if elem_tracking_ref is not None:
                 self.elem_tracking_ref = <int8_t> (1 if elem_tracking_ref else 0)
-        self.is_py = fory.is_py
 
     cdef inline pair[int8_t, int64_t] write_header(self, Buffer buffer, value):
         cdef int8_t collect_flag = COLL_DEFAULT_FLAG
@@ -109,7 +107,7 @@ cdef class CollectionSerializer(Serializer):
         cdef elem_type = elem_type_info.cls
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         cdef serializer = type(elem_type_info.serializer)
         cdef c_bool tracking_ref
         cdef c_bool has_null
@@ -237,7 +235,7 @@ cdef class CollectionSerializer(Serializer):
     cpdef _write_same_type_no_ref(self, Buffer buffer, value, TypeInfo typeinfo):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
-        if self.is_py:
+        if not self.fory.xlang:
             for s in value:
                 typeinfo.serializer.write(buffer, s)
         else:
@@ -248,7 +246,7 @@ cdef class CollectionSerializer(Serializer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
         self.fory.inc_depth()
-        if self.is_py:
+        if not self.fory.xlang:
             for i in range(len_):
                 obj = typeinfo.serializer.read(buffer)
                 self._add_element(collection_, i, obj)
@@ -259,7 +257,7 @@ cdef class CollectionSerializer(Serializer):
         self.fory.dec_depth()
 
     cpdef _write_same_type_has_null(self, Buffer buffer, value, TypeInfo typeinfo):
-        if self.is_py:
+        if not self.fory.xlang:
             for s in value:
                 if s is None:
                     buffer.write_int8(NULL_FLAG)
@@ -277,7 +275,7 @@ cdef class CollectionSerializer(Serializer):
     cpdef _read_same_type_has_null(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
         cdef int8_t flag
         self.fory.inc_depth()
-        if self.is_py:
+        if not self.fory.xlang:
             for i in range(len_):
                 flag = buffer.read_int8()
                 if flag == NULL_FLAG:
@@ -300,7 +298,7 @@ cdef class CollectionSerializer(Serializer):
     cpdef _write_same_type_ref(self, Buffer buffer, value, TypeInfo typeinfo):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
-        if self.is_py:
+        if not self.fory.xlang:
             for s in value:
                 if not ref_resolver.write_ref_or_null(buffer, s):
                     typeinfo.serializer.write(buffer, s)
@@ -312,7 +310,7 @@ cdef class CollectionSerializer(Serializer):
     cpdef _read_same_type_ref(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         self.fory.inc_depth()
         for i in range(len_):
             ref_id = ref_resolver.try_preserve_ref_id(buffer)
@@ -343,7 +341,7 @@ cdef class ListSerializer(CollectionSerializer):
             return list_
         cdef int8_t collect_flag = buffer.read_int8()
         ref_resolver.reference(list_)
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         cdef TypeInfo typeinfo
         cdef uint8_t type_id = 0
         cdef c_bool tracking_ref
@@ -465,7 +463,7 @@ cdef class TupleSerializer(CollectionSerializer):
         if len_ == 0:
             return tuple_
         cdef int8_t collect_flag = buffer.read_int8()
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         cdef TypeInfo typeinfo
         cdef uint8_t type_id = 0
         cdef c_bool tracking_ref
@@ -564,7 +562,7 @@ cdef class SetSerializer(CollectionSerializer):
         cdef int32_t ref_id
         cdef TypeInfo typeinfo
         cdef uint8_t type_id = 0
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         cdef c_bool tracking_ref
         cdef c_bool has_null
         cdef int8_t head_flag
@@ -708,7 +706,6 @@ cdef class MapSerializer(Serializer):
     cdef MapRefResolver ref_resolver
     cdef Serializer key_serializer
     cdef Serializer value_serializer
-    cdef c_bool is_py
     cdef int8_t key_tracking_ref
     cdef int8_t value_tracking_ref
 
@@ -726,7 +723,6 @@ cdef class MapSerializer(Serializer):
         self.ref_resolver = fory.ref_resolver
         self.key_serializer = key_serializer
         self.value_serializer = value_serializer
-        self.is_py = fory.is_py
         self.key_tracking_ref = 0
         self.value_tracking_ref = 0
         if key_serializer is not None:
@@ -756,7 +752,7 @@ cdef class MapSerializer(Serializer):
         cdef int32_t chunk_size_offset, chunk_header, chunk_size
         cdef c_bool key_write_ref, value_write_ref
         cdef int has_next = PyDict_Next(obj, &pos, <PyObject **>&key_addr, <PyObject **>&value_addr)
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         while has_next != 0:
             key = int2obj(key_addr)
             Py_INCREF(key)
@@ -927,7 +923,7 @@ cdef class MapSerializer(Serializer):
         cdef c_bool key_is_declared_type, value_is_declared_type
         cdef type key_serializer_type, value_serializer_type
         cdef int32_t chunk_size
-        cdef c_bool is_py = self.is_py
+        cdef c_bool is_py = not self.fory.xlang
         self.fory.inc_depth()
         while size > 0:
             while True:

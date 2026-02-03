@@ -35,7 +35,6 @@ import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Config;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
 import org.apache.fory.exception.CopyException;
 import org.apache.fory.exception.DeserializationException;
