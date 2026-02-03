@@ -238,7 +238,7 @@ public class ClassResolver extends TypeResolver {
   public ClassResolver(Fory fory) {
     super(fory);
     this.fory = fory;
-    typeInfoCache = NIL_CLASS_INFO;
+    typeInfoCache = NIL_TYPE_INFO;
     extRegistry.classIdGenerator = NONEXISTENT_META_SHARED_ID + 1;
     shimDispatcher = new ShimDispatcher(fory);
     _addGraalvmClassRegistry(fory.getConfig().getConfigHash(), this);
@@ -1059,7 +1059,7 @@ public class ClassResolver extends TypeResolver {
       if (cls.getName().equals(className)) {
         LOG.info("Clear serializer for class {}.", className);
         entry.getValue().setSerializer(this, Serializers.newSerializer(fory, cls, serializer));
-        typeInfoCache = NIL_CLASS_INFO;
+        typeInfoCache = NIL_TYPE_INFO;
         return;
       }
     }
@@ -1076,7 +1076,7 @@ public class ClassResolver extends TypeResolver {
       if (className.startsWith(classNamePrefix)) {
         LOG.info("Clear serializer for class {}.", className);
         entry.getValue().setSerializer(this, Serializers.newSerializer(fory, cls, serializer));
-        typeInfoCache = NIL_CLASS_INFO;
+        typeInfoCache = NIL_TYPE_INFO;
       }
     }
   }
@@ -1324,7 +1324,7 @@ public class ClassResolver extends TypeResolver {
             public void onSuccess(Class<? extends Serializer> result) {
               setSerializer(clz, Serializers.newSerializer(fory, clz, result));
               if (typeInfoCache.cls == clz) {
-                typeInfoCache = NIL_CLASS_INFO; // clear class info cache
+                typeInfoCache = NIL_TYPE_INFO; // clear class info cache
               }
               Preconditions.checkState(getSerializer(clz).getClass() == result);
             }
@@ -1595,7 +1595,7 @@ public class ClassResolver extends TypeResolver {
             .deserializerClassMap
             .put(typeDef.getId(), getGraalvmSerializerClass(deserializationTypeInfo.serializer));
         Tuple2<TypeDef, TypeInfo> typeDefTuple = extRegistry.classIdToDef.get(typeDef.getId());
-        typeInfoCache = NIL_CLASS_INFO;
+        typeInfoCache = NIL_TYPE_INFO;
         extRegistry.classIdToDef.put(typeDef.getId(), Tuple2.of(typeDefTuple.f0, null));
       }
     }
@@ -1604,7 +1604,7 @@ public class ClassResolver extends TypeResolver {
       getGraalvmClassRegistry()
           .serializerClassMap
           .put(cls, getGraalvmSerializerClass(typeInfo.serializer));
-      typeInfoCache = NIL_CLASS_INFO;
+      typeInfoCache = NIL_TYPE_INFO;
       if (RecordUtils.isRecord(cls)) {
         RecordUtils.getRecordConstructor(cls);
         RecordUtils.getRecordComponents(cls);
@@ -2037,7 +2037,7 @@ public class ClassResolver extends TypeResolver {
             }
           });
       if (GraalvmSupport.isGraalBuildtime()) {
-        typeInfoCache = NIL_CLASS_INFO;
+        typeInfoCache = NIL_TYPE_INFO;
         classInfoMap.forEach(
             (cls, classInfo) -> {
               if (classInfo.serializer != null

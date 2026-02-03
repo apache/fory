@@ -95,7 +95,7 @@ import org.apache.fory.util.function.Functions;
 public abstract class TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
-  static final TypeInfo NIL_CLASS_INFO =
+  static final TypeInfo NIL_TYPE_INFO =
       new TypeInfo(null, null, null, null, false, null, Types.UNKNOWN, INVALID_USER_TYPE_ID);
   // use a lower load factor to minimize hash collision
   static final float foryMapLoadFactor = 0.25f;
@@ -1025,11 +1025,11 @@ public abstract class TypeResolver {
   }
 
   public final TypeInfo nilTypeInfo() {
-    return NIL_CLASS_INFO;
+    return NIL_TYPE_INFO;
   }
 
   public final TypeInfoHolder nilTypeInfoHolder() {
-    return new TypeInfoHolder(NIL_CLASS_INFO);
+    return new TypeInfoHolder(NIL_TYPE_INFO);
   }
 
   public final GenericType buildGenericType(TypeRef<?> typeRef) {

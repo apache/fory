@@ -131,7 +131,7 @@ public class XtypeResolver extends TypeResolver {
 
   private final Config config;
   private final Fory fory;
-  private final TypeInfoHolder classInfoCache = new TypeInfoHolder(NIL_CLASS_INFO);
+  private final TypeInfoHolder classInfoCache = new TypeInfoHolder(NIL_TYPE_INFO);
   private final MetaStringResolver metaStringResolver;
 
   // Every deserialization for unregistered class will query it, performance is important.

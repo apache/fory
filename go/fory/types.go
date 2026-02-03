@@ -154,7 +154,7 @@ func NeedsTypeMetaWrite(typeID TypeId) bool {
 	}
 }
 
-func needsUserTypeID(typeID TypeId) bool {
+func isUserTypeRegisteredById(typeID TypeId) bool {
 	switch typeID {
 	case ENUM, STRUCT, COMPATIBLE_STRUCT, EXT, TYPED_UNION:
 		return true
