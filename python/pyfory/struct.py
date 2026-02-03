@@ -266,9 +266,10 @@ def _extract_field_infos(
             # Explicit configuration takes precedence
             effective_dynamic = meta.dynamic
         elif xlang:
-            # Xlang mode: write type info for user-defined types
-            effective_dynamic = (
-                is_polymorphic_type(type_id)
+            # Xlang mode: write type info only when the declared type isn't registered by id.
+            # Registered-by-id types have stable serializers, so no per-field type info is needed.
+            effective_dynamic = is_polymorphic_type(type_id) and not fory.type_resolver.is_registered_by_id(
+                unwrapped_type
             )
         else:
             # Native mode: False for numeric/str/time types, True for other object types

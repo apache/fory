@@ -643,6 +643,15 @@ public abstract class TypeResolver {
     }
 
     // Load class info from bytes (subclass-specific).
+    return loadBytesToTypeInfo(header, namespaceBytes, simpleClassNameBytes);
+  }
+
+  /**
+   * Load class info from namespace and type name bytes, with the type id from the stream.
+   * Subclasses can override this to use the incoming type id (e.g. NAMED_EXT/NAMED_ENUM).
+   */
+  protected TypeInfo loadBytesToTypeInfo(
+      int typeId, MetaStringBytes namespaceBytes, MetaStringBytes simpleClassNameBytes) {
     return loadBytesToTypeInfo(namespaceBytes, simpleClassNameBytes);
   }
 

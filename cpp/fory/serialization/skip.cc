@@ -222,7 +222,6 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
   switch (static_cast<TypeId>(remote_type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
   case TypeId::EXT:
   case TypeId::TYPED_UNION:
     user_type_id = ctx.read_var_uint32(ctx.error());
@@ -236,8 +235,7 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
   TypeId remote_tid = static_cast<TypeId>(remote_type_id);
   bool has_user_type_id =
       remote_tid == TypeId::ENUM || remote_tid == TypeId::STRUCT ||
-      remote_tid == TypeId::COMPATIBLE_STRUCT || remote_tid == TypeId::EXT ||
-      remote_tid == TypeId::TYPED_UNION;
+      remote_tid == TypeId::EXT || remote_tid == TypeId::TYPED_UNION;
 
   const TypeInfo *type_info = nullptr;
 

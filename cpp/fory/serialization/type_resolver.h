@@ -343,9 +343,14 @@ template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_shared_ptr_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::element_type;
   static FieldType build(bool) {
-    FieldType inner = FieldTypeBuilder<Inner>::build(true);
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      FieldType ft(to_type_id(TypeId::UNKNOWN), true);
+      return ft;
+    } else {
+      FieldType inner = FieldTypeBuilder<Inner>::build(true);
+      inner.nullable = true;
+      return inner;
+    }
   }
 };
 
@@ -353,9 +358,14 @@ template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_unique_ptr_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::element_type;
   static FieldType build(bool) {
-    FieldType inner = FieldTypeBuilder<Inner>::build(true);
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      FieldType ft(to_type_id(TypeId::UNKNOWN), true);
+      return ft;
+    } else {
+      FieldType inner = FieldTypeBuilder<Inner>::build(true);
+      inner.nullable = true;
+      return inner;
+    }
   }
 };
 
@@ -531,19 +541,31 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     return inner;
   } else if constexpr (is_shared_ptr_v<Decayed>) {
     using Inner = typename Decayed::element_type;
-    FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+      inner.nullable = true;
+      return inner;
+    }
   } else if constexpr (::fory::detail::is_shared_weak_v<Decayed>) {
     using Inner = nullable_element_t<Decayed>;
-    FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+      inner.nullable = true;
+      return inner;
+    }
   } else if constexpr (is_unique_ptr_v<Decayed>) {
     using Inner = typename Decayed::element_type;
-    FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+      inner.nullable = true;
+      return inner;
+    }
   } else if constexpr (is_vector_v<Decayed>) {
     using Vec = Decayed;
     using Element = element_type_t<Vec>;
@@ -609,7 +631,19 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     FieldType ft = FieldTypeBuilder<Decayed>::build(nullable);
     if (is_user_type(static_cast<TypeId>(ft.type_id))) {
       FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
-      ft.type_id = info->type_id;
+      uint32_t resolved_type_id = info->type_id;
+      switch (static_cast<TypeId>(resolved_type_id)) {
+      case TypeId::NAMED_ENUM:
+        resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+        break;
+      case TypeId::TYPED_UNION:
+      case TypeId::NAMED_UNION:
+        resolved_type_id = static_cast<uint32_t>(TypeId::UNION);
+        break;
+      default:
+        break;
+      }
+      ft.type_id = resolved_type_id;
     }
     return ft;
   }

@@ -453,6 +453,13 @@ public class XtypeResolver extends TypeResolver {
     typeInfo = typeInfo.copy(foryId);
     typeInfo.serializer = serializer;
     updateTypeInfo(type, typeInfo);
+    if (typeInfo.typeNameBytes != null) {
+      String qualifiedName = qualifiedName(typeInfo.decodeNamespace(), typeInfo.decodeTypeName());
+      qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
+      TypeNameBytes typeNameBytes =
+          new TypeNameBytes(typeInfo.namespaceBytes.hashCode, typeInfo.typeNameBytes.hashCode);
+      compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
+    }
   }
 
   @Override
@@ -1068,6 +1075,12 @@ public class XtypeResolver extends TypeResolver {
       MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
     // Default to NAMED_STRUCT when called without internalTypeId
     return loadBytesToTypeInfoWithTypeId(Types.NAMED_STRUCT, packageBytes, simpleClassNameBytes);
+  }
+
+  @Override
+  protected TypeInfo loadBytesToTypeInfo(
+      int typeId, MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
+    return loadBytesToTypeInfoWithTypeId(typeId, packageBytes, simpleClassNameBytes);
   }
 
   @Override
