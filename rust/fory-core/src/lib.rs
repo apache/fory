@@ -179,12 +179,14 @@
 pub mod buffer;
 pub mod config;
 pub mod error;
+pub mod float16;
 pub mod fory;
 pub mod meta;
 pub mod resolver;
 pub mod row;
 pub mod serializer;
 pub mod types;
+pub use float16::float16 as Float16;
 pub mod util;
 
 // Re-export paste for use in macros
