@@ -16,12 +16,13 @@
 // under the License.
 
 use fory_core::meta::{FieldInfo, FieldType, MetaString, TypeMeta};
+use fory_core::types::TypeId;
 
 #[test]
 fn test_meta_hash() {
     let meta = TypeMeta::new(
         42,
-        u32::MAX,
+        1,
         MetaString::get_empty().clone(),
         MetaString::get_empty().clone(),
         false,
@@ -29,7 +30,7 @@ fn test_meta_hash() {
             field_id: 43,
             field_name: "f1".to_string(),
             field_type: FieldType {
-                type_id: 44,
+                type_id: TypeId::BOOL as u32,
                 user_type_id: u32::MAX,
                 nullable: true,
                 ref_tracking: false,

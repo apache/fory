@@ -518,7 +518,7 @@ impl TypeMeta {
 
     #[inline(always)]
     pub fn empty() -> Result<TypeMeta, Error> {
-        let mut meta = TypeMeta {
+        Ok(TypeMeta {
             hash: 0,
             type_id: 0,
             user_type_id: NO_USER_TYPE_ID,
@@ -527,11 +527,7 @@ impl TypeMeta {
             register_by_name: false,
             field_infos: vec![],
             bytes: vec![],
-        };
-        let (bytes, meta_hash) = meta.to_bytes()?;
-        meta.bytes = bytes;
-        meta.hash = meta_hash;
-        Ok(meta)
+        })
     }
 
     /// Creates a deep clone with new Rc instances.
@@ -632,14 +628,12 @@ impl TypeMeta {
             self.write_type_name(&mut writer);
         } else {
             writer.write_u8(self.type_id as u8);
-            if crate::types::needs_user_type_id(self.type_id) {
-                if self.user_type_id == NO_USER_TYPE_ID {
-                    return Err(Error::type_error(
-                        "User type id is required for this type id",
-                    ));
-                }
-                writer.write_var_uint32(self.user_type_id);
+            if self.user_type_id == NO_USER_TYPE_ID {
+                return Err(Error::type_error(
+                    "User type id is required for this type id",
+                ));
             }
+            writer.write_var_uint32(self.user_type_id);
         }
         for field in self.field_infos.iter() {
             writer.write_bytes(field.to_bytes()?.as_slice());
@@ -786,9 +780,7 @@ impl TypeMeta {
             type_id = 0;
         } else {
             type_id = reader.read_u8()? as u32;
-            if crate::types::needs_user_type_id(type_id) {
-                user_type_id = reader.read_varuint32()?;
-            }
+            user_type_id = reader.read_varuint32()?;
             let empty_name = MetaString::default();
             namespace = empty_name.clone();
             type_name = empty_name;
@@ -807,13 +799,11 @@ impl TypeMeta {
                 type_id = type_info_current.get_type_id();
                 Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
-        } else if crate::types::needs_user_type_id(type_id) {
-            if user_type_id != NO_USER_TYPE_ID {
-                if let Some(type_info_current) =
-                    type_resolver.get_user_type_info_by_id(type_id, user_type_id)
-                {
-                    Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
-                }
+        } else if user_type_id != NO_USER_TYPE_ID {
+            if let Some(type_info_current) =
+                type_resolver.get_user_type_info_by_id(type_id, user_type_id)
+            {
+                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {
             Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);

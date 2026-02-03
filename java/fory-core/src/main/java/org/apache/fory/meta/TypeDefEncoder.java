@@ -59,19 +59,6 @@ import org.apache.fory.util.Utils;
 class TypeDefEncoder {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDefEncoder.class);
 
-  private static boolean needsUserTypeId(int typeId) {
-    switch (typeId) {
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.COMPATIBLE_STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        return true;
-      default:
-        return false;
-    }
-  }
-
   /** Build class definition from fields of class. */
   static ClassDef buildTypeDef(Fory fory, Class<?> type) {
     DescriptorGrouper descriptorGrouper =
@@ -160,9 +147,9 @@ class TypeDefEncoder {
     }
     if (resolver.isRegisteredById(type)) {
       buffer.writeUint8(classInfo.getTypeId());
-      if (needsUserTypeId(classInfo.getTypeId())) {
-        buffer.writeVarUint32(classInfo.getUserTypeId());
-      }
+      Preconditions.checkArgument(
+          classInfo.getUserTypeId() != -1, "User type id is required for typeId %s", classInfo.getTypeId());
+      buffer.writeVarUint32(classInfo.getUserTypeId());
     } else {
       Preconditions.checkArgument(resolver.isRegisteredByName(type));
       currentClassHeader |= REGISTER_BY_NAME_FLAG;

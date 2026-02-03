@@ -1741,6 +1741,12 @@ public class ClassResolver extends TypeResolver {
     int typeId = classInfo.typeId;
     boolean writeById = typeId != REPLACE_STUB_ID && !Types.isNamedType(typeId);
     if (writeById) {
+      if (needsUserTypeId(typeId) && classInfo.userTypeId == -1) {
+        Integer registeredId = extRegistry.registeredClassIdMap.get(classInfo.cls);
+        if (registeredId != null && !isInternalRegisteredClassId(classInfo.cls, registeredId)) {
+          classInfo.userTypeId = registeredId;
+        }
+      }
       buffer.writeVarUint32(typeId << 1);
       if (needsUserTypeId(typeId)) {
         buffer.writeVarUint32(classInfo.userTypeId);

@@ -52,19 +52,6 @@ import org.apache.fory.util.Utils;
 class TypeDefDecoder {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDefDecoder.class);
 
-  private static boolean needsUserTypeId(int typeId) {
-    switch (typeId) {
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.COMPATIBLE_STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        return true;
-      default:
-        return false;
-    }
-  }
-
   public static ClassDef decodeClassDef(XtypeResolver resolver, MemoryBuffer inputBuffer, long id) {
     Tuple2<byte[], byte[]> decoded = decodeClassDefBuf(inputBuffer, resolver, id);
     MemoryBuffer buffer = MemoryBuffer.fromByteArray(decoded.f0);
@@ -88,10 +75,7 @@ class TypeDefDecoder {
       }
     } else {
       int typeId = buffer.readUint8();
-      int userTypeId = -1;
-      if (needsUserTypeId(typeId)) {
-        userTypeId = buffer.readVarUint32();
-      }
+      int userTypeId = buffer.readVarUint32();
       ClassInfo userTypeInfo = resolver.getUserTypeInfo(userTypeId);
       if (userTypeInfo == null) {
         classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);

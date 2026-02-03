@@ -275,9 +275,7 @@ export class TypeMeta {
       typeId = TypeId.NAMED_STRUCT; // Default for named types
     } else {
       typeId = reader.uint8();
-      if (TypeId.needsUserTypeId(typeId)) {
-        userTypeId = reader.varUInt32();
-      }
+      userTypeId = reader.varUInt32();
     }
 
     // Read fields
@@ -419,9 +417,10 @@ export class TypeMeta {
 
     if (!TypeId.isNamedType(this.type.typeId)) {
       writer.uint8(this.type.typeId);
-      if (TypeId.needsUserTypeId(this.type.typeId)) {
-        writer.varUInt32(this.type.userTypeId);
+      if (this.type.userTypeId === undefined || this.type.userTypeId === -1) {
+        throw new Error(`userTypeId required for typeId ${this.type.typeId}`);
       }
+      writer.varUInt32(this.type.userTypeId);
     } else {
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
       const ns = this.type.namespace;

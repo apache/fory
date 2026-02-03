@@ -448,21 +448,11 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
         sizeof(k_type_name_encodings) / sizeof(k_type_name_encodings[0])));
   } else {
     layer_buffer.write_uint8(static_cast<uint8_t>(type_id));
-    switch (static_cast<TypeId>(type_id)) {
-    case TypeId::ENUM:
-    case TypeId::STRUCT:
-    case TypeId::COMPATIBLE_STRUCT:
-    case TypeId::EXT:
-    case TypeId::TYPED_UNION:
-      if (user_type_id == kInvalidUserTypeId) {
-        return Unexpected(
-            Error::type_error("User type id is required for this type"));
-      }
-      layer_buffer.write_var_uint32(user_type_id);
-      break;
-    default:
-      break;
+    if (user_type_id == kInvalidUserTypeId) {
+      return Unexpected(
+          Error::type_error("User type id is required for this type"));
     }
+    layer_buffer.write_var_uint32(user_type_id);
   }
 
   // write field infos
@@ -568,22 +558,11 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
       return Unexpected(std::move(error));
     }
     type_id = tid;
-    switch (static_cast<TypeId>(type_id)) {
-    case TypeId::ENUM:
-    case TypeId::STRUCT:
-    case TypeId::COMPATIBLE_STRUCT:
-    case TypeId::EXT:
-    case TypeId::TYPED_UNION: {
-      uint32_t uid = buffer.read_var_uint32(error);
-      if (FORY_PREDICT_FALSE(!error.ok())) {
-        return Unexpected(std::move(error));
-      }
-      user_type_id = uid;
-      break;
+    uint32_t uid = buffer.read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
     }
-    default:
-      break;
-    }
+    user_type_id = uid;
   }
 
   // Read field infos

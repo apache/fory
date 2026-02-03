@@ -39,7 +39,7 @@ from pyfory.meta.typedef import (
     FIELD_NAME_ENCODING_TAG_ID,
     TAG_ID_SIZE_THRESHOLD,
 )
-from pyfory.types import TypeId, needs_user_type_id
+from pyfory.types import TypeId
 from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.meta.metastring import MetaStringDecoder, Encoding
 
@@ -137,8 +137,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
             type_id = TypeId.COMPATIBLE_STRUCT
     else:
         type_id = meta_buffer.read_uint8()
-        if needs_user_type_id(type_id):
-            user_type_id = meta_buffer.read_var_uint32()
+        user_type_id = meta_buffer.read_var_uint32()
         if resolver.is_registered_by_id(type_id=type_id, user_type_id=user_type_id):
             type_info = resolver.get_typeinfo_by_id(type_id, user_type_id=user_type_id)
             type_cls = type_info.cls

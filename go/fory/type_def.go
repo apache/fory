@@ -1303,12 +1303,10 @@ func encodingTypeDef(typeResolver *TypeResolver, typeDef *TypeDef) ([]byte, erro
 		}
 	} else {
 		buffer.WriteUint8(uint8(typeDef.typeId))
-		if needsUserTypeID(TypeId(typeDef.typeId)) {
-			if typeDef.userTypeId == invalidUserTypeID {
-				return nil, fmt.Errorf("missing user type ID for typeID %d", typeDef.typeId)
-			}
-			buffer.WriteVarUint32(typeDef.userTypeId)
+		if typeDef.userTypeId == invalidUserTypeID {
+			return nil, fmt.Errorf("missing user type ID for typeID %d", typeDef.typeId)
 		}
+		buffer.WriteVarUint32(typeDef.userTypeId)
 	}
 
 	if err := writeFieldDefs(typeResolver, buffer, typeDef.fieldDefs); err != nil {
@@ -1610,11 +1608,9 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 	} else {
 		typeId = uint32(metaBuffer.ReadUint8(&metaErr))
-		if needsUserTypeID(TypeId(typeId)) {
-			userTypeId = metaBuffer.ReadVarUint32(&metaErr)
-			if info, exists := fory.typeResolver.userTypeIdToTypeInfo[userTypeKey{typeID: TypeId(typeId), userTypeID: userTypeId}]; exists {
-				type_ = info.Type
-			}
+		userTypeId = metaBuffer.ReadVarUint32(&metaErr)
+		if info, exists := fory.typeResolver.userTypeIdToTypeInfo[userTypeKey{typeID: TypeId(typeId), userTypeID: userTypeId}]; exists {
+			type_ = info.Type
 		} else if info, exists := fory.typeResolver.typeIDToTypeInfo[typeId]; exists {
 			type_ = info.Type
 		}
