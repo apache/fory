@@ -656,7 +656,7 @@ def test_register_serializer(data_file_path):
     fory.serialize(new_obj, buffer=new_buf)
     bytes1 = fory.serialize(new_obj)
     assert len(bytes1) == len(data_bytes), (bytes1, data_bytes)
-    # header can be different to embed writer info like language
+    # header can differ across writers
     assert bytes1[8:] == data_bytes[8:]
     assert fory.deserialize(fory.serialize(new_obj)) == new_obj, new_obj
     print(f"test_register_serializer: {new_obj}")

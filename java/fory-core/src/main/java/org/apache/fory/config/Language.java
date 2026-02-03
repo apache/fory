@@ -23,10 +23,4 @@ package org.apache.fory.config;
 public enum Language {
   XLANG,
   JAVA,
-  PYTHON,
-  CPP,
-  GO,
-  JAVASCRIPT,
-  RUST,
-  DART,
 }

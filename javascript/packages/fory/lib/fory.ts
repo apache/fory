@@ -21,7 +21,7 @@ import TypeResolver from "./typeResolver";
 import { BinaryWriter } from "./writer";
 import { BinaryReader } from "./reader";
 import { ReferenceResolver } from "./referenceResolver";
-import { ConfigFlags, Serializer, Config, Language, Mode, ForyTypeInfoSymbol, WithForyClsInfo, TypeId } from "./type";
+import { ConfigFlags, Serializer, Config, Mode, ForyTypeInfoSymbol, WithForyClsInfo, TypeId } from "./type";
 import { OwnershipError } from "./error";
 import { InputType, ResultType, StructTypeInfo, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
@@ -145,7 +145,6 @@ export default class {
     if (isOutOfBandEnabled) {
       throw new Error("outofband mode is not supported now");
     }
-    this.binaryReader.uint8(); // skip language
     return serializer.readRef();
   }
 
@@ -165,7 +164,6 @@ export default class {
     }
     bitmap |= ConfigFlags.isCrossLanguageFlag;
     this.binaryWriter.uint8(bitmap);
-    this.binaryWriter.uint8(Language.JAVASCRIPT);
     // reserve fixed size
     this.binaryWriter.reserve(serializer.fixedSize);
     // start write

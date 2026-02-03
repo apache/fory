@@ -37,7 +37,7 @@ var ErrNoSerializer = errors.New("fory: no serializer registered for type")
 // Constants
 // ============================================================================
 
-// Language constants for protocol header
+// Language constants (reserved for compatibility; header does not write them)
 const (
 	LangXLANG uint8 = iota
 	LangJAVA
@@ -767,7 +767,6 @@ func writeHeader(ctx *WriteContext, config Config) {
 		bitmap |= OutOfBandFlag
 	}
 	ctx.buffer.WriteByte_(bitmap)
-	ctx.buffer.WriteByte_(LangGO)
 }
 
 // isNilValue checks if a value is nil, including nil pointers wrapped in any
@@ -808,8 +807,6 @@ func readHeader(ctx *ReadContext) bool {
 	if (bitmap & IsNilFlag) != 0 {
 		return true // is null
 	}
-
-	_ = ctx.buffer.ReadByte(err) // language
 
 	return false // not null
 }

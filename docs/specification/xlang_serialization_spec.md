@@ -257,9 +257,9 @@ The data are serialized using little endian byte order for all types.
 Fory header format for xlang serialization:
 
 ```
-|        1 byte bitmap           |   1 byte   |
-+--------------------------------+------------+
-|            flags               |  language  |
+|        1 byte bitmap           |
++--------------------------------+
+|            flags               |
 ```
 
 Detailed byte layout:
@@ -270,7 +270,6 @@ Byte 0:   Bitmap flags
           - Bit 1: xlang flag (0x02)
           - Bit 2: oob flag (0x04)
           - Bits 3-7: reserved
-Byte 1:   Language ID (only present when xlang flag is set)
 ```
 
 - **null flag** (bit 0): 1 when object is null, 0 otherwise. If an object is null, only this flag is set.
@@ -278,21 +277,6 @@ Byte 1:   Language ID (only present when xlang flag is set)
 - **oob flag** (bit 2): 1 when out-of-band serialization is enabled (BufferCallback is not null), 0 otherwise.
 
 All data is encoded in little-endian format.
-
-- **language**: 1 byte indicating the source language. This allows deserializers to optimize for specific language characteristics.
-
-### Language IDs
-
-| Language   | ID  |
-| ---------- | --- |
-| XLANG      | 0   |
-| JAVA       | 1   |
-| PYTHON     | 2   |
-| CPP        | 3   |
-| GO         | 4   |
-| JAVASCRIPT | 5   |
-| RUST       | 6   |
-| DART       | 7   |
 
 ## Reference Meta
 
@@ -1532,7 +1516,6 @@ This section provides a step-by-step guide for implementing Fory xlang serializa
 
 3. **Header Handling**
    - [ ] Write/read bitmap flags (null, xlang, oob)
-   - [ ] Write/read language ID (when xlang flag is set)
 
 ### Phase 2: Basic Type Serializers
 

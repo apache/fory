@@ -27,7 +27,4 @@ enum Language{
   javascript,
   rust,
   dart;
-
-  static int get peerLangBeginIndex => Language.java.index;
-  static int get peerLangEndIndex => Language.dart.index;
 }

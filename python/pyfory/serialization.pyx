@@ -1330,8 +1330,6 @@ cdef class Fory:
         if self.language == Language.XLANG:
             # set reader as x_lang.
             set_bit(buffer, mask_index, 1)
-            # set writer language.
-            buffer.write_int8(Language.PYTHON.value)
         else:
             # set reader as native.
             clear_bit(buffer, mask_index, 1)
@@ -1468,10 +1466,6 @@ cdef class Fory:
         if get_bit(buffer, reader_index, 0):
             return None
         cdef c_bool is_target_x_lang = get_bit(buffer, reader_index, 1)
-        if is_target_x_lang:
-            self._peer_language = Language(buffer.read_int8())
-        else:
-            self._peer_language = Language.PYTHON
         self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
         if self.is_peer_out_of_band_enabled:
             assert buffers is not None, (
