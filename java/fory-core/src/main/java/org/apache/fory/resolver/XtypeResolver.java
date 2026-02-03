@@ -1047,7 +1047,7 @@ public class XtypeResolver extends TypeResolver {
     if (genericType != null) {
       return getOrBuildTypeInfo(genericType.getCls());
     }
-    return requireInternalTypeInfoByTypeId(Types.LIST);
+    return getInternalTypeInfoByTypeId(Types.LIST);
   }
 
   @Override
@@ -1058,7 +1058,7 @@ public class XtypeResolver extends TypeResolver {
     if (genericType != null) {
       return getOrBuildTypeInfo(genericType.getCls());
     }
-    return requireInternalTypeInfoByTypeId(Types.TIMESTAMP);
+    return getInternalTypeInfoByTypeId(Types.TIMESTAMP);
   }
 
   private TypeInfo getOrBuildTypeInfo(Class<?> cls) {

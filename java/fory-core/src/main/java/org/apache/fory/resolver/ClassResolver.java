@@ -1712,23 +1712,6 @@ public class ClassResolver extends TypeResolver {
     writeClassInternal(buffer, typeInfo);
   }
 
-  private TypeInfo buildClassInfo(Class<?> cls) {
-    TypeInfo typeInfo;
-    Integer classId = extRegistry.registeredClassIdMap.get(cls);
-    // Don't create serializer in case the object for class is non-serializable,
-    // Or class is abstract or interface.
-    int typeId;
-    if (classId == null) {
-      typeId = buildUnregisteredTypeId(cls, null);
-    } else {
-      boolean internal = isInternalRegisteredClassId(cls, classId);
-      typeId = internal ? classId : buildUserTypeId(cls, null);
-    }
-    typeInfo = new TypeInfo(this, cls, null, typeId, INVALID_USER_TYPE_ID);
-    classInfoMap.put(cls, typeInfo);
-    return typeInfo;
-  }
-
   public void writeClassInternal(MemoryBuffer buffer, TypeInfo typeInfo) {
     int typeId = typeInfo.typeId;
     boolean writeById = typeId != REPLACE_STUB_ID && !Types.isNamedType(typeId);
@@ -1751,6 +1734,23 @@ public class ClassResolver extends TypeResolver {
       metaStringResolver.writeMetaStringBytesWithFlag(buffer, typeInfo.namespaceBytes);
       metaStringResolver.writeMetaStringBytes(buffer, typeInfo.typeNameBytes);
     }
+  }
+
+  private TypeInfo buildClassInfo(Class<?> cls) {
+    TypeInfo typeInfo;
+    Integer classId = extRegistry.registeredClassIdMap.get(cls);
+    // Don't create serializer in case the object for class is non-serializable,
+    // Or class is abstract or interface.
+    int typeId;
+    if (classId == null) {
+      typeId = buildUnregisteredTypeId(cls, null);
+    } else {
+      boolean internal = isInternalRegisteredClassId(cls, classId);
+      typeId = internal ? classId : buildUserTypeId(cls, null);
+    }
+    typeInfo = new TypeInfo(this, cls, null, typeId, INVALID_USER_TYPE_ID);
+    classInfoMap.put(cls, typeInfo);
+    return typeInfo;
   }
 
   /**

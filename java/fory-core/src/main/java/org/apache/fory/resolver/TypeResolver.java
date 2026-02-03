@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -427,7 +428,7 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -450,7 +451,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = requireInternalTypeInfoByTypeId(typeId);
+        typeInfo = getInternalTypeInfoByTypeId(typeId);
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -471,7 +472,7 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -494,7 +495,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = requireInternalTypeInfoByTypeId(typeId);
+        typeInfo = getInternalTypeInfoByTypeId(typeId);
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -521,7 +522,7 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -544,7 +545,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = requireInternalTypeInfoByTypeId(typeId);
+        typeInfo = getInternalTypeInfoByTypeId(typeId);
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -570,7 +571,7 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = requireUserTypeInfoByTypeId(typeId, buffer.readVarUint32());
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -594,7 +595,7 @@ public abstract class TypeResolver {
         typeInfo = getTimestampTypeInfo();
         break;
       default:
-        typeInfo = requireInternalTypeInfoByTypeId(typeId);
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
     }
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
@@ -762,11 +763,11 @@ public abstract class TypeResolver {
   protected abstract TypeInfo ensureSerializerForTypeInfo(TypeInfo typeInfo);
 
   protected TypeInfo getListTypeInfo() {
-    return requireInternalTypeInfoByTypeId(Types.LIST);
+    return getInternalTypeInfoByTypeId(Types.LIST);
   }
 
   protected TypeInfo getTimestampTypeInfo() {
-    return requireInternalTypeInfoByTypeId(Types.TIMESTAMP);
+    return getInternalTypeInfoByTypeId(Types.TIMESTAMP);
   }
 
   protected final TypeInfo getInternalTypeInfoByTypeId(int typeId) {
@@ -774,23 +775,6 @@ public abstract class TypeResolver {
       return null;
     }
     return typeIdToTypeInfo[typeId];
-  }
-
-  protected final TypeInfo requireUserTypeInfoByTypeId(int typeId, int userTypeId) {
-    TypeInfo typeInfo = userTypeIdToTypeInfo.get(userTypeId);
-    if (typeInfo == null) {
-      throw new IllegalStateException(
-          String.format("Type id %s with user type id %s not registered", typeId, userTypeId));
-    }
-    return typeInfo;
-  }
-
-  protected final TypeInfo requireInternalTypeInfoByTypeId(int typeId) {
-    TypeInfo typeInfo = getInternalTypeInfoByTypeId(typeId);
-    if (typeInfo == null) {
-      throw new IllegalStateException(String.format("Type id %s not registered", typeId));
-    }
-    return typeInfo;
   }
 
   protected void updateTypeInfo(Class<?> cls, TypeInfo typeInfo) {
@@ -1017,7 +1001,7 @@ public abstract class TypeResolver {
       throw new IllegalArgumentException(
           "User type id must be provided to resolve user-defined type " + typeId);
     }
-    return requireInternalTypeInfoByTypeId(typeId);
+    return getInternalTypeInfoByTypeId(typeId);
   }
 
   public final Serializer<?> getSerializerByTypeId(int typeId) {
