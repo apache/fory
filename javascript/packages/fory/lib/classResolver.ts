@@ -38,27 +38,34 @@ const uninitSerialize = {
     throw new Error("uninitSerialize");
   },
   write: (v: any) => {
+    void v;
     throw new Error("uninitSerialize");
   },
   writeRef: (v: any) => {
+    void v;
     throw new Error("uninitSerialize");
   },
   writeNoRef: (v: any) => {
+    void v;
     throw new Error("uninitSerialize");
   },
   writeRefOrNull: (v: any) => {
+    void v;
     throw new Error("uninitSerialize");
   },
   writeClassInfo: (v: any) => {
+    void v;
     throw new Error("uninitSerialize");
   },
   read: (fromRef: boolean) => {
+    void fromRef;
     throw new Error("uninitSerialize");
   },
   readRef: () => {
     throw new Error("uninitSerialize");
   },
   readNoRef: (fromRef: boolean) => {
+    void fromRef;
     throw new Error("uninitSerialize");
   },
   readClassInfo: () => {

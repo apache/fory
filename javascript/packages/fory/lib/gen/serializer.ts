@@ -149,6 +149,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   }
 
   writeClassInfo(accessor: string) {
+    void accessor;
     const typeId = this.getTypeId();
     const userTypeId = this.typeInfo.userTypeId;
     const userTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT

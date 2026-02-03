@@ -1108,9 +1108,8 @@ pub trait Serializer: 'static {
                         type_id
                     )));
                 }
-                Ok(TypeId::try_from(type_id as u8).map_err(|_| {
-                    Error::type_error(format!("Unknown type id {}", type_id))
-                })?)
+                Ok(TypeId::try_from(type_id as u8)
+                    .map_err(|_| Error::type_error(format!("Unknown type id {}", type_id)))?)
             }
             Err(e) => Err(Error::enhance_type_error::<Self>(e)),
         }

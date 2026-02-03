@@ -154,7 +154,8 @@ class FieldInfo {
   }
 
   static writeTypeId(writer: BinaryWriter, typeInfo: InnerFieldInfo, writeFlags = false) {
-    let { typeId, userTypeId } = typeInfo;
+    let { typeId } = typeInfo;
+    const { userTypeId } = typeInfo;
     const { trackingRef, nullable } = typeInfo;
     if (writeFlags) {
       typeId = (typeId << 2);

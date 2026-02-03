@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { Mode, RefFlags, Serializer, TypeId } from "../type";
+import { Mode, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 

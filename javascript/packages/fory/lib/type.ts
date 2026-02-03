@@ -179,7 +179,7 @@ export enum ConfigFlags {
 }
 
 // read, write
-export type Serializer<T = any, T2 = any> = {
+export type Serializer<T = any> = {
   fixedSize: number;
   needToWriteRef: () => boolean;
   getTypeId: () => number;
@@ -187,15 +187,15 @@ export type Serializer<T = any, T2 = any> = {
   getHash: () => number;
 
   // for writing
-  write: (v: T2) => void;
-  writeRef: (v: T2) => void;
-  writeNoRef: (v: T2) => void;
-  writeRefOrNull: (v: T2) => boolean;
-  writeClassInfo: (v: T2) => void;
+  write: (v: T) => void;
+  writeRef: (v: T) => void;
+  writeNoRef: (v: T) => void;
+  writeRefOrNull: (v: T) => boolean;
+  writeClassInfo: (v: T) => void;
 
-  read: (fromRef: boolean) => T2;
-  readRef: () => T2;
-  readNoRef: (fromRef: boolean) => T2;
+  read: (fromRef: boolean) => T;
+  readRef: () => T;
+  readNoRef: (fromRef: boolean) => T;
   readClassInfo: () => void;
 };
 

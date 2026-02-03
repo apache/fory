@@ -540,6 +540,9 @@ public class FieldTypes {
     public TypeRef<?> toTypeToken(TypeResolver resolver, TypeRef<?> declared) {
       Class<?> cls;
       int internalTypeId = typeId;
+      if (declared != null && internalTypeId == Types.ENUM && declared.getRawType().isEnum()) {
+        return TypeRef.of(declared.getRawType(), new TypeExtMeta(typeId, nullable, trackingRef));
+      }
       if (Types.isPrimitiveType(internalTypeId)) {
         if (declared != null) {
           ClassInfo declaredInfo = resolver.getClassInfo(declared.getRawType(), false);
@@ -602,7 +605,8 @@ public class FieldTypes {
       }
       if (cls == null) {
         LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);
-        cls = NonexistentClass.NonexistentMetaShared.class;
+        boolean isEnum = internalTypeId == Types.ENUM;
+        cls = NonexistentClass.getNonexistentClass(isEnum, 0, resolver.getFory().isShareMeta());
       }
       return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
     }

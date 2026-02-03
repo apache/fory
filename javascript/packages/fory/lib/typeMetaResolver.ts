@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { StructTypeInfo, Type, TypeInfo } from "./typeInfo";
+import { StructTypeInfo, TypeInfo } from "./typeInfo";
 import fory from "./fory";
 import { TypeMeta } from "./meta/TypeMeta";
 import { BinaryReader } from "./reader";

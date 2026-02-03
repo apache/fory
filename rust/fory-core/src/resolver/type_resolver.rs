@@ -426,8 +426,8 @@ fn build_struct_type_infos<T: StructSerializer>(
                     partial_info.user_type_id, variant_name
                 );
                 let namespace_ms = MetaString::get_empty().clone();
-                let type_name_ms =
-                    TYPE_NAME_ENCODER.encode_with_encodings(&variant_type_name, TYPE_NAME_ENCODINGS)?;
+                let type_name_ms = TYPE_NAME_ENCODER
+                    .encode_with_encodings(&variant_type_name, TYPE_NAME_ENCODINGS)?;
                 if type_resolver
                     .get_type_info_by_name(&namespace_ms.original, &type_name_ms.original)
                     .is_some()
@@ -864,12 +864,10 @@ impl TypeResolver {
         // 2. Types registered by name (they use shared type IDs like NAMED_STRUCT)
         if !register_by_name
             && !crate::types::is_internal_type(actual_type_id)
-            && self
-                .user_type_info_by_id
-                .contains_key(&UserTypeKey {
-                    type_id: actual_type_id,
-                    user_type_id: user_type_id,
-                })
+            && self.user_type_info_by_id.contains_key(&UserTypeKey {
+                type_id: actual_type_id,
+                user_type_id: user_type_id,
+            })
         {
             return Err(Error::type_error(format!(
                 "Type ID {} conflicts with already registered type. Please use a different type ID.",
@@ -1085,12 +1083,10 @@ impl TypeResolver {
         // Skip check for internal types as they can be shared
         if !crate::types::is_internal_type(actual_type_id)
             && user_type_id != NO_USER_TYPE_ID
-            && self
-                .user_type_info_by_id
-                .contains_key(&UserTypeKey {
-                    type_id: actual_type_id,
-                    user_type_id: user_type_id,
-                })
+            && self.user_type_info_by_id.contains_key(&UserTypeKey {
+                type_id: actual_type_id,
+                user_type_id: user_type_id,
+            })
         {
             return Err(Error::type_error(format!(
                 "Type ID {} conflicts with already registered type. Please use a different type ID.",

@@ -55,7 +55,8 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
     let rs_type_id = std::any::TypeId::of::<T>();
     if type_id == TypeId::ENUM {
         let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
-        context.writer
+        context
+            .writer
             .write_var_uint32(type_info.get_user_type_id());
         return Ok(());
     }
@@ -117,7 +118,7 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
             let _type_name_msb = context.read_meta_string()?;
         }
     } else {
-       context.reader.read_varuint32()?;
+        context.reader.read_varuint32()?;
     }
     Ok(())
 }

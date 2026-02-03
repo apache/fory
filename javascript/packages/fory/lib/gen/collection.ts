@@ -141,6 +141,7 @@ class CollectionAnySerializer {
   }
 
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
+    void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
     const flags = this.fory.binaryReader.uint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;

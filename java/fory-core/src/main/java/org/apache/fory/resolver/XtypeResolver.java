@@ -572,7 +572,7 @@ public class XtypeResolver extends TypeResolver {
           return true;
         }
         if (rawType == NonexistentMetaShared.class) {
-          return true;
+          return false;
         }
         byte typeIdByte = getInternalTypeId(rawType);
         if (fory.isCompatible()) {

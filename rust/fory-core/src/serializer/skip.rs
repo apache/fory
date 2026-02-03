@@ -64,7 +64,8 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     // Read type_id first
     let type_id = context.reader.read_u8()? as u32;
     let internal_id = type_id;
-    let _user_type_id = if types::needs_user_type_id(type_id) && type_id != types::COMPATIBLE_STRUCT {
+    let _user_type_id = if types::needs_user_type_id(type_id) && type_id != types::COMPATIBLE_STRUCT
+    {
         Some(context.reader.read_varuint32()?)
     } else {
         None
@@ -112,10 +113,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                 Some(type_info),
             )
         }
-        types::NAMED_ENUM
-        | types::NAMED_EXT
-        | types::NAMED_STRUCT
-        | types::NAMED_UNION => {
+        types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
             if context.is_share_meta() {
                 let type_info = context.read_type_meta()?;
                 (
@@ -363,9 +361,7 @@ fn skip_struct(
         if ENABLE_FORY_DEBUG_OUTPUT {
             eprintln!(
                 "[skip_struct] field: {:?}, type_id: {}, internal_id: {}",
-                field_info.field_name,
-                field_info.field_type.type_id,
-                field_info.field_type.type_id
+                field_info.field_name, field_info.field_type.type_id, field_info.field_type.type_id
             );
         }
         let read_ref_flag = util::field_need_write_ref_into(
