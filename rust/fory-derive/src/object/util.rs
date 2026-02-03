@@ -654,7 +654,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
             let is_custom = !fory_core::types::is_internal_type(type_id);
             if is_custom {
                 let type_info = <#ty as fory_core::serializer::Serializer>::fory_get_type_info(type_resolver)?;
-                type_id = type_info.get_type_id();
+                type_id = type_info.get_type_id() as u32;
                 user_type_id = type_info.get_user_type_id();
                 if type_id == fory_core::types::TypeId::TYPED_UNION as u32
                     || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {

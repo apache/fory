@@ -785,7 +785,7 @@ impl TypeMeta {
             if let Some(type_info_current) =
                 type_resolver.get_type_info_by_name(&namespace.original, &type_name.original)
             {
-                type_id = type_info_current.get_type_id();
+                type_id = type_info_current.get_type_id() as u32;
                 Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if user_type_id != NO_USER_TYPE_ID {

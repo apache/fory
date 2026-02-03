@@ -390,9 +390,11 @@ macro_rules! read_ptr_trait_object {
                     }
                 )*
                 $context.dec_depth();
-                Err(fory_core::Error::type_error(
-                    format!("Type ID {} not registered for trait {}", fory_type_id, stringify!($trait_name))
-                ))
+                Err(fory_core::Error::type_error(format!(
+                    "Type ID {} not registered for trait {}",
+                    fory_type_id as u32,
+                    stringify!($trait_name)
+                )))
             }
             fory_core::RefFlag::RefValue => {
                 $context.inc_depth()?;
@@ -430,9 +432,11 @@ macro_rules! read_ptr_trait_object {
                     }
                 )*
                 $context.dec_depth();
-                Err(fory_core::Error::type_error(
-                    format!("Type ID {} not registered for trait {}", fory_type_id, stringify!($trait_name))
-                ))
+                Err(fory_core::Error::type_error(format!(
+                    "Type ID {} not registered for trait {}",
+                    fory_type_id as u32,
+                    stringify!($trait_name)
+                )))
             }
         }
     }};

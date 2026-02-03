@@ -27,6 +27,7 @@ use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaString
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
+use crate::TypeId;
 use std::rc::Rc;
 
 /// Thread-local context cache with fast path for single Fory instance.
@@ -240,11 +241,11 @@ impl<'a> WriteContext<'a> {
         self.writer.write_u8(fory_type_id as u8);
         // should be compiled to jump table generation
         match fory_type_id {
-            types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
+            TypeId::ENUM | TypeId::STRUCT | TypeId::EXT | TypeId::TYPED_UNION => {
                 let user_type_id = type_info.get_user_type_id();
                 self.writer.write_var_uint32(user_type_id);
             }
-            types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {
+            TypeId::COMPATIBLE_STRUCT | TypeId::NAMED_COMPATIBLE_STRUCT => {
                 // Write type meta inline using streaming protocol
                 self.meta_resolver.write_type_meta(
                     &mut self.writer,
@@ -252,7 +253,7 @@ impl<'a> WriteContext<'a> {
                     &self.type_resolver,
                 )?;
             }
-            types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
+            TypeId::NAMED_ENUM | TypeId::NAMED_EXT | TypeId::NAMED_STRUCT | TypeId::NAMED_UNION => {
                 if self.is_share_meta() {
                     // Write type meta inline using streaming protocol
                     self.meta_resolver.write_type_meta(

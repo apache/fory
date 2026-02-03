@@ -129,7 +129,7 @@ impl MetaReaderResolver {
                         Rc::new(TypeInfo::from_remote_meta(
                             type_meta.clone(),
                             Some(local_type_info.get_harness()),
-                            Some(local_type_info.get_type_id()),
+                            Some(local_type_info.get_type_id() as u32),
                             Some(local_type_info.get_user_type_id()),
                         ))
                     } else {
@@ -153,7 +153,7 @@ impl MetaReaderResolver {
                             Rc::new(TypeInfo::from_remote_meta(
                                 type_meta.clone(),
                                 Some(local_type_info.get_harness()),
-                                Some(local_type_info.get_type_id()),
+                                Some(local_type_info.get_type_id() as u32),
                                 Some(local_type_info.get_user_type_id()),
                             ))
                         } else {
@@ -171,7 +171,7 @@ impl MetaReaderResolver {
                         Rc::new(TypeInfo::from_remote_meta(
                             type_meta.clone(),
                             Some(local_type_info.get_harness()),
-                            Some(local_type_info.get_type_id()),
+                            Some(local_type_info.get_type_id() as u32),
                             Some(local_type_info.get_user_type_id()),
                         ))
                     } else {

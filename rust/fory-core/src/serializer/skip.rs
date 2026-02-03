@@ -187,7 +187,7 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     let elem_type = if is_same_type && !is_declared {
         let type_info_rc = context.read_any_type_info()?;
         elem_field_type = FieldType {
-            type_id: type_info_rc.get_type_id(),
+            type_id: type_info_rc.get_type_id() as u32,
             user_type_id: type_info_rc.get_user_type_id(),
             nullable: has_null,
             ref_tracking: false,
@@ -233,7 +233,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let value_type = if !value_declared {
                 let type_info = context.read_any_type_info()?;
                 value_field_type = FieldType {
-                    type_id: type_info.get_type_id(),
+                    type_id: type_info.get_type_id() as u32,
                     user_type_id: type_info.get_user_type_id(),
                     nullable: true,
                     ref_tracking: false,
@@ -258,7 +258,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let key_type = if !key_declared {
                 let type_info = context.read_any_type_info()?;
                 key_field_type = FieldType {
-                    type_id: type_info.get_type_id(),
+                    type_id: type_info.get_type_id() as u32,
                     user_type_id: type_info.get_user_type_id(),
                     nullable: true,
                     ref_tracking: false,
@@ -286,7 +286,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         let key_type = if !key_declared {
             let type_info = context.read_any_type_info()?;
             key_field_type = FieldType {
-                type_id: type_info.get_type_id(),
+                type_id: type_info.get_type_id() as u32,
                 user_type_id: type_info.get_user_type_id(),
                 nullable: true,
                 ref_tracking: false,
@@ -304,7 +304,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         let value_type = if !value_declared {
             let type_info = context.read_any_type_info()?;
             value_field_type = FieldType {
-                type_id: type_info.get_type_id(),
+                type_id: type_info.get_type_id() as u32,
                 user_type_id: type_info.get_user_type_id(),
                 nullable: true,
                 ref_tracking: false,
@@ -336,10 +336,11 @@ fn skip_struct(
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
         let remote_type_info = context.read_any_type_info()?;
-        if type_id_num != types::UNKNOWN && remote_type_info.get_type_id() != types::UNKNOWN {
+        let remote_type_id = remote_type_info.get_type_id() as u32;
+        if type_id_num != types::UNKNOWN && remote_type_id != types::UNKNOWN {
             ensure!(
-                type_id_num == remote_type_info.get_type_id(),
-                Error::type_mismatch(type_id_num, remote_type_info.get_type_id())
+                type_id_num == remote_type_id,
+                Error::type_mismatch(type_id_num, remote_type_id)
             );
         }
         type_info_rc = Some(remote_type_info);
@@ -382,9 +383,10 @@ fn skip_ext(
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
         let remote_type_info = context.read_any_type_info()?;
+        let remote_type_id = remote_type_info.get_type_id() as u32;
         ensure!(
-            type_id_num == remote_type_info.get_type_id(),
-            Error::type_mismatch(type_id_num, remote_type_info.get_type_id())
+            type_id_num == remote_type_id,
+            Error::type_mismatch(type_id_num, remote_type_id)
         );
         type_info_rc = Some(remote_type_info);
         type_info_rc.as_ref().unwrap()
@@ -783,12 +785,12 @@ pub fn skip_enum_variant(
             // Named variant, skip struct-like data using skip_struct
             // For named variants, we need the type_info which should have been read already
             if type_info.is_some() {
-                let type_id = type_info.as_ref().unwrap().get_type_id();
+                let type_id = type_info.as_ref().unwrap().get_type_id() as u32;
                 skip_struct(context, type_id, type_info)
             } else {
                 // If no type_info provided, read it inline using streaming protocol
                 let type_info_rc = context.read_type_meta()?;
-                let type_id = type_info_rc.get_type_id();
+                let type_id = type_info_rc.get_type_id() as u32;
                 let type_info_opt = Some(type_info_rc);
                 skip_struct(context, type_id, &type_info_opt)
             }

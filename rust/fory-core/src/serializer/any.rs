@@ -21,7 +21,7 @@ use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::util::write_dyn_data_generic;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefFlag, RefMode, TypeId, LIST, MAP, SET};
+use crate::types::{RefFlag, RefMode, TypeId};
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -42,7 +42,7 @@ fn resolve_registered_type_id(
 #[inline]
 fn check_generic_container_type(type_info: &TypeInfo) -> Result<(), Error> {
     let type_id = type_info.get_type_id();
-    if type_id == LIST || type_id == SET || type_id == MAP {
+    if type_id == TypeId::LIST || type_id == TypeId::SET || type_id == TypeId::MAP {
         return Err(Error::type_error(
             "Cannot deserialize generic container types (Vec, HashSet, HashMap) polymorphically \
             via Box/Rc/Arc/Weak<dyn Any>. The serialization protocol does not preserve the element type \
