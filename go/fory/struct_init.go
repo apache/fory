@@ -18,15 +18,12 @@
 package fory
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"sort"
 	"unicode"
 	"unicode/utf8"
-	"unsafe"
 )
 
 // GetStructHash returns the struct hash for a given type using the provided TypeResolver.

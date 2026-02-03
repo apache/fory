@@ -19,13 +19,9 @@ package fory
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
-	"sort"
-	"unicode"
-	"unicode/utf8"
 	"unsafe"
 )
 
