@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from libc.stdint cimport uint8_t
+from libc.stdint cimport int32_t, uint8_t
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport CBuffer
 
@@ -78,6 +78,12 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
         FLOAT64_ARRAY = 52
         BOUND = 64
 
+    cdef enum class TypeRegistrationKind(int32_t):
+        INTERNAL = 0
+        BY_ID = 1
+        BY_NAME = 2
+
+    cdef TypeRegistrationKind get_type_registration_kind(TypeId type_id)
     cdef c_bool is_namespaced_type(TypeId type_id)
     cdef c_bool is_type_share_meta(TypeId type_id)
 

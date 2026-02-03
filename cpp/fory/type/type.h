@@ -145,6 +145,32 @@ enum class TypeId : uint8_t {
   BOUND = 67
 };
 
+enum class TypeRegistrationKind : int32_t {
+  INTERNAL = 0,
+  BY_ID = 1,
+  BY_NAME = 2
+};
+
+inline constexpr TypeRegistrationKind get_type_registration_kind(
+    TypeId type_id) {
+  switch (type_id) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    return TypeRegistrationKind::BY_ID;
+  case TypeId::NAMED_ENUM:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::NAMED_EXT:
+  case TypeId::NAMED_UNION:
+    return TypeRegistrationKind::BY_NAME;
+  default:
+    return TypeRegistrationKind::INTERNAL;
+  }
+}
+
 inline bool is_user_type(TypeId type_id) {
   switch (type_id) {
   case TypeId::ENUM:
