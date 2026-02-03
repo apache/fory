@@ -595,7 +595,8 @@ public class Serializers {
     resolver.registerInternalSerializer(URI.class, new URISerializer(fory));
     resolver.registerInternalSerializer(Pattern.class, new RegexSerializer(fory));
     resolver.registerInternalSerializer(UUID.class, new UUIDSerializer(fory));
-    resolver.registerInternalSerializer(org.apache.fory.type.Float16.class, new Float16Serializer(fory));
+    resolver.registerInternalSerializer(
+        org.apache.fory.type.Float16.class, new Float16Serializer(fory));
     resolver.registerInternalSerializer(Object.class, new EmptyObjectSerializer(fory));
   }
 }

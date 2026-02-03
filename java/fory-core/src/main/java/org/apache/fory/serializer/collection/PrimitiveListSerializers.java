@@ -540,7 +540,8 @@ public class PrimitiveListSerializers {
   }
 
   public static final class Float16ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<org.apache.fory.collection.Float16List> {
+      extends Serializers.CrossLanguageCompatibleSerializer<
+          org.apache.fory.collection.Float16List> {
     public Float16ListSerializer(Fory fory) {
       super(fory, org.apache.fory.collection.Float16List.class, false, true);
     }

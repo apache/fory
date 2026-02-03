@@ -25,7 +25,6 @@ import java.util.Objects;
 import java.util.RandomAccess;
 import org.apache.fory.type.Float16;
 
-
 public final class Float16List extends AbstractList<Float16> implements RandomAccess {
   private static final int DEFAULT_CAPACITY = 10;
 
@@ -122,11 +121,9 @@ public final class Float16List extends AbstractList<Float16> implements RandomAc
     return array[index];
   }
 
-
   public boolean hasArray() {
     return array != null;
   }
-
 
   public short[] getArray() {
     return array;

@@ -21,7 +21,6 @@ package org.apache.fory.type;
 
 import java.io.Serializable;
 
-
 public final class Float16 extends Number implements Comparable<Float16>, Serializable {
   private static final long serialVersionUID = 1L;
 
@@ -61,7 +60,6 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
   public static final int SIZE_BYTES = 2;
 
   private final short bits;
-
 
   private Float16(short bits) {
     this.bits = bits;
@@ -103,19 +101,16 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
       } else {
         outMant = 0;
       }
-    }
-    else if (exp == 0) {
+    } else if (exp == 0) {
       outExp = 0;
       outMant = 0;
-    }
-    else {
+    } else {
       int newExp = exp - 127 + 15;
 
       if (newExp >= 31) {
         outExp = 0x1F;
         outMant = 0;
-      }
-      else if (newExp <= 0) {
+      } else if (newExp <= 0) {
         int fullMant = mant | 0x800000;
         int shift = 1 - newExp;
         int netShift = 13 + shift;
@@ -133,8 +128,7 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
             outMant++;
           }
         }
-      }
-      else {
+      } else {
         outExp = newExp;
         outMant = mant >>> 13;
 
@@ -157,7 +151,6 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
     return (short) (outSign | (outExp << 10) | outMant);
   }
 
-
   private static float float16BitsToFloat(short bits16) {
     int bits = bits16 & 0xFFFF;
     int sign = (bits >>> 15) & 0x1;
@@ -171,8 +164,7 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
       if (mant != 0) {
         outBits |= mant << 13;
       }
-    }
-    else if (exp == 0) {
+    } else if (exp == 0) {
       if (mant != 0) {
         int shift = Integer.numberOfLeadingZeros(mant) - 22;
         mant = (mant << shift) & 0x3FF;
@@ -180,8 +172,7 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
         outBits |= newExp << 23;
         outBits |= mant << 13;
       }
-    }
-    else {
+    } else {
       outBits |= (exp - 15 + 127) << 23;
       outBits |= mant << 13;
     }
