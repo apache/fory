@@ -147,8 +147,8 @@ export default class ClassResolver {
   constructor(private fory: Fory) {
   }
 
-  private makeUserTypeKey(typeId: number, userTypeId: number) {
-    return `u:${typeId}:${userTypeId}`;
+  private makeUserTypeKey(userTypeId: number) {
+    return `u:${userTypeId}`;
   }
 
   init() {
@@ -157,7 +157,7 @@ export default class ClassResolver {
 
   getTypeInfo(typeIdOrName: number | string, userTypeId?: number) {
     if (typeof typeIdOrName === "number" && userTypeId !== undefined && TypeId.needsUserTypeId(typeIdOrName)) {
-      return this.typeInfoMap.get(this.makeUserTypeKey(typeIdOrName, userTypeId));
+      return this.typeInfoMap.get(this.makeUserTypeKey(userTypeId));
     }
     return this.typeInfoMap.get(typeIdOrName);
   }
@@ -166,7 +166,7 @@ export default class ClassResolver {
     const typeId = typeInfo.typeId;
     if (!TypeId.isNamedType(typeId)) {
       if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId !== -1) {
-        const key = this.makeUserTypeKey(typeId, typeInfo.userTypeId);
+        const key = this.makeUserTypeKey(typeInfo.userTypeId);
         this.typeInfoMap.set(key, typeInfo);
         if (this.customSerializer.has(key)) {
           Object.assign(this.customSerializer.get(key)!, serializer);
@@ -209,7 +209,7 @@ export default class ClassResolver {
       return this.typeInfoMap.has((typeInfo.castToStruct()).named!);
     }
     if (TypeId.needsUserTypeId(typeInfo.typeId) && typeInfo.userTypeId !== -1) {
-      return this.typeInfoMap.has(this.makeUserTypeKey(typeInfo.typeId, typeInfo.userTypeId));
+      return this.typeInfoMap.has(this.makeUserTypeKey(typeInfo.userTypeId));
     }
     return this.typeInfoMap.has(typeInfo.typeId);
   }
@@ -224,7 +224,7 @@ export default class ClassResolver {
 
   getSerializerById(id: number, userTypeId?: number) {
     if (TypeId.needsUserTypeId(id) && userTypeId !== undefined && userTypeId !== -1) {
-      return this.customSerializer.get(this.makeUserTypeKey(id, userTypeId))!;
+      return this.customSerializer.get(this.makeUserTypeKey(userTypeId))!;
     }
     if (id <= 0xff) {
       return this.internalSerializer[id]!;
