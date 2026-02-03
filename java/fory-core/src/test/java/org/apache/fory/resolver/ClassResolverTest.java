@@ -104,10 +104,12 @@ public class ClassResolverTest extends ForyTestBase {
     classResolver.register(C2.class, "", "C2");
     classResolver.register(Foo.class, "ns", "Foo");
 
-    Assert.assertTrue(fory.serialize(C1.class).length < 12);
+    byte[] serialized = fory.serialize(C1.class);
+    Assert.assertTrue(serialized.length < 13, "Serialize length " + serialized.length);
     serDeCheck(fory, C1.class);
 
-    Assert.assertTrue(fory.serialize(C2.class).length < 12);
+    serialized = fory.serialize(C2.class);
+    Assert.assertTrue(serialized.length < 13, "Serialize length " + serialized.length);
     serDeCheck(fory, C2.class);
 
     Foo foo = new Foo();

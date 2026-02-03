@@ -202,7 +202,7 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     }
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
-      if (Utils.DEBUG_OUTPUT_ENABLED) {
+      if (Utils.DEBUG_OUTPUT_VERBOSE) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
@@ -219,7 +219,7 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     }
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
-      if (Utils.DEBUG_OUTPUT_ENABLED) {
+      if (Utils.DEBUG_OUTPUT_VERBOSE) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
@@ -230,7 +230,7 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       }
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
-      if (Utils.DEBUG_OUTPUT_ENABLED) {
+      if (Utils.DEBUG_OUTPUT_VERBOSE) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue = binding.readField(fieldInfo, buffer);

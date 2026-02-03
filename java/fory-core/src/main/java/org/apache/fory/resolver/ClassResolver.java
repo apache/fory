@@ -1725,26 +1725,25 @@ public class ClassResolver extends TypeResolver {
 
   public void writeClassInternal(MemoryBuffer buffer, TypeInfo typeInfo) {
     int typeId = typeInfo.typeId;
-    buffer.writeUint8(typeId);
-    switch (typeId) {
-      case Types.ENUM:
-      case Types.STRUCT:
-      case Types.COMPATIBLE_STRUCT:
-      case Types.EXT:
-      case Types.TYPED_UNION:
-        buffer.writeVarUint32(typeInfo.userTypeId);
-        break;
-      case Types.NAMED_STRUCT:
-      case Types.NAMED_COMPATIBLE_STRUCT:
-      case Types.NAMED_ENUM:
-      case Types.NAMED_EXT:
-      case Types.NAMED_UNION:
-        // let the lowermost bit of next byte be set, so the deserialization can know
-        // whether need to read class by name in advance
-        metaStringResolver.writeMetaStringBytes(buffer, typeInfo.namespaceBytes);
-        metaStringResolver.writeMetaStringBytes(buffer, typeInfo.typeNameBytes);
-        break;
-      default:
+    boolean writeById = typeId != REPLACE_STUB_ID && !Types.isNamedType(typeId);
+    if (writeById) {
+      buffer.writeVarUint32Small7(typeId << 1);
+      switch (typeId) {
+        case Types.ENUM:
+        case Types.STRUCT:
+        case Types.COMPATIBLE_STRUCT:
+        case Types.EXT:
+        case Types.TYPED_UNION:
+          buffer.writeVarUint32(typeInfo.userTypeId);
+          break;
+        default:
+          break;
+      }
+    } else {
+      // let the lowermost bit of next byte be set, so the deserialization can know
+      // whether need to read class by name in advance
+      metaStringResolver.writeMetaStringBytesWithFlag(buffer, typeInfo.namespaceBytes);
+      metaStringResolver.writeMetaStringBytes(buffer, typeInfo.typeNameBytes);
     }
   }
 
@@ -1754,7 +1753,16 @@ public class ClassResolver extends TypeResolver {
    * TypeInfoHolder)} should be invoked.
    */
   public Class<?> readClassInternal(MemoryBuffer buffer) {
-    int typeId = buffer.readUint8();
+    int header = buffer.readVarUint32Small14();
+    if ((header & 0b1) != 0) {
+      // let the lowermost bit of next byte be set, so the deserialization can know
+      // whether need to read class by name in advance
+      MetaStringBytes packageBytes =
+          metaStringResolver.readMetaStringBytesWithFlag(buffer, header);
+      MetaStringBytes simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer);
+      return loadBytesToTypeInfo(packageBytes, simpleClassNameBytes).cls;
+    }
+    int typeId = header >>> 1;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
@@ -1762,16 +1770,6 @@ public class ClassResolver extends TypeResolver {
       case Types.EXT:
       case Types.TYPED_UNION:
         return getTypeInfoByTypeIdForReadClassInternal(typeId, buffer.readVarUint32()).cls;
-      case Types.NAMED_STRUCT:
-      case Types.NAMED_COMPATIBLE_STRUCT:
-      case Types.NAMED_ENUM:
-      case Types.NAMED_EXT:
-      case Types.NAMED_UNION:
-        // let the lowermost bit of next byte be set, so the deserialization can know
-        // whether need to read class by name in advance
-        MetaStringBytes packageBytes = metaStringResolver.readMetaStringBytes(buffer);
-        MetaStringBytes simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer);
-        return loadBytesToTypeInfo(packageBytes, simpleClassNameBytes).cls;
       default:
         TypeInfo internalTypeInfoByTypeId = getInternalTypeInfoByTypeId(typeId);
         Preconditions.checkNotNull(internalTypeInfoByTypeId);

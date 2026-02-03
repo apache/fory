@@ -2122,8 +2122,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer, TypeRef<?> typeRef, Expression serializer) {
     if (serializer == null) {
       Expression classInfo;
-      if (fory.isCompatible()) {
-        Class<?> rawType = typeRef.getRawType();
+      Class<?> rawType = typeRef.getRawType();
+      if (fory.isCompatible() && rawType != Object.class) {
         TypeInfo typeInfo = typeResolver(r -> r.getTypeInfo(rawType, false));
         if (typeInfo == null
             || (typeInfo.getTypeId() == Types.COMPATIBLE_STRUCT

@@ -696,15 +696,39 @@ public abstract class TypeResolver {
   }
 
   private TypeInfo getTargetTypeInfo(TypeInfo typeInfo, Class<?> targetClass) {
-    Tuple2<Class<?>, Class<?>> key = Tuple2.of(typeInfo.getCls(), targetClass);
-    TypeInfo newTypeInfo = extRegistry.transformedTypeInfo.get(key);
-    if (newTypeInfo == null) {
+    Tuple2<Class<?>, TypeInfo>[] infos = extRegistry.transformedTypeInfo.get(targetClass);
+    Class<?> readClass = typeInfo.getCls();
+    if (infos != null) {
+      // It's ok to use loop here since most of case the array size will be 1.
+      for (Tuple2<Class<?>, TypeInfo> info : infos) {
+        if (info.f0 == readClass) {
+          return info.f1;
+        }
+      }
+    }
+    return transformTypeInfo(typeInfo, targetClass);
+  }
+
+  private TypeInfo transformTypeInfo(TypeInfo typeInfo, Class<?> targetClass) {
+    Class<?> readClass = typeInfo.getCls();
+    TypeInfo newTypeInfo;
+    if (targetClass.isAssignableFrom(readClass)) {
+      newTypeInfo = typeInfo;
+    } else {
       // similar to create serializer for `NonexistentMetaShared`
       newTypeInfo =
           getMetaSharedTypeInfo(
               typeInfo.typeDef.replaceRootClassTo(this, targetClass), targetClass);
-      extRegistry.transformedTypeInfo.put(key, newTypeInfo);
     }
+    Tuple2<Class<?>, TypeInfo>[] infos = extRegistry.transformedTypeInfo.get(targetClass);
+    int size = infos == null ? 0 : infos.length;
+    @SuppressWarnings("unchecked")
+    Tuple2<Class<?>, TypeInfo>[] newInfos = (Tuple2<Class<?>, TypeInfo>[]) new Tuple2[size + 1];
+    if (size > 0) {
+      System.arraycopy(infos, 0, newInfos, 0, size);
+    }
+    newInfos[size] = Tuple2.of(readClass, newTypeInfo);
+    extRegistry.transformedTypeInfo.put(targetClass, newInfos);
     return newTypeInfo;
   }
 
@@ -1495,7 +1519,8 @@ public abstract class TypeResolver {
     final LongMap<Tuple2<TypeDef, TypeInfo>> classIdToDef = new LongMap<>();
     final Map<Class<?>, TypeDef> currentLayerTypeDef = new HashMap<>();
     // Tuple2<Class, Class>: Tuple2<From Class, To Class>
-    final Map<Tuple2<Class<?>, Class<?>>, TypeInfo> transformedTypeInfo = new HashMap<>();
+    final IdentityMap<Class<?>, Tuple2<Class<?>, TypeInfo>[]> transformedTypeInfo =
+        new IdentityMap<>();
     // TODO(chaokunyang) Better to  use soft reference, see ObjectStreamClass.
     final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
         descriptorsCache = new ConcurrentHashMap<>();
