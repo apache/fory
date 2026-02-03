@@ -392,9 +392,7 @@ fn build_struct_type_infos<T: StructSerializer>(
     if type_resolver.compatible && is_enum_type_id(T::fory_static_type_id()) {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
-        for (_idx, (variant_name, variant_type_id, fields_info)) in
-            variants_info.into_iter().enumerate()
-        {
+        for (variant_name, variant_type_id, fields_info) in variants_info.into_iter() {
             // Skip empty variant info (unit/unnamed variants)
             if fields_info.is_empty() {
                 continue;
@@ -866,7 +864,7 @@ impl TypeResolver {
             && !crate::types::is_internal_type(actual_type_id)
             && self.user_type_info_by_id.contains_key(&UserTypeKey {
                 type_id: actual_type_id,
-                user_type_id: user_type_id,
+                user_type_id,
             })
         {
             return Err(Error::type_error(format!(
@@ -901,7 +899,7 @@ impl TypeResolver {
             self.user_type_info_by_id.insert(
                 UserTypeKey {
                     type_id: actual_type_id,
-                    user_type_id: user_type_id,
+                    user_type_id,
                 },
                 Rc::new(type_info.clone()),
             );
@@ -1085,7 +1083,7 @@ impl TypeResolver {
             && user_type_id != NO_USER_TYPE_ID
             && self.user_type_info_by_id.contains_key(&UserTypeKey {
                 type_id: actual_type_id,
-                user_type_id: user_type_id,
+                user_type_id,
             })
         {
             return Err(Error::type_error(format!(
@@ -1108,7 +1106,7 @@ impl TypeResolver {
             self.user_type_info_by_id.insert(
                 UserTypeKey {
                     type_id: actual_type_id,
-                    user_type_id: user_type_id,
+                    user_type_id,
                 },
                 Rc::new(type_info.clone()),
             );

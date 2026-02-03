@@ -582,8 +582,7 @@ class TypeResolver:
             if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
                 existing = self._user_type_id_to_typeinfo.get(user_type_id)
                 if existing is not None and existing.cls is not cls:
-                    raise TypeError(
-                        f"user_type_id {user_type_id} already registered for {existing.cls}")
+                    raise TypeError(f"user_type_id {user_type_id} already registered for {existing.cls}")
             if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
                 if user_type_id not in self._user_type_id_to_typeinfo or not internal:
                     self._user_type_id_to_typeinfo[user_type_id] = typeinfo

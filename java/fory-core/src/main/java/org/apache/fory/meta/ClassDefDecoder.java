@@ -191,7 +191,8 @@ class ClassDefDecoder {
       boolean trackingRef = (header & 0b001) != 0;
       int kindHeader = buffer.readUint8();
       int kind = kindHeader >>> 2;
-      FieldType fieldType = FieldTypes.FieldType.read(buffer, resolver, nullable, trackingRef, kind);
+      FieldType fieldType =
+          FieldTypes.FieldType.read(buffer, resolver, nullable, trackingRef, kind);
 
       if (useTagID) {
         fieldInfos.add(new FieldInfo(className, fieldName, fieldType, tagId));

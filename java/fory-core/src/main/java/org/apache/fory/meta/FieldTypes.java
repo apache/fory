@@ -430,10 +430,17 @@ public class FieldTypes {
     }
 
     public final void xwrite(MemoryBuffer buffer, boolean writeFlags) {
-      buffer.writeUint8(this.typeId);
       if (writeFlags) {
-        int flags = (nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0);
-        buffer.writeUint8(flags);
+        int typeId = (this.typeId << 2);
+        if (nullable) {
+          typeId |= 0b10;
+        }
+        if (trackingRef) {
+          typeId |= 0b1;
+        }
+        buffer.writeVarUint32Small7(typeId);
+      } else {
+        buffer.writeUint8(this.typeId);
       }
       if (needsUserTypeId(this.typeId)) {
         Preconditions.checkArgument(
@@ -458,10 +465,10 @@ public class FieldTypes {
     }
 
     public static FieldType xread(MemoryBuffer buffer, XtypeResolver resolver) {
-      int typeId = buffer.readUint8();
-      int flags = buffer.readUint8();
-      boolean trackingRef = (flags & 0b1) != 0;
-      boolean nullable = (flags & 0b10) != 0;
+      int typeId = buffer.readVarUint32Small7();
+      boolean trackingRef = (typeId & 0b1) != 0;
+      boolean nullable = (typeId & 0b10) != 0;
+      typeId = typeId >>> 2;
       return xread(buffer, resolver, typeId, nullable, trackingRef);
     }
 

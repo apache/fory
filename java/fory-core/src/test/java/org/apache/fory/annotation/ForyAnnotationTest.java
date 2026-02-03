@@ -26,7 +26,6 @@ import java.util.List;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -141,10 +140,7 @@ public class ForyAnnotationTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "basicMultiConfigFory")
-  public void testForyFieldAnnotation(
-      boolean trackingRef,
-      boolean codeGen,
-      boolean compatible) {
+  public void testForyFieldAnnotation(boolean trackingRef, boolean codeGen, boolean compatible) {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)

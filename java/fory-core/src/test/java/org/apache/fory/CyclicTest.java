@@ -25,11 +25,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.test.bean.FinalCyclic;
@@ -60,13 +57,15 @@ public class CyclicTest extends ForyTestBase {
 
   @Test(dataProvider = "config")
   public void testBean(boolean enableCodegen, boolean asyncCompilation, boolean compatible) {
-    Fory fory = Fory.builder()
-        .withLanguage(Language.JAVA)
-        .requireClassRegistration(false)
-        .withRefTracking(true)
-        .withCodegen(enableCodegen)
-        .withAsyncCompilation(asyncCompilation)
-        .withCompatible(compatible).build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .withAsyncCompilation(asyncCompilation)
+            .withCompatible(compatible)
+            .build();
     for (Object[] objects : beans()) {
       Object notCyclic = objects[0];
       Object cyclic = objects[1];

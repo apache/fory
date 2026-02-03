@@ -57,6 +57,7 @@ public class JITContextTest extends ForyTestBase {
         .map(List::toArray)
         .toArray(Object[][]::new);
   }
+
   @DataProvider
   public static Object[][] config2() {
     return Sets.cartesianProduct(
@@ -69,8 +70,7 @@ public class JITContextTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "config1", timeOut = 60_000)
-  public void testAsyncCompilation(
-      boolean referenceTracking, boolean compatible)
+  public void testAsyncCompilation(boolean referenceTracking, boolean compatible)
       throws InterruptedException {
     Fory fory =
         Fory.builder()

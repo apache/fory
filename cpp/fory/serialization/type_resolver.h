@@ -71,8 +71,8 @@ class WriteContext;
 class ReadContext;
 
 template <typename T>
-Result<const TypeInfo *, Error> get_type_info_with_resolver(
-    TypeResolver &resolver);
+Result<const TypeInfo *, Error>
+get_type_info_with_resolver(TypeResolver &resolver);
 
 // ============================================================================
 // TypeIndex primary template (fallback)
@@ -610,8 +610,7 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     constexpr size_t tuple_size = std::tuple_size_v<Decayed>;
     FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
     if constexpr (tuple_size > 0) {
-      FORY_RETURN_IF_ERROR(
-          (add_tuple_element_types<Decayed, 0>(resolver, ft)));
+      FORY_RETURN_IF_ERROR((add_tuple_element_types<Decayed, 0>(resolver, ft)));
     } else {
       ft.generics.push_back(
           FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
@@ -926,8 +925,7 @@ template <typename T, size_t Index, size_t... Rest>
 Result<void, Error> append_field_infos(TypeResolver &resolver,
                                        std::vector<FieldInfo> &fields,
                                        std::index_sequence<Index, Rest...>) {
-  FORY_TRY(info,
-           (FieldInfoBuilder<T, Index>::build_with_resolver(resolver)));
+  FORY_TRY(info, (FieldInfoBuilder<T, Index>::build_with_resolver(resolver)));
   fields.push_back(std::move(info));
   return append_field_infos<T>(resolver, fields,
                                std::index_sequence<Rest...>{});
@@ -1077,8 +1075,7 @@ private:
 
   template <typename T> static Harness make_struct_harness();
 
-  template <typename T>
-  static Harness make_struct_harness_impl(std::true_type);
+  template <typename T> static Harness make_struct_harness_impl(std::true_type);
 
   template <typename T>
   static Harness make_struct_harness_impl(std::false_type);
@@ -1272,8 +1269,8 @@ Result<const TypeInfo *, Error> TypeResolver::get_type_info() const {
 }
 
 template <typename T>
-Result<const TypeInfo *, Error> get_type_info_with_resolver(
-    TypeResolver &resolver) {
+Result<const TypeInfo *, Error>
+get_type_info_with_resolver(TypeResolver &resolver) {
   return resolver.get_type_info<T>();
 }
 

@@ -53,7 +53,7 @@ const (
 	// 0xffffffff is reserved for "unset".
 	maxUserTypeID       uint32 = 0xfffffffe
 	invalidUserTypeID   uint32 = 0xffffffff
-	internalTypeIDLimit = 0xFF
+	internalTypeIDLimit        = 0xFF
 )
 
 var (

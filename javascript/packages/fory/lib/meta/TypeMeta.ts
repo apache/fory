@@ -165,8 +165,10 @@ class FieldInfo {
       if (trackingRef) {
         typeId |= 0b1;
       }
+      writer.writeVarUint32Small7(typeId);
+    } else {
+      writer.uint8(typeId);
     }
-    writer.uint8(typeId);
     if (TypeId.needsUserTypeId(typeInfo.typeId)) {
       if (userTypeId === undefined || userTypeId === -1) {
         throw new Error(`userTypeId required for typeId ${typeInfo.typeId}`);
@@ -324,28 +326,35 @@ export class TypeMeta {
 
   private static readTypeId(reader: BinaryReader, readFlag = false): InnerFieldInfo {
     const options: InnerFieldInfoOptions = {};
-    let typeId = reader.uint8();
     let nullable = false;
     let trackingRef = false;
     if (readFlag) {
+      let typeId = reader.readVarUint32Small7();
       nullable = Boolean(typeId & 0b10);
       trackingRef = Boolean(typeId & 0b1);
       typeId = typeId >> 2;
+      let userTypeId = -1;
+      if (TypeId.needsUserTypeId(typeId)) {
+        userTypeId = reader.varUInt32();
+      }
+      this.readNestedTypeInfo(reader, typeId, options);
+      return { typeId, userTypeId, nullable, trackingRef, options };
     }
+    const typeId = reader.uint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId)) {
       userTypeId = reader.varUInt32();
     }
+    this.readNestedTypeInfo(reader, typeId, options);
+    return { typeId, userTypeId, nullable, trackingRef, options };
+  }
 
-    const baseTypeId = typeId;
-
-    // Handle nested type IDs for collections
-    switch (baseTypeId) {
+  private static readNestedTypeInfo(reader: BinaryReader, typeId: number, options: InnerFieldInfoOptions) {
+    switch (typeId) {
       case TypeId.LIST:
         options.inner = this.readTypeId(reader, true);
         break;
       case TypeId.SET:
-        // Read inner type
         options.key = this.readTypeId(reader, true);
         break;
       case TypeId.MAP:
@@ -355,8 +364,6 @@ export class TypeMeta {
       default:
         break;
     }
-
-    return { typeId, userTypeId, nullable, trackingRef, options };
   }
 
   private static readPkgName(reader: BinaryReader): string {

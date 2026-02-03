@@ -667,7 +667,7 @@ func (b *BaseFieldType) writeWithFlags(buffer *ByteBuffer, nullable bool, tracki
 	if trackingRef {
 		value |= 0b01
 	}
-	buffer.WriteUint8(uint8(value))
+	buffer.WriteVarUint32Small7(value)
 	if needsUserTypeID(b.typeId) {
 		buffer.WriteVarUint32(b.userTypeId)
 	}
@@ -767,7 +767,7 @@ func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 // readFieldTypeWithFlags reads field type info where flags are embedded in the type ID
 // Format: (typeId << 2) | (nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0)
 func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
-	rawValue := buffer.ReadUint8(err)
+	rawValue := buffer.ReadVarUint32Small7(err)
 	// Extract flags (lower 2 bits)
 	// trackingRef := (rawValue & 0b1) != 0  // Not used currently
 	// nullable := (rawValue & 0b10) != 0    // Not used currently

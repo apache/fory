@@ -139,8 +139,10 @@ impl FieldType {
             if self.ref_tracking {
                 header |= 1;
             }
+            writer.write_var_uint32(header);
+        } else {
+            writer.write_u8(header as u8);
         }
-        writer.write_u8(header as u8);
         if crate::types::needs_user_type_id(self.type_id) {
             if self.user_type_id == NO_USER_TYPE_ID {
                 return Err(Error::type_error(format!(
@@ -177,7 +179,11 @@ impl FieldType {
         read_flag: bool,
         nullable: Option<bool>,
     ) -> Result<Self, Error> {
-        let header = reader.read_u8()? as u32;
+        let header = if read_flag {
+            reader.read_varuint32()?
+        } else {
+            reader.read_u8()? as u32
+        };
         let type_id;
         let _nullable;
         let _ref_tracking;
