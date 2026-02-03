@@ -354,8 +354,8 @@ class TestFingerprint:
         fory2.serialize(V2(name="b"))
 
         # Get the actual serializers after serialization
-        serializer1 = fory1.type_resolver.get_typeinfo(V1).serializer
-        serializer2 = fory2.type_resolver.get_typeinfo(V2).serializer
+        serializer1 = fory1.type_resolver.get_type_info(V1).serializer
+        serializer2 = fory2.type_resolver.get_type_info(V2).serializer
 
         # Fingerprints should be different due to different tag IDs
         assert serializer1._hash != serializer2._hash
@@ -382,8 +382,8 @@ class TestFingerprint:
         fory2.serialize(WithoutRef())
 
         # Get the actual serializers after serialization
-        serializer1 = fory1.type_resolver.get_typeinfo(WithRef).serializer
-        serializer2 = fory2.type_resolver.get_typeinfo(WithoutRef).serializer
+        serializer1 = fory1.type_resolver.get_type_info(WithRef).serializer
+        serializer2 = fory2.type_resolver.get_type_info(WithoutRef).serializer
 
         # Fingerprints should be different due to different ref flags
         assert serializer1._hash != serializer2._hash

@@ -879,7 +879,7 @@ pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
             }
             if context.is_compatible() {
                 let type_info = if read_type_info {
-                    context.read_any_typeinfo()?
+                    context.read_any_type_info()?
                 } else {
                     let rs_type_id = std::any::TypeId::of::<Self>();
                     context.get_type_info(&rs_type_id)?

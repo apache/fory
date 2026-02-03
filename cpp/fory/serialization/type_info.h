@@ -113,7 +113,7 @@ struct CachedMetaString {
 };
 
 /// TypeInfo holds metadata about a type for serialization purposes.
-/// This is used by read_any_typeinfo() and write_any_typeinfo() to track
+/// This is used by read_any_type_info() and write_any_type_info() to track
 /// type information across language boundaries (xlang serialization).
 struct TypeInfo {
   uint32_t type_id = 0;

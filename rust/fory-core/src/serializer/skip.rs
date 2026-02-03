@@ -185,7 +185,7 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     let default_elem_type = field_type.generics.first().unwrap();
     let (type_info, elem_field_type);
     let elem_type = if is_same_type && !is_declared {
-        let type_info_rc = context.read_any_typeinfo()?;
+        let type_info_rc = context.read_any_type_info()?;
         elem_field_type = FieldType {
             type_id: type_info_rc.get_type_id(),
             user_type_id: type_info_rc.get_user_type_id(),
@@ -231,7 +231,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let value_declared = (header & crate::serializer::map::DECL_VALUE_TYPE) != 0;
             let (value_type_info, value_field_type);
             let value_type = if !value_declared {
-                let type_info = context.read_any_typeinfo()?;
+                let type_info = context.read_any_type_info()?;
                 value_field_type = FieldType {
                     type_id: type_info.get_type_id(),
                     user_type_id: type_info.get_user_type_id(),
@@ -256,7 +256,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let key_declared = (header & crate::serializer::map::DECL_KEY_TYPE) != 0;
             let (key_type_info, key_field_type);
             let key_type = if !key_declared {
-                let type_info = context.read_any_typeinfo()?;
+                let type_info = context.read_any_type_info()?;
                 key_field_type = FieldType {
                     type_id: type_info.get_type_id(),
                     user_type_id: type_info.get_user_type_id(),
@@ -284,7 +284,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         // Read key type info if not declared
         let (key_type_info, key_field_type);
         let key_type = if !key_declared {
-            let type_info = context.read_any_typeinfo()?;
+            let type_info = context.read_any_type_info()?;
             key_field_type = FieldType {
                 type_id: type_info.get_type_id(),
                 user_type_id: type_info.get_user_type_id(),
@@ -302,7 +302,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         // Read value type info if not declared
         let (value_type_info, value_field_type);
         let value_type = if !value_declared {
-            let type_info = context.read_any_typeinfo()?;
+            let type_info = context.read_any_type_info()?;
             value_field_type = FieldType {
                 type_id: type_info.get_type_id(),
                 user_type_id: type_info.get_user_type_id(),
@@ -335,7 +335,7 @@ fn skip_struct(
 ) -> Result<(), Error> {
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
-        let remote_type_info = context.read_any_typeinfo()?;
+        let remote_type_info = context.read_any_type_info()?;
         if type_id_num != types::UNKNOWN && remote_type_info.get_type_id() != types::UNKNOWN {
             ensure!(
                 type_id_num == remote_type_info.get_type_id(),
@@ -381,7 +381,7 @@ fn skip_ext(
 ) -> Result<(), Error> {
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
-        let remote_type_info = context.read_any_typeinfo()?;
+        let remote_type_info = context.read_any_type_info()?;
         ensure!(
             type_id_num == remote_type_info.get_type_id(),
             Error::type_mismatch(type_id_num, remote_type_info.get_type_id())

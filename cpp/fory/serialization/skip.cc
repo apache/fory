@@ -386,7 +386,7 @@ void skip_unknown(ReadContext &ctx) {
   // UNKNOWN type means the actual type info is written inline.
   // We need to read the type info and then skip based on the actual type.
   // This is used for polymorphic fields like List<Animal>.
-  const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
@@ -457,7 +457,7 @@ void skip_union(ReadContext &ctx) {
   }
 
   // Read and skip the alternative's type info
-  const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }

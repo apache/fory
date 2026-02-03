@@ -359,7 +359,7 @@ macro_rules! read_ptr_trait_object {
             fory_core::RefFlag::NotNullValue => {
                 $context.inc_depth()?;
                 let typeinfo = if $read_type_info {
-                    $context.read_any_typeinfo()?
+                    $context.read_any_type_info()?
                 } else {
                     $type_info.ok_or_else(|| fory_core::Error::type_error("No type info found for read"))?
                 };
@@ -397,7 +397,7 @@ macro_rules! read_ptr_trait_object {
             fory_core::RefFlag::RefValue => {
                 $context.inc_depth()?;
                 let typeinfo = if $read_type_info {
-                    $context.read_any_typeinfo()?
+                    $context.read_any_type_info()?
                 } else {
                     $type_info.ok_or_else(|| fory_core::Error::type_error("No type info found for read"))?
                 };
@@ -448,7 +448,7 @@ macro_rules! impl_smart_pointer_serializer {
                     let any_obj = <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0);
                     let concrete_type_id = any_obj.type_id();
                     let typeinfo = if write_type_info {
-                         context.write_any_typeinfo(fory_core::TypeId::UNKNOWN as u32, concrete_type_id)?
+                         context.write_any_type_info(fory_core::TypeId::UNKNOWN as u32, concrete_type_id)?
                     } else {
                         context.get_type_info(&concrete_type_id)?
                     };
@@ -621,7 +621,7 @@ impl Serializer for Box<dyn Serializer> {
         let fory_type_id_dyn = self.fory_type_id_dyn(context.get_type_resolver())?;
         let concrete_type_id = (**self).fory_concrete_type_id();
         if write_type_info {
-            context.write_any_typeinfo(fory_type_id_dyn as u32, concrete_type_id)?;
+            context.write_any_type_info(fory_type_id_dyn as u32, concrete_type_id)?;
         };
         self.fory_write_data_generic(context, has_generics)
     }
@@ -663,7 +663,7 @@ impl Serializer for Box<dyn Serializer> {
 
     #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        context.read_any_typeinfo()?;
+        context.read_any_type_info()?;
         Ok(())
     }
 
@@ -719,7 +719,7 @@ fn read_box_seralizer(
             read_type_info,
             Error::invalid_data("Type info must be read for Box<dyn Serializer>")
         );
-        context.read_any_typeinfo()?
+        context.read_any_type_info()?
     };
     let harness = typeinfo.get_harness();
     let boxed_any = harness.get_read_data_fn()(context)?;

@@ -1928,9 +1928,9 @@ TypeResolver::get_type_info_by_name(const std::string &ns,
 // TypeResolver to be complete)
 // ============================================================================
 
-template <typename E> Result<void, Error> WriteContext::write_enum_typeinfo() {
+template <typename E> Result<void, Error> WriteContext::write_enum_type_info() {
   FORY_TRY(type_info, type_resolver_->get_type_info<E>());
-  return write_enum_typeinfo(type_info);
+  return write_enum_type_info(type_info);
 }
 
 } // namespace serialization

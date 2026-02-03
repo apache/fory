@@ -112,7 +112,7 @@ static void write_encoded_meta_string(Buffer &buffer,
 }
 
 Result<void, Error>
-WriteContext::write_enum_typeinfo(const std::type_index &type) {
+WriteContext::write_enum_type_info(const std::type_index &type) {
   FORY_TRY(type_info, type_resolver_->get_type_info(type));
   uint32_t type_id = type_info->type_id;
   buffer_.write_uint8(static_cast<uint8_t>(type_id));
@@ -142,7 +142,7 @@ WriteContext::write_enum_typeinfo(const std::type_index &type) {
 }
 
 Result<void, Error>
-WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
+WriteContext::write_enum_type_info(const TypeInfo *type_info) {
   if (!type_info) {
     return Unexpected(Error::type_error("Enum type not registered"));
   }
@@ -176,7 +176,7 @@ WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
 }
 
 Result<const TypeInfo *, Error>
-WriteContext::write_any_typeinfo(uint32_t fory_type_id,
+WriteContext::write_any_type_info(uint32_t fory_type_id,
                                  const std::type_index &concrete_type_id) {
   // Check if it's an internal type
   if (is_internal_type(fory_type_id)) {
@@ -233,7 +233,7 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
 }
 
 Result<void, Error>
-WriteContext::write_any_typeinfo(const TypeInfo *type_info) {
+WriteContext::write_any_type_info(const TypeInfo *type_info) {
   if (FORY_PREDICT_FALSE(type_info == nullptr)) {
     return Unexpected(Error::invalid("TypeInfo is null"));
   }
@@ -546,7 +546,7 @@ ReadContext::get_type_info_by_index(size_t index) const {
   return reading_type_infos_[index];
 }
 
-Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
+Result<const TypeInfo *, Error> ReadContext::read_any_type_info() {
   Error error;
   uint32_t type_id = buffer_->read_uint8(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
@@ -593,8 +593,8 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
   }
 }
 
-const TypeInfo *ReadContext::read_any_typeinfo(Error &error) {
-  auto result = read_any_typeinfo();
+const TypeInfo *ReadContext::read_any_type_info(Error &error) {
+  auto result = read_any_type_info();
   if (!result.ok()) {
     error = std::move(result).error();
     return nullptr;

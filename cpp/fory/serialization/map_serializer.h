@@ -61,7 +61,7 @@ template <typename T> inline void read_type_info(ReadContext &ctx) {
 
 /// Read polymorphic type info from buffer. Returns nullptr on error.
 inline const TypeInfo *read_polymorphic_type_info(ReadContext &ctx) {
-  return ctx.read_any_typeinfo(ctx.error());
+  return ctx.read_any_type_info(ctx.error());
 }
 
 // ============================================================================
@@ -280,7 +280,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
               ctx.set_error(std::move(type_info_res).error());
               return;
             }
-            auto res = ctx.write_any_typeinfo(type_info_res.value()->type_id,
+            auto res = ctx.write_any_type_info(type_info_res.value()->type_id,
                                               concrete_type_id);
             if (!res.ok()) {
               ctx.set_error(std::move(res).error());
@@ -333,7 +333,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
               ctx.set_error(std::move(type_info_res).error());
               return;
             }
-            auto res = ctx.write_any_typeinfo(type_info_res.value()->type_id,
+            auto res = ctx.write_any_type_info(type_info_res.value()->type_id,
                                               concrete_type_id);
             if (!res.ok()) {
               ctx.set_error(std::move(res).error());
@@ -439,7 +439,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
             key_type_info = type_info_res.value();
           }
           auto res =
-              ctx.write_any_typeinfo(key_type_info->type_id, concrete_type_id);
+              ctx.write_any_type_info(key_type_info->type_id, concrete_type_id);
           if (!res.ok()) {
             ctx.set_error(std::move(res).error());
             return;
@@ -462,7 +462,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
             val_type_info = type_info_res.value();
           }
           auto res =
-              ctx.write_any_typeinfo(val_type_info->type_id, concrete_type_id);
+              ctx.write_any_type_info(val_type_info->type_id, concrete_type_id);
           if (!res.ok()) {
             ctx.set_error(std::move(res).error());
             return;
@@ -931,7 +931,7 @@ struct Serializer<std::map<K, V, Args...>> {
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }

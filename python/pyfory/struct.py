@@ -249,7 +249,7 @@ def _extract_field_infos(
 
         # Get type_id from serializer
         if serializer is not None:
-            type_id = fory.type_resolver.get_typeinfo(serializer.type_).type_id
+            type_id = fory.type_resolver.get_type_info(serializer.type_).type_id
         else:
             type_id = TypeId.UNKNOWN
 
@@ -611,7 +611,7 @@ class DataClassSerializer(Serializer):
             # For dynamic=False, get typeinfo for declared type to use its serializer
             typeinfo_var = f"typeinfo{index}"
             if not is_dynamic and serializer is not None:
-                context[typeinfo_var] = self.fory.type_resolver.get_typeinfo(serializer.type_)
+                context[typeinfo_var] = self.fory.type_resolver.get_type_info(serializer.type_)
             if is_nullable:
                 # Use gen_write_nullable_basic_stmts for nullable basic types
                 if isinstance(serializer, BooleanSerializer):
@@ -990,7 +990,7 @@ class DataClassSerializer(Serializer):
             # For dynamic=False, get typeinfo for declared type
             typeinfo = None
             if not is_dynamic and serializer is not None:
-                typeinfo = self.fory.type_resolver.get_typeinfo(serializer.type_)
+                typeinfo = self.fory.type_resolver.get_type_info(serializer.type_)
 
             if is_nullable:
                 self._write_nullable_field(buffer, field_value, serializer, typeinfo)
@@ -1136,7 +1136,7 @@ class DataClassStubSerializer(DataClassSerializer):
         return self._replace().xread(buffer)
 
     def _replace(self):
-        typeinfo = self.fory.type_resolver.get_typeinfo(self.type_)
+        typeinfo = self.fory.type_resolver.get_type_info(self.type_)
         typeinfo.serializer = DataClassSerializer(self.fory, self.type_, self.xlang)
         return typeinfo.serializer
 
@@ -1221,7 +1221,7 @@ class StructFieldSerializerVisitor(TypeVisitor):
             return self.fory.type_resolver.get_serializer(type_)
         # For custom types (dataclasses, etc.), try to get or create serializer
         # This enables field-level serializer resolution for types like inner structs
-        typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
+        typeinfo = self.fory.type_resolver.get_type_info(type_, create=False)
         if typeinfo is not None:
             return typeinfo.serializer
         return None
@@ -1271,7 +1271,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
         else:
             type_ids.append(
                 (
-                    type_resolver.get_typeinfo(serializer.type_).type_id,
+                    type_resolver.get_type_info(serializer.type_).type_id,
                     serializer,
                     field_name,
                     sort_key,
@@ -1373,7 +1373,7 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
             # For unknown serializers, use nullable from map (defaults to False for xlang)
             nullable_flag = "1" if nullable_map.get(field_name, False) else "0"
         else:
-            type_id = type_resolver.get_typeinfo(serializer.type_).type_id
+            type_id = type_resolver.get_type_info(serializer.type_).type_id
             if is_union_type(type_id):
                 # customized types can't be detected at compile time for some languages
                 type_id = TypeId.UNKNOWN
@@ -1479,17 +1479,17 @@ class StructTypeIdVisitor(TypeVisitor):
         return TypeId.MAP, key_ids, value_ids
 
     def visit_customized(self, field_name, type_, types_path=None):
-        typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
+        typeinfo = self.fory.type_resolver.get_type_info(type_, create=False)
         if typeinfo is None:
             return [TypeId.UNKNOWN]
         return [typeinfo.type_id]
 
     def visit_other(self, field_name, type_, types_path=None):
         if is_subclass(type_, enum.Enum):
-            return [self.fory.type_resolver.get_typeinfo(type_).type_id]
+            return [self.fory.type_resolver.get_type_info(type_).type_id]
         if type_ not in basic_types and not is_primitive_array_type(type_):
             return None, None
-        typeinfo = self.fory.type_resolver.get_typeinfo(type_)
+        typeinfo = self.fory.type_resolver.get_type_info(type_)
         return [typeinfo.type_id]
 
 

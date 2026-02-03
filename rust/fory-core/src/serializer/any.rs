@@ -61,7 +61,7 @@ pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Er
     if ref_flag != RefFlag::NotNullValue as i8 {
         return Err(Error::invalid_ref("Expected NotNullValue for Box<dyn Any>"));
     }
-    let typeinfo = context.read_any_typeinfo()?;
+    let typeinfo = context.read_any_type_info()?;
     // Check for generic container types which cannot be deserialized polymorphically
     check_generic_container_type(&typeinfo)?;
     let result = typeinfo
@@ -82,14 +82,14 @@ impl Serializer for Box<dyn Any> {
         &self,
         context: &mut WriteContext,
         ref_mode: RefMode,
-        write_typeinfo: bool,
+        write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
         write_box_any(
             self.as_ref(),
             context,
             ref_mode,
-            write_typeinfo,
+            write_type_info,
             has_generics,
         )
     }
@@ -179,15 +179,15 @@ pub fn write_box_any(
     value: &dyn Any,
     context: &mut WriteContext,
     ref_mode: RefMode,
-    write_typeinfo: bool,
+    write_type_info: bool,
     has_generics: bool,
 ) -> Result<(), Error> {
     if ref_mode != RefMode::None {
         context.writer.write_i8(RefFlag::NotNullValue as i8);
     }
     let concrete_type_id = value.type_id();
-    let typeinfo = if write_typeinfo {
-        context.write_any_typeinfo(TypeId::UNKNOWN as u32, concrete_type_id)?
+    let typeinfo = if write_type_info {
+        context.write_any_type_info(TypeId::UNKNOWN as u32, concrete_type_id)?
     } else {
         context.get_type_info(&concrete_type_id)?
     };
@@ -219,7 +219,7 @@ pub fn read_box_any(
             read_type_info,
             Error::invalid_data("Type info must be read for Box<dyn Any>")
         );
-        context.read_any_typeinfo()?
+        context.read_any_type_info()?
     };
     // Check for generic container types which cannot be deserialized polymorphically
     check_generic_container_type(&typeinfo)?;
@@ -252,7 +252,7 @@ impl Serializer for Rc<dyn Any> {
             let concrete_type_id: std::any::TypeId = (**self).type_id();
             let write_data_fn = if write_type_info {
                 let typeinfo =
-                    context.write_any_typeinfo(TypeId::UNKNOWN as u32, concrete_type_id)?;
+                    context.write_any_type_info(TypeId::UNKNOWN as u32, concrete_type_id)?;
                 typeinfo.get_harness().get_write_data_fn()
             } else {
                 context
@@ -369,7 +369,7 @@ pub fn read_rc_any(
         RefFlag::NotNullValue => {
             context.inc_depth()?;
             let typeinfo = if read_type_info {
-                context.read_any_typeinfo()?
+                context.read_any_type_info()?
             } else {
                 type_info.ok_or_else(|| Error::type_error("No type info found for read"))?
             };
@@ -384,7 +384,7 @@ pub fn read_rc_any(
         RefFlag::RefValue => {
             context.inc_depth()?;
             let typeinfo = if read_type_info {
-                context.read_any_typeinfo()?
+                context.read_any_type_info()?
             } else {
                 type_info.ok_or_else(|| Error::type_error("No type info found for read"))?
             };
@@ -423,7 +423,7 @@ impl Serializer for Arc<dyn Any> {
             let concrete_type_id: std::any::TypeId = (**self).type_id();
             if write_type_info {
                 let typeinfo =
-                    context.write_any_typeinfo(TypeId::UNKNOWN as u32, concrete_type_id)?;
+                    context.write_any_type_info(TypeId::UNKNOWN as u32, concrete_type_id)?;
                 let serializer_fn = typeinfo.get_harness().get_write_data_fn();
                 serializer_fn(&**self, context, has_generics)?;
             } else {
@@ -541,7 +541,7 @@ pub fn read_arc_any(
         RefFlag::NotNullValue => {
             context.inc_depth()?;
             let typeinfo = if read_type_info {
-                context.read_any_typeinfo()?
+                context.read_any_type_info()?
             } else {
                 type_info
                     .ok_or_else(|| Error::type_error("No type info found for read Arc<dyn Any>"))?
@@ -557,7 +557,7 @@ pub fn read_arc_any(
         RefFlag::RefValue => {
             context.inc_depth()?;
             let typeinfo = if read_type_info {
-                context.read_any_typeinfo()?
+                context.read_any_type_info()?
             } else {
                 type_info
                     .ok_or_else(|| Error::type_error("No type info found for read Arc<dyn Any>"))?

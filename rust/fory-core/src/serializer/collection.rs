@@ -164,7 +164,7 @@ where
                     "Unable to determine concrete type for polymorphic collection elements",
                 )
             })?;
-            context.write_any_typeinfo(T::fory_static_type_id() as u32, type_id)?;
+            context.write_any_type_info(T::fory_static_type_id() as u32, type_id)?;
         } else {
             T::fory_write_type_info(context)?;
         }
@@ -236,7 +236,7 @@ where
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
     if !declared {
-        // context.read_any_typeinfo();
+        // context.read_any_type_info();
         // TODO check whether type info consistent with T
         T::fory_read_type_info(context)?;
     }
@@ -287,7 +287,7 @@ where
     // Read elements
     if is_same_type {
         let type_info = if !is_declared {
-            context.read_any_typeinfo()?
+            context.read_any_type_info()?
         } else {
             T::fory_get_type_info(context.get_type_resolver())?
         };

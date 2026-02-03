@@ -490,7 +490,7 @@ pub trait Serializer: 'static {
     /// ```rust,ignore
     /// fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
     ///     let rs_type_id = std::any::TypeId::of::<Self>();
-    ///     context.write_any_typeinfo(Self::fory_static_type_id() as u32, rs_type_id)?;
+    ///     context.write_any_type_info(Self::fory_static_type_id() as u32, rs_type_id)?;
     ///     Ok(())
     /// }
     /// ```
@@ -519,7 +519,7 @@ pub trait Serializer: 'static {
     {
         // Serializer for internal types should overwrite this method for faster performance.
         let rs_type_id = std::any::TypeId::of::<Self>();
-        context.write_any_typeinfo(Self::fory_static_type_id() as u32, rs_type_id)?;
+        context.write_any_type_info(Self::fory_static_type_id() as u32, rs_type_id)?;
         Ok(())
     }
 
@@ -902,7 +902,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust,ignore
     /// fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-    ///     context.read_any_typeinfo()?;
+    ///     context.read_any_type_info()?;
     ///     Ok(())
     /// }
     /// ```
@@ -930,7 +930,7 @@ pub trait Serializer: 'static {
         Self: Sized,
     {
         // Serializer for internal types should overwrite this method for faster performance.
-        context.read_any_typeinfo()?;
+        context.read_any_type_info()?;
         Ok(())
     }
 

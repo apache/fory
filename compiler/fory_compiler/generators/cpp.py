@@ -1240,7 +1240,7 @@ class CppGenerator(BaseGenerator):
         lines.append("")
         lines.append("  static inline void write_type_info(WriteContext &ctx) {")
         lines.append(
-            f"    auto result = ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::TYPED_UNION), std::type_index(typeid({qualified_name})));"
+            f"    auto result = ctx.write_any_type_info(static_cast<uint32_t>(TypeId::TYPED_UNION), std::type_index(typeid({qualified_name})));"
         )
         lines.append("    if (FORY_PREDICT_FALSE(!result.ok())) {")
         lines.append("      ctx.set_error(std::move(result).error());")
@@ -1256,7 +1256,7 @@ class CppGenerator(BaseGenerator):
         lines.append("      return;")
         lines.append("    }")
         lines.append("    const TypeInfo *expected = type_info_res.value();")
-        lines.append("    const TypeInfo *remote = ctx.read_any_typeinfo(ctx.error());")
+        lines.append("    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());")
         lines.append("    if (FORY_PREDICT_FALSE(ctx.has_error())) {")
         lines.append("      return;")
         lines.append("    }")
@@ -1397,7 +1397,7 @@ class CppGenerator(BaseGenerator):
         lines.append("        return default_value();")
         lines.append("      }")
         lines.append(
-            "      const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());"
+            "      const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());"
         )
         lines.append("      if (FORY_PREDICT_FALSE(ctx.has_error())) {")
         lines.append("        return default_value();")

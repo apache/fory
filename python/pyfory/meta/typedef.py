@@ -143,16 +143,16 @@ class TypeDef:
 
     def create_serializer(self, resolver):
         if self.type_id == TypeId.NAMED_EXT:
-            return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
+            return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
         if self.type_id == TypeId.NAMED_ENUM:
             try:
-                return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
+                return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
             except Exception:
                 from pyfory.serializer import NonExistEnumSerializer
 
                 return NonExistEnumSerializer(resolver.fory)
         if self.type_id == TypeId.NAMED_UNION:
-            return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
+            return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
 
         from pyfory.struct import DataClassSerializer
 
@@ -301,7 +301,7 @@ class FieldType:
             if type_ is None:
                 return None
             try:
-                return resolver.get_typeinfo(cls=type_).serializer
+                return resolver.get_type_info(cls=type_).serializer
             except Exception:
                 return None
         # Types that need to be handled dynamically during deserialization
@@ -318,19 +318,19 @@ class FieldType:
             if type_ is None:
                 return None
             try:
-                return resolver.get_typeinfo(cls=type_).serializer
+                return resolver.get_type_info(cls=type_).serializer
             except Exception:
                 return None
         if self.type_id in [TypeId.ENUM]:
             try:
                 if issubclass(type_, enum.Enum):
-                    return resolver.get_typeinfo(cls=type_).serializer
+                    return resolver.get_type_info(cls=type_).serializer
             except Exception:
                 pass
             from pyfory.serializer import NonExistEnumSerializer
 
             return NonExistEnumSerializer(resolver.fory)
-        typeinfo = resolver.get_typeinfo_by_id(self.type_id)
+        typeinfo = resolver.get_type_info_by_id(self.type_id)
         return typeinfo.serializer
 
     def __repr__(self):

@@ -460,7 +460,7 @@ fn read_rc_weak<T: Serializer + ForyDefault + 'static>(
                 T::fory_read_with_type_info(context, RefMode::None, type_info)?
             } else {
                 if read_type_info {
-                    context.read_any_typeinfo()?;
+                    context.read_any_type_info()?;
                 }
                 T::fory_read_data(context)?
             };
@@ -633,7 +633,7 @@ fn read_arc_weak<T: Serializer + ForyDefault + 'static>(
                 T::fory_read_with_type_info(context, RefMode::None, type_info)?
             } else {
                 if read_type_info {
-                    context.read_any_typeinfo()?;
+                    context.read_any_type_info()?;
                 }
                 T::fory_read_data(context)?
             };

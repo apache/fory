@@ -83,7 +83,7 @@ pub fn write_dyn_data_generic<T: Serializer>(
     let any_value = value.as_any();
     let concrete_type_id = any_value.type_id();
     let serializer_fn = context
-        .write_any_typeinfo(T::fory_static_type_id() as u32, concrete_type_id)?
+        .write_any_type_info(T::fory_static_type_id() as u32, concrete_type_id)?
         .get_harness()
         .get_write_data_fn();
     serializer_fn(any_value, context, has_generics)

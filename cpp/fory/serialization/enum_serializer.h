@@ -48,11 +48,11 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
 
   static inline void write_type_info(WriteContext &ctx) {
     // Use compile-time type lookup for faster enum type info writing
-    ctx.write_enum_typeinfo<E>();
+    ctx.write_enum_type_info<E>();
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }

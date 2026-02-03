@@ -768,7 +768,7 @@ template <> struct Serializer<MyExt> {
         ctx.set_error(std::move(type_info_res).error());
         return;
       }
-      auto result = ctx.write_any_typeinfo(type_info_res.value()->type_id,
+      auto result = ctx.write_any_type_info(type_info_res.value()->type_id,
                                            std::type_index(typeid(MyExt)));
       if (!result.ok()) {
         ctx.set_error(std::move(result).error());
@@ -795,7 +795,7 @@ template <> struct Serializer<MyExt> {
     }
     if (read_type) {
       // Validate dynamic type info and consume any named metadata.
-      const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+      const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
       if (ctx.has_error()) {
         return MyExt{};
       }

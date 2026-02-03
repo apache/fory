@@ -159,7 +159,7 @@ where
     // Read elements
     if is_same_type {
         let type_info = if !is_declared {
-            context.read_any_typeinfo()?
+            context.read_any_type_info()?
         } else {
             let rs_type_id = std::any::TypeId::of::<T>();
             context.get_type_resolver().get_type_info(&rs_type_id)?

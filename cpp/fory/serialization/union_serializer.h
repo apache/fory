@@ -426,7 +426,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
       ctx.set_error(std::move(type_info_res).error());
       return;
     }
-    auto result = ctx.write_any_typeinfo(type_info_res.value());
+    auto result = ctx.write_any_type_info(type_info_res.value());
     if (FORY_PREDICT_FALSE(!result.ok())) {
       ctx.set_error(std::move(result).error());
     }
@@ -439,7 +439,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
       return;
     }
     const TypeInfo *expected = type_info_res.value();
-    const TypeInfo *remote = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -624,7 +624,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
             Error::invalid_data("Unknown reference flag in union value"));
         return default_value();
       }
-      const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+      const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return default_value();
       }

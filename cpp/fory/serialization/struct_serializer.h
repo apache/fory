@@ -2812,7 +2812,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   /// Read and validate type info.
   /// This consumes the type_id and meta index from the buffer.
   static void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -3054,7 +3054,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
             }
           } else {
             // Named type - need to parse full type info
-            const TypeInfo *remote_info = ctx.read_any_typeinfo(ctx.error());
+            const TypeInfo *remote_info = ctx.read_any_type_info(ctx.error());
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
               return T{};
             }

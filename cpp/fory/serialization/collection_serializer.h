@@ -290,7 +290,7 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
         return;
       }
       auto write_res =
-          ctx.write_any_typeinfo(type_info_res.value()->type_id, first_type);
+          ctx.write_any_type_info(type_info_res.value()->type_id, first_type);
       if (FORY_PREDICT_FALSE(!write_res.ok())) {
         ctx.set_error(std::move(write_res).error());
         return;
@@ -416,7 +416,7 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   // Read element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
   const TypeInfo *elem_type_info = nullptr;
   if (is_same_type && !is_decl_type) {
-    elem_type_info = ctx.read_any_typeinfo(ctx.error());
+    elem_type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
@@ -702,7 +702,7 @@ struct Serializer<
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::vector<T, Alloc>();
         }
@@ -993,7 +993,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::list<T, Alloc>();
         }
@@ -1183,7 +1183,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::deque<T, Alloc>();
         }
@@ -1379,7 +1379,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::forward_list<T, Alloc>();
         }
@@ -1639,7 +1639,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
             ctx.set_error(std::move(type_info_res).error());
             return;
           }
-          auto write_res = ctx.write_any_typeinfo(
+          auto write_res = ctx.write_any_type_info(
               type_info_res.value()->type_id, first_type);
           if (FORY_PREDICT_FALSE(!write_res.ok())) {
             ctx.set_error(std::move(write_res).error());
@@ -1834,7 +1834,7 @@ struct Serializer<std::set<T, Args...>> {
       bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
 
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::set<T, Args...>();
         }
@@ -2009,7 +2009,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
       bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
 
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::unordered_set<T, Args...>();
         }

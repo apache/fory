@@ -279,7 +279,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
   static inline void read_type_info(ReadContext &ctx) {
     if constexpr (std::is_polymorphic_v<T>) {
       // For polymorphic types, type info is read dynamically
-      ctx.read_any_typeinfo(ctx.error());
+      ctx.read_any_type_info(ctx.error());
       // Type checking is done at value read time
     } else {
       Serializer<T>::read_type_info(ctx);
@@ -310,7 +310,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         const TypeInfo *type_info = type_info_res.value();
         if (write_type) {
           auto write_res =
-              ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
+              ctx.write_any_type_info(type_info->type_id, concrete_type_id);
           if (!write_res.ok()) {
             ctx.set_error(std::move(write_res).error());
             return;
@@ -355,7 +355,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       // write type info if requested
       if (write_type) {
         auto write_res =
-            ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
+            ctx.write_any_type_info(type_info->type_id, concrete_type_id);
         if (!write_res.ok()) {
           ctx.set_error(std::move(write_res).error());
           return;
@@ -429,7 +429,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       if constexpr (is_polymorphic) {
         if (read_type) {
           // Polymorphic path: read type info from stream to get concrete type
-          const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+          const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
           if (ctx.has_error()) {
             return nullptr;
           }
@@ -519,7 +519,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         DynDepthGuard dyn_depth_guard(ctx);
 
         // Read type info from stream to get the concrete type
-        const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
         if (ctx.has_error()) {
           return nullptr;
         }
@@ -776,7 +776,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         const TypeInfo *type_info = type_info_res.value();
         if (write_type) {
           auto write_res =
-              ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
+              ctx.write_any_type_info(type_info->type_id, concrete_type_id);
           if (!write_res.ok()) {
             ctx.set_error(std::move(write_res).error());
             return;
@@ -810,7 +810,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       const TypeInfo *type_info = type_info_res.value();
       if (write_type) {
         auto write_res =
-            ctx.write_any_typeinfo(type_info->type_id, concrete_type_id);
+            ctx.write_any_type_info(type_info->type_id, concrete_type_id);
         if (!write_res.ok()) {
           ctx.set_error(std::move(write_res).error());
           return;
@@ -879,7 +879,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       if constexpr (is_polymorphic) {
         if (read_type) {
           // Polymorphic path: read type info from stream to get concrete type
-          const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+          const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
           if (ctx.has_error()) {
             return nullptr;
           }
@@ -939,7 +939,7 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         DynDepthGuard dyn_depth_guard(ctx);
 
         // Read type info from stream to get the concrete type
-        const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
         if (ctx.has_error()) {
           return nullptr;
         }

@@ -128,7 +128,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         namespace = read_namespace(meta_buffer)
         typename = read_typename(meta_buffer)
         # Look up the type_id from namespace and typename
-        type_info = resolver.get_typeinfo_by_name(namespace, typename)
+        type_info = resolver.get_type_info_by_name(namespace, typename)
         if type_info:
             type_id = type_info.type_id
             type_cls = type_info.cls
@@ -139,7 +139,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         type_id = meta_buffer.read_uint8()
         user_type_id = meta_buffer.read_var_uint32()
         if resolver.is_registered_by_id(type_id=type_id, user_type_id=user_type_id):
-            type_info = resolver.get_typeinfo_by_id(type_id, user_type_id=user_type_id)
+            type_info = resolver.get_type_info_by_id(type_id, user_type_id=user_type_id)
             type_cls = type_info.cls
             namespace = type_info.decode_namespace()
             typename = type_info.decode_typename()

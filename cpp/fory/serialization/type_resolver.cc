@@ -1439,7 +1439,7 @@ std::unique_ptr<TypeResolver> TypeResolver::clone() const {
 
 void TypeResolver::register_builtin_types() {
   // Register internal type IDs without harnesses (deserialization is static)
-  // These are needed so read_any_typeinfo can find them by type_id
+  // These are needed so read_any_type_info can find them by type_id
   auto register_type_id_only = [this](TypeId type_id) {
     FORY_CHECK(static_cast<uint32_t>(type_id) < 256)
         << "Internal type id overflow: " << static_cast<uint32_t>(type_id);

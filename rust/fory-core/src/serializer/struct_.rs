@@ -41,13 +41,13 @@ pub fn actual_type_id(_type_id: u32, register_by_name: bool, compatible: bool) -
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let rs_type_id = std::any::TypeId::of::<T>();
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    context.write_any_typeinfo(type_id as u32, rs_type_id)?;
+    context.write_any_type_info(type_id as u32, rs_type_id)?;
     Ok(())
 }
 
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
-    context.read_any_typeinfo()?;
+    context.read_any_type_info()?;
     Ok(())
 }
 

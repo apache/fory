@@ -173,7 +173,7 @@ inline Tuple read_tuple_elements_heterogeneous(ReadContext &ctx,
   // skip any extra elements beyond tuple size
   while (index < length && !ctx.has_error()) {
     // skip value - read type and skip data
-    ctx.read_any_typeinfo(ctx.error());
+    ctx.read_any_type_info(ctx.error());
     ++index;
   }
 
@@ -224,7 +224,7 @@ template <> struct Serializer<std::tuple<>> {
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -300,7 +300,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -397,7 +397,7 @@ template <typename... Ts> struct Serializer<std::tuple<Ts...>> {
 
     if (is_same_type) {
       // Read element type info once
-      ctx.read_any_typeinfo(ctx.error());
+      ctx.read_any_type_info(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return TupleType{};
       }

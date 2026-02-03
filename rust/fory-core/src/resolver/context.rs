@@ -221,7 +221,7 @@ impl<'a> WriteContext<'a> {
             .write_type_meta(&mut self.writer, type_id, &self.type_resolver)
     }
 
-    pub fn write_any_typeinfo(
+    pub fn write_any_type_info(
         &mut self,
         fory_type_id: u32,
         concrete_type_id: std::any::TypeId,
@@ -415,7 +415,7 @@ impl<'a> ReadContext<'a> {
             .read_type_meta(&mut self.reader, &self.type_resolver)
     }
 
-    pub fn read_any_typeinfo(&mut self) -> Result<Rc<TypeInfo>, Error> {
+    pub fn read_any_type_info(&mut self) -> Result<Rc<TypeInfo>, Error> {
         let fory_type_id = self.reader.read_u8()? as u32;
         // should be compiled to jump table generation
         match fory_type_id {

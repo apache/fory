@@ -197,7 +197,7 @@ where
                 } else {
                     context.writer.write_u8(chunk_header);
                     if key_is_polymorphic {
-                        context.write_any_typeinfo(
+                        context.write_any_type_info(
                             K::fory_static_type_id() as u32,
                             key.fory_concrete_type_id(),
                         )?;
@@ -223,7 +223,7 @@ where
                 } else {
                     context.writer.write_u8(chunk_header);
                     if val_is_polymorphic {
-                        context.write_any_typeinfo(
+                        context.write_any_type_info(
                             V::fory_static_type_id() as u32,
                             value.fory_concrete_type_id(),
                         )?;
@@ -281,7 +281,7 @@ where
             } else {
                 // Write type info for key
                 if key_is_polymorphic {
-                    context.write_any_typeinfo(
+                    context.write_any_type_info(
                         K::fory_static_type_id() as u32,
                         key.fory_concrete_type_id(),
                     )?;
@@ -299,7 +299,7 @@ where
             } else {
                 // Write type info for value
                 if val_is_polymorphic {
-                    context.write_any_typeinfo(
+                    context.write_any_type_info(
                         V::fory_static_type_id() as u32,
                         value.fory_concrete_type_id(),
                     )?;
@@ -379,7 +379,7 @@ macro_rules! impl_read_map_dyn_ref {
                     // Determine value type info (if any)
                     let value_type_info: Option<Rc<TypeInfo>> = if !value_declared {
                         if val_is_polymorphic {
-                            Some(context.read_any_typeinfo()?)
+                            Some(context.read_any_type_info()?)
                         } else {
                             V::fory_read_type_info(context)?;
                             None
@@ -414,7 +414,7 @@ macro_rules! impl_read_map_dyn_ref {
 
                     let key_type_info: Option<Rc<TypeInfo>> = if !key_declared {
                         if key_is_polymorphic {
-                            Some(context.read_any_typeinfo()?)
+                            Some(context.read_any_type_info()?)
                         } else {
                             K::fory_read_type_info(context)?;
                             None
@@ -450,7 +450,7 @@ macro_rules! impl_read_map_dyn_ref {
 
                 let key_type_info: Option<Rc<TypeInfo>> = if !key_declared {
                     if key_is_polymorphic {
-                        Some(context.read_any_typeinfo()?)
+                        Some(context.read_any_type_info()?)
                     } else {
                         K::fory_read_type_info(context)?;
                         None
@@ -460,7 +460,7 @@ macro_rules! impl_read_map_dyn_ref {
                 };
                 let value_type_info: Option<Rc<TypeInfo>> = if !value_declared {
                     if val_is_polymorphic {
-                        Some(context.read_any_typeinfo()?)
+                        Some(context.read_any_type_info()?)
                     } else {
                         V::fory_read_type_info(context)?;
                         None
