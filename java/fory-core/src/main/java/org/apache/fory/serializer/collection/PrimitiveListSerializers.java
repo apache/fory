@@ -539,6 +539,43 @@ public class PrimitiveListSerializers {
     }
   }
 
+  public static final class Float16ListSerializer
+      extends Serializers.CrossLanguageCompatibleSerializer<org.apache.fory.collection.Float16List> {
+    public Float16ListSerializer(Fory fory) {
+      super(fory, org.apache.fory.collection.Float16List.class, false, true);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, org.apache.fory.collection.Float16List value) {
+      int size = value.size();
+      int byteSize = size * 2;
+      buffer.writeVarUint32Small7(byteSize);
+      short[] array = value.getArray();
+      if (Platform.IS_LITTLE_ENDIAN) {
+        buffer.writePrimitiveArray(array, Platform.SHORT_ARRAY_OFFSET, byteSize);
+      } else {
+        for (int i = 0; i < size; i++) {
+          buffer.writeInt16(array[i]);
+        }
+      }
+    }
+
+    @Override
+    public org.apache.fory.collection.Float16List read(MemoryBuffer buffer) {
+      int byteSize = buffer.readVarUint32Small7();
+      int size = byteSize / 2;
+      short[] array = new short[size];
+      if (Platform.IS_LITTLE_ENDIAN) {
+        buffer.readToUnsafe(array, Platform.SHORT_ARRAY_OFFSET, byteSize);
+      } else {
+        for (int i = 0; i < size; i++) {
+          array[i] = buffer.readInt16();
+        }
+      }
+      return new org.apache.fory.collection.Float16List(array);
+    }
+  }
+
   public static void registerDefaultSerializers(Fory fory) {
     // Note: Classes are already registered in ClassResolver.initialize()
     // We only need to register serializers here
@@ -554,5 +591,7 @@ public class PrimitiveListSerializers {
     resolver.registerInternalSerializer(Uint64List.class, new Uint64ListSerializer(fory));
     resolver.registerInternalSerializer(Float32List.class, new Float32ListSerializer(fory));
     resolver.registerInternalSerializer(Float64List.class, new Float64ListSerializer(fory));
+    resolver.registerInternalSerializer(
+        org.apache.fory.collection.Float16List.class, new Float16ListSerializer(fory));
   }
 }
