@@ -131,6 +131,11 @@ impl FieldType {
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
         let mut header = self.type_id;
+        if header == NAMED_ENUM {
+            header = ENUM;
+        } else if header == TypeId::NAMED_UNION as u32 || header == TypeId::TYPED_UNION as u32 {
+            header = TypeId::UNION as u32;
+        }
         if write_flag {
             header <<= 2;
             if nullable {
@@ -142,15 +147,6 @@ impl FieldType {
             writer.write_var_uint32(header);
         } else {
             writer.write_u8(header as u8);
-        }
-        if crate::types::needs_user_type_id(self.type_id) {
-            if self.user_type_id == NO_USER_TYPE_ID {
-                return Err(Error::type_error(format!(
-                    "user_type_id required for type_id {}",
-                    self.type_id
-                )));
-            }
-            writer.write_var_uint32(self.user_type_id);
         }
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
@@ -184,7 +180,7 @@ impl FieldType {
         } else {
             reader.read_u8()? as u32
         };
-        let type_id;
+        let mut type_id;
         let _nullable;
         let _ref_tracking;
         if read_flag {
@@ -196,10 +192,12 @@ impl FieldType {
             _nullable = nullable.unwrap();
             _ref_tracking = false;
         }
-        let mut user_type_id = NO_USER_TYPE_ID;
-        if crate::types::needs_user_type_id(type_id) {
-            user_type_id = reader.read_varuint32()?;
+        if type_id == NAMED_ENUM {
+            type_id = ENUM;
+        } else if type_id == TypeId::NAMED_UNION as u32 || type_id == TypeId::TYPED_UNION as u32 {
+            type_id = TypeId::UNION as u32;
         }
+        let user_type_id = NO_USER_TYPE_ID;
         Ok(match type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None)?;
@@ -429,15 +427,6 @@ impl PartialEq for FieldType {
         }
         if self.generics != other.generics {
             return false;
-        }
-        if crate::types::needs_user_type_id(self.type_id)
-            || crate::types::needs_user_type_id(other.type_id)
-        {
-            let self_has = self.user_type_id != NO_USER_TYPE_ID;
-            let other_has = other.user_type_id != NO_USER_TYPE_ID;
-            if self_has || other_has {
-                return self.user_type_id == other.user_type_id;
-            }
         }
         true
     }

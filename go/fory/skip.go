@@ -539,7 +539,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		skipStruct(ctx, ti)
 		return
 	}
-	if internalID == ENUM || internalID == NAMED_ENUM {
+	if internalID == ENUM {
 		// Enum values are encoded as ordinal only (VarUint32Small7) for xlang.
 		_ = ctx.buffer.ReadUint8(err)
 		return
@@ -666,7 +666,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		skipStruct(ctx, ti)
 
 	// Enum types
-	case ENUM, NAMED_ENUM:
+	case ENUM:
 		_ = ctx.buffer.ReadVarUint32(err)
 
 	// Unsigned integer types

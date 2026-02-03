@@ -15,34 +15,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod generated {
-    #[path = "generated/addressbook.rs"]
-    pub mod addressbook;
-    #[path = "generated/any_example.rs"]
-    pub mod any_example;
-    #[path = "generated/any_example_pb.rs"]
-    pub mod any_example_pb;
-    #[path = "generated/auto_id.rs"]
-    pub mod auto_id;
-    #[path = "generated/collection.rs"]
-    pub mod collection;
-    #[path = "generated/complex_fbs.rs"]
-    pub mod complex_fbs;
-    #[path = "generated/complex_pb.rs"]
-    pub mod complex_pb;
-    #[path = "generated/graph.rs"]
-    pub mod graph;
-    #[path = "generated/monster.rs"]
-    pub mod monster;
-    #[path = "generated/optional_types.rs"]
-    pub mod optional_types;
-    #[path = "generated/root.rs"]
-    pub mod root;
-    #[path = "generated/tree.rs"]
-    pub mod tree;
-}
-
-pub use generated::{
-    addressbook, any_example, any_example_pb, auto_id, collection, complex_fbs, complex_pb, graph,
-    monster, optional_types, root, tree,
-};
+#[path = "generated/addressbook.rs"]
+pub mod addressbook;
+#[path = "generated/any_example.rs"]
+pub mod any_example;
+#[path = "generated/any_example_pb.rs"]
+pub mod any_example_pb;
+#[path = "generated/auto_id.rs"]
+pub mod auto_id;
+#[path = "generated/collection.rs"]
+pub mod collection;
+#[path = "generated/complex_fbs.rs"]
+pub mod complex_fbs;
+#[path = "generated/complex_pb.rs"]
+pub mod complex_pb;
+#[path = "generated/graph.rs"]
+pub mod graph;
+#[path = "generated/monster.rs"]
+pub mod monster;
+#[path = "generated/optional_types.rs"]
+pub mod optional_types;
+#[path = "generated/root.rs"]
+pub mod root;
+#[path = "generated/tree.rs"]
+pub mod tree;

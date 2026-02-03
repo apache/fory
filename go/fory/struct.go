@@ -138,7 +138,7 @@ func computeLocalNullable(typeResolver *TypeResolver, field reflect.StructField,
 		fieldType = optionalInfo.valueType
 	}
 	typeId := typeResolver.getTypeIdByType(fieldType)
-	isEnum := typeId == ENUM || typeId == NAMED_ENUM
+	isEnum := typeId == ENUM
 	var nullableFlag bool
 	if typeResolver.fory.config.IsXlang {
 		nullableFlag = isOptional || field.Type.Kind() == reflect.Ptr
@@ -378,7 +378,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		// - In native mode: Go's natural semantics apply - slice/map/interface can be nil,
 		//   so they are nullable by default.
 		// Can be overridden by explicit fory tag `fory:"nullable"`.
-		isEnum := fieldTypeId == ENUM || fieldTypeId == NAMED_ENUM
+		isEnum := fieldTypeId == ENUM
 
 		// Determine nullable based on mode
 		// In xlang mode: only pointer types are nullable by default (per xlang spec)
@@ -690,7 +690,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			defTypeId := def.fieldType.TypeId()
 			// Check if field is an enum - either by type ID or by serializer type
 			internalDefTypeId := defTypeId
-			isEnumField := internalDefTypeId == NAMED_ENUM || internalDefTypeId == ENUM
+			isEnumField := internalDefTypeId == ENUM
 			if !isEnumField && fieldSerializer != nil {
 				_, isEnumField = fieldSerializer.(*enumSerializer)
 			}
@@ -700,8 +700,8 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 				shouldRead = true
 				fieldType = localType
 			} else if typeLookupFailed && isEnumField {
-				// For enum fields with failed TypeDef lookup (NAMED_ENUM stores by namespace/typename, not typeId),
-				// check if local field is a numeric type (Go enums are int-based)
+				// For enum fields with failed TypeDef lookup, check if local field is a numeric type
+				// (Go enums are int-based)
 				// Also handle pointer enum fields (*EnumType)
 				localKind := localType.Kind()
 				elemKind := localKind

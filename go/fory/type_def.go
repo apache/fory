@@ -532,7 +532,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		//   so they are nullable by default.
 		// Can be overridden by explicit fory tag `fory:"nullable"`
 		typeId := ft.TypeId()
-		isEnumField := typeId == ENUM || typeId == NAMED_ENUM
+		isEnumField := typeId == ENUM
 		// Determine nullable based on mode
 		// In xlang mode: only pointer types are nullable by default (per xlang spec)
 		// In native mode: Go's natural semantics - all nil-able types are nullable
@@ -652,9 +652,6 @@ func (b *BaseFieldType) String() string {
 }
 func (b *BaseFieldType) write(buffer *ByteBuffer) {
 	buffer.WriteUint8(uint8(b.typeId))
-	if needsUserTypeID(b.typeId) {
-		buffer.WriteVarUint32(b.userTypeId)
-	}
 }
 
 // writeWithFlags writes the typeId with nullable and trackingRef flags packed into the value.
@@ -668,9 +665,6 @@ func (b *BaseFieldType) writeWithFlags(buffer *ByteBuffer, nullable bool, tracki
 		value |= 0b01
 	}
 	buffer.WriteVarUint32Small7(value)
-	if needsUserTypeID(b.typeId) {
-		buffer.WriteVarUint32(b.userTypeId)
-	}
 }
 
 func getFieldTypeSerializer(fory *Fory, ft FieldType) (Serializer, error) {
@@ -690,12 +684,8 @@ func getFieldTypeSerializerWithResolver(resolver *TypeResolver, ft FieldType) (S
 }
 
 func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
-	if needsUserTypeID(b.typeId) {
-		info := fory.typeResolver.getUserTypeInfoById(b.typeId, b.userTypeId)
-		if info == nil {
-			return TypeInfo{}, nil
-		}
-		return *info, nil
+	if isUserDefinedType(b.typeId) {
+		return TypeInfo{}, nil
 	}
 	info, err := fory.typeResolver.getTypeInfoById(uint32(b.typeId))
 	if err != nil {
@@ -708,12 +698,8 @@ func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 }
 
 func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
-	if needsUserTypeID(b.typeId) {
-		info := resolver.getUserTypeInfoById(b.typeId, b.userTypeId)
-		if info == nil {
-			return TypeInfo{}, nil
-		}
-		return *info, nil
+	if isUserDefinedType(b.typeId) {
+		return TypeInfo{}, nil
 	}
 	info, err := resolver.getTypeInfoById(uint32(b.typeId))
 	if err != nil {
@@ -730,10 +716,6 @@ func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInf
 func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	typeId := buffer.ReadUint8(err)
 	internalTypeId := TypeId(typeId)
-	userTypeId := invalidUserTypeID
-	if needsUserTypeID(internalTypeId) {
-		userTypeId = buffer.ReadVarUint32(err)
-	}
 
 	switch internalTypeId {
 	case LIST, SET:
@@ -756,11 +738,9 @@ func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
 	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		ft := NewDynamicFieldType(TypeId(typeId))
-		ft.userTypeId = userTypeId
 		return ft, nil
 	}
 	ft := NewSimpleFieldType(TypeId(typeId))
-	ft.userTypeId = userTypeId
 	return ft, nil
 }
 
@@ -773,10 +753,6 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	// nullable := (rawValue & 0b10) != 0    // Not used currently
 	typeId := rawValue >> 2
 	internalTypeId := TypeId(typeId)
-	userTypeId := invalidUserTypeID
-	if needsUserTypeID(internalTypeId) {
-		userTypeId = buffer.ReadVarUint32(err)
-	}
 
 	switch internalTypeId {
 	case LIST, SET:
@@ -797,11 +773,9 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
 	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		ft := NewDynamicFieldType(TypeId(typeId))
-		ft.userTypeId = userTypeId
 		return ft, nil
 	}
 	ft := NewSimpleFieldType(TypeId(typeId))
-	ft.userTypeId = userTypeId
 	return ft, nil
 }
 
@@ -1136,25 +1110,24 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 		return nil, err
 	}
 	typeId = TypeId(typeInfo.TypeID)
-	userTypeId := invalidUserTypeID
-	if needsUserTypeID(typeId) {
-		userTypeId = typeInfo.UserTypeID
+	if typeId == NAMED_ENUM {
+		typeId = ENUM
+	}
+	if typeId == NAMED_UNION || typeId == TYPED_UNION {
+		typeId = UNION
 	}
 
 	if isUserDefinedType(typeId) {
 		switch typeId {
-		case UNION, TYPED_UNION, NAMED_UNION, ENUM, NAMED_ENUM:
+		case UNION, ENUM:
 			ft := NewSimpleFieldType(typeId)
-			ft.userTypeId = userTypeId
 			return ft, nil
 		}
 		ft := NewDynamicFieldType(typeId)
-		ft.userTypeId = userTypeId
 		return ft, nil
 	}
 
 	ft := NewSimpleFieldType(typeId)
-	ft.userTypeId = userTypeId
 	return ft, nil
 }
 

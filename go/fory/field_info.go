@@ -260,11 +260,11 @@ func fieldHasNonPrimitiveSerializer(field *FieldInfo) bool {
 	if field.Serializer == nil {
 		return false
 	}
-	// ENUM (numeric ID), NAMED_ENUM (namespace/typename), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
+	// ENUM (numeric ID), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
 	// all require special serialization and should not use the primitive fast path
 	// Note: ENUM uses unsigned VarUint32Small7 for ordinals, not signed zigzag varint
 	switch TypeId(field.Meta.TypeId) {
-	case ENUM, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT:
+	case ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT:
 		return true
 	default:
 		return false
@@ -277,7 +277,7 @@ func isEnumField(field *FieldInfo) bool {
 		return false
 	}
 	internalTypeId := field.Meta.TypeId
-	return internalTypeId == ENUM || internalTypeId == NAMED_ENUM
+	return internalTypeId == ENUM
 }
 
 // getFieldCategory returns the category for sorting remainingFields:

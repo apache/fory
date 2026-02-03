@@ -501,18 +501,7 @@ struct FieldTypeBuilder<
   }
 };
 
-inline bool field_type_needs_user_type_id(uint32_t type_id) {
-  switch (static_cast<TypeId>(type_id)) {
-  case TypeId::ENUM:
-  case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
-  case TypeId::EXT:
-  case TypeId::TYPED_UNION:
-    return true;
-  default:
-    return false;
-  }
-}
+inline bool field_type_needs_user_type_id(uint32_t) { return false; }
 
 template <typename T>
 Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
@@ -621,7 +610,6 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     if (is_user_type(static_cast<TypeId>(ft.type_id))) {
       FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
       ft.type_id = info->type_id;
-      ft.user_type_id = info->user_type_id;
     }
     return ft;
   }

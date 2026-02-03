@@ -18,7 +18,7 @@
 import enum
 import typing
 from typing import List
-from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type, needs_user_type_id
+from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type
 from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.buffer import Buffer
 from pyfory.type_util import infer_field
@@ -167,6 +167,15 @@ class TypeDef:
             resolved_name = field_names[i]
             nullable_fields[resolved_name] = field_info.field_type.is_nullable
 
+        dynamic_fields = {}
+        for i, field_info in enumerate(self.fields):
+            resolved_name = field_names[i]
+            type_id = field_info.field_type.type_id
+            if (
+                is_polymorphic_type(type_id)
+            ):
+                dynamic_fields[resolved_name] = True
+
         return DataClassSerializer(
             fory,
             self.cls,
@@ -174,6 +183,7 @@ class TypeDef:
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
+            dynamic_fields=dynamic_fields,
         )
 
     def __repr__(self):
@@ -253,10 +263,6 @@ class FieldType:
             buffer.write_var_uint32(xtype_id)
         else:
             buffer.write_uint8(xtype_id)
-        if needs_user_type_id(self.type_id):
-            if self.user_type_id in {None, NO_USER_TYPE_ID}:
-                raise ValueError(f"user_type_id required for type_id {self.type_id}")
-            buffer.write_var_uint32(self.user_type_id)
         # Handle nested types
         if self.type_id in [TypeId.LIST, TypeId.SET]:
             self.element_type.xwrite(buffer, True)
@@ -275,8 +281,6 @@ class FieldType:
     @classmethod
     def xread_with_type(cls, buffer: Buffer, resolver, xtype_id: int, is_nullable: bool, is_tracking_ref: bool):
         user_type_id = NO_USER_TYPE_ID
-        if needs_user_type_id(xtype_id):
-            user_type_id = buffer.read_var_uint32()
         if xtype_id in [TypeId.LIST, TypeId.SET]:
             element_type = cls.xread(buffer, resolver)
             return CollectionFieldType(xtype_id, True, is_nullable, is_tracking_ref, element_type)
@@ -313,8 +317,13 @@ class FieldType:
             TypeId.NAMED_COMPATIBLE_STRUCT,
             TypeId.UNKNOWN,
         ]:
-            return None
-        if self.type_id in [TypeId.ENUM, TypeId.NAMED_ENUM]:
+            if type_ is None:
+                return None
+            try:
+                return resolver.get_typeinfo(cls=type_).serializer
+            except Exception:
+                return None
+        if self.type_id in [TypeId.ENUM]:
             try:
                 if issubclass(type_, enum.Enum):
                     return resolver.get_typeinfo(cls=type_).serializer
@@ -323,10 +332,7 @@ class FieldType:
             from pyfory.serializer import NonExistEnumSerializer
 
             return NonExistEnumSerializer(resolver.fory)
-        if needs_user_type_id(self.type_id):
-            typeinfo = resolver.get_typeinfo_by_id(self.type_id, user_type_id=self.user_type_id)
-        else:
-            typeinfo = resolver.get_typeinfo_by_id(self.type_id)
+        typeinfo = resolver.get_typeinfo_by_id(self.type_id)
         return typeinfo.serializer
 
     def __repr__(self):
@@ -555,6 +561,10 @@ def build_field_type_from_type_ids_with_ref(
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN
+    if type_id == TypeId.NAMED_ENUM:
+        type_id = TypeId.ENUM
+    if type_id in (TypeId.NAMED_UNION, TypeId.TYPED_UNION):
+        type_id = TypeId.UNION
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
@@ -629,15 +639,13 @@ def build_field_type_from_type_ids_with_ref(
         TypeId.NAMED_STRUCT,
         TypeId.COMPATIBLE_STRUCT,
         TypeId.NAMED_COMPATIBLE_STRUCT,
-    ] or is_union_type(type_id):
-        user_type_id = _resolve_user_type_id(type_resolver, type_id, type_hint)
-        return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref, user_type_id=user_type_id)
+    ]:
+        return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref, user_type_id=NO_USER_TYPE_ID)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
             raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
         # union/enum go here too
-        user_type_id = _resolve_user_type_id(type_resolver, type_id, type_hint)
-        return FieldType(type_id, morphic, is_nullable, is_tracking_ref, user_type_id=user_type_id)
+        return FieldType(type_id, morphic, is_nullable, is_tracking_ref, user_type_id=NO_USER_TYPE_ID)
 
 
 def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_nullable=False):
@@ -649,29 +657,15 @@ def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_null
         raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
 
-def _resolve_user_type_id(type_resolver, type_id: int, type_hint) -> int:
-    if not needs_user_type_id(type_id):
-        return NO_USER_TYPE_ID
-    if type_hint is None:
-        return NO_USER_TYPE_ID
-    origin = typing.get_origin(type_hint) if hasattr(typing, "get_origin") else getattr(type_hint, "__origin__", None)
-    origin = origin or type_hint
-    if not isinstance(origin, type):
-        return NO_USER_TYPE_ID
-    try:
-        typeinfo = type_resolver.get_typeinfo(origin, create=False)
-    except Exception:
-        typeinfo = None
-    if typeinfo is None:
-        return NO_USER_TYPE_ID
-    return typeinfo.user_type_id
-
-
 def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor, is_nullable=False, type_hint=None):
     tracking_ref = type_resolver.fory.ref_tracking
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN
+    if type_id == TypeId.NAMED_ENUM:
+        type_id = TypeId.ENUM
+    if type_id in (TypeId.NAMED_UNION, TypeId.TYPED_UNION):
+        type_id = TypeId.UNION
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
@@ -688,11 +682,9 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
         TypeId.NAMED_STRUCT,
         TypeId.COMPATIBLE_STRUCT,
         TypeId.NAMED_COMPATIBLE_STRUCT,
-    ] or is_union_type(type_id):
-        user_type_id = _resolve_user_type_id(type_resolver, type_id, type_hint)
-        return DynamicFieldType(type_id, False, is_nullable, tracking_ref, user_type_id=user_type_id)
+    ]:
+        return DynamicFieldType(type_id, False, is_nullable, tracking_ref, user_type_id=NO_USER_TYPE_ID)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
             raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
-        user_type_id = _resolve_user_type_id(type_resolver, type_id, type_hint)
-        return FieldType(type_id, morphic, is_nullable, tracking_ref, user_type_id=user_type_id)
+        return FieldType(type_id, morphic, is_nullable, tracking_ref, user_type_id=NO_USER_TYPE_ID)

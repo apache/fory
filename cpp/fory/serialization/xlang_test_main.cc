@@ -762,7 +762,13 @@ template <> struct Serializer<MyExt> {
       // Delegate dynamic typeinfo to WriteContext so that user type
       // ids and named registrations are encoded consistently with
       // other ext types.
-      auto result = ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::EXT),
+      auto type_info_res =
+          ctx.type_resolver().get_type_info(std::type_index(typeid(MyExt)));
+      if (!type_info_res.ok()) {
+        ctx.set_error(std::move(type_info_res).error());
+        return;
+      }
+      auto result = ctx.write_any_typeinfo(type_info_res.value()->type_id,
                                            std::type_index(typeid(MyExt)));
       if (!result.ok()) {
         ctx.set_error(std::move(result).error());

@@ -244,27 +244,6 @@ def _extract_field_infos(
         # Compute runtime ref tracking: field.ref AND global config
         runtime_ref = meta.ref and global_ref_tracking
 
-        # Compute effective dynamic based on type and mode
-        # - Abstract classes: always True (type info must be written)
-        # - If explicitly set (not None): use that value
-        # - Native mode: True for object types, False for numeric/str/time types
-        # - Xlang mode: False for concrete types
-        is_abstract = _is_abstract_type(unwrapped_type)
-        if is_abstract:
-            # Abstract classes always need type info
-            effective_dynamic = True
-        elif meta.dynamic is not None:
-            # Explicit configuration takes precedence
-            effective_dynamic = meta.dynamic
-        elif xlang:
-            # Xlang mode: False for concrete types
-            effective_dynamic = False
-        else:
-            # Native mode: False for numeric/str/time types, True for other object types
-            # Check if the type is a primitive, string, or time type
-            is_non_dynamic_type = is_primitive_type(unwrapped_type) or unwrapped_type in (str, bytes) or unwrapped_type in _time_types
-            effective_dynamic = not is_non_dynamic_type
-
         # Infer serializer
         serializer = infer_field(field_name, unwrapped_type, visitor, types_path=[])
 
@@ -273,6 +252,33 @@ def _extract_field_infos(
             type_id = fory.type_resolver.get_typeinfo(serializer.type_).type_id
         else:
             type_id = TypeId.UNKNOWN
+
+        # Compute effective dynamic based on type and mode
+        # - Abstract classes: always True (type info must be written)
+        # - If explicitly set (not None): use that value
+        # - Xlang mode: write type info for user-defined types
+        # - Native mode: True for object types, False for numeric/str/time types
+        is_abstract = _is_abstract_type(unwrapped_type)
+        if is_abstract:
+            # Abstract classes always need type info
+            effective_dynamic = True
+        elif meta.dynamic is not None:
+            # Explicit configuration takes precedence
+            effective_dynamic = meta.dynamic
+        elif xlang:
+            # Xlang mode: write type info for user-defined types
+            effective_dynamic = (
+                is_polymorphic_type(type_id)
+            )
+        else:
+            # Native mode: False for numeric/str/time types, True for other object types
+            # Check if the type is a primitive, string, or time type
+            is_non_dynamic_type = (
+                is_primitive_type(unwrapped_type)
+                or unwrapped_type in (str, bytes)
+                or unwrapped_type in _time_types
+            )
+            effective_dynamic = not is_non_dynamic_type
 
         field_info = FieldInfo(
             name=field_name,
@@ -314,6 +320,7 @@ class DataClassSerializer(Serializer):
         field_names: List[str] = None,
         serializers: List[Serializer] = None,
         nullable_fields: Dict[str, bool] = None,
+        dynamic_fields: Dict[str, bool] = None,
     ):
         super().__init__(fory, clz)
         self._xlang = xlang
@@ -332,7 +339,7 @@ class DataClassSerializer(Serializer):
             self._serializers = serializers
             self._nullable_fields = nullable_fields or {}
             self._ref_fields = {}
-            self._dynamic_fields = {}  # Default to empty, will use mode defaults
+            self._dynamic_fields = dynamic_fields or {}
             self._field_infos = []
             self._field_metas = {}
         else:

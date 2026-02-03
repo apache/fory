@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="102" failures="0" errors="0" time="3.787">
+  <testsuite name="writer" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="1.774" tests="23">
+    <testcase classname="writer should unsigned int work" name="writer should unsigned int work" time="0.007">
+    </testcase>
+    <testcase classname="writer should int work" name="writer should int work" time="0.011">
+    </testcase>
+    <testcase classname="writer should varUInt32 work" name="writer should varUInt32 work" time="0.004">
+    </testcase>
+    <testcase classname="writer should varInt32 work" name="writer should varInt32 work" time="0.001">
+    </testcase>
+    <testcase classname="writer should short latin1 string work" name="writer should short latin1 string work" time="0">
+    </testcase>
+    <testcase classname="writer should long latin1 string work" name="writer should long latin1 string work" time="0">
+    </testcase>
+    <testcase classname="writer should short utf8 string work" name="writer should short utf8 string work" time="0">
+    </testcase>
+    <testcase classname="writer should long utf8 string work" name="writer should long utf8 string work" time="0">
+    </testcase>
+    <testcase classname="writer should buffer work" name="writer should buffer work" time="0">
+    </testcase>
+    <testcase classname="writer should bufferWithoutMemCheck work" name="writer should bufferWithoutMemCheck work" time="0.001">
+    </testcase>
+    <testcase classname="writer should setUint32Position work" name="writer should setUint32Position work" time="0">
+    </testcase>
+    <testcase classname="writer should float work" name="writer should float work" time="0">
+    </testcase>
+    <testcase classname="writer should float64 work" name="writer should float64 work" time="0">
+    </testcase>
+    <testcase classname="writer should reserve work" name="writer should reserve work" time="0">
+    </testcase>
+    <testcase classname="writer should reserve work" name="writer should reserve work" time="0">
+    </testcase>
+    <testcase classname="writer should reset work" name="writer should reset work" time="0">
+    </testcase>
+    <testcase classname="writer should int24 work" name="writer should int24 work" time="0">
+    </testcase>
+    <testcase classname="writer should varUInt64 work" name="writer should varUInt64 work" time="0">
+    </testcase>
+    <testcase classname="writer should varUInt64 work" name="writer should varUInt64 work" time="0">
+    </testcase>
+    <testcase classname="writer should varInt64 work" name="writer should varInt64 work" time="0.001">
+    </testcase>
+    <testcase classname="writer should varInt64 work" name="writer should varInt64 work" time="0">
+    </testcase>
+    <testcase classname="writer should silong work" name="writer should silong work" time="0">
+    </testcase>
+    <testcase classname="writer should silong work" name="writer should silong work" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="map" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.136" tests="2">
+    <testcase classname="map should map work" name="map should map work" time="0.02">
+    </testcase>
+    <testcase classname="map should map specific type work" name="map should map specific type work" time="0.006">
+    </testcase>
+  </testsuite>
+  <testsuite name="number" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.152" tests="13">
+    <testcase classname="number should i8 work" name="number should i8 work" time="0.017">
+    </testcase>
+    <testcase classname="number should i16 work" name="number should i16 work" time="0.004">
+    </testcase>
+    <testcase classname="number should i32 work" name="number should i32 work" time="0.003">
+    </testcase>
+    <testcase classname="number should i64 work" name="number should i64 work" time="0.002">
+    </testcase>
+    <testcase classname="number should float work" name="number should float work" time="0.002">
+    </testcase>
+    <testcase classname="number should float64 work" name="number should float64 work" time="0.001">
+    </testcase>
+    <testcase classname="number should uint8 work" name="number should uint8 work" time="0.002">
+    </testcase>
+    <testcase classname="number should uint16 work" name="number should uint16 work" time="0.001">
+    </testcase>
+    <testcase classname="number should uint32 work" name="number should uint32 work" time="0.002">
+    </testcase>
+    <testcase classname="number should varUInt32 work" name="number should varUInt32 work" time="0.008">
+    </testcase>
+    <testcase classname="number should uint64 work" name="number should uint64 work" time="0.001">
+    </testcase>
+    <testcase classname="number should varUInt64 work" name="number should varUInt64 work" time="0.002">
+    </testcase>
+    <testcase classname="number should taggedUInt64 work" name="number should taggedUInt64 work" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="datetime" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.126" tests="2">
+    <testcase classname="datetime should date work" name="datetime should date work" time="0.014">
+    </testcase>
+    <testcase classname="datetime should datetime work" name="datetime should datetime work" time="0.006">
+    </testcase>
+  </testsuite>
+  <testsuite name="enum" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.15" tests="4">
+    <testcase classname="enum should javascript number enum work" name="enum should javascript number enum work" time="0.017">
+    </testcase>
+    <testcase classname="enum should javascript string enum work" name="enum should javascript string enum work" time="0.003">
+    </testcase>
+    <testcase classname="enum should typescript number enum work" name="enum should typescript number enum work" time="0.002">
+    </testcase>
+    <testcase classname="enum should typescript string enum work" name="enum should typescript string enum work" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="protocol" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.201" tests="3">
+    <testcase classname="protocol should polymorphic work" name="protocol should polymorphic work" time="0.038">
+    </testcase>
+    <testcase classname="protocol should enforce nullable flag for schema-based structs" name="protocol should enforce nullable flag for schema-based structs" time="0.04">
+    </testcase>
+    <testcase classname="protocol should enforce nullable flag in schema-consistent mode" name="protocol should enforce nullable flag in schema-consistent mode" time="0.004">
+    </testcase>
+  </testsuite>
+  <testsuite name="set" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.167" tests="2">
+    <testcase classname="set should set work" name="set should set work" time="0.016">
+    </testcase>
+    <testcase classname="set should set in object work" name="set should set in object work" time="0.005">
+    </testcase>
+  </testsuite>
+  <testsuite name="fory" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.2" tests="4">
+    <testcase classname="fory should deserialize null work" name="fory should deserialize null work" time="0.019">
+    </testcase>
+    <testcase classname="fory should deserialize xlang disable work" name="fory should deserialize xlang disable work" time="0.007">
+    </testcase>
+    <testcase classname="fory should deserialize oob mode work" name="fory should deserialize oob mode work" time="0.001">
+    </testcase>
+    <testcase classname="fory can serialize and deserialize primitive types" name="fory can serialize and deserialize primitive types" time="0.016">
+    </testcase>
+  </testsuite>
+  <testsuite name="string" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.18" tests="4">
+    <testcase classname="string should latin1 string work" name="string should latin1 string work" time="0.027">
+    </testcase>
+    <testcase classname="string should utf8 string work" name="string should utf8 string work" time="0.006">
+    </testcase>
+    <testcase classname="string should long latin1 string work" name="string should long latin1 string work" time="0.001">
+    </testcase>
+    <testcase classname="string should long utf8 string work" name="string should long utf8 string work" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="array" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:44" time="1.427" tests="3">
+    <testcase classname="array should array work" name="array should array work" time="0.088">
+    </testcase>
+    <testcase classname="array should typedarray work" name="array should typedarray work" time="0.005">
+    </testcase>
+    <testcase classname="array should floatarray work" name="array should floatarray work" time="0.006">
+    </testcase>
+  </testsuite>
+  <testsuite name="object" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.269" tests="11">
+    <testcase classname="object should descoration work" name="object should descoration work" time="0.016">
+    </testcase>
+    <testcase classname="object should descoration work2" name="object should descoration work2" time="0.006">
+    </testcase>
+    <testcase classname="object should object work" name="object should object work" time="0.006">
+    </testcase>
+    <testcase classname="object should null value work" name="object should null value work" time="0.002">
+    </testcase>
+    <testcase classname="object should object in array work" name="object should object in array work" time="0.003">
+    </testcase>
+    <testcase classname="object should write tag and read tag work" name="object should write tag and read tag work" time="0.016">
+    </testcase>
+    <testcase classname="object should ciycle ref work" name="object should ciycle ref work" time="0.049">
+    </testcase>
+    <testcase classname="object should dot prop accessor work" name="object should dot prop accessor work" time="0.01">
+    </testcase>
+    <testcase classname="object should type function tools work" name="object should type function tools work" time="0.003">
+    </testcase>
+    <testcase classname="object should partial record work" name="object should partial record work" time="0.002">
+    </testcase>
+    <testcase classname="object should handle emojis" name="object should handle emojis" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="typemeta" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:42" time="3.258" tests="1">
+    <testcase classname="typemeta should evaluation scheme work" name="typemeta should evaluation scheme work" time="0.12">
+    </testcase>
+  </testsuite>
+  <testsuite name="writer" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:45" time="0.064" tests="2">
+    <testcase classname="writer should uint8 work" name="writer should uint8 work" time="0.001">
+    </testcase>
+    <testcase classname="reader should bufferRef work" name="reader should bufferRef work" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="writer" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:45" time="0.066" tests="2">
+    <testcase classname="writer should dumpOwn dispose work" name="writer should dumpOwn dispose work" time="0.001">
+    </testcase>
+    <testcase classname="writer should dumpOwn work" name="writer should dumpOwn work" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="platformBuffer" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:45" time="0.061" tests="8">
+    <testcase classname="platformBuffer should fromUint8Array work" name="platformBuffer should fromUint8Array work" time="0.001">
+    </testcase>
+    <testcase classname="platformBuffer should alloc work" name="platformBuffer should alloc work" time="0">
+    </testcase>
+    <testcase classname="platformBuffer should latin1Write work" name="platformBuffer should latin1Write work" time="0.001">
+    </testcase>
+    <testcase classname="platformBuffer should utf8Write work" name="platformBuffer should utf8Write work" time="0">
+    </testcase>
+    <testcase classname="platformBuffer should utf8 work" name="platformBuffer should utf8 work" time="0">
+    </testcase>
+    <testcase classname="platformBuffer should byteLength work" name="platformBuffer should byteLength work" time="0">
+    </testcase>
+    <testcase classname="platformBuffer should copy work" name="platformBuffer should copy work" time="0.001">
+    </testcase>
+    <testcase classname="platformBuffer Buffer can be assigned to PlatformBuffer" name="platformBuffer Buffer can be assigned to PlatformBuffer" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="bool" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:45" time="0.094" tests="2">
+    <testcase classname="bool should false work" name="bool should false work" time="0.002">
+    </testcase>
+    <testcase classname="bool should true work" name="bool should true work" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="bool" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:45" time="0.12" tests="14">
+    <testcase classname="bool should write null work" name="bool should write null work" time="0.004">
+    </testcase>
+    <testcase classname="bool should write undefined work" name="bool should write undefined work" time="0.002">
+    </testcase>
+    <testcase classname="bool should write number work" name="bool should write number work" time="0.002">
+    </testcase>
+    <testcase classname="bool should write NaN work" name="bool should write NaN work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write big number work" name="bool should write big number work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write INFINITY work" name="bool should write INFINITY work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write float work" name="bool should write float work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write bigint work" name="bool should write bigint work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write true work" name="bool should write true work" time="0.002">
+    </testcase>
+    <testcase classname="bool should write false work" name="bool should write false work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write date work" name="bool should write date work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write string work" name="bool should write string work" time="0.001">
+    </testcase>
+    <testcase classname="bool should write map work" name="bool should write map work" time="0.002">
+    </testcase>
+    <testcase classname="bool should root any work" name="bool should root any work" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="binary" errors="0" failures="0" skipped="0" timestamp="2026-02-03T04:06:45" time="0.089" tests="1">
+    <testcase classname="binary should binary work" name="binary should binary work" time="0.004">
+    </testcase>
+  </testsuite>
+  <testsuite name="hps" errors="0" failures="0" skipped="1" timestamp="2026-02-03T04:06:45" time="0.074" tests="1">
+    <testcase classname="hps should isLatin1 work" name="hps should isLatin1 work" time="0">
+      <skipped/>
+    </testcase>
+  </testsuite>
+</testsuites>

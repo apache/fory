@@ -874,9 +874,8 @@ func (r *TypeResolver) RegisterNamedExtension(
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 	r.typeInfoToType["*@"+tag] = ptrType
 
-	// Use NAMED_STRUCT type ID to match Java's behavior
-	// (Java uses NAMED_STRUCT when register() + registerSerializer() are used)
-	typeId := uint32(NAMED_STRUCT)
+	// Use NAMED_EXT type ID for extension types
+	typeId := uint32(NAMED_EXT)
 
 	// Register both value and pointer types
 	_, err := r.registerType(type_, typeId, invalidUserTypeID, namespace, typeName, nil, false)
@@ -2046,6 +2045,9 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		return r.readSharedTypeMeta(buffer, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+		if r.metaShareEnabled() {
+			return r.readSharedTypeMeta(buffer, err)
+		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
 		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
@@ -2096,6 +2098,9 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		return r.readSharedTypeMeta(buffer, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
+		if r.metaShareEnabled() {
+			return r.readSharedTypeMeta(buffer, err)
+		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
 		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)

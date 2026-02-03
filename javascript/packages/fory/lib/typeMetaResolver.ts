@@ -37,7 +37,8 @@ export class TypeMetaResolver {
     typeInfo.options.props = Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
       const typeId = x.getTypeId();
       const fieldName = x.getFieldName();
-      const fieldTypeInfo = this.fory.classResolver.getTypeInfo(typeId);
+      const declared = typeInfo.options.props?.[fieldName];
+      const fieldTypeInfo = declared ?? this.fory.classResolver.getTypeInfo(typeId);
       if (!fieldTypeInfo) {
         throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
       }

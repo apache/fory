@@ -178,19 +178,23 @@ WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
 Result<const TypeInfo *, Error>
 WriteContext::write_any_typeinfo(uint32_t fory_type_id,
                                  const std::type_index &concrete_type_id) {
-  // write type_id
-  buffer_.write_uint8(static_cast<uint8_t>(fory_type_id));
   // Check if it's an internal type
   if (is_internal_type(fory_type_id)) {
+    // write type_id
+    buffer_.write_uint8(static_cast<uint8_t>(fory_type_id));
     FORY_TRY(type_info, type_resolver_->get_type_info_by_id(fory_type_id));
     return type_info;
   }
 
   // get type info for the concrete type
   FORY_TRY(type_info, type_resolver_->get_type_info(concrete_type_id));
+  uint32_t type_id = type_info->type_id;
+
+  // write type_id
+  buffer_.write_uint8(static_cast<uint8_t>(type_id));
 
   // Handle different type categories based on low byte
-  switch (static_cast<TypeId>(fory_type_id)) {
+  switch (static_cast<TypeId>(type_id)) {
   case TypeId::ENUM:
   case TypeId::STRUCT:
   case TypeId::EXT:
