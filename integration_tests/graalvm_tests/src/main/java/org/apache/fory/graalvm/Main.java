@@ -43,5 +43,6 @@ public class Main {
     ArrayExample.main(args);
     AbstractClassExample.main(args);
     FeatureTestExample.main(args);
+    Float16Example.main(args);
   }
 }

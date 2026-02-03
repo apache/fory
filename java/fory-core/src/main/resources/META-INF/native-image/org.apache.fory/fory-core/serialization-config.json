@@ -16,5 +16,6 @@
   { "name": "java.lang.NullPointerException" },
   { "name": "java.lang.IndexOutOfBoundsException" },
   { "name": "java.lang.ArrayIndexOutOfBoundsException" },
-  { "name": "java.io.IOException" }
+  { "name": "java.io.IOException" },
+  { "name": "org.apache.fory.type.Float16" }
 ]
