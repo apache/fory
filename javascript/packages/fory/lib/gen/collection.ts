@@ -53,8 +53,9 @@ class CollectionAnySerializer {
     let trackingRef = false;
 
     for (const item of arr) {
-      if ((item === undefined || item === null) && !includeNone) {
+      if ((item === undefined || item === null)) {
         includeNone = true;
+        continue;
       }
       const current = this.fory.typeResolver.getSerializerByData(item);
       if (!current) {
@@ -105,9 +106,9 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.uint8(RefFlags.NullFlag);
+            this.fory.binaryWriter.int8(RefFlags.NullFlag);
           } else {
-            this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
+            this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
         }
@@ -125,10 +126,10 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.uint8(RefFlags.NullFlag);
+            this.fory.binaryWriter.int8(RefFlags.NullFlag);
           } else {
             const serializer = this.fory.typeResolver.getSerializerByData(item);
-            this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
+            this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
         }
@@ -166,7 +167,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.uint8();
+          const flag = this.fory.binaryReader.int8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
@@ -186,7 +187,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.uint8();
+          const flag = this.fory.binaryReader.int8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
@@ -317,7 +318,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                 }
             } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    if (${this.builder.reader.uint8()} == ${RefFlags.NullFlag}) {
+                    if (${this.builder.reader.int8()} == ${RefFlags.NullFlag}) {
                         ${this.putAccessor(result, "null", idx)}
                     } else {
                         ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}

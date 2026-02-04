@@ -109,7 +109,8 @@ export default class TypeResolver {
     registerSerializer(Type.float32Array());
     registerSerializer(Type.float64Array());
 
-    this.numberSerializer = this.getSerializerById(TypeId.FLOAT64);
+    this.float32Serializer = this.getSerializerById(TypeId.FLOAT32);
+    this.varint32Serializer = this.getSerializerById(TypeId.VARINT32);
     this.int64Serializer = this.getSerializerById((TypeId.INT64));
     this.boolSerializer = this.getSerializerById((TypeId.BOOL));
     this.dateSerializer = this.getSerializerById((TypeId.TIMESTAMP));
@@ -127,7 +128,8 @@ export default class TypeResolver {
     this.int64ArraySerializer = this.getSerializerById(TypeId.INT64_ARRAY);
   }
 
-  private numberSerializer: null | Serializer = null;
+  private float32Serializer: null | Serializer = null;
+  private varint32Serializer: null | Serializer = null;
   private int64Serializer: null | Serializer = null;
   private boolSerializer: null | Serializer = null;
   private dateSerializer: null | Serializer = null;
@@ -240,7 +242,10 @@ export default class TypeResolver {
   getSerializerByData(v: any) {
     // internal types
     if (typeof v === "number") {
-      return this.numberSerializer;
+      if (Number.isInteger(v)) {
+        return this.varint32Serializer;
+      }
+      return this.float32Serializer;
     }
 
     if (typeof v === "string") {
