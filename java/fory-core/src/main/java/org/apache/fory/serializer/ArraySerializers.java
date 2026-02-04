@@ -33,6 +33,7 @@ import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.ForyArrayAsListSerializer;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.Preconditions;
@@ -881,15 +882,14 @@ public class ArraySerializers {
     }
   }
 
-  public static final class Float16ArraySerializer
-      extends PrimitiveArraySerializer<org.apache.fory.type.Float16[]> {
+  public static final class Float16ArraySerializer extends PrimitiveArraySerializer<Float16[]> {
 
     public Float16ArraySerializer(Fory fory) {
-      super(fory, org.apache.fory.type.Float16[].class);
+      super(fory, Float16[].class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, org.apache.fory.type.Float16[] value) {
+    public void write(MemoryBuffer buffer, Float16[] value) {
       int length = value.length;
       int size = length * 2;
       buffer.writeVarUint32Small7(size);
@@ -904,22 +904,21 @@ public class ArraySerializers {
     }
 
     @Override
-    public org.apache.fory.type.Float16[] copy(org.apache.fory.type.Float16[] originArray) {
+    public Float16[] copy(Float16[] originArray) {
       return Arrays.copyOf(originArray, originArray.length);
     }
 
     @Override
-    public org.apache.fory.type.Float16[] read(MemoryBuffer buffer) {
+    public Float16[] read(MemoryBuffer buffer) {
       int size = buffer.readVarUint32Small7();
       int numElements = size / 2;
-      org.apache.fory.type.Float16[] values = new org.apache.fory.type.Float16[numElements];
+      Float16[] values = new Float16[numElements];
 
       int readerIndex = buffer.readerIndex();
       buffer.checkReadableBytes(size);
 
       for (int i = 0; i < numElements; i++) {
-        values[i] =
-            org.apache.fory.type.Float16.fromBits(buffer._unsafeGetInt16(readerIndex + i * 2));
+        values[i] = Float16.fromBits(buffer._unsafeGetInt16(readerIndex + i * 2));
       }
       buffer._increaseReaderIndexUnsafe(size);
 
@@ -1054,8 +1053,7 @@ public class ArraySerializers {
     resolver.registerInternalSerializer(double[].class, new DoubleArraySerializer(fory));
     resolver.registerInternalSerializer(
         Double[].class, new ObjectArraySerializer<>(fory, Double[].class));
-    resolver.registerInternalSerializer(
-        org.apache.fory.type.Float16[].class, new Float16ArraySerializer(fory));
+    resolver.registerInternalSerializer(Float16[].class, new Float16ArraySerializer(fory));
     resolver.registerInternalSerializer(boolean[].class, new BooleanArraySerializer(fory));
     resolver.registerInternalSerializer(
         Boolean[].class, new ObjectArraySerializer<>(fory, Boolean[].class));

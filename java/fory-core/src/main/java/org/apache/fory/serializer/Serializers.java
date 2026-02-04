@@ -46,6 +46,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.builder.Generated;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.type.Float16;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -595,8 +596,7 @@ public class Serializers {
     resolver.registerInternalSerializer(URI.class, new URISerializer(fory));
     resolver.registerInternalSerializer(Pattern.class, new RegexSerializer(fory));
     resolver.registerInternalSerializer(UUID.class, new UUIDSerializer(fory));
-    resolver.registerInternalSerializer(
-        org.apache.fory.type.Float16.class, new Float16Serializer(fory));
+    resolver.registerInternalSerializer(Float16.class, new Float16Serializer(fory));
     resolver.registerInternalSerializer(Object.class, new EmptyObjectSerializer(fory));
   }
 }

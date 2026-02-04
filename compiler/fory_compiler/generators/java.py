@@ -226,7 +226,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long",
         PrimitiveKind.VAR_UINT64: "long",
         PrimitiveKind.TAGGED_UINT64: "long",
-        PrimitiveKind.FLOAT16: "org.apache.fory.type.Float16",
+        PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "String",
@@ -255,7 +255,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "Long",
         PrimitiveKind.VAR_UINT64: "Long",
         PrimitiveKind.TAGGED_UINT64: "Long",
-        PrimitiveKind.FLOAT16: "org.apache.fory.type.Float16",
+        PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.FLOAT32: "Float",
         PrimitiveKind.FLOAT64: "Double",
         PrimitiveKind.ANY: "Object",
@@ -278,7 +278,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long[]",
         PrimitiveKind.VAR_UINT64: "long[]",
         PrimitiveKind.TAGGED_UINT64: "long[]",
-        PrimitiveKind.FLOAT16: "org.apache.fory.type.Float16[]",
+        PrimitiveKind.FLOAT16: "Float16[]",
         PrimitiveKind.FLOAT32: "float[]",
         PrimitiveKind.FLOAT64: "double[]",
     }
@@ -1165,6 +1165,8 @@ class JavaGenerator(BaseGenerator):
                 imports.add("java.time.LocalDate")
             elif field_type.kind == PrimitiveKind.TIMESTAMP:
                 imports.add("java.time.Instant")
+            elif field_type.kind == PrimitiveKind.FLOAT16:
+                imports.add("org.apache.fory.type.Float16")
 
         elif isinstance(field_type, ListType):
             # Primitive arrays don't need List import
