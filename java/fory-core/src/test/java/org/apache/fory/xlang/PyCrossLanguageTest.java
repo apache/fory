@@ -69,7 +69,7 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ArraySerializersTest;
 import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.serializer.EnumSerializerTest;
-import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
+import org.apache.fory.serializer.Unknown.UnknownStruct;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.TestUtils;
@@ -964,7 +964,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
       Fory fory2 = builder.get();
       fory2.register(EnumTestClass.class, "test_enum");
       Assert.assertEquals(
-          fory2.deserialize(fory.serialize(a)).getClass(), NonexistentMetaShared.class);
+          fory2.deserialize(fory.serialize(a)).getClass(), UnknownStruct.class);
     }
   }
 

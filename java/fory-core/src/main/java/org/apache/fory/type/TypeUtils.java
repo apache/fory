@@ -87,7 +87,7 @@ import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeParameter;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.serializer.Unknown;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.record.RecordUtils;
@@ -687,7 +687,7 @@ public class TypeUtils {
   }
 
   public static boolean isMap(Class<?> cls) {
-    if (cls == NonexistentClass.NonexistentMetaShared.class) {
+    if (cls == Unknown.UnknownStruct.class) {
       return false;
     }
     return cls == HashMap.class || Map.class.isAssignableFrom(cls);

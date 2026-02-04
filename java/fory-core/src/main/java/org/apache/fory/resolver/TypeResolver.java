@@ -68,11 +68,10 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.MetaSharedSerializer;
-import org.apache.fory.serializer.NonexistentClass;
-import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
-import org.apache.fory.serializer.NonexistentClass.NonexistentSkip;
-import org.apache.fory.serializer.NonexistentClassSerializers;
-import org.apache.fory.serializer.NonexistentClassSerializers.NonexistentClassSerializer;
+import org.apache.fory.serializer.Unknown;
+import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.Unknown.UnknownEmptyStruct;
+import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
@@ -716,7 +715,7 @@ public abstract class TypeResolver {
     if (targetClass.isAssignableFrom(readClass)) {
       newTypeInfo = typeInfo;
     } else {
-      // similar to create serializer for `NonexistentMetaShared`
+      // similar to create serializer for `UnknownStruct`
       newTypeInfo =
           getMetaSharedTypeInfo(
               typeInfo.typeDef.replaceRootClassTo(this, targetClass), targetClass);
@@ -816,10 +815,10 @@ public abstract class TypeResolver {
     }
     Class<?> cls = loadClass(typeDef.getClassSpec());
     // For nonexistent classes, always create a new TypeInfo with the correct typeDef,
-    // even if the typeDef has no fields meta. This ensures the NonexistentClassSerializer
+    // even if the typeDef has no fields meta. This ensures the UnknownStructSerializer
     // has access to the typeDef for proper deserialization.
     if (!typeDef.hasFieldsMeta()
-        && !NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
+        && !Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       typeInfo = getTypeInfo(cls);
     } else if (ClassResolver.useReplaceResolveSerializer(cls)) {
       // For classes with writeReplace/readResolve, use their natural serializer
@@ -837,8 +836,8 @@ public abstract class TypeResolver {
   // TODO(chaokunyang) if TypeDef is consistent with class in this process,
   //  use existing serializer instead.
   private TypeInfo getMetaSharedTypeInfo(TypeDef typeDef, Class<?> clz) {
-    if (clz == NonexistentSkip.class) {
-      clz = NonexistentMetaShared.class;
+    if (clz == UnknownEmptyStruct.class) {
+      clz = UnknownStruct.class;
     }
     Class<?> cls = clz;
     Integer classId = extRegistry.registeredClassIdMap.get(cls);
@@ -859,17 +858,17 @@ public abstract class TypeResolver {
     }
     TypeInfo typeInfo = new TypeInfo(this, cls, null, typeId, typeDef.getClassSpec().userTypeId);
     typeInfo.typeDef = typeDef;
-    if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
-      if (cls == NonexistentMetaShared.class) {
-        typeInfo.setSerializer(this, new NonexistentClassSerializer(fory, typeDef));
-        // Ensure NonexistentMetaShared is registered so writeTypeInfo emits a placeholder typeId
-        // that NonexistentClassSerializer can rewrite to the original typeId.
+    if (Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
+      if (cls == UnknownStruct.class) {
+        typeInfo.setSerializer(this, new UnknownClassSerializers.UnknownStructSerializer(fory, typeDef));
+        // Ensure UnknownStruct is registered so writeTypeInfo emits a placeholder typeId
+        // that UnknownStructSerializer can rewrite to the original typeId.
         if (!fory.isCrossLanguage()) {
           Preconditions.checkNotNull(classId);
         }
       } else {
         typeInfo.serializer =
-            NonexistentClassSerializers.getSerializer(fory, typeDef.getClassName(), cls);
+            UnknownClassSerializers.getSerializer(fory, typeDef.getClassName(), cls);
       }
       return typeInfo;
     }
@@ -946,7 +945,7 @@ public abstract class TypeResolver {
   }
 
   final Class<?> loadClass(String className, boolean isEnum, int arrayDims) {
-    return loadClass(className, isEnum, arrayDims, fory.getConfig().deserializeNonexistentClass());
+    return loadClass(className, isEnum, arrayDims, fory.getConfig().deserializeUnknownClass());
   }
 
   final Class<?> loadClass(String className) {
@@ -954,7 +953,7 @@ public abstract class TypeResolver {
   }
 
   final Class<?> loadClass(
-      String className, boolean isEnum, int arrayDims, boolean deserializeNonexistentClass) {
+      String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
     extRegistry.typeChecker.checkType(this, className);
     Class<?> cls = extRegistry.registeredClasses.get(className);
     if (cls != null) {
@@ -970,9 +969,9 @@ public abstract class TypeResolver {
             String.format(
                 "Class %s not found from classloaders [%s, %s]",
                 className, fory.getClassLoader(), Thread.currentThread().getContextClassLoader());
-        if (deserializeNonexistentClass) {
+        if (deserializeUnknownClass) {
           LOG.warn(msg);
-          return NonexistentClass.getNonexistentClass(
+          return Unknown.getUnknowClass(
               className, isEnum, arrayDims, metaContextShareEnabled);
         }
         throw new IllegalStateException(msg, ex);
@@ -1182,7 +1181,7 @@ public abstract class TypeResolver {
   }
 
   public final boolean isMap(Class<?> cls) {
-    if (cls == NonexistentMetaShared.class) {
+    if (cls == UnknownStruct.class) {
       return false;
     }
     return Map.class.isAssignableFrom(cls)

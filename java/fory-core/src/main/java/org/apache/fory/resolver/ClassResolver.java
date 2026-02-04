@@ -116,11 +116,10 @@ import org.apache.fory.serializer.JdkProxySerializer;
 import org.apache.fory.serializer.LambdaSerializer;
 import org.apache.fory.serializer.LocaleSerializer;
 import org.apache.fory.serializer.NoneSerializer;
-import org.apache.fory.serializer.NonexistentClass;
-import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
-import org.apache.fory.serializer.NonexistentClass.NonexistentSkip;
-import org.apache.fory.serializer.NonexistentClassSerializers;
-import org.apache.fory.serializer.NonexistentClassSerializers.NonexistentClassSerializer;
+import org.apache.fory.serializer.Unknown;
+import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.Unknown.UnknownEmptyStruct;
+import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.OptionalSerializers;
 import org.apache.fory.serializer.PrimitiveSerializers;
@@ -343,13 +342,13 @@ public class ClassResolver extends TypeResolver {
     if (fory.getConfig().registerGuavaTypes()) {
       GuavaCollectionSerializers.registerDefaultSerializers(fory);
     }
-    if (fory.getConfig().deserializeNonexistentClass()) {
+    if (fory.getConfig().deserializeUnknownClass()) {
       if (metaContextShareEnabled) {
-        registerInternal(NonexistentMetaShared.class, NONEXISTENT_META_SHARED_ID);
+        registerInternal(UnknownStruct.class, NONEXISTENT_META_SHARED_ID);
         registerInternalSerializer(
-            NonexistentMetaShared.class, new NonexistentClassSerializer(fory, null));
+            UnknownStruct.class, new UnknownClassSerializers.UnknownStructSerializer(fory, null));
       } else {
-        registerInternal(NonexistentSkip.class);
+        registerInternal(UnknownEmptyStruct.class);
       }
     }
   }
@@ -1218,8 +1217,8 @@ public class ClassResolver extends TypeResolver {
           return serializer.getClass();
         }
       }
-      if (NonexistentClass.isNonexistent(cls)) {
-        return NonexistentClassSerializers.getSerializer(fory, "Unknown", cls).getClass();
+      if (Unknown.isUnknowClass(cls)) {
+        return UnknownClassSerializers.getSerializer(fory, "Unknown", cls).getClass();
       }
       if (cls.isArray()) {
         return ArraySerializers.ObjectArraySerializer.class;
@@ -1686,7 +1685,7 @@ public class ClassResolver extends TypeResolver {
   protected TypeDef buildTypeDef(TypeInfo typeInfo) {
     TypeDef typeDef;
     Serializer<?> serializer = typeInfo.serializer;
-    Preconditions.checkArgument(serializer.getClass() != NonexistentClassSerializer.class);
+    Preconditions.checkArgument(serializer.getClass() != UnknownClassSerializers.UnknownStructSerializer.class);
     if (needToWriteTypeDef(serializer)) {
       typeDef = typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls));
     } else {
@@ -1850,9 +1849,9 @@ public class ClassResolver extends TypeResolver {
             null,
             typeId,
             INVALID_USER_TYPE_ID);
-    if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
+    if (Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       typeInfo.serializer =
-          NonexistentClassSerializers.getSerializer(fory, classSpec.entireClassName, cls);
+          UnknownClassSerializers.getSerializer(fory, classSpec.entireClassName, cls);
     } else {
       // don't create serializer here, if the class is an interface,
       // there won't be serializer since interface has no instance.
@@ -1875,7 +1874,7 @@ public class ClassResolver extends TypeResolver {
     if (cachedInfo != null) {
       return cachedInfo.cls;
     }
-    return loadClass(className, isEnum, arrayDims, fory.getConfig().deserializeNonexistentClass());
+    return loadClass(className, isEnum, arrayDims, fory.getConfig().deserializeUnknownClass());
   }
 
   public Class<?> getCurrentReadClass() {

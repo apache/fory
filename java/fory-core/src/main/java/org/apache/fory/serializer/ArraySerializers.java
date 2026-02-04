@@ -1031,11 +1031,11 @@ public class ArraySerializers {
     return new PrimitiveArrayBufferObject(array, Platform.BYTE_ARRAY_OFFSET, 1, array.length);
   }
 
-  public abstract static class AbstractedNonexistentArrayClassSerializer extends Serializer {
+  public abstract static class AbstractUnknownArraySerializer extends Serializer {
     protected final String className;
     private final int dims;
 
-    public AbstractedNonexistentArrayClassSerializer(
+    public AbstractUnknownArraySerializer(
         Fory fory, String className, Class<?> stubClass) {
       super(fory, stubClass);
       this.className = className;
@@ -1148,22 +1148,22 @@ public class ArraySerializers {
   }
 
   @SuppressWarnings("rawtypes")
-  public static final class NonexistentArrayClassSerializer
-      extends AbstractedNonexistentArrayClassSerializer {
+  public static final class UnknownArraySerializer
+      extends AbstractUnknownArraySerializer {
     private final Serializer componentSerializer;
 
-    public NonexistentArrayClassSerializer(Fory fory, Class<?> cls) {
+    public UnknownArraySerializer(Fory fory, Class<?> cls) {
       this(fory, "Unknown", cls);
     }
 
-    public NonexistentArrayClassSerializer(Fory fory, String className, Class<?> cls) {
+    public UnknownArraySerializer(Fory fory, String className, Class<?> cls) {
       super(fory, className, cls);
       if (TypeUtils.getArrayComponent(cls).isEnum()) {
-        componentSerializer = new NonexistentClassSerializers.NonexistentEnumClassSerializer(fory);
+        componentSerializer = new UnknownClassSerializers.UnknownEnumSerializer(fory);
       } else {
         if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
           componentSerializer =
-              new ObjectSerializer<>(fory, NonexistentClass.NonexistentSkip.class);
+              new ObjectSerializer<>(fory, Unknown.UnknownEmptyStruct.class);
         } else {
           componentSerializer = null;
         }

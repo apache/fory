@@ -78,7 +78,7 @@ public final class ForyBuilder {
   Boolean metaShareEnabled;
   Boolean scopedMetaShareEnabled;
   boolean codeGenEnabled = true;
-  Boolean deserializeNonexistentClass;
+  Boolean deserializeUnknownClass;
   boolean asyncCompilationEnabled = false;
   boolean registerGuavaTypes = true;
   boolean scalaOptimizationEnabled = false;
@@ -132,9 +132,13 @@ public final class ForyBuilder {
   }
 
   /** ignore Enum Deserialize array out of bounds. */
-  public ForyBuilder deserializeNonexistentEnumValueAsNull(
-      boolean deserializeNonexistentEnumValueAsNull) {
-    this.unknownEnumValueStrategy = UnknownEnumValueStrategy.RETURN_NULL;
+  public ForyBuilder deserializeUnknownEnumValueAsNull(
+      boolean deserializeUnknownEnumValueAsNull) {
+    if (deserializeUnknownEnumValueAsNull) {
+      this.unknownEnumValueStrategy = UnknownEnumValueStrategy.RETURN_NULL;
+    } else {
+      this.unknownEnumValueStrategy = UnknownEnumValueStrategy.NOT_ALLOWED;
+    }
     return this;
   }
 
@@ -350,10 +354,10 @@ public final class ForyBuilder {
   /**
    * Whether deserialize/skip data of un-existed class.
    *
-   * @see Config#deserializeNonexistentClass()
+   * @see Config#deserializeUnknownClass()
    */
-  public ForyBuilder withDeserializeNonexistentClass(boolean deserializeNonexistentClass) {
-    this.deserializeNonexistentClass = deserializeNonexistentClass;
+  public ForyBuilder withDeserializeUnknownClass(boolean deserializeUnknownClass) {
+    this.deserializeUnknownClass = deserializeUnknownClass;
     return this;
   }
 
@@ -453,8 +457,8 @@ public final class ForyBuilder {
     }
     if (compatibleMode == CompatibleMode.COMPATIBLE) {
       checkClassVersion = false;
-      if (deserializeNonexistentClass == null) {
-        deserializeNonexistentClass = true;
+      if (deserializeUnknownClass == null) {
+        deserializeUnknownClass = true;
       }
       if (scopedMetaShareEnabled == null) {
         if (metaShareEnabled == null) {
@@ -469,8 +473,8 @@ public final class ForyBuilder {
         }
       }
     } else {
-      if (deserializeNonexistentClass == null) {
-        deserializeNonexistentClass = false;
+      if (deserializeUnknownClass == null) {
+        deserializeUnknownClass = false;
       }
       if (scopedMetaShareEnabled != null && scopedMetaShareEnabled) {
         LOG.warn("Scoped meta share is for CompatibleMode only, disable it for {}", compatibleMode);
