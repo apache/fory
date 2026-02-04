@@ -384,6 +384,8 @@ export type HintInput<T> = T extends {
     | typeof TypeId.UINT8
     | typeof TypeId.UINT16
     | typeof TypeId.UINT32
+    | typeof TypeId.UINT64
+    | typeof TypeId.VAR_UINT64
     | typeof TypeId.VAR_UINT32
     | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
@@ -655,6 +657,11 @@ export const Type = {
   varUInt64() {
     return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT64>(
       (TypeId.VAR_UINT64),
+    );
+  },
+  varInt64() {
+    return TypeInfo.fromNonParam<typeof TypeId.VARINT64>(
+      (TypeId.VARINT64),
     );
   },
   taggedUInt64() {

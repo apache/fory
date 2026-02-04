@@ -91,6 +91,8 @@ export default class TypeResolver {
     registerSerializer(Type.int16());
     registerSerializer(Type.int32());
     registerSerializer(Type.varInt32());
+    registerSerializer(Type.varUInt64());
+    registerSerializer(Type.varInt64());
     registerSerializer(Type.int64());
     registerSerializer(Type.sliInt64());
     registerSerializer(Type.float16());
@@ -129,6 +131,7 @@ export default class TypeResolver {
     this.int32ArraySerializer = this.getSerializerById(TypeId.INT32_ARRAY);
     this.int64ArraySerializer = this.getSerializerById(TypeId.INT64_ARRAY);
   }
+
   private float64Serializer: null | Serializer = null;
   private float32Serializer: null | Serializer = null;
   private varint32Serializer: null | Serializer = null;
@@ -257,7 +260,7 @@ export default class TypeResolver {
       return this.float32Serializer;
     }
 
-    if (typeof v === 'bigint') {
+    if (typeof v === "bigint") {
       return this.taggedint64Serializer;
     }
 
