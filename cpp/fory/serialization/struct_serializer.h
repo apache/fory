@@ -681,6 +681,47 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
+  /// Returns true if the field needs per-field type info in compatible mode.
+  /// This matches write_single_field/read_single_field logic:
+  /// - struct/ext fields always write type info in compatible mode
+  /// - polymorphic fields write type info when dynamic_value is AUTO/TRUE
+  template <size_t Index>
+  static constexpr bool field_needs_type_info_in_compatible() {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      using PtrT = std::tuple_element_t<Index, FieldPtrs>;
+      using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
+      using FieldType = unwrap_field_t<RawFieldType>;
+
+      constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
+      constexpr bool is_struct = is_struct_type(field_type_id);
+      constexpr bool is_ext = is_ext_type(field_type_id);
+      constexpr bool is_polymorphic = field_type_id == TypeId::UNKNOWN;
+      constexpr int dynamic_val = field_dynamic_value<Index>();
+
+      constexpr bool polymorphic_write_type =
+          (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic);
+      return polymorphic_write_type || is_struct || is_ext;
+    }
+  }
+
+  template <size_t... Indices>
+  static constexpr bool
+  any_field_needs_type_info_in_compatible(std::index_sequence<Indices...>) {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      return (field_needs_type_info_in_compatible<Indices>() || ...);
+    }
+  }
+
+  /// True if it's safe to use schema-consistent fast path in compatible mode
+  /// (no struct/ext fields and no polymorphic fields that require type info).
+  static constexpr bool strict_compatible_safe =
+      !any_field_needs_type_info_in_compatible(
+          std::make_index_sequence<FieldCount>{});
+
   /// get the underlying field type (unwraps fory::field<> if present)
   template <size_t Index> struct UnwrappedFieldTypeHelper {
     using PtrT = std::tuple_element_t<Index, FieldPtrs>;
@@ -3200,6 +3241,18 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     // Fast path: same schema hash, read fields in local sorted order.
     if (local_type_info &&
         remote_type_info->type_meta->hash == local_type_info->type_meta->hash) {
+      if constexpr (detail::CompileTimeFieldHelpers<
+                        T>::strict_compatible_safe) {
+        // Safe to use schema-consistent fast path (no per-field type info).
+        detail::read_struct_fields_impl_fast(
+            obj, ctx, std::make_index_sequence<field_count>{});
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return T{};
+        }
+        return obj;
+      }
+
+      // Compatible fast path: same order, but allow per-field type info.
       detail::read_struct_fields_impl_fast(
           obj, ctx, std::make_index_sequence<field_count>{});
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
