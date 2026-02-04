@@ -15,7 +15,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 
 For comprehensive documentation, see the [FDL Schema Guide](../docs/compiler/index.md):
 
-- [FDL Syntax Reference](../docs/compiler/fdl-syntax.md) - Complete language syntax and grammar
+- [FDL Syntax Reference](../docs/compiler/schema-idl.md) - Complete language syntax and grammar
 - [Type System](../docs/compiler/type-system.md) - Primitive types, collections, and language mappings
 - [Compiler Guide](../docs/compiler/compiler-guide.md) - CLI options and build integration
 - [Generated Code](../docs/compiler/generated-code.md) - Output format for each target language

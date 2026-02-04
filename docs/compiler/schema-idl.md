@@ -1,5 +1,5 @@
 ---
-title: Syntax Reference
+title: Schema IDL
 sidebar_position: 2
 id: syntax
 license: |
