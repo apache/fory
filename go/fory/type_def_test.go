@@ -151,6 +151,9 @@ func checkFieldDef(t *testing.T, original, decoded FieldDef) {
 func checkFieldTypeRecursively(t *testing.T, original, decoded FieldType, path string) {
 	// Check TypeId
 	assert.Equal(t, original.TypeId(), decoded.TypeId(), "FieldType TypeId mismatch at path: %s", path)
+	if isUserTypeRegisteredById(original.TypeId()) || isUserTypeRegisteredById(decoded.TypeId()) {
+		assert.Equal(t, original.UserTypeId(), decoded.UserTypeId(), "FieldType UserTypeId mismatch at path: %s", path)
+	}
 
 	// Check type consistency based on the actual type
 	switch originalType := original.(type) {

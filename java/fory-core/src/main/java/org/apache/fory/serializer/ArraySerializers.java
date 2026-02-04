@@ -26,10 +26,10 @@ import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.LongEncoding;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.ForyArrayAsListSerializer;
@@ -45,7 +45,7 @@ public class ArraySerializers {
   public static final class ObjectArraySerializer<T> extends Serializer<T[]> {
     private final Class<T> innerType;
     private final Serializer componentTypeSerializer;
-    private final ClassInfoHolder classInfoHolder;
+    private final TypeInfoHolder classInfoHolder;
     private final int[] stubDims;
     private final GenericType componentGenericType;
 
@@ -73,11 +73,11 @@ public class ArraySerializers {
           this.componentTypeSerializer = fory.getClassResolver().getSerializer(componentType);
         }
       } else {
-        // TODO add ClassInfo cache for non-final component type.
+        // TODO add TypeInfo cache for non-final component type.
         this.componentTypeSerializer = null;
       }
       this.stubDims = new int[dimension];
-      classInfoHolder = fory.getClassResolver().nilClassInfoHolder();
+      classInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
     }
 
     @Override
@@ -96,16 +96,16 @@ public class ArraySerializers {
       } else {
         Fory fory = this.fory;
         ClassResolver classResolver = fory.getClassResolver();
-        ClassInfo classInfo = null;
+        TypeInfo typeInfo = null;
         Class<?> elemClass = null;
         for (T t : arr) {
           if (!refResolver.writeRefOrNull(buffer, t)) {
             Class<?> clz = t.getClass();
             if (clz != elemClass) {
               elemClass = clz;
-              classInfo = classResolver.getClassInfo(clz);
+              typeInfo = classResolver.getTypeInfo(clz);
             }
-            fory.writeNonRef(buffer, t, classInfo);
+            fory.writeNonRef(buffer, t, typeInfo);
           }
         }
       }
@@ -168,7 +168,7 @@ public class ArraySerializers {
         }
       } else {
         Fory fory = this.fory;
-        ClassInfoHolder classInfoHolder = this.classInfoHolder;
+        TypeInfoHolder classInfoHolder = this.classInfoHolder;
         for (int i = 0; i < numElements; i++) {
           int nextReadRefId = refResolver.tryPreserveRefId(buffer);
           Object o;
@@ -1079,12 +1079,11 @@ public class ArraySerializers {
     return new PrimitiveArrayBufferObject(array, Platform.BYTE_ARRAY_OFFSET, 1, array.length);
   }
 
-  public abstract static class AbstractedNonexistentArrayClassSerializer extends Serializer {
+  public abstract static class AbstractUnknownArraySerializer extends Serializer {
     protected final String className;
     private final int dims;
 
-    public AbstractedNonexistentArrayClassSerializer(
-        Fory fory, String className, Class<?> stubClass) {
+    public AbstractUnknownArraySerializer(Fory fory, String className, Class<?> stubClass) {
       super(fory, stubClass);
       this.className = className;
       this.dims = TypeUtils.getArrayDimensions(stubClass);
@@ -1196,22 +1195,20 @@ public class ArraySerializers {
   }
 
   @SuppressWarnings("rawtypes")
-  public static final class NonexistentArrayClassSerializer
-      extends AbstractedNonexistentArrayClassSerializer {
+  public static final class UnknownArraySerializer extends AbstractUnknownArraySerializer {
     private final Serializer componentSerializer;
 
-    public NonexistentArrayClassSerializer(Fory fory, Class<?> cls) {
+    public UnknownArraySerializer(Fory fory, Class<?> cls) {
       this(fory, "Unknown", cls);
     }
 
-    public NonexistentArrayClassSerializer(Fory fory, String className, Class<?> cls) {
+    public UnknownArraySerializer(Fory fory, String className, Class<?> cls) {
       super(fory, className, cls);
       if (TypeUtils.getArrayComponent(cls).isEnum()) {
-        componentSerializer = new NonexistentClassSerializers.NonexistentEnumClassSerializer(fory);
+        componentSerializer = new UnknownClassSerializers.UnknownEnumSerializer(fory);
       } else {
         if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
-          componentSerializer =
-              new ObjectSerializer<>(fory, NonexistentClass.NonexistentSkip.class);
+          componentSerializer = new ObjectSerializer<>(fory, UnknownClass.UnknownEmptyStruct.class);
         } else {
           componentSerializer = null;
         }

@@ -1241,7 +1241,7 @@ public abstract class XlangTestBase extends ForyTestBase {
 
   @Data
   static class AnimalMapHolder {
-    // Using snake_case field name to test fallback lookup in ClassDef.getDescriptors()
+    // Using snake_case field name to test fallback lookup in TypeDef.getDescriptors()
     Map<String, Animal> animal_map;
   }
 

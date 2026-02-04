@@ -84,7 +84,7 @@ public final class SerializationContext {
       objects.clear();
     }
     if (scopedMetaShareEnabled) {
-      metaContext.readClassInfos.size = 0;
+      metaContext.readTypeInfos.size = 0;
     } else {
       metaContext = null;
     }
@@ -96,7 +96,7 @@ public final class SerializationContext {
     }
     if (scopedMetaShareEnabled) {
       metaContext.classMap.clear();
-      metaContext.readClassInfos.size = 0;
+      metaContext.readTypeInfos.size = 0;
     } else {
       metaContext = null;
     }

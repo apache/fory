@@ -216,6 +216,7 @@ struct PolymorphicUniqueHolder {
 TEST(SmartPtrSerializerTest, PolymorphicSharedPtrDerived1) {
   auto fory = create_serializer(true);
   fory.register_struct<PolymorphicSharedHolder>(200);
+  fory.register_struct<Base>("test", "Base");
   auto register_result = fory.register_struct<Derived1>("test", "Derived1");
   ASSERT_TRUE(register_result.ok())
       << "Failed to register Derived1: " << register_result.error().to_string();
@@ -244,6 +245,7 @@ TEST(SmartPtrSerializerTest, PolymorphicSharedPtrDerived1) {
 TEST(SmartPtrSerializerTest, PolymorphicSharedPtrDerived2) {
   auto fory = create_serializer(true);
   fory.register_struct<PolymorphicSharedHolder>(200);
+  fory.register_struct<Base>("test", "Base");
   auto register_result = fory.register_struct<Derived2>("test", "Derived2");
   ASSERT_TRUE(register_result.ok())
       << "Failed to register Derived2: " << register_result.error().to_string();
@@ -272,6 +274,7 @@ TEST(SmartPtrSerializerTest, PolymorphicSharedPtrDerived2) {
 TEST(SmartPtrSerializerTest, PolymorphicUniquePtrDerived1) {
   auto fory = create_serializer(true);
   fory.register_struct<PolymorphicUniqueHolder>(201);
+  fory.register_struct<Base>("test", "Base");
   auto register_result = fory.register_struct<Derived1>("test", "Derived1");
   ASSERT_TRUE(register_result.ok())
       << "Failed to register Derived1: " << register_result.error().to_string();
@@ -300,6 +303,7 @@ TEST(SmartPtrSerializerTest, PolymorphicUniquePtrDerived1) {
 TEST(SmartPtrSerializerTest, PolymorphicUniquePtrDerived2) {
   auto fory = create_serializer(true);
   fory.register_struct<PolymorphicUniqueHolder>(201);
+  fory.register_struct<Base>("test", "Base");
   auto register_result = fory.register_struct<Derived2>("test", "Derived2");
   ASSERT_TRUE(register_result.ok())
       << "Failed to register Derived2: " << register_result.error().to_string();

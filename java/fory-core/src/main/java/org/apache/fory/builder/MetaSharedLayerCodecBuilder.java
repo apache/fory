@@ -30,7 +30,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.StaticInvoke;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.MetaSharedLayerSerializer;
@@ -56,18 +56,18 @@ import org.apache.fory.util.StringUtils;
  * @see GeneratedMetaSharedLayerSerializer
  */
 public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
-  private final ClassDef layerClassDef;
+  private final TypeDef layerTypeDef;
   private final Class<?> layerMarkerClass;
 
   public MetaSharedLayerCodecBuilder(
-      TypeRef<?> beanType, Fory fory, ClassDef layerClassDef, Class<?> layerMarkerClass) {
+      TypeRef<?> beanType, Fory fory, TypeDef layerTypeDef, Class<?> layerMarkerClass) {
     super(beanType, fory, GeneratedMetaSharedLayerSerializer.class);
     Preconditions.checkArgument(
         !fory.getConfig().checkClassVersion(),
         "Class version check should be disabled when compatible mode is enabled.");
-    this.layerClassDef = layerClassDef;
+    this.layerTypeDef = layerTypeDef;
     this.layerMarkerClass = layerMarkerClass;
-    Collection<Descriptor> descriptors = layerClassDef.getDescriptors(typeResolver, beanClass);
+    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(typeResolver, beanClass);
     DescriptorGrouper grouper = typeResolver(r -> r.createDescriptorGrouper(descriptors, false));
     objectCodecOptimizer = new ObjectCodecOptimizer(beanClass, grouper, false, ctx);
   }
@@ -79,10 +79,10 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
   protected String codecSuffix() {
     // For every class def sent from different peer, if the class def are different, then
     // a new serializer needs being generated.
-    Integer id = idGenerator.get(layerClassDef.getId());
+    Integer id = idGenerator.get(layerTypeDef.getId());
     if (id == null) {
       synchronized (idGenerator) {
-        id = idGenerator.computeIfAbsent(layerClassDef.getId(), k -> idGenerator.size());
+        id = idGenerator.computeIfAbsent(layerTypeDef.getId(), k -> idGenerator.size());
       }
     }
     return "MetaSharedLayer" + id;

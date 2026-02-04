@@ -19,13 +19,13 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.ClassDef.COMPRESS_META_FLAG;
-import static org.apache.fory.meta.ClassDef.HAS_FIELDS_META_FLAG;
-import static org.apache.fory.meta.ClassDef.META_SIZE_MASKS;
-import static org.apache.fory.meta.ClassDef.NUM_HASH_BITS;
 import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
 import static org.apache.fory.meta.Encoders.pkgEncodingsList;
 import static org.apache.fory.meta.Encoders.typeNameEncodingsList;
+import static org.apache.fory.meta.TypeDef.COMPRESS_META_FLAG;
+import static org.apache.fory.meta.TypeDef.HAS_FIELDS_META_FLAG;
+import static org.apache.fory.meta.TypeDef.META_SIZE_MASKS;
+import static org.apache.fory.meta.TypeDef.NUM_HASH_BITS;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -47,17 +47,31 @@ import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.DescriptorGrouper;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.MurmurHash3;
 
 /**
- * An encoder which encode {@link ClassDef} into binary. See spec documentation:
+ * An encoder which encode {@link TypeDef} into binary. See spec documentation:
  * docs/specification/java_serialization_spec.md <a
  * href="https://fory.apache.org/docs/specification/fory_java_serialization_spec">...</a>
  */
 @Internal
-public class ClassDefEncoder {
+public class NativeTypeDefEncoder {
   // a flag to mark a type is not struct.
   static final int NUM_CLASS_THRESHOLD = 0b1111;
+
+  private static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
 
   static List<Field> buildFields(Fory fory, Class<?> cls, boolean resolveParent) {
     DescriptorGrouper descriptorGrouper =
@@ -131,13 +145,13 @@ public class ClassDefEncoder {
   }
 
   /** Build class definition from fields of class. */
-  static ClassDef buildClassDef(
+  static TypeDef buildTypeDef(
       ClassResolver classResolver, Class<?> type, List<Field> fields, boolean hasFieldsMeta) {
-    return buildClassDefWithFieldInfos(
+    return buildTypeDefWithFieldInfos(
         classResolver, type, buildFieldsInfo(classResolver, fields), hasFieldsMeta);
   }
 
-  public static ClassDef buildClassDefWithFieldInfos(
+  public static TypeDef buildTypeDefWithFieldInfos(
       ClassResolver classResolver,
       Class<?> type,
       List<FieldInfo> fieldInfos,
@@ -145,28 +159,29 @@ public class ClassDefEncoder {
     Map<String, List<FieldInfo>> classLayers = getClassFields(type, fieldInfos);
     fieldInfos = new ArrayList<>(fieldInfos.size());
     classLayers.values().forEach(fieldInfos::addAll);
-    MemoryBuffer encodeClassDef = encodeClassDef(classResolver, type, classLayers, hasFieldsMeta);
-    byte[] classDefBytes = encodeClassDef.getBytes(0, encodeClassDef.writerIndex());
-    int typeId = classResolver.getTypeIdForClassDef(type);
-    ClassSpec classSpec = new ClassSpec(type, typeId);
-    return new ClassDef(
-        classSpec, fieldInfos, hasFieldsMeta, encodeClassDef.getInt64(0), classDefBytes);
+    MemoryBuffer encodeTypeDef = encodeTypeDef(classResolver, type, classLayers, hasFieldsMeta);
+    byte[] typeDefBytes = encodeTypeDef.getBytes(0, encodeTypeDef.writerIndex());
+    int typeId = classResolver.getTypeIdForTypeDef(type);
+    int userTypeId = classResolver.getUserTypeIdForTypeDef(type);
+    ClassSpec classSpec = new ClassSpec(type, typeId, userTypeId);
+    return new TypeDef(
+        classSpec, fieldInfos, hasFieldsMeta, encodeTypeDef.getInt64(0), typeDefBytes);
   }
 
   // see spec documentation: docs/specification/java_serialization_spec.md
   // https://fory.apache.org/docs/specification/fory_java_serialization_spec
-  public static MemoryBuffer encodeClassDef(
+  public static MemoryBuffer encodeTypeDef(
       ClassResolver classResolver,
       Class<?> type,
       Map<String, List<FieldInfo>> classLayers,
       boolean hasFieldsMeta) {
-    MemoryBuffer classDefBuf = MemoryBuffer.newHeapBuffer(128);
+    MemoryBuffer typeDefBuf = MemoryBuffer.newHeapBuffer(128);
     int numClasses = classLayers.size() - 1; // num class must be greater than 0
     if (numClasses >= NUM_CLASS_THRESHOLD) {
-      classDefBuf.writeByte(NUM_CLASS_THRESHOLD);
-      classDefBuf.writeVarUint32Small7(numClasses - NUM_CLASS_THRESHOLD);
+      typeDefBuf.writeByte(NUM_CLASS_THRESHOLD);
+      typeDefBuf.writeVarUint32Small7(numClasses - NUM_CLASS_THRESHOLD);
     } else {
-      classDefBuf.writeByte(numClasses);
+      typeDefBuf.writeByte(numClasses);
     }
     for (Map.Entry<String, List<FieldInfo>> entry : classLayers.entrySet()) {
       String className = entry.getKey();
@@ -177,10 +192,15 @@ public class ClassDefEncoder {
       int currentClassHeader = (fields.size() << 1);
       if (classResolver.isRegisteredById(currentType)) {
         currentClassHeader |= 1;
-        classDefBuf.writeVarUint32Small7(currentClassHeader);
-        classDefBuf.writeVarUint32Small7(classResolver.getTypeIdForClassDef(currentType));
+        typeDefBuf.writeVarUint32Small7(currentClassHeader);
+        int typeId = classResolver.getTypeIdForTypeDef(currentType);
+        typeDefBuf.writeUint8(typeId);
+        if (needsUserTypeId(typeId)) {
+          int userTypeId = classResolver.getUserTypeIdForTypeDef(currentType);
+          typeDefBuf.writeVarUint32(userTypeId);
+        }
       } else {
-        classDefBuf.writeVarUint32Small7(currentClassHeader);
+        typeDefBuf.writeVarUint32Small7(currentClassHeader);
         String ns, typename;
         if (classResolver.isRegisteredByName(currentType)) {
           Tuple2<String, String> nameTuple = classResolver.getRegisteredNameTuple(currentType);
@@ -191,24 +211,24 @@ public class ClassDefEncoder {
           ns = encoded.f0;
           typename = encoded.f1;
         }
-        writePkgName(classDefBuf, ns);
-        writeTypeName(classDefBuf, typename);
+        writePkgName(typeDefBuf, ns);
+        writeTypeName(typeDefBuf, typename);
       }
-      writeFieldsInfo(classDefBuf, fields);
+      writeFieldsInfo(typeDefBuf, fields);
     }
     byte[] compressed =
         classResolver
             .getFory()
             .getConfig()
             .getMetaCompressor()
-            .compress(classDefBuf.getHeapMemory(), 0, classDefBuf.writerIndex());
+            .compress(typeDefBuf.getHeapMemory(), 0, typeDefBuf.writerIndex());
     boolean isCompressed = false;
-    if (compressed.length < classDefBuf.writerIndex()) {
+    if (compressed.length < typeDefBuf.writerIndex()) {
       isCompressed = true;
-      classDefBuf = MemoryBuffer.fromByteArray(compressed);
-      classDefBuf.writerIndex(compressed.length);
+      typeDefBuf = MemoryBuffer.fromByteArray(compressed);
+      typeDefBuf.writerIndex(compressed.length);
     }
-    return prependHeader(classDefBuf, isCompressed, hasFieldsMeta);
+    return prependHeader(typeDefBuf, isCompressed, hasFieldsMeta);
   }
 
   static MemoryBuffer prependHeader(
@@ -282,7 +302,7 @@ public class ClassDefEncoder {
       // `3 bits size + 2 bits field name encoding + nullability flag + ref tracking flag`
       int header = ((fieldType.nullable() ? 1 : 0) << 1);
       header |= ((fieldType.trackingRef() ? 1 : 0));
-      // Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
+      // Encoding `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
       MetaString metaString = Encoders.encodeFieldName(fieldInfo.getFieldName());
       int encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
       byte[] encoded = metaString.getBytes();
@@ -310,7 +330,7 @@ public class ClassDefEncoder {
 
   static void writePkgName(MemoryBuffer buffer, String pkg) {
     // - Package name encoding(omitted when class is registered):
-    //    - encoding algorithm: `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    //    - encoding algorithm: `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     //    - Header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~62`,
     //      the value `63` the size need more byte to read, the encoding will encode `size - 62` as
@@ -323,7 +343,7 @@ public class ClassDefEncoder {
   static void writeTypeName(MemoryBuffer buffer, String typeName) {
     // - Class name encoding(omitted when class is registered):
     //     - encoding algorithm:
-    // `UTF8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    // `UTF_8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     //     - header: `6 bits size | 2 bits encoding flags`.
     //       The `6 bits size: 0~63`  will be used to indicate size `1~64`,
     //       the value `63` the size need more byte to read, the encoding will encode `size - 63` as

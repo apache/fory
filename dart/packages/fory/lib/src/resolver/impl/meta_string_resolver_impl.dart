@@ -39,6 +39,8 @@ class MetaStringResolverImpl extends MetaStringResolver {
   final Map<LongLongKey, MetaStringBytes> _longLong2MSB = HashMap();
   final List<MetaStringBytes> _readId2MSB = [];
   final Map<MetaString, MetaStringBytes> _metaString2MSB = HashMap();
+  // Empty meta string uses utf8 encoding id 0 and hashCode 256 (see MetaStringBytes.of).
+  final MetaStringBytes _emptyMetaStringBytes = MetaStringBytes(Uint8List(0), 256);
 
   MetaStringResolverImpl();
 
@@ -88,6 +90,9 @@ class MetaStringResolverImpl extends MetaStringResolver {
   /// [v1] and [v2] are the two parts of the long long key
   /// [encoding] is the encoding of the string bytes
   MetaStringBytes _readSmallStringBytes(ByteReader reader, int len) {
+    if (len == 0) {
+      return _emptyMetaStringBytes;
+    }
     late final int v1;
     int v2 = 0;
     int encoding = reader.readInt8();

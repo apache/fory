@@ -38,7 +38,7 @@ func (s boolSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(BOOL))
+		ctx.buffer.WriteUint8(uint8(BOOL))
 	}
 	s.WriteData(ctx, value)
 }
@@ -57,7 +57,7 @@ func (s boolSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, h
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -85,7 +85,7 @@ func (s int8Serializer) Write(ctx *WriteContext, refMode RefMode, writeType bool
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(INT8))
+		ctx.buffer.WriteUint8(uint8(INT8))
 	}
 	s.WriteData(ctx, value)
 }
@@ -104,7 +104,7 @@ func (s int8Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool, h
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -131,7 +131,7 @@ func (s byteSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(UINT8))
+		ctx.buffer.WriteUint8(uint8(UINT8))
 	}
 	s.WriteData(ctx, value)
 }
@@ -150,7 +150,7 @@ func (s byteSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, h
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -177,7 +177,7 @@ func (s uint16Serializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(UINT16))
+		ctx.buffer.WriteUint8(uint8(UINT16))
 	}
 	s.WriteData(ctx, value)
 }
@@ -196,7 +196,7 @@ func (s uint16Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -223,7 +223,7 @@ func (s uint32Serializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(VAR_UINT32))
+		ctx.buffer.WriteUint8(uint8(VAR_UINT32))
 	}
 	s.WriteData(ctx, value)
 }
@@ -242,7 +242,7 @@ func (s uint32Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -269,7 +269,7 @@ func (s uint64Serializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(VAR_UINT64))
+		ctx.buffer.WriteUint8(uint8(VAR_UINT64))
 	}
 	s.WriteData(ctx, value)
 }
@@ -288,7 +288,7 @@ func (s uint64Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -314,7 +314,7 @@ func (s uintSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(VAR_UINT64))
+		ctx.buffer.WriteUint8(uint8(VAR_UINT64))
 	}
 	s.WriteData(ctx, value)
 }
@@ -332,7 +332,7 @@ func (s uintSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, h
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -358,7 +358,7 @@ func (s int16Serializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(INT16))
+		ctx.buffer.WriteUint8(uint8(INT16))
 	}
 	s.WriteData(ctx, value)
 }
@@ -376,7 +376,7 @@ func (s int16Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool, 
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -402,7 +402,7 @@ func (s int32Serializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(INT32))
+		ctx.buffer.WriteUint8(uint8(INT32))
 	}
 	s.WriteData(ctx, value)
 }
@@ -420,7 +420,7 @@ func (s int32Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool, 
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -446,7 +446,7 @@ func (s int64Serializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(INT64))
+		ctx.buffer.WriteUint8(uint8(INT64))
 	}
 	s.WriteData(ctx, value)
 }
@@ -464,7 +464,7 @@ func (s int64Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool, 
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -488,7 +488,7 @@ func (s intSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool,
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(INT64))
+		ctx.buffer.WriteUint8(uint8(INT64))
 	}
 	s.WriteData(ctx, value)
 }
@@ -506,7 +506,7 @@ func (s intSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, ha
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -532,7 +532,7 @@ func (s float32Serializer) Write(ctx *WriteContext, refMode RefMode, writeType b
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(FLOAT32))
+		ctx.buffer.WriteUint8(uint8(FLOAT32))
 	}
 	s.WriteData(ctx, value)
 }
@@ -550,7 +550,7 @@ func (s float32Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -576,7 +576,7 @@ func (s float64Serializer) Write(ctx *WriteContext, refMode RefMode, writeType b
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(FLOAT64))
+		ctx.buffer.WriteUint8(uint8(FLOAT64))
 	}
 	s.WriteData(ctx, value)
 }
@@ -594,7 +594,7 @@ func (s float64Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return
@@ -628,7 +628,7 @@ func (s float16Serializer) Write(ctx *WriteContext, refMode RefMode, writeType b
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(FLOAT16))
+		ctx.buffer.WriteUint8(uint8(FLOAT16))
 	}
 	s.WriteData(ctx, value)
 }
@@ -652,7 +652,7 @@ func (s float16Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVarUint32Small7(err)
+		_ = ctx.buffer.ReadUint8(err)
 	}
 	if ctx.HasError() {
 		return

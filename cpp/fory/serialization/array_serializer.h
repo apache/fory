@@ -61,11 +61,11 @@ struct Serializer<
   }();
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -80,7 +80,7 @@ struct Serializer<
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
     write_data_generic(arr, ctx, has_generics);
   }
@@ -125,7 +125,7 @@ struct Serializer<
       return std::array<T, N>();
     }
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::array<T, N>();
       }
@@ -188,11 +188,11 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
   static constexpr TypeId type_id = TypeId::BOOL_ARRAY;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -207,7 +207,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
     write_data_generic(arr, ctx, has_generics);
   }
@@ -243,7 +243,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
       return std::array<bool, N>();
     }
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::array<bool, N>();
       }

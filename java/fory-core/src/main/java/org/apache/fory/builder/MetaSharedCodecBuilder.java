@@ -41,7 +41,7 @@ import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.MetaSharedSerializer;
@@ -61,11 +61,11 @@ import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordUtils;
 
 /**
- * A meta-shared compatible deserializer builder based on {@link ClassDef}. This builder will
- * compare fields between {@link ClassDef} and class fields, then create serializer to read and
- * set/skip corresponding fields to support type forward/backward compatibility. Serializer are
- * forward to {@link ObjectCodecBuilder} for now. We can consolidate fields between peers to create
- * better serializers to serialize common fields between peers for efficiency.
+ * A meta-shared compatible deserializer builder based on {@link TypeDef}. This builder will compare
+ * fields between {@link TypeDef} and class fields, then create serializer to read and set/skip
+ * corresponding fields to support type forward/backward compatibility. Serializer are forward to
+ * {@link ObjectCodecBuilder} for now. We can consolidate fields between peers to create better
+ * serializers to serialize common fields between peers for efficiency.
  *
  * <p>With meta context share enabled and compatible mode, the {@link ObjectCodecBuilder} will take
  * all non-inner final types as non-final, so that fory can write class definition when write class
@@ -79,25 +79,25 @@ import org.apache.fory.util.record.RecordUtils;
 public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(MetaSharedCodecBuilder.class);
 
-  private final ClassDef classDef;
+  private final TypeDef typeDef;
   private final String defaultValueLanguage;
   private final DefaultValueUtils.DefaultValueField[] defaultValueFields;
 
-  public MetaSharedCodecBuilder(TypeRef<?> beanType, Fory fory, ClassDef classDef) {
+  public MetaSharedCodecBuilder(TypeRef<?> beanType, Fory fory, TypeDef typeDef) {
     super(beanType, fory, GeneratedMetaSharedSerializer.class);
     Preconditions.checkArgument(
         !fory.getConfig().checkClassVersion(),
         "Class version check should be disabled when compatible mode is enabled.");
-    this.classDef = classDef;
+    this.typeDef = typeDef;
     Collection<Descriptor> descriptors =
-        fory(f -> MetaSharedSerializer.consolidateFields(f.getTypeResolver(), beanClass, classDef));
+        fory(f -> MetaSharedSerializer.consolidateFields(f.getTypeResolver(), beanClass, typeDef));
     DescriptorGrouper grouper = typeResolver(r -> r.createDescriptorGrouper(descriptors, false));
     List<Descriptor> sortedDescriptors = grouper.getSortedDescriptors();
     if (org.apache.fory.util.Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info(
           "========== {} sorted descriptors for {} ==========",
-          classDef.getFieldCount(),
-          classDef.getClassName());
+          typeDef.getFieldCount(),
+          typeDef.getClassName());
       for (Descriptor d : sortedDescriptors) {
         LOG.info(
             "  {} -> {}, ref {}, nullable {}",
@@ -143,10 +143,10 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
   protected String codecSuffix() {
     // For every class def sent from different peer, if the class def are different, then
     // a new serializer needs being generated.
-    Integer id = idGenerator.get(classDef.getId());
+    Integer id = idGenerator.get(typeDef.getId());
     if (id == null) {
       synchronized (idGenerator) {
-        id = idGenerator.computeIfAbsent(classDef.getId(), k -> idGenerator.size());
+        id = idGenerator.computeIfAbsent(typeDef.getId(), k -> idGenerator.size());
       }
     }
     return "MetaShared" + id;

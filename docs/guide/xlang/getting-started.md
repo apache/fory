@@ -95,7 +95,7 @@ import pyfory
 fory = pyfory.Fory()
 
 # Explicit configuration
-fory = pyfory.Fory(ref_tracking=True)
+fory = pyfory.Fory(ref=True)
 ```
 
 ### Go

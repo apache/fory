@@ -442,6 +442,9 @@ class JavaGenerator(BaseGenerator):
             lines.append("")
 
         # Class declaration
+        comment = self.format_type_id_comment(message, "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"public class {message.name} {{")
 
         # Generate nested enums as static inner classes
@@ -646,6 +649,9 @@ class JavaGenerator(BaseGenerator):
         class_prefix = "public static final class" if nested else "public final class"
         case_enum = f"{union.name}Case"
 
+        comment = self.format_type_id_comment(union, f"{ind}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{ind}{class_prefix} {union.name} extends Union {{")
         lines.append(f"{ind}    public enum {case_enum} {{")
 
@@ -882,15 +888,15 @@ class JavaGenerator(BaseGenerator):
             if isinstance(type_def, Enum):
                 if type_def.type_id is None:
                     return "Types.NAMED_ENUM"
-                return f"({type_def.type_id} << 8) | Types.ENUM"
+                return "Types.ENUM"
             if isinstance(type_def, Union):
                 if type_def.type_id is None:
                     return "Types.NAMED_UNION"
-                return f"({type_def.type_id} << 8) | Types.UNION"
+                return "Types.UNION"
             if isinstance(type_def, Message):
                 if type_def.type_id is None:
                     return "Types.NAMED_STRUCT"
-                return f"({type_def.type_id} << 8) | Types.STRUCT"
+                return "Types.STRUCT"
         return "Types.UNKNOWN"
 
     def resolve_named_type(
@@ -952,6 +958,9 @@ class JavaGenerator(BaseGenerator):
         lineage = (parent_stack or []) + [message]
 
         # Class declaration
+        comment = self.format_type_id_comment(message, "    " * indent + "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"public static class {message.name} {{")
 
         # Generate nested enums
@@ -1524,6 +1533,9 @@ class JavaGenerator(BaseGenerator):
             m for m in self.schema.messages if not self.is_imported_type(m)
         ]
         lines.append("    public static void register(Fory fory) {")
+        lines.append(
+            "        org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();"
+        )
 
         # Register enums (top-level)
         for enum in local_enums:
@@ -1558,13 +1570,15 @@ class JavaGenerator(BaseGenerator):
         class_ref = f"{parent_path}.{enum.name}" if parent_path else enum.name
         type_name = class_ref if parent_path else enum.name
 
-        if enum.type_id is not None:
-            lines.append(f"        fory.register({class_ref}.class, {enum.type_id});")
+        if self.should_register_by_id(enum):
+            lines.append(
+                f"        resolver.register({class_ref}.class, {enum.type_id}L);"
+            )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
             lines.append(
-                f'        fory.register({class_ref}.class, "{ns}", "{type_name}");'
+                f'        resolver.register({class_ref}.class, "{ns}", "{type_name}");'
             )
 
     def generate_message_registration(
@@ -1575,15 +1589,15 @@ class JavaGenerator(BaseGenerator):
         class_ref = f"{parent_path}.{message.name}" if parent_path else message.name
         type_name = class_ref if parent_path else message.name
 
-        if message.type_id is not None:
+        if self.should_register_by_id(message):
             lines.append(
-                f"        fory.register({class_ref}.class, {message.type_id});"
+                f"        resolver.register({class_ref}.class, {message.type_id}L);"
             )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
             lines.append(
-                f'        fory.register({class_ref}.class, "{ns}", "{type_name}");'
+                f'        resolver.register({class_ref}.class, "{ns}", "{type_name}");'
             )
 
         # Register nested enums
@@ -1608,14 +1622,14 @@ class JavaGenerator(BaseGenerator):
             f"new org.apache.fory.serializer.UnionSerializer(fory, {class_ref}.class)"
         )
 
-        if union.type_id is not None:
+        if self.should_register_by_id(union):
             lines.append(
-                f"        fory.registerUnion({class_ref}.class, {union.type_id}, {serializer_ref});"
+                f"        resolver.registerUnion({class_ref}.class, {union.type_id}L, {serializer_ref});"
             )
         else:
             ns = self.schema.package or "default"
             if parent_path:
                 ns = f"{ns}.{parent_path}"
             lines.append(
-                f'        fory.registerUnion({class_ref}.class, "{ns}", "{type_name}", {serializer_ref});'
+                f'        resolver.registerUnion({class_ref}.class, "{ns}", "{type_name}", {serializer_ref});'
             )

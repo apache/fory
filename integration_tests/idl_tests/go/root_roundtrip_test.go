@@ -21,9 +21,9 @@ import (
 	"reflect"
 	"testing"
 
-	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
-	rootpkg "github.com/apache/fory/integration_tests/idl_tests/go/root"
-	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree"
+	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook/generated"
+	rootpkg "github.com/apache/fory/integration_tests/idl_tests/go/root/generated"
+	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree/generated"
 )
 
 func buildRootHolder() rootpkg.MultiHolder {

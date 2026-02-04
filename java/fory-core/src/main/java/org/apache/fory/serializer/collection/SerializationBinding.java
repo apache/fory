@@ -21,8 +21,8 @@ package org.apache.fory.serializer.collection;
 
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.RefMode;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.serializer.Serializer;
 
 // This polymorphic interface has cost, do not expose it as a public class
@@ -34,7 +34,7 @@ interface SerializationBinding {
 
   <T> void writeRef(MemoryBuffer buffer, T obj, Serializer<T> serializer);
 
-  void writeRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
+  void writeRef(MemoryBuffer buffer, Object obj, TypeInfoHolder classInfoHolder);
 
   void writeNonRef(MemoryBuffer buffer, Object elem);
 
@@ -44,13 +44,13 @@ interface SerializationBinding {
 
   <T> T readRef(MemoryBuffer buffer, Serializer<T> serializer);
 
-  Object readRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
+  Object readRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder);
 
   Object readRef(MemoryBuffer buffer);
 
   Object readNonRef(MemoryBuffer buffer);
 
-  Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
+  Object readNonRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder);
 
   static SerializationBinding createBinding(Fory fory) {
     if (fory.isCrossLanguage()) {
@@ -78,7 +78,7 @@ interface SerializationBinding {
     }
 
     @Override
-    public void writeRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder) {
+    public void writeRef(MemoryBuffer buffer, Object obj, TypeInfoHolder classInfoHolder) {
       fory.writeRef(buffer, obj, classInfoHolder);
     }
 
@@ -90,7 +90,7 @@ interface SerializationBinding {
     }
 
     @Override
-    public Object readRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+    public Object readRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
       return fory.readRef(buffer, classInfoHolder);
     }
 
@@ -105,7 +105,7 @@ interface SerializationBinding {
     }
 
     @Override
-    public Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+    public Object readNonRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
       return fory.readNonRef(buffer, classInfoHolder);
     }
 
@@ -146,7 +146,7 @@ interface SerializationBinding {
     }
 
     @Override
-    public void writeRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder) {
+    public void writeRef(MemoryBuffer buffer, Object obj, TypeInfoHolder classInfoHolder) {
       fory.xwriteRef(buffer, obj);
     }
 
@@ -158,7 +158,7 @@ interface SerializationBinding {
     }
 
     @Override
-    public Object readRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+    public Object readRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
       return fory.xreadRef(buffer);
     }
 
@@ -173,7 +173,7 @@ interface SerializationBinding {
     }
 
     @Override
-    public Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+    public Object readNonRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
       return fory.xreadNonRef(buffer, classInfoHolder);
     }
 

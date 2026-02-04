@@ -27,6 +27,7 @@ use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaString
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
+use crate::TypeId;
 use std::rc::Rc;
 
 /// Thread-local context cache with fast path for single Fory instance.
@@ -221,13 +222,13 @@ impl<'a> WriteContext<'a> {
             .write_type_meta(&mut self.writer, type_id, &self.type_resolver)
     }
 
-    pub fn write_any_typeinfo(
+    pub fn write_any_type_info(
         &mut self,
         fory_type_id: u32,
         concrete_type_id: std::any::TypeId,
     ) -> Result<Rc<TypeInfo>, Error> {
         if types::is_internal_type(fory_type_id) {
-            self.writer.write_var_uint32(fory_type_id);
+            self.writer.write_u8(fory_type_id as u8);
             return self
                 .type_resolver
                 .get_type_info_by_id(fory_type_id)
@@ -237,10 +238,14 @@ impl<'a> WriteContext<'a> {
         let fory_type_id = type_info.get_type_id();
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
-        self.writer.write_var_uint32(fory_type_id);
+        self.writer.write_u8(fory_type_id as u8);
         // should be compiled to jump table generation
-        match fory_type_id & 0xff {
-            types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
+        match fory_type_id {
+            TypeId::ENUM | TypeId::STRUCT | TypeId::EXT | TypeId::TYPED_UNION => {
+                let user_type_id = type_info.get_user_type_id();
+                self.writer.write_var_uint32(user_type_id);
+            }
+            TypeId::COMPATIBLE_STRUCT | TypeId::NAMED_COMPATIBLE_STRUCT => {
                 // Write type meta inline using streaming protocol
                 self.meta_resolver.write_type_meta(
                     &mut self.writer,
@@ -248,7 +253,7 @@ impl<'a> WriteContext<'a> {
                     &self.type_resolver,
                 )?;
             }
-            types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
+            TypeId::NAMED_ENUM | TypeId::NAMED_EXT | TypeId::NAMED_STRUCT | TypeId::NAMED_UNION => {
                 if self.is_share_meta() {
                     // Write type meta inline using streaming protocol
                     self.meta_resolver.write_type_meta(
@@ -411,11 +416,17 @@ impl<'a> ReadContext<'a> {
             .read_type_meta(&mut self.reader, &self.type_resolver)
     }
 
-    pub fn read_any_typeinfo(&mut self) -> Result<Rc<TypeInfo>, Error> {
-        let fory_type_id = self.reader.read_varuint32()?;
+    pub fn read_any_type_info(&mut self) -> Result<Rc<TypeInfo>, Error> {
+        let fory_type_id = self.reader.read_u8()? as u32;
         // should be compiled to jump table generation
-        match fory_type_id & 0xff {
-            types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
+        match fory_type_id {
+            types::ENUM | types::STRUCT | types::EXT | types::TYPED_UNION => {
+                let user_type_id = self.reader.read_varuint32()?;
+                self.type_resolver
+                    .get_user_type_info_by_id(user_type_id)
+                    .ok_or_else(|| Error::type_error("ID harness not found"))
+            }
+            types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {
                 // Read type meta inline using streaming protocol
                 self.read_type_meta()
             }
@@ -426,11 +437,22 @@ impl<'a> ReadContext<'a> {
                 } else {
                     let namespace = self.read_meta_string()?.to_owned();
                     let type_name = self.read_meta_string()?.to_owned();
-                    let rc_namespace = Rc::from(namespace);
-                    let rc_type_name = Rc::from(type_name);
+                    let rc_namespace = Rc::from(namespace.clone());
+                    let rc_type_name = Rc::from(type_name.clone());
                     self.type_resolver
                         .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
-                        .ok_or_else(|| Error::type_error("Name harness not found"))
+                        .or_else(|| {
+                            self.type_resolver.get_type_info_by_name(
+                                namespace.original.as_str(),
+                                type_name.original.as_str(),
+                            )
+                        })
+                        .ok_or_else(|| {
+                            Error::type_error(format!(
+                                "Name harness not found: namespace='{}', type='{}'",
+                                namespace.original, type_name.original
+                            ))
+                        })
                 }
             }
             _ => self

@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers schema evolution, meta sharing, and handling non-existent classes.
+This page covers schema evolution, meta sharing, and handling non-existent/unknown classes.
 
 ## Handling Class Schema Evolution
 
@@ -98,15 +98,15 @@ Object newObj = fory.execute(
 
 For more details, please refer to the [Meta Sharing specification](https://fory.apache.org/docs/specification/fory_java_serialization_spec#meta-share).
 
-## Deserialize Non-existent Classes
+## Deserialize Unknown Classes
 
-Fory supports deserializing non-existent classes. This feature can be enabled by `ForyBuilder#deserializeNonexistentClass(true)`.
+Fory supports deserializing non-existent or unknown classes. This feature can be enabled by `ForyBuilder#deserializeUnknownClass(true)`.
 
 When enabled and metadata sharing is enabled, Fory will store the deserialized data of this type in a lazy subclass of Map. By using the lazy map implemented by Fory, the rebalance cost of filling map during deserialization can be avoided, which further improves performance.
 
 If this data is sent to another process and the class exists in this process, the data will be deserialized into the object of this type without losing any information.
 
-If metadata sharing is not enabled, the new class data will be skipped and a `NonexistentSkipClass` stub object will be returned.
+If metadata sharing is not enabled, the new class data will be skipped and a `UnknownSkipClass` stub object will be returned.
 
 ## Copy/Map Object from One Type to Another
 
@@ -192,14 +192,14 @@ public class DeserializeIntoType {
 
 ## Configuration Options
 
-| Option                        | Description                         | Default                   |
-| ----------------------------- | ----------------------------------- | ------------------------- |
-| `compatibleMode`              | `SCHEMA_CONSISTENT` or `COMPATIBLE` | `SCHEMA_CONSISTENT`       |
-| `checkClassVersion`           | Check class schema consistency      | `false`                   |
-| `metaShareEnabled`            | Enable meta sharing                 | `true` if Compatible mode |
-| `scopedMetaShareEnabled`      | Scoped meta share per serialization | `true` if Compatible mode |
-| `deserializeNonexistentClass` | Handle non-existent classes         | `true` if Compatible mode |
-| `metaCompressor`              | Compressor for meta compression     | `DeflaterMetaCompressor`  |
+| Option                    | Description                            | Default                   |
+| ------------------------- | -------------------------------------- | ------------------------- |
+| `compatibleMode`          | `SCHEMA_CONSISTENT` or `COMPATIBLE`    | `SCHEMA_CONSISTENT`       |
+| `checkClassVersion`       | Check class schema consistency         | `false`                   |
+| `metaShareEnabled`        | Enable meta sharing                    | `true` if Compatible mode |
+| `scopedMetaShareEnabled`  | Scoped meta share per serialization    | `true` if Compatible mode |
+| `deserializeUnknownClass` | Handle non-existent or unknown classes | `true` if Compatible mode |
+| `metaCompressor`          | Compressor for meta compression        | `DeflaterMetaCompressor`  |
 
 ## Best Practices
 

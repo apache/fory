@@ -340,11 +340,11 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   }
 
   /**
-   * Verify that the writeClassInfo field is null for FieldReplaceResolveSerializer. This is what
+   * Verify that the writeTypeInfo field is null for FieldReplaceResolveSerializer. This is what
    * prevents class names from being written.
    */
   @Test
-  public void testWriteClassInfoIsNull() throws Exception {
+  public void testWriteTypeInfoIsNull() throws Exception {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
@@ -361,26 +361,26 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     FinalFieldReplaceResolveSerializer finalFieldSerializer =
         new FinalFieldReplaceResolveSerializer(fory, listClass);
 
-    // Use reflection to check that writeClassInfo is null
-    java.lang.reflect.Field writeClassInfoField =
-        ReplaceResolveSerializer.class.getDeclaredField("writeClassInfo");
-    writeClassInfoField.setAccessible(true);
-    Object writeClassInfo = writeClassInfoField.get(finalFieldSerializer);
+    // Use reflection to check that writeTypeInfo is null
+    java.lang.reflect.Field writeTypeInfoField =
+        ReplaceResolveSerializer.class.getDeclaredField("writeTypeInfo");
+    writeTypeInfoField.setAccessible(true);
+    Object writeTypeInfo = writeTypeInfoField.get(finalFieldSerializer);
 
-    // For FieldReplaceResolveSerializer, writeClassInfo should be null
+    // For FieldReplaceResolveSerializer, writeTypeInfo should be null
     assertNull(
-        writeClassInfo,
-        "FieldReplaceResolveSerializer should have writeClassInfo=null to avoid writing class names");
+        writeTypeInfo,
+        "FieldReplaceResolveSerializer should have writeTypeInfo=null to avoid writing class names");
 
     // Compare with ReplaceResolveSerializer (non-final)
     ReplaceResolveSerializer nonFinalFieldSerializer =
         new ReplaceResolveSerializer(fory, listClass, false, true);
-    Object writeClassInfoNonFinal = writeClassInfoField.get(nonFinalFieldSerializer);
+    Object writeTypeInfoNonFinal = writeTypeInfoField.get(nonFinalFieldSerializer);
 
-    // For ReplaceResolveSerializer (non-final), writeClassInfo should NOT be null
+    // For ReplaceResolveSerializer (non-final), writeTypeInfo should NOT be null
     assertNotNull(
-        writeClassInfoNonFinal,
-        "ReplaceResolveSerializer (non-final) should have writeClassInfo set to write class names");
+        writeTypeInfoNonFinal,
+        "ReplaceResolveSerializer (non-final) should have writeTypeInfo set to write class names");
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -447,7 +447,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
 
     // The key point: FieldReplaceResolveSerializer.writeObject() directly calls
     // jdkMethodInfoCache.objectSerializer.write(buffer, value)
-    // without calling classResolver.writeClassInternal(buffer, writeClassInfo)
+    // without calling classResolver.writeClassInternal(buffer, writeTypeInfo)
   }
 
   // TODO fix: bug with CompatibleMode and final field replace/resolve on main branch

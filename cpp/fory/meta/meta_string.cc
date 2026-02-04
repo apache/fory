@@ -282,19 +282,16 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
     }
     encoding = MetaEncoding::UTF8;
   } else {
-    // Small string layout: encoding(byte) + data[len]
-    int8_t enc_byte_res = buffer.read_int8(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
-      return Unexpected(std::move(error));
-    }
-    uint8_t enc_byte = static_cast<uint8_t>(enc_byte_res);
+    // Small string layout: data[len] with an encoding byte when len > 0.
+    // Java omits the encoding byte for empty strings.
     if (len == 0) {
-      if (enc_byte != 0) {
-        return Unexpected(
-            Error::encoding_error("Empty meta string must use UTF8 encoding"));
-      }
       encoding = MetaEncoding::UTF8;
     } else {
+      int8_t enc_byte_res = buffer.read_int8(error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        return Unexpected(std::move(error));
+      }
+      uint8_t enc_byte = static_cast<uint8_t>(enc_byte_res);
       FORY_TRY(enc, to_meta_encoding(enc_byte));
       encoding = enc;
       bytes.resize(len);

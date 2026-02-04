@@ -29,7 +29,7 @@ namespace {
 // Compute RefMode from field type at runtime.
 //
 // Per xlang protocol and Java's ObjectSerializer.write_other_field_value:
-// - In xlang mode with ref_tracking=false (default), fields only write
+// - In xlang mode with ref=false (default), fields only write
 //   ref/null flag if they are nullable
 // - Primitives never have ref flags (handled separately)
 } // namespace
@@ -213,13 +213,29 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
   }
 
   // Read remote type_id
-  uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
+  uint32_t remote_type_id = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
 
-  uint32_t type_id_low = remote_type_id & 0xff;
-  TypeId remote_tid = static_cast<TypeId>(type_id_low);
+  uint32_t user_type_id = 0;
+  switch (static_cast<TypeId>(remote_type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    user_type_id = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    break;
+  default:
+    break;
+  }
+  TypeId remote_tid = static_cast<TypeId>(remote_type_id);
+  bool has_user_type_id =
+      remote_tid == TypeId::ENUM || remote_tid == TypeId::STRUCT ||
+      remote_tid == TypeId::EXT || remote_tid == TypeId::TYPED_UNION;
 
   const TypeInfo *type_info = nullptr;
 
@@ -236,7 +252,10 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
   } else {
     // Plain STRUCT: look up by type_id, read struct_version if enabled
     auto type_info_res =
-        ctx.type_resolver().get_type_info_by_id(remote_type_id);
+        has_user_type_id
+            ? ctx.type_resolver().get_user_type_info_by_id(remote_type_id,
+                                                           user_type_id)
+            : ctx.type_resolver().get_type_info_by_id(remote_type_id);
     if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
       ctx.set_error(std::move(type_info_res).error());
       return;
@@ -282,13 +301,27 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
   }
 
   // Read remote type_id from buffer - Java always writes type_id for ext
-  uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
+  uint32_t remote_type_id = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
 
-  uint32_t low = remote_type_id & 0xffu;
-  TypeId remote_tid = static_cast<TypeId>(low);
+  uint32_t user_type_id = 0;
+  switch (static_cast<TypeId>(remote_type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    user_type_id = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    break;
+  default:
+    break;
+  }
+  TypeId remote_tid = static_cast<TypeId>(remote_type_id);
 
   const TypeInfo *type_info = nullptr;
 
@@ -303,8 +336,8 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
     type_info = type_info_res.value();
   } else {
     // ID-based ext: look up by remote type_id we just read
-    auto type_info_res =
-        ctx.type_resolver().get_type_info_by_id(remote_type_id);
+    auto type_info_res = ctx.type_resolver().get_user_type_info_by_id(
+        remote_type_id, user_type_id);
     if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
       ctx.set_error(std::move(type_info_res).error());
       return;
@@ -353,7 +386,7 @@ void skip_unknown(ReadContext &ctx) {
   // UNKNOWN type means the actual type info is written inline.
   // We need to read the type info and then skip based on the actual type.
   // This is used for polymorphic fields like List<Animal>.
-  const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
@@ -363,8 +396,7 @@ void skip_unknown(ReadContext &ctx) {
   }
 
   // Check the actual type and skip accordingly
-  uint32_t low = type_info->type_id & 0xffu;
-  TypeId actual_tid = static_cast<TypeId>(low);
+  TypeId actual_tid = static_cast<TypeId>(type_info->type_id);
 
   switch (actual_tid) {
   case TypeId::STRUCT:
@@ -425,7 +457,7 @@ void skip_union(ReadContext &ctx) {
   }
 
   // Read and skip the alternative's type info
-  const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+  const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
@@ -455,22 +487,18 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     }
   }
 
-  // skip based on low 8 bits of the type ID.
-  //
-  // xlang user types encode the user type id in the high bits and the
-  // logical TypeId in the low 8 bits (see Java XtypeResolver and Rust
-  // TypeId conventions). For skipping we only care about the logical
-  // category (STRUCT/ENUM/EXT/etc.), so mask off the user id portion.
-  uint32_t low = field_type.type_id & 0xffu;
-  TypeId tid = static_cast<TypeId>(low);
+  // skip based on the logical TypeId (already in 0..255)
+  TypeId tid = static_cast<TypeId>(field_type.type_id);
 
   switch (tid) {
   case TypeId::BOOL:
   case TypeId::INT8:
+  case TypeId::FLOAT8:
     ctx.buffer().increase_reader_index(1);
     return;
 
   case TypeId::INT16:
+  case TypeId::BFLOAT16:
   case TypeId::FLOAT16:
     ctx.buffer().increase_reader_index(2);
     return;
@@ -569,9 +597,17 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   case TypeId::INT16_ARRAY:
   case TypeId::INT32_ARRAY:
   case TypeId::INT64_ARRAY:
+  case TypeId::FLOAT8_ARRAY:
   case TypeId::FLOAT16_ARRAY:
+  case TypeId::BFLOAT16_ARRAY:
   case TypeId::FLOAT32_ARRAY:
   case TypeId::FLOAT64_ARRAY: {
+    if (tid == TypeId::FLOAT8_ARRAY) {
+      ctx.buffer().increase_reader_index(1);
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return;
+      }
+    }
     // Read array length
     uint32_t len = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -583,6 +619,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     switch (tid) {
     case TypeId::INT16_ARRAY:
     case TypeId::FLOAT16_ARRAY:
+    case TypeId::BFLOAT16_ARRAY:
       elem_size = 2;
       break;
     case TypeId::INT32_ARRAY:

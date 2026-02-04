@@ -176,8 +176,7 @@ func (c *WriteContext) WriteBinary(v []byte) {
 }
 
 func (c *WriteContext) WriteTypeId(id TypeId) {
-	// Use VarUint32Small7 encoding to match Java's xlang serialization
-	c.buffer.WriteVarUint32Small7(uint32(id))
+	c.buffer.WriteUint8(uint8(id))
 }
 
 // writeFast writes a value using fast path based on DispatchId

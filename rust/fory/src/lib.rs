@@ -839,7 +839,7 @@
 //!         Ok(Self { value, name })
 //!     }
 //!
-//!     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+//!     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<fory::TypeId, Error> {
 //!         Self::fory_get_type_id(type_resolver)
 //!     }
 //!

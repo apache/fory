@@ -19,7 +19,7 @@
 
 import 'package:fory/src/exception/fory_exception.dart';
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 abstract class SerializationException extends ForyException {
   final String? _where;

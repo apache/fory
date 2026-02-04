@@ -54,10 +54,10 @@ import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -515,8 +515,8 @@ public class CollectionSerializers {
 
     @Override
     public Collection newCollection(MemoryBuffer buffer) {
-      final ClassInfo mapClassInfo = fory.getClassResolver().readClassInfo(buffer);
-      final MapLikeSerializer mapSerializer = (MapLikeSerializer) mapClassInfo.getSerializer();
+      final TypeInfo mapTypeInfo = fory.getClassResolver().readTypeInfo(buffer);
+      final MapLikeSerializer mapSerializer = (MapLikeSerializer) mapTypeInfo.getSerializer();
       RefResolver refResolver = fory.getRefResolver();
       // It's possible that elements or nested fields has circular ref to set.
       int refId = refResolver.lastPreservedRefId();
@@ -554,9 +554,9 @@ public class CollectionSerializers {
     @Override
     public Collection onCollectionWrite(MemoryBuffer buffer, Set<?> value) {
       final Map<?, Boolean> map = (Map<?, Boolean>) Platform.getObject(value, MAP_FIELD_OFFSET);
-      final ClassInfo classInfo = fory.getClassResolver().getClassInfo(map.getClass());
-      MapLikeSerializer mapSerializer = (MapLikeSerializer) classInfo.getSerializer();
-      fory.getClassResolver().writeClassInfo(buffer, classInfo);
+      final TypeInfo typeInfo = fory.getClassResolver().getTypeInfo(map.getClass());
+      MapLikeSerializer mapSerializer = (MapLikeSerializer) typeInfo.getSerializer();
+      fory.getClassResolver().writeTypeInfo(buffer, typeInfo);
       if (mapSerializer.supportCodegenHook) {
         buffer.writeBoolean(true);
         mapSerializer.onMapWrite(buffer, map);
@@ -571,26 +571,26 @@ public class CollectionSerializers {
 
   public static final class ConcurrentHashMapKeySetViewSerializer
       extends CollectionSerializer<ConcurrentHashMap.KeySetView> {
-    private final ClassInfoHolder mapClassInfoHolder;
-    private final ClassInfoHolder valueClassInfoHolder;
+    private final TypeInfoHolder mapTypeInfoHolder;
+    private final TypeInfoHolder valueTypeInfoHolder;
 
     public ConcurrentHashMapKeySetViewSerializer(
         Fory fory, Class<ConcurrentHashMap.KeySetView> type) {
       super(fory, type, false);
-      mapClassInfoHolder = fory.getClassResolver().nilClassInfoHolder();
-      valueClassInfoHolder = fory.getClassResolver().nilClassInfoHolder();
+      mapTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+      valueTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
     }
 
     @Override
     public void write(MemoryBuffer buffer, ConcurrentHashMap.KeySetView value) {
-      fory.writeRef(buffer, value.getMap(), mapClassInfoHolder);
-      fory.writeRef(buffer, value.getMappedValue(), valueClassInfoHolder);
+      fory.writeRef(buffer, value.getMap(), mapTypeInfoHolder);
+      fory.writeRef(buffer, value.getMappedValue(), valueTypeInfoHolder);
     }
 
     @Override
     public ConcurrentHashMap.KeySetView read(MemoryBuffer buffer) {
-      ConcurrentHashMap map = (ConcurrentHashMap) fory.readRef(buffer, mapClassInfoHolder);
-      Object value = fory.readRef(buffer, valueClassInfoHolder);
+      ConcurrentHashMap map = (ConcurrentHashMap) fory.readRef(buffer, mapTypeInfoHolder);
+      Object value = fory.readRef(buffer, valueTypeInfoHolder);
       return map.keySet(value);
     }
 
@@ -668,7 +668,7 @@ public class CollectionSerializers {
 
     @Override
     public EnumSet read(MemoryBuffer buffer) {
-      Class elemClass = fory.getClassResolver().readClassInfo(buffer).getCls();
+      Class elemClass = fory.getClassResolver().readTypeInfo(buffer).getCls();
       EnumSet object = EnumSet.noneOf(elemClass);
       Serializer elemSerializer = fory.getClassResolver().getSerializer(elemClass);
       int length = buffer.readVarUint32Small7();

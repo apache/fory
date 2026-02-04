@@ -50,12 +50,12 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
         mem::size_of::<i32>()
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::SET as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::SET)
     }
 
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::SET as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::SET)
     }
 
     fn fory_static_type_id() -> TypeId {

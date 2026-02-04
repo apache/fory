@@ -39,7 +39,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.builder.LayerMarkerClassGenerator;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.MetaContext;
@@ -238,11 +238,11 @@ public class ChildContainerSerializers {
     while (!superClasses.contains(cls)) {
       Serializer slotsSerializer;
       if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
-        ClassDef layerClassDef = fory.getClassResolver().getTypeDef(cls, false);
+        TypeDef layerTypeDef = fory.getClassResolver().getTypeDef(cls, false);
         // Use layer index within class hierarchy (not global counter)
         // This ensures unique marker classes for each layer
         Class<?> layerMarkerClass = LayerMarkerClassGenerator.getOrCreate(fory, cls, layerIndex);
-        slotsSerializer = new MetaSharedLayerSerializer(fory, cls, layerClassDef, layerMarkerClass);
+        slotsSerializer = new MetaSharedLayerSerializer(fory, cls, layerTypeDef, layerMarkerClass);
       } else {
         slotsSerializer = new ObjectSerializer<>(fory, cls, false);
       }
@@ -289,8 +289,8 @@ public class ChildContainerSerializers {
       // Reference to previously read type - nothing more to read
       return;
     }
-    // New type - need to read and skip the ClassDef bytes
+    // New type - need to read and skip the TypeDef bytes
     long id = buffer.readInt64();
-    ClassDef.skipClassDef(buffer, id);
+    TypeDef.skipTypeDef(buffer, id);
   }
 }

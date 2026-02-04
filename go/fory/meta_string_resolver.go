@@ -70,6 +70,8 @@ type MetaStringResolver struct {
 	metaStrToMetaStrBytes    map[*meta.MetaString]*MetaStringBytes // Conversion cache
 }
 
+var emptyMetaStringBytes = NewMetaStringBytes([]byte{}, 256)
+
 func NewMetaStringResolver() *MetaStringResolver {
 	return &MetaStringResolver{
 		hashToMetaStrBytes:      make(map[int64]*MetaStringBytes),
@@ -92,7 +94,9 @@ func (r *MetaStringResolver) WriteMetaStringBytes(buf *ByteBuffer, m *MetaString
 
 		// Small strings store encoding in header
 		if m.Length <= SmallStringThreshold {
-			buf.WriteByte(byte(m.Encoding))
+			if m.Length != 0 {
+				buf.WriteByte(byte(m.Encoding))
+			}
 		} else {
 			// Large strings include full hash
 			binErr := binary.Write(buf, binary.LittleEndian, m.Hashcode)
@@ -135,6 +139,10 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 
 	// Small string optimization
 	if length <= SmallStringThreshold {
+		if length == 0 {
+			r.dynamicIDToEnumString = append(r.dynamicIDToEnumString, emptyMetaStringBytes)
+			return emptyMetaStringBytes, nil
+		}
 		// ReadData encoding and data
 		encByte := buf.ReadByte(ctxErr)
 		encoding = Encoding(encByte)
@@ -208,6 +216,10 @@ func (r *MetaStringResolver) GetMetaStrBytes(metastr *meta.MetaString) *MetaStri
 	data := metastr.GetEncodedBytes()
 	length := len(data)
 
+	if length == 0 {
+		r.metaStrToMetaStrBytes[metastr] = emptyMetaStringBytes
+		return emptyMetaStringBytes
+	}
 	if length <= SmallStringThreshold {
 		// Small string: use direct bytes as hash components
 		var v1, v2 int64
@@ -236,7 +248,10 @@ func ComputeMetaStringHash(data []byte, encoding meta.Encoding) int64 {
 	length := len(data)
 	var hashcode int64
 
-	if length <= SmallStringThreshold {
+	if length == 0 {
+		hashcode = 256
+		hashcode |= int64(encoding)
+	} else if length <= SmallStringThreshold {
 		// Small string: use direct bytes as hash components
 		var v1, v2 int64
 		if length <= 8 {

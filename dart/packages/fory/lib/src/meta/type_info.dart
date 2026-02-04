@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
@@ -27,6 +27,8 @@ class TypeInfo {
   final String? tag;
   final MetaStringBytes? typeNameBytes;
   final MetaStringBytes? nsBytes;
+  // Stored as unsigned 32-bit; -1 (0xffffffff) means "unset".
+  final int userTypeId;
   late Serializer ser;
 
   TypeInfo(
@@ -35,6 +37,7 @@ class TypeInfo {
     this.tag,
     this.typeNameBytes,
     this.nsBytes,
+    {this.userTypeId = kInvalidUserTypeId}
   );
 
   TypeInfo.fromInnerType(
@@ -43,5 +46,6 @@ class TypeInfo {
     this.ser,
   ) : tag = null,
       typeNameBytes = null,
-      nsBytes = null;
+      nsBytes = null,
+      userTypeId = kInvalidUserTypeId;
 }

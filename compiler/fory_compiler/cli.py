@@ -153,6 +153,7 @@ def resolve_imports(
     # Create merged schema with imported types first (so they can be referenced)
     merged_schema = Schema(
         package=schema.package,
+        package_alias=schema.package_alias,
         imports=schema.imports,
         enums=imported_enums + schema.enums,
         messages=imported_messages + schema.messages,
@@ -181,8 +182,34 @@ def go_package_info(schema: Schema) -> Tuple[Optional[str], str]:
     return None, ""
 
 
+def _find_go_module_root(base_go_out: Path) -> Optional[Path]:
+    base_go_out = base_go_out.resolve()
+    for candidate in (base_go_out, *base_go_out.parents):
+        if (candidate / "go.mod").is_file():
+            return candidate
+    return None
+
+
+def _read_go_module_path(go_module_root: Path) -> Optional[str]:
+    module_file = go_module_root / "go.mod"
+    if not module_file.is_file():
+        return None
+    try:
+        with module_file.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if stripped.startswith("module "):
+                    return stripped.split(None, 1)[1].strip()
+    except OSError:
+        return None
+    return None
+
+
 def resolve_go_module_root(base_go_out: Path, schema: Schema) -> Path:
     """Infer the Go module root for output layout."""
+    module_root = _find_go_module_root(base_go_out)
+    if module_root:
+        return module_root
     _, package_name = go_package_info(schema)
     if package_name and base_go_out.name == package_name:
         return base_go_out.parent
@@ -195,6 +222,14 @@ def resolve_go_output_dir(base_go_out: Path, schema: Schema) -> Path:
     if package_name and base_go_out.name == package_name:
         return base_go_out
     if import_path:
+        module_path = _read_go_module_path(base_go_out)
+        if module_path:
+            module_path = module_path.rstrip("/")
+            if import_path.startswith(module_path):
+                rel_path = import_path[len(module_path) :].lstrip("/")
+                if rel_path:
+                    return base_go_out / rel_path
+                return base_go_out
         last_segment = import_path.rstrip("/").split("/")[-1]
         if package_name and last_segment == package_name:
             return base_go_out / package_name
@@ -501,7 +536,13 @@ def compile_file_recursive(
     effective_outputs = lang_output_dirs
     if "go" in lang_output_dirs:
         go_root = go_module_root or lang_output_dirs["go"]
-        go_out = resolve_go_output_dir(go_root, schema)
+        if (
+            schema.get_option("go_package") is None
+            and lang_output_dirs["go"] != go_root
+        ):
+            go_out = lang_output_dirs["go"]
+        else:
+            go_out = resolve_go_output_dir(go_root, schema)
         if go_out != lang_output_dirs["go"]:
             effective_outputs = dict(lang_output_dirs)
             effective_outputs["go"] = go_out

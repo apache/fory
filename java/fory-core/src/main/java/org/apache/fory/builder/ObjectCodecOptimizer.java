@@ -41,15 +41,15 @@ import org.apache.fory.util.function.SerializableSupplier;
  * <ul>
  *   <li>compiled code for writing every primitive is 22/21 bytes.
  *   <li>compiled code for write/read every boxed primitive is 38/35 bytes.
- *   <li>compiled code for write/read every boxed primitive with ref_tracking is 40/81 bytes.
+ *   <li>compiled code for write/read every boxed primitive with track_ref is 40/81 bytes.
  *   <li>compiled code for write/read every final field on average is 41/82 bytes.
  *   <li>compiled code for write/read every {@literal List<primitive>} on average is 191/201 bytes.
- *   <li>compiled code for write/read every {@literal List<primitive>} with boxed ref_tracking on
+ *   <li>compiled code for write/read every {@literal List<primitive>} with boxed track_ref on
  *       average is 194/240 bytes.
  *   <li>compiled code for write/read every {@literal List<final>} on average is 196/238 bytes.
  *   <li>compiled code for write/read every {@literal Map<boxed, boxed>} on average is 270/196
  *       bytes.
- *   <li>compiled code for write/read every {@literal Map<boxed, boxed>} with boxed ref_tracking on
+ *   <li>compiled code for write/read every {@literal Map<boxed, boxed>} with boxed track_ref on
  *       average is 266/296 bytes.
  *   <li>compiled code for write/read every {@literal Map<final, final>} on average is 268/292
  *       bytes.

@@ -601,7 +601,7 @@ func (s stringSliceSerializer) writeDataWithGenerics(ctx *WriteContext, value re
 	} else {
 		// When element type is not known, write CollectionIsSameType and element type info
 		buf.WriteInt8(int8(CollectionIsSameType))
-		buf.WriteVarUint32Small7(uint32(STRING))
+		buf.WriteUint8(uint8(STRING))
 	}
 
 	// Write elements directly (no ref flag for strings)
@@ -653,7 +653,7 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 
 	// Read element type info if present (when CollectionIsSameType but not CollectionIsDeclElementType)
 	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
-		_ = buf.ReadVarUint32Small7(ctxErr) // Read and discard type ID (we know it's STRING)
+		_ = buf.ReadUint8(ctxErr) // Read and discard type ID (we know it's STRING)
 	}
 
 	result := make([]string, length)
@@ -1296,7 +1296,7 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 			buf.WriteInt8(int8(CollectionDeclSameType))
 		} else {
 			buf.WriteInt8(int8(CollectionIsSameType))
-			buf.WriteVarUint32Small7(uint32(STRING))
+			buf.WriteUint8(uint8(STRING))
 		}
 		for i := 0; i < length; i++ {
 			writeString(buf, value[i])
@@ -1314,7 +1314,7 @@ func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 	}
 	collectFlag := buf.ReadInt8(err)
 	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
-		_ = buf.ReadVarUint32Small7(err) // Read and discard element type ID
+		_ = buf.ReadUint8(err) // Read and discard element type ID
 	}
 	result := make([]string, length)
 	trackRefs := (collectFlag & CollectionTrackingRef) != 0
