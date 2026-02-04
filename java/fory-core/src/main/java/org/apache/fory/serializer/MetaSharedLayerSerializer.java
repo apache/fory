@@ -24,7 +24,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.ObjectIntMap;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.resolver.TypeResolver;
@@ -48,7 +48,7 @@ import org.apache.fory.type.Generics;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<T> {
-  private final ClassDef layerClassDef;
+  private final TypeDef layerTypeDef;
   private final Class<?> layerMarkerClass;
   private final SerializationFieldInfo[] buildInFields;
   private final SerializationFieldInfo[] otherFields;
@@ -60,19 +60,19 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
    *
    * @param fory the Fory instance
    * @param type the target class for this layer
-   * @param layerClassDef the ClassDef for this layer only (resolveParent=false)
+   * @param layerTypeDef the TypeDef for this layer only (resolveParent=false)
    * @param layerMarkerClass the generated marker class used as key in metaContext.classMap
    */
   public MetaSharedLayerSerializer(
-      Fory fory, Class<T> type, ClassDef layerClassDef, Class<?> layerMarkerClass) {
+      Fory fory, Class<T> type, TypeDef layerTypeDef, Class<?> layerMarkerClass) {
     super(fory, type);
-    this.layerClassDef = layerClassDef;
+    this.layerTypeDef = layerTypeDef;
     this.layerMarkerClass = layerMarkerClass;
     TypeResolver typeResolver = fory.getTypeResolver();
     this.binding = SerializationBinding.createBinding(fory);
 
-    // Build field infos from layerClassDef
-    Collection<Descriptor> descriptors = layerClassDef.getDescriptors(typeResolver, type);
+    // Build field infos from layerTypeDef
+    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(typeResolver, type);
     DescriptorGrouper descriptorGrouper = typeResolver.createDescriptorGrouper(descriptors, false);
     FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
     this.buildInFields = fieldGroups.buildInFields;
@@ -103,9 +103,9 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
       // Reference to previously written type: (index << 1) | 1, LSB=1
       buffer.writeVarUint32((id << 1) | 1);
     } else {
-      // New type: index << 1, LSB=0, followed by ClassDef bytes inline
+      // New type: index << 1, LSB=0, followed by TypeDef bytes inline
       buffer.writeVarUint32(newId << 1);
-      buffer.writeBytes(layerClassDef.getEncoded());
+      buffer.writeBytes(layerTypeDef.getEncoded());
     }
   }
 
@@ -244,7 +244,7 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
   /**
    * Read fields only, without reading layer class meta. This is used when the caller has already
    * read and processed the layer class meta (e.g., for schema evolution where different senders may
-   * have different ClassDefs for the same layer).
+   * have different TypeDefs for the same layer).
    *
    * @param buffer the memory buffer to read from
    * @param obj the object to set field values on

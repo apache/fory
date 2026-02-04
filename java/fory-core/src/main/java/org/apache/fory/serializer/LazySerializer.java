@@ -60,7 +60,7 @@ public class LazySerializer extends Serializer {
     if (serializer == null) {
       serializer = serializerSupplier.get();
       fory.getClassResolver().setSerializer(value.getClass(), serializer);
-      fory.getXtypeResolver().getClassInfo(value.getClass()).setSerializer(serializer);
+      fory.getXtypeResolver().getTypeInfo(value.getClass()).setSerializer(serializer);
     }
     serializer.xwrite(buffer, value);
   }
@@ -74,7 +74,7 @@ public class LazySerializer extends Serializer {
     Object value = serializer.xread(buffer);
     if (unInit) {
       fory.getClassResolver().setSerializer(value.getClass(), serializer);
-      fory.getXtypeResolver().getClassInfo(value.getClass()).setSerializer(serializer);
+      fory.getXtypeResolver().getTypeInfo(value.getClass()).setSerializer(serializer);
     }
     return value;
   }

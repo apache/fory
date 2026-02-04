@@ -345,7 +345,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testSerializeJavaObjectWithClassInfo() {
+  public void testSerializeJavaObjectWithTypeInfo() {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)

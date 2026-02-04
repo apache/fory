@@ -410,6 +410,8 @@ inline void register_all_test_types(Fory &fory) {
   fory.register_struct<nested_test::inner::OutClassStruct>(type_id++);
   fory.register_struct<external_test::ExternalStruct>(type_id++);
   fory.register_struct<external_test::ExternalEmpty>(type_id++);
+  fory.register_enum<Color>(type_id++);
+  fory.register_enum<Status>(type_id++);
 }
 
 template <typename T> void test_roundtrip(const T &original) {

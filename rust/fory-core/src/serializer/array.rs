@@ -159,7 +159,7 @@ where
     // Read elements
     if is_same_type {
         let type_info = if !is_declared {
-            context.read_any_typeinfo()?
+            context.read_any_type_info()?
         } else {
             let rs_type_id = std::any::TypeId::of::<T>();
             context.get_type_resolver().get_type_info(&rs_type_id)?
@@ -283,13 +283,13 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(Self::fory_static_type_id() as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(Self::fory_static_type_id())
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(Self::fory_static_type_id() as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(Self::fory_static_type_id())
     }
 
     #[inline(always)]

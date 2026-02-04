@@ -42,12 +42,12 @@ impl Serializer for bool {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::BOOL as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::BOOL)
     }
 
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::BOOL as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::BOOL)
     }
 
     fn fory_static_type_id() -> TypeId {
@@ -61,7 +61,7 @@ impl Serializer for bool {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::BOOL as u32);
+        context.writer.write_u8(TypeId::BOOL as u8);
         Ok(())
     }
 

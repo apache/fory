@@ -19,7 +19,7 @@
 
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/config/fory_config.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserializer_pack.dart';
 import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';

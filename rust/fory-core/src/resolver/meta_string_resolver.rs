@@ -25,7 +25,7 @@ use crate::buffer::Writer;
 use crate::error::Error;
 use crate::meta::{murmurhash3_x64_128, NAMESPACE_DECODER};
 use crate::meta::{Encoding, MetaString};
-use crate::{ensure, Reader};
+use crate::Reader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MetaStringBytes {
@@ -157,7 +157,7 @@ impl MetaStringWriterResolver {
         writer.write_var_uint32((len as u32) << 1);
         if len > Self::SMALL_STRING_THRESHOLD {
             writer.write_i64(mb_ref.hash_code);
-        } else {
+        } else if len != 0 {
             writer.write_u8(mb_ref.encoding as i16 as u8);
         }
         writer.write_bytes(&mb_ref.bytes);
@@ -286,16 +286,17 @@ impl MetaStringReaderResolver {
         reader: &mut Reader,
         len: usize,
     ) -> Result<&MetaStringBytes, Error> {
-        let encoding_val = reader.read_u8()?;
         if len == 0 {
-            ensure!(
-                encoding_val == Encoding::Utf8 as u8,
-                Error::EncodingError(format!("wrong encoding value: {}", encoding_val).into())
-            );
             let empty = MetaStringBytes::get_empty();
-            // empty must be a static or globally unique instance
+            let id = self.dynamic_read_id;
+            self.dynamic_read_id += 1;
+            if id >= self.dynamic_read.len() {
+                self.dynamic_read.resize(id * 2 + 1, None);
+            }
+            self.dynamic_read[id] = Some(empty as *const MetaStringBytes);
             return Ok(empty);
         }
+        let encoding_val = reader.read_u8()?;
 
         let (v1, v2) = if len <= 8 {
             let v1 = Self::read_bytes_as_u64(reader, len)?;

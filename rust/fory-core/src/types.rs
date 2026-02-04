@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::error::Error;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::mem;
 
@@ -96,7 +95,7 @@ impl RefMode {
 
 #[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[allow(non_camel_case_types)]
-#[repr(i16)]
+#[repr(u8)]
 pub enum TypeId {
     // Unknown/polymorphic type marker.
     UNKNOWN = 0,
@@ -115,47 +114,51 @@ pub enum TypeId {
     UINT64 = 13,
     VAR_UINT64 = 14,
     TAGGED_UINT64 = 15,
-    FLOAT16 = 16,
-    FLOAT32 = 17,
-    FLOAT64 = 18,
-    STRING = 19,
-    LIST = 20,
-    SET = 21,
-    MAP = 22,
-    ENUM = 23,
-    NAMED_ENUM = 24,
-    STRUCT = 25,
-    COMPATIBLE_STRUCT = 26,
-    NAMED_STRUCT = 27,
-    NAMED_COMPATIBLE_STRUCT = 28,
-    EXT = 29,
-    NAMED_EXT = 30,
+    FLOAT8 = 16,
+    FLOAT16 = 17,
+    BFLOAT16 = 18,
+    FLOAT32 = 19,
+    FLOAT64 = 20,
+    STRING = 21,
+    LIST = 22,
+    SET = 23,
+    MAP = 24,
+    ENUM = 25,
+    NAMED_ENUM = 26,
+    STRUCT = 27,
+    COMPATIBLE_STRUCT = 28,
+    NAMED_STRUCT = 29,
+    NAMED_COMPATIBLE_STRUCT = 30,
+    EXT = 31,
+    NAMED_EXT = 32,
     // A tagged union value whose schema identity is not embedded.
-    UNION = 31,
+    UNION = 33,
     // A union value with embedded numeric union type ID.
-    TYPED_UNION = 32,
+    TYPED_UNION = 34,
     // A union value with embedded union type name/TypeDef.
-    NAMED_UNION = 33,
+    NAMED_UNION = 35,
     // Represents an empty/unit value with no data.
-    NONE = 34,
-    DURATION = 35,
-    TIMESTAMP = 36,
-    DATE = 37,
-    DECIMAL = 38,
-    BINARY = 39,
-    ARRAY = 40,
-    BOOL_ARRAY = 41,
-    INT8_ARRAY = 42,
-    INT16_ARRAY = 43,
-    INT32_ARRAY = 44,
-    INT64_ARRAY = 45,
-    UINT8_ARRAY = 46,
-    UINT16_ARRAY = 47,
-    UINT32_ARRAY = 48,
-    UINT64_ARRAY = 49,
-    FLOAT16_ARRAY = 50,
-    FLOAT32_ARRAY = 51,
-    FLOAT64_ARRAY = 52,
+    NONE = 36,
+    DURATION = 37,
+    TIMESTAMP = 38,
+    DATE = 39,
+    DECIMAL = 40,
+    BINARY = 41,
+    ARRAY = 42,
+    BOOL_ARRAY = 43,
+    INT8_ARRAY = 44,
+    INT16_ARRAY = 45,
+    INT32_ARRAY = 46,
+    INT64_ARRAY = 47,
+    UINT8_ARRAY = 48,
+    UINT16_ARRAY = 49,
+    UINT32_ARRAY = 50,
+    UINT64_ARRAY = 51,
+    FLOAT8_ARRAY = 52,
+    FLOAT16_ARRAY = 53,
+    BFLOAT16_ARRAY = 54,
+    FLOAT32_ARRAY = 55,
+    FLOAT64_ARRAY = 56,
     // Rust-specific types (not part of xlang spec, for internal use)
     U128 = 64,
     INT128 = 65,
@@ -190,7 +193,9 @@ pub const VAR_UINT32: u32 = TypeId::VAR_UINT32 as u32;
 pub const UINT64: u32 = TypeId::UINT64 as u32;
 pub const VAR_UINT64: u32 = TypeId::VAR_UINT64 as u32;
 pub const TAGGED_UINT64: u32 = TypeId::TAGGED_UINT64 as u32;
+pub const FLOAT8: u32 = TypeId::FLOAT8 as u32;
 pub const FLOAT16: u32 = TypeId::FLOAT16 as u32;
+pub const BFLOAT16: u32 = TypeId::BFLOAT16 as u32;
 pub const FLOAT32: u32 = TypeId::FLOAT32 as u32;
 pub const FLOAT64: u32 = TypeId::FLOAT64 as u32;
 pub const STRING: u32 = TypeId::STRING as u32;
@@ -220,7 +225,9 @@ pub const UINT8_ARRAY: u32 = TypeId::UINT8_ARRAY as u32;
 pub const UINT16_ARRAY: u32 = TypeId::UINT16_ARRAY as u32;
 pub const UINT32_ARRAY: u32 = TypeId::UINT32_ARRAY as u32;
 pub const UINT64_ARRAY: u32 = TypeId::UINT64_ARRAY as u32;
+pub const FLOAT8_ARRAY: u32 = TypeId::FLOAT8_ARRAY as u32;
 pub const FLOAT16_ARRAY: u32 = TypeId::FLOAT16_ARRAY as u32;
+pub const BFLOAT16_ARRAY: u32 = TypeId::BFLOAT16_ARRAY as u32;
 pub const FLOAT32_ARRAY: u32 = TypeId::FLOAT32_ARRAY as u32;
 pub const FLOAT64_ARRAY: u32 = TypeId::FLOAT64_ARRAY as u32;
 pub const UNION: u32 = TypeId::UNION as u32;
@@ -304,7 +311,7 @@ pub static BASIC_TYPES: [TypeId; 33] = [
     TypeId::USIZE_ARRAY,
 ];
 
-pub static PRIMITIVE_TYPES: [u32; 22] = [
+pub static PRIMITIVE_TYPES: [u32; 24] = [
     TypeId::BOOL as u32,
     TypeId::INT8 as u32,
     TypeId::INT16 as u32,
@@ -320,7 +327,9 @@ pub static PRIMITIVE_TYPES: [u32; 22] = [
     TypeId::UINT64 as u32,
     TypeId::VAR_UINT64 as u32,
     TypeId::TAGGED_UINT64 as u32,
+    TypeId::FLOAT8 as u32,
     TypeId::FLOAT16 as u32,
+    TypeId::BFLOAT16 as u32,
     TypeId::FLOAT32 as u32,
     TypeId::FLOAT64 as u32,
     // Rust-specific
@@ -330,7 +339,7 @@ pub static PRIMITIVE_TYPES: [u32; 22] = [
     TypeId::ISIZE as u32,
 ];
 
-pub static PRIMITIVE_ARRAY_TYPES: [u32; 15] = [
+pub static PRIMITIVE_ARRAY_TYPES: [u32; 18] = [
     TypeId::BOOL_ARRAY as u32,
     TypeId::BINARY as u32,
     TypeId::INT8_ARRAY as u32,
@@ -341,6 +350,9 @@ pub static PRIMITIVE_ARRAY_TYPES: [u32; 15] = [
     TypeId::UINT16_ARRAY as u32,
     TypeId::UINT32_ARRAY as u32,
     TypeId::UINT64_ARRAY as u32,
+    TypeId::FLOAT8_ARRAY as u32,
+    TypeId::FLOAT16_ARRAY as u32,
+    TypeId::BFLOAT16_ARRAY as u32,
     TypeId::FLOAT32_ARRAY as u32,
     TypeId::FLOAT64_ARRAY as u32,
     // Rust-specific
@@ -407,6 +419,9 @@ pub const fn is_primitive_type_id(type_id: TypeId) -> bool {
             | TypeId::UINT16
             | TypeId::UINT32
             | TypeId::UINT64
+            | TypeId::FLOAT8
+            | TypeId::FLOAT16
+            | TypeId::BFLOAT16
             | TypeId::FLOAT32
             | TypeId::FLOAT64
             // Rust-specific
@@ -474,6 +489,14 @@ pub const fn is_user_type(type_id: u32) -> bool {
     )
 }
 
+#[inline(always)]
+pub const fn needs_user_type_id(type_id: u32) -> bool {
+    matches!(
+        type_id,
+        ENUM | STRUCT | COMPATIBLE_STRUCT | EXT | TYPED_UNION
+    )
+}
+
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);
     while new_hash >= MAX_UNT32 {
@@ -489,18 +512,6 @@ pub mod config_flags {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Language {
-    Xlang = 0,
-    Java = 1,
-    Python = 2,
-    Cpp = 3,
-    Go = 4,
-    Javascript = 5,
-    Rust = 6,
-    Dart = 7,
-}
-
-#[derive(PartialEq)]
 pub enum Mode {
     // Type declaration must be consistent between serialization peer and deserialization peer.
     SchemaConsistent,
@@ -509,51 +520,14 @@ pub enum Mode {
     Compatible,
 }
 
-impl TryFrom<u8> for Language {
-    type Error = Error;
-
-    fn try_from(num: u8) -> Result<Self, Error> {
-        match num {
-            0 => Ok(Language::Xlang),
-            1 => Ok(Language::Java),
-            2 => Ok(Language::Python),
-            3 => Ok(Language::Cpp),
-            4 => Ok(Language::Go),
-            5 => Ok(Language::Javascript),
-            6 => Ok(Language::Rust),
-            _ => Err(Error::invalid_data(format!(
-                "Unsupported language code, value:{num}"
-            ))),
-        }
-    }
-}
-
 // every object start with i8 i16 reference flag and type flag
 pub const SIZE_OF_REF_AND_TYPE: usize = mem::size_of::<i8>() + mem::size_of::<i16>();
 
-/// Formats a combined type ID into a human-readable string.
+/// Formats a type ID into a human-readable string.
 ///
-/// Combined type IDs have the format: `(registered_id << 8) + internal_type_id`.
-/// This function extracts both parts and formats them for debugging.
-///
-/// For internal types (type_id < BOUND), returns just the type name.
-/// For user-registered types, returns format like "registered_id=3(STRUCT)".
-///
-/// # Examples
-/// ```
-/// use fory_core::types::format_type_id;
-///
-/// // Internal type (e.g., BOOL = 1)
-/// assert_eq!(format_type_id(1), "BOOL");
-///
-/// // User registered struct with id=3: (3 << 8) + 25 = 793
-/// assert_eq!(format_type_id(793), "registered_id=3(STRUCT)");
-/// ```
+/// Type IDs are internal Fory type IDs in the range 0..=255.
 pub fn format_type_id(type_id: u32) -> String {
-    let internal_type_id = type_id & 0xff;
-    let registered_id = type_id >> 8;
-
-    let type_name = match internal_type_id {
+    let type_name = match type_id {
         0 => "UNKNOWN",
         1 => "BOOL",
         2 => "INT8",
@@ -570,43 +544,47 @@ pub fn format_type_id(type_id: u32) -> String {
         13 => "UINT64",
         14 => "VAR_UINT64",
         15 => "TAGGED_UINT64",
-        16 => "FLOAT16",
-        17 => "FLOAT32",
-        18 => "FLOAT64",
-        19 => "STRING",
-        20 => "LIST",
-        21 => "SET",
-        22 => "MAP",
-        23 => "ENUM",
-        24 => "NAMED_ENUM",
-        25 => "STRUCT",
-        26 => "COMPATIBLE_STRUCT",
-        27 => "NAMED_STRUCT",
-        28 => "NAMED_COMPATIBLE_STRUCT",
-        29 => "EXT",
-        30 => "NAMED_EXT",
-        31 => "UNION",
-        32 => "TYPED_UNION",
-        33 => "NAMED_UNION",
-        34 => "NONE",
-        35 => "DURATION",
-        36 => "TIMESTAMP",
-        37 => "DATE",
-        38 => "DECIMAL",
-        39 => "BINARY",
-        40 => "ARRAY",
-        41 => "BOOL_ARRAY",
-        42 => "INT8_ARRAY",
-        43 => "INT16_ARRAY",
-        44 => "INT32_ARRAY",
-        45 => "INT64_ARRAY",
-        46 => "UINT8_ARRAY",
-        47 => "UINT16_ARRAY",
-        48 => "UINT32_ARRAY",
-        49 => "UINT64_ARRAY",
-        50 => "FLOAT16_ARRAY",
-        51 => "FLOAT32_ARRAY",
-        52 => "FLOAT64_ARRAY",
+        16 => "FLOAT8",
+        17 => "FLOAT16",
+        18 => "BFLOAT16",
+        19 => "FLOAT32",
+        20 => "FLOAT64",
+        21 => "STRING",
+        22 => "LIST",
+        23 => "SET",
+        24 => "MAP",
+        25 => "ENUM",
+        26 => "NAMED_ENUM",
+        27 => "STRUCT",
+        28 => "COMPATIBLE_STRUCT",
+        29 => "NAMED_STRUCT",
+        30 => "NAMED_COMPATIBLE_STRUCT",
+        31 => "EXT",
+        32 => "NAMED_EXT",
+        33 => "UNION",
+        34 => "TYPED_UNION",
+        35 => "NAMED_UNION",
+        36 => "NONE",
+        37 => "DURATION",
+        38 => "TIMESTAMP",
+        39 => "DATE",
+        40 => "DECIMAL",
+        41 => "BINARY",
+        42 => "ARRAY",
+        43 => "BOOL_ARRAY",
+        44 => "INT8_ARRAY",
+        45 => "INT16_ARRAY",
+        46 => "INT32_ARRAY",
+        47 => "INT64_ARRAY",
+        48 => "UINT8_ARRAY",
+        49 => "UINT16_ARRAY",
+        50 => "UINT32_ARRAY",
+        51 => "UINT64_ARRAY",
+        52 => "FLOAT8_ARRAY",
+        53 => "FLOAT16_ARRAY",
+        54 => "BFLOAT16_ARRAY",
+        55 => "FLOAT32_ARRAY",
+        56 => "FLOAT64_ARRAY",
         // Rust-specific types
         64 => "U128",
         65 => "INT128",
@@ -619,24 +597,14 @@ pub fn format_type_id(type_id: u32) -> String {
         _ => "UNKNOWN_TYPE",
     };
 
-    // If it's a pure internal type (no registered_id), just return the type name
-    if registered_id == 0 {
-        type_name.to_string()
-    } else {
-        // For user-registered types, show both the registered ID and internal type
-        format!("registered_id={}({})", registered_id, type_name)
-    }
+    type_name.to_string()
 }
 
-/// Computes the actual type ID for extension types.
-///
-/// Extension types combine a user-registered type ID with an internal EXT or NAMED_EXT marker.
-/// The format is: `(type_id << 8) + internal_type_id`.
-pub fn get_ext_actual_type_id(type_id: u32, register_by_name: bool) -> u32 {
-    (type_id << 8)
-        + if register_by_name {
-            TypeId::NAMED_EXT as u32
-        } else {
-            TypeId::EXT as u32
-        }
+/// Returns the internal type ID for extension types.
+pub fn get_ext_actual_type_id(_type_id: u32, register_by_name: bool) -> u32 {
+    if register_by_name {
+        TypeId::NAMED_EXT as u32
+    } else {
+        TypeId::EXT as u32
+    }
 }

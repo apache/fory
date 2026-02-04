@@ -27,6 +27,9 @@ import addressbook.Dog;
 import addressbook.Person;
 import addressbook.Person.PhoneNumber;
 import addressbook.Person.PhoneType;
+import auto_id.AutoIdForyRegistration;
+import auto_id.Envelope;
+import auto_id.Wrapper;
 import collection.CollectionForyRegistration;
 import collection.NumericCollectionArrayUnion;
 import collection.NumericCollectionUnion;
@@ -101,6 +104,16 @@ public class IdlRoundTripTest {
     runAddressBookRoundTrip(false);
   }
 
+  @Test
+  public void testAutoIdRoundTripCompatible() throws Exception {
+    runAutoIdRoundTrip(true);
+  }
+
+  @Test
+  public void testAutoIdRoundTripSchemaConsistent() throws Exception {
+    runAutoIdRoundTrip(false);
+  }
+
   private void runAddressBookRoundTrip(boolean compatible) throws Exception {
     Fory fory = buildFory(compatible);
     AddressbookForyRegistration.register(fory);
@@ -126,6 +139,40 @@ public class IdlRoundTripTest {
       Object roundTrip = fory.deserialize(peerBytes);
       Assert.assertTrue(roundTrip instanceof AddressBook);
       Assert.assertEquals(roundTrip, book);
+    }
+  }
+
+  private void runAutoIdRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
+    AutoIdForyRegistration.register(fory);
+
+    Envelope envelope = buildAutoIdEnvelope();
+    byte[] bytes = fory.serialize(envelope);
+    Object decoded = fory.deserialize(bytes);
+
+    Assert.assertTrue(decoded instanceof Envelope);
+    Assert.assertEquals(decoded, envelope);
+
+    Wrapper wrapper = buildAutoIdWrapper(envelope);
+    byte[] wrapperBytes = fory.serialize(wrapper);
+    Object decodedWrapper = fory.deserialize(wrapperBytes);
+    Assert.assertTrue(decodedWrapper instanceof Wrapper);
+    Assert.assertEquals(decodedWrapper, wrapper);
+
+    for (String peer : resolvePeers()) {
+      Path dataFile = Files.createTempFile("idl-auto-id-" + peer + "-", ".bin");
+      dataFile.toFile().deleteOnExit();
+      Files.write(dataFile, bytes);
+
+      Map<String, String> env = new HashMap<>();
+      env.put("DATA_FILE_AUTO_ID", dataFile.toAbsolutePath().toString());
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
+      runPeer(command, peer);
+
+      byte[] peerBytes = Files.readAllBytes(dataFile);
+      Object roundTrip = fory.deserialize(peerBytes);
+      Assert.assertTrue(roundTrip instanceof Envelope);
+      Assert.assertEquals(roundTrip, envelope);
     }
   }
 
@@ -544,8 +591,11 @@ public class IdlRoundTripTest {
     switch (peer) {
       case "python":
         command = Arrays.asList("python", "-m", "idl_tests.roundtrip");
+        Path pythonRoot = idlRoot.resolve("python");
         String pythonPath =
-            idlRoot.resolve("python").resolve("src")
+            pythonRoot.resolve("idl_tests").resolve("generated")
+                + File.pathSeparator
+                + pythonRoot
                 + File.pathSeparator
                 + repoRoot.resolve("python");
         String existingPythonPath = System.getenv("PYTHONPATH");
@@ -664,6 +714,24 @@ public class IdlRoundTripTest {
     book.setPeopleByName(peopleByName);
 
     return book;
+  }
+
+  private Envelope buildAutoIdEnvelope() {
+    Envelope.Payload payload = new Envelope.Payload();
+    payload.setValue(42);
+
+    Envelope.Detail detail = Envelope.Detail.ofPayload(payload);
+
+    Envelope envelope = new Envelope();
+    envelope.setId("env-1");
+    envelope.setPayload(payload);
+    envelope.setDetail(detail);
+    envelope.setStatus(auto_id.Status.OK);
+    return envelope;
+  }
+
+  private Wrapper buildAutoIdWrapper(Envelope envelope) {
+    return Wrapper.ofEnvelope(envelope);
   }
 
   private PrimitiveTypes buildPrimitiveTypes() {

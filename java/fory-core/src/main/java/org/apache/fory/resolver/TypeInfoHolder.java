@@ -17,17 +17,25 @@
  * under the License.
  */
 
-/// Language supported by fory.
-enum Language{
-  xlang,
-  java,
-  python,
-  cpp,
-  go,
-  javascript,
-  rust,
-  dart;
+package org.apache.fory.resolver;
 
-  static int get peerLangBeginIndex => Language.java.index;
-  static int get peerLangEndIndex => Language.dart.index;
+import org.apache.fory.serializer.Serializer;
+
+/** A helper class for holding and update {@link TypeInfo} to reduce map look-up. */
+@SuppressWarnings("rawtypes")
+public class TypeInfoHolder {
+  public TypeInfo typeInfo;
+
+  public TypeInfoHolder(TypeInfo typeInfo) {
+    this.typeInfo = typeInfo;
+  }
+
+  public Serializer getSerializer() {
+    return typeInfo.serializer;
+  }
+
+  @Override
+  public String toString() {
+    return "Holder{" + typeInfo + '}';
+  }
 }

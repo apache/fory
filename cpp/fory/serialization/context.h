@@ -23,6 +23,7 @@
 #include "fory/serialization/config.h"
 #include "fory/serialization/ref_resolver.h"
 #include "fory/serialization/type_info.h"
+#include "fory/type/type.h"
 #include "fory/util/buffer.h"
 #include "fory/util/error.h"
 #include "fory/util/result.h"
@@ -254,8 +255,12 @@ public:
   /// @param concrete_type_id The runtime type_index for concrete type
   /// @return TypeInfo for the written type, or error
   Result<const TypeInfo *, Error>
-  write_any_typeinfo(uint32_t fory_type_id,
-                     const std::type_index &concrete_type_id);
+  write_any_type_info(uint32_t fory_type_id,
+                      const std::type_index &concrete_type_id);
+
+  /// write type information using an existing TypeInfo.
+  /// Avoids extra type lookup when the TypeInfo is already known.
+  Result<void, Error> write_any_type_info(const TypeInfo *type_info);
 
   /// Fast path for writing struct type info - does a single type lookup
   /// and handles all struct type categories (STRUCT, NAMED_STRUCT,
@@ -277,8 +282,22 @@ public:
   /// Only for STRUCT types (not NAMED_STRUCT, COMPATIBLE_STRUCT, etc.)
   ///
   /// @param type_id The pre-computed Fory type_id
-  inline void write_struct_type_id_direct(uint32_t type_id) {
-    buffer_.write_var_uint32(type_id);
+  inline void write_struct_type_id_direct(uint32_t type_id,
+                                          uint32_t user_type_id) {
+    buffer_.write_uint8(static_cast<uint8_t>(type_id));
+    switch (static_cast<TypeId>(type_id)) {
+    case TypeId::ENUM:
+    case TypeId::STRUCT:
+    case TypeId::COMPATIBLE_STRUCT:
+    case TypeId::EXT:
+    case TypeId::TYPED_UNION:
+      FORY_CHECK(user_type_id != kInvalidUserTypeId)
+          << "User type id is required for struct type";
+      buffer_.write_var_uint32(user_type_id);
+      break;
+    default:
+      break;
+    }
   }
 
   /// get the type_id for a type. Used to cache type_id for fast writes.
@@ -286,16 +305,16 @@ public:
   uint32_t get_type_id_for_cache(const std::type_index &type_idx);
 
   /// write type info for a registered enum type.
-  /// Looks up the type info and delegates to write_any_typeinfo.
-  Result<void, Error> write_enum_typeinfo(const std::type_index &type);
+  /// Looks up the type info and delegates to write_any_type_info.
+  Result<void, Error> write_enum_type_info(const std::type_index &type);
 
   /// write type info for a registered enum type using TypeInfo pointer.
   /// Avoids type_index creation and lookup overhead.
-  Result<void, Error> write_enum_typeinfo(const TypeInfo *type_info);
+  Result<void, Error> write_enum_type_info(const TypeInfo *type_info);
 
   /// write type info for a registered enum type using compile-time type lookup.
   /// Faster than the std::type_index version - uses type_index<E>().
-  template <typename E> Result<void, Error> write_enum_typeinfo();
+  template <typename E> Result<void, Error> write_enum_type_info();
 
   /// reset context for reuse.
   void reset();
@@ -557,7 +576,7 @@ public:
   Result<const TypeInfo *, Error> get_type_info_by_index(size_t index) const;
 
   /// Read type information dynamically from buffer based on type ID.
-  /// This mirrors Rust's read_any_typeinfo implementation.
+  /// This mirrors Rust's read_any_type_info implementation.
   ///
   /// Handles different type categories:
   /// - COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: read meta_index
@@ -566,13 +585,13 @@ public:
   /// - Other types: look up by type_id
   ///
   /// @return const pointer to TypeInfo for the read type, or error
-  Result<const TypeInfo *, Error> read_any_typeinfo();
+  Result<const TypeInfo *, Error> read_any_type_info();
 
   /// Read type information dynamically from buffer based on type ID.
   /// Same as above but uses context's error state instead of returning Result.
   /// @param error Output parameter to receive any error
   /// @return const pointer to TypeInfo for the read type, or nullptr on error
-  const TypeInfo *read_any_typeinfo(Error &error);
+  const TypeInfo *read_any_type_info(Error &error);
 
   /// reset context for reuse.
   void reset();

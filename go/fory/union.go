@@ -382,7 +382,7 @@ func writeUnionOverrideValue(ctx *WriteContext, info *unionCaseInfo, value refle
 	if refWritten {
 		return
 	}
-	ctx.Buffer().WriteVarUint32Small7(uint32(info.typeID))
+	ctx.Buffer().WriteUint8(uint8(info.typeID))
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem()
 	}
@@ -404,7 +404,7 @@ func readUnionOverrideValue(ctx *ReadContext, info *unionCaseInfo) (any, bool) {
 		return nil, true
 	}
 
-	typeID := TypeId(buf.ReadVarUint32Small7(ctx.Err()))
+	typeID := TypeId(buf.ReadUint8(ctx.Err()))
 	if ctx.HasError() {
 		return nil, false
 	}

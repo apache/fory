@@ -70,6 +70,10 @@ class TypeResolver;
 class WriteContext;
 class ReadContext;
 
+template <typename T>
+Result<const TypeInfo *, Error>
+get_type_info_with_resolver(TypeResolver &resolver);
+
 // ============================================================================
 // TypeIndex primary template (fallback)
 // Specializations for primitives and containers are in serializer_traits.h
@@ -101,19 +105,23 @@ template <typename T, typename Enable> struct TypeIndex {
 class FieldType {
 public:
   uint32_t type_id;
+  // Stored as unsigned; 0xffffffff means "unset".
+  uint32_t user_type_id;
   bool nullable;
-  bool ref_tracking;
-  RefMode ref_mode; // Precomputed from nullable and ref_tracking
+  bool track_ref;
+  RefMode ref_mode; // Precomputed from nullable and track_ref
   std::vector<FieldType> generics;
 
   FieldType()
-      : type_id(0), nullable(false), ref_tracking(false),
-        ref_mode(RefMode::None) {}
+      : type_id(0), user_type_id(kInvalidUserTypeId), nullable(false),
+        track_ref(false), ref_mode(RefMode::None) {}
 
   FieldType(uint32_t tid, bool null, bool ref_track = false,
-            std::vector<FieldType> gens = {})
-      : type_id(tid), nullable(null), ref_tracking(ref_track),
-        ref_mode(make_ref_mode(null, ref_track)), generics(std::move(gens)) {}
+            std::vector<FieldType> gens = {},
+            uint32_t user_tid = kInvalidUserTypeId)
+      : type_id(tid), user_type_id(user_tid), nullable(null),
+        track_ref(ref_track), ref_mode(make_ref_mode(null, ref_track)),
+        generics(std::move(gens)) {}
 
   /// write field type to buffer
   /// @param buffer Target buffer
@@ -133,7 +141,8 @@ public:
 
   bool operator==(const FieldType &other) const {
     return type_id == other.type_id && nullable == other.nullable &&
-           ref_tracking == other.ref_tracking && generics == other.generics;
+           user_type_id == other.user_type_id && track_ref == other.track_ref &&
+           generics == other.generics;
   }
 
   bool operator!=(const FieldType &other) const { return !(*this == other); }
@@ -177,18 +186,23 @@ constexpr size_t MAX_PARSED_NUM_TYPE_DEFS = 8192;
 /// Used for schema evolution to compare remote and local type schemas
 class TypeMeta {
 public:
-  int64_t hash;                       // Type hash for fast comparison
-  uint32_t type_id;                   // Type ID (for non-named registration)
-  std::string namespace_str;          // Namespace (for named registration)
-  std::string type_name;              // Type name (for named registration)
-  bool register_by_name;              // Whether registered by name
+  int64_t hash;     // Type hash for fast comparison
+  uint32_t type_id; // Type ID (for non-named registration)
+  // Stored as unsigned; 0xffffffff means "unset".
+  uint32_t user_type_id;     // User type ID (for non-named registration)
+  std::string namespace_str; // Namespace (for named registration)
+  std::string type_name;     // Type name (for named registration)
+  bool register_by_name;     // Whether registered by name
   std::vector<FieldInfo> field_infos; // Field information
 
-  TypeMeta() : hash(0), type_id(0), register_by_name(false) {}
+  TypeMeta()
+      : hash(0), type_id(0), user_type_id(kInvalidUserTypeId),
+        register_by_name(false) {}
 
   /// Create TypeMeta from field information
   static TypeMeta from_fields(uint32_t tid, const std::string &ns,
                               const std::string &name, bool by_name,
+                              uint32_t user_type_id,
                               std::vector<FieldInfo> fields);
 
   /// write type meta to buffer (for serialization)
@@ -329,9 +343,14 @@ template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_shared_ptr_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::element_type;
   static FieldType build(bool) {
-    FieldType inner = FieldTypeBuilder<Inner>::build(true);
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      FieldType ft(to_type_id(TypeId::UNKNOWN), true);
+      return ft;
+    } else {
+      FieldType inner = FieldTypeBuilder<Inner>::build(true);
+      inner.nullable = true;
+      return inner;
+    }
   }
 };
 
@@ -339,9 +358,14 @@ template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_unique_ptr_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::element_type;
   static FieldType build(bool) {
-    FieldType inner = FieldTypeBuilder<Inner>::build(true);
-    inner.nullable = true;
-    return inner;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      FieldType ft(to_type_id(TypeId::UNKNOWN), true);
+      return ft;
+    } else {
+      FieldType inner = FieldTypeBuilder<Inner>::build(true);
+      inner.nullable = true;
+      return inner;
+    }
   }
 };
 
@@ -451,9 +475,9 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_tuple_v<decay_t<T>>>> {
     if constexpr (tuple_size > 0) {
       add_element_types(ft, std::make_index_sequence<tuple_size>{});
     } else {
-      // Empty tuple: use STRUCT as stub element type for schema encoding
+      // Empty tuple: use UNKNOWN as stub element type for schema encoding
       ft.generics.push_back(
-          FieldType(static_cast<uint32_t>(TypeId::STRUCT), false));
+          FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
     }
     return ft;
   }
@@ -486,6 +510,155 @@ struct FieldTypeBuilder<
     return FieldType(to_type_id(Serializer<Decayed>::type_id), nullable);
   }
 };
+
+inline bool field_type_needs_user_type_id(uint32_t) { return false; }
+
+template <typename T>
+Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
+                                                        bool nullable);
+
+template <typename Tuple, size_t Index>
+Result<void, Error> add_tuple_element_types(TypeResolver &resolver,
+                                            FieldType &ft) {
+  if constexpr (Index < std::tuple_size_v<Tuple>) {
+    using Elem = std::tuple_element_t<Index, Tuple>;
+    FORY_TRY(elem_ft, build_field_type_with_resolver<Elem>(resolver, false));
+    ft.generics.push_back(std::move(elem_ft));
+    return add_tuple_element_types<Tuple, Index + 1>(resolver, ft);
+  } else {
+    return Result<void, Error>();
+  }
+}
+
+template <typename T>
+Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
+                                                        bool nullable) {
+  using Decayed = decay_t<T>;
+  if constexpr (is_optional_v<Decayed>) {
+    using Inner = typename Decayed::value_type;
+    FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+    inner.nullable = true;
+    return inner;
+  } else if constexpr (is_shared_ptr_v<Decayed>) {
+    using Inner = typename Decayed::element_type;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (::fory::detail::is_shared_weak_v<Decayed>) {
+    using Inner = nullable_element_t<Decayed>;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (is_unique_ptr_v<Decayed>) {
+    using Inner = typename Decayed::element_type;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      FORY_TRY(inner, build_field_type_with_resolver<Inner>(resolver, true));
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (is_vector_v<Decayed>) {
+    using Vec = Decayed;
+    using Element = element_type_t<Vec>;
+    constexpr TypeId vec_type_id = Serializer<Vec>::type_id;
+    if constexpr (vec_type_id == TypeId::LIST) {
+      FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
+      FieldType ft(to_type_id(vec_type_id), nullable);
+      ft.generics.push_back(std::move(elem));
+      return ft;
+    } else {
+      return FieldType(to_type_id(vec_type_id), nullable);
+    }
+  } else if constexpr (is_list_v<Decayed>) {
+    using Element = typename Decayed::value_type;
+    FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  } else if constexpr (is_deque_v<Decayed>) {
+    using Element = typename Decayed::value_type;
+    FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  } else if constexpr (is_forward_list_v<Decayed>) {
+    using Element = typename Decayed::value_type;
+    FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  } else if constexpr (is_set_like_v<Decayed>) {
+    using Set = Decayed;
+    using Element = element_type_t<Set>;
+    FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
+    FieldType ft(to_type_id(Serializer<Set>::type_id), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  } else if constexpr (is_map_like_v<Decayed>) {
+    using Map = Decayed;
+    using Key = key_type_t<Map>;
+    using Value = mapped_type_t<Map>;
+    FORY_TRY(key_ft, build_field_type_with_resolver<Key>(resolver, false));
+    FORY_TRY(val_ft, build_field_type_with_resolver<Value>(resolver, false));
+    FieldType ft(to_type_id(Serializer<Map>::type_id), nullable);
+    ft.generics.push_back(std::move(key_ft));
+    ft.generics.push_back(std::move(val_ft));
+    return ft;
+  } else if constexpr (is_string_view_v<Decayed>) {
+    using StringT = std::basic_string<typename Decayed::value_type,
+                                      typename Decayed::traits_type>;
+    return build_field_type_with_resolver<StringT>(resolver, nullable);
+  } else if constexpr (is_tuple_v<Decayed>) {
+    constexpr size_t tuple_size = std::tuple_size_v<Decayed>;
+    FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
+    if constexpr (tuple_size > 0) {
+      FORY_RETURN_IF_ERROR((add_tuple_element_types<Decayed, 0>(resolver, ft)));
+    } else {
+      ft.generics.push_back(
+          FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
+    }
+    return ft;
+  } else {
+    FieldType ft = FieldTypeBuilder<Decayed>::build(nullable);
+    if (is_user_type(static_cast<TypeId>(ft.type_id))) {
+      if constexpr (std::is_enum_v<Decayed>) {
+        auto info_result = get_type_info_with_resolver<Decayed>(resolver);
+        if (info_result.ok()) {
+          uint32_t resolved_type_id = info_result.value()->type_id;
+          if (resolved_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+            resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+          }
+          ft.type_id = resolved_type_id;
+        }
+      } else {
+        FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
+        uint32_t resolved_type_id = info->type_id;
+        switch (static_cast<TypeId>(resolved_type_id)) {
+        case TypeId::NAMED_ENUM:
+          resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
+          break;
+        case TypeId::TYPED_UNION:
+        case TypeId::NAMED_UNION:
+          resolved_type_id = static_cast<uint32_t>(TypeId::UNION);
+          break;
+        default:
+          break;
+        }
+        ft.type_id = resolved_type_id;
+      }
+    }
+    return ft;
+  }
+}
 
 // Helper template functions to compute is_nullable and track_ref at compile
 // time. These replace constexpr lambdas which have issues on MSVC.
@@ -622,9 +795,9 @@ constexpr uint32_t compute_signed_type_id() {
 
 template <typename T, size_t Index> struct FieldInfoBuilder {
   static FieldInfo build() {
-    const auto meta = fory_field_info(T{});
-    const auto field_names = decltype(meta)::Names;
-    const auto &field_ptrs = decltype(meta)::ptrs_ref();
+    using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+    const auto field_names = MetaDesc::Names;
+    const auto &field_ptrs = MetaDesc::ptrs_ref();
 
     // Convert camel_case field name to snake_case for cross-language
     // compatibility
@@ -676,9 +849,82 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
       }
     }
 
-    // Override nullable and ref_tracking from field-level metadata
+    // Override nullable and track_ref from field-level metadata
     field_type.nullable = is_nullable;
-    field_type.ref_tracking = track_ref;
+    field_type.track_ref = track_ref;
+    field_type.ref_mode = make_ref_mode(is_nullable, track_ref);
+#ifdef FORY_DEBUG
+    // DEBUG: Print field info for debugging fingerprint mismatch
+    std::cerr << "[xlang][debug] FieldInfoBuilder T=" << typeid(T).name()
+              << " Index=" << Index << " field=" << field_name
+              << " type_id=" << field_type.type_id << " has_tags="
+              << ::fory::detail::has_field_tags_v<T> << " is_nullable="
+              << is_nullable << " track_ref=" << track_ref << std::endl;
+#endif
+    FieldInfo info(std::move(field_name), std::move(field_type));
+    info.field_id = field_id;
+    return info;
+  }
+
+  static Result<FieldInfo, Error> build_with_resolver(TypeResolver &resolver) {
+    using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+    const auto field_names = MetaDesc::Names;
+    const auto &field_ptrs = MetaDesc::ptrs_ref();
+
+    // Convert camel_case field name to snake_case for cross-language
+    // compatibility
+    std::string_view original_name = field_names[Index];
+    constexpr size_t max_snake_len = 128; // Reasonable max for field names
+    auto [snake_buffer, snake_len] =
+        ::fory::to_snake_case<max_snake_len>(original_name);
+    std::string field_name(snake_buffer.data(), snake_len);
+
+    const auto field_ptr = std::get<Index>(field_ptrs);
+    using RawFieldType =
+        typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
+    using ActualFieldType =
+        std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
+    // unwrap fory::field<> to get the underlying type for FieldTypeBuilder
+    using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
+
+    // get nullable and track_ref from field tags (FORY_FIELD_TAGS or
+    // fory::field<>)
+    constexpr bool is_nullable =
+        compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
+    constexpr bool track_ref = compute_track_ref<ActualFieldType, T, Index>();
+    constexpr int16_t field_id = compute_field_id<ActualFieldType, T, Index>();
+
+    FORY_TRY(field_type, build_field_type_with_resolver<UnwrappedFieldType>(
+                             resolver, false));
+
+    // Override type_id for unsigned types based on encoding from
+    // FORY_FIELD_CONFIG
+    using InnerType = unwrap_optional_inner_t<UnwrappedFieldType>;
+    constexpr uint32_t unsigned_tid =
+        compute_unsigned_type_id<UnwrappedFieldType, T, Index>();
+    if constexpr (unsigned_tid != 0 && is_unsigned_integer_v<InnerType>) {
+      field_type.type_id = unsigned_tid;
+    }
+
+    // Override type_id for signed types based on encoding from
+    // FORY_FIELD_CONFIG
+    constexpr uint32_t signed_tid =
+        compute_signed_type_id<UnwrappedFieldType, T, Index>();
+    if constexpr (signed_tid != 0) {
+      field_type.type_id = signed_tid;
+    }
+
+    if constexpr (::fory::detail::has_field_config_v<T>) {
+      constexpr int16_t override_id =
+          ::fory::detail::GetFieldConfigEntry<T, Index>::type_id_override;
+      if constexpr (override_id >= 0) {
+        field_type.type_id = static_cast<uint32_t>(override_id);
+      }
+    }
+
+    // Override nullable and track_ref from field-level metadata
+    field_type.nullable = is_nullable;
+    field_type.track_ref = track_ref;
     field_type.ref_mode = make_ref_mode(is_nullable, track_ref);
 #ifdef FORY_DEBUG
     // DEBUG: Print field info for debugging fingerprint mismatch
@@ -699,6 +945,35 @@ std::vector<FieldInfo> build_field_infos(std::index_sequence<Indices...>) {
   std::vector<FieldInfo> fields;
   fields.reserve(sizeof...(Indices));
   (fields.push_back(FieldInfoBuilder<T, Indices>::build()), ...);
+  return fields;
+}
+
+template <typename T>
+Result<void, Error> append_field_infos(TypeResolver &, std::vector<FieldInfo> &,
+                                       std::index_sequence<>) {
+  return Result<void, Error>();
+}
+
+template <typename T, size_t Index, size_t... Rest>
+Result<void, Error> append_field_infos(TypeResolver &resolver,
+                                       std::vector<FieldInfo> &fields,
+                                       std::index_sequence<Index, Rest...>) {
+  FORY_TRY(info, (FieldInfoBuilder<T, Index>::build_with_resolver(resolver)));
+  fields.push_back(std::move(info));
+  return append_field_infos<T>(resolver, fields,
+                               std::index_sequence<Rest...>{});
+}
+
+template <typename T, size_t... Indices>
+Result<std::vector<FieldInfo>, Error>
+build_field_infos_with_resolver(TypeResolver &resolver,
+                                std::index_sequence<Indices...>) {
+  std::vector<FieldInfo> fields;
+  fields.reserve(sizeof...(Indices));
+  auto append_fields = [&](auto index_sequence) -> Result<void, Error> {
+    return append_field_infos<T>(resolver, fields, index_sequence);
+  };
+  FORY_RETURN_IF_ERROR(append_fields(std::index_sequence<Indices...>{}));
   return fields;
 }
 
@@ -733,9 +1008,14 @@ public:
   template <typename T> TypeMeta clone_struct_meta();
   template <typename T> const std::vector<size_t> &sorted_indices();
 
-  /// get type info by type ID (for non-namespaced types)
+  /// get type info by type ID (for internal types)
   /// @return const pointer to TypeInfo if found, error otherwise
   Result<const TypeInfo *, Error> get_type_info_by_id(uint32_t type_id) const;
+
+  /// get type info by type ID and user type ID (for user-registered types)
+  /// @return const pointer to TypeInfo if found, error otherwise
+  Result<const TypeInfo *, Error>
+  get_user_type_info_by_id(uint32_t type_id, uint32_t user_type_id) const;
 
   /// get type info by namespace and type name (for namespaced types)
   /// @return const pointer to TypeInfo if found, error otherwise
@@ -807,25 +1087,31 @@ private:
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_struct_type_info(uint32_t type_id, std::string ns,
-                         std::string type_name, bool register_by_name);
+  build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
+                         std::string ns, std::string type_name,
+                         bool register_by_name);
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_enum_type_info(uint32_t type_id, std::string ns, std::string type_name,
-                       bool register_by_name);
+  build_enum_type_info(uint32_t type_id, uint32_t user_type_id, std::string ns,
+                       std::string type_name, bool register_by_name);
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_ext_type_info(uint32_t type_id, std::string ns, std::string type_name,
-                      bool register_by_name);
+  build_ext_type_info(uint32_t type_id, uint32_t user_type_id, std::string ns,
+                      std::string type_name, bool register_by_name);
 
   template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
-  build_union_type_info(uint32_t type_id, std::string ns, std::string type_name,
-                        bool register_by_name);
+  build_union_type_info(uint32_t type_id, uint32_t user_type_id, std::string ns,
+                        std::string type_name, bool register_by_name);
 
   template <typename T> static Harness make_struct_harness();
+
+  template <typename T> static Harness make_struct_harness_impl(std::true_type);
+
+  template <typename T>
+  static Harness make_struct_harness_impl(std::false_type);
 
   template <typename T> static Harness make_serializer_harness();
 
@@ -839,11 +1125,18 @@ private:
                                     bool read_type_info);
 
   template <typename T>
+  static void *harness_read_adapter_abstract(ReadContext &ctx, RefMode ref_mode,
+                                             bool read_type_info);
+
+  template <typename T>
   static void harness_write_data_adapter(const void *value, WriteContext &ctx,
                                          bool has_generics);
 
   template <typename T>
   static void *harness_read_data_adapter(ReadContext &ctx);
+
+  template <typename T>
+  static void *harness_read_data_adapter_abstract(ReadContext &ctx);
 
   template <typename T>
   static Result<std::vector<FieldInfo>, Error>
@@ -857,8 +1150,13 @@ private:
   static void *harness_read_compatible_adapter(ReadContext &ctx,
                                                const TypeInfo *ti);
 
+  template <typename T>
+  static void *harness_read_compatible_adapter_abstract(ReadContext &ctx,
+                                                        const TypeInfo *ti);
+
   static std::string make_name_key(const std::string &ns,
                                    const std::string &name);
+  static uint64_t make_user_type_key(uint32_t type_id, uint32_t user_type_id);
 
   /// Register a TypeInfo, taking ownership and storing in primary storage.
   /// Returns pointer to the stored TypeInfo (owned by TypeResolver).
@@ -889,6 +1187,7 @@ private:
   // FlatIntMap is optimized for integer keys with minimal overhead
   util::U64PtrMap<TypeInfo> type_info_by_ctid_{256};
   util::U32PtrMap<TypeInfo> type_info_by_id_{256};
+  util::U64PtrMap<TypeInfo> user_type_info_by_id_{256};
   absl::flat_hash_map<std::string, TypeInfo *> type_info_by_name_;
   util::U64PtrMap<TypeInfo> partial_type_infos_{256};
 
@@ -957,6 +1256,12 @@ template <typename T> inline std::any any_read_adapter(ReadContext &ctx) {
   return std::any(std::make_shared<T>(std::move(value)));
 }
 
+template <typename T>
+inline std::any any_read_adapter_abstract(ReadContext &ctx) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return std::any();
+}
+
 } // namespace detail
 
 template <typename T> const TypeMeta &TypeResolver::struct_meta() {
@@ -996,6 +1301,12 @@ Result<const TypeInfo *, Error> TypeResolver::get_type_info() const {
   return Unexpected(Error::type_error("Type not registered"));
 }
 
+template <typename T>
+Result<const TypeInfo *, Error>
+get_type_info_with_resolver(TypeResolver &resolver) {
+  return resolver.get_type_info<T>();
+}
+
 template <typename T> Result<void, Error> TypeResolver::register_any_type() {
   check_registration_thread();
   constexpr uint32_t static_type_id =
@@ -1024,21 +1335,21 @@ template <typename T> Result<void, Error> TypeResolver::register_any_type() {
 template <typename T>
 Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
   check_registration_thread();
-  if (type_id == 0) {
-    return Unexpected(
-        Error::invalid("type_id must be non-zero for register_by_id"));
+  if (type_id == kInvalidUserTypeId) {
+    return Unexpected(Error::invalid(
+        "type_id must be in range [0, 0xfffffffe] for register_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
 
   if constexpr (is_fory_serializable_v<T>) {
-    // encode type_id: shift left by 8 bits and add type category in low byte
     uint32_t actual_type_id =
-        compatible_
-            ? (type_id << 8) + static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
-            : (type_id << 8) + static_cast<uint32_t>(TypeId::STRUCT);
+        compatible_ ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
+                    : static_cast<uint32_t>(TypeId::STRUCT);
+    uint32_t user_type_id = type_id;
 
-    FORY_TRY(info, build_struct_type_info<T>(actual_type_id, "", "", false));
+    FORY_TRY(info, build_struct_type_info<T>(actual_type_id, user_type_id, "",
+                                             "", false));
     if (!info->harness.valid()) {
       return Unexpected(
           Error::invalid("Harness for registered type is incomplete"));
@@ -1051,10 +1362,11 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
     register_type_internal_runtime(std::type_index(typeid(T)), stored_ptr);
     return Result<void, Error>();
   } else if constexpr (std::is_enum_v<T>) {
-    uint32_t actual_type_id =
-        (type_id << 8) + static_cast<uint32_t>(TypeId::ENUM);
+    uint32_t actual_type_id = static_cast<uint32_t>(TypeId::ENUM);
+    uint32_t user_type_id = type_id;
 
-    FORY_TRY(info, build_enum_type_info<T>(actual_type_id, "", "", false));
+    FORY_TRY(info, build_enum_type_info<T>(actual_type_id, user_type_id, "", "",
+                                           false));
     if (!info->harness.valid()) {
       return Unexpected(
           Error::invalid("Harness for registered enum type is incomplete"));
@@ -1089,8 +1401,8 @@ TypeResolver::register_by_name(const std::string &ns,
         compatible_ ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
                     : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
 
-    FORY_TRY(info,
-             build_struct_type_info<T>(actual_type_id, ns, type_name, true));
+    FORY_TRY(info, build_struct_type_info<T>(actual_type_id, kInvalidUserTypeId,
+                                             ns, type_name, true));
     if (!info->harness.valid()) {
       return Unexpected(
           Error::invalid("Harness for registered type is incomplete"));
@@ -1102,8 +1414,8 @@ TypeResolver::register_by_name(const std::string &ns,
     return Result<void, Error>();
   } else if constexpr (std::is_enum_v<T>) {
     uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_ENUM);
-    FORY_TRY(info,
-             build_enum_type_info<T>(actual_type_id, ns, type_name, true));
+    FORY_TRY(info, build_enum_type_info<T>(actual_type_id, kInvalidUserTypeId,
+                                           ns, type_name, true));
     if (!info->harness.valid()) {
       return Unexpected(
           Error::invalid("Harness for registered enum type is incomplete"));
@@ -1124,17 +1436,18 @@ TypeResolver::register_by_name(const std::string &ns,
 template <typename T>
 Result<void, Error> TypeResolver::register_ext_type_by_id(uint32_t type_id) {
   check_registration_thread();
-  if (type_id == 0) {
-    return Unexpected(
-        Error::invalid("type_id must be non-zero for register_ext_type_by_id"));
+  if (type_id == kInvalidUserTypeId) {
+    return Unexpected(Error::invalid("type_id must be in range [0, 0xfffffffe] "
+                                     "for register_ext_type_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
 
-  // encode type_id: shift left by 8 bits and add type category in low byte
-  uint32_t actual_type_id = (type_id << 8) + static_cast<uint32_t>(TypeId::EXT);
+  uint32_t actual_type_id = static_cast<uint32_t>(TypeId::EXT);
+  uint32_t user_type_id = type_id;
 
-  FORY_TRY(info, build_ext_type_info<T>(actual_type_id, "", "", false));
+  FORY_TRY(info,
+           build_ext_type_info<T>(actual_type_id, user_type_id, "", "", false));
 
   FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
   partial_type_infos_.put(ctid, stored_ptr);
@@ -1155,7 +1468,8 @@ TypeResolver::register_ext_type_by_name(const std::string &ns,
   constexpr uint64_t ctid = type_index<T>();
 
   uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_EXT);
-  FORY_TRY(info, build_ext_type_info<T>(actual_type_id, ns, type_name, true));
+  FORY_TRY(info, build_ext_type_info<T>(actual_type_id, kInvalidUserTypeId, ns,
+                                        type_name, true));
 
   FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
   partial_type_infos_.put(ctid, stored_ptr);
@@ -1166,16 +1480,17 @@ TypeResolver::register_ext_type_by_name(const std::string &ns,
 template <typename T>
 Result<void, Error> TypeResolver::register_union_by_id(uint32_t type_id) {
   check_registration_thread();
-  if (type_id == 0) {
-    return Unexpected(
-        Error::invalid("type_id must be non-zero for register_union_by_id"));
+  if (type_id == kInvalidUserTypeId) {
+    return Unexpected(Error::invalid(
+        "type_id must be in range [0, 0xfffffffe] for register_union_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
-  uint32_t actual_type_id =
-      (type_id << 8) + static_cast<uint32_t>(TypeId::TYPED_UNION);
+  uint32_t actual_type_id = static_cast<uint32_t>(TypeId::TYPED_UNION);
+  uint32_t user_type_id = type_id;
 
-  FORY_TRY(info, build_union_type_info<T>(actual_type_id, "", "", false));
+  FORY_TRY(info, build_union_type_info<T>(actual_type_id, user_type_id, "", "",
+                                          false));
 
   FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
   partial_type_infos_.put(ctid, stored_ptr);
@@ -1196,7 +1511,8 @@ TypeResolver::register_union_by_name(const std::string &ns,
   constexpr uint64_t ctid = type_index<T>();
 
   uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_UNION);
-  FORY_TRY(info, build_union_type_info<T>(actual_type_id, ns, type_name, true));
+  FORY_TRY(info, build_union_type_info<T>(actual_type_id, kInvalidUserTypeId,
+                                          ns, type_name, true));
 
   FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
   partial_type_infos_.put(ctid, stored_ptr);
@@ -1206,8 +1522,8 @@ TypeResolver::register_union_by_name(const std::string &ns,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
-                                     std::string type_name,
+TypeResolver::build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
+                                     std::string ns, std::string type_name,
                                      bool register_by_name) {
   static_assert(is_fory_serializable_v<T>,
                 "build_struct_type_info requires FORY_STRUCT types");
@@ -1218,17 +1534,18 @@ TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
 
   auto entry = std::make_unique<TypeInfo>();
   entry->type_id = type_id;
+  entry->user_type_id = user_type_id;
   entry->namespace_name = std::move(ns);
   entry->register_by_name = register_by_name;
   entry->is_external = false;
 
-  const auto meta_desc = fory_field_info(T{});
-  constexpr size_t field_count = decltype(meta_desc)::Size;
-  const auto field_names = decltype(meta_desc)::Names;
+  using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+  constexpr size_t field_count = MetaDesc::Size;
+  const auto field_names = MetaDesc::Names;
 
   std::string resolved_name = type_name;
   if (resolved_name.empty()) {
-    resolved_name = std::string(decltype(meta_desc)::Name);
+    resolved_name = std::string(MetaDesc::Name);
   }
   if (register_by_name && resolved_name.empty()) {
     return Unexpected(Error::invalid(
@@ -1261,18 +1578,6 @@ TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
     entry->sorted_indices.push_back(it->second);
   }
 
-  TypeMeta meta =
-      TypeMeta::from_fields(type_id, entry->namespace_name, entry->type_name,
-                            register_by_name, std::move(sorted_fields));
-
-  FORY_TRY(type_def, meta.to_bytes());
-  entry->type_def = std::move(type_def);
-
-  Buffer buffer(entry->type_def.data(),
-                static_cast<uint32_t>(entry->type_def.size()), false);
-  buffer.writer_index(static_cast<uint32_t>(entry->type_def.size()));
-  FORY_TRY(parsed_meta, TypeMeta::from_bytes(buffer, nullptr));
-  entry->type_meta = std::move(parsed_meta);
   entry->harness = make_struct_harness<T>();
 
   // Pre-encode namespace and type_name for efficient writing
@@ -1286,8 +1591,8 @@ TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_enum_type_info(uint32_t type_id, std::string ns,
-                                   std::string type_name,
+TypeResolver::build_enum_type_info(uint32_t type_id, uint32_t user_type_id,
+                                   std::string ns, std::string type_name,
                                    bool register_by_name) {
   static_assert(std::is_enum_v<T>, "build_enum_type_info requires enum types");
 
@@ -1298,6 +1603,7 @@ TypeResolver::build_enum_type_info(uint32_t type_id, std::string ns,
 
   auto entry = std::make_unique<TypeInfo>();
   entry->type_id = type_id;
+  entry->user_type_id = user_type_id;
   entry->namespace_name = std::move(ns);
   entry->register_by_name = register_by_name;
   entry->is_external = false;
@@ -1329,11 +1635,12 @@ TypeResolver::build_enum_type_info(uint32_t type_id, std::string ns,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_ext_type_info(uint32_t type_id, std::string ns,
-                                  std::string type_name,
+TypeResolver::build_ext_type_info(uint32_t type_id, uint32_t user_type_id,
+                                  std::string ns, std::string type_name,
                                   bool register_by_name) {
   auto entry = std::make_unique<TypeInfo>();
   entry->type_id = type_id;
+  entry->user_type_id = user_type_id;
   entry->namespace_name = ns;
   entry->type_name = type_name;
   entry->register_by_name = register_by_name;
@@ -1354,9 +1661,9 @@ TypeResolver::build_ext_type_info(uint32_t type_id, std::string ns,
   // Create TypeMeta for extension type (with empty fields) and generate
   // type_def. Extension types need type_def for meta sharing in compatible
   // mode.
-  TypeMeta meta =
-      TypeMeta::from_fields(type_id, entry->namespace_name, entry->type_name,
-                            register_by_name, std::vector<FieldInfo>{});
+  TypeMeta meta = TypeMeta::from_fields(
+      type_id, entry->namespace_name, entry->type_name, register_by_name,
+      entry->user_type_id, std::vector<FieldInfo>{});
   FORY_TRY(type_def, meta.to_bytes());
   entry->type_def = std::move(type_def);
 
@@ -1365,11 +1672,12 @@ TypeResolver::build_ext_type_info(uint32_t type_id, std::string ns,
 
 template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
-TypeResolver::build_union_type_info(uint32_t type_id, std::string ns,
-                                    std::string type_name,
+TypeResolver::build_union_type_info(uint32_t type_id, uint32_t user_type_id,
+                                    std::string ns, std::string type_name,
                                     bool register_by_name) {
   auto entry = std::make_unique<TypeInfo>();
   entry->type_id = type_id;
+  entry->user_type_id = user_type_id;
   entry->namespace_name = std::move(ns);
   if (!type_name.empty()) {
     entry->type_name = std::move(type_name);
@@ -1392,6 +1700,27 @@ TypeResolver::build_union_type_info(uint32_t type_id, std::string ns,
 }
 
 template <typename T> Harness TypeResolver::make_struct_harness() {
+  constexpr bool needs_abstract_harness =
+      std::is_abstract_v<T> || !std::is_default_constructible_v<T>;
+  return make_struct_harness_impl<T>(
+      std::bool_constant<needs_abstract_harness>{});
+}
+
+template <typename T>
+Harness TypeResolver::make_struct_harness_impl(std::true_type) {
+  Harness harness(&TypeResolver::harness_write_adapter<T>,
+                  &TypeResolver::harness_read_adapter_abstract<T>,
+                  &TypeResolver::harness_write_data_adapter<T>,
+                  &TypeResolver::harness_read_data_adapter_abstract<T>,
+                  &TypeResolver::harness_struct_sorted_fields<T>,
+                  &TypeResolver::harness_read_compatible_adapter_abstract<T>);
+  harness.any_write_fn = &detail::any_write_adapter<T>;
+  harness.any_read_fn = &detail::any_read_adapter_abstract<T>;
+  return harness;
+}
+
+template <typename T>
+Harness TypeResolver::make_struct_harness_impl(std::false_type) {
   Harness harness(&TypeResolver::harness_write_adapter<T>,
                   &TypeResolver::harness_read_adapter<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
@@ -1434,6 +1763,13 @@ void *TypeResolver::harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
 }
 
 template <typename T>
+void *TypeResolver::harness_read_adapter_abstract(ReadContext &ctx, RefMode,
+                                                  bool) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return nullptr;
+}
+
+template <typename T>
 void TypeResolver::harness_write_data_adapter(const void *value,
                                               WriteContext &ctx,
                                               bool has_generics) {
@@ -1451,6 +1787,12 @@ void *TypeResolver::harness_read_data_adapter(ReadContext &ctx) {
 }
 
 template <typename T>
+void *TypeResolver::harness_read_data_adapter_abstract(ReadContext &ctx) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return nullptr;
+}
+
+template <typename T>
 void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
                                                     const TypeInfo *ti) {
   T value = Serializer<T>::read_compatible(ctx, ti);
@@ -1461,14 +1803,21 @@ void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
 }
 
 template <typename T>
+void *TypeResolver::harness_read_compatible_adapter_abstract(ReadContext &ctx,
+                                                             const TypeInfo *) {
+  ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
+  return nullptr;
+}
+
+template <typename T>
 Result<std::vector<FieldInfo>, Error>
-TypeResolver::harness_struct_sorted_fields(TypeResolver &) {
+TypeResolver::harness_struct_sorted_fields(TypeResolver &resolver) {
   static_assert(is_fory_serializable_v<T>,
                 "harness_struct_sorted_fields requires FORY_STRUCT types");
-  const auto meta_desc = fory_field_info(T{});
-  constexpr size_t field_count = decltype(meta_desc)::Size;
-  auto fields =
-      detail::build_field_infos<T>(std::make_index_sequence<field_count>{});
+  using MetaDesc = decltype(fory_field_info(std::declval<T>()));
+  constexpr size_t field_count = MetaDesc::Size;
+  FORY_TRY(fields, detail::build_field_infos_with_resolver<T>(
+                       resolver, std::make_index_sequence<field_count>{}));
   auto sorted = TypeMeta::sort_field_infos(std::move(fields));
   return sorted;
 }
@@ -1489,6 +1838,12 @@ inline std::string TypeResolver::make_name_key(const std::string &ns,
   return key;
 }
 
+inline uint64_t TypeResolver::make_user_type_key(uint32_t type_id,
+                                                 uint32_t user_type_id) {
+  return (static_cast<uint64_t>(type_id) << 32) |
+         static_cast<uint64_t>(user_type_id);
+}
+
 inline Result<TypeInfo *, Error>
 TypeResolver::register_type_internal(uint64_t ctid,
                                      std::unique_ptr<TypeInfo> info) {
@@ -1503,7 +1858,7 @@ TypeResolver::register_type_internal(uint64_t ctid,
 
   type_info_by_ctid_.put(ctid, raw_ptr);
 
-  if (raw_ptr->type_id != 0 && !raw_ptr->register_by_name) {
+  if (::fory::is_internal_type(raw_ptr->type_id)) {
     TypeInfo *existing =
         type_info_by_id_.get_or_default(raw_ptr->type_id, nullptr);
     if (existing != nullptr && existing != raw_ptr) {
@@ -1511,6 +1866,16 @@ TypeResolver::register_type_internal(uint64_t ctid,
                                        std::to_string(raw_ptr->type_id)));
     }
     type_info_by_id_.put(raw_ptr->type_id, raw_ptr);
+  } else if (!raw_ptr->register_by_name &&
+             raw_ptr->user_type_id != kInvalidUserTypeId) {
+    uint64_t key = make_user_type_key(raw_ptr->type_id, raw_ptr->user_type_id);
+    TypeInfo *existing = user_type_info_by_id_.get_or_default(key, nullptr);
+    if (existing != nullptr && existing != raw_ptr) {
+      return Unexpected(Error::invalid(
+          "Type id already registered: " + std::to_string(raw_ptr->type_id) +
+          "/" + std::to_string(raw_ptr->user_type_id)));
+    }
+    user_type_info_by_id_.put(key, raw_ptr);
   }
 
   if (raw_ptr->register_by_name) {
@@ -1545,6 +1910,19 @@ TypeResolver::get_type_info_by_id(uint32_t type_id) const {
 }
 
 inline Result<const TypeInfo *, Error>
+TypeResolver::get_user_type_info_by_id(uint32_t type_id,
+                                       uint32_t user_type_id) const {
+  uint64_t key = make_user_type_key(type_id, user_type_id);
+  TypeInfo *info = user_type_info_by_id_.get_or_default(key, nullptr);
+  if (info != nullptr) {
+    return info;
+  }
+  return Unexpected(Error::type_error(
+      "TypeInfo not found for type_id: " + std::to_string(type_id) +
+      ", user_type_id: " + std::to_string(user_type_id)));
+}
+
+inline Result<const TypeInfo *, Error>
 TypeResolver::get_type_info_by_name(const std::string &ns,
                                     const std::string &type_name) const {
   auto key = make_name_key(ns, type_name);
@@ -1561,9 +1939,9 @@ TypeResolver::get_type_info_by_name(const std::string &ns,
 // TypeResolver to be complete)
 // ============================================================================
 
-template <typename E> Result<void, Error> WriteContext::write_enum_typeinfo() {
+template <typename E> Result<void, Error> WriteContext::write_enum_type_info() {
   FORY_TRY(type_info, type_resolver_->get_type_info<E>());
-  return write_enum_typeinfo(type_info);
+  return write_enum_type_info(type_info);
 }
 
 } // namespace serialization

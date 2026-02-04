@@ -79,7 +79,7 @@ public class ArraySerializersTest extends ForyTestBase {
       for (Class<?> t : types) {
         f.getSerializer(t);
       }
-      if (f.getConfig().getLanguage() == Language.JAVA) {
+      if (!f.getConfig().isXlang()) {
         f.getSerializer(Character.class);
         f.getSerializer(Character[].class);
         f.getSerializer(Character[][].class);

@@ -187,7 +187,7 @@ Fory fory = Fory.builder()
 
 ```python
 # Python
-fory = pyfory.Fory(ref_tracking=True)
+fory = pyfory.Fory(ref=True)
 ```
 
 ### Duplicate Objects

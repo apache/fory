@@ -69,3 +69,18 @@ def test_proto_oneof_translation():
     payload_field = [f for f in event.fields if f.name == "payload"][0]
     assert payload_field.optional is True
     assert payload_field.field_type.name == "payload"
+
+
+def test_proto_file_option_enable_auto_type_id():
+    source = """
+    syntax = "proto3";
+    package demo;
+
+    option (fory).enable_auto_type_id = false;
+
+    message User {
+        string name = 1;
+    }
+    """
+    schema = ProtoFrontend().parse(source)
+    assert schema.get_option("enable_auto_type_id") is False

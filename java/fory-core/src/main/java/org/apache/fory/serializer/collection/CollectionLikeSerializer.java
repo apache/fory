@@ -25,10 +25,10 @@ import org.apache.fory.Fory;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
@@ -42,7 +42,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   private MethodHandle constructor;
   private int numElements;
   protected final boolean supportCodegenHook;
-  protected final ClassInfoHolder elementClassInfoHolder;
+  protected final TypeInfoHolder elementTypeInfoHolder;
   private final TypeResolver typeResolver;
   protected final SerializationBinding binding;
 
@@ -62,7 +62,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   public CollectionLikeSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook) {
     super(fory, cls);
     this.supportCodegenHook = supportCodegenHook;
-    elementClassInfoHolder = fory.getClassResolver().nilClassInfoHolder();
+    elementTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
     this.typeResolver = fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
     binding = SerializationBinding.createBinding(fory);
   }
@@ -71,7 +71,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       Fory fory, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(fory, cls, immutable);
     this.supportCodegenHook = supportCodegenHook;
-    elementClassInfoHolder = fory.getClassResolver().nilClassInfoHolder();
+    elementTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
     this.typeResolver = fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
     binding = SerializationBinding.createBinding(fory);
   }
@@ -131,17 +131,17 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
         }
       } else {
         if (trackingRef) {
-          return writeTypeHeader(buffer, value, elemGenericType.getCls(), elementClassInfoHolder);
+          return writeTypeHeader(buffer, value, elemGenericType.getCls(), elementTypeInfoHolder);
         } else {
           return writeTypeNullabilityHeader(
-              buffer, value, elemGenericType.getCls(), elementClassInfoHolder);
+              buffer, value, elemGenericType.getCls(), elementTypeInfoHolder);
         }
       }
     } else {
       if (fory.trackingRef()) {
-        return writeTypeHeader(buffer, value, elementClassInfoHolder);
+        return writeTypeHeader(buffer, value, elementTypeInfoHolder);
       } else {
-        return writeTypeNullabilityHeader(buffer, value, null, elementClassInfoHolder);
+        return writeTypeNullabilityHeader(buffer, value, null, elementTypeInfoHolder);
       }
     }
   }
@@ -165,7 +165,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    */
   @CodegenInvoke
   public int writeTypeHeader(
-      MemoryBuffer buffer, Collection value, Class<?> declareElementType, ClassInfoHolder cache) {
+      MemoryBuffer buffer, Collection value, Class<?> declareElementType, TypeInfoHolder cache) {
     int bitmap = CollectionFlags.TRACKING_REF;
     boolean hasDifferentClass = false;
     Class<?> elemClass = null;
@@ -196,7 +196,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
         buffer.writeByte(bitmap);
         // Update classinfo, the caller will use it.
         TypeResolver typeResolver = this.typeResolver;
-        typeResolver.writeClassInfo(buffer, typeResolver.getClassInfo(elemClass, cache));
+        typeResolver.writeTypeInfo(buffer, typeResolver.getTypeInfo(elemClass, cache));
       }
     }
     return bitmap;
@@ -204,7 +204,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   /** Maybe track elements ref, or write elements nullability. */
   @CodegenInvoke
-  public int writeTypeHeader(MemoryBuffer buffer, Collection value, ClassInfoHolder cache) {
+  public int writeTypeHeader(MemoryBuffer buffer, Collection value, TypeInfoHolder cache) {
     int bitmap = 0;
     boolean hasDifferentClass = false;
     Class<?> elemClass = null;
@@ -234,12 +234,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
         elemClass = void.class;
       }
       bitmap |= CollectionFlags.IS_SAME_TYPE;
-      ClassInfo classInfo = typeResolver.getClassInfo(elemClass, cache);
-      if (classInfo.getSerializer().needToWriteRef()) {
+      TypeInfo typeInfo = typeResolver.getTypeInfo(elemClass, cache);
+      if (typeInfo.getSerializer().needToWriteRef()) {
         bitmap |= CollectionFlags.TRACKING_REF;
       }
       buffer.writeByte(bitmap);
-      typeResolver.writeClassInfo(buffer, classInfo);
+      typeResolver.writeTypeInfo(buffer, typeInfo);
     }
     return bitmap;
   }
@@ -250,7 +250,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    */
   @CodegenInvoke
   public int writeTypeNullabilityHeader(
-      MemoryBuffer buffer, Collection value, Class<?> declareElementType, ClassInfoHolder cache) {
+      MemoryBuffer buffer, Collection value, Class<?> declareElementType, TypeInfoHolder cache) {
     int bitmap = 0;
     boolean containsNull = false;
     boolean hasDifferentClass = false;
@@ -285,8 +285,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       } else {
         buffer.writeByte(bitmap);
         TypeResolver typeResolver = this.typeResolver;
-        ClassInfo classInfo = typeResolver.getClassInfo(elemClass, cache);
-        typeResolver.writeClassInfo(buffer, classInfo);
+        TypeInfo typeInfo = typeResolver.getTypeInfo(elemClass, cache);
+        typeResolver.writeTypeInfo(buffer, typeInfo);
       }
     }
     return bitmap;
@@ -347,7 +347,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
         Preconditions.checkNotNull(elemGenericType);
         serializer = elemGenericType.getSerializer(typeResolver);
       } else {
-        serializer = elementClassInfoHolder.getSerializer();
+        serializer = elementTypeInfoHolder.getSerializer();
       }
       writeSameTypeElements(fory, buffer, serializer, flags, collection);
     } else {
@@ -474,9 +474,9 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   public void copyElements(Collection originCollection, Collection newCollection) {
     for (Object element : originCollection) {
       if (element != null) {
-        ClassInfo classInfo = typeResolver.getClassInfo(element.getClass(), elementClassInfoHolder);
-        if (!classInfo.getSerializer().isImmutable()) {
-          element = fory.copyObject(element, classInfo.getTypeId());
+        TypeInfo typeInfo = typeResolver.getTypeInfo(element.getClass(), elementTypeInfoHolder);
+        if (!typeInfo.getSerializer().isImmutable()) {
+          element = fory.copyObject(element, typeInfo.getTypeId());
         }
       }
       newCollection.add(element);
@@ -487,9 +487,9 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     int index = 0;
     for (Object element : originCollection) {
       if (element != null) {
-        ClassInfo classInfo = typeResolver.getClassInfo(element.getClass(), elementClassInfoHolder);
-        if (!classInfo.getSerializer().isImmutable()) {
-          element = fory.copyObject(element, classInfo.getSerializer());
+        TypeInfo typeInfo = typeResolver.getTypeInfo(element.getClass(), elementTypeInfoHolder);
+        if (!typeInfo.getSerializer().isImmutable()) {
+          element = fory.copyObject(element, typeInfo.getSerializer());
         }
       }
       elements[index++] = element;
@@ -562,7 +562,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       Serializer serializer;
       TypeResolver typeResolver = this.typeResolver;
       if ((flags & CollectionFlags.IS_DECL_ELEMENT_TYPE) != CollectionFlags.IS_DECL_ELEMENT_TYPE) {
-        serializer = typeResolver.readClassInfo(buffer, elementClassInfoHolder).getSerializer();
+        serializer = typeResolver.readTypeInfo(buffer, elementTypeInfoHolder).getSerializer();
       } else {
         serializer = elemGenericType.getSerializer(typeResolver);
       }

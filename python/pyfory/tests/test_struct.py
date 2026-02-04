@@ -209,7 +209,7 @@ def test_data_class_serializer_xlang():
     assert type(fory.type_resolver.get_serializer(DataClassObject)) is pyfory.DataClassSerializer
     # Ensure it's using xlang mode indirectly, by checking no JIT methods if possible,
     # or by ensuring it was registered with _register_xtype which now uses DataClassSerializer(xlang=True)
-    # For now, the registration path check is implicit via Language.XLANG usage.
+    # For now, the registration path check is implicit via xlang=True usage.
     # We can also check if the hash is non-zero if it was computed,
     # or if the _serializers attribute exists.
     serializer_instance = fory.type_resolver.get_serializer(DataClassObject)

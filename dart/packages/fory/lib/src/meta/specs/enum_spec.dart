@@ -20,7 +20,7 @@
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 // Enums do not need tags because they are not allowed to be transmitted directly; they should always be within a class.
 // Enums do not support inheritance, which makes serialization much easier as there will be no cases where the specific class is unknown.

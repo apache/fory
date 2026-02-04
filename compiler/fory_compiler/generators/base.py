@@ -181,6 +181,21 @@ class BaseGenerator(ABC):
 
         return remainder
 
+    def format_type_id_comment(self, type_def, comment_prefix: str) -> Optional[str]:
+        """Format a type id comment for a message/union."""
+        type_id = getattr(type_def, "type_id", None)
+        if type_id is None:
+            return None
+        if getattr(type_def, "id_generated", False):
+            source = getattr(type_def, "id_source", None) or "unknown"
+            return f"{comment_prefix} Type ID {type_id} is generated from {source}"
+        return f"{comment_prefix} Type ID {type_id} is specified manually."
+
+    def should_register_by_id(self, type_def) -> bool:
+        """Return True if a type should be registered by numeric ID."""
+        type_id = getattr(type_def, "type_id", None)
+        return type_id is not None
+
     def get_license_header(self, comment_prefix: str = "//") -> str:
         """Get the Apache license header."""
         lines = [

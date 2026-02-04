@@ -583,7 +583,7 @@ func writeMapRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, valu
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVarUint32Small7(uint32(MAP))
+		ctx.buffer.WriteUint8(uint8(MAP))
 	}
 	return false
 }
@@ -614,7 +614,7 @@ func readMapRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value r
 		}
 	}
 	if readType {
-		buf.ReadVarUint32Small7(ctxErr)
+		buf.ReadUint8(ctxErr)
 	}
 	return false
 }

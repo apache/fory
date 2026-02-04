@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { StructTypeInfo, Type, TypeInfo } from "./typeInfo";
+import { StructTypeInfo, TypeInfo } from "./typeInfo";
 import fory from "./fory";
 import { TypeMeta } from "./meta/TypeMeta";
 import { BinaryReader } from "./reader";
@@ -37,7 +37,8 @@ export class TypeMetaResolver {
     typeInfo.options.props = Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
       const typeId = x.getTypeId();
       const fieldName = x.getFieldName();
-      const fieldTypeInfo = this.fory.classResolver.getTypeInfo(typeId);
+      const declared = typeInfo.options.props?.[fieldName];
+      const fieldTypeInfo = declared ?? this.fory.typeResolver.getTypeInfo(typeId);
       if (!fieldTypeInfo) {
         throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
       }
@@ -57,11 +58,12 @@ export class TypeMetaResolver {
     const typeName = typeMeta.getTypeName();
     const ns = typeMeta.getNs();
     const typeId = typeMeta.getTypeId();
+    const userTypeId = typeMeta.getUserTypeId();
     let typeInfo;
     if (!TypeId.isNamedType(typeId)) {
-      typeInfo = this.fory.classResolver.getTypeInfo(typeId);
+      typeInfo = this.fory.typeResolver.getTypeInfo(typeId, userTypeId);
     } else {
-      typeInfo = this.fory.classResolver.getTypeInfo(`${ns}$${typeName}`);
+      typeInfo = this.fory.typeResolver.getTypeInfo(`${ns}$${typeName}`);
     }
     if (!typeInfo) {
       throw new Error(`${typeId} not registered`); // todo

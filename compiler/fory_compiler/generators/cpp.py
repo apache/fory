@@ -880,6 +880,9 @@ class CppGenerator(BaseGenerator):
         lineage = parent_stack + [message]
         body_indent = f"{indent}  "
         field_indent = f"{indent}    "
+        comment = self.format_type_id_comment(message, f"{indent}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
         if message.fields:
@@ -982,6 +985,9 @@ class CppGenerator(BaseGenerator):
         ]
         variant_type = f"std::variant<{', '.join(case_types)}>"
 
+        comment = self.format_type_id_comment(union, f"{indent}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
         lines.append(f"{body_indent}  enum class {case_enum} : uint32_t {{")
@@ -1234,7 +1240,7 @@ class CppGenerator(BaseGenerator):
         lines.append("")
         lines.append("  static inline void write_type_info(WriteContext &ctx) {")
         lines.append(
-            f"    auto result = ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::TYPED_UNION), std::type_index(typeid({qualified_name})));"
+            f"    auto result = ctx.write_any_type_info(static_cast<uint32_t>(TypeId::TYPED_UNION), std::type_index(typeid({qualified_name})));"
         )
         lines.append("    if (FORY_PREDICT_FALSE(!result.ok())) {")
         lines.append("      ctx.set_error(std::move(result).error());")
@@ -1250,7 +1256,9 @@ class CppGenerator(BaseGenerator):
         lines.append("      return;")
         lines.append("    }")
         lines.append("    const TypeInfo *expected = type_info_res.value();")
-        lines.append("    const TypeInfo *remote = ctx.read_any_typeinfo(ctx.error());")
+        lines.append(
+            "    const TypeInfo *remote = ctx.read_any_type_info(ctx.error());"
+        )
         lines.append("    if (FORY_PREDICT_FALSE(ctx.has_error())) {")
         lines.append("      return;")
         lines.append("    }")
@@ -1391,7 +1399,7 @@ class CppGenerator(BaseGenerator):
         lines.append("        return default_value();")
         lines.append("      }")
         lines.append(
-            "      const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());"
+            "      const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());"
         )
         lines.append("      if (FORY_PREDICT_FALSE(ctx.has_error())) {")
         lines.append("        return default_value();")
@@ -1858,7 +1866,7 @@ class CppGenerator(BaseGenerator):
         code_name = self.get_qualified_type_name(enum.name, parent_stack)
         type_name = self.get_registration_type_name(enum.name, parent_stack)
 
-        if enum.type_id is not None:
+        if self.should_register_by_id(enum):
             lines.append(f"    fory.register_enum<{code_name}>({enum.type_id});")
         else:
             ns = self.package or "default"
@@ -1889,7 +1897,7 @@ class CppGenerator(BaseGenerator):
             )
 
         # Register this message
-        if message.type_id is not None:
+        if self.should_register_by_id(message):
             lines.append(f"    fory.register_struct<{code_name}>({message.type_id});")
         else:
             ns = self.package or "default"
@@ -1904,7 +1912,7 @@ class CppGenerator(BaseGenerator):
         code_name = self.get_qualified_type_name(union.name, parent_stack)
         type_name = self.get_registration_type_name(union.name, parent_stack)
 
-        if union.type_id is not None:
+        if self.should_register_by_id(union):
             lines.append(f"    fory.register_union<{code_name}>({union.type_id});")
         else:
             ns = self.package or "default"

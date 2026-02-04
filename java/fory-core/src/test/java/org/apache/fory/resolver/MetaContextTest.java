@@ -50,7 +50,7 @@ public class MetaContextTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "enableCodegen")
-  public void testShareClassDefCompatible(boolean enableCodegen) {
+  public void testShareTypeDefCompatible(boolean enableCodegen) {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)

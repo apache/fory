@@ -485,15 +485,14 @@ TEST_F(FlatIntMapTest, U32PtrMap_ConstFind) {
   EXPECT_EQ(entry->key, 1u);
 }
 
-// Test for type_id lookups (simulates type_info_by_id_ usage)
+// Test for type_id lookups (simulates internal type_info_by_id_ usage)
 TEST_F(FlatIntMapTest, U32PtrMap_TypeIdLookups) {
   U32PtrMap<void> map(256);
 
-  // Simulate type ID values used in TypeResolver
+  // Simulate internal type ID values used in TypeResolver
   std::vector<uint32_t> type_ids;
   for (uint32_t i = 1; i <= 50; ++i) {
-    // Simulate encoded type_id: (user_id << 8) + TypeId
-    uint32_t type_id = (i << 8) + 100; // 100 = some TypeId enum value
+    uint32_t type_id = i;
     type_ids.push_back(type_id);
     map.put(type_id, reinterpret_cast<void *>(static_cast<uintptr_t>(i)));
   }

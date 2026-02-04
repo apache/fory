@@ -407,7 +407,7 @@ Fory uses binary protocols for efficient serialization and deserialization. Fory
 ### Compiler Development (FDL/IDL)
 
 - **Primary references**: `docs/compiler/index.md`, `docs/compiler/compiler-guide.md`,
-  `docs/compiler/fdl-syntax.md`, `docs/compiler/type-system.md`,
+  `docs/compiler/schema-idl.md`, `docs/compiler/type-system.md`,
   `docs/compiler/generated-code.md`, `docs/compiler/protobuf-idl.md`,
   `docs/compiler/flatbuffers-idl.md`.
 - **Location**: `compiler/` contains the Fory compiler, parser, IR, and code generators.

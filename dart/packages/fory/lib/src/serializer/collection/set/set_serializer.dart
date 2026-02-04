@@ -25,7 +25,7 @@
 /// we still need to implement this separately, which may introduce duplicate code.
 library;
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserializer_pack.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';

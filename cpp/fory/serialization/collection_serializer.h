@@ -284,8 +284,17 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
   if (is_same_type && !(bitmap & COLL_DECL_ELEMENT_TYPE)) {
     if constexpr (elem_is_polymorphic) {
       // write concrete type info for polymorphic elements
-      ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::UNKNOWN),
-                             first_type);
+      auto type_info_res = ctx.type_resolver().get_type_info(first_type);
+      if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+        ctx.set_error(std::move(type_info_res).error());
+        return;
+      }
+      auto write_res =
+          ctx.write_any_type_info(type_info_res.value()->type_id, first_type);
+      if (FORY_PREDICT_FALSE(!write_res.ok())) {
+        ctx.set_error(std::move(write_res).error());
+        return;
+      }
     } else {
       Serializer<ElemType>::write_type_info(ctx);
     }
@@ -407,7 +416,7 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   // Read element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
   const TypeInfo *elem_type_info = nullptr;
   if (is_same_type && !is_decl_type) {
-    elem_type_info = ctx.read_any_typeinfo(ctx.error());
+    elem_type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
@@ -520,11 +529,11 @@ struct Serializer<
   }();
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -539,7 +548,7 @@ struct Serializer<
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
     write_data(vec, ctx);
   }
@@ -578,7 +587,7 @@ struct Serializer<
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<T, Alloc>();
       }
@@ -628,11 +637,11 @@ struct Serializer<
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -652,12 +661,11 @@ struct Serializer<
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::vector<T, Alloc>();
@@ -694,7 +702,7 @@ struct Serializer<
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::vector<T, Alloc>();
         }
@@ -763,7 +771,7 @@ struct Serializer<
 
     // write type info if requested
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(vec, ctx, has_generics);
@@ -818,11 +826,11 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
   static constexpr TypeId type_id = TypeId::BOOL_ARRAY;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -837,7 +845,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
     write_data(vec, ctx);
   }
@@ -871,7 +879,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<bool, Alloc>();
       }
@@ -920,11 +928,11 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -944,12 +952,11 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::list<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::list<T, Alloc>();
@@ -986,7 +993,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::list<T, Alloc>();
         }
@@ -1054,7 +1061,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
 
     // write type info if requested
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(lst, ctx, has_generics);
@@ -1111,11 +1118,11 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1135,12 +1142,11 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::deque<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::deque<T, Alloc>();
@@ -1177,7 +1183,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::deque<T, Alloc>();
         }
@@ -1245,7 +1251,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
 
     // write type info if requested
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(deq, ctx, has_generics);
@@ -1303,11 +1309,11 @@ struct Serializer<std::forward_list<T, Alloc>> {
   static constexpr TypeId type_id = TypeId::LIST;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1327,12 +1333,11 @@ struct Serializer<std::forward_list<T, Alloc>> {
 
     // Optional type info for polymorphic containers
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::forward_list<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::forward_list<T, Alloc>();
@@ -1374,7 +1379,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
       // Read element type info if IS_SAME_TYPE is set but IS_DECL_ELEMENT_TYPE
       // is not.
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::forward_list<T, Alloc>();
         }
@@ -1444,7 +1449,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
 
     // write type info if requested
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(lst, ctx, has_generics);
@@ -1629,8 +1634,17 @@ struct Serializer<std::forward_list<T, Alloc>> {
       // write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
       if (is_same_type && !(bitmap & COLL_DECL_ELEMENT_TYPE)) {
         if constexpr (elem_is_polymorphic) {
-          ctx.write_any_typeinfo(static_cast<uint32_t>(TypeId::UNKNOWN),
-                                 first_type);
+          auto type_info_res = ctx.type_resolver().get_type_info(first_type);
+          if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+            ctx.set_error(std::move(type_info_res).error());
+            return;
+          }
+          auto write_res = ctx.write_any_type_info(
+              type_info_res.value()->type_id, first_type);
+          if (FORY_PREDICT_FALSE(!write_res.ok())) {
+            ctx.set_error(std::move(write_res).error());
+            return;
+          }
         } else {
           Serializer<ElemType>::write_type_info(ctx);
         }
@@ -1726,11 +1740,11 @@ struct Serializer<std::set<T, Args...>> {
   static constexpr TypeId type_id = TypeId::SET;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1746,7 +1760,7 @@ struct Serializer<std::set<T, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(set, ctx, has_generics);
@@ -1781,7 +1795,7 @@ struct Serializer<std::set<T, Args...>> {
 
     // Read type info
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::set<T, Args...>();
       }
@@ -1820,7 +1834,7 @@ struct Serializer<std::set<T, Args...>> {
       bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
 
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::set<T, Args...>();
         }
@@ -1898,11 +1912,11 @@ struct Serializer<std::unordered_set<T, Args...>> {
   static constexpr TypeId type_id = TypeId::SET;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_var_uint32(ctx.error());
+    uint32_t actual = ctx.read_uint8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -1918,7 +1932,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(set, ctx, has_generics);
@@ -1954,7 +1968,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
 
     // Read type info
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::unordered_set<T, Args...>();
       }
@@ -1995,7 +2009,7 @@ struct Serializer<std::unordered_set<T, Args...>> {
       bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
 
       if (is_same_type && !is_decl_type) {
-        const TypeInfo *elem_type_info = ctx.read_any_typeinfo(ctx.error());
+        const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return std::unordered_set<T, Args...>();
         }

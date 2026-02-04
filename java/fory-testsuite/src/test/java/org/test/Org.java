@@ -53,7 +53,7 @@ public class Org implements Serializable {
             .withRefTracking(true)
             // Allow to deserialize objects unknown types,more flexible but less secure.
             .requireClassRegistration(false)
-            .withDeserializeNonexistentClass(true)
+            .withDeserializeUnknownClass(true)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .withRefTracking(true)
             .build();

@@ -29,7 +29,7 @@ public class SerializationContextTest {
 
   @Test
   public void testSerializationContext() {
-    ForyBuilder builder = new ForyBuilder().withDeserializeNonexistentClass(false);
+    ForyBuilder builder = new ForyBuilder().withDeserializeUnknownClass(false);
     builder.build(); // trigger finish
     SerializationContext context = new SerializationContext(new Config(builder));
     assertFalse(context.containsKey("A"));

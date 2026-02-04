@@ -61,7 +61,7 @@ template <typename T> inline void read_type_info(ReadContext &ctx) {
 
 /// Read polymorphic type info from buffer. Returns nullptr on error.
 inline const TypeInfo *read_polymorphic_type_info(ReadContext &ctx) {
-  return ctx.read_any_typeinfo(ctx.error());
+  return ctx.read_any_type_info(ctx.error());
 }
 
 // ============================================================================
@@ -218,8 +218,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
   bool need_write_header = true;
 
   // Track current chunk's types for polymorphic handling
-  uint32_t current_key_type_id = 0;
-  uint32_t current_val_type_id = 0;
+  const TypeInfo *current_key_type_info = nullptr;
+  const TypeInfo *current_val_type_info = nullptr;
 
   for (const auto &[key, value] : map) {
     // Check if key or value is null (for nullable types: optional, shared_ptr,
@@ -274,8 +274,14 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
                   "Polymorphic key shared_ptr must not point to void"));
               return;
             }
-            auto res = ctx.write_any_typeinfo(
-                static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+            auto type_info_res =
+                ctx.type_resolver().get_type_info(concrete_type_id);
+            if (!type_info_res.ok()) {
+              ctx.set_error(std::move(type_info_res).error());
+              return;
+            }
+            auto res = ctx.write_any_type_info(type_info_res.value()->type_id,
+                                               concrete_type_id);
             if (!res.ok()) {
               ctx.set_error(std::move(res).error());
               return;
@@ -321,8 +327,14 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
                   "Polymorphic value shared_ptr must not point to void"));
               return;
             }
-            auto res = ctx.write_any_typeinfo(
-                static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+            auto type_info_res =
+                ctx.type_resolver().get_type_info(concrete_type_id);
+            if (!type_info_res.ok()) {
+              ctx.set_error(std::move(type_info_res).error());
+              return;
+            }
+            auto res = ctx.write_any_type_info(type_info_res.value()->type_id,
+                                               concrete_type_id);
             if (!res.ok()) {
               ctx.set_error(std::move(res).error());
               return;
@@ -343,8 +355,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
     }
 
     // get type IDs for polymorphic types
-    uint32_t key_type_id = 0;
-    uint32_t val_type_id = 0;
+    const TypeInfo *key_type_info = nullptr;
+    const TypeInfo *val_type_info = nullptr;
     if constexpr (key_is_polymorphic) {
       auto concrete_type_id = get_concrete_type_id(key);
       auto key_type_info_res =
@@ -353,7 +365,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         ctx.set_error(std::move(key_type_info_res).error());
         return;
       }
-      key_type_id = key_type_info_res.value()->type_id;
+      key_type_info = key_type_info_res.value();
     }
     if constexpr (val_is_polymorphic) {
       auto concrete_type_id = get_concrete_type_id(value);
@@ -363,14 +375,19 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         ctx.set_error(std::move(val_type_info_res).error());
         return;
       }
-      val_type_id = val_type_info_res.value()->type_id;
+      val_type_info = val_type_info_res.value();
     }
 
     // Check if we need to start a new chunk due to type changes
     bool types_changed = false;
     if constexpr (key_is_polymorphic || val_is_polymorphic) {
-      types_changed = (key_type_id != current_key_type_id) ||
-                      (val_type_id != current_val_type_id);
+      if constexpr (key_is_polymorphic) {
+        types_changed = key_type_info != current_key_type_info;
+      }
+      if constexpr (val_is_polymorphic) {
+        types_changed =
+            types_changed || (val_type_info != current_val_type_info);
+      }
     }
 
     if (need_write_header || types_changed) {
@@ -412,9 +429,17 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       if (!is_key_declared || key_is_polymorphic) {
         if constexpr (key_is_polymorphic) {
           auto concrete_type_id = get_concrete_type_id(key);
-          // Use UNKNOWN for polymorphic shared_ptr
-          auto res = ctx.write_any_typeinfo(
-              static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+          if (FORY_PREDICT_FALSE(key_type_info == nullptr)) {
+            auto type_info_res =
+                ctx.type_resolver().get_type_info(concrete_type_id);
+            if (!type_info_res.ok()) {
+              ctx.set_error(std::move(type_info_res).error());
+              return;
+            }
+            key_type_info = type_info_res.value();
+          }
+          auto res =
+              ctx.write_any_type_info(key_type_info->type_id, concrete_type_id);
           if (!res.ok()) {
             ctx.set_error(std::move(res).error());
             return;
@@ -427,9 +452,17 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       if (!is_val_declared || val_is_polymorphic) {
         if constexpr (val_is_polymorphic) {
           auto concrete_type_id = get_concrete_type_id(value);
-          // Use UNKNOWN for polymorphic shared_ptr
-          auto res = ctx.write_any_typeinfo(
-              static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
+          if (FORY_PREDICT_FALSE(val_type_info == nullptr)) {
+            auto type_info_res =
+                ctx.type_resolver().get_type_info(concrete_type_id);
+            if (!type_info_res.ok()) {
+              ctx.set_error(std::move(type_info_res).error());
+              return;
+            }
+            val_type_info = type_info_res.value();
+          }
+          auto res =
+              ctx.write_any_type_info(val_type_info->type_id, concrete_type_id);
           if (!res.ok()) {
             ctx.set_error(std::move(res).error());
             return;
@@ -440,8 +473,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       }
 
       need_write_header = false;
-      current_key_type_id = key_type_id;
-      current_val_type_id = val_type_id;
+      current_key_type_info = key_type_info;
+      current_val_type_info = val_type_info;
     }
 
     // write key-value pair
@@ -482,8 +515,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       write_chunk_size(ctx, header_offset, pair_counter);
       pair_counter = 0;
       need_write_header = true;
-      current_key_type_id = 0;
-      current_val_type_id = 0;
+      current_key_type_info = nullptr;
+      current_val_type_info = nullptr;
     }
   }
 
@@ -894,11 +927,11 @@ struct Serializer<std::map<K, V, Args...>> {
   using MapType = std::map<K, V, Args...>;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -916,7 +949,7 @@ struct Serializer<std::map<K, V, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     write_data_generic(map, ctx, has_generics);
@@ -958,7 +991,7 @@ struct Serializer<std::map<K, V, Args...>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
@@ -1023,7 +1056,7 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
     constexpr bool is_fast_path =
@@ -1073,7 +1106,7 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }

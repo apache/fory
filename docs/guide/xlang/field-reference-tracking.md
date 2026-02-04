@@ -43,7 +43,7 @@ Fory fory = Fory.builder()
 ### Python
 
 ```python
-fory = pyfory.Fory(xlang=True, ref_tracking=True)
+fory = pyfory.Fory(xlang=True, ref=True)
 ```
 
 ### Go
@@ -56,7 +56,7 @@ fory := forygo.NewFory(true)  // true enables ref tracking
 
 ```cpp
 auto fory = fory::Fory::create(fory::Config{
-    .ref_tracking = true
+    .track_ref = true
 });
 ```
 

@@ -307,7 +307,7 @@ public class LongMap<V> {
     hasZeroValue = false;
   }
 
-  public boolean containsKey(int key) {
+  public boolean containsKey(long key) {
     if (key == 0) {
       return hasZeroValue;
     }

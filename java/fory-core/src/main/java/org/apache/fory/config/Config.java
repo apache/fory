@@ -34,7 +34,7 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings({"rawtypes"})
 public class Config implements Serializable {
   private final String name;
-  private final Language language;
+  private final boolean xlang;
   private final boolean trackingRef;
   private final boolean stringRefIgnored;
   private final boolean timeRefIgnored;
@@ -58,7 +58,7 @@ public class Config implements Serializable {
   private final boolean scopedMetaShareEnabled;
   private final MetaCompressor metaCompressor;
   private final boolean asyncCompilationEnabled;
-  private final boolean deserializeNonexistentClass;
+  private final boolean deserializeUnknownClass;
   private final boolean scalaOptimizationEnabled;
   private transient int configHash;
   private final UnknownEnumValueStrategy unknownEnumValueStrategy;
@@ -69,7 +69,7 @@ public class Config implements Serializable {
 
   public Config(ForyBuilder builder) {
     name = builder.name;
-    language = builder.language;
+    xlang = builder.xlang;
     trackingRef = builder.trackingRef;
     stringRefIgnored = !trackingRef || builder.stringRefIgnored;
     timeRefIgnored = !trackingRef || builder.timeRefIgnored;
@@ -92,11 +92,11 @@ public class Config implements Serializable {
     metaShareEnabled = builder.metaShareEnabled;
     scopedMetaShareEnabled = builder.scopedMetaShareEnabled;
     metaCompressor = builder.metaCompressor;
-    deserializeNonexistentClass = builder.deserializeNonexistentClass;
-    if (deserializeNonexistentClass) {
+    deserializeUnknownClass = builder.deserializeUnknownClass;
+    if (deserializeUnknownClass) {
       Preconditions.checkArgument(
           metaShareEnabled || compatibleMode == CompatibleMode.COMPATIBLE,
-          "Configuration error: deserializeNonexistentClass=true requires either "
+          "Configuration error: deserializeUnknownClass=true requires either "
               + "metaShareEnabled=true to access type information OR compatibleMode=COMPATIBLE "
               + "to automatically resolve class schemas.");
     }
@@ -114,8 +114,8 @@ public class Config implements Serializable {
     return name;
   }
 
-  public Language getLanguage() {
-    return language;
+  public boolean isXlang() {
+    return xlang;
   }
 
   public boolean trackingRef() {
@@ -139,7 +139,7 @@ public class Config implements Serializable {
   }
 
   /** ignore Enum Deserialize array out of bounds return null. */
-  public boolean deserializeNonexistentEnumValueAsNull() {
+  public boolean deserializeUnknownEnumValueAsNull() {
     return unknownEnumValueStrategy == UnknownEnumValueStrategy.RETURN_NULL;
   }
 
@@ -263,8 +263,8 @@ public class Config implements Serializable {
    * Whether deserialize/skip data of un-existed class. If not enabled, an exception will be thrown
    * if class not exist.
    */
-  public boolean deserializeNonexistentClass() {
-    return deserializeNonexistentClass;
+  public boolean deserializeUnknownClass() {
+    return deserializeUnknownClass;
   }
 
   /**
@@ -322,9 +322,9 @@ public class Config implements Serializable {
         && scopedMetaShareEnabled == config.scopedMetaShareEnabled
         && Objects.equals(metaCompressor, config.metaCompressor)
         && asyncCompilationEnabled == config.asyncCompilationEnabled
-        && deserializeNonexistentClass == config.deserializeNonexistentClass
+        && deserializeUnknownClass == config.deserializeUnknownClass
         && scalaOptimizationEnabled == config.scalaOptimizationEnabled
-        && language == config.language
+        && xlang == config.xlang
         && compatibleMode == config.compatibleMode
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding;
@@ -334,7 +334,7 @@ public class Config implements Serializable {
   public int hashCode() {
     return Objects.hash(
         name,
-        language,
+        xlang,
         mapRefLoadFactor,
         trackingRef,
         stringRefIgnored,
@@ -360,7 +360,7 @@ public class Config implements Serializable {
         scopedMetaShareEnabled,
         metaCompressor,
         asyncCompilationEnabled,
-        deserializeNonexistentClass,
+        deserializeUnknownClass,
         scalaOptimizationEnabled);
   }
 

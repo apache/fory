@@ -61,8 +61,7 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
     return Sets.cartesianProduct(
             ImmutableSet.of(true, false), // referenceTracking
             ImmutableSet.of(true, false), // compressNumber
-            ImmutableSet.of(true, false), // scopedMetaShare
-            ImmutableSet.of(CompatibleMode.SCHEMA_CONSISTENT, CompatibleMode.COMPATIBLE))
+            ImmutableSet.of(true, false)) // compatible
         .stream()
         .map(List::toArray)
         .map(
@@ -73,8 +72,7 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
                       .withRefTracking((Boolean) c[0])
                       .withNumberCompressed((Boolean) c[1])
                       .withCodegen(false)
-                      .withScopedMetaShare((Boolean) c[2])
-                      .withCompatibleMode((CompatibleMode) c[3])
+                      .withCompatible((Boolean) c[2])
                       .requireClassRegistration(false)
                       .build(),
                   builder()
@@ -82,8 +80,7 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
                       .withRefTracking((Boolean) c[0])
                       .withNumberCompressed((Boolean) c[1])
                       .withCodegen(true)
-                      .withScopedMetaShare((Boolean) c[2])
-                      .withCompatibleMode((CompatibleMode) c[3])
+                      .withCompatible((Boolean) c[2])
                       .requireClassRegistration(false)
                       .build()
                 })

@@ -55,23 +55,25 @@ class TypeId:
     UINT16 = 10
     UINT32 = 11
     UINT64 = 13
-    FLOAT16 = 16
-    FLOAT32 = 17
-    FLOAT64 = 18
-    STRING = 19
-    LIST = 20
-    SET = 21
-    MAP = 22
-    STRUCT = 25
-    UNION = 31
-    TYPED_UNION = 32
-    NAMED_UNION = 33
-    NONE = 34
-    DURATION = 35
-    TIMESTAMP = 36
-    DATE = 37
-    DECIMAL = 38
-    BINARY = 39
+    FLOAT8 = 16
+    FLOAT16 = 17
+    BFLOAT16 = 18
+    FLOAT32 = 19
+    FLOAT64 = 20
+    STRING = 21
+    LIST = 22
+    SET = 23
+    MAP = 24
+    STRUCT = 27
+    UNION = 33
+    TYPED_UNION = 34
+    NAMED_UNION = 35
+    NONE = 36
+    DURATION = 37
+    TIMESTAMP = 38
+    DATE = 39
+    DECIMAL = 40
+    BINARY = 41
 
 
 cdef class DataType:

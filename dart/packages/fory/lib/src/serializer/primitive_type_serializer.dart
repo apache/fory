@@ -18,7 +18,7 @@
  */
 
 import 'package:fory/src/config/fory_config.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/fory_fixed_num.dart';
 import 'package:fory/src/datatype/int16.dart';

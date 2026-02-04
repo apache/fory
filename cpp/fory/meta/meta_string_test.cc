@@ -404,10 +404,9 @@ TEST_F(MetaStringTest, MetaStringTableEmptyString) {
   MetaStringTable table;
   Buffer buffer;
 
-  // Empty string: len=0, encoding=UTF8
+  // Empty string: len=0 (Java omits encoding byte)
   uint32_t header = 0 << 1; // len=0, not a reference
   buffer.write_var_uint32(header);
-  buffer.write_int8(0); // UTF8 encoding
 
   buffer.reader_index(0);
   auto result = table.read_string(buffer, decoder_);

@@ -47,7 +47,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-public class NonexistentClassSerializersTest extends ForyTestBase {
+public class UnknownClassSerializersTest extends ForyTestBase {
   @DataProvider
   public static Object[][] config() {
     return Sets.cartesianProduct(
@@ -78,11 +78,11 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(false)
-        .withDeserializeNonexistentClass(true);
+        .withDeserializeUnknownClass(true);
   }
 
   @Test(dataProvider = "config")
-  public void testSkipNonexistent(
+  public void testSkipUnknown(
       boolean referenceTracking, boolean enableCodegen1, boolean enableCodegen2) {
     Fory fory =
         foryBuilder()
@@ -93,8 +93,8 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     ClassLoader classLoader = getClass().getClassLoader();
     for (Class<?> structClass :
         new Class<?>[] {
-          Struct.createNumberStructClass("TestSkipNonexistentClass1", 2),
-          Struct.createStructClass("TestSkipNonexistentClass1", 2)
+          Struct.createNumberStructClass("TestUnknownEmptyStructClass1", 2),
+          Struct.createStructClass("TestUnknownEmptyStructClass1", 2)
         }) {
       Object pojo = Struct.createPOJO(structClass);
       byte[] bytes = fory.serialize(pojo);
@@ -105,44 +105,42 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
               .withClassLoader(classLoader)
               .build();
       Object o = fory2.deserialize(bytes);
-      assertTrue(o instanceof NonexistentClass, "Unexpected type " + o.getClass());
+      assertTrue(o instanceof UnknownClass, "Unexpected type " + o.getClass());
     }
   }
 
   @Test
-  public void testNonexistentEnum() {
+  public void testUnknownEnum() {
     // Use scoped meta share for automatic MetaContext management
-    Fory fory = foryBuilder().withDeserializeNonexistentClass(true).build();
+    Fory fory = foryBuilder().withDeserializeUnknownClass(true).build();
     String enumCode = ("enum TestEnum {" + " A, B" + "}");
     Class<?> cls = JaninoUtils.compileClass(getClass().getClassLoader(), "", "TestEnum", enumCode);
     Object c = cls.getEnumConstants()[1];
     assertEquals(c.toString(), "B");
     byte[] bytes = fory.serialize(c);
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
-    Fory fory2 = foryBuilder().withDeserializeNonexistentClass(true).build();
+    Fory fory2 = foryBuilder().withDeserializeUnknownClass(true).build();
     Object o = fory2.deserialize(bytes);
-    assertEquals(o, NonexistentClass.NonexistentEnum.V1);
+    assertEquals(o, UnknownClass.UnknownEnum.V1);
   }
 
   @Test
-  public void testNonexistentEnum_AsString() {
+  public void testUnknownEnum_AsString() {
     // Use scoped meta share for automatic MetaContext management
-    Fory fory =
-        foryBuilder().withDeserializeNonexistentClass(true).serializeEnumByName(true).build();
+    Fory fory = foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
     String enumCode = ("enum TestEnum {" + " A, B" + "}");
     Class<?> cls = JaninoUtils.compileClass(getClass().getClassLoader(), "", "TestEnum", enumCode);
     Object c = cls.getEnumConstants()[1];
     assertEquals(c.toString(), "B");
     byte[] bytes = fory.serialize(c);
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
-    Fory fory2 =
-        foryBuilder().withDeserializeNonexistentClass(true).serializeEnumByName(true).build();
+    Fory fory2 = foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
     Object o = fory2.deserialize(bytes);
-    assertEquals(o, NonexistentClass.NonexistentEnum.UNKNOWN);
+    assertEquals(o, UnknownClass.UnknownEnum.UNKNOWN);
   }
 
   @Test
-  public void testNonexistentEnumAndArrayField() throws Exception {
+  public void testUnknownEnumAndArrayField() throws Exception {
     String enumStructCode1 =
         ("public class TestEnumStruct {\n"
             + "  public enum TestEnum {\n"
@@ -170,7 +168,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     ReflectionUtils.setObjectFieldValue(o, "f4", enumArray2);
     Fory fory1 =
         foryBuilder()
-            .withDeserializeNonexistentClass(true)
+            .withDeserializeUnknownClass(true)
             .withClassLoader(cls1.getClassLoader())
             .build();
     byte[] bytes = fory1.serialize(o);
@@ -187,7 +185,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
                 "TestEnumStruct",
                 ("public class TestEnumStruct {" + " public String f1;" + "}")));
     Fory fory2 =
-        foryBuilder().withDeserializeNonexistentClass(true).withClassLoader(classLoader).build();
+        foryBuilder().withDeserializeUnknownClass(true).withClassLoader(classLoader).build();
     Object o1 = fory2.deserialize(bytes);
     Assert.assertEquals(ReflectionUtils.getObjectFieldValue(o1, "f1"), "str");
   }
@@ -198,7 +196,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "componentFinal")
-  public void testSkipNonexistentObjectArrayField(boolean componentFinal) throws Exception {
+  public void testUnknownEmptyStructObjectArrayField(boolean componentFinal) throws Exception {
     String enumStructCode1 =
         ("public class TestArrayStruct {\n"
             + "  public static "
@@ -230,7 +228,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     // Use scoped meta share for automatic MetaContext management
     Fory fory1 =
         foryBuilder()
-            .withDeserializeNonexistentClass(true)
+            .withDeserializeUnknownClass(true)
             .withClassLoader(cls1.getClassLoader())
             .build();
     byte[] bytes = fory1.serialize(o);
@@ -247,13 +245,13 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
                 "TestArrayStruct",
                 ("public class TestArrayStruct {" + " public String f1;" + "}")));
     Fory fory2 =
-        foryBuilder().withDeserializeNonexistentClass(true).withClassLoader(classLoader).build();
+        foryBuilder().withDeserializeUnknownClass(true).withClassLoader(classLoader).build();
     Object o1 = fory2.deserialize(bytes);
     Assert.assertEquals(ReflectionUtils.getObjectFieldValue(o1, "f1"), "str");
   }
 
   @Test(dataProvider = "metaShareConfig")
-  public void testDeserializeNonexistentNewFory(
+  public void testDeserializeUnknownNewFory(
       boolean referenceTracking,
       boolean enableCodegen1,
       boolean enableCodegen2,
@@ -267,8 +265,8 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     ClassLoader classLoader = getClass().getClassLoader();
     for (Class<?> structClass :
         new Class<?>[] {
-          Struct.createNumberStructClass("TestSkipNonexistentClass2", 2),
-          Struct.createStructClass("TestSkipNonexistentClass2", 2)
+          Struct.createNumberStructClass("TestUnknownEmptyStructClass2", 2),
+          Struct.createStructClass("TestUnknownEmptyStructClass2", 2)
         }) {
       Object pojo = Struct.createPOJO(structClass);
       MetaContext context1 = new MetaContext();
@@ -284,7 +282,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
       MetaContext context2 = new MetaContext();
       fory2.getSerializationContext().setMetaContext(context2);
       Object o2 = fory2.deserialize(bytes);
-      assertEquals(o2.getClass(), NonexistentClass.NonexistentMetaShared.class);
+      assertEquals(o2.getClass(), UnknownClass.UnknownStruct.class);
       fory2.getSerializationContext().setMetaContext(context2);
       byte[] bytes2 = fory2.serialize(o2);
       Fory fory3 =
@@ -303,7 +301,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "metaShareConfig")
-  public void testDeserializeNonexistent(
+  public void testDeserializeUnknown(
       boolean referenceTracking,
       boolean enableCodegen1,
       boolean enableCodegen2,
@@ -320,8 +318,8 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     ClassLoader classLoader = getClass().getClassLoader();
     for (Class<?> structClass :
         new Class<?>[] {
-          Struct.createNumberStructClass("TestSkipNonexistentClass3", 2),
-          Struct.createStructClass("TestSkipNonexistentClass3", 2)
+          Struct.createNumberStructClass("TestUnknownEmptyStructClass3", 2),
+          Struct.createStructClass("TestUnknownEmptyStructClass3", 2)
         }) {
       Fory fory2 =
           foryBuilder()
@@ -344,7 +342,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
 
         fory2.getSerializationContext().setMetaContext(context2);
         Object o2 = fory2.deserialize(bytes);
-        assertEquals(o2.getClass(), NonexistentClass.NonexistentMetaShared.class);
+        assertEquals(o2.getClass(), UnknownClass.UnknownStruct.class);
         fory2.getSerializationContext().setMetaContext(context2);
         byte[] bytes2 = fory2.serialize(o2);
 
@@ -359,18 +357,18 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
   @Test
   public void testThrowExceptionIfClassNotExist() {
     // Use scoped meta share for automatic MetaContext management
-    Fory fory = foryBuilder().withDeserializeNonexistentClass(false).build();
+    Fory fory = foryBuilder().withDeserializeUnknownClass(false).build();
     ClassLoader classLoader = getClass().getClassLoader();
-    Class<?> structClass = Struct.createNumberStructClass("TestSkipNonexistentClass1", 2);
+    Class<?> structClass = Struct.createNumberStructClass("TestUnknownEmptyStructClass1", 2);
     Object pojo = Struct.createPOJO(structClass);
     Fory fory2 =
-        foryBuilder().withDeserializeNonexistentClass(false).withClassLoader(classLoader).build();
+        foryBuilder().withDeserializeUnknownClass(false).withClassLoader(classLoader).build();
     byte[] bytes = fory.serialize(pojo);
     assertThrowsCause(RuntimeException.class, () -> fory2.deserialize(bytes));
   }
 
   /**
-   * Simple test class with primitive types for NonexistentClass serialization testing. Avoids
+   * Simple test class with primitive types for UnknownClass serialization testing. Avoids
    * collection types which require complex type registration in xlang mode.
    */
   @Data
@@ -432,12 +430,12 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
   }
 
   /**
-   * Test that NonexistentClass correctly preserves field values when deserializing an unknown
-   * class. This simulates the scenario where fory2 doesn't have the class registered, so it
-   * deserializes to NonexistentMetaShared.
+   * Test that UnknownClass correctly preserves field values when deserializing an unknown class.
+   * This simulates the scenario where fory2 doesn't have the class registered, so it deserializes
+   * to UnknownStruct.
    */
   @Test(dataProvider = "language")
-  public void testNonexistentClassDeserializationPreservesValues(Language language) {
+  public void testUnknownClassDeserializationPreservesValues(Language language) {
     // Fory1: serializer with class registered
     Fory fory1 =
         Fory.builder()
@@ -447,7 +445,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
             .build();
     fory1.register(SimpleTestClass.class, "test.SimpleTestClass");
 
-    // Fory2: deserializer without class registered - will use NonexistentClassSerializer
+    // Fory2: deserializer without class registered - will use UnknownClassSerializer
     Fory fory2 =
         Fory.builder()
             .withLanguage(language)
@@ -464,17 +462,16 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     // Convert original object to map for comparison
     Map<String, Object> expectedMap = TestUtils.objectToMap(fory1, obj);
 
-    // Deserialize with fory2 - should return NonexistentMetaShared
+    // Deserialize with fory2 - should return UnknownStruct
     buffer.readerIndex(0);
     Object result = fory2.deserialize(buffer);
 
-    // Verify result is NonexistentMetaShared
-    assertEquals(result.getClass(), NonexistentClass.NonexistentMetaShared.class);
+    // Verify result is UnknownStruct
+    assertEquals(result.getClass(), UnknownClass.UnknownStruct.class);
 
-    NonexistentClass.NonexistentMetaShared nonexistent =
-        (NonexistentClass.NonexistentMetaShared) result;
+    UnknownClass.UnknownStruct nonexistent = (UnknownClass.UnknownStruct) result;
 
-    // Convert NonexistentMetaShared to a map keyed by simple field name
+    // Convert UnknownStruct to a map keyed by simple field name
     Map<String, Object> actualMap = new HashMap<>();
     for (Object key : nonexistent.keySet()) {
       String qualifiedKey = (String) key;
@@ -496,9 +493,9 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     }
   }
 
-  /** Test NonexistentClass with null values in nullable fields. */
+  /** Test UnknownClass with null values in nullable fields. */
   @Test(dataProvider = "language")
-  public void testNonexistentClassDeserializationWithNulls(Language language) {
+  public void testUnknownClassDeserializationWithNulls(Language language) {
     // Fory1: serializer with class registered
     Fory fory1 =
         Fory.builder()
@@ -529,11 +526,10 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     buffer.readerIndex(0);
     Object result = fory2.deserialize(buffer);
 
-    assertEquals(result.getClass(), NonexistentClass.NonexistentMetaShared.class);
-    NonexistentClass.NonexistentMetaShared nonexistent =
-        (NonexistentClass.NonexistentMetaShared) result;
+    assertEquals(result.getClass(), UnknownClass.UnknownStruct.class);
+    UnknownClass.UnknownStruct nonexistent = (UnknownClass.UnknownStruct) result;
 
-    // Convert NonexistentMetaShared to a map keyed by simple field name
+    // Convert UnknownStruct to a map keyed by simple field name
     Map<String, Object> actualMap = new HashMap<>();
     for (Object key : nonexistent.keySet()) {
       String qualifiedKey = (String) key;
@@ -555,12 +551,12 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
   }
 
   /**
-   * Test that NonexistentMetaShared can be serialized and deserialized again by the same Fory
-   * instance that doesn't know the class. This verifies that unknown class data is preserved across
-   * serialization cycles.
+   * Test that UnknownStruct can be serialized and deserialized again by the same Fory instance that
+   * doesn't know the class. This verifies that unknown class data is preserved across serialization
+   * cycles.
    */
   @Test(dataProvider = "language")
-  public void testNonexistentClassRoundTripWithinSameFory(Language language) {
+  public void testUnknownClassRoundTripWithinSameFory(Language language) {
     // Fory1: knows the class
     Fory fory1 =
         Fory.builder()
@@ -584,21 +580,20 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
     MemoryBuffer buffer1 = MemoryBuffer.newHeapBuffer(1024);
     fory1.serialize(buffer1, original);
 
-    // Step 2: Deserialize with fory2 (gets NonexistentMetaShared)
+    // Step 2: Deserialize with fory2 (gets UnknownStruct)
     buffer1.readerIndex(0);
     Object nonexistent1 = fory2.deserialize(buffer1);
-    assertEquals(nonexistent1.getClass(), NonexistentClass.NonexistentMetaShared.class);
+    assertEquals(nonexistent1.getClass(), UnknownClass.UnknownStruct.class);
 
-    // Step 3: Serialize NonexistentMetaShared with fory2
+    // Step 3: Serialize UnknownStruct with fory2
     byte[] bytes = fory2.serialize(nonexistent1);
 
-    // Step 4: Deserialize again with fory2 (should get NonexistentMetaShared with same values)
+    // Step 4: Deserialize again with fory2 (should get UnknownStruct with same values)
     Object nonexistent2 = fory2.deserialize(bytes);
-    assertEquals(nonexistent2.getClass(), NonexistentClass.NonexistentMetaShared.class);
+    assertEquals(nonexistent2.getClass(), UnknownClass.UnknownStruct.class);
 
     // Verify values are preserved across the round-trip
-    NonexistentClass.NonexistentMetaShared result =
-        (NonexistentClass.NonexistentMetaShared) nonexistent2;
+    UnknownClass.UnknownStruct result = (UnknownClass.UnknownStruct) nonexistent2;
     Map<String, Object> actualMap = new HashMap<>();
     for (Object key : result.keySet()) {
       String qualifiedKey = (String) key;

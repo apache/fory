@@ -1,0 +1,76 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Publish Rust
+run-name: "Rust Release: ${{ github.ref_name }}"
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-rust:
+    runs-on: ubuntu-latest
+    if: github.repository == 'apache/fory'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Bump rust version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          python ci/release.py bump_version -l rust -version "$VERSION"
+
+      - name: Authenticate to crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec
+
+      - name: Export crates.io token
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          echo "CARGO_REGISTRY_TOKEN=${{ steps.crates-io-auth.outputs.token }}" >> "$GITHUB_ENV"
+
+      - name: Publish fory-core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust
+          cargo publish -p fory-core --allow-dirty
+
+      - name: Publish fory-derive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust
+          cargo publish -p fory-derive --allow-dirty
+
+      - name: Publish fory
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust
+          cargo publish -p fory --allow-dirty

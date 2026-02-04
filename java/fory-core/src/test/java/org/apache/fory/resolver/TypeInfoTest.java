@@ -25,11 +25,11 @@ import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
-public class ClassInfoTest {
+public class TypeInfoTest {
   @Test
   public void testEncodePackageNameAndTypeName() {
     Fory fory1 = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    ClassInfo info1 = fory1.getClassResolver().getClassInfo(org.apache.fory.test.bean.Foo.class);
+    TypeInfo info1 = fory1.getClassResolver().getTypeInfo(org.apache.fory.test.bean.Foo.class);
     assertNotNull(info1.namespaceBytes);
     assertNotNull(info1.typeNameBytes);
   }

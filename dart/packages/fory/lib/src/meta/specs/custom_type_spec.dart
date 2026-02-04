@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 abstract class CustomTypeSpec{
   final Type dartType;
