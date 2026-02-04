@@ -17,7 +17,7 @@
 
 [package]
 name = "fory-benchmarks"
-version = "0.15.0-pre"
+version = "0.15.0-alpha.0"
 edition = "2021"
 
 [[bin]]

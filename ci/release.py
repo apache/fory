@@ -464,7 +464,8 @@ def _update_pubspec_version(lines, v: str):
 def _normalize_python_version(v: str) -> str:
     v = v.strip()
     v = re.sub(r"(?i)-?snapshot$", ".dev0", v)
-    v = re.sub(r"(?i)-dev(\d*)$", r".dev\1", v)
+    v = re.sub(r"(?i)-dev(\d+)$", r".dev\1", v)
+    v = re.sub(r"(?i)-dev$", ".dev0", v)
     v = v.replace("-alpha", "a")
     v = v.replace("-beta", "b")
     v = v.replace("-rc", "rc")
@@ -486,7 +487,20 @@ def _normalize_go_version(v: str) -> str:
     v = v.strip()
     if v.startswith("v"):
         v = v[1:]
-    v = re.sub(r"(?i)-snapshot$", "", v)
+    v = re.sub(r"-(alpha|beta|rc)(\d+)$", r"-\1.\2", v)
+    if re.search(r"(?i)-(alpha|beta)\.0$", v):
+        return f"v{v}"
+    if re.search(r"(?i)-(alpha|beta|rc)\.\d+$", v):
+        return f"v{v}"
+    if re.search(r"(?i)-pre$", v):
+        return f"v{v}"
+    dev_match = re.search(r"(?i)(?:-dev|\.dev)(\d+)$", v)
+    if dev_match:
+        base = re.sub(r"(?i)(?:-dev|\.dev)\d+$", "", v)
+        return f"v{base}-alpha.{dev_match.group(1)}"
+    if re.search(r"(?i)(-snapshot|\.dev|-dev)$", v):
+        base = re.sub(r"(?i)(-snapshot|\.dev|-dev)$", "", v)
+        return f"v{base}-alpha.0"
     return f"v{v}"
 
 
@@ -512,31 +526,32 @@ def _update_js_version(lines, v: str):
 
 def _normalize_js_version(v: str) -> str:
     v = v.strip()
-    snapshot_match = re.search(r"(?i)(?:-snapshot|\.dev(\d*)?)$", v)
-    if snapshot_match:
-        suffix = ""
-        if snapshot_match.group(1):
-            suffix = f".{snapshot_match.group(1)}"
-        v = re.sub(r"(?i)(?:-snapshot|\.dev\d*)$", f"-dev{suffix}", v)
+    v = re.sub(r"-(alpha|beta|rc)(\d+)$", r"-\1.\2", v)
+    dev_match = re.search(r"(?i)(?:-dev|\\.dev)(\\d+)$", v)
+    if dev_match:
+        v = re.sub(r"(?i)(?:-dev|\\.dev)\\d+$", f"-alpha.{dev_match.group(1)}", v)
+        return v
+    if re.search(r"(?i)(-snapshot|\\.dev|-dev)$", v):
+        v = re.sub(r"(?i)(-snapshot|\\.dev|-dev)$", "-alpha.0", v)
     return v
 
 
 def _normalize_rust_version(v: str) -> str:
     v = v.strip()
+    v = re.sub(r"-(alpha|beta|rc)(\d+)$", r"-\1.\2", v)
     if re.search(r"(?i)-(alpha|beta)\.0$", v):
+        return v
+    if re.search(r"(?i)-(alpha|beta|rc)\.\d+$", v):
         return v
     if re.search(r"(?i)-pre$", v):
         return v
-    if re.search(
-        r"(?i)(-snapshot|\.dev\d*|-dev\d*|-(alpha|beta|rc)(\.\d+|\d+)?)$",
-        v,
-    ):
-        base = re.sub(
-            r"(?i)(-snapshot|\.dev\d*|-dev\d*|-(alpha|beta|rc)(\.\d+|\d+)?)$",
-            "",
-            v,
-        )
-        return f"{base}-pre"
+    dev_match = re.search(r"(?i)(?:-dev|\\.dev)(\\d+)$", v)
+    if dev_match:
+        base = re.sub(r"(?i)(?:-dev|\\.dev)\\d+$", "", v)
+        return f"{base}-alpha.{dev_match.group(1)}"
+    if re.search(r"(?i)(-snapshot|\\.dev|-dev)$", v):
+        base = re.sub(r"(?i)(-snapshot|\\.dev|-dev)$", "", v)
+        return f"{base}-alpha.0"
     return v
 
 

@@ -24,13 +24,12 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish-rust:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory'
-    env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
@@ -43,6 +42,17 @@ jobs:
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
           python ci/release.py bump_version -l rust -version "$VERSION"
+
+      - name: Authenticate to crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec
+
+      - name: Export crates.io token
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          echo "CARGO_REGISTRY_TOKEN=${{ steps.crates-io-auth.outputs.token }}" >> "$GITHUB_ENV"
 
       - name: Publish fory-core
         shell: bash
