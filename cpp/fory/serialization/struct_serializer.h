@@ -75,7 +75,7 @@ namespace detail {
 
 /// Helper to check if a TypeId represents a primitive type.
 /// Per xlang spec, primitive types are: bool, int8-64, var_int32/64,
-/// sli_int64, float16/32/64. For native mode (xlang=false), also includes
+/// sli_int64, float8/16/bfloat16/32/64. For native mode (xlang=false), also includes
 /// unsigned types: u8-64. All other types (string, list, set, map, struct,
 /// enum, etc.) are non-primitive and require ref flags.
 inline constexpr bool is_primitive_type_id(TypeId type_id) {
@@ -83,7 +83,8 @@ inline constexpr bool is_primitive_type_id(TypeId type_id) {
          type_id == TypeId::INT16 || type_id == TypeId::INT32 ||
          type_id == TypeId::VARINT32 || type_id == TypeId::INT64 ||
          type_id == TypeId::VARINT64 || type_id == TypeId::TAGGED_INT64 ||
-         type_id == TypeId::FLOAT16 || type_id == TypeId::FLOAT32 ||
+         type_id == TypeId::FLOAT8 || type_id == TypeId::FLOAT16 ||
+         type_id == TypeId::BFLOAT16 || type_id == TypeId::FLOAT32 ||
          type_id == TypeId::FLOAT64 ||
          // Unsigned types
          type_id == TypeId::UINT8 || type_id == TypeId::UINT16 ||
@@ -1030,10 +1031,12 @@ template <typename T> struct CompileTimeFieldHelpers {
     case TypeId::BOOL:
     case TypeId::INT8:
     case TypeId::UINT8:
+    case TypeId::FLOAT8:
       return 1;
     case TypeId::INT16:
     case TypeId::UINT16:
     case TypeId::FLOAT16:
+    case TypeId::BFLOAT16:
       return 2;
     case TypeId::INT32:
     case TypeId::VARINT32:
@@ -1249,10 +1252,12 @@ template <typename T> struct CompileTimeFieldHelpers {
         switch (static_cast<TypeId>(tid)) {
         case TypeId::BOOL:
         case TypeId::INT8:
+        case TypeId::FLOAT8:
           total += 1;
           break;
         case TypeId::INT16:
         case TypeId::FLOAT16:
+        case TypeId::BFLOAT16:
           total += 2;
           break;
         case TypeId::INT32:
@@ -1313,7 +1318,8 @@ template <typename T> struct CompileTimeFieldHelpers {
       compute_primitive_field_count();
 
   /// Check if a type_id represents a fixed-size primitive (not varint)
-  /// Includes bool, int8, int16, int32, int64, float16, float32, float64
+  /// Includes bool, int8, int16, int32, int64, float8, float16, bfloat16,
+  /// float32, float64
   static constexpr bool is_fixed_size_primitive(uint32_t tid) {
     switch (static_cast<TypeId>(tid)) {
     case TypeId::BOOL:
@@ -1321,7 +1327,9 @@ template <typename T> struct CompileTimeFieldHelpers {
     case TypeId::INT16:
     case TypeId::INT32:
     case TypeId::INT64:
+    case TypeId::FLOAT8:
     case TypeId::FLOAT16:
+    case TypeId::BFLOAT16:
     case TypeId::FLOAT32:
     case TypeId::FLOAT64:
       return true;
@@ -1361,9 +1369,11 @@ template <typename T> struct CompileTimeFieldHelpers {
     switch (static_cast<TypeId>(tid)) {
     case TypeId::BOOL:
     case TypeId::INT8:
+    case TypeId::FLOAT8:
       return 1;
     case TypeId::INT16:
     case TypeId::FLOAT16:
+    case TypeId::BFLOAT16:
       return 2;
     case TypeId::INT32:
       return 4;
@@ -1480,11 +1490,13 @@ template <typename T> struct CompileTimeFieldHelpers {
         case TypeId::BOOL:
         case TypeId::INT8:
         case TypeId::UINT8:
+        case TypeId::FLOAT8:
           total += 1;
           break;
         case TypeId::INT16:
         case TypeId::UINT16:
         case TypeId::FLOAT16:
+        case TypeId::BFLOAT16:
           total += 2;
           break;
         case TypeId::INT32:

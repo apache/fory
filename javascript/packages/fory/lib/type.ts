@@ -52,80 +52,88 @@ export const TypeId = {
   VAR_UINT64: 14,
   // a 64-bit unsigned integer which uses fory hybrid encoding.
   TAGGED_UINT64: 15,
+  // an 8-bit floating point number.
+  FLOAT8: 16,
   // a 16-bit floating point number.
-  FLOAT16: 16,
+  FLOAT16: 17,
+  // a 16-bit brain floating point number.
+  BFLOAT16: 18,
   // a 32-bit floating point number.
-  FLOAT32: 17,
+  FLOAT32: 19,
   // a 64-bit floating point number including NaN and Infinity.
-  FLOAT64: 18,
+  FLOAT64: 20,
   // a text string encoded using Latin1/UTF16/UTF-8 encoding.
-  STRING: 19,
+  STRING: 21,
   // a sequence of objects.
-  LIST: 20,
+  LIST: 22,
   // an unordered set of unique elements.
-  SET: 21,
+  SET: 23,
   // a map of key-value pairs.
-  MAP: 22,
+  MAP: 24,
   // a data type consisting of a set of named values.
-  ENUM: 23,
+  ENUM: 25,
   // an enum whose value will be serialized as the registered name.
-  NAMED_ENUM: 24,
+  NAMED_ENUM: 26,
   // a morphic(final) type serialized by Fory Struct serializer.
-  STRUCT: 25,
+  STRUCT: 27,
   // a morphic(final) type serialized by Fory compatible Struct serializer.
-  COMPATIBLE_STRUCT: 26,
+  COMPATIBLE_STRUCT: 28,
   // a `struct` whose type mapping will be encoded as a name.
-  NAMED_STRUCT: 27,
+  NAMED_STRUCT: 29,
   // a `compatible_struct` whose type mapping will be encoded as a name.
-  NAMED_COMPATIBLE_STRUCT: 28,
+  NAMED_COMPATIBLE_STRUCT: 30,
   // a type which will be serialized by a customized serializer.
-  EXT: 29,
+  EXT: 31,
   // an `ext` type whose type mapping will be encoded as a name.
-  NAMED_EXT: 30,
+  NAMED_EXT: 32,
   // a tagged union type that can hold one of several alternative types.
-  UNION: 31,
+  UNION: 33,
   // a union value with embedded numeric union type ID.
-  TYPED_UNION: 32,
+  TYPED_UNION: 34,
   // a union value with embedded union type name/TypeDef.
-  NAMED_UNION: 33,
+  NAMED_UNION: 35,
   // represents an empty/unit value with no data.
-  NONE: 34,
+  NONE: 36,
   // an absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
-  DURATION: 35,
+  DURATION: 37,
   // a point in time, independent of any calendar/timezone, as a count of nanoseconds.
-  TIMESTAMP: 36,
+  TIMESTAMP: 38,
   // a naive date without timezone.
-  DATE: 37,
+  DATE: 39,
   // exact decimal value represented as an integer value in two's complement.
-  DECIMAL: 38,
+  DECIMAL: 40,
   // a variable-length array of bytes.
-  BINARY: 39,
+  BINARY: 41,
   // a multidimensional array which every sub-array can have different sizes but all have the same type.
-  ARRAY: 40,
+  ARRAY: 42,
   // one dimensional bool array.
-  BOOL_ARRAY: 41,
+  BOOL_ARRAY: 43,
   // one dimensional int8 array.
-  INT8_ARRAY: 42,
+  INT8_ARRAY: 44,
   // one dimensional int16 array.
-  INT16_ARRAY: 43,
+  INT16_ARRAY: 45,
   // one dimensional int32 array.
-  INT32_ARRAY: 44,
+  INT32_ARRAY: 46,
   // one dimensional int64 array.
-  INT64_ARRAY: 45,
+  INT64_ARRAY: 47,
   // one dimensional uint8 array.
-  UINT8_ARRAY: 46,
+  UINT8_ARRAY: 48,
   // one dimensional uint16 array.
-  UINT16_ARRAY: 47,
+  UINT16_ARRAY: 49,
   // one dimensional uint32 array.
-  UINT32_ARRAY: 48,
+  UINT32_ARRAY: 50,
   // one dimensional uint64 array.
-  UINT64_ARRAY: 49,
+  UINT64_ARRAY: 51,
+  // one dimensional float8 array.
+  FLOAT8_ARRAY: 52,
   // one dimensional float16 array.
-  FLOAT16_ARRAY: 50,
+  FLOAT16_ARRAY: 53,
+  // one dimensional bfloat16 array.
+  BFLOAT16_ARRAY: 54,
   // one dimensional float32 array.
-  FLOAT32_ARRAY: 51,
+  FLOAT32_ARRAY: 55,
   // one dimensional float64 array.
-  FLOAT64_ARRAY: 52,
+  FLOAT64_ARRAY: 56,
 
   // BOUND id remains at 64
   BOUND: 64,

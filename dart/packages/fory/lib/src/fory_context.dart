@@ -25,7 +25,7 @@ import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_pool.dart';
 import 'package:fory/src/const/dart_type.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 class ForyContext {
   // Cannot be static because TypeInfo contains the Ser field

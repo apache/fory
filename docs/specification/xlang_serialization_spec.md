@@ -51,7 +51,9 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - uint64: a 64-bit unsigned integer.
 - var_uint64: a 64-bit unsigned integer which use fory PVL encoding.
 - tagged_uint64: a 64-bit unsigned integer which use fory Hybrid encoding.
+- float8: an 8-bit floating point number.
 - float16: a 16-bit floating point number.
+- bfloat16: a 16-bit brain floating point number.
 - float32: a 32-bit floating point number.
 - float64: a 64-bit floating point number including NaN and Infinity.
 - string: a text string encoded using Latin1/UTF16/UTF-8 encoding.
@@ -81,7 +83,9 @@ This specification defines the Fory xlang binary format. The format is dynamic r
   - int16_array: one dimensional int16 array.
   - int32_array: one dimensional int32 array.
   - int64_array: one dimensional int64 array.
+  - float8_array: one dimensional float8 array.
   - float16_array: one dimensional half_float_16 array.
+  - bfloat16_array: one dimensional bfloat16 array.
   - float32_array: one dimensional float32 array.
   - float64_array: one dimensional float64 array.
 - union: a tagged union type that can hold one of several alternative types. The active alternative is identified by an index.
@@ -150,10 +154,9 @@ Such information can be provided in other languages too:
 
 ### Type ID
 
-All internal data types use an 8-bit internal ID (`0~255`, with `0~50` defined here). Users can
-register types by numeric ID (`0~4095` in current implementations). User IDs are encoded together
-with the internal type ID:
-`(user_type_id << 8) | internal_type_id`.
+All internal data types use an 8-bit internal ID (`0~255`, with `0~56` defined here). Users can
+register types by numeric ID (`0~0xFFFFFFFE` in current implementations). User IDs are encoded
+separately from the internal type ID; there is no bit shifting/packing.
 
 Named types (`NAMED_*`) do not embed a user ID; their names are carried in metadata instead.
 
@@ -177,66 +180,68 @@ Named types (`NAMED_*`) do not embed a user ID; their names are carried in metad
 | 13      | UINT64                  | 64-bit unsigned integer                             |
 | 14      | VAR_UINT64              | Variable-length encoded 64-bit unsigned integer     |
 | 15      | TAGGED_UINT64           | Hybrid encoded 64-bit unsigned integer              |
-| 16      | FLOAT16                 | 16-bit floating point (half precision)              |
-| 17      | FLOAT32                 | 32-bit floating point (single precision)            |
-| 18      | FLOAT64                 | 64-bit floating point (double precision)            |
-| 19      | STRING                  | UTF-8/UTF-16/Latin1 encoded string                  |
-| 20      | LIST                    | Ordered collection (List, Array, Vector)            |
-| 21      | SET                     | Unordered collection of unique elements             |
-| 22      | MAP                     | Key-value mapping                                   |
-| 23      | ENUM                    | Enum registered by numeric ID                       |
-| 24      | NAMED_ENUM              | Enum registered by namespace + type name            |
-| 25      | STRUCT                  | Struct registered by numeric ID (schema consistent) |
-| 26      | COMPATIBLE_STRUCT       | Struct with schema evolution support (by ID)        |
-| 27      | NAMED_STRUCT            | Struct registered by namespace + type name          |
-| 28      | NAMED_COMPATIBLE_STRUCT | Struct with schema evolution (by name)              |
-| 29      | EXT                     | Extension type registered by numeric ID             |
-| 30      | NAMED_EXT               | Extension type registered by namespace + type name  |
-| 31      | UNION                   | Union value, schema identity not embedded           |
-| 32      | TYPED_UNION             | Union with embedded numeric union type ID           |
-| 33      | NAMED_UNION             | Union with embedded union type name/TypeDef         |
-| 34      | NONE                    | Empty/unit type (no data)                           |
-| 35      | DURATION                | Time duration (seconds + nanoseconds)               |
-| 36      | TIMESTAMP               | Point in time (seconds + nanoseconds since epoch)   |
-| 37      | DATE                    | Date without timezone (days since epoch)            |
-| 38      | DECIMAL                 | Arbitrary precision decimal                         |
-| 39      | BINARY                  | Raw binary data                                     |
-| 40      | ARRAY                   | Generic array type                                  |
-| 41      | BOOL_ARRAY              | 1D boolean array                                    |
-| 42      | INT8_ARRAY              | 1D int8 array                                       |
-| 43      | INT16_ARRAY             | 1D int16 array                                      |
-| 44      | INT32_ARRAY             | 1D int32 array                                      |
-| 45      | INT64_ARRAY             | 1D int64 array                                      |
-| 46      | UINT8_ARRAY             | 1D uint8 array                                      |
-| 47      | UINT16_ARRAY            | 1D uint16 array                                     |
-| 48      | UINT32_ARRAY            | 1D uint32 array                                     |
-| 49      | UINT64_ARRAY            | 1D uint64 array                                     |
-| 50      | FLOAT16_ARRAY           | 1D float16 array                                    |
-| 51      | FLOAT32_ARRAY           | 1D float32 array                                    |
-| 52      | FLOAT64_ARRAY           | 1D float64 array                                    |
+| 16      | FLOAT8                  | 8-bit floating point (float8)                       |
+| 17      | FLOAT16                 | 16-bit floating point (half precision)              |
+| 18      | BFLOAT16                | 16-bit brain floating point                         |
+| 19      | FLOAT32                 | 32-bit floating point (single precision)            |
+| 20      | FLOAT64                 | 64-bit floating point (double precision)            |
+| 21      | STRING                  | UTF-8/UTF-16/Latin1 encoded string                  |
+| 22      | LIST                    | Ordered collection (List, Array, Vector)            |
+| 23      | SET                     | Unordered collection of unique elements             |
+| 24      | MAP                     | Key-value mapping                                   |
+| 25      | ENUM                    | Enum registered by numeric ID                       |
+| 26      | NAMED_ENUM              | Enum registered by namespace + type name            |
+| 27      | STRUCT                  | Struct registered by numeric ID (schema consistent) |
+| 28      | COMPATIBLE_STRUCT       | Struct with schema evolution support (by ID)        |
+| 29      | NAMED_STRUCT            | Struct registered by namespace + type name          |
+| 30      | NAMED_COMPATIBLE_STRUCT | Struct with schema evolution (by name)              |
+| 31      | EXT                     | Extension type registered by numeric ID             |
+| 32      | NAMED_EXT               | Extension type registered by namespace + type name  |
+| 33      | UNION                   | Union value, schema identity not embedded           |
+| 34      | TYPED_UNION             | Union with embedded numeric union type ID           |
+| 35      | NAMED_UNION             | Union with embedded union type name/TypeDef         |
+| 36      | NONE                    | Empty/unit type (no data)                           |
+| 37      | DURATION                | Time duration (seconds + nanoseconds)               |
+| 38      | TIMESTAMP               | Point in time (seconds + nanoseconds since epoch)   |
+| 39      | DATE                    | Date without timezone (days since epoch)            |
+| 40      | DECIMAL                 | Arbitrary precision decimal                         |
+| 41      | BINARY                  | Raw binary data                                     |
+| 42      | ARRAY                   | Generic array type                                  |
+| 43      | BOOL_ARRAY              | 1D boolean array                                    |
+| 44      | INT8_ARRAY              | 1D int8 array                                       |
+| 45      | INT16_ARRAY             | 1D int16 array                                      |
+| 46      | INT32_ARRAY             | 1D int32 array                                      |
+| 47      | INT64_ARRAY             | 1D int64 array                                      |
+| 48      | UINT8_ARRAY             | 1D uint8 array                                      |
+| 49      | UINT16_ARRAY            | 1D uint16 array                                     |
+| 50      | UINT32_ARRAY            | 1D uint32 array                                     |
+| 51      | UINT64_ARRAY            | 1D uint64 array                                     |
+| 52      | FLOAT8_ARRAY            | 1D float8 array                                     |
+| 53      | FLOAT16_ARRAY           | 1D float16 array                                    |
+| 54      | BFLOAT16_ARRAY          | 1D bfloat16 array                                   |
+| 55      | FLOAT32_ARRAY           | 1D float32 array                                    |
+| 56      | FLOAT64_ARRAY           | 1D float64 array                                    |
 
 #### Type ID Encoding for User Types
 
-When registering user types (struct/ext/enum/union), the full type ID combines user ID and internal type ID:
-
-```
-Full Type ID = (user_type_id << 8) | internal_type_id
-```
+When registering user types (struct/ext/enum/union), the internal type ID is written as the 8-bit
+kind. The user type ID is written separately as an unsigned varint32 (small7); there is no bit
+shift or packing.
 
 **Examples:**
 
-| User ID | Type              | Internal ID | Full Type ID     | Decimal |
-| ------- | ----------------- | ----------- | ---------------- | ------- |
-| 0       | STRUCT            | 25          | `(0 << 8) \| 25` | 25      |
-| 0       | ENUM              | 23          | `(0 << 8) \| 23` | 23      |
-| 1       | STRUCT            | 25          | `(1 << 8) \| 25` | 281     |
-| 1       | COMPATIBLE_STRUCT | 26          | `(1 << 8) \| 26` | 282     |
-| 2       | NAMED_STRUCT      | 27          | `(2 << 8) \| 27` | 539     |
+| User ID | Type              | Internal ID | Encoded User ID | Decimal |
+| ------- | ----------------- | ----------- | --------------- | ------- |
+| 0       | STRUCT            | 27          | 0               | 0       |
+| 0       | ENUM              | 25          | 0               | 0       |
+| 1       | STRUCT            | 27          | 1               | 1       |
+| 1       | COMPATIBLE_STRUCT | 28          | 1               | 1       |
+| 2       | NAMED_STRUCT      | 29          | 2               | 2       |
 
 When reading type IDs:
 
-- Extract internal type: `internal_type_id = full_type_id & 0xFF`
-- Extract user type ID: `user_type_id = full_type_id >> 8`
+- Read internal type ID from the type ID field.
+- If the internal type is a user-registered kind, read `user_type_id` as varuint32.
 
 ### Type mapping
 
@@ -401,8 +406,8 @@ followed by optional type-specific metadata.
 
 - The type ID is written as an unsigned varint32 (small7).
 - Internal types use their internal type ID directly (low 8 bits).
-- User-registered types use a full type ID: `(user_type_id << 8) | internal_type_id`.
-  - `user_type_id` is a numeric ID (0-4095 in current implementations).
+- User-registered types write the internal type ID, then write `user_type_id` as varuint32.
+  - `user_type_id` is a numeric ID (0~0xFFFFFFFE in current implementations).
   - `internal_type_id` is one of `ENUM`, `STRUCT`, `COMPATIBLE_STRUCT`, `EXT`, or `UNION`.
 - Named types do not embed a user ID. They use `NAMED_*` internal type IDs and carry a namespace
   and type name (or shared TypeDef) instead.
@@ -912,6 +917,24 @@ else:
 
 Note: TAGGED_INT64 uses 30 bits + sign for values [-2^30, 2^30-1], while TAGGED_UINT64 uses full 31 bits for unsigned values [0, 2^31-1].
 
+#### float8
+
+- size: 1 byte
+- format:
+  - float8 has 4 kinds: float8 kind enum: float8_e4m3fn, float8_e4m3fnuz, float8_e5m2, float8_e5m2fnuz
+  - when serialize as field, write raw 8 bits as one byte directly
+  - when serialize as an object: write type kind as a byte, then write value byte
+
+#### float16
+
+- size: 2 bytes
+- format: encode the specified floating-point value according to the IEEE 754 standard binary16 format, preserving NaN values, then write as binary by little endian order.
+
+#### bfloat16
+
+- size: 2 bytes
+- format: encode the specified floating-point value according to the IEEE 754 standard bfloat16 format, preserving NaN values, then write as binary by little endian order.
+
 #### float32
 
 - size: 4 byte
@@ -1111,6 +1134,11 @@ then copy the whole buffer into the stream.
 
 Such serialization won't compress the array. If users want to compress primitive array, users need to register custom
 serializers for such types or mark it as list type.
+
+Float array specifics:
+
+- float16/bfloat16 array: write `varuint` length, then raw bytes in little endian order.
+- float8 array: write element type kind as a byte, then `varuint` length, then raw bytes in little endian order.
 
 #### Multi-dimensional arrays
 
@@ -1384,7 +1412,7 @@ This is required even for primitives so unknown alternatives can be skipped safe
 | ... outer ref meta ... | embedded type id | case_id | case_value |
 ```
 
-embedded type id: `type_id=(user_type_id << 8) | TYPED_UNION(32)`
+embedded type id: `type_id=user_type_id` (internal type is `TYPED_UNION`)
 
 **NAMED_UNION (schema embedded by name/typedef)**
 
@@ -1395,7 +1423,7 @@ embedded type id: `type_id=(user_type_id << 8) | TYPED_UNION(32)`
 #### Decoding rules
 
 1. Read outer ref meta and `type_id`.
-2. If `TYPED_UNION`, resolve the union schema from the full type ID.
+2. If `TYPED_UNION`, read `user_type_id` and resolve the union schema by ID.
 3. If `NAMED_UNION`, read named type meta and resolve the union schema.
 4. Read `case_id`.
 5. Read `case_value` as Any-style value (ref meta + type meta + value).
@@ -1581,7 +1609,7 @@ Meta strings are required for enum and struct serialization (encoding field name
     - [ ] Support registration by numeric ID
     - [ ] Support registration by namespace + type name
     - [ ] Maintain type → serializer mapping
-    - [ ] Generate type IDs: `(user_id << 8) | internal_type_id`
+    - [ ] Generate type IDs: write internal type ID, then `user_type_id` as varuint32
 
 14. **Field Ordering**
     - [ ] Implement the spec-defined grouping and ordering (primitive/boxed/built-in, collections/maps, other)

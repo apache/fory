@@ -61,139 +61,175 @@ enum ObjType {
   /// sli_int64: a 64-bit signed integer which uses fory SLI encoding.
   SLI_INT64(8, true), // 8
 
+  /// Unsigned 8-bit integer
+  UINT8(9, true), // 9
+
+  /// Unsigned 16-bit little-endian integer
+  UINT16(10, true), // 10
+
+  /// Unsigned 32-bit little-endian integer
+  UINT32(11, true), // 11
+
+  /// var_uint32: a 32-bit unsigned integer which uses fory var_uint32 encoding.
+  VAR_UINT32(12, true), // 12
+
+  /// Unsigned 64-bit little-endian integer
+  UINT64(13, true), // 13
+
+  /// var_uint64: a 64-bit unsigned integer which uses fory var_uint64 encoding.
+  VAR_UINT64(14, true), // 14
+
+  /// tagged_uint64: a 64-bit unsigned integer which uses fory tagged var_uint64 encoding.
+  TAGGED_UINT64(15, true), // 15
+
+  /// float8: an 8-bit floating point number.
+  FLOAT8(16, true), // 16
+
   /// float16: a 16-bit floating point number.
-  FLOAT16(9, true), // 9
+  FLOAT16(17, true), // 17
+
+  /// bfloat16: a 16-bit brain floating point number.
+  BFLOAT16(18, true), // 18
 
   // x
   /// float32: a 32-bit floating point number.
-  FLOAT32(10, true), // 10
+  FLOAT32(19, true), // 19
 
   // x
   /// float64: a 64-bit floating point number including NaN and Infinity.
-  FLOAT64(11, true), // 11
+  FLOAT64(20, true), // 20
 
   // x
   /// string: a text string encoded using Latin1/UTF16/UTF-8 encoding.
-  STRING(12, true), // 12
-
-  // x
-  /// enum: a data type consisting of a set of named values.
-  ENUM(13, true), // 13
-
-  /// named_enum: an enum whose value will be serialized as the registered name.
-  NAMED_ENUM(14, true), // 14
-
-  /// A dynamic(final) type serialized by Fory Struct serializer. i.e. it doesn't have subclasses.
-  /// Suppose we're deserializing {@code List<SomeClass>}, we can save dynamic serializer dispatch
-  /// since `SomeClass` is dynamic(final).
-  STRUCT(15, false), // 15
-
-  /// A dynamic(final) type serialized by Fory compatible Struct serializer.
-  COMPATIBLE_STRUCT(16, false), // 16
-
-  // x
-  /// A `struct` whose type mapping will be encoded as a name.
-  NAMED_STRUCT(17, false), // 17
-
-  /// A `compatible_struct` whose type mapping will be encoded as a name.
-  NAMED_COMPATIBLE_STRUCT(18, false), // 18
-
-  /// A type which will be serialized by a customized serializer.
-  EXT(19, false), // 19
-
-  /// An `ext` type whose type mapping will be encoded as a name.
-  NAMED_EXT(20, false), // 20
+  STRING(21, true), // 21
 
   // x
   /// A sequence of objects.
-  LIST(21, false), // 21
+  LIST(22, false), // 22
 
   // x
   /// An unordered set of unique elements.
-  SET(22, false), // 22
+  SET(23, false), // 23
 
   // x
   /// A map of key-value pairs. Mutable types such as `list/map/set/array/tensor/arrow` are not
   /// allowed as key of map.
-  MAP(23, false), // 23
+  MAP(24, false), // 24
+
+  // x
+  /// enum: a data type consisting of a set of named values.
+  ENUM(25, true), // 25
+
+  /// named_enum: an enum whose value will be serialized as the registered name.
+  NAMED_ENUM(26, true), // 26
+
+  /// A dynamic(final) type serialized by Fory Struct serializer. i.e. it doesn't have subclasses.
+  /// Suppose we're deserializing {@code List<SomeClass>}, we can save dynamic serializer dispatch
+  /// since `SomeClass` is dynamic(final).
+  STRUCT(27, false), // 27
+
+  /// A dynamic(final) type serialized by Fory compatible Struct serializer.
+  COMPATIBLE_STRUCT(28, false), // 28
+
+  // x
+  /// A `struct` whose type mapping will be encoded as a name.
+  NAMED_STRUCT(29, false), // 29
+
+  /// A `compatible_struct` whose type mapping will be encoded as a name.
+  NAMED_COMPATIBLE_STRUCT(30, false), // 30
+
+  /// A type which will be serialized by a customized serializer.
+  EXT(31, false), // 31
+
+  /// An `ext` type whose type mapping will be encoded as a name.
+  NAMED_EXT(32, false), // 32
+
+  /// A tagged union value whose schema identity is not embedded.
+  UNION(33, false), // 33
+
+  /// A union value with embedded numeric union type ID.
+  TYPED_UNION(34, false), // 34
+
+  /// A union value with embedded union type name/TypeDef.
+  NAMED_UNION(35, false), // 35
+
+  /// Represents an empty/unit value with no data (e.g., for empty union alternatives).
+  NONE(36, true), // 36
 
   /// An absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
-  DURATION(24, true), // 24
+  DURATION(37, true), // 37
 
   // TODO: here time
   // x
   /// A point in time, independent of any calendar/timezone, as a count of nanoseconds. The count is
   /// relative to an epoch at UTC midnight on January 1, 1970.
-  TIMESTAMP(25, true), // 25
+  TIMESTAMP(38, true), // 38
 
   // TODO: here time
   /// A naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1,
   /// 1970.
-  DATE(26, true), // 26
+  DATE(39, true), // 39
 
   /// Exact decimal value represented as an integer value in two's complement.
-  DECIMAL(27, true), // 27
+  DECIMAL(40, true), // 40
 
   // x
   /// A variable-length array of bytes.
-  BINARY(28, true), // 28
+  BINARY(41, true), // 41
 
   /// x
   /// A multidimensional array where every sub-array can have different sizes but all have the same
   /// type. Only numeric components allowed. Other arrays will be taken as List. The implementation
   /// should support interoperability between array and list.
-  ARRAY(29, false), // 29
+  ARRAY(42, false), // 42
 
   /// One dimensional bool array.
-  BOOL_ARRAY(30, true), // 30
+  BOOL_ARRAY(43, true), // 43
 
   /// One dimensional int8 array.
-  INT8_ARRAY(31, true), // 31
+  INT8_ARRAY(44, true), // 44
 
   /// One dimensional int16 array.
-  INT16_ARRAY(32, true), // 32
+  INT16_ARRAY(45, true), // 45
 
   /// One dimensional int32 array.
-  INT32_ARRAY(33, true), // 33
+  INT32_ARRAY(46, true), // 46
 
   /// One dimensional int64 array.
-  INT64_ARRAY(34, true), // 34
+  INT64_ARRAY(47, true), // 47
+
+  /// One dimensional uint8 array.
+  UINT8_ARRAY(48, true), // 48
+
+  /// One dimensional uint16 array.
+  UINT16_ARRAY(49, true), // 49
+
+  /// One dimensional uint32 array.
+  UINT32_ARRAY(50, true), // 50
+
+  /// One dimensional uint64 array.
+  UINT64_ARRAY(51, true), // 51
+
+  /// One dimensional float8 array.
+  FLOAT8_ARRAY(52, true), // 52
 
   /// One dimensional half_float_16 array.
-  FLOAT16_ARRAY(35, true), // 35
+  FLOAT16_ARRAY(53, true), // 53
+
+  /// One dimensional bfloat16 array.
+  BFLOAT16_ARRAY(54, true), // 54
 
   /// One dimensional float32 array.
-  FLOAT32_ARRAY(36, true), // 36
+  FLOAT32_ARRAY(55, true), // 55
 
   /// One dimensional float64 array.
-  FLOAT64_ARRAY(37, true), // 37
+  FLOAT64_ARRAY(56, true), // 56
 
   /// An (arrow record batch) object.
-  ARROW_RECORD_BATCH(38, false), // 38
+  ARROW_RECORD_BATCH(57, false), // 57
 
   /// An (arrow table) object.
-  ARROW_TABLE(39, false), // 39
-
-  /// Unsigned 8-bit integer
-  UINT8(40, true), // 40
-
-  /// Unsigned 16-bit little-endian integer
-  UINT16(41, true), // 41
-
-  /// Unsigned 32-bit little-endian integer
-  UINT32(42, true), // 42
-
-  /// var_uint32: a 32-bit unsigned integer which uses fory var_uint32 encoding.
-  VAR_UINT32(43, true), // 43
-
-  /// Unsigned 64-bit little-endian integer
-  UINT64(44, true), // 44
-
-  /// var_uint64: a 64-bit unsigned integer which uses fory var_uint64 encoding.
-  VAR_UINT64(45, true), // 45
-
-  /// tagged_uint64: a 64-bit unsigned integer which uses fory tagged var_uint64 encoding.
-  TAGGED_UINT64(46, true); // 46
+  ARROW_TABLE(58, false); // 58
 
   final int id;
   final bool independent;
@@ -202,7 +238,7 @@ enum ObjType {
 
   static ObjType? fromId(int id) {
     // The current implementation is linear, so it's simpler here. If the id and ordinal become irregular in the future, this won't work.
-    if (id >= 1 && id <= 46) return ObjType.values[id];
+    if (id >= 0 && id < ObjType.values.length) return ObjType.values[id];
     return null;
   }
 

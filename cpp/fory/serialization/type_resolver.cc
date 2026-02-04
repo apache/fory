@@ -727,10 +727,12 @@ int32_t get_primitive_type_size(uint32_t type_id) {
   case TypeId::BOOL:
   case TypeId::INT8:
   case TypeId::UINT8:
+  case TypeId::FLOAT8:
     return 1;
   case TypeId::INT16:
   case TypeId::UINT16:
   case TypeId::FLOAT16:
+  case TypeId::BFLOAT16:
     return 2;
   case TypeId::INT32:
   case TypeId::VARINT32:
@@ -1468,7 +1470,9 @@ void TypeResolver::register_builtin_types() {
   register_type_id_only(TypeId::UINT64);
   register_type_id_only(TypeId::VAR_UINT64);
   register_type_id_only(TypeId::TAGGED_UINT64);
+  register_type_id_only(TypeId::FLOAT8);
   register_type_id_only(TypeId::FLOAT16);
+  register_type_id_only(TypeId::BFLOAT16);
   register_type_id_only(TypeId::FLOAT32);
   register_type_id_only(TypeId::FLOAT64);
   register_type_id_only(TypeId::STRING);
@@ -1483,7 +1487,9 @@ void TypeResolver::register_builtin_types() {
   register_type_id_only(TypeId::UINT16_ARRAY);
   register_type_id_only(TypeId::UINT32_ARRAY);
   register_type_id_only(TypeId::UINT64_ARRAY);
+  register_type_id_only(TypeId::FLOAT8_ARRAY);
   register_type_id_only(TypeId::FLOAT16_ARRAY);
+  register_type_id_only(TypeId::BFLOAT16_ARRAY);
   register_type_id_only(TypeId::FLOAT32_ARRAY);
   register_type_id_only(TypeId::FLOAT64_ARRAY);
   register_type_id_only(TypeId::BINARY);

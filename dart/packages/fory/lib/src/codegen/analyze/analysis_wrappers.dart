@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 typedef TypeDecision = ({InterfaceType type, bool forceNullable});

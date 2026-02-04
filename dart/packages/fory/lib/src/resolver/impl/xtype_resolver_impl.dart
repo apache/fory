@@ -20,7 +20,7 @@
 import 'dart:collection';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/collection/long_long_key.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/exception/registration_exception.dart' show UnregisteredTagException, UnregisteredTypeException;
 import 'package:fory/src/fory_context.dart';

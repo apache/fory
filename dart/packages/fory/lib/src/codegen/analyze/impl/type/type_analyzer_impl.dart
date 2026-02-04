@@ -29,7 +29,7 @@ import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/type_immutable.dart';
 import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 class TypeAnalyzerImpl extends TypeAnalyzer{
 
