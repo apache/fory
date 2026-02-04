@@ -239,8 +239,9 @@ describe("bool", () => {
     writeToFile(Buffer.concat(bfs));
   });
   test("test_cross_language_serializer", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define and register Color enum
     const Color = {
@@ -250,27 +251,24 @@ describe("bool", () => {
       White: 3,
     };
     fory.registerSerializer(Type.enum(101, Color));
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
     // Deserialize various data types from Java
     const deserializedData = [];
+    let cursor = 0;
     for (let i = 0; i < 28; i++) { // 28 serialized items from Java
-      const deserializedItem = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedItem = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedData.push(deserializedItem);
     }
 
-    const writer = new BinaryWriter();
-    writer.reserve(1024);
 
+    const bfs = []
     // Serialize each deserialized item back
     for (const item of deserializedData) {
       const serializedData = fory.serialize(item);
-      writer.buffer(serializedData);
+      bfs.push(serializedData);
     }
 
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
   test("test_simple_struct", () => {
     const fory = new Fory({
@@ -426,8 +424,9 @@ describe("bool", () => {
   });
 
   test("test_map", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(102, {
       name: Type.string()
@@ -438,26 +437,24 @@ describe("bool", () => {
 
     fory.registerSerializer(Item);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
     // Deserialize maps from Java
     const deserializedMaps = [];
+    let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 maps
-      const deserializedMap = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedMap = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedMaps.push(deserializedMap);
     }
 
-    const writer = new BinaryWriter();
-    writer.reserve(512);
-
+    const bfs = []
     // Serialize each deserialized map back
     for (const map of deserializedMaps) {
       const serializedData = fory.serialize(map);
-      writer.buffer(serializedData);
+      fory.deserialize(serializedData);
+      bfs.push(serializedData);
     }
 
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
 
   test("test_integer", () => {
@@ -505,8 +502,9 @@ describe("bool", () => {
   });
 
   test("test_item", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(102, {
       name: Type.string()
@@ -521,26 +519,27 @@ describe("bool", () => {
 
     // Deserialize items from Java
     const deserializedItems = [];
+    let cursor = 0;
     for (let i = 0; i < 3; i++) { // 3 items
-      const deserializedItem = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedItem = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedItems.push(deserializedItem);
     }
 
-    const writer = new BinaryWriter();
-    writer.reserve(256);
-
+    const bfs = []
     // Serialize each deserialized item back
     for (const item of deserializedItems) {
       const serializedData = fory.serialize(item);
-      writer.buffer(serializedData);
+      bfs.push(serializedData);
     }
 
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
 
   test("test_color", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define and register Color enum
     const Color = {
@@ -549,15 +548,17 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory.registerSerializer(Type.enum(101, Color));
+    const { serialize: enumSerialize } = fory.registerSerializer(Type.enum(101, Color));
 
     const reader = new BinaryReader({});
     reader.reset(content);
 
     // Deserialize colors from Java
     const deserializedColors = [];
+    let cursor = 0;
     for (let i = 0; i < 4; i++) { // 4 colors
-      const deserializedColor = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedColor = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedColors.push(deserializedColor);
     }
 
@@ -566,15 +567,16 @@ describe("bool", () => {
 
     // Serialize each deserialized color back
     for (const color of deserializedColors) {
-      const serializedData = fory.serialize(color);
+      const serializedData = enumSerialize(color);
       writer.buffer(serializedData);
     }
 
     writeToFile(writer.dump() as Buffer);
   });
   test("test_struct_with_list", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(201, {
       items: Type.array(Type.string())
@@ -589,8 +591,10 @@ describe("bool", () => {
 
     // Deserialize structs from Java
     const deserializedStructs = [];
+    let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 structs
-      const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedStruct = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedStructs.push(deserializedStruct);
     }
 
@@ -607,8 +611,9 @@ describe("bool", () => {
   });
 
   test("test_struct_with_map", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(202, {
       data: Type.map(Type.string(), Type.string())
@@ -623,8 +628,10 @@ describe("bool", () => {
 
     // Deserialize structs from Java
     const deserializedStructs = [];
+    let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 structs
-      const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedStruct = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedStructs.push(deserializedStruct);
     }
 
@@ -642,7 +649,9 @@ describe("bool", () => {
 
   test("test_skip_id_custom", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define empty wrapper for deserialization
     @Type.struct(104)
@@ -653,7 +662,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize empty wrapper from Java
-    const deserializedWrapper = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedWrapper = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized wrapper back
     const serializedData = fory.serialize(deserializedWrapper);
@@ -662,7 +673,9 @@ describe("bool", () => {
 
   test("test_skip_name_custom", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define empty wrapper for deserialization
     @Type.struct({ namespace: "", typeName: "my_wrapper" })
@@ -673,7 +686,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize empty wrapper from Java
-    const deserializedWrapper = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedWrapper = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized wrapper back
     const serializedData = fory.serialize(deserializedWrapper);
@@ -681,8 +696,10 @@ describe("bool", () => {
   });
 
   test("test_consistent_named", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.SchemaConsistent,
+      classVersionHash: true,
+    });
 
     // Define and register Color enum
     const Color = {
@@ -691,45 +708,48 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory.registerSerializer(Type.enum({ namespace: "", typeName: "color" }, Color));
+    const { serialize: enumSerialize } = fory.registerSerializer(Type.enum({ namespace: "", typeName: "color" }, Color));
 
     @Type.struct({ namespace: "", typeName: "my_struct" }, {
-      id: Type.int32()
+      id: Type.varInt32()
     })
     class MyStruct {
       id: number = 0;
-      constructor(id: number = 0) {
-        this.id = id;
-      }
     }
     fory.registerSerializer(MyStruct);
 
-    @Type.struct({ namespace: "", typeName: "my_ext" }, {
-      id: Type.int32()
-    })
+    @Type.ext({ namespace: "", typeName: "my_ext" })
     class MyExt {
       id: number = 0;
-      constructor(id: number = 0) {
-        this.id = id;
-      }
     }
-    fory.registerSerializer(MyExt);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    fory.registerSerializer(MyExt, {
+      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
+        writer.varInt32(value.id);
+      },
+      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
+        result.id = reader.varInt32();
+      }
+    });
 
     // Deserialize multiple instances from Java
     const deserializedData = [];
+    let cursor = 0;
     for (let i = 0; i < 9; i++) { // 3 colors + 3 structs + 3 exts
-      const deserializedItem = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedItem = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedData.push(deserializedItem);
     }
 
     const writer = new BinaryWriter();
     writer.reserve(256);
 
-    // Serialize each deserialized item back
-    for (const item of deserializedData) {
+    for (let index = 0; index < 3; index++) {
+      const element = deserializedData[index];
+      const serializedData = enumSerialize(element);
+      writer.buffer(serializedData);
+    }
+    for (let index = 3; index < deserializedData.length; index++) {
+      const item = deserializedData[index];
       const serializedData = fory.serialize(item);
       writer.buffer(serializedData);
     }
@@ -739,7 +759,9 @@ describe("bool", () => {
 
   test("test_struct_version_check", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(201, {
       f1: Type.int32(),
@@ -757,7 +779,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -766,7 +790,9 @@ describe("bool", () => {
 
   test("test_polymorphic_list", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define Animal interface implementations
     @Type.struct(302, {
@@ -808,8 +834,10 @@ describe("bool", () => {
 
     // Deserialize polymorphic data from Java
     const deserializedData = [];
+    let cursor = 0;
     for (let i = 0; i < 2; i++) { // animals array + holder
-      const deserializedItem = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedItem = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -827,7 +855,9 @@ describe("bool", () => {
 
   test("test_polymorphic_map", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define Animal interface implementations
     @Type.struct(302, {
@@ -869,8 +899,10 @@ describe("bool", () => {
 
     // Deserialize polymorphic data from Java
     const deserializedData = [];
+    let cursor = 0;
     for (let i = 0; i < 2; i++) { // animal map + holder
-      const deserializedItem = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedItem = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -887,7 +919,9 @@ describe("bool", () => {
   });
   test("test_one_string_field_schema", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(200, {
       f1: Type.string()
@@ -901,7 +935,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -909,7 +945,9 @@ describe("bool", () => {
   });
   test("test_one_string_field_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(200, {
       f1: Type.string()
@@ -923,7 +961,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -932,7 +972,9 @@ describe("bool", () => {
 
   test("test_two_string_field_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(201, {
       f1: Type.string(),
@@ -948,7 +990,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -957,7 +1001,9 @@ describe("bool", () => {
 
   test("test_schema_evolution_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(200)
     class EmptyStruct { }
@@ -967,7 +1013,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize empty struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -975,7 +1023,9 @@ describe("bool", () => {
   });
   test("test_one_enum_field_schema", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define and register TestEnum
     const TestEnum = {
@@ -997,7 +1047,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1006,7 +1058,9 @@ describe("bool", () => {
 
   test("test_one_enum_field_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define and register TestEnum
     const TestEnum = {
@@ -1028,7 +1082,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1037,7 +1093,9 @@ describe("bool", () => {
 
   test("test_two_enum_field_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define and register TestEnum
     const TestEnum = {
@@ -1061,7 +1119,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1070,7 +1130,9 @@ describe("bool", () => {
 
   test("test_enum_schema_evolution_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Register TestEnum
     const TestEnum = {
@@ -1088,7 +1150,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize empty struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1097,7 +1161,9 @@ describe("bool", () => {
 
   test("test_nullable_field_schema_consistent_not_null", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(401, {
       intField: Type.int32(),
@@ -1117,7 +1183,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1126,7 +1194,9 @@ describe("bool", () => {
 
   test("test_nullable_field_schema_consistent_null", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(401, {
       intField: Type.int32(),
@@ -1146,7 +1216,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1155,7 +1227,9 @@ describe("bool", () => {
 
   test("test_nullable_field_compatible_not_null", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(402, {
       intField: Type.int32(),
@@ -1175,7 +1249,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1184,7 +1260,9 @@ describe("bool", () => {
 
   test("test_nullable_field_compatible_null", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(402, {
       intField: Type.int32(),
@@ -1204,7 +1282,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1213,7 +1293,9 @@ describe("bool", () => {
 
   test("test_ref_schema_consistent", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(501, {
       id: Type.int32(),
@@ -1239,7 +1321,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize outer struct from Java
-    const deserializedOuter = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedOuter = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized outer struct back
     const serializedData = fory.serialize(deserializedOuter);
@@ -1248,7 +1332,9 @@ describe("bool", () => {
 
   test("test_ref_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(503, {
       id: Type.int32(),
@@ -1274,7 +1360,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize outer struct from Java
-    const deserializedOuter = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedOuter = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized outer struct back
     const serializedData = fory.serialize(deserializedOuter);
@@ -1283,7 +1371,9 @@ describe("bool", () => {
 
   test("test_circular_ref_schema_consistent", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(601, {
       name: Type.string(),
@@ -1299,7 +1389,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize circular struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1308,7 +1400,9 @@ describe("bool", () => {
 
   test("test_circular_ref_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(602, {
       name: Type.string(),
@@ -1324,7 +1418,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize circular struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1333,7 +1429,9 @@ describe("bool", () => {
 
   test("test_unsigned_schema_consistent_simple", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(1, {
       u64Tagged: Type.int64(),
@@ -1349,7 +1447,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1358,7 +1458,9 @@ describe("bool", () => {
 
   test("test_unsigned_schema_consistent", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(501, {
       u8Field: Type.uint8(),
@@ -1378,7 +1480,9 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1387,7 +1491,9 @@ describe("bool", () => {
 
   test("test_unsigned_schema_compatible", () => {
     if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(502, {
       u8Field: Type.uint8(),
@@ -1407,10 +1513,12 @@ describe("bool", () => {
     reader.reset(content);
 
     // Deserialize struct from Java
-    const deserializedStruct = fory.deserialize(reader.buffer(reader.varUInt32()));
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
-    writeToFile(serializedData as Buffer);
+   // writeToFile(serializedData as Buffer);
   });
 });

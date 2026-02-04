@@ -17,7 +17,10 @@
  * under the License.
  */
 
+import Fory from "./fory";
+import { BinaryReader } from "./reader";
 import { StructTypeInfo } from "./typeInfo";
+import { BinaryWriter } from "./writer";
 
 export const TypeId = {
   // Unknown/polymorphic type marker.
@@ -186,6 +189,11 @@ export enum ConfigFlags {
   isOutOfBandFlag = 1 << 2,
 }
 
+export type CustomSerializer<T> = {
+  read: (result: T, reader: BinaryReader, fory: Fory) => void;
+  write: (v: T, writer: BinaryWriter, fory: Fory) => void;
+};
+
 // read, write
 export type Serializer<T = any> = {
   fixedSize: number;
@@ -245,6 +253,7 @@ export interface Config {
     afterCodeGenerated?: (code: string) => string;
   };
   mode: Mode;
+  classVersionHash?: boolean;
 }
 
 export interface WithForyClsInfo {
