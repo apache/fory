@@ -1449,33 +1449,88 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 
 func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInfo, err *Error) {
 	context := r.fory.MetaContext()
-	typ := typeInfo.Type
-
-	if index, exists := context.typeMap[typ]; exists {
-		// Reference to previously written type: (index << 1) | 1, LSB=1
-		buffer.WriteVarUint32((index << 1) | 1)
-		return
+	key := typePointer(typeInfo.Type)
+	writeTypeDefInline := func() {
+		// Only build TypeDef for struct types - enums don't have field definitions
+		actualType := typeInfo.Type
+		if actualType.Kind() == reflect.Ptr {
+			actualType = actualType.Elem()
+		}
+		if actualType.Kind() == reflect.Struct {
+			typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
+			// Write TypeDef bytes inline
+			typeDef.writeTypeDef(buffer, err)
+		}
 	}
-
-	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
-	newIndex := uint32(len(context.typeMap))
-	buffer.WriteVarUint32(newIndex << 1)
-	context.typeMap[typ] = newIndex
-
-	// Only build TypeDef for struct types - enums don't have field definitions
-	actualType := typ
-	if actualType.Kind() == reflect.Ptr {
-		actualType = actualType.Elem()
-	}
-	if actualType.Kind() == reflect.Struct {
+	writeTypeDefWithZeroMarker := func() {
+		actualType := typeInfo.Type
+		if actualType.Kind() == reflect.Ptr {
+			actualType = actualType.Elem()
+		}
+		if actualType.Kind() != reflect.Struct {
+			buffer.WriteUint8(0)
+			return
+		}
 		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
 		if typeDefErr != nil {
 			err.SetError(typeDefErr)
 			return
 		}
-		// Write TypeDef bytes inline
+		buffer.WriteUint8(0)
 		typeDef.writeTypeDef(buffer, err)
 	}
+	if !context.typeMapActive {
+		if !context.hasFirstType {
+			context.hasFirstType = true
+			context.firstTypePtr = key
+			// New type: index << 1, LSB=0, followed by TypeDef bytes inline
+			writeTypeDefWithZeroMarker()
+			return
+		}
+		if key == context.firstTypePtr {
+			// Reference to first type: (0 << 1) | 1
+			buffer.WriteUint8(1)
+			return
+		}
+		context.typeMapActive = true
+		if context.typeMap == nil {
+			context.typeMap = make(map[uintptr]uint32, 8)
+		} else if len(context.typeMap) != 0 {
+			for k := range context.typeMap {
+				delete(context.typeMap, k)
+			}
+		}
+		context.typeMap[context.firstTypePtr] = 0
+	} else if key == context.firstTypePtr {
+		buffer.WriteUint8(1)
+		return
+	}
+
+	if index, exists := context.typeMap[key]; exists {
+		// Reference to previously written type: (index << 1) | 1, LSB=1
+		marker := (index << 1) | 1
+		if marker < 0x80 {
+			buffer.WriteUint8(uint8(marker))
+		} else {
+			buffer.WriteVarUint32(marker)
+		}
+		return
+	}
+
+	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
+	newIndex := uint32(len(context.typeMap))
+	marker := newIndex << 1
+	if marker < 0x80 {
+		buffer.WriteUint8(uint8(marker))
+	} else {
+		buffer.WriteVarUint32(marker)
+	}
+	context.typeMap[key] = newIndex
+	writeTypeDefInline()
 }
 
 func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, error) {
@@ -2331,9 +2386,12 @@ var ErrTypeMismatch = errors.New("fory: type ID mismatch")
 
 // MetaContext holds metadata for schema evolution and type sharing
 type MetaContext struct {
-	typeMap               map[reflect.Type]uint32 // For writing: tracks written types
-	readTypeInfos         []*TypeInfo             // For reading: types read inline
+	typeMap               map[uintptr]uint32 // For writing: tracks written types
+	readTypeInfos         []*TypeInfo        // For reading: types read inline
 	scopedMetaShareEnable bool
+	firstTypePtr          uintptr
+	hasFirstType          bool
+	typeMapActive         bool
 }
 
 // IsScopedMetaShareEnabled returns whether scoped meta share is enabled
@@ -2343,13 +2401,9 @@ func (m *MetaContext) IsScopedMetaShareEnabled() bool {
 
 // Reset clears the meta context for reuse
 func (m *MetaContext) Reset() {
-	if m.typeMap == nil {
-		m.typeMap = make(map[reflect.Type]uint32)
-	} else {
-		for k := range m.typeMap {
-			delete(m.typeMap, k)
-		}
-	}
+	m.hasFirstType = false
+	m.typeMapActive = false
+	m.firstTypePtr = 0
 	if m.readTypeInfos != nil {
 		m.readTypeInfos = m.readTypeInfos[:0]
 	}

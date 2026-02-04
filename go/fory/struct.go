@@ -114,6 +114,36 @@ func (s *structSerializer) Write(ctx *WriteContext, refMode RefMode, writeType b
 	s.WriteData(ctx, value)
 }
 
+func (s *structSerializer) writeWithTypeInfo(ctx *WriteContext, refMode RefMode, value reflect.Value, typeInfo *TypeInfo) {
+	switch refMode {
+	case RefModeTracking:
+		if value.Kind() == reflect.Ptr && value.IsNil() {
+			ctx.buffer.WriteInt8(NullFlag)
+			return
+		}
+		refWritten, err := ctx.RefResolver().WriteRefOrNull(ctx.buffer, value)
+		if err != nil {
+			ctx.SetError(FromError(err))
+			return
+		}
+		if refWritten {
+			return
+		}
+	case RefModeNullOnly:
+		if value.Kind() == reflect.Ptr && value.IsNil() {
+			ctx.buffer.WriteInt8(NullFlag)
+			return
+		}
+		ctx.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if typeInfo == nil {
+		s.Write(ctx, refMode, true, false, value)
+		return
+	}
+	ctx.TypeResolver().WriteTypeInfo(ctx.buffer, typeInfo, ctx.Err())
+	s.WriteData(ctx, value)
+}
+
 func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	// Early error check - skip all intermediate checks for normal path performance
 	if ctx.HasError() {
@@ -398,6 +428,9 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 		}
 		fieldValue := value.Field(field.Meta.FieldIndex)
 		if field.Serializer != nil {
+			if writeWithCachedTypeInfo(ctx, field, fieldValue) {
+				return
+			}
 			field.Serializer.Write(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, fieldValue)
 		} else {
 			ctx.WriteValue(fieldValue, RefModeTracking, true)
@@ -774,9 +807,28 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 	// Fall back to serializer for other types
 	fieldValue := value.Field(field.Meta.FieldIndex)
 	if field.Serializer != nil {
+		if writeWithCachedTypeInfo(ctx, field, fieldValue) {
+			return
+		}
 		field.Serializer.Write(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, fieldValue)
 	} else {
 		ctx.WriteValue(fieldValue, RefModeTracking, true)
+	}
+}
+
+func writeWithCachedTypeInfo(ctx *WriteContext, field *FieldInfo, fieldValue reflect.Value) bool {
+	if field.Serializer == nil || !field.Meta.WriteType || field.Meta.CachedTypeInfo == nil {
+		return false
+	}
+	switch ser := field.Serializer.(type) {
+	case *structSerializer:
+		ser.writeWithTypeInfo(ctx, field.RefMode, fieldValue, field.Meta.CachedTypeInfo)
+		return true
+	case *ptrToValueSerializer:
+		ser.writeWithTypeInfo(ctx, field.RefMode, fieldValue, field.Meta.CachedTypeInfo)
+		return true
+	default:
+		return false
 	}
 }
 
