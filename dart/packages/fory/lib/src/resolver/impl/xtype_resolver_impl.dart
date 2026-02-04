@@ -203,7 +203,7 @@ final class XtypeResolverImpl extends XtypeResolver {
     String qualifiedName = StringUtil.addingTypeNameAndNs(ns, tn);
     TypeInfo? typeInfo = _ctx.tag2TypeInfo[qualifiedName];
     if (typeInfo == null) {
-      // TODO: Does not support non-existent class, foryJava seems to have some support
+      // TODO: Does not support non-existent or unknown class, foryJava seems to have some support
       throw UnregisteredTagException(qualifiedName);
     }
     _tagHash2Info[key] = typeInfo;

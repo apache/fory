@@ -145,7 +145,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
             typename = type_info.decode_typename()
         else:
             namespace = "fory"
-            typename = f"Nonexistent{user_type_id if user_type_id != NO_USER_TYPE_ID else type_id}"
+            typename = f"UnknownStruct{user_type_id if user_type_id != NO_USER_TYPE_ID else type_id}"
     name = namespace + "." + typename if namespace else typename
     # Read fields info if present
     field_infos = []
