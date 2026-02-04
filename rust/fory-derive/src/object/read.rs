@@ -441,7 +441,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
 
 pub fn gen_read_type_info() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::read_type_info::<Self>(context)
+        fory_core::serializer::struct_::read_type_info_fast::<Self>(context)
     }
 }
 
@@ -1069,22 +1069,23 @@ pub(crate) fn gen_read_compatible_with_construction(
     };
 
     quote! {
-        let mut fields = type_info.get_type_meta().get_field_infos().clone();
-        #variant_field_remap
-        #(#declare_ts)*
-        let meta = context.get_type_info(&std::any::TypeId::of::<Self>())?.get_type_meta();
+        let meta = context
+            .get_type_info(&std::any::TypeId::of::<Self>())?
+            .get_type_meta();
         let local_type_hash = meta.get_hash();
         let remote_type_hash = type_info.get_type_meta().get_hash();
         if remote_type_hash == local_type_hash {
-            <Self as fory_core::Serializer>::fory_read_data(context)
-        } else {
-            for _field in fields.iter() {
-                match _field.field_id {
-                    #(#match_arms)*
-                    #skip_arm
-                }
-            }
-            #construction
+            return <Self as fory_core::Serializer>::fory_read_data(context);
         }
+        let mut fields = type_info.get_type_meta().get_field_infos().clone();
+        #variant_field_remap
+        #(#declare_ts)*
+        for _field in fields.iter() {
+            match _field.field_id {
+                #(#match_arms)*
+                #skip_arm
+            }
+        }
+        #construction
     }
 }

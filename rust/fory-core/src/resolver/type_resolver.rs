@@ -495,6 +495,8 @@ pub struct TypeResolver {
     partial_type_infos: HashMap<std::any::TypeId, TypeInfo>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<TypeId>,
+    // Fast lookup by type index for user type IDs
+    user_type_id_index: Vec<u32>,
     compatible: bool,
     xlang: bool,
 }
@@ -516,6 +518,7 @@ impl Default for TypeResolver {
             type_info_map_by_name: HashMap::new(),
             type_info_map_by_meta_string_name: HashMap::new(),
             type_id_index: Vec::new(),
+            user_type_id_index: Vec::new(),
             partial_type_infos: HashMap::new(),
             compatible: false,
             xlang: false,
@@ -584,6 +587,26 @@ impl TypeResolver {
         }
         Err(Error::type_error(format!(
             "TypeId {:?} not found in type_id_index, maybe you forgot to register some types",
+            type_id
+        )))
+    }
+
+    /// Fast path for getting user type ID by type index (avoids HashMap lookup by TypeId)
+    #[inline(always)]
+    pub fn get_user_type_id_by_index(
+        &self,
+        type_id: &std::any::TypeId,
+        id: u32,
+    ) -> Result<u32, Error> {
+        let id_usize = id as usize;
+        if id_usize < self.user_type_id_index.len() {
+            let user_type_id = self.user_type_id_index[id_usize];
+            if user_type_id != NO_USER_TYPE_ID {
+                return Ok(user_type_id);
+            }
+        }
+        Err(Error::type_error(format!(
+            "TypeId {:?} not found in user_type_id_index, maybe you forgot to register some types",
             type_id
         )))
     }
@@ -856,10 +879,11 @@ impl TypeResolver {
             )));
         }
 
-        // Update type_id_index for fast lookup
+        // Update type_id_index/user_type_id_index for fast lookup
         let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
+            self.user_type_id_index.resize(index + 1, NO_USER_TYPE_ID);
         } else if self.type_id_index[index] != NO_TYPE_ID {
             return Err(Error::type_error(format!(
                 "Type index {:?} already registered",
@@ -867,6 +891,7 @@ impl TypeResolver {
             )));
         }
         self.type_id_index[index] = type_info.type_id;
+        self.user_type_id_index[index] = type_info.user_type_id;
 
         // Insert partial type info into id maps
         if crate::types::is_internal_type(actual_type_id) {
@@ -1147,6 +1172,7 @@ impl TypeResolver {
         let mut type_info_map_by_name = self.type_info_map_by_name.clone();
         let mut type_info_map_by_meta_string_name = self.type_info_map_by_meta_string_name.clone();
         let type_id_index = self.type_id_index.clone();
+        let user_type_id_index = self.user_type_id_index.clone();
 
         // Iterate over partial_type_infos and complete them
         for (_rust_type_id, partial_type_info) in self.partial_type_infos.iter() {
@@ -1189,6 +1215,7 @@ impl TypeResolver {
             type_info_map_by_meta_string_name,
             partial_type_infos: HashMap::new(),
             type_id_index,
+            user_type_id_index,
             compatible: self.compatible,
             xlang: self.xlang,
         })
@@ -1278,6 +1305,7 @@ impl TypeResolver {
             type_info_map_by_meta_string_name,
             partial_type_infos: HashMap::new(),
             type_id_index: self.type_id_index.clone(),
+            user_type_id_index: self.user_type_id_index.clone(),
             compatible: self.compatible,
             xlang: self.xlang,
         }
