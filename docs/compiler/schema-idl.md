@@ -27,7 +27,7 @@ An FDL file consists of:
 
 1. Optional package declaration
 2. Optional import statements
-3. Type definitions (enums and messages)
+3. Type definitions (enums, messages, and unions)
 
 ```protobuf
 // Optional package declaration
@@ -40,6 +40,7 @@ import "common/types.fdl";
 enum Color [id=100] { ... }
 message User [id=101] { ... }
 message Order [id=102] { ... }
+union Event [id=103] { ... }
 ```
 
 ## Comments
@@ -272,16 +273,7 @@ option (fory).polymorphism = true;
 option (fory).enable_auto_type_id = true;
 ```
 
-**Available File Options:**
-
-| Option                        | Type   | Description                                                  |
-| ----------------------------- | ------ | ------------------------------------------------------------ |
-| `use_record_for_java_message` | bool   | Generate Java records instead of classes                     |
-| `polymorphism`                | bool   | Enable polymorphism for all types                            |
-| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)  |
-| `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase` |
-
-See the [Fory Extension Options](#fory-extension-options) section for complete documentation of message, enum, and field options.
+See the [Fory Extension Options](#fory-extension-options) section for the complete list of file, message, enum, union, and field options.
 
 ### Option Priority
 
@@ -475,6 +467,16 @@ enum Status {
 
 - `option allow_alias = true` is **not supported**. Each enum value must have a unique integer.
 
+### Language Mapping
+
+| Language | Implementation                         |
+| -------- | -------------------------------------- |
+| Java     | `enum Status { UNKNOWN, ACTIVE, ... }` |
+| Python   | `class Status(IntEnum): UNKNOWN = 0`   |
+| Go       | `type Status int32` with constants     |
+| Rust     | `#[repr(i32)] enum Status { Unknown }` |
+| C++      | `enum class Status : int32_t { ... }`  |
+
 ### Enum Prefix Stripping
 
 When enum values use a protobuf-style prefix (enum name in UPPER_SNAKE_CASE), the compiler automatically strips the prefix for languages with scoped enums:
@@ -565,24 +567,18 @@ message Person {  // Auto-generated when enable_auto_type_id = true
 }
 ```
 
-### Type Registration
+### Language Mapping
 
-FDL uses numeric type IDs for message, union, and enum registration. By default,
-if you omit `id`, the compiler auto-generates one using
-`MurmurHash3(utf8(package.type_name))` (32-bit). If a package/type name alias is
-specified, the alias is used instead. When `enable_auto_type_id = false`, types
-without explicit IDs are registered by namespace and name instead of receiving
-generated IDs.
+| Language | Implementation                      |
+| -------- | ----------------------------------- |
+| Java     | POJO class with getters/setters     |
+| Python   | `@dataclass` class                  |
+| Go       | Struct with exported fields         |
+| Rust     | Struct with `#[derive(ForyObject)]` |
+| C++      | Struct with `FORY_STRUCT` macro     |
 
-```protobuf
-message User [id=100] { ... }  // Registered with ID 100
-message Config { ... }         // ID auto-generated when enable_auto_type_id = true
-```
-
-Namespace-based registration is still available when calling runtime APIs
-directly. IDL-generated code uses explicit IDs when provided. If an auto-generated ID
-conflicts, the compiler raises an error and asks you to specify an explicit `id` or an
-`alias` to change the hash source.
+Type IDs control cross-language registration for messages, unions, and enums. See
+[Type IDs](#type-ids) for auto-generation, aliases, and collision handling.
 
 ### Reserved Fields
 
@@ -621,12 +617,7 @@ nested_type  := enum_def | message_def
 
 **Rules:**
 
-- Message and union type IDs are required for ID-based registration. If omitted and
-  `enable_auto_type_id = true` (default), they are auto-generated (see [Type IDs](#type-ids));
-  if `enable_auto_type_id = false`, they are registered by namespace and name.
-- Numeric type IDs (manual or auto-generated) must be globally unique (including nested types).
-  If an auto-generated ID conflicts, the compiler raises an error and asks for an explicit `id`
-  or an `alias` to change the hash source.
+- Type IDs follow the rules in [Type IDs](#type-ids).
 
 ## Nested Types
 
@@ -714,9 +705,8 @@ message OtherMessage {
 
 - Nested type names must be unique within their parent message
 - Nested types can have their own type IDs
-- Numeric type IDs must be globally unique (including nested types); if an auto-generated ID
-  conflicts, the compiler raises an error and asks for an explicit `id` or an `alias`
-  (auto-generation happens only when `enable_auto_type_id = true`)
+- Numeric type IDs must be globally unique (including nested types); see [Type IDs](#type-ids)
+  for auto-generation and collision handling
 - Within a message, you can reference nested types by simple name
 - From outside, use the qualified name (Parent.Child)
 
@@ -748,11 +738,7 @@ message Person [id=100] {
 - Cases cannot be `optional`, `repeated`, or `ref`
 - Union cases do not support field options
 - Case types can be primitives, enums, messages, or other named types
-- Union type IDs (`[id=...]`) are required for ID-based registration. If omitted and
-  `enable_auto_type_id = true`, the compiler auto-generates one using
-  `MurmurHash3(utf8(package.type_name))` (32-bit); otherwise, unions are registered
-  by namespace and name.
-- Use `[alias="..."]` to change the hash source without renaming the union
+- Union type IDs follow the rules in [Type IDs](#type-ids).
 
 **Grammar:**
 
@@ -814,6 +800,13 @@ message User {
 | Rust     | `name: String`     | `name: Option<String>`                          |
 | C++      | `std::string name` | `std::optional<std::string> name`               |
 
+**Default Values:**
+
+| Type               | Default Value       |
+| ------------------ | ------------------- |
+| Non-optional types | Language default    |
+| Optional types     | `null`/`None`/`nil` |
+
 #### `ref`
 
 Enables reference tracking for shared/circular references:
@@ -841,6 +834,9 @@ message Node {
 | Go       | `Parent Node`  | `Parent *Node` with `fory:"ref"`          |
 | Rust     | `parent: Node` | `parent: Arc<Node>`                       |
 | C++      | `Node parent`  | `std::shared_ptr<Node> parent`            |
+
+Rust uses `Arc` by default; use `ref(thread_safe = false)` or `ref(weak = true)`
+to customize pointer types (see [Field-Level Fory Options](#field-level-fory-options)).
 
 #### `repeated`
 
@@ -880,83 +876,17 @@ message Example {
 Modifiers before `repeated` apply to the field/collection. Modifiers after
 `repeated` apply to elements.
 
-## Type System
+**List modifier mapping:**
 
-### Primitive Types
+| FDL                        | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
+| -------------------------- | ---------------------------------------------- | --------------------------------------- | ----------------------- | --------------------- | ----------------------------------------- |
+| `optional repeated string` | `List<String>` + `@ForyField(nullable = true)` | `Optional[List[str]]`                   | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` |
+| `repeated optional string` | `List<String>` (nullable elements)             | `List[Optional[str]]`                   | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` |
+| `ref repeated User`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
+| `repeated ref User`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
 
-| Type            | Description                               | Size     |
-| --------------- | ----------------------------------------- | -------- |
-| `bool`          | Boolean value                             | 1 byte   |
-| `int8`          | Signed 8-bit integer                      | 1 byte   |
-| `int16`         | Signed 16-bit integer                     | 2 bytes  |
-| `int32`         | Signed 32-bit integer (varint encoding)   | 4 bytes  |
-| `int64`         | Signed 64-bit integer (varint encoding)   | 8 bytes  |
-| `uint8`         | Unsigned 8-bit integer                    | 1 byte   |
-| `uint16`        | Unsigned 16-bit integer                   | 2 bytes  |
-| `uint32`        | Unsigned 32-bit integer (varint encoding) | 4 bytes  |
-| `uint64`        | Unsigned 64-bit integer (varint encoding) | 8 bytes  |
-| `fixed_int32`   | Signed 32-bit integer (fixed encoding)    | 4 bytes  |
-| `fixed_int64`   | Signed 64-bit integer (fixed encoding)    | 8 bytes  |
-| `fixed_uint32`  | Unsigned 32-bit integer (fixed encoding)  | 4 bytes  |
-| `fixed_uint64`  | Unsigned 64-bit integer (fixed encoding)  | 8 bytes  |
-| `tagged_int64`  | Signed 64-bit integer (tagged encoding)   | 8 bytes  |
-| `tagged_uint64` | Unsigned 64-bit integer (tagged encoding) | 8 bytes  |
-| `float16`       | 16-bit floating point                     | 2 bytes  |
-| `float32`       | 32-bit floating point                     | 4 bytes  |
-| `float64`       | 64-bit floating point                     | 8 bytes  |
-| `string`        | UTF-8 string                              | Variable |
-| `bytes`         | Binary data                               | Variable |
-| `date`          | Calendar date                             | Variable |
-| `timestamp`     | Date and time with timezone               | Variable |
-| `duration`      | Duration                                  | Variable |
-| `decimal`       | Decimal value                             | Variable |
-| `any`           | Dynamic value (runtime type)              | Variable |
-
-See [Type System](type-system.md) for complete type mappings.
-
-**Encoding notes:**
-
-- `int32`/`int64` and `uint32`/`uint64` use varint encoding by default.
-- Use `fixed_*` for fixed-width integer encoding.
-- Use `tagged_*` for tagged/hybrid encoding (64-bit only).
-
-**Any type notes:**
-
-- `any` always writes a null flag (same as `nullable`) because the value may be empty.
-- `ref` is not allowed on `any` fields. Wrap `any` in a message if you need reference tracking.
-
-### Named Types
-
-Reference other messages or enums by name:
-
-```protobuf
-enum Status { ... }
-message User { ... }
-
-message Order {
-    User customer = 1;    // Reference to User message
-    Status status = 2;    // Reference to Status enum
-}
-```
-
-### Map Types
-
-Maps with typed keys and values:
-
-```protobuf
-message Config {
-    map<string, string> properties = 1;
-    map<string, int32> counts = 2;
-    map<int32, User> users = 3;
-}
-```
-
-**Syntax:** `map<KeyType, ValueType>`
-
-**Restrictions:**
-
-- Key type should be a primitive type (typically `string` or integer types)
-- Value type can be any type including messages
+Use `ref(thread_safe = false)` in FDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
+to generate `Rc` instead of `Arc` in Rust.
 
 ## Field Numbers
 
@@ -982,6 +912,312 @@ message Example {
 - Use sequential numbers starting from 1
 - Reserve number ranges for different categories
 - Never reuse numbers for different fields (even after deletion)
+
+## Type System
+
+FDL provides a cross-language type system for primitives, named types, and collections.
+Field modifiers like `optional`, `repeated`, and `ref` define nullability, collections, and
+reference tracking (see [Field Modifiers](#field-modifiers)).
+
+### Primitive Types
+
+| Type            | Description                               | Size     |
+| --------------- | ----------------------------------------- | -------- |
+| `bool`          | Boolean value                             | 1 byte   |
+| `int8`          | Signed 8-bit integer                      | 1 byte   |
+| `int16`         | Signed 16-bit integer                     | 2 bytes  |
+| `int32`         | Signed 32-bit integer (varint encoding)   | 4 bytes  |
+| `int64`         | Signed 64-bit integer (varint encoding)   | 8 bytes  |
+| `uint8`         | Unsigned 8-bit integer                    | 1 byte   |
+| `uint16`        | Unsigned 16-bit integer                   | 2 bytes  |
+| `uint32`        | Unsigned 32-bit integer (varint encoding) | 4 bytes  |
+| `uint64`        | Unsigned 64-bit integer (varint encoding) | 8 bytes  |
+| `fixed_int32`   | Signed 32-bit integer (fixed encoding)    | 4 bytes  |
+| `fixed_int64`   | Signed 64-bit integer (fixed encoding)    | 8 bytes  |
+| `fixed_uint32`  | Unsigned 32-bit integer (fixed encoding)  | 4 bytes  |
+| `fixed_uint64`  | Unsigned 64-bit integer (fixed encoding)  | 8 bytes  |
+| `tagged_int64`  | Signed 64-bit integer (tagged encoding)   | 8 bytes  |
+| `tagged_uint64` | Unsigned 64-bit integer (tagged encoding) | 8 bytes  |
+| `float32`       | 32-bit floating point                     | 4 bytes  |
+| `float64`       | 64-bit floating point                     | 8 bytes  |
+| `string`        | UTF-8 string                              | Variable |
+| `bytes`         | Binary data                               | Variable |
+| `date`          | Calendar date                             | Variable |
+| `timestamp`     | Date and time with timezone               | Variable |
+| `duration`      | Duration                                  | Variable |
+| `decimal`       | Decimal value                             | Variable |
+| `any`           | Dynamic value (runtime type)              | Variable |
+
+#### Boolean
+
+```protobuf
+bool is_active = 1;
+```
+
+| Language | Type                  | Notes              |
+| -------- | --------------------- | ------------------ |
+| Java     | `boolean` / `Boolean` | Primitive or boxed |
+| Python   | `bool`                |                    |
+| Go       | `bool`                |                    |
+| Rust     | `bool`                |                    |
+| C++      | `bool`                |                    |
+
+#### Integer Types
+
+FDL provides fixed-width signed integers (varint encoding for 32/64-bit by default):
+
+| FDL Type | Size   | Range             |
+| -------- | ------ | ----------------- |
+| `int8`   | 8-bit  | -128 to 127       |
+| `int16`  | 16-bit | -32,768 to 32,767 |
+| `int32`  | 32-bit | -2^31 to 2^31 - 1 |
+| `int64`  | 64-bit | -2^63 to 2^63 - 1 |
+
+**Language Mapping (Signed):**
+
+| FDL     | Java    | Python         | Go      | Rust  | C++       |
+| ------- | ------- | -------------- | ------- | ----- | --------- |
+| `int8`  | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  |
+| `int16` | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
+| `int32` | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
+| `int64` | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
+
+FDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
+
+| FDL      | Size   | Range         |
+| -------- | ------ | ------------- |
+| `uint8`  | 8-bit  | 0 to 255      |
+| `uint16` | 16-bit | 0 to 65,535   |
+| `uint32` | 32-bit | 0 to 2^32 - 1 |
+| `uint64` | 64-bit | 0 to 2^64 - 1 |
+
+**Language Mapping (Unsigned):**
+
+| FDL      | Java    | Python          | Go       | Rust  | C++        |
+| -------- | ------- | --------------- | -------- | ----- | ---------- |
+| `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  |
+| `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` |
+| `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` |
+| `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` |
+
+**Examples:**
+
+```protobuf
+message Counters {
+    int8 tiny = 1;
+    int16 small = 2;
+    int32 medium = 3;
+    int64 large = 4;
+}
+```
+
+**Python type hints:**
+
+```python
+from dataclasses import dataclass
+from pyfory import int8, int16, int32
+
+@dataclass
+class Counters:
+    tiny: int8
+    small: int16
+    medium: int32
+    large: int  # int64 maps to native int
+```
+
+#### Integer Encoding Variants
+
+For 32/64-bit integers, FDL uses varint encoding by default. Use explicit types when
+you need fixed-width or tagged encoding:
+
+| FDL Type        | Encoding | Notes                    |
+| --------------- | -------- | ------------------------ |
+| `fixed_int32`   | fixed    | Signed 32-bit            |
+| `fixed_int64`   | fixed    | Signed 64-bit            |
+| `fixed_uint32`  | fixed    | Unsigned 32-bit          |
+| `fixed_uint64`  | fixed    | Unsigned 64-bit          |
+| `tagged_int64`  | tagged   | Signed 64-bit (hybrid)   |
+| `tagged_uint64` | tagged   | Unsigned 64-bit (hybrid) |
+
+#### Floating-Point Types
+
+| FDL Type  | Size   | Precision     |
+| --------- | ------ | ------------- |
+| `float32` | 32-bit | ~7 digits     |
+| `float64` | 64-bit | ~15-16 digits |
+
+**Language Mapping:**
+
+| FDL       | Java     | Python           | Go        | Rust  | C++      |
+| --------- | -------- | ---------------- | --------- | ----- | -------- |
+| `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  |
+| `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` |
+
+#### String Type
+
+UTF-8 encoded text:
+
+```protobuf
+string name = 1;
+```
+
+| Language | Type          | Notes                 |
+| -------- | ------------- | --------------------- |
+| Java     | `String`      | Immutable             |
+| Python   | `str`         |                       |
+| Go       | `string`      | Immutable             |
+| Rust     | `String`      | Owned, heap-allocated |
+| C++      | `std::string` |                       |
+
+#### Bytes Type
+
+Raw binary data:
+
+```protobuf
+bytes data = 1;
+```
+
+| Language | Type                   | Notes     |
+| -------- | ---------------------- | --------- |
+| Java     | `byte[]`               |           |
+| Python   | `bytes`                | Immutable |
+| Go       | `[]byte`               |           |
+| Rust     | `Vec<u8>`              |           |
+| C++      | `std::vector<uint8_t>` |           |
+
+#### Temporal Types
+
+##### Date
+
+Calendar date without time:
+
+```protobuf
+date birth_date = 1;
+```
+
+| Language | Type                        | Notes                   |
+| -------- | --------------------------- | ----------------------- |
+| Java     | `java.time.LocalDate`       |                         |
+| Python   | `datetime.date`             |                         |
+| Go       | `time.Time`                 | Time portion ignored    |
+| Rust     | `chrono::NaiveDate`         | Requires `chrono` crate |
+| C++      | `fory::serialization::Date` |                         |
+
+##### Timestamp
+
+Date and time with nanosecond precision:
+
+```protobuf
+timestamp created_at = 1;
+```
+
+| Language | Type                             | Notes                   |
+| -------- | -------------------------------- | ----------------------- |
+| Java     | `java.time.Instant`              | UTC-based               |
+| Python   | `datetime.datetime`              |                         |
+| Go       | `time.Time`                      |                         |
+| Rust     | `chrono::NaiveDateTime`          | Requires `chrono` crate |
+| C++      | `fory::serialization::Timestamp` |                         |
+
+#### Any
+
+Dynamic value with runtime type information:
+
+```protobuf
+any payload = 1;
+```
+
+| Language | Type           | Notes                |
+| -------- | -------------- | -------------------- |
+| Java     | `Object`       | Runtime type written |
+| Python   | `Any`          | Runtime type written |
+| Go       | `any`          | Runtime type written |
+| Rust     | `Box<dyn Any>` | Runtime type written |
+| C++      | `std::any`     | Runtime type written |
+
+**Notes:**
+
+- `any` always writes a null flag (same as `nullable`) because values may be empty.
+- Allowed runtime values are limited to `bool`, `string`, `enum`, `message`, and `union`.
+  Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a
+  message or use explicit fields instead.
+- `ref` is not allowed on `any` fields (including repeated/map values). Wrap `any` in a message
+  if you need reference tracking.
+- The runtime type must be registered in the target language schema/IDL registration; unknown
+  types fail to deserialize.
+
+### Named Types
+
+Reference other messages, enums, or unions by name:
+
+```protobuf
+enum Status { ... }
+message User { ... }
+
+message Order {
+    User customer = 1;    // Reference to User message
+    Status status = 2;    // Reference to Status enum
+}
+```
+
+### Collection Types
+
+#### List (repeated)
+
+Use the `repeated` modifier for list types. See [Field Modifiers](#field-modifiers) for
+modifier combinations and language mapping.
+
+#### Map
+
+Maps with typed keys and values:
+
+```protobuf
+message Config {
+    map<string, string> properties = 1;
+    map<string, int32> counts = 2;
+    map<int32, User> users = 3;
+}
+```
+
+**Language Mapping:**
+
+| FDL                  | Java                   | Python            | Go                 | Rust                    | C++                              |
+| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- |
+| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` |
+| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    |
+
+**Key Type Restrictions:**
+
+- `string` (most common)
+- Integer types (`int8`, `int16`, `int32`, `int64`)
+- `bool`
+
+Avoid using messages or complex types as keys.
+
+### Type Compatibility Matrix
+
+This matrix shows which type conversions are safe across languages:
+
+| From -> To | bool | int8 | int16 | int32 | int64 | float32 | float64 | string |
+| ---------- | ---- | ---- | ----- | ----- | ----- | ------- | ------- | ------ |
+| bool       | Y    | Y    | Y     | Y     | Y     | -       | -       | -      |
+| int8       | -    | Y    | Y     | Y     | Y     | Y       | Y       | -      |
+| int16      | -    | -    | Y     | Y     | Y     | Y       | Y       | -      |
+| int32      | -    | -    | -     | Y     | Y     | -       | Y       | -      |
+| int64      | -    | -    | -     | -     | Y     | -       | -       | -      |
+| float32    | -    | -    | -     | -     | -     | Y       | Y       | -      |
+| float64    | -    | -    | -     | -     | -     | -       | Y       | -      |
+| string     | -    | -    | -     | -     | -     | -       | -       | Y      |
+
+Y = Safe conversion, - = Not recommended
+
+### Best Practices
+
+- Use `int32` as the default for most integers; use `int64` for large values.
+- Use `string` for text data (UTF-8) and `bytes` for binary data.
+- Use `optional` only when the field may legitimately be absent.
+- Use `ref` only when needed for shared or circular references.
+- Prefer `repeated` for ordered sequences and `map` for key-value lookups.
 
 ## Type IDs
 
@@ -1019,8 +1255,6 @@ message Config { ... }  // Auto-generated when enable_auto_type_id = true
 You can set `[alias="..."]` to change the hash source without renaming the type.
 
 ### Pay-as-you-go principle
-
-Type ID Specification
 
 - IDs: Messages, unions, and enums use numeric IDs; if omitted and
   `enable_auto_type_id = true`, the compiler auto-generates one.
@@ -1142,10 +1376,12 @@ option (fory).polymorphism = true;
 option (fory).enable_auto_type_id = true;
 ```
 
-| Option                        | Type | Description                                                 |
-| ----------------------------- | ---- | ----------------------------------------------------------- |
-| `use_record_for_java_message` | bool | Generate Java records instead of classes                    |
-| `enable_auto_type_id`         | bool | Auto-generate numeric type IDs when omitted (default: true) |
+| Option                        | Type   | Description                                                  |
+| ----------------------------- | ------ | ------------------------------------------------------------ |
+| `use_record_for_java_message` | bool   | Generate Java records instead of classes                     |
+| `polymorphism`                | bool   | Enable polymorphism for all types                            |
+| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)  |
+| `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase` |
 
 ### Message-Level Fory Options
 
@@ -1265,6 +1501,7 @@ extend google.protobuf.FileOptions {
 message ForyFileOptions {
     optional bool use_record_for_java_message = 1;
     optional bool polymorphism = 2;
+    optional bool enable_auto_type_id = 3;
 }
 
 // Message-level options
@@ -1307,7 +1544,7 @@ extension_name := '(' IDENTIFIER ')' '.' IDENTIFIER   // e.g., (fory).polymorphi
 
 import_decl  := 'import' STRING ';'
 
-type_def     := enum_def | message_def
+type_def     := enum_def | message_def | union_def
 
 enum_def     := 'enum' IDENTIFIER [type_options] '{' enum_body '}'
 enum_body    := (option_stmt | reserved_stmt | enum_value)*
@@ -1317,6 +1554,9 @@ message_def  := 'message' IDENTIFIER [type_options] '{' message_body '}'
 message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
 nested_type  := enum_def | message_def
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER [field_options] ';'
+
+union_def    := 'union' IDENTIFIER [type_options] '{' union_field* '}'
+union_field  := field_type IDENTIFIER '=' INTEGER ';'
 
 option_stmt  := 'option' option_name '=' option_value ';'
 option_value := 'true' | 'false' | IDENTIFIER | INTEGER | STRING
@@ -1333,7 +1573,7 @@ primitive_type := 'bool'
                | 'uint8' | 'uint16' | 'uint32' | 'uint64'
                | 'fixed_int32' | 'fixed_int64' | 'fixed_uint32' | 'fixed_uint64'
                | 'tagged_int64' | 'tagged_uint64'
-               | 'float16' | 'float32' | 'float64'
+               | 'float32' | 'float64'
                | 'string' | 'bytes'
                | 'date' | 'timestamp' | 'duration' | 'decimal'
                | 'any'
