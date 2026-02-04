@@ -48,6 +48,8 @@ struct NumericStruct {
   }
 };
 FORY_STRUCT(NumericStruct, f1, f2, f3, f4, f5, f6, f7, f8);
+FORY_FIELD_TAGS(NumericStruct, (f1, 1), (f2, 2), (f3, 3), (f4, 4), (f5, 5),
+                (f6, 6), (f7, 7), (f8, 8));
 
 struct Sample {
   int32_t int_value;
@@ -99,6 +101,14 @@ FORY_STRUCT(Sample, int_value, long_value, float_value, double_value,
             short_value_boxed, char_value_boxed, boolean_value_boxed, int_array,
             long_array, float_array, double_array, short_array, char_array,
             boolean_array, string);
+FORY_FIELD_TAGS(
+    Sample, (int_value, 1), (long_value, 2), (float_value, 3),
+    (double_value, 4), (short_value, 5), (char_value, 6), (boolean_value, 7),
+    (int_value_boxed, 8), (long_value_boxed, 9), (float_value_boxed, 10),
+    (double_value_boxed, 11), (short_value_boxed, 12), (char_value_boxed, 13),
+    (boolean_value_boxed, 14), (int_array, 15), (long_array, 16),
+    (float_array, 17), (double_array, 18), (short_array, 19),
+    (char_array, 20), (boolean_array, 21), (string, 22));
 
 // Enums for MediaContent benchmark
 enum class Player : int32_t { JAVA = 0, FLASH = 1 };
@@ -130,6 +140,9 @@ struct Media {
 };
 FORY_STRUCT(Media, uri, title, width, height, format, duration, size, bitrate,
             has_bitrate, persons, player, copyright);
+FORY_FIELD_TAGS(Media, (uri, 1), (title, 2), (width, 3), (height, 4),
+                (format, 5), (duration, 6), (size, 7), (bitrate, 8),
+                (has_bitrate, 9), (persons, 10), (player, 11), (copyright, 12));
 
 struct Image {
   std::string uri;
@@ -144,6 +157,8 @@ struct Image {
   }
 };
 FORY_STRUCT(Image, uri, title, width, height, size);
+FORY_FIELD_TAGS(Image, (uri, 1), (title, 2), (width, 3), (height, 4),
+                (size, 5));
 
 struct MediaContent {
   Media media;
@@ -154,6 +169,7 @@ struct MediaContent {
   }
 };
 FORY_STRUCT(MediaContent, media, images);
+FORY_FIELD_TAGS(MediaContent, (media, 1), (images, 2));
 
 // ============================================================================
 // Test data creation
