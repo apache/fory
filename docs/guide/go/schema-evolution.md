@@ -43,6 +43,20 @@ f := fory.New(fory.WithCompatible(true))
 - Supports adding, removing, and reordering fields
 - Enables forward and backward compatibility
 
+### Disable Evolution for Stable Structs
+
+If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Implement the `ForyEvolving` interface and return `false`:
+
+```go
+type StableMessage struct {
+    ID int64
+}
+
+func (StableMessage) ForyEvolving() bool {
+    return false
+}
+```
+
 ## Supported Schema Changes
 
 ### Adding Fields

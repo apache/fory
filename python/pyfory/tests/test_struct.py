@@ -27,6 +27,7 @@ import pyfory
 from pyfory import Fory
 from pyfory.error import TypeUnregisteredError
 from pyfory.struct import DataClassSerializer
+from pyfory.types import TypeId
 
 
 def ser_de(fory, obj):
@@ -198,6 +199,22 @@ def test_data_class_serializer_xlang():
     obj_deserialized = ser_de(fory, obj_original)
 
     assert obj_deserialized == obj_original
+
+
+def test_struct_evolving_override():
+    @pyfory.dataclass
+    class EvolvingStruct:
+        f1: pyfory.int32 = 0
+
+    @pyfory.dataclass(evolving=False)
+    class FixedStruct:
+        f1: pyfory.int32 = 0
+
+    fory = Fory(xlang=True, compatible=True)
+    evolving_info = fory.register_type(EvolvingStruct, namespace="test", typename="EvolvingStruct")
+    fixed_info = fory.register_type(FixedStruct, namespace="test", typename="FixedStruct")
+    assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
+    assert fixed_info.type_id == TypeId.NAMED_STRUCT
     assert obj_deserialized.f_int == obj_original.f_int
     assert obj_deserialized.f_float == obj_original.f_float
     assert obj_deserialized.f_str == obj_original.f_str

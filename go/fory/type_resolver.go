@@ -760,17 +760,9 @@ func (r *TypeResolver) RegisterNamedStruct(
 	var internalTypeID TypeId
 	userTypeID := invalidUserTypeID
 	if typeId == 0 {
-		if r.metaShareEnabled() {
-			internalTypeID = NAMED_COMPATIBLE_STRUCT
-		} else {
-			internalTypeID = NAMED_STRUCT
-		}
+		internalTypeID = r.structTypeID(type_, true)
 	} else {
-		if r.metaShareEnabled() {
-			internalTypeID = COMPATIBLE_STRUCT
-		} else {
-			internalTypeID = STRUCT
-		}
+		internalTypeID = r.structTypeID(type_, false)
 		userTypeID = typeId
 	}
 	if registerById {
@@ -1169,11 +1161,11 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	   All other slice types are treated as lists (typeID 21).
 	*/
 	if value.Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Type(), true))
 	} else if value.IsValid() && value.Kind() == reflect.Interface && value.Elem().Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Elem().Type(), true))
 	} else if value.IsValid() && value.Kind() == reflect.Ptr && value.Elem().Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Elem().Type(), true))
 	} else if value.Kind() == reflect.Map {
 		typeID = MAP
 	} else if value.Kind() == reflect.Array {
@@ -1416,6 +1408,25 @@ func calcTypeHash(type_ reflect.Type) uint64 {
 
 func (r *TypeResolver) metaShareEnabled() bool {
 	return r.fory != nil && r.fory.metaContext != nil && r.fory.config.Compatible
+}
+
+func (r *TypeResolver) structTypeID(type_ reflect.Type, named bool) TypeId {
+	useCompatible := r.metaShareEnabled()
+	if useCompatible {
+		if evolving, ok := structEvolvingOverride(type_); ok && !evolving {
+			useCompatible = false
+		}
+	}
+	if named {
+		if useCompatible {
+			return NAMED_COMPATIBLE_STRUCT
+		}
+		return NAMED_STRUCT
+	}
+	if useCompatible {
+		return COMPATIBLE_STRUCT
+	}
+	return STRUCT
 }
 
 // WriteTypeInfo writes type info to buffer.

@@ -196,6 +196,17 @@ class BaseGenerator(ABC):
         type_id = getattr(type_def, "type_id", None)
         return type_id is not None
 
+    def get_effective_evolving(self, message) -> bool:
+        """Return effective evolving flag for a message."""
+        if message is None:
+            return True
+        if "evolving" in message.options:
+            return bool(message.options.get("evolving"))
+        file_default = self.schema.get_option("evolving")
+        if file_default is None:
+            return True
+        return bool(file_default)
+
     def get_license_header(self, comment_prefix: str = "//") -> str:
         """Get the Apache license header."""
         lines = [

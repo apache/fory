@@ -445,6 +445,8 @@ class JavaGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, "//")
         if comment:
             lines.append(comment)
+        if not self.get_effective_evolving(message):
+            lines.append("@ForyObject(evolving = false)")
         lines.append(f"public class {message.name} {{")
 
         # Generate nested enums as static inner classes
@@ -586,6 +588,9 @@ class JavaGenerator(BaseGenerator):
         """Collect imports for a message and all its nested types recursively."""
         for field in message.fields:
             self.collect_field_imports(field, imports)
+
+        if not self.get_effective_evolving(message):
+            imports.add("org.apache.fory.annotation.ForyObject")
 
         # Add imports for equals/hashCode
         imports.add("java.util.Objects")
@@ -961,6 +966,8 @@ class JavaGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, "    " * indent + "//")
         if comment:
             lines.append(comment)
+        if not self.get_effective_evolving(message):
+            lines.append("@ForyObject(evolving = false)")
         lines.append(f"public static class {message.name} {{")
 
         # Generate nested enums

@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 
 use fory_core::fory::Fory;
+use fory_core::TypeId;
 use fory_derive::ForyObject;
 
 // Test 1: Simple struct with one primitive field, non-compatible mode
@@ -76,6 +77,32 @@ fn test_compatible_field_type_change() {
     let bytes = fory1.serialize(&data1).unwrap();
     let result: Data2 = fory2.deserialize(&bytes).unwrap();
     assert_eq!(result.value.unwrap(), 42i32);
+}
+
+#[test]
+fn test_struct_evolving_override() {
+    #[derive(ForyObject, Debug)]
+    struct Evolving {
+        id: i32,
+    }
+
+    #[derive(ForyObject, Debug)]
+    #[fory(evolving = false)]
+    struct Fixed {
+        id: i32,
+    }
+
+    let mut fory = Fory::default().xlang(true).compatible(true).track_ref(false);
+    fory.register::<Evolving>(100).unwrap();
+    fory.register::<Fixed>(101).unwrap();
+
+    let evolving_bytes = fory.serialize(&Evolving { id: 1 }).unwrap();
+    assert!(evolving_bytes.len() > 2);
+    assert_eq!(evolving_bytes[2], TypeId::COMPATIBLE_STRUCT as u8);
+
+    let fixed_bytes = fory.serialize(&Fixed { id: 1 }).unwrap();
+    assert!(fixed_bytes.len() > 2);
+    assert_eq!(fixed_bytes[2], TypeId::STRUCT as u8);
 }
 
 // Test 4: Compatible mode - serialize with field, deserialize with empty struct

@@ -43,6 +43,7 @@ import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.ForyObject;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.builder.Generated.GeneratedMetaSharedSerializer;
@@ -909,10 +910,18 @@ public abstract class TypeResolver {
     if (serializer != null && !isStructSerializer(serializer)) {
       return Types.NAMED_EXT;
     }
-    if (fory.isCompatible()) {
+    if (fory.isCompatible() && isStructEvolving(cls)) {
       return metaContextShareEnabled ? Types.NAMED_COMPATIBLE_STRUCT : Types.NAMED_STRUCT;
     }
     return Types.NAMED_STRUCT;
+  }
+
+  protected boolean isStructEvolving(Class<?> cls) {
+    if (cls == null) {
+      return true;
+    }
+    ForyObject annotation = cls.getAnnotation(ForyObject.class);
+    return annotation == null || annotation.evolving();
   }
 
   protected static boolean isStructSerializer(Serializer<?> serializer) {

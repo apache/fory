@@ -266,7 +266,7 @@ class PythonGenerator(BaseGenerator):
         imports: Set[str] = set()
 
         # Collect all imports
-        imports.add("from dataclasses import dataclass, field")
+        imports.add("from dataclasses import field")
         imports.add("from enum import Enum, IntEnum")
         imports.add("from typing import Dict, List, Optional, cast")
         imports.add("import pyfory")
@@ -370,7 +370,10 @@ class PythonGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, f"{ind}#")
         if comment:
             lines.append(comment)
-        lines.append(f"{ind}@dataclass")
+        if not self.get_effective_evolving(message):
+            lines.append(f"{ind}@pyfory.dataclass(evolving=False)")
+        else:
+            lines.append(f"{ind}@pyfory.dataclass")
         lines.append(f"{ind}class {message.name}:")
 
         # Generate nested enums first (they need to be defined before fields reference them)
