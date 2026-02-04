@@ -21,7 +21,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fory-idl-tests"
-version = "0.1.0"
+version = "0.15.0.dev"
 description = "IDL compiler integration tests for Apache Fory"
 readme = "README.md"
 requires-python = ">=3.8"

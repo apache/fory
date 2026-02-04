@@ -138,35 +138,62 @@ def bump_version(**kwargs):
     new_version = kwargs["version"]
     langs = kwargs["l"]
     if langs == "all":
-        langs = ["java", "python", "javascript", "scala", "rust", "kotlin"]
+        langs = [
+            "java",
+            "python",
+            "javascript",
+            "scala",
+            "rust",
+            "kotlin",
+            "cpp",
+            "go",
+            "dart",
+            "compiler",
+        ]
     else:
         langs = langs.split(",")
     for lang in langs:
         if lang == "java":
-            bump_java_version(new_version)
+            bump_java_version(_normalize_java_version(new_version))
         elif lang == "scala":
-            _bump_version("scala", "build.sbt", new_version, _update_scala_version)
-        elif lang == "kotlin":
-            _bump_version("kotlin", "pom.xml", new_version, _update_kotlin_version)
-        elif lang == "rust":
-            _bump_version("rust", "Cargo.toml", new_version, _update_rust_version)
-        elif lang == "python":
             _bump_version(
-                "python/pyfory", "__init__.py", new_version, _update_python_version
+                "scala",
+                "build.sbt",
+                _normalize_java_version(new_version),
+                _update_scala_version,
             )
+        elif lang == "kotlin":
+            _bump_version(
+                "kotlin",
+                "pom.xml",
+                _normalize_java_version(new_version),
+                _update_kotlin_version,
+            )
+        elif lang == "rust":
+            bump_rust_version(new_version)
+        elif lang == "python":
+            bump_python_version(new_version)
         elif lang == "javascript":
             _bump_version(
                 "javascript/packages/fory",
                 "package.json",
-                new_version,
+                _normalize_js_version(new_version),
                 _update_js_version,
             )
             _bump_version(
                 "javascript/packages/hps",
                 "package.json",
-                new_version,
+                _normalize_js_version(new_version),
                 _update_js_version,
             )
+        elif lang == "cpp":
+            bump_cpp_version(new_version)
+        elif lang == "go":
+            bump_go_version(new_version)
+        elif lang == "dart":
+            bump_dart_version(new_version)
+        elif lang == "compiler":
+            bump_compiler_version(new_version)
         else:
             raise NotImplementedError(f"Unsupported {lang}")
 
@@ -182,15 +209,18 @@ def _bump_version(path, file, new_version, func):
 
 
 def bump_java_version(new_version):
+    new_version = _normalize_java_version(new_version)
     for p in [
         "integration_tests/graalvm_tests",
         "integration_tests/jdk_compatibility_tests",
         "integration_tests/jpms_tests",
+        "integration_tests/idl_tests/java",
         "benchmarks/java_benchmark",
         "java/fory-core",
         "java/fory-format",
         "java/fory-simd",
         "java/fory-extensions",
+        "java/fory-graalvm-feature",
         "java/fory-test-core",
         "java/fory-testsuite",
         "java/fory-latest-jdk-tests",
@@ -204,6 +234,69 @@ def bump_java_version(new_version):
     #     universal_newlines=True,
     # )
     _bump_version("java", "pom.xml", new_version, _update_parent_pom_version)
+
+
+def bump_python_version(new_version):
+    _bump_version("python/pyfory", "__init__.py", new_version, _update_python_version)
+    _bump_version(
+        "integration_tests/idl_tests/python",
+        "pyproject.toml",
+        new_version,
+        _update_pyproject_version,
+    )
+
+
+def bump_rust_version(new_version):
+    rust_version = _normalize_rust_version(new_version)
+    _bump_version("rust", "Cargo.toml", rust_version, _update_rust_version)
+    _bump_version(
+        "benchmarks/rust_benchmark",
+        "Cargo.toml",
+        rust_version,
+        _update_cargo_package_version,
+    )
+    _bump_version(
+        "integration_tests/idl_tests/rust",
+        "Cargo.toml",
+        rust_version,
+        _update_cargo_package_version,
+    )
+
+
+def bump_cpp_version(new_version):
+    for p in [
+        "cpp",
+        "benchmarks/cpp_benchmark",
+        "integration_tests/idl_tests/cpp",
+    ]:
+        _bump_version(p, "CMakeLists.txt", new_version, _update_cmake_project_version)
+
+
+def bump_go_version(new_version):
+    for p in [
+        "benchmarks/go_benchmark",
+        "integration_tests/idl_tests/go",
+    ]:
+        _bump_version(p, "go.mod", new_version, _update_go_mod_version)
+
+
+def bump_dart_version(new_version):
+    for p in [
+        "dart",
+        "dart/packages/fory",
+        "dart/packages/fory-test",
+    ]:
+        _bump_version(p, "pubspec.yaml", new_version, _update_pubspec_version)
+
+
+def bump_compiler_version(new_version):
+    _bump_version("compiler", "pyproject.toml", new_version, _update_pyproject_version)
+    _bump_version(
+        "compiler/fory_compiler",
+        "__init__.py",
+        new_version,
+        _update_python_version,
+    )
 
 
 def _update_pom_parent_version(lines, new_version):
@@ -226,6 +319,7 @@ def _update_pom_parent_version(lines, new_version):
 
 
 def _update_scala_version(lines, v):
+    v = _normalize_java_version(v)
     for index, line in enumerate(lines):
         if "foryVersion = " in line:
             lines[index] = f'val foryVersion = "{v}"\n'
@@ -234,6 +328,7 @@ def _update_scala_version(lines, v):
 
 
 def _update_kotlin_version(lines, v):
+    v = _normalize_java_version(v)
     return _update_pom_version(lines, v, "<artifactId>fory-kotlin</artifactId>")
 
 
@@ -258,25 +353,153 @@ def _update_pom_version(lines, v, prev):
 
 
 def _update_rust_version(lines, v):
+    in_workspace_package = False
+    in_workspace_dependencies = False
     for index, line in enumerate(lines):
-        if "version = " in line:
+        stripped = line.strip()
+        if stripped == "[workspace.package]":
+            in_workspace_package = True
+            in_workspace_dependencies = False
+            continue
+        if stripped == "[workspace.dependencies]":
+            in_workspace_dependencies = True
+            in_workspace_package = False
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_workspace_package = False
+            in_workspace_dependencies = False
+        if in_workspace_package and stripped.startswith("version = "):
+            lines[index] = f'version = "{v}"\n'
+            continue
+        if in_workspace_dependencies and re.match(r"\s*fory(-core|-derive)?\s*=", line):
+            lines[index] = re.sub(
+                r'(version\s*=\s*")([^"]+)(")',
+                r"\g<1>" + v + r"\3",
+                line,
+            )
+    return lines
+
+
+def _update_python_version(lines, v: str):
+    v = _normalize_python_version(v)
+    for index, line in enumerate(lines):
+        if "__version__ = " in line:
+            lines[index] = f'__version__ = "{v}"\n'
+            break
+
+
+def _update_pyproject_version(lines, v: str):
+    v = _normalize_python_version(v)
+    in_project = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "[project]":
+            in_project = True
+            continue
+        if in_project and stripped.startswith("[") and stripped.endswith("]"):
+            in_project = False
+        if in_project and stripped.startswith("version ="):
             lines[index] = f'version = "{v}"\n'
             break
     return lines
 
 
-def _update_python_version(lines, v: str):
+def _update_cargo_package_version(lines, v: str):
+    in_package = False
     for index, line in enumerate(lines):
-        if "__version__ = " in line:
-            v = v.replace("-alpha", "a")
-            v = v.replace("-beta", "b")
-            v = v.replace("-rc", "rc")
-            v = v.replace("-", "")
-            lines[index] = f'__version__ = "{v}"\n'
+        stripped = line.strip()
+        if stripped == "[package]":
+            in_package = True
+            continue
+        if in_package and stripped.startswith("[") and stripped.endswith("]"):
+            in_package = False
+        if in_package and stripped.startswith("version ="):
+            lines[index] = f'version = "{v}"\n'
             break
+    return lines
+
+
+def _update_cmake_project_version(lines, v: str):
+    cmake_version = _normalize_cmake_version(v)
+    in_project = False
+    for index, line in enumerate(lines):
+        if re.search(r"^\s*project\(", line):
+            in_project = True
+        if in_project and "VERSION" in line:
+            lines[index] = re.sub(
+                r"(VERSION\s+)([0-9]+(?:\.[0-9]+){1,2})",
+                r"\g<1>" + cmake_version,
+                line,
+            )
+        if in_project and ")" in line:
+            in_project = False
+    return lines
+
+
+def _update_go_mod_version(lines, v: str):
+    go_version = _normalize_go_version(v)
+    for index, line in enumerate(lines):
+        if "github.com/apache/fory/go/fory" not in line:
+            continue
+        lines[index] = re.sub(
+            r"(github.com/apache/fory/go/fory\s+)(v[^\s]+)",
+            r"\g<1>" + go_version,
+            line,
+        )
+    return lines
+
+
+def _update_pubspec_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if re.match(r"^version\s*:", line):
+            lines[index] = f"version: {v}\n"
+            continue
+        if re.match(r"^\s*fory\s*:", line):
+            prefix = re.match(r"^(\s*fory\s*:)\s*.*", line)
+            if prefix:
+                lines[index] = f"{prefix.group(1)} {v}\n"
+    return lines
+
+
+def _normalize_python_version(v: str) -> str:
+    v = v.strip()
+    v = re.sub(r"(?i)-?snapshot$", ".dev0", v)
+    v = re.sub(r"(?i)-dev(\d*)$", r".dev\1", v)
+    v = v.replace("-alpha", "a")
+    v = v.replace("-beta", "b")
+    v = v.replace("-rc", "rc")
+    v = v.replace("-", "")
+    return v
+
+
+def _normalize_java_version(v: str) -> str:
+    v = v.strip()
+    if re.search(r"(?i)-snapshot$", v):
+        return re.sub(r"(?i)-snapshot$", "-SNAPSHOT", v)
+    if re.search(r"(?i)(\.dev\d*|-dev\d*)$", v):
+        base = re.sub(r"(?i)(\.dev\d*|-dev\d*)$", "", v)
+        return f"{base}-SNAPSHOT"
+    return v
+
+
+def _normalize_go_version(v: str) -> str:
+    v = v.strip()
+    if v.startswith("v"):
+        v = v[1:]
+    v = re.sub(r"(?i)-snapshot$", "", v)
+    return f"v{v}"
+
+
+def _normalize_cmake_version(v: str) -> str:
+    v = v.strip()
+    if v.startswith("v"):
+        v = v[1:]
+    v = re.split(r"[-+]", v, maxsplit=1)[0]
+    return v
 
 
 def _update_js_version(lines, v: str):
+    v = _normalize_js_version(v)
     for index, line in enumerate(lines):
         if "version" in line:
             # "version": "0.5.9-beta"
@@ -285,6 +508,36 @@ def _update_js_version(lines, v: str):
                     v = v.replace(x, x + ".")
             lines[index] = f'  "version": "{v}",\n'
             break
+
+
+def _normalize_js_version(v: str) -> str:
+    v = v.strip()
+    snapshot_match = re.search(r"(?i)(?:-snapshot|\.dev(\d*)?)$", v)
+    if snapshot_match:
+        suffix = ""
+        if snapshot_match.group(1):
+            suffix = f".{snapshot_match.group(1)}"
+        v = re.sub(r"(?i)(?:-snapshot|\.dev\d*)$", f"-dev{suffix}", v)
+    return v
+
+
+def _normalize_rust_version(v: str) -> str:
+    v = v.strip()
+    if re.search(r"(?i)-(alpha|beta)\.0$", v):
+        return v
+    if re.search(r"(?i)-pre$", v):
+        return v
+    if re.search(
+        r"(?i)(-snapshot|\.dev\d*|-dev\d*|-(alpha|beta|rc)(\.\d+|\d+)?)$",
+        v,
+    ):
+        base = re.sub(
+            r"(?i)(-snapshot|\.dev\d*|-dev\d*|-(alpha|beta|rc)(\.\d+|\d+)?)$",
+            "",
+            v,
+        )
+        return f"{base}-pre"
+    return v
 
 
 def _parse_args():

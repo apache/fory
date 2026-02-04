@@ -17,7 +17,7 @@
 
 [package]
 name = "idl_tests"
-version = "0.1.0"
+version = "0.15.0-pre"
 edition = "2021"
 license = "Apache-2.0"
 
