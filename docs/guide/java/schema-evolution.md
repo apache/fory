@@ -46,6 +46,20 @@ System.out.println(fory.deserialize(bytes));
 
 This compatible mode involves serializing class metadata into the serialized output. Despite Fory's use of sophisticated compression techniques to minimize overhead, there is still some additional space cost associated with class metadata.
 
+### Disable Evolution for Stable Classes
+
+If a class schema is stable and will not change, you can opt out of schema evolution on a per-class basis to avoid compatible metadata overhead. Annotate the class with `@ForyObject(evolving = false)` to force `STRUCT/NAMED_STRUCT` type IDs even when Compatible mode is enabled.
+
+```java
+import org.apache.fory.annotation.ForyObject;
+
+@ForyObject(evolving = false)
+public class StableMessage {
+  public int id;
+  public String name;
+}
+```
+
 ## Meta Sharing
 
 To further reduce metadata costs, Fory introduces a class metadata sharing mechanism, which allows the metadata to be sent to the deserialization process only once.

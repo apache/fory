@@ -1374,14 +1374,16 @@ FDL supports protobuf-style extension options for Fory-specific configuration. T
 option (fory).use_record_for_java_message = true;
 option (fory).polymorphism = true;
 option (fory).enable_auto_type_id = true;
+option (fory).evolving = true;
 ```
 
-| Option                        | Type   | Description                                                  |
-| ----------------------------- | ------ | ------------------------------------------------------------ |
-| `use_record_for_java_message` | bool   | Generate Java records instead of classes                     |
-| `polymorphism`                | bool   | Enable polymorphism for all types                            |
-| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)  |
-| `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase` |
+| Option                        | Type   | Description                                                                                                                         |
+| ----------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `use_record_for_java_message` | bool   | Generate Java records instead of classes                                                                                            |
+| `polymorphism`                | bool   | Enable polymorphism for all types                                                                                                   |
+| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)                                                                         |
+| `evolving`                    | bool   | Default schema evolution for messages in this file (default: true). Set false to reduce payload size for messages that never change |
+| `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase`                                                                        |
 
 ### Message-Level Fory Options
 
@@ -1396,14 +1398,14 @@ message MyMessage {
 }
 ```
 
-| Option                | Type   | Description                                                                          |
-| --------------------- | ------ | ------------------------------------------------------------------------------------ |
-| `id`                  | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true) |
-| `alias`               | string | Alternate name used as hash source for auto-generated IDs                            |
-| `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct  |
-| `use_record_for_java` | bool   | Generate Java record for this message                                                |
-| `deprecated`          | bool   | Mark this message as deprecated                                                      |
-| `namespace`           | string | Custom namespace for type registration                                               |
+| Option                | Type   | Description                                                                                                        |
+| --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| `id`                  | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true)                               |
+| `alias`               | string | Alternate name used as hash source for auto-generated IDs                                                          |
+| `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct and avoids compatible metadata |
+| `use_record_for_java` | bool   | Generate Java record for this message                                                                              |
+| `deprecated`          | bool   | Mark this message as deprecated                                                                                    |
+| `namespace`           | string | Custom namespace for type registration                                                                             |
 
 **Note:** `option (fory).id = 100` is equivalent to the inline syntax `message MyMessage [id=100]`.
 
@@ -1502,6 +1504,7 @@ message ForyFileOptions {
     optional bool use_record_for_java_message = 1;
     optional bool polymorphism = 2;
     optional bool enable_auto_type_id = 3;
+    optional bool evolving = 4;
 }
 
 // Message-level options

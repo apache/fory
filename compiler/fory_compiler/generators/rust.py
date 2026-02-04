@@ -423,6 +423,8 @@ class RustGenerator(BaseGenerator):
         if not self.message_has_any(message):
             derives.extend(["Clone", "PartialEq", "Default"])
         lines.append(f"#[derive({', '.join(derives)})]")
+        if not self.get_effective_evolving(message):
+            lines.append("#[fory(evolving = false)]")
 
         lines.append(f"pub struct {type_name} {{")
 

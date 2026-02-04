@@ -68,6 +68,16 @@ pub fn gen_actual_type_id() -> TokenStream {
     }
 }
 
+pub fn gen_actual_type_id_no_evolving() -> TokenStream {
+    quote! {
+        if register_by_name {
+            fory_core::types::TypeId::NAMED_STRUCT as u32
+        } else {
+            fory_core::types::TypeId::STRUCT as u32
+        }
+    }
+}
+
 pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
     let static_field_names = get_sort_fields_ts(fields);
     quote! {

@@ -1344,8 +1344,9 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
 
   if constexpr (is_fory_serializable_v<T>) {
     uint32_t actual_type_id =
-        compatible_ ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
-                    : static_cast<uint32_t>(TypeId::STRUCT);
+        compatible_ && meta::StructEvolving<T>::value
+            ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
+            : static_cast<uint32_t>(TypeId::STRUCT);
     uint32_t user_type_id = type_id;
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, user_type_id, "",
@@ -1398,8 +1399,9 @@ TypeResolver::register_by_name(const std::string &ns,
 
   if constexpr (is_fory_serializable_v<T>) {
     uint32_t actual_type_id =
-        compatible_ ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
-                    : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
+        compatible_ && meta::StructEvolving<T>::value
+            ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
+            : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, kInvalidUserTypeId,
                                              ns, type_name, true));

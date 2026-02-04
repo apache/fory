@@ -49,6 +49,7 @@ KNOWN_FILE_OPTIONS: Set[str] = {
     "polymorphism",
     "enable_auto_type_id",
     "go_nested_type_style",
+    "evolving",
 }
 
 # Known field-level options
