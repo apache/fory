@@ -104,3 +104,5 @@ examples/cpp/cmake_example/build
 **/results/
 benchmarks/**/report/
 ignored/**
+ci-logs/**
+**/*.log
