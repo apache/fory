@@ -57,7 +57,10 @@ pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Re
     if context.is_compatible() || context.is_xlang() {
         return read_type_info::<T>(context);
     }
-    let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
+    let local_type_id =
+        context
+            .get_type_resolver()
+            .get_type_id_by_index(T::fory_type_index())?;
     let local_type_id_u32 = local_type_id as u32;
     if !crate::types::needs_user_type_id(local_type_id_u32) {
         return read_type_info::<T>(context);

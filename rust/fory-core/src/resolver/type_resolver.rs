@@ -591,6 +591,22 @@ impl TypeResolver {
         )))
     }
 
+    /// Fast path for getting type info by type index (avoids HashMap lookup and TypeId::of)
+    #[inline(always)]
+    pub fn get_type_id_by_index(&self, index: u32) -> Result<TypeId, Error> {
+        let id_usize = index as usize;
+        if id_usize < self.type_id_index.len() {
+            let type_id_value = self.type_id_index[id_usize];
+            if type_id_value != NO_TYPE_ID {
+                return Ok(type_id_value);
+            }
+        }
+        Err(Error::type_error(format!(
+            "Type index {:?} not found in type_id_index, maybe you forgot to register some types",
+            index
+        )))
+    }
+
     /// Fast path for getting user type ID by type index (avoids HashMap lookup by TypeId)
     #[inline(always)]
     pub fn get_user_type_id_by_index(
