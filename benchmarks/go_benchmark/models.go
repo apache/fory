@@ -20,41 +20,41 @@ package benchmark
 // NumericStruct is a simple struct with 8 int32 fields
 // Matches the C++ NumericStruct and protobuf Struct message
 type NumericStruct struct {
-	F1 int32 `msgpack:"f1"`
-	F2 int32 `msgpack:"f2"`
-	F3 int32 `msgpack:"f3"`
-	F4 int32 `msgpack:"f4"`
-	F5 int32 `msgpack:"f5"`
-	F6 int32 `msgpack:"f6"`
-	F7 int32 `msgpack:"f7"`
-	F8 int32 `msgpack:"f8"`
+	F1 int32 `msgpack:"f1" fory:"id=1"`
+	F2 int32 `msgpack:"f2" fory:"id=2"`
+	F3 int32 `msgpack:"f3" fory:"id=3"`
+	F4 int32 `msgpack:"f4" fory:"id=4"`
+	F5 int32 `msgpack:"f5" fory:"id=5"`
+	F6 int32 `msgpack:"f6" fory:"id=6"`
+	F7 int32 `msgpack:"f7" fory:"id=7"`
+	F8 int32 `msgpack:"f8" fory:"id=8"`
 }
 
 // Sample is a complex struct with various types and arrays
 // Matches the C++ Sample and protobuf Sample message
 type Sample struct {
-	IntValue          int32     `msgpack:"int_value"`
-	LongValue         int64     `msgpack:"long_value"`
-	FloatValue        float32   `msgpack:"float_value"`
-	DoubleValue       float64   `msgpack:"double_value"`
-	ShortValue        int32     `msgpack:"short_value"`
-	CharValue         int32     `msgpack:"char_value"`
-	BooleanValue      bool      `msgpack:"boolean_value"`
-	IntValueBoxed     int32     `msgpack:"int_value_boxed"`
-	LongValueBoxed    int64     `msgpack:"long_value_boxed"`
-	FloatValueBoxed   float32   `msgpack:"float_value_boxed"`
-	DoubleValueBoxed  float64   `msgpack:"double_value_boxed"`
-	ShortValueBoxed   int32     `msgpack:"short_value_boxed"`
-	CharValueBoxed    int32     `msgpack:"char_value_boxed"`
-	BooleanValueBoxed bool      `msgpack:"boolean_value_boxed"`
-	IntArray          []int32   `msgpack:"int_array"`
-	LongArray         []int64   `msgpack:"long_array"`
-	FloatArray        []float32 `msgpack:"float_array"`
-	DoubleArray       []float64 `msgpack:"double_array"`
-	ShortArray        []int32   `msgpack:"short_array"`
-	CharArray         []int32   `msgpack:"char_array"`
-	BooleanArray      []bool    `msgpack:"boolean_array"`
-	String            string    `msgpack:"string"`
+	IntValue          int32     `msgpack:"int_value" fory:"id=1"`
+	LongValue         int64     `msgpack:"long_value" fory:"id=2"`
+	FloatValue        float32   `msgpack:"float_value" fory:"id=3"`
+	DoubleValue       float64   `msgpack:"double_value" fory:"id=4"`
+	ShortValue        int32     `msgpack:"short_value" fory:"id=5"`
+	CharValue         int32     `msgpack:"char_value" fory:"id=6"`
+	BooleanValue      bool      `msgpack:"boolean_value" fory:"id=7"`
+	IntValueBoxed     int32     `msgpack:"int_value_boxed" fory:"id=8"`
+	LongValueBoxed    int64     `msgpack:"long_value_boxed" fory:"id=9"`
+	FloatValueBoxed   float32   `msgpack:"float_value_boxed" fory:"id=10"`
+	DoubleValueBoxed  float64   `msgpack:"double_value_boxed" fory:"id=11"`
+	ShortValueBoxed   int32     `msgpack:"short_value_boxed" fory:"id=12"`
+	CharValueBoxed    int32     `msgpack:"char_value_boxed" fory:"id=13"`
+	BooleanValueBoxed bool      `msgpack:"boolean_value_boxed" fory:"id=14"`
+	IntArray          []int32   `msgpack:"int_array" fory:"id=15"`
+	LongArray         []int64   `msgpack:"long_array" fory:"id=16"`
+	FloatArray        []float32 `msgpack:"float_array" fory:"id=17"`
+	DoubleArray       []float64 `msgpack:"double_array" fory:"id=18"`
+	ShortArray        []int32   `msgpack:"short_array" fory:"id=19"`
+	CharArray         []int32   `msgpack:"char_array" fory:"id=20"`
+	BooleanArray      []bool    `msgpack:"boolean_array" fory:"id=21"`
+	String            string    `msgpack:"string" fory:"id=22"`
 }
 
 // Player enum type
@@ -75,33 +75,33 @@ const (
 
 // Media represents media metadata
 type Media struct {
-	URI        string   `msgpack:"uri"`
-	Title      string   `msgpack:"title"`
-	Width      int32    `msgpack:"width"`
-	Height     int32    `msgpack:"height"`
-	Format     string   `msgpack:"format"`
-	Duration   int64    `msgpack:"duration"`
-	Size       int64    `msgpack:"size"`
-	Bitrate    int32    `msgpack:"bitrate"`
-	HasBitrate bool     `msgpack:"has_bitrate"`
-	Persons    []string `msgpack:"persons"`
-	Player     Player   `msgpack:"player"`
-	Copyright  string   `msgpack:"copyright"`
+	URI        string   `msgpack:"uri" fory:"id=1"`
+	Title      string   `msgpack:"title" fory:"id=2"`
+	Width      int32    `msgpack:"width" fory:"id=3"`
+	Height     int32    `msgpack:"height" fory:"id=4"`
+	Format     string   `msgpack:"format" fory:"id=5"`
+	Duration   int64    `msgpack:"duration" fory:"id=6"`
+	Size       int64    `msgpack:"size" fory:"id=7"`
+	Bitrate    int32    `msgpack:"bitrate" fory:"id=8"`
+	HasBitrate bool     `msgpack:"has_bitrate" fory:"id=9"`
+	Persons    []string `msgpack:"persons" fory:"id=10"`
+	Player     Player   `msgpack:"player" fory:"id=11"`
+	Copyright  string   `msgpack:"copyright" fory:"id=12"`
 }
 
 // Image represents image metadata
 type Image struct {
-	URI    string `msgpack:"uri"`
-	Title  string `msgpack:"title"`
-	Width  int32  `msgpack:"width"`
-	Height int32  `msgpack:"height"`
-	Size   Size   `msgpack:"size"`
+	URI    string `msgpack:"uri" fory:"id=1"`
+	Title  string `msgpack:"title" fory:"id=2"`
+	Width  int32  `msgpack:"width" fory:"id=3"`
+	Height int32  `msgpack:"height" fory:"id=4"`
+	Size   Size   `msgpack:"size" fory:"id=5"`
 }
 
 // MediaContent contains media and images
 type MediaContent struct {
-	Media  Media   `msgpack:"media"`
-	Images []Image `msgpack:"images"`
+	Media  Media   `msgpack:"media" fory:"id=1"`
+	Images []Image `msgpack:"images" fory:"id=2"`
 }
 
 // CreateNumericStruct creates test data matching C++ benchmark
