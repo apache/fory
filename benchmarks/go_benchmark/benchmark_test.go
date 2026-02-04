@@ -35,6 +35,7 @@ func newFory() *fory.Fory {
 	f := fory.New(
 		fory.WithXlang(true),
 		fory.WithTrackRef(false),
+		fory.WithCompatible(true),
 	)
 	// Register types with IDs matching C++ benchmark
 	if err := f.RegisterStruct(NumericStruct{}, 1); err != nil {
