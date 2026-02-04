@@ -1068,6 +1068,17 @@ pub(crate) fn gen_read_compatible_with_construction(
         quote! {}
     };
 
+    let fields_binding = if variant_ident.is_some() {
+        quote! {
+            let mut fields = remote_meta.get_field_infos().clone();
+            #variant_field_remap
+        }
+    } else {
+        quote! {
+            let fields = remote_meta.get_field_infos();
+        }
+    };
+
     quote! {
         let meta = context.get_type_resolver().get_type_meta_by_index_ref(
             &std::any::TypeId::of::<Self>(),
@@ -1087,8 +1098,7 @@ pub(crate) fn gen_read_compatible_with_construction(
         if remote_type_hash == local_type_hash {
             return <Self as fory_core::Serializer>::fory_read_data(context);
         }
-        let mut fields = type_info.get_type_meta().get_field_infos().clone();
-        #variant_field_remap
+        #fields_binding
         #(#declare_ts)*
         for _field in fields.iter() {
             match _field.field_id {
