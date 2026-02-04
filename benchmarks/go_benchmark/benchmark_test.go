@@ -53,6 +53,15 @@ func newFory() *fory.Fory {
 	if err := f.RegisterStruct(MediaContent{}, 5); err != nil {
 		panic(err)
 	}
+	if err := f.RegisterStruct(StructList{}, 8); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(SampleList{}, 9); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(MediaContentList{}, 10); err != nil {
+		panic(err)
+	}
 	if err := f.RegisterEnum(Player(0), 6); err != nil {
 		panic(err)
 	}
@@ -164,6 +173,104 @@ func BenchmarkMsgpack_Struct_Deserialize(b *testing.B) {
 }
 
 // ============================================================================
+// StructList Benchmarks
+// ============================================================================
+
+func BenchmarkFory_StructList_Serialize(b *testing.B) {
+	f := newFory()
+	obj := CreateStructList()
+	buf := fory.NewByteBuffer(make([]byte, 0, 65536))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		err := f.SerializeTo(buf, &obj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProtobuf_StructList_Serialize(b *testing.B) {
+	obj := CreateStructList()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pbObj := ToPbStructList(obj)
+		_, err := proto.Marshal(pbObj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMsgpack_StructList_Serialize(b *testing.B) {
+	obj := CreateStructList()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := msgpack.Marshal(obj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFory_StructList_Deserialize(b *testing.B) {
+	f := newFory()
+	obj := CreateStructList()
+	data, err := f.Serialize(&obj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var result StructList
+		err := f.Deserialize(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProtobuf_StructList_Deserialize(b *testing.B) {
+	obj := CreateStructList()
+	pbObj := ToPbStructList(obj)
+	data, err := proto.Marshal(pbObj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var pbResult pb.StructList
+		err := proto.Unmarshal(data, &pbResult)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = FromPbStructList(&pbResult)
+	}
+}
+
+func BenchmarkMsgpack_StructList_Deserialize(b *testing.B) {
+	obj := CreateStructList()
+	data, err := msgpack.Marshal(obj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var result StructList
+		err := msgpack.Unmarshal(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// ============================================================================
 // Sample Benchmarks
 // ============================================================================
 
@@ -254,6 +361,104 @@ func BenchmarkMsgpack_Sample_Deserialize(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result Sample
+		err := msgpack.Unmarshal(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// ============================================================================
+// SampleList Benchmarks
+// ============================================================================
+
+func BenchmarkFory_SampleList_Serialize(b *testing.B) {
+	f := newFory()
+	obj := CreateSampleList()
+	buf := fory.NewByteBuffer(make([]byte, 0, 131072))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		err := f.SerializeTo(buf, &obj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProtobuf_SampleList_Serialize(b *testing.B) {
+	obj := CreateSampleList()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pbObj := ToPbSampleList(obj)
+		_, err := proto.Marshal(pbObj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMsgpack_SampleList_Serialize(b *testing.B) {
+	obj := CreateSampleList()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := msgpack.Marshal(obj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFory_SampleList_Deserialize(b *testing.B) {
+	f := newFory()
+	obj := CreateSampleList()
+	data, err := f.Serialize(&obj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var result SampleList
+		err := f.Deserialize(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProtobuf_SampleList_Deserialize(b *testing.B) {
+	obj := CreateSampleList()
+	pbObj := ToPbSampleList(obj)
+	data, err := proto.Marshal(pbObj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var pbResult pb.SampleList
+		err := proto.Unmarshal(data, &pbResult)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = FromPbSampleList(&pbResult)
+	}
+}
+
+func BenchmarkMsgpack_SampleList_Deserialize(b *testing.B) {
+	obj := CreateSampleList()
+	data, err := msgpack.Marshal(obj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var result SampleList
 		err := msgpack.Unmarshal(data, &result)
 		if err != nil {
 			b.Fatal(err)
@@ -360,6 +565,104 @@ func BenchmarkMsgpack_MediaContent_Deserialize(b *testing.B) {
 }
 
 // ============================================================================
+// MediaContentList Benchmarks
+// ============================================================================
+
+func BenchmarkFory_MediaContentList_Serialize(b *testing.B) {
+	f := newFory()
+	obj := CreateMediaContentList()
+	buf := fory.NewByteBuffer(make([]byte, 0, 131072))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		err := f.SerializeTo(buf, &obj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProtobuf_MediaContentList_Serialize(b *testing.B) {
+	obj := CreateMediaContentList()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pbObj := ToPbMediaContentList(obj)
+		_, err := proto.Marshal(pbObj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMsgpack_MediaContentList_Serialize(b *testing.B) {
+	obj := CreateMediaContentList()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := msgpack.Marshal(obj)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFory_MediaContentList_Deserialize(b *testing.B) {
+	f := newFory()
+	obj := CreateMediaContentList()
+	data, err := f.Serialize(&obj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var result MediaContentList
+		err := f.Deserialize(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkProtobuf_MediaContentList_Deserialize(b *testing.B) {
+	obj := CreateMediaContentList()
+	pbObj := ToPbMediaContentList(obj)
+	data, err := proto.Marshal(pbObj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var pbResult pb.MediaContentList
+		err := proto.Unmarshal(data, &pbResult)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = FromPbMediaContentList(&pbResult)
+	}
+}
+
+func BenchmarkMsgpack_MediaContentList_Deserialize(b *testing.B) {
+	obj := CreateMediaContentList()
+	data, err := msgpack.Marshal(obj)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var result MediaContentList
+		err := msgpack.Unmarshal(data, &result)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// ============================================================================
 // Size Comparison (run once to print sizes)
 // ============================================================================
 
@@ -384,6 +687,24 @@ func TestPrintSerializedSizes(t *testing.T) {
 	pbMediaData, _ := proto.Marshal(ToPbMediaContent(mediaContent))
 	msgpackMediaData, _ := msgpack.Marshal(mediaContent)
 
+	// StructList sizes
+	structList := CreateStructList()
+	foryStructListData, _ := f.Serialize(&structList)
+	pbStructListData, _ := proto.Marshal(ToPbStructList(structList))
+	msgpackStructListData, _ := msgpack.Marshal(structList)
+
+	// SampleList sizes
+	sampleList := CreateSampleList()
+	forySampleListData, _ := f.Serialize(&sampleList)
+	pbSampleListData, _ := proto.Marshal(ToPbSampleList(sampleList))
+	msgpackSampleListData, _ := msgpack.Marshal(sampleList)
+
+	// MediaContentList sizes
+	mediaContentList := CreateMediaContentList()
+	foryMediaContentListData, _ := f.Serialize(&mediaContentList)
+	pbMediaContentListData, _ := proto.Marshal(ToPbMediaContentList(mediaContentList))
+	msgpackMediaContentListData, _ := msgpack.Marshal(mediaContentList)
+
 	fmt.Println("============================================")
 	fmt.Println("Serialized Sizes (bytes):")
 	fmt.Println("============================================")
@@ -399,5 +720,17 @@ func TestPrintSerializedSizes(t *testing.T) {
 	fmt.Printf("  Fory:     %d bytes\n", len(foryMediaData))
 	fmt.Printf("  Protobuf: %d bytes\n", len(pbMediaData))
 	fmt.Printf("  Msgpack:  %d bytes\n", len(msgpackMediaData))
+	fmt.Printf("StructList:\n")
+	fmt.Printf("  Fory:     %d bytes\n", len(foryStructListData))
+	fmt.Printf("  Protobuf: %d bytes\n", len(pbStructListData))
+	fmt.Printf("  Msgpack:  %d bytes\n", len(msgpackStructListData))
+	fmt.Printf("SampleList:\n")
+	fmt.Printf("  Fory:     %d bytes\n", len(forySampleListData))
+	fmt.Printf("  Protobuf: %d bytes\n", len(pbSampleListData))
+	fmt.Printf("  Msgpack:  %d bytes\n", len(msgpackSampleListData))
+	fmt.Printf("MediaContentList:\n")
+	fmt.Printf("  Fory:     %d bytes\n", len(foryMediaContentListData))
+	fmt.Printf("  Protobuf: %d bytes\n", len(pbMediaContentListData))
+	fmt.Printf("  Msgpack:  %d bytes\n", len(msgpackMediaContentListData))
 	fmt.Println("============================================")
 }
