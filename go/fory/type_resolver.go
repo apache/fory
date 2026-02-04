@@ -1479,6 +1479,11 @@ func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInf
 }
 
 func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, error) {
+	// Normalize pointer types to their element type for consistent caching.
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
 	if existingTypeDef, exists := r.typeToTypeDef[typ]; exists {
 		return existingTypeDef, nil
 	}
@@ -1487,10 +1492,6 @@ func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 		return nil, fmt.Errorf("TypeDef not found for type %s", typ)
 	}
 
-	// don't create TypeDef for pointer types, we create TypeDef for its element type instead.
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
-	}
 	zero := reflect.Zero(typ)
 	typeDef, err := buildTypeDef(r.fory, zero)
 	if err != nil {
@@ -1552,14 +1553,14 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 		td = newTd
 	}
 
-	typeInfo, typeInfoErr := td.buildTypeInfoWithResolver(r)
+	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
 	if typeInfoErr != nil {
 		err.SetError(typeInfoErr)
 		return nil
 	}
 
-	context.readTypeInfos = append(context.readTypeInfos, &typeInfo)
-	return &typeInfo
+	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+	return typeInfo
 }
 
 func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s Serializer, err error) {
@@ -2342,6 +2343,14 @@ func (m *MetaContext) IsScopedMetaShareEnabled() bool {
 
 // Reset clears the meta context for reuse
 func (m *MetaContext) Reset() {
-	m.typeMap = make(map[reflect.Type]uint32)
-	m.readTypeInfos = nil
+	if m.typeMap == nil {
+		m.typeMap = make(map[reflect.Type]uint32)
+	} else {
+		for k := range m.typeMap {
+			delete(m.typeMap, k)
+		}
+	}
+	if m.readTypeInfos != nil {
+		m.readTypeInfos = m.readTypeInfos[:0]
+	}
 }
