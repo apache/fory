@@ -25,9 +25,17 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+/** Marker annotation for Fory-serializable types with optional serialization behavior settings. */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ForyObject {
-  boolean evolving() default false;
+  /**
+   * Whether the annotated type should use schema evolution in compatible mode.
+   *
+   * <p>When {@code true} (default), compatible mode uses COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT
+   * to include schema metadata for evolution. When {@code false}, STRUCT/NAMED_STRUCT is used to
+   * avoid that overhead.
+   */
+  boolean evolving() default true;
 }
