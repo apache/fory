@@ -26,6 +26,7 @@
 #include "fory/type/type.h"
 #include "fory/util/buffer.h"
 #include "fory/util/error.h"
+#include "fory/util/flat_int_map.h"
 #include "fory/util/result.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -331,7 +332,7 @@ private:
 
   // Meta sharing state (for streaming inline TypeMeta)
   // Maps TypeInfo* to index for reference tracking - uses map size as counter
-  absl::flat_hash_map<const TypeInfo *, size_t> write_type_info_index_map_;
+  util::FlatIntMap<uint64_t, uint32_t> write_type_info_index_map_;
   // Fast path for the common single-type stream: avoid hash map lookups.
   const TypeInfo *first_type_info_ = nullptr;
   bool has_first_type_info_ = false;

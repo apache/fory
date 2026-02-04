@@ -60,7 +60,7 @@ static const std::vector<MetaEncoding> k_type_name_encodings = {
 WriteContext::WriteContext(const Config &config,
                            std::unique_ptr<TypeResolver> type_resolver)
     : buffer_(), config_(&config), type_resolver_(std::move(type_resolver)),
-      current_dyn_depth_(0) {}
+      current_dyn_depth_(0), write_type_info_index_map_(8) {}
 
 WriteContext::~WriteContext() = default;
 
@@ -75,6 +75,8 @@ WriteContext::write_type_meta(const std::type_index &type_id) {
 }
 
 void WriteContext::write_type_meta(const TypeInfo *type_info) {
+  const uint64_t key =
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(type_info));
   if (!type_info_index_map_active_) {
     if (!has_first_type_info_) {
       has_first_type_info_ = true;
@@ -90,17 +92,17 @@ void WriteContext::write_type_meta(const TypeInfo *type_info) {
     }
     type_info_index_map_active_ = true;
     write_type_info_index_map_.clear();
-    write_type_info_index_map_.reserve(4);
-    write_type_info_index_map_.emplace(first_type_info_, 0);
+    const uint64_t first_key =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(first_type_info_));
+    write_type_info_index_map_.put(first_key, 0);
   } else if (type_info == first_type_info_) {
     buffer_.write_uint8(1); // (index << 1) | 1, index=0
     return;
   }
 
-  auto it = write_type_info_index_map_.find(type_info);
-  if (it != write_type_info_index_map_.end()) {
+  if (auto *entry = write_type_info_index_map_.find(key)) {
     // Reference to previously written type: (index << 1) | 1, LSB=1
-    uint32_t marker = static_cast<uint32_t>((it->second << 1) | 1);
+    uint32_t marker = static_cast<uint32_t>((entry->value << 1) | 1);
     if (marker < 0x80) {
       buffer_.write_uint8(static_cast<uint8_t>(marker));
     } else {
@@ -110,14 +112,14 @@ void WriteContext::write_type_meta(const TypeInfo *type_info) {
   }
 
   // New type: index << 1, LSB=0, followed by TypeDef bytes inline
-  size_t index = write_type_info_index_map_.size();
+  uint32_t index = static_cast<uint32_t>(write_type_info_index_map_.size());
   uint32_t marker = static_cast<uint32_t>(index << 1);
   if (marker < 0x80) {
     buffer_.write_uint8(static_cast<uint8_t>(marker));
   } else {
     buffer_.write_var_uint32(marker);
   }
-  write_type_info_index_map_[type_info] = index;
+  write_type_info_index_map_.put(key, index);
 
   // write TypeDef bytes inline
   buffer_.write_bytes(type_info->type_def.data(), type_info->type_def.size());
