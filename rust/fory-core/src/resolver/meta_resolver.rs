@@ -77,6 +77,8 @@ impl MetaWriterResolver {
 pub struct MetaReaderResolver {
     pub reading_type_infos: Vec<Rc<TypeInfo>>,
     parsed_type_infos: HashMap<i64, Rc<TypeInfo>>,
+    last_meta_header: i64,
+    last_type_info: Option<Rc<TypeInfo>>,
 }
 
 impl MetaReaderResolver {
@@ -105,7 +107,18 @@ impl MetaReaderResolver {
         } else {
             // New type - read TypeMeta inline
             let meta_header = reader.read_i64()?;
+            if let Some(type_info) = self
+                .last_type_info
+                .as_ref()
+                .filter(|_| self.last_meta_header == meta_header)
+            {
+                self.reading_type_infos.push(type_info.clone());
+                TypeMeta::skip_bytes(reader, meta_header)?;
+                return Ok(type_info.clone());
+            }
             if let Some(type_info) = self.parsed_type_infos.get(&meta_header) {
+                self.last_meta_header = meta_header;
+                self.last_type_info = Some(type_info.clone());
                 self.reading_type_infos.push(type_info.clone());
                 TypeMeta::skip_bytes(reader, meta_header)?;
                 Ok(type_info.clone())
@@ -190,6 +203,8 @@ impl MetaReaderResolver {
                     self.parsed_type_infos
                         .insert(meta_header, type_info.clone());
                 }
+                self.last_meta_header = meta_header;
+                self.last_type_info = Some(type_info.clone());
                 self.reading_type_infos.push(type_info.clone());
                 Ok(type_info)
             }
