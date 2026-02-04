@@ -350,7 +350,7 @@ def test_global_methods_without_ref_tracking():
     """Test serialization of global class methods without reference tracking."""
     fory = pyfory.Fory(strict=False, ref=False)
 
-    # Global classes should work even without ref_tracking
+    # Global classes should work even without track_ref
     method = GlobalTestClass.class_method
     serialized = fory.serialize(method)
     deserialized = fory.deserialize(serialized)

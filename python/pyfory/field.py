@@ -106,7 +106,7 @@ def field(
         ref: Whether to enable reference tracking for this field.
             - False (default): No tracking, skip IdentityMap overhead
             - True: Track references (handles circular refs, shared objects)
-            Note: If Fory(ref_tracking=False), all fields use ref=False
+            Note: If Fory(ref=False), all fields use ref=False
             regardless of this setting.
 
         ignore: Whether to ignore this field during serialization.

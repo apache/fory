@@ -83,7 +83,7 @@ import org.testng.annotations.Test;
 public class ForyTest extends ForyTestBase {
   @DataProvider(name = "languageConfig")
   public static Object[][] languageConfig() {
-    return new Object[][] {{Language.JAVA}, {Language.PYTHON}};
+    return new Object[][] {{Language.JAVA}, {Language.XLANG}};
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")

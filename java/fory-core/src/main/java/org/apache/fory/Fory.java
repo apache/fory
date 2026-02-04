@@ -35,7 +35,6 @@ import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Config;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
 import org.apache.fory.exception.CopyException;
 import org.apache.fory.exception.DeserializationException;
@@ -76,10 +75,9 @@ import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 
 /**
- * Cross-Lang Data layout: 1byte mask: 1-bit null: 0->null, 1->not null 1-bit endianness: 0->le,
- * 1->be 1-bit target lang: 0->native, 1->x_lang if x_lang, will write current process language as a
- * byte into buffer. 1-bit out-of-band serialization enable flag: 0 -> not enabled, 1 -> enabled.
- * other bits reserved.
+ * Cross-language header layout: 1-byte bitmap.
+ *
+ * <p>Bit 0: null flag, Bit 1: xlang flag, Bit 2: out-of-band flag, Bits 3-7 reserved.
  *
  * <p>serialize/deserialize is user API for root object serialization, write/read api is for inner
  * serialization.
@@ -119,7 +117,6 @@ public final class Fory implements BaseFory {
   private final boolean compressInt;
   private final LongEncoding longEncoding;
   private final Generics generics;
-  private Language peerLanguage;
   private BufferCallback bufferCallback;
   private Iterator<MemoryBuffer> outOfBandBuffers;
   private boolean peerOutOfBandEnabled;
@@ -133,7 +130,7 @@ public final class Fory implements BaseFory {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
     config = new Config(builder);
-    crossLanguage = config.getLanguage() != Language.JAVA;
+    crossLanguage = config.isXlang();
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
     this.shareMeta = config.isMetaShareEnabled();
@@ -340,9 +337,9 @@ public final class Fory implements BaseFory {
       }
       depth = 0;
       if (!crossLanguage) {
-        write(buffer, obj);
+        writeRef(buffer, obj);
       } else {
-        xwrite(buffer, obj);
+        xwriteRef(buffer, obj);
       }
       return buffer;
     } catch (Throwable t) {
@@ -408,20 +405,6 @@ public final class Fory implements BaseFory {
     if (buf != null && buf.size() > config.bufferSizeLimitBytes()) {
       buffer = MemoryBuffer.newHeapBuffer(config.bufferSizeLimitBytes());
     }
-  }
-
-  private void write(MemoryBuffer buffer, Object obj) {
-    // reduce caller stack
-    if (!refResolver.writeRefOrNull(buffer, obj)) {
-      TypeInfo typeInfo = classResolver.getOrUpdateTypeInfo(obj.getClass());
-      classResolver.writeTypeInfo(buffer, typeInfo);
-      writeData(buffer, typeInfo, obj);
-    }
-  }
-
-  private void xwrite(MemoryBuffer buffer, Object obj) {
-    buffer.writeByte((byte) Language.JAVA.ordinal());
-    xwriteRef(buffer, obj);
   }
 
   /** Serialize a nullable referencable object to <code>buffer</code>. */
@@ -886,11 +869,6 @@ public final class Fory implements BaseFory {
         return null;
       }
       boolean isTargetXLang = (bitmap & isCrossLanguageFlag) == isCrossLanguageFlag;
-      if (isTargetXLang) {
-        peerLanguage = Language.values()[buffer.readByte()];
-      } else {
-        peerLanguage = Language.JAVA;
-      }
       peerOutOfBandEnabled = (bitmap & isOutOfBandFlag) == isOutOfBandFlag;
       if (peerOutOfBandEnabled) {
         Preconditions.checkNotNull(
@@ -1382,7 +1360,7 @@ public final class Fory implements BaseFory {
       if (depth > 0) {
         throwDepthSerializationException();
       }
-      write(buffer, obj);
+      writeRef(buffer, obj);
     } catch (Throwable t) {
       throw processSerializationError(t);
     } finally {

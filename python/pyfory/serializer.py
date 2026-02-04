@@ -865,7 +865,7 @@ class TypeSerializer(Serializer):
 
     def _serialize_local_class(self, buffer, cls):
         """Serialize a local class by capturing its creation context."""
-        assert self.fory.ref_tracking, "Reference tracking must be enabled for local classes serialization"
+        assert self.fory.track_ref, "Reference tracking must be enabled for local classes serialization"
         # Basic class information
         module = cls.__module__
         qualname = cls.__qualname__
@@ -907,7 +907,7 @@ class TypeSerializer(Serializer):
     def _deserialize_local_class(self, buffer):
         """Deserialize a local class by recreating it with the captured context."""
         fory = self.fory
-        assert fory.ref_tracking, "Reference tracking must be enabled for local classes deserialization"
+        assert fory.track_ref, "Reference tracking must be enabled for local classes deserialization"
         # Read basic class information
         module = buffer.read_string()
         qualname = buffer.read_string()

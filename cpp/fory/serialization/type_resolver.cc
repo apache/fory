@@ -94,7 +94,7 @@ Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
   bool null;
   bool ref_track;
   if (read_flag) {
-    // Header layout: type_id:N bits | nullable:1 bit | ref_tracking:1 bit
+    // Header layout: type_id:N bits | nullable:1 bit | track_ref:1 bit
     tid = header >> 2;
     null = (header & 0b10) != 0;
     ref_track = (header & 0b01) != 0;
@@ -131,7 +131,7 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
 
   // write field header:
   // header: | field_name_encoding:2bits | size:4bits | nullability:1bit |
-  // ref_tracking:1bit |
+  // track_ref:1bit |
   const bool use_tag_id = field_id >= 0;
   uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or UTF8
   std::vector<uint8_t> encoded_name;
@@ -165,7 +165,7 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   uint8_t header =
       (std::min(FIELD_NAME_SIZE_THRESHOLD, name_size - 1) << 2) & 0x3C;
 
-  if (field_type.ref_tracking) {
+  if (field_type.track_ref) {
     header |= 1; // bit 0 for ref tracking
   }
   if (field_type.nullable) {
@@ -207,7 +207,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   // bits 6-7: field name encoding index
   uint8_t encoding_idx = static_cast<uint8_t>(header >> 6);
   bool use_tag_id = encoding_idx == 3;
-  bool ref_tracking = (header & 0b01u) != 0;
+  bool track_ref = (header & 0b01u) != 0;
   bool nullable = (header & 0b10u) != 0;
   size_t name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD);
   if (name_size == FIELD_NAME_SIZE_THRESHOLD) {
@@ -219,9 +219,9 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   }
   name_size += 1;
 
-  // Read field type with nullable and ref_tracking from header
+  // Read field type with nullable and track_ref from header
   FORY_TRY(field_type,
-           FieldType::read_from(buffer, false, nullable, ref_tracking));
+           FieldType::read_from(buffer, false, nullable, track_ref));
 
   if (use_tag_id) {
     FieldInfo info("", std::move(field_type));
@@ -1196,7 +1196,7 @@ std::string TypeMeta::compute_struct_fingerprint(
     fingerprint.append(std::to_string(effective_type_id));
     fingerprint.push_back(',');
     // Use field-level ref tracking flag from FORY_FIELD_TAGS or fory::field<>
-    fingerprint.push_back(fi.field_type.ref_tracking ? '1' : '0');
+    fingerprint.push_back(fi.field_type.track_ref ? '1' : '0');
     fingerprint.push_back(',');
     fingerprint.append(fi.field_type.nullable ? "1;" : "0;");
   }

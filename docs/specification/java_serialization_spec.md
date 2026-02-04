@@ -53,8 +53,7 @@ bitmap and uses the same flag bits.
 - xlang flag: 1 when serialization uses xlang format, 0 when serialization uses Java native format.
 - oob flag: 1 when `BufferCallback` is not null, 0 otherwise.
 
-If xlang flag is set, a one byte language ID is written after the bitmap. In Java native mode (xlang
-flag unset), no language byte is written.
+The header is always a single byte; no language ID is written.
 
 ## Reference meta
 

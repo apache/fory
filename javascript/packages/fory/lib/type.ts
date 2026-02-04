@@ -239,17 +239,6 @@ export interface Config {
   mode: Mode;
 }
 
-export enum Language {
-  XLANG = 0,
-  JAVA = 1,
-  PYTHON = 2,
-  CPP = 3,
-  GO = 4,
-  JAVASCRIPT = 5,
-  RUST = 6,
-  DART = 7,
-}
-
 export interface WithForyClsInfo {
   structTypeInfo: StructTypeInfo;
 }

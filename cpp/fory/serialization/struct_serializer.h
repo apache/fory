@@ -2751,7 +2751,7 @@ void read_struct_fields_compatible(T &obj, ReadContext &ctx,
     int16_t field_id = remote_field.field_id;
 
     // Use the precomputed ref_mode from remote field metadata.
-    // This is computed from nullable and ref_tracking flags in the remote
+    // This is computed from nullable and track_ref flags in the remote
     // field's header during FieldInfo::from_bytes.
     RefMode remote_ref_mode = remote_field.field_type.ref_mode;
     if (field_id == -1) {
