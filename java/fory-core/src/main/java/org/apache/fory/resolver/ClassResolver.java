@@ -116,10 +116,6 @@ import org.apache.fory.serializer.JdkProxySerializer;
 import org.apache.fory.serializer.LambdaSerializer;
 import org.apache.fory.serializer.LocaleSerializer;
 import org.apache.fory.serializer.NoneSerializer;
-import org.apache.fory.serializer.Unknown;
-import org.apache.fory.serializer.Unknown.UnknownStruct;
-import org.apache.fory.serializer.Unknown.UnknownEmptyStruct;
-import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.OptionalSerializers;
 import org.apache.fory.serializer.PrimitiveSerializers;
@@ -130,6 +126,10 @@ import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.TimeSerializers;
+import org.apache.fory.serializer.Unknown;
+import org.apache.fory.serializer.Unknown.UnknownEmptyStruct;
+import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.ChildContainerSerializers;
 import org.apache.fory.serializer.collection.CollectionSerializer;
@@ -1685,7 +1685,8 @@ public class ClassResolver extends TypeResolver {
   protected TypeDef buildTypeDef(TypeInfo typeInfo) {
     TypeDef typeDef;
     Serializer<?> serializer = typeInfo.serializer;
-    Preconditions.checkArgument(serializer.getClass() != UnknownClassSerializers.UnknownStructSerializer.class);
+    Preconditions.checkArgument(
+        serializer.getClass() != UnknownClassSerializers.UnknownStructSerializer.class);
     if (needToWriteTypeDef(serializer)) {
       typeDef = typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls));
     } else {

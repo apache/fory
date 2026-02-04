@@ -132,8 +132,7 @@ public final class ForyBuilder {
   }
 
   /** ignore Enum Deserialize array out of bounds. */
-  public ForyBuilder deserializeUnknownEnumValueAsNull(
-      boolean deserializeUnknownEnumValueAsNull) {
+  public ForyBuilder deserializeUnknownEnumValueAsNull(boolean deserializeUnknownEnumValueAsNull) {
     if (deserializeUnknownEnumValueAsNull) {
       this.unknownEnumValueStrategy = UnknownEnumValueStrategy.RETURN_NULL;
     } else {

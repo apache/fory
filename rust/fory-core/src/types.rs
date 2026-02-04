@@ -339,7 +339,7 @@ pub static PRIMITIVE_TYPES: [u32; 24] = [
     TypeId::ISIZE as u32,
 ];
 
-pub static PRIMITIVE_ARRAY_TYPES: [u32; 17] = [
+pub static PRIMITIVE_ARRAY_TYPES: [u32; 18] = [
     TypeId::BOOL_ARRAY as u32,
     TypeId::BINARY as u32,
     TypeId::INT8_ARRAY as u32,

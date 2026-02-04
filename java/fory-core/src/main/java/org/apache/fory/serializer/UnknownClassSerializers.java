@@ -38,8 +38,8 @@ import org.apache.fory.resolver.MetaStringResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
-import org.apache.fory.serializer.Unknown.UnknownEnum;
 import org.apache.fory.serializer.Serializers.CrossLanguageCompatibleSerializer;
+import org.apache.fory.serializer.Unknown.UnknownEnum;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Generics;
@@ -88,13 +88,13 @@ public final class UnknownClassSerializers {
     }
 
     /**
-     * Multiple un existed class will correspond to this `UnknownStruct`. When querying
-     * classinfo by `class`, it may dispatch to same `UnknownClassSerializer`, so we can't use
-     * `typeDef` in this serializer, but use `typeDef` in `UnknownStruct` instead.
+     * Multiple un existed class will correspond to this `UnknownStruct`. When querying classinfo by
+     * `class`, it may dispatch to same `UnknownClassSerializer`, so we can't use `typeDef` in this
+     * serializer, but use `typeDef` in `UnknownStruct` instead.
      *
-     * <p>UnknownStruct is registered with a fixed internal typeId for dispatch. This
-     * serializer rewinds that placeholder typeId and writes the original class's typeId, then
-     * writes the shared TypeDef inline using the stream meta protocol.
+     * <p>UnknownStruct is registered with a fixed internal typeId for dispatch. This serializer
+     * rewinds that placeholder typeId and writes the original class's typeId, then writes the
+     * shared TypeDef inline using the stream meta protocol.
      */
     private void writeTypeDef(MemoryBuffer buffer, Unknown.UnknownStruct value) {
       MetaContext metaContext = fory.getSerializationContext().getMetaContext();
@@ -223,8 +223,7 @@ public final class UnknownClassSerializers {
 
     @Override
     public Object read(MemoryBuffer buffer) {
-      Unknown.UnknownStruct obj =
-          new Unknown.UnknownStruct(typeDef);
+      Unknown.UnknownStruct obj = new Unknown.UnknownStruct(typeDef);
       Fory fory = this.fory;
       RefResolver refResolver = fory.getRefResolver();
       refResolver.reference(obj);
@@ -261,8 +260,7 @@ public final class UnknownClassSerializers {
     }
   }
 
-  public static final class UnknownEnumSerializer
-      extends CrossLanguageCompatibleSerializer {
+  public static final class UnknownEnumSerializer extends CrossLanguageCompatibleSerializer {
     private final UnknownEnum[] enumConstants;
     private final MetaStringResolver metaStringResolver;
 

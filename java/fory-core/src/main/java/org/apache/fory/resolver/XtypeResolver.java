@@ -83,11 +83,6 @@ import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.DeferedLazySerializer;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
-import org.apache.fory.serializer.Unknown;
-import org.apache.fory.serializer.Unknown.UnknownEnum;
-import org.apache.fory.serializer.Unknown.UnknownStruct;
-import org.apache.fory.serializer.UnknownClassSerializers;
-import org.apache.fory.serializer.UnknownClassSerializers.UnknownStructSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.SerializationUtils;
@@ -96,6 +91,11 @@ import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnionSerializer;
+import org.apache.fory.serializer.Unknown;
+import org.apache.fory.serializer.Unknown.UnknownEnum;
+import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.UnknownClassSerializers;
+import org.apache.fory.serializer.UnknownClassSerializers.UnknownStructSerializer;
 import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
@@ -159,13 +159,7 @@ public class XtypeResolver extends TypeResolver {
     registerDefaultTypes();
     if (shareMeta) {
       Serializer serializer = new UnknownStructSerializer(fory, null);
-      register(
-          UnknownStruct.class,
-          serializer,
-          "",
-          "unknown_struct",
-          Types.COMPATIBLE_STRUCT,
-          -1);
+      register(UnknownStruct.class, serializer, "", "unknown_struct", Types.COMPATIBLE_STRUCT, -1);
     }
   }
 

@@ -127,16 +127,14 @@ public class UnknownSerializersTest extends ForyTestBase {
   @Test
   public void testUnknownEnum_AsString() {
     // Use scoped meta share for automatic MetaContext management
-    Fory fory =
-        foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
+    Fory fory = foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
     String enumCode = ("enum TestEnum {" + " A, B" + "}");
     Class<?> cls = JaninoUtils.compileClass(getClass().getClassLoader(), "", "TestEnum", enumCode);
     Object c = cls.getEnumConstants()[1];
     assertEquals(c.toString(), "B");
     byte[] bytes = fory.serialize(c);
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
-    Fory fory2 =
-        foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
+    Fory fory2 = foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
     Object o = fory2.deserialize(bytes);
     assertEquals(o, Unknown.UnknownEnum.UNKNOWN);
   }
@@ -432,9 +430,9 @@ public class UnknownSerializersTest extends ForyTestBase {
   }
 
   /**
-   * Test that UnknownClass correctly preserves field values when deserializing an unknown
-   * class. This simulates the scenario where fory2 doesn't have the class registered, so it
-   * deserializes to UnknownStruct.
+   * Test that UnknownClass correctly preserves field values when deserializing an unknown class.
+   * This simulates the scenario where fory2 doesn't have the class registered, so it deserializes
+   * to UnknownStruct.
    */
   @Test(dataProvider = "language")
   public void testUnknownClassDeserializationPreservesValues(Language language) {
@@ -471,8 +469,7 @@ public class UnknownSerializersTest extends ForyTestBase {
     // Verify result is UnknownStruct
     assertEquals(result.getClass(), Unknown.UnknownStruct.class);
 
-    Unknown.UnknownStruct nonexistent =
-        (Unknown.UnknownStruct) result;
+    Unknown.UnknownStruct nonexistent = (Unknown.UnknownStruct) result;
 
     // Convert UnknownStruct to a map keyed by simple field name
     Map<String, Object> actualMap = new HashMap<>();
@@ -530,8 +527,7 @@ public class UnknownSerializersTest extends ForyTestBase {
     Object result = fory2.deserialize(buffer);
 
     assertEquals(result.getClass(), Unknown.UnknownStruct.class);
-    Unknown.UnknownStruct nonexistent =
-        (Unknown.UnknownStruct) result;
+    Unknown.UnknownStruct nonexistent = (Unknown.UnknownStruct) result;
 
     // Convert UnknownStruct to a map keyed by simple field name
     Map<String, Object> actualMap = new HashMap<>();
@@ -555,9 +551,9 @@ public class UnknownSerializersTest extends ForyTestBase {
   }
 
   /**
-   * Test that UnknownStruct can be serialized and deserialized again by the same Fory
-   * instance that doesn't know the class. This verifies that unknown class data is preserved across
-   * serialization cycles.
+   * Test that UnknownStruct can be serialized and deserialized again by the same Fory instance that
+   * doesn't know the class. This verifies that unknown class data is preserved across serialization
+   * cycles.
    */
   @Test(dataProvider = "language")
   public void testUnknownClassRoundTripWithinSameFory(Language language) {
@@ -597,8 +593,7 @@ public class UnknownSerializersTest extends ForyTestBase {
     assertEquals(nonexistent2.getClass(), Unknown.UnknownStruct.class);
 
     // Verify values are preserved across the round-trip
-    Unknown.UnknownStruct result =
-        (Unknown.UnknownStruct) nonexistent2;
+    Unknown.UnknownStruct result = (Unknown.UnknownStruct) nonexistent2;
     Map<String, Object> actualMap = new HashMap<>();
     for (Object key : result.keySet()) {
       String qualifiedKey = (String) key;

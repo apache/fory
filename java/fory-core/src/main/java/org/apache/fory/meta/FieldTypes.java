@@ -926,8 +926,7 @@ public class FieldTypes {
       Class<?> componentRawType = componentTypeRef.getRawType();
       if (Unknown.class.isAssignableFrom(componentRawType)) {
         return TypeRef.of(
-            Unknown.getUnknowClass(
-                componentType instanceof EnumFieldType, dimensions, true),
+            Unknown.getUnknowClass(componentType instanceof EnumFieldType, dimensions, true),
             new TypeExtMeta(typeId, nullable, trackingRef));
       } else {
         return TypeRef.of(

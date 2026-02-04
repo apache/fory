@@ -1035,8 +1035,7 @@ public class ArraySerializers {
     protected final String className;
     private final int dims;
 
-    public AbstractUnknownArraySerializer(
-        Fory fory, String className, Class<?> stubClass) {
+    public AbstractUnknownArraySerializer(Fory fory, String className, Class<?> stubClass) {
       super(fory, stubClass);
       this.className = className;
       this.dims = TypeUtils.getArrayDimensions(stubClass);
@@ -1148,8 +1147,7 @@ public class ArraySerializers {
   }
 
   @SuppressWarnings("rawtypes")
-  public static final class UnknownArraySerializer
-      extends AbstractUnknownArraySerializer {
+  public static final class UnknownArraySerializer extends AbstractUnknownArraySerializer {
     private final Serializer componentSerializer;
 
     public UnknownArraySerializer(Fory fory, Class<?> cls) {
@@ -1162,8 +1160,7 @@ public class ArraySerializers {
         componentSerializer = new UnknownClassSerializers.UnknownEnumSerializer(fory);
       } else {
         if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
-          componentSerializer =
-              new ObjectSerializer<>(fory, Unknown.UnknownEmptyStruct.class);
+          componentSerializer = new ObjectSerializer<>(fory, Unknown.UnknownEmptyStruct.class);
         } else {
           componentSerializer = null;
         }

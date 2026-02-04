@@ -90,8 +90,7 @@ class NativeTypeDefDecoder {
         }
         Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);
         if (cls == null) {
-          classSpec =
-              new ClassSpec(Unknown.UnknownStruct.class, typeId, userTypeId);
+          classSpec = new ClassSpec(Unknown.UnknownStruct.class, typeId, userTypeId);
           className = classSpec.entireClassName;
         } else {
           className = cls.getName();
