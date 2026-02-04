@@ -352,10 +352,6 @@ class CppGenerator(BaseGenerator):
             lines.extend(union_macros)
             lines.append("")
 
-        if evolving_macros:
-            lines.extend(evolving_macros)
-            lines.append("")
-
         if field_config_macros:
             lines.extend(field_config_macros)
             lines.append("")
@@ -370,6 +366,10 @@ class CppGenerator(BaseGenerator):
 
         if namespace:
             lines.append(f"}} // namespace {namespace}")
+            lines.append("")
+
+        if evolving_macros:
+            lines.extend(evolving_macros)
             lines.append("")
 
         # End header guard
@@ -974,9 +974,7 @@ class CppGenerator(BaseGenerator):
 
         if not self.get_effective_evolving(message):
             qualified_name = self.get_namespaced_type_name(message.name, parent_stack)
-            evolving_macros.append(
-                f"FORY_STRUCT_EVOLVING({qualified_name}, false);"
-            )
+            evolving_macros.append(f"FORY_STRUCT_EVOLVING({qualified_name}, false);")
 
         lines.append(f"{indent}}};")
 

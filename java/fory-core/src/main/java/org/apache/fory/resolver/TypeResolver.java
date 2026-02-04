@@ -1273,6 +1273,13 @@ public abstract class TypeResolver {
     if (foryField != null && foryField.id() >= 0) {
       return String.valueOf(foryField.id());
     }
+    String name = descriptor.getName();
+    if (name != null && name.startsWith("$tag")) {
+      String tagId = name.substring(4);
+      if (!tagId.isEmpty()) {
+        return tagId;
+      }
+    }
     return descriptor.getSnakeCaseName();
   }
 

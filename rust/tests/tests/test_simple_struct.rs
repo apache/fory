@@ -92,7 +92,10 @@ fn test_struct_evolving_override() {
         id: i32,
     }
 
-    let mut fory = Fory::default().xlang(true).compatible(true).track_ref(false);
+    let mut fory = Fory::default()
+        .xlang(true)
+        .compatible(true)
+        .track_ref(false);
     fory.register::<Evolving>(100).unwrap();
     fory.register::<Fixed>(101).unwrap();
 

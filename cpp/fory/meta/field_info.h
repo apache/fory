@@ -354,8 +354,5 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
 #define FORY_STRUCT(type, ...) FORY_STRUCT_IMPL(type, __LINE__, __VA_ARGS__)
 
 #define FORY_STRUCT_EVOLVING(type, value)                                      \
-  namespace fory {                                                             \
-  namespace meta {                                                             \
-  template <> struct StructEvolving<type> : std::bool_constant<value> {};      \
-  }                                                                            \
-  }
+  template <>                                                                  \
+  struct ::fory::meta::StructEvolving<type> : std::bool_constant<value> {}
