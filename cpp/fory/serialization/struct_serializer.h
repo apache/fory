@@ -2750,6 +2750,53 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
   (read_field_at_sorted_position<T, Indices>(obj, ctx), ...);
 }
 
+/// Read struct fields in sorted order using the fast primitive paths.
+/// Used when compatible mode is enabled but the remote schema matches locally.
+template <typename T, size_t... Indices>
+FORY_ALWAYS_INLINE void
+read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
+                             std::index_sequence<Indices...>) {
+  using Helpers = CompileTimeFieldHelpers<T>;
+  constexpr size_t fixed_count = Helpers::leading_fixed_count;
+  constexpr size_t fixed_bytes = Helpers::leading_fixed_size_bytes;
+  constexpr size_t varint_count = Helpers::varint_count;
+  constexpr size_t total_count = sizeof...(Indices);
+
+  Buffer &buffer = ctx.buffer();
+
+  // Phase 1: Read leading fixed-size primitives if any
+  if constexpr (fixed_count > 0 && fixed_bytes > 0) {
+    // Pre-check bounds for all fixed-size fields at once
+    if (FORY_PREDICT_FALSE(buffer.reader_index() + fixed_bytes >
+                           buffer.size())) {
+      ctx.set_error(Error::buffer_out_of_bound(buffer.reader_index(),
+                                               fixed_bytes, buffer.size()));
+      return;
+    }
+    // Fast read fixed-size primitives
+    read_fixed_primitive_fields<T>(obj, buffer,
+                                   std::make_index_sequence<fixed_count>{});
+  }
+
+  // Phase 2: Read consecutive varint primitives (int32, int64) if any
+  if constexpr (varint_count > 0) {
+    // Track offset locally for batch varint reading
+    uint32_t offset = buffer.reader_index();
+    // Fast read varint primitives (bounds checking happens in
+    // get_var_uint32/64)
+    read_varint_primitive_fields<T, fixed_count>(
+        obj, buffer, offset, std::make_index_sequence<varint_count>{});
+    // Update reader_index once after all varints
+    buffer.reader_index(offset);
+  }
+
+  // Phase 3: Read remaining fields (if any) with normal path
+  constexpr size_t fast_count = fixed_count + varint_count;
+  if constexpr (fast_count < total_count) {
+    read_remaining_fields<T, fast_count, total_count>(obj, ctx);
+  }
+}
+
 /// Read struct fields with schema evolution (compatible mode)
 /// Reads fields in remote schema order, dispatching by field_id to local fields
 template <typename T, size_t... Indices>
@@ -3098,6 +3145,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
 
   static T read_compatible(ReadContext &ctx, const TypeInfo *remote_type_info) {
     // Read and verify struct version if enabled (matches write_data behavior)
+    const TypeInfo *local_type_info = nullptr;
     if (ctx.check_struct_version()) {
       int32_t read_version = ctx.buffer().read_int32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -3109,7 +3157,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         ctx.set_error(std::move(local_type_info_res).error());
         return T{};
       }
-      const TypeInfo *local_type_info = local_type_info_res.value();
+      local_type_info = local_type_info_res.value();
       if (!local_type_info->type_meta) {
         ctx.set_error(Error::type_error(
             "Type metadata not initialized for requested struct"));
@@ -3123,6 +3171,19 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         ctx.set_error(std::move(version_res).error());
         return T{};
       }
+    } else {
+      auto local_type_info_res =
+          ctx.type_resolver().template get_type_info<T>();
+      if (!local_type_info_res.ok()) {
+        ctx.set_error(std::move(local_type_info_res).error());
+        return T{};
+      }
+      local_type_info = local_type_info_res.value();
+      if (!local_type_info->type_meta) {
+        ctx.set_error(Error::type_error(
+            "Type metadata not initialized for requested struct"));
+        return T{};
+      }
     }
 
     T obj{};
@@ -3134,6 +3195,17 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     if (!remote_type_info || !remote_type_info->type_meta) {
       ctx.set_error(Error::type_error("Remote type metadata not available"));
       return T{};
+    }
+
+    // Fast path: same schema hash, read fields in local sorted order.
+    if (local_type_info &&
+        remote_type_info->type_meta->hash == local_type_info->type_meta->hash) {
+      detail::read_struct_fields_impl_fast(
+          obj, ctx, std::make_index_sequence<field_count>{});
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return T{};
+      }
+      return obj;
     }
 
     // Use remote TypeMeta for schema evolution - field IDs already assigned

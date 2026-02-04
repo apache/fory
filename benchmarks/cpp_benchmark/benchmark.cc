@@ -429,6 +429,7 @@ void register_fory_types(fory::serialization::Fory &fory) {
 static void BM_Fory_Struct_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
@@ -466,6 +467,7 @@ BENCHMARK(BM_Protobuf_Struct_Serialize);
 static void BM_Fory_Struct_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
@@ -516,6 +518,7 @@ BENCHMARK(BM_Protobuf_Struct_Deserialize);
 static void BM_Fory_Sample_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
@@ -550,6 +553,7 @@ BENCHMARK(BM_Protobuf_Sample_Serialize);
 static void BM_Fory_Sample_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
@@ -596,6 +600,7 @@ BENCHMARK(BM_Protobuf_Sample_Deserialize);
 static void BM_Fory_MediaContent_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
@@ -632,6 +637,7 @@ BENCHMARK(BM_Protobuf_MediaContent_Serialize);
 static void BM_Fory_MediaContent_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
@@ -680,6 +686,7 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
   // Fory
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
+                  .compatible(true)
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
