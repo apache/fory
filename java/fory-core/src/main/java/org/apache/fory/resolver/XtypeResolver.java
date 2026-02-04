@@ -83,11 +83,6 @@ import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.DeferedLazySerializer;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
-import org.apache.fory.serializer.NonexistentClass;
-import org.apache.fory.serializer.NonexistentClass.NonexistentEnum;
-import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
-import org.apache.fory.serializer.NonexistentClassSerializers;
-import org.apache.fory.serializer.NonexistentClassSerializers.NonexistentClassSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.SerializationUtils;
@@ -96,6 +91,11 @@ import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnionSerializer;
+import org.apache.fory.serializer.UnknownClass;
+import org.apache.fory.serializer.UnknownClass.UnknownEnum;
+import org.apache.fory.serializer.UnknownClass.UnknownStruct;
+import org.apache.fory.serializer.UnknownClassSerializers;
+import org.apache.fory.serializer.UnknownClassSerializers.UnknownStructSerializer;
 import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
@@ -158,14 +158,8 @@ public class XtypeResolver extends TypeResolver {
   public void initialize() {
     registerDefaultTypes();
     if (shareMeta) {
-      Serializer serializer = new NonexistentClassSerializer(fory, null);
-      register(
-          NonexistentMetaShared.class,
-          serializer,
-          "",
-          "unknown_struct",
-          Types.COMPATIBLE_STRUCT,
-          -1);
+      Serializer serializer = new UnknownStructSerializer(fory, null);
+      register(UnknownStruct.class, serializer, "", "unknown_struct", Types.COMPATIBLE_STRUCT, -1);
     }
   }
 
@@ -589,7 +583,7 @@ public class XtypeResolver extends TypeResolver {
         if (Union.class.isAssignableFrom(rawType)) {
           return true;
         }
-        if (rawType == NonexistentMetaShared.class) {
+        if (rawType == UnknownStruct.class) {
           return false;
         }
         byte typeIdByte = getInternalTypeId(rawType);
@@ -614,10 +608,10 @@ public class XtypeResolver extends TypeResolver {
     if (clz.isArray()) {
       return true;
     }
-    if (clz == NonexistentEnum.class) {
+    if (clz == UnknownEnum.class) {
       return true;
     }
-    if (clz == NonexistentMetaShared.class) {
+    if (clz == UnknownStruct.class) {
       return false;
     }
     TypeInfo typeInfo = getTypeInfo(clz, false);
@@ -644,7 +638,7 @@ public class XtypeResolver extends TypeResolver {
       return true;
     }
     byte typeIdByte = getInternalTypeId(descriptor);
-    if (NonexistentClass.class.isAssignableFrom(rawType)) {
+    if (UnknownClass.class.isAssignableFrom(rawType)) {
       return false;
     }
     return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
@@ -733,8 +727,8 @@ public class XtypeResolver extends TypeResolver {
         }
       }
       typeId = Types.MAP;
-    } else if (NonexistentClass.class.isAssignableFrom(cls)) {
-      serializer = NonexistentClassSerializers.getSerializer(fory, "Unknown", cls);
+    } else if (UnknownClass.class.isAssignableFrom(cls)) {
+      serializer = UnknownClassSerializers.getSerializer(fory, "Unknown", cls);
       if (cls.isEnum()) {
         typeId = Types.ENUM;
       } else {
@@ -1128,14 +1122,14 @@ public class XtypeResolver extends TypeResolver {
     if (typeInfo == null) {
       String msg = String.format("Class %s not registered", qualifiedName);
       Class<?> type = null;
-      if (config.deserializeNonexistentClass()) {
+      if (config.deserializeUnknownClass()) {
         LOG.warn(msg);
         switch (typeId) {
           case Types.NAMED_ENUM:
           case Types.NAMED_STRUCT:
           case Types.NAMED_COMPATIBLE_STRUCT:
             type =
-                NonexistentClass.getNonexistentClass(
+                UnknownClass.getUnknowClass(
                     qualifiedName, isEnum(typeId), 0, config.isMetaShareEnabled());
             break;
           case Types.NAMED_EXT:
@@ -1159,8 +1153,8 @@ public class XtypeResolver extends TypeResolver {
               null,
               NOT_SUPPORT_XLANG,
               INVALID_USER_TYPE_ID);
-      if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
-        typeInfo.serializer = NonexistentClassSerializers.getSerializer(fory, qualifiedName, type);
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
+        typeInfo.serializer = UnknownClassSerializers.getSerializer(fory, qualifiedName, type);
       }
     }
     compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);

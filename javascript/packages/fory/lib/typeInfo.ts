@@ -385,7 +385,9 @@ export type HintInput<T> = T extends {
     | typeof TypeId.UINT16
     | typeof TypeId.UINT32
     | typeof TypeId.VAR_UINT32
+    | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
+    | typeof TypeId.BFLOAT16
     | typeof TypeId.FLOAT32
     | typeof TypeId.FLOAT64;
   }
@@ -453,7 +455,9 @@ export type HintResult<T> = T extends never ? any : T extends {
     | typeof TypeId.UINT16
     | typeof TypeId.UINT32
     | typeof TypeId.VAR_UINT32
+    | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
+    | typeof TypeId.BFLOAT16
     | typeof TypeId.FLOAT32
     | typeof TypeId.FLOAT64;
   }

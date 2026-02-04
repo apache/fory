@@ -38,7 +38,7 @@ import org.apache.fory.meta.FieldTypes.FieldType;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.XtypeResolver;
-import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
@@ -68,7 +68,7 @@ class TypeDefDecoder {
       }
       TypeInfo userTypeInfo = resolver.getUserTypeInfo(namespace, typeName);
       if (userTypeInfo == null) {
-        classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class);
+        classSpec = new ClassSpec(UnknownClass.UnknownStruct.class);
       } else {
         classSpec = new ClassSpec(userTypeInfo.getCls());
       }
@@ -77,7 +77,7 @@ class TypeDefDecoder {
       int userTypeId = buffer.readVarUint32();
       TypeInfo userTypeInfo = resolver.getUserTypeInfo(userTypeId);
       if (userTypeInfo == null) {
-        classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);
+        classSpec = new ClassSpec(UnknownClass.UnknownStruct.class, typeId, userTypeId);
       } else {
         classSpec = new ClassSpec(userTypeInfo.getCls(), typeId, userTypeId);
       }
@@ -90,7 +90,7 @@ class TypeDefDecoder {
       LOG.info("[Java TypeDef DECODED] " + typeDef);
       // Compute and print diff with local TypeDef
       Class<?> cls = classSpec.type;
-      if (cls != null && cls != NonexistentClass.NonexistentMetaShared.class) {
+      if (cls != null && cls != UnknownClass.UnknownStruct.class) {
         TypeDef localDef = TypeDef.buildTypeDef(resolver.getFory(), cls);
         String diff = typeDef.computeDiff(localDef);
         if (diff != null) {

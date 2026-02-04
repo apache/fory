@@ -31,10 +31,10 @@ import org.apache.fory.type.TypeUtils;
  *
  * @see Config#isMetaShareEnabled()
  */
-public interface NonexistentClass {
+public interface UnknownClass {
   // @formatter:off
 
-  enum NonexistentEnum implements NonexistentClass {
+  enum UnknownEnum implements UnknownClass {
     V0,
     V1,
     V2,
@@ -103,49 +103,49 @@ public interface NonexistentClass {
   }
 
   /** Ensure no fields here to avoid conflicts with peer class fields. */
-  class NonexistentSkip implements NonexistentClass {}
+  class UnknownEmptyStruct implements UnknownClass {}
 
-  class NonexistentMetaShared extends LazyMap implements NonexistentClass {
+  class UnknownStruct extends LazyMap implements UnknownClass {
     final TypeDef typeDef;
 
-    public NonexistentMetaShared(TypeDef typeDef) {
+    public UnknownStruct(TypeDef typeDef) {
       this.typeDef = typeDef;
     }
   }
 
-  Class<?> NonexistentEnum1DArray = NonexistentEnum[].class;
-  Class<?> NonexistentEnum2DArray = NonexistentEnum[][].class;
-  Class<?> NonexistentEnum3DArray = NonexistentEnum[][][].class;
-  Class<?> NonexistentSkip1DArray = NonexistentSkip[].class;
-  Class<?> NonexistentSkip2DArray = NonexistentSkip[][].class;
-  Class<?> NonexistentSkip3DArray = NonexistentSkip[][][].class;
-  Class<?> Nonexistent1DArray = NonexistentMetaShared[].class;
-  Class<?> Nonexistent2DArray = NonexistentMetaShared[][].class;
-  Class<?> Nonexistent3DArray = NonexistentMetaShared[][][].class;
+  Class<?> UnknownEnum1DArray = UnknownEnum[].class;
+  Class<?> UnknownEnum2DArray = UnknownEnum[][].class;
+  Class<?> UnknownEnum3DArray = UnknownEnum[][][].class;
+  Class<?> UnknownEmptyStruct1DArray = UnknownEmptyStruct[].class;
+  Class<?> UnknownEmptyStruct2DArray = UnknownEmptyStruct[][].class;
+  Class<?> UnknownEmptyStruct3DArray = UnknownEmptyStruct[][][].class;
+  Class<?> UnknownStruct1DArray = UnknownStruct[].class;
+  Class<?> UnknownStruct2DArray = UnknownStruct[][].class;
+  Class<?> UnknownStruct3DArray = UnknownStruct[][][].class;
 
-  static boolean isNonexistent(Class<?> cls) {
+  static boolean isUnknowClass(Class<?> cls) {
     if (cls.isArray()) {
       Class<?> component = TypeUtils.getArrayComponent(cls);
-      return NonexistentClass.class.isAssignableFrom(component);
+      return UnknownClass.class.isAssignableFrom(component);
     }
-    return NonexistentClass.class.isAssignableFrom(cls);
+    return UnknownClass.class.isAssignableFrom(cls);
   }
 
-  static Class<?> getNonexistentClass(boolean isEnum, int arrayDims, boolean shareMeta) {
-    return getNonexistentClass("Unknown", isEnum, arrayDims, shareMeta);
+  static Class<?> getUnknowClass(boolean isEnum, int arrayDims, boolean shareMeta) {
+    return getUnknowClass("Unknown", isEnum, arrayDims, shareMeta);
   }
 
-  static Class<?> getNonexistentClass(
+  static Class<?> getUnknowClass(
       String className, boolean isEnum, int arrayDims, boolean shareMeta) {
     if (arrayDims != 0) {
       if (isEnum) {
         switch (arrayDims) {
           case 1:
-            return NonexistentEnum1DArray;
+            return UnknownEnum1DArray;
           case 2:
-            return NonexistentEnum2DArray;
+            return UnknownEnum2DArray;
           case 3:
-            return NonexistentEnum3DArray;
+            return UnknownEnum3DArray;
           default:
             throw new UnsupportedOperationException(
                 String.format(
@@ -155,11 +155,11 @@ public interface NonexistentClass {
       } else {
         switch (arrayDims) {
           case 1:
-            return shareMeta ? Nonexistent1DArray : NonexistentSkip1DArray;
+            return shareMeta ? UnknownStruct1DArray : UnknownEmptyStruct1DArray;
           case 2:
-            return shareMeta ? Nonexistent2DArray : NonexistentSkip2DArray;
+            return shareMeta ? UnknownStruct2DArray : UnknownEmptyStruct2DArray;
           case 3:
-            return shareMeta ? Nonexistent3DArray : NonexistentSkip3DArray;
+            return shareMeta ? UnknownStruct3DArray : UnknownEmptyStruct3DArray;
           default:
             throw new UnsupportedOperationException(
                 String.format(
@@ -168,9 +168,9 @@ public interface NonexistentClass {
         }
       }
     } else if (isEnum) {
-      return NonexistentEnum.class;
+      return UnknownEnum.class;
     } else {
-      return shareMeta ? NonexistentMetaShared.class : NonexistentSkip.class;
+      return shareMeta ? UnknownStruct.class : UnknownEmptyStruct.class;
     }
   }
 }

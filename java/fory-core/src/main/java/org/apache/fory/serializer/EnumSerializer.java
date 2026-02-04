@@ -90,11 +90,11 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
       if (e != null) {
         return e;
       }
-      return handleNonexistentEnumValue(metaStringBytes.decode(Encoders.GENERIC_DECODER));
+      return handleUnknownEnumValue(metaStringBytes.decode(Encoders.GENERIC_DECODER));
     } else {
       int value = buffer.readVarUint32Small7();
       if (value >= enumConstants.length) {
-        return handleNonexistentEnumValue(value);
+        return handleUnknownEnumValue(value);
       }
       return enumConstants[value];
     }
@@ -109,12 +109,12 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
   public Enum xread(MemoryBuffer buffer) {
     int value = buffer.readVarUint32Small7();
     if (value >= enumConstants.length) {
-      return handleNonexistentEnumValue(value);
+      return handleUnknownEnumValue(value);
     }
     return enumConstants[value];
   }
 
-  private Enum handleNonexistentEnumValue(int value) {
+  private Enum handleUnknownEnumValue(int value) {
     switch (fory.getConfig().getUnknownEnumValueStrategy()) {
       case RETURN_NULL:
         return null;
@@ -128,7 +128,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
     }
   }
 
-  private Enum handleNonexistentEnumValue(String value) {
+  private Enum handleUnknownEnumValue(String value) {
     switch (fory.getConfig().getUnknownEnumValueStrategy()) {
       case RETURN_NULL:
         return null;

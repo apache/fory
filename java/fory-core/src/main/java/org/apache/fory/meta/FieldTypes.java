@@ -52,7 +52,7 @@ import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
-import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
@@ -550,7 +550,7 @@ public class FieldTypes {
         }
         LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);
         boolean isEnum = internalTypeId == Types.ENUM;
-        cls = NonexistentClass.getNonexistentClass(isEnum, 0, resolver.getFory().isShareMeta());
+        cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.getFory().isShareMeta());
         return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
       }
       if (resolver instanceof XtypeResolver) {
@@ -563,7 +563,7 @@ public class FieldTypes {
       if (cls == null) {
         LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);
         boolean isEnum = internalTypeId == Types.ENUM;
-        cls = NonexistentClass.getNonexistentClass(isEnum, 0, resolver.getFory().isShareMeta());
+        cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.getFory().isShareMeta());
       }
       return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
     }
@@ -881,7 +881,7 @@ public class FieldTypes {
       if (declared != null && declared.getRawType().isEnum()) {
         return declared;
       }
-      return TypeRef.of(NonexistentClass.NonexistentEnum.class);
+      return TypeRef.of(UnknownClass.UnknownEnum.class);
     }
 
     @Override
@@ -924,10 +924,9 @@ public class FieldTypes {
       }
       TypeRef<?> componentTypeRef = componentType.toTypeToken(classResolver, declared);
       Class<?> componentRawType = componentTypeRef.getRawType();
-      if (NonexistentClass.class.isAssignableFrom(componentRawType)) {
+      if (UnknownClass.class.isAssignableFrom(componentRawType)) {
         return TypeRef.of(
-            NonexistentClass.getNonexistentClass(
-                componentType instanceof EnumFieldType, dimensions, true),
+            UnknownClass.getUnknowClass(componentType instanceof EnumFieldType, dimensions, true),
             new TypeExtMeta(typeId, nullable, trackingRef));
       } else {
         return TypeRef.of(

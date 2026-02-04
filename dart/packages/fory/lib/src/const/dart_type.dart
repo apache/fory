@@ -29,7 +29,7 @@ import 'package:fory/src/datatype/uint8.dart';
 import 'package:fory/src/datatype/uint16.dart';
 import 'package:fory/src/datatype/uint32.dart';
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/datatype/local_date.dart';
 import 'package:fory/src/datatype/timestamp.dart';
 

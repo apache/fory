@@ -18,7 +18,7 @@
  */
 
 import 'package:collection/collection.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
 

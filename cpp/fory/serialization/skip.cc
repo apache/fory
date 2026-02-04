@@ -493,10 +493,12 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   switch (tid) {
   case TypeId::BOOL:
   case TypeId::INT8:
+  case TypeId::FLOAT8:
     ctx.buffer().increase_reader_index(1);
     return;
 
   case TypeId::INT16:
+  case TypeId::BFLOAT16:
   case TypeId::FLOAT16:
     ctx.buffer().increase_reader_index(2);
     return;
@@ -595,9 +597,17 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   case TypeId::INT16_ARRAY:
   case TypeId::INT32_ARRAY:
   case TypeId::INT64_ARRAY:
+  case TypeId::FLOAT8_ARRAY:
   case TypeId::FLOAT16_ARRAY:
+  case TypeId::BFLOAT16_ARRAY:
   case TypeId::FLOAT32_ARRAY:
   case TypeId::FLOAT64_ARRAY: {
+    if (tid == TypeId::FLOAT8_ARRAY) {
+      ctx.buffer().increase_reader_index(1);
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return;
+      }
+    }
     // Read array length
     uint32_t len = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -609,6 +619,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     switch (tid) {
     case TypeId::INT16_ARRAY:
     case TypeId::FLOAT16_ARRAY:
+    case TypeId::BFLOAT16_ARRAY:
       elem_size = 2;
       break;
     case TypeId::INT32_ARRAY:

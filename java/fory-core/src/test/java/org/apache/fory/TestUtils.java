@@ -336,7 +336,7 @@ public class TestUtils {
 
   /**
    * Convert an object to a Map using Fory's field descriptors. The map uses qualified field names
-   * (className.fieldName) as keys to match NonexistentClass format.
+   * (className.fieldName) as keys to match UnknownClass format.
    *
    * @param fory the Fory instance
    * @param obj the object to convert

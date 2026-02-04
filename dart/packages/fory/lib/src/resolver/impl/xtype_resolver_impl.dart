@@ -20,7 +20,7 @@
 import 'dart:collection';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/collection/long_long_key.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/exception/registration_exception.dart' show UnregisteredTagException, UnregisteredTypeException;
 import 'package:fory/src/fory_context.dart';
@@ -203,7 +203,7 @@ final class XtypeResolverImpl extends XtypeResolver {
     String qualifiedName = StringUtil.addingTypeNameAndNs(ns, tn);
     TypeInfo? typeInfo = _ctx.tag2TypeInfo[qualifiedName];
     if (typeInfo == null) {
-      // TODO: Does not support non-existent class, foryJava seems to have some support
+      // TODO: Does not support non-existent or unknown class, foryJava seems to have some support
       throw UnregisteredTagException(qualifiedName);
     }
     _tagHash2Info[key] = typeInfo;

@@ -42,8 +42,8 @@ const PRIMITIVE_TYPE_IDS = [
   TypeId.BOOL, TypeId.INT8, TypeId.INT16, TypeId.INT32, TypeId.VARINT32,
   TypeId.INT64, TypeId.VARINT64, TypeId.TAGGED_INT64, TypeId.UINT8,
   TypeId.UINT16, TypeId.UINT32, TypeId.VAR_UINT32, TypeId.UINT64,
-  TypeId.VAR_UINT64, TypeId.TAGGED_UINT64, TypeId.FLOAT16,
-  TypeId.FLOAT32, TypeId.FLOAT64,
+  TypeId.VAR_UINT64, TypeId.TAGGED_UINT64, TypeId.FLOAT8, TypeId.FLOAT16,
+  TypeId.BFLOAT16, TypeId.FLOAT32, TypeId.FLOAT64,
 ];
 
 export const isPrimitiveTypeId = (typeId: number): boolean => {
@@ -66,7 +66,9 @@ export const isInternalTypeId = (typeId: number): boolean => {
     TypeId.INT16_ARRAY,
     TypeId.INT32_ARRAY,
     TypeId.INT64_ARRAY,
+    TypeId.FLOAT8_ARRAY,
     TypeId.FLOAT16_ARRAY,
+    TypeId.BFLOAT16_ARRAY,
     TypeId.FLOAT32_ARRAY,
     TypeId.FLOAT64_ARRAY,
     TypeId.UINT16_ARRAY,
@@ -93,7 +95,11 @@ function getPrimitiveTypeSize(typeId: number) {
       return 8;
     case TypeId.TAGGED_INT64:
       return 8;
+    case TypeId.FLOAT8:
+      return 1;
     case TypeId.FLOAT16:
+      return 2;
+    case TypeId.BFLOAT16:
       return 2;
     case TypeId.FLOAT32:
       return 4;

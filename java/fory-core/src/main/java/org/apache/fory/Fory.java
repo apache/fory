@@ -61,11 +61,11 @@ import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.BufferObject;
-import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.StringSerializer;
+import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.collection.CollectionSerializers.ArrayListSerializer;
 import org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer;
 import org.apache.fory.type.Generics;
@@ -500,7 +500,7 @@ public final class Fory implements BaseFory {
   public void xwriteRef(MemoryBuffer buffer, Object obj) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
       TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass());
-      if (typeInfo.getCls() == NonexistentMetaShared.class) {
+      if (typeInfo.getCls() == UnknownStruct.class) {
         depth++;
         typeInfo.getSerializer().xwrite(buffer, obj);
         depth--;
@@ -514,7 +514,7 @@ public final class Fory implements BaseFory {
   public void xwriteRef(MemoryBuffer buffer, Object obj, TypeInfoHolder classInfoHolder) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
       TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass(), classInfoHolder);
-      if (typeInfo.getCls() == NonexistentMetaShared.class) {
+      if (typeInfo.getCls() == UnknownStruct.class) {
         depth++;
         typeInfo.getSerializer().xwrite(buffer, obj);
         depth--;
@@ -527,7 +527,7 @@ public final class Fory implements BaseFory {
 
   public void xwriteRef(MemoryBuffer buffer, Object obj, TypeInfo typeInfo) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
-      if (typeInfo.getCls() == NonexistentMetaShared.class) {
+      if (typeInfo.getCls() == UnknownStruct.class) {
         depth++;
         typeInfo.getSerializer().xwrite(buffer, obj);
         depth--;
@@ -559,7 +559,7 @@ public final class Fory implements BaseFory {
 
   public void xwriteNonRef(MemoryBuffer buffer, Object obj) {
     TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass());
-    if (typeInfo.getCls() == NonexistentMetaShared.class) {
+    if (typeInfo.getCls() == UnknownStruct.class) {
       depth++;
       typeInfo.getSerializer().xwrite(buffer, obj);
       depth--;
@@ -571,7 +571,7 @@ public final class Fory implements BaseFory {
 
   public void xwriteNonRef(MemoryBuffer buffer, Object obj, TypeInfoHolder holder) {
     TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass(), holder);
-    if (typeInfo.getCls() == NonexistentMetaShared.class) {
+    if (typeInfo.getCls() == UnknownStruct.class) {
       depth++;
       typeInfo.getSerializer().xwrite(buffer, obj);
       depth--;
@@ -582,7 +582,7 @@ public final class Fory implements BaseFory {
   }
 
   public void xwriteNonRef(MemoryBuffer buffer, Object obj, TypeInfo typeInfo) {
-    if (typeInfo.getCls() == NonexistentMetaShared.class) {
+    if (typeInfo.getCls() == UnknownStruct.class) {
       depth++;
       typeInfo.getSerializer().xwrite(buffer, obj);
       depth--;
