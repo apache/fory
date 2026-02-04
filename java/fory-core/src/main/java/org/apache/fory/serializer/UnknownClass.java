@@ -31,10 +31,10 @@ import org.apache.fory.type.TypeUtils;
  *
  * @see Config#isMetaShareEnabled()
  */
-public interface Unknown {
+public interface UnknownClass {
   // @formatter:off
 
-  enum UnknownEnum implements Unknown {
+  enum UnknownEnum implements UnknownClass {
     V0,
     V1,
     V2,
@@ -103,9 +103,9 @@ public interface Unknown {
   }
 
   /** Ensure no fields here to avoid conflicts with peer class fields. */
-  class UnknownEmptyStruct implements Unknown {}
+  class UnknownEmptyStruct implements UnknownClass {}
 
-  class UnknownStruct extends LazyMap implements Unknown {
+  class UnknownStruct extends LazyMap implements UnknownClass {
     final TypeDef typeDef;
 
     public UnknownStruct(TypeDef typeDef) {
@@ -126,9 +126,9 @@ public interface Unknown {
   static boolean isUnknowClass(Class<?> cls) {
     if (cls.isArray()) {
       Class<?> component = TypeUtils.getArrayComponent(cls);
-      return Unknown.class.isAssignableFrom(component);
+      return UnknownClass.class.isAssignableFrom(component);
     }
-    return Unknown.class.isAssignableFrom(cls);
+    return UnknownClass.class.isAssignableFrom(cls);
   }
 
   static Class<?> getUnknowClass(boolean isEnum, int arrayDims, boolean shareMeta) {

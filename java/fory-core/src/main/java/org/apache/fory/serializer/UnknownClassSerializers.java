@@ -39,7 +39,7 @@ import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.Serializers.CrossLanguageCompatibleSerializer;
-import org.apache.fory.serializer.Unknown.UnknownEnum;
+import org.apache.fory.serializer.UnknownClass.UnknownEnum;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Generics;
@@ -73,7 +73,7 @@ public final class UnknownClassSerializers {
     private final SerializationBinding binding;
 
     public UnknownStructSerializer(Fory fory, TypeDef typeDef) {
-      super(fory, Unknown.UnknownStruct.class);
+      super(fory, UnknownClass.UnknownStruct.class);
       this.typeDef = typeDef;
       fieldsInfoMap = new LongMap<>();
       binding = SerializationBinding.createBinding(fory);
@@ -96,7 +96,7 @@ public final class UnknownClassSerializers {
      * rewinds that placeholder typeId and writes the original class's typeId, then writes the
      * shared TypeDef inline using the stream meta protocol.
      */
-    private void writeTypeDef(MemoryBuffer buffer, Unknown.UnknownStruct value) {
+    private void writeTypeDef(MemoryBuffer buffer, UnknownClass.UnknownStruct value) {
       MetaContext metaContext = fory.getSerializationContext().getMetaContext();
       IdentityObjectIntMap classMap = metaContext.classMap;
       int newId = classMap.size;
@@ -143,7 +143,7 @@ public final class UnknownClassSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Object v) {
-      Unknown.UnknownStruct value = (Unknown.UnknownStruct) v;
+      UnknownClass.UnknownStruct value = (UnknownClass.UnknownStruct) v;
       int typeId = resolveTypeId(value.typeDef);
       int userTypeId = value.typeDef.isNamed() ? -1 : value.typeDef.getUserTypeId();
       int typeIdSize = 1;
@@ -207,7 +207,7 @@ public final class UnknownClassSerializers {
         // Use `UnknownEmptyStruct` since it doesn't have any field.
         Collection<Descriptor> descriptors =
             MetaSharedSerializer.consolidateFields(
-                resolver, Unknown.UnknownEmptyStruct.class, typeDef);
+                resolver, UnknownClass.UnknownEmptyStruct.class, typeDef);
         DescriptorGrouper grouper =
             fory.getClassResolver().createDescriptorGrouper(descriptors, false);
         FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, grouper);
@@ -223,7 +223,7 @@ public final class UnknownClassSerializers {
 
     @Override
     public Object read(MemoryBuffer buffer) {
-      Unknown.UnknownStruct obj = new Unknown.UnknownStruct(typeDef);
+      UnknownClass.UnknownStruct obj = new UnknownClass.UnknownStruct(typeDef);
       Fory fory = this.fory;
       RefResolver refResolver = fory.getRefResolver();
       refResolver.reference(obj);

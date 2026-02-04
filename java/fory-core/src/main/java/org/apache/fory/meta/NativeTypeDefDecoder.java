@@ -36,7 +36,7 @@ import org.apache.fory.meta.FieldTypes.FieldType;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.serializer.Unknown;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.Preconditions;
 
@@ -90,7 +90,7 @@ class NativeTypeDefDecoder {
         }
         Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);
         if (cls == null) {
-          classSpec = new ClassSpec(Unknown.UnknownStruct.class, typeId, userTypeId);
+          classSpec = new ClassSpec(UnknownClass.UnknownStruct.class, typeId, userTypeId);
           className = classSpec.entireClassName;
         } else {
           className = cls.getName();
@@ -111,7 +111,7 @@ class NativeTypeDefDecoder {
           Class<?> cls =
               resolver.loadClassForMeta(
                   decodedSpec.entireClassName, decodedSpec.isEnum, decodedSpec.dimension);
-          if (Unknown.isUnknowClass(cls)) {
+          if (UnknownClass.isUnknowClass(cls)) {
             int typeId;
             if (decodedSpec.isEnum) {
               typeId = Types.NAMED_ENUM;

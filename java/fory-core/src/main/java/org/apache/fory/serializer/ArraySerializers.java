@@ -1160,7 +1160,7 @@ public class ArraySerializers {
         componentSerializer = new UnknownClassSerializers.UnknownEnumSerializer(fory);
       } else {
         if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
-          componentSerializer = new ObjectSerializer<>(fory, Unknown.UnknownEmptyStruct.class);
+          componentSerializer = new ObjectSerializer<>(fory, UnknownClass.UnknownEmptyStruct.class);
         } else {
           componentSerializer = null;
         }

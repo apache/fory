@@ -91,9 +91,9 @@ import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnionSerializer;
-import org.apache.fory.serializer.Unknown;
-import org.apache.fory.serializer.Unknown.UnknownEnum;
-import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.UnknownClass;
+import org.apache.fory.serializer.UnknownClass.UnknownEnum;
+import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.UnknownClassSerializers.UnknownStructSerializer;
 import org.apache.fory.serializer.UnsignedSerializers;
@@ -638,7 +638,7 @@ public class XtypeResolver extends TypeResolver {
       return true;
     }
     byte typeIdByte = getInternalTypeId(descriptor);
-    if (Unknown.class.isAssignableFrom(rawType)) {
+    if (UnknownClass.class.isAssignableFrom(rawType)) {
       return false;
     }
     return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
@@ -727,7 +727,7 @@ public class XtypeResolver extends TypeResolver {
         }
       }
       typeId = Types.MAP;
-    } else if (Unknown.class.isAssignableFrom(cls)) {
+    } else if (UnknownClass.class.isAssignableFrom(cls)) {
       serializer = UnknownClassSerializers.getSerializer(fory, "Unknown", cls);
       if (cls.isEnum()) {
         typeId = Types.ENUM;
@@ -1129,7 +1129,7 @@ public class XtypeResolver extends TypeResolver {
           case Types.NAMED_STRUCT:
           case Types.NAMED_COMPATIBLE_STRUCT:
             type =
-                Unknown.getUnknowClass(
+                UnknownClass.getUnknowClass(
                     qualifiedName, isEnum(typeId), 0, config.isMetaShareEnabled());
             break;
           case Types.NAMED_EXT:
@@ -1153,7 +1153,7 @@ public class XtypeResolver extends TypeResolver {
               null,
               NOT_SUPPORT_XLANG,
               INVALID_USER_TYPE_ID);
-      if (Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
         typeInfo.serializer = UnknownClassSerializers.getSerializer(fory, qualifiedName, type);
       }
     }

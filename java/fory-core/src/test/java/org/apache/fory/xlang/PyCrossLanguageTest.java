@@ -71,7 +71,7 @@ import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
-import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;

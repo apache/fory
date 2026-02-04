@@ -126,9 +126,9 @@ import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.TimeSerializers;
-import org.apache.fory.serializer.Unknown;
-import org.apache.fory.serializer.Unknown.UnknownEmptyStruct;
-import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.UnknownClass;
+import org.apache.fory.serializer.UnknownClass.UnknownEmptyStruct;
+import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.ChildContainerSerializers;
@@ -1217,7 +1217,7 @@ public class ClassResolver extends TypeResolver {
           return serializer.getClass();
         }
       }
-      if (Unknown.isUnknowClass(cls)) {
+      if (UnknownClass.isUnknowClass(cls)) {
         return UnknownClassSerializers.getSerializer(fory, "Unknown", cls).getClass();
       }
       if (cls.isArray()) {
@@ -1850,7 +1850,7 @@ public class ClassResolver extends TypeResolver {
             null,
             typeId,
             INVALID_USER_TYPE_ID);
-    if (Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
+    if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       typeInfo.serializer =
           UnknownClassSerializers.getSerializer(fory, classSpec.entireClassName, cls);
     } else {

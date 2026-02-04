@@ -72,9 +72,9 @@ import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.Serializers;
-import org.apache.fory.serializer.Unknown;
-import org.apache.fory.serializer.Unknown.UnknownEmptyStruct;
-import org.apache.fory.serializer.Unknown.UnknownStruct;
+import org.apache.fory.serializer.UnknownClass;
+import org.apache.fory.serializer.UnknownClass.UnknownEmptyStruct;
+import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorBuilder;
@@ -818,7 +818,7 @@ public abstract class TypeResolver {
     // even if the typeDef has no fields meta. This ensures the UnknownStructSerializer
     // has access to the typeDef for proper deserialization.
     if (!typeDef.hasFieldsMeta()
-        && !Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
+        && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       typeInfo = getTypeInfo(cls);
     } else if (ClassResolver.useReplaceResolveSerializer(cls)) {
       // For classes with writeReplace/readResolve, use their natural serializer
@@ -858,7 +858,7 @@ public abstract class TypeResolver {
     }
     TypeInfo typeInfo = new TypeInfo(this, cls, null, typeId, typeDef.getClassSpec().userTypeId);
     typeInfo.typeDef = typeDef;
-    if (Unknown.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
+    if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       if (cls == UnknownStruct.class) {
         typeInfo.setSerializer(
             this, new UnknownClassSerializers.UnknownStructSerializer(fory, typeDef));
@@ -972,7 +972,7 @@ public abstract class TypeResolver {
                 className, fory.getClassLoader(), Thread.currentThread().getContextClassLoader());
         if (deserializeUnknownClass) {
           LOG.warn(msg);
-          return Unknown.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
+          return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
         }
         throw new IllegalStateException(msg, ex);
       }

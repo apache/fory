@@ -47,7 +47,7 @@ import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-public class UnknownSerializersTest extends ForyTestBase {
+public class UnknownClassSerializersTest extends ForyTestBase {
   @DataProvider
   public static Object[][] config() {
     return Sets.cartesianProduct(
@@ -105,7 +105,7 @@ public class UnknownSerializersTest extends ForyTestBase {
               .withClassLoader(classLoader)
               .build();
       Object o = fory2.deserialize(bytes);
-      assertTrue(o instanceof Unknown, "Unexpected type " + o.getClass());
+      assertTrue(o instanceof UnknownClass, "Unexpected type " + o.getClass());
     }
   }
 
@@ -121,7 +121,7 @@ public class UnknownSerializersTest extends ForyTestBase {
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
     Fory fory2 = foryBuilder().withDeserializeUnknownClass(true).build();
     Object o = fory2.deserialize(bytes);
-    assertEquals(o, Unknown.UnknownEnum.V1);
+    assertEquals(o, UnknownClass.UnknownEnum.V1);
   }
 
   @Test
@@ -136,7 +136,7 @@ public class UnknownSerializersTest extends ForyTestBase {
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
     Fory fory2 = foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
     Object o = fory2.deserialize(bytes);
-    assertEquals(o, Unknown.UnknownEnum.UNKNOWN);
+    assertEquals(o, UnknownClass.UnknownEnum.UNKNOWN);
   }
 
   @Test
@@ -282,7 +282,7 @@ public class UnknownSerializersTest extends ForyTestBase {
       MetaContext context2 = new MetaContext();
       fory2.getSerializationContext().setMetaContext(context2);
       Object o2 = fory2.deserialize(bytes);
-      assertEquals(o2.getClass(), Unknown.UnknownStruct.class);
+      assertEquals(o2.getClass(), UnknownClass.UnknownStruct.class);
       fory2.getSerializationContext().setMetaContext(context2);
       byte[] bytes2 = fory2.serialize(o2);
       Fory fory3 =
@@ -342,7 +342,7 @@ public class UnknownSerializersTest extends ForyTestBase {
 
         fory2.getSerializationContext().setMetaContext(context2);
         Object o2 = fory2.deserialize(bytes);
-        assertEquals(o2.getClass(), Unknown.UnknownStruct.class);
+        assertEquals(o2.getClass(), UnknownClass.UnknownStruct.class);
         fory2.getSerializationContext().setMetaContext(context2);
         byte[] bytes2 = fory2.serialize(o2);
 
@@ -467,9 +467,9 @@ public class UnknownSerializersTest extends ForyTestBase {
     Object result = fory2.deserialize(buffer);
 
     // Verify result is UnknownStruct
-    assertEquals(result.getClass(), Unknown.UnknownStruct.class);
+    assertEquals(result.getClass(), UnknownClass.UnknownStruct.class);
 
-    Unknown.UnknownStruct nonexistent = (Unknown.UnknownStruct) result;
+    UnknownClass.UnknownStruct nonexistent = (UnknownClass.UnknownStruct) result;
 
     // Convert UnknownStruct to a map keyed by simple field name
     Map<String, Object> actualMap = new HashMap<>();
@@ -526,8 +526,8 @@ public class UnknownSerializersTest extends ForyTestBase {
     buffer.readerIndex(0);
     Object result = fory2.deserialize(buffer);
 
-    assertEquals(result.getClass(), Unknown.UnknownStruct.class);
-    Unknown.UnknownStruct nonexistent = (Unknown.UnknownStruct) result;
+    assertEquals(result.getClass(), UnknownClass.UnknownStruct.class);
+    UnknownClass.UnknownStruct nonexistent = (UnknownClass.UnknownStruct) result;
 
     // Convert UnknownStruct to a map keyed by simple field name
     Map<String, Object> actualMap = new HashMap<>();
@@ -583,17 +583,17 @@ public class UnknownSerializersTest extends ForyTestBase {
     // Step 2: Deserialize with fory2 (gets UnknownStruct)
     buffer1.readerIndex(0);
     Object nonexistent1 = fory2.deserialize(buffer1);
-    assertEquals(nonexistent1.getClass(), Unknown.UnknownStruct.class);
+    assertEquals(nonexistent1.getClass(), UnknownClass.UnknownStruct.class);
 
     // Step 3: Serialize UnknownStruct with fory2
     byte[] bytes = fory2.serialize(nonexistent1);
 
     // Step 4: Deserialize again with fory2 (should get UnknownStruct with same values)
     Object nonexistent2 = fory2.deserialize(bytes);
-    assertEquals(nonexistent2.getClass(), Unknown.UnknownStruct.class);
+    assertEquals(nonexistent2.getClass(), UnknownClass.UnknownStruct.class);
 
     // Verify values are preserved across the round-trip
-    Unknown.UnknownStruct result = (Unknown.UnknownStruct) nonexistent2;
+    UnknownClass.UnknownStruct result = (UnknownClass.UnknownStruct) nonexistent2;
     Map<String, Object> actualMap = new HashMap<>();
     for (Object key : result.keySet()) {
       String qualifiedKey = (String) key;
