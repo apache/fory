@@ -218,29 +218,25 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_string_serializer", () => {
-    const fory = new Fory();
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
     // Deserialize strings from Java
     const deserializedStrings = [];
     let cursor = 0;
     for (let i = 0; i < 7; i++) { // 7 test strings
-      const deserializedString = fory.deserialize(content.slice(cursor));
+      const deserializedString = fory.deserialize(content.subarray(cursor));
       cursor += fory.binaryReader.getCursor();
       deserializedStrings.push(deserializedString);
     }
-
-    const writer = new BinaryWriter();
-    writer.reserve(1024);
-
+    const bfs = []
     // Serialize each deserialized string back
     for (const testString of deserializedStrings) {
       const serializedData = fory.serialize(testString);
-      writer.buffer(serializedData);
+      bfs.push(serializedData);
     }
 
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
   test("test_cross_language_serializer", () => {
     if (Boolean("1")) { return; }
