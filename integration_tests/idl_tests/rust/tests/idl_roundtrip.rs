@@ -518,13 +518,14 @@ fn test_evolving_roundtrip() {
         city: "NYC".to_string(),
     };
     let bytes = fory_v1.serialize(&msg_v1).expect("serialize evolving v1");
-    let msg_v2: evolving2::EvolvingMessage = fory_v2
+    let mut msg_v2: evolving2::EvolvingMessage = fory_v2
         .deserialize(&bytes)
         .expect("deserialize evolving v2");
     assert_eq!(msg_v1.id, msg_v2.id);
     assert_eq!(msg_v1.name, msg_v2.name);
     assert_eq!(msg_v1.city, msg_v2.city);
 
+    msg_v2.email = "alice@example.com".to_string();
     let round_bytes = fory_v2.serialize(&msg_v2).expect("serialize evolving v2");
     let msg_v1_round: evolving1::EvolvingMessage = fory_v1
         .deserialize(&round_bytes)

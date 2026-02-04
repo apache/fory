@@ -140,6 +140,7 @@ func TestEvolvingRoundTrip(t *testing.T) {
 	if msgV2.Id != msgV1.Id || msgV2.Name != msgV1.Name || msgV2.City != msgV1.City {
 		t.Fatalf("evolving message mismatch: v1=%+v v2=%+v", msgV1, msgV2)
 	}
+	msgV2.Email = "alice@example.com"
 	roundBytes, err := foryV2.Serialize(&msgV2)
 	if err != nil {
 		t.Fatalf("serialize evolving message v2: %v", err)

@@ -23,11 +23,11 @@ message EvolvingMessage [id=1000, evolving=true] {
     int32 id = 1;
     string name = 2;
     string city = 3;
-    string email = 4;
+    optional string email = 4;
 }
 
 message FixedMessage [id=1001, evolving=false] {
     int32 id = 1;
     string name = 2;
-    string email = 4;
+    optional string email = 4;
 }

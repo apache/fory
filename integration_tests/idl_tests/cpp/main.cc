@@ -188,6 +188,7 @@ fory::Result<void, fory::Error> RunEvolvingRoundTrip() {
       decoded.city() != msg_v1.city()) {
     return fory::Unexpected(fory::Error::invalid("evolving message mismatch"));
   }
+  decoded.set_email("alice@example.com");
 
   FORY_TRY(round_bytes, fory_v2.serialize(decoded));
   FORY_TRY(round_trip,

@@ -199,22 +199,6 @@ def test_data_class_serializer_xlang():
     obj_deserialized = ser_de(fory, obj_original)
 
     assert obj_deserialized == obj_original
-
-
-def test_struct_evolving_override():
-    @pyfory.dataclass
-    class EvolvingStruct:
-        f1: pyfory.int32 = 0
-
-    @pyfory.dataclass(evolving=False)
-    class FixedStruct:
-        f1: pyfory.int32 = 0
-
-    fory = Fory(xlang=True, compatible=True)
-    evolving_info = fory.register_type(EvolvingStruct, namespace="test", typename="EvolvingStruct")
-    fixed_info = fory.register_type(FixedStruct, namespace="test", typename="FixedStruct")
-    assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
-    assert fixed_info.type_id == TypeId.NAMED_STRUCT
     assert obj_deserialized.f_int == obj_original.f_int
     assert obj_deserialized.f_float == obj_original.f_float
     assert obj_deserialized.f_str == obj_original.f_str
@@ -246,6 +230,24 @@ def test_struct_evolving_override():
     )
     obj_deserialized_none = ser_de(fory, obj_with_none_complex)
     assert obj_deserialized_none == obj_with_none_complex
+
+
+def test_struct_evolving_override():
+    @pyfory.dataclass
+    class EvolvingStruct:
+        f1: pyfory.int32 = 0
+
+    @pyfory.dataclass(evolving=False)
+    class FixedStruct:
+        f1: pyfory.int32 = 0
+
+    fory = Fory(xlang=True, compatible=True)
+    fory.register_type(EvolvingStruct, namespace="test", typename="EvolvingStruct")
+    fory.register_type(FixedStruct, namespace="test", typename="FixedStruct")
+    evolving_info = fory.type_resolver.get_type_info(EvolvingStruct)
+    fixed_info = fory.type_resolver.get_type_info(FixedStruct)
+    assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
+    assert fixed_info.type_id == TypeId.NAMED_STRUCT
 
 
 def test_data_class_serializer_xlang_codegen():

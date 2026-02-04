@@ -203,6 +203,7 @@ public class IdlRoundTripTest {
     Assert.assertEquals(messageV2.getId(), messageV1.getId());
     Assert.assertEquals(messageV2.getName(), messageV1.getName());
     Assert.assertEquals(messageV2.getCity(), messageV1.getCity());
+    messageV2.setEmail("alice@example.com");
 
     byte[] roundTripBytes = foryV2.serialize(messageV2);
     Object roundTrip = foryV1.deserialize(roundTripBytes);

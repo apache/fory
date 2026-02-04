@@ -185,6 +185,7 @@ def local_roundtrip_evolving() -> None:
     assert msg_v2.id == msg_v1.id
     assert msg_v2.name == msg_v1.name
     assert msg_v2.city == msg_v1.city
+    msg_v2.email = "alice@example.com"
     round_bytes = fory_v2.serialize(msg_v2)
     msg_v1_round = fory_v1.deserialize(round_bytes)
     assert msg_v1_round == msg_v1
