@@ -114,18 +114,18 @@ fn test_nested_struct_with_phantom_data() {
 // TypeId Tests for UNION and NONE
 // ============================================================================
 
-/// Test that UNION TypeId matches xlang spec (31)
+/// Test that UNION TypeId matches xlang spec (33)
 #[test]
 fn test_union_type_id() {
-    assert_eq!(TypeId::UNION as i16, 31);
-    assert_eq!(fory_core::types::UNION, 31);
+    assert_eq!(TypeId::UNION as i16, 33);
+    assert_eq!(fory_core::types::UNION, 33);
 }
 
-/// Test that NONE TypeId matches xlang spec (34)
+/// Test that NONE TypeId matches xlang spec (36)
 #[test]
 fn test_none_type_id() {
-    assert_eq!(TypeId::NONE as i16, 34);
-    assert_eq!(fory_core::types::NONE, 34);
+    assert_eq!(TypeId::NONE as i16, 36);
+    assert_eq!(fory_core::types::NONE, 36);
 }
 
 /// Test that PhantomData uses NONE TypeId (no runtime data)
