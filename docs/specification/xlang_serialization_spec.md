@@ -89,7 +89,7 @@ This specification defines the Fory xlang binary format. The format is dynamic r
   - float32_array: one dimensional float32 array.
   - float64_array: one dimensional float64 array.
 - union: a tagged union type that can hold one of several alternative types. The active alternative is identified by an index.
-- typed_union: a union value with embedded numeric union type ID.
+- typed_union: a union value with registered numeric union type ID.
 - named_union: a union value with embedded union type name or shared TypeDef.
 - none: represents an empty/unit value with no data (e.g., for empty union alternatives).
 
@@ -198,8 +198,8 @@ Named types (`NAMED_*`) do not embed a user ID; their names are carried in metad
 | 31      | EXT                     | Extension type registered by numeric ID             |
 | 32      | NAMED_EXT               | Extension type registered by namespace + type name  |
 | 33      | UNION                   | Union value, schema identity not embedded           |
-| 34      | TYPED_UNION             | Union with embedded numeric union type ID           |
-| 35      | NAMED_UNION             | Union with embedded union type name/TypeDef         |
+| 34      | TYPED_UNION             | Union value with registered numeric type ID         |
+| 35      | NAMED_UNION             | Union value with embedded type name/TypeDef         |
 | 36      | NONE                    | Empty/unit type (no data)                           |
 | 37      | DURATION                | Time duration (seconds + nanoseconds)               |
 | 38      | TIMESTAMP               | Point in time (seconds + nanoseconds since epoch)   |
@@ -408,7 +408,7 @@ followed by optional type-specific metadata.
 - Internal types use their internal type ID directly (low 8 bits).
 - User-registered types write the internal type ID, then write `user_type_id` as varuint32.
   - `user_type_id` is a numeric ID (0~0xFFFFFFFE in current implementations).
-  - `internal_type_id` is one of `ENUM`, `STRUCT`, `COMPATIBLE_STRUCT`, `EXT`, or `UNION`.
+  - `internal_type_id` is one of `ENUM`, `STRUCT`, `COMPATIBLE_STRUCT`, `EXT`, or `TYPED_UNION`.
 - Named types do not embed a user ID. They use `NAMED_*` internal type IDs and carry a namespace
   and type name (or shared TypeDef) instead.
 
@@ -416,7 +416,7 @@ followed by optional type-specific metadata.
 
 After the type ID:
 
-- **ENUM / STRUCT / EXT / TYPED_UNION**: no extra bytes (registration by ID required on both sides).
+- **ENUM / STRUCT / EXT / TYPED_UNION**: no extra bytes beyond the `user_type_id` (registration by ID required on both sides).
 - **COMPATIBLE_STRUCT**:
   - If meta share is enabled, write a shared TypeDef entry (see below).
   - If meta share is disabled, no extra bytes.
@@ -1370,15 +1370,15 @@ Rules:
 
 | Type ID | Name        | Meaning                                              |
 | ------: | ----------- | ---------------------------------------------------- |
-|      31 | UNION       | Union value, schema identity not embedded            |
-|      32 | TYPED_UNION | Union value with embedded registered numeric type ID |
-|      33 | NAMED_UNION | Union value with embedded type name / shared TypeDef |
+|      33 | UNION       | Union value, schema identity not embedded            |
+|      34 | TYPED_UNION | Union value with registered numeric type ID          |
+|      35 | NAMED_UNION | Union value with embedded type name / shared TypeDef |
 
 Type meta encoding:
 
-- `UNION (31)`: no additional type meta payload.
-- `TYPED_UNION (32)`: no additional type meta payload (numeric ID is carried in the full type ID itself).
-- `NAMED_UNION (33)`: followed by named type meta (namespace + type name, or shared TypeDef marker/body).
+- `UNION (33)`: no additional type meta payload.
+- `TYPED_UNION (34)`: write `user_type_id` as varuint32 after the type ID.
+- `NAMED_UNION (35)`: followed by named type meta (namespace + type name, or shared TypeDef marker/body).
 
 #### Union value payload
 
@@ -1403,21 +1403,21 @@ This is required even for primitives so unknown alternatives can be skipped safe
 **UNION (schema known from context)**
 
 ```
-| ... outer ref meta ... | type_id=UNION(31) | case_id | case_value |
+| ... outer ref meta ... | type_id=UNION(33) | case_id | case_value |
 ```
 
-**TYPED_UNION (schema embedded by numeric id)**
+**TYPED_UNION (schema identified by numeric id)**
 
 ```
-| ... outer ref meta ... | embedded type id | case_id | case_value |
+| ... outer ref meta ... | type_id=TYPED_UNION(34) | user_type_id | case_id | case_value |
 ```
 
-embedded type id: `type_id=user_type_id` (internal type is `TYPED_UNION`)
+user_type_id: varuint32 numeric registration ID for the union schema.
 
 **NAMED_UNION (schema embedded by name/typedef)**
 
 ```
-| ... outer ref meta ... | type_id=NAMED_UNION(33) | name_or_typedef | case_id | case_value |
+| ... outer ref meta ... | type_id=NAMED_UNION(35) | name_or_typedef | case_id | case_value |
 ```
 
 #### Decoding rules
