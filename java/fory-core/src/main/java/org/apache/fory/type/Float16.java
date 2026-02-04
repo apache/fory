@@ -273,6 +273,10 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
     return bits == other.bits;
   }
 
+  public boolean equalsValue(Float16 other) {
+    return isNumericEqual(other);
+  }
+
   public boolean lessThan(Float16 other) {
     if (isNaN() || other.isNaN()) {
       return false;
