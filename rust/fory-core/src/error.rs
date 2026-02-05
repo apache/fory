@@ -36,20 +36,12 @@ use thiserror::Error;
 /// Set FORY_PANIC_ON_ERROR=1 (or true) at compile time to enable panic on error.
 const fn is_truthy_env(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.len() == 1 {
-        return bytes[0] == b'1';
-    }
-    if bytes.len() == 4 {
-        let b0 = bytes[0];
-        let b1 = bytes[1];
-        let b2 = bytes[2];
-        let b3 = bytes[3];
-        return (b0 == b't' || b0 == b'T')
-            && (b1 == b'r' || b1 == b'R')
-            && (b2 == b'u' || b2 == b'U')
-            && (b3 == b'e' || b3 == b'E');
-    }
-    false
+    (bytes.len() == 1 && bytes[0] == b'1')
+        || (bytes.len() == 4
+            && (bytes[0] | 0x20) == b't'
+            && (bytes[1] | 0x20) == b'r'
+            && (bytes[2] | 0x20) == b'u'
+            && (bytes[3] | 0x20) == b'e')
 }
 
 pub const PANIC_ON_ERROR: bool = match option_env!("FORY_PANIC_ON_ERROR") {
