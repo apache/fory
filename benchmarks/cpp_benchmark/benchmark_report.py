@@ -127,6 +127,14 @@ for bench in benchmark_data.get("benchmarks", []):
                 "proto_struct_size",
                 "fory_sample_size",
                 "proto_sample_size",
+                "fory_media_size",
+                "proto_media_size",
+                "fory_struct_list_size",
+                "proto_struct_list_size",
+                "fory_sample_list_size",
+                "proto_sample_list_size",
+                "fory_media_list_size",
+                "proto_media_list_size",
             ]:
                 if key in bench:
                     sizes[key] = int(bench[key])
@@ -329,6 +337,22 @@ if sizes:
     if "fory_sample_size" in sizes and "proto_sample_size" in sizes:
         md_report.append(
             f"| Sample | {sizes['fory_sample_size']} | {sizes['proto_sample_size']} |\n"
+        )
+    if "fory_media_size" in sizes and "proto_media_size" in sizes:
+        md_report.append(
+            f"| MediaContent | {sizes['fory_media_size']} | {sizes['proto_media_size']} |\n"
+        )
+    if "fory_struct_list_size" in sizes and "proto_struct_list_size" in sizes:
+        md_report.append(
+            f"| StructList | {sizes['fory_struct_list_size']} | {sizes['proto_struct_list_size']} |\n"
+        )
+    if "fory_sample_list_size" in sizes and "proto_sample_list_size" in sizes:
+        md_report.append(
+            f"| SampleList | {sizes['fory_sample_list_size']} | {sizes['proto_sample_list_size']} |\n"
+        )
+    if "fory_media_list_size" in sizes and "proto_media_list_size" in sizes:
+        md_report.append(
+            f"| MediaContentList | {sizes['fory_media_list_size']} | {sizes['proto_media_list_size']} |\n"
         )
 
 # Save Markdown

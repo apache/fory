@@ -171,6 +171,36 @@ struct MediaContent {
 FORY_STRUCT(MediaContent, media, images);
 FORY_FIELD_TAGS(MediaContent, (media, 1), (images, 2));
 
+struct StructList {
+  std::vector<NumericStruct> struct_list;
+
+  bool operator==(const StructList &other) const {
+    return struct_list == other.struct_list;
+  }
+};
+FORY_STRUCT(StructList, struct_list);
+FORY_FIELD_TAGS(StructList, (struct_list, 1));
+
+struct SampleList {
+  std::vector<Sample> sample_list;
+
+  bool operator==(const SampleList &other) const {
+    return sample_list == other.sample_list;
+  }
+};
+FORY_STRUCT(SampleList, sample_list);
+FORY_FIELD_TAGS(SampleList, (sample_list, 1));
+
+struct MediaContentList {
+  std::vector<MediaContent> media_content_list;
+
+  bool operator==(const MediaContentList &other) const {
+    return media_content_list == other.media_content_list;
+  }
+};
+FORY_STRUCT(MediaContentList, media_content_list);
+FORY_FIELD_TAGS(MediaContentList, (media_content_list, 1));
+
 // ============================================================================
 // Test data creation
 // ============================================================================
@@ -188,6 +218,8 @@ NumericStruct create_numeric_struct() {
       42          // f8: small positive
   };
 }
+
+constexpr int kListSize = 20;
 
 // ============================================================================
 // Protobuf conversion functions (like Java benchmark's
@@ -261,51 +293,83 @@ Sample create_sample() {
   return sample;
 }
 
-protobuf::Sample create_proto_sample() {
-  // Consistent with Java Sample.populate() for fair cross-language comparison
+inline protobuf::Sample to_pb_sample(const Sample &obj) {
   protobuf::Sample sample;
-  sample.set_int_value(123);
-  sample.set_long_value(1230000LL);
-  sample.set_float_value(12.345f);
-  sample.set_double_value(1.234567);
-  sample.set_short_value(12345);
-  sample.set_char_value('!'); // 33
-  sample.set_boolean_value(true);
+  sample.set_int_value(obj.int_value);
+  sample.set_long_value(obj.long_value);
+  sample.set_float_value(obj.float_value);
+  sample.set_double_value(obj.double_value);
+  sample.set_short_value(obj.short_value);
+  sample.set_char_value(obj.char_value);
+  sample.set_boolean_value(obj.boolean_value);
 
-  sample.set_int_value_boxed(321);
-  sample.set_long_value_boxed(3210000LL);
-  sample.set_float_value_boxed(54.321f);
-  sample.set_double_value_boxed(7.654321);
-  sample.set_short_value_boxed(32100);
-  sample.set_char_value_boxed('$'); // 36
-  sample.set_boolean_value_boxed(false);
+  sample.set_int_value_boxed(obj.int_value_boxed);
+  sample.set_long_value_boxed(obj.long_value_boxed);
+  sample.set_float_value_boxed(obj.float_value_boxed);
+  sample.set_double_value_boxed(obj.double_value_boxed);
+  sample.set_short_value_boxed(obj.short_value_boxed);
+  sample.set_char_value_boxed(obj.char_value_boxed);
+  sample.set_boolean_value_boxed(obj.boolean_value_boxed);
 
-  // Arrays with mixed positive/negative values (same as Java)
-  for (int v : {-1234, -123, -12, -1, 0, 1, 12, 123, 1234}) {
+  for (int32_t v : obj.int_array) {
     sample.add_int_array(v);
   }
-  for (int64_t v : {-123400LL, -12300LL, -1200LL, -100LL, 0LL, 100LL, 1200LL,
-                    12300LL, 123400LL}) {
+  for (int64_t v : obj.long_array) {
     sample.add_long_array(v);
   }
-  for (float v :
-       {-12.34f, -12.3f, -12.0f, -1.0f, 0.0f, 1.0f, 12.0f, 12.3f, 12.34f}) {
+  for (float v : obj.float_array) {
     sample.add_float_array(v);
   }
-  for (double v : {-1.234, -1.23, -12.0, -1.0, 0.0, 1.0, 12.0, 1.23, 1.234}) {
+  for (double v : obj.double_array) {
     sample.add_double_array(v);
   }
-  for (int v : {-1234, -123, -12, -1, 0, 1, 12, 123, 1234}) {
+  for (int32_t v : obj.short_array) {
     sample.add_short_array(v);
   }
-  for (int v : {'a', 's', 'd', 'f', 'A', 'S', 'D', 'F'}) { // "asdfASDF"
+  for (int32_t v : obj.char_array) {
     sample.add_char_array(v);
   }
-  for (bool v : {true, false, false, true}) {
+  for (bool v : obj.boolean_array) {
     sample.add_boolean_array(v);
   }
-  sample.set_string("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+  sample.set_string(obj.string);
   return sample;
+}
+
+inline Sample from_pb_sample(const protobuf::Sample &pb) {
+  Sample sample;
+  sample.int_value = pb.int_value();
+  sample.long_value = pb.long_value();
+  sample.float_value = pb.float_value();
+  sample.double_value = pb.double_value();
+  sample.short_value = pb.short_value();
+  sample.char_value = pb.char_value();
+  sample.boolean_value = pb.boolean_value();
+
+  sample.int_value_boxed = pb.int_value_boxed();
+  sample.long_value_boxed = pb.long_value_boxed();
+  sample.float_value_boxed = pb.float_value_boxed();
+  sample.double_value_boxed = pb.double_value_boxed();
+  sample.short_value_boxed = pb.short_value_boxed();
+  sample.char_value_boxed = pb.char_value_boxed();
+  sample.boolean_value_boxed = pb.boolean_value_boxed();
+
+  sample.int_array.assign(pb.int_array().begin(), pb.int_array().end());
+  sample.long_array.assign(pb.long_array().begin(), pb.long_array().end());
+  sample.float_array.assign(pb.float_array().begin(), pb.float_array().end());
+  sample.double_array.assign(pb.double_array().begin(),
+                             pb.double_array().end());
+  sample.short_array.assign(pb.short_array().begin(), pb.short_array().end());
+  sample.char_array.assign(pb.char_array().begin(), pb.char_array().end());
+  sample.boolean_array.assign(pb.boolean_array().begin(),
+                              pb.boolean_array().end());
+  sample.string = pb.string();
+  return sample;
+}
+
+protobuf::Sample create_proto_sample() {
+  // Consistent with Java Sample.populate() for fair cross-language comparison
+  return to_pb_sample(create_sample());
 }
 
 MediaContent create_media_content() {
@@ -426,6 +490,98 @@ protobuf::MediaContent create_proto_media_content() {
   return to_pb_mediaContent(create_media_content());
 }
 
+StructList create_struct_list() {
+  StructList list;
+  list.struct_list.reserve(kListSize);
+  for (int i = 0; i < kListSize; ++i) {
+    list.struct_list.push_back(create_numeric_struct());
+  }
+  return list;
+}
+
+SampleList create_sample_list() {
+  SampleList list;
+  list.sample_list.reserve(kListSize);
+  for (int i = 0; i < kListSize; ++i) {
+    list.sample_list.push_back(create_sample());
+  }
+  return list;
+}
+
+MediaContentList create_media_content_list() {
+  MediaContentList list;
+  list.media_content_list.reserve(kListSize);
+  for (int i = 0; i < kListSize; ++i) {
+    list.media_content_list.push_back(create_media_content());
+  }
+  return list;
+}
+
+inline protobuf::StructList to_pb_struct_list(const StructList &obj) {
+  protobuf::StructList pb;
+  for (const auto &item : obj.struct_list) {
+    *pb.add_struct_list() = to_pb_struct(item);
+  }
+  return pb;
+}
+
+inline StructList from_pb_struct_list(const protobuf::StructList &pb) {
+  StructList list;
+  list.struct_list.reserve(pb.struct_list_size());
+  for (const auto &item : pb.struct_list()) {
+    list.struct_list.push_back(from_pb_struct(item));
+  }
+  return list;
+}
+
+inline protobuf::SampleList to_pb_sample_list(const SampleList &obj) {
+  protobuf::SampleList pb;
+  for (const auto &item : obj.sample_list) {
+    *pb.add_sample_list() = to_pb_sample(item);
+  }
+  return pb;
+}
+
+inline SampleList from_pb_sample_list(const protobuf::SampleList &pb) {
+  SampleList list;
+  list.sample_list.reserve(pb.sample_list_size());
+  for (const auto &item : pb.sample_list()) {
+    list.sample_list.push_back(from_pb_sample(item));
+  }
+  return list;
+}
+
+inline protobuf::MediaContentList
+to_pb_media_content_list(const MediaContentList &obj) {
+  protobuf::MediaContentList pb;
+  for (const auto &item : obj.media_content_list) {
+    *pb.add_media_content_list() = to_pb_mediaContent(item);
+  }
+  return pb;
+}
+
+inline MediaContentList
+from_pb_media_content_list(const protobuf::MediaContentList &pb) {
+  MediaContentList list;
+  list.media_content_list.reserve(pb.media_content_list_size());
+  for (const auto &item : pb.media_content_list()) {
+    list.media_content_list.push_back(from_pb_mediaContent(item));
+  }
+  return list;
+}
+
+protobuf::StructList create_proto_struct_list() {
+  return to_pb_struct_list(create_struct_list());
+}
+
+protobuf::SampleList create_proto_sample_list() {
+  return to_pb_sample_list(create_sample_list());
+}
+
+protobuf::MediaContentList create_proto_media_content_list() {
+  return to_pb_media_content_list(create_media_content_list());
+}
+
 // ============================================================================
 // Helper to configure Fory instance
 // ============================================================================
@@ -436,6 +592,9 @@ void register_fory_types(fory::serialization::Fory &fory) {
   fory.register_struct<Media>(3);
   fory.register_struct<Image>(4);
   fory.register_struct<MediaContent>(5);
+  fory.register_struct<StructList>(6);
+  fory.register_struct<SampleList>(7);
+  fory.register_struct<MediaContentList>(8);
 }
 
 // ============================================================================
@@ -695,6 +854,249 @@ static void BM_Protobuf_MediaContent_Deserialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_MediaContent_Deserialize);
 
 // ============================================================================
+// List benchmarks (StructList, SampleList, MediaContentList)
+// ============================================================================
+
+static void BM_Fory_StructList_Serialize(benchmark::State &state) {
+  auto fory = fory::serialization::Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .check_struct_version(false)
+                  .build();
+  register_fory_types(fory);
+  StructList obj = create_struct_list();
+
+  fory::Buffer buffer;
+  buffer.reserve(65536);
+
+  for (auto _ : state) {
+    buffer.writer_index(0);
+    auto result = fory.serialize_to(buffer, obj);
+    benchmark::DoNotOptimize(result);
+    benchmark::DoNotOptimize(buffer.data());
+  }
+}
+BENCHMARK(BM_Fory_StructList_Serialize);
+
+static void BM_Protobuf_StructList_Serialize(benchmark::State &state) {
+  StructList obj = create_struct_list();
+  protobuf::StructList pb = to_pb_struct_list(obj);
+  std::vector<uint8_t> output;
+  output.resize(pb.ByteSizeLong());
+
+  for (auto _ : state) {
+    pb = to_pb_struct_list(obj);
+    pb.SerializeToArray(output.data(), static_cast<int>(output.size()));
+    benchmark::DoNotOptimize(output);
+  }
+}
+BENCHMARK(BM_Protobuf_StructList_Serialize);
+
+static void BM_Fory_StructList_Deserialize(benchmark::State &state) {
+  auto fory = fory::serialization::Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .check_struct_version(false)
+                  .build();
+  register_fory_types(fory);
+  StructList obj = create_struct_list();
+  auto serialized = fory.serialize(obj);
+  if (!serialized.ok()) {
+    state.SkipWithError("Serialization failed");
+    return;
+  }
+  auto &bytes = serialized.value();
+
+  auto test_result = fory.deserialize<StructList>(bytes.data(), bytes.size());
+  if (!test_result.ok()) {
+    state.SkipWithError("Deserialization test failed");
+    return;
+  }
+
+  for (auto _ : state) {
+    auto result = fory.deserialize<StructList>(bytes.data(), bytes.size());
+    benchmark::DoNotOptimize(result);
+  }
+}
+BENCHMARK(BM_Fory_StructList_Deserialize);
+
+static void BM_Protobuf_StructList_Deserialize(benchmark::State &state) {
+  protobuf::StructList obj = create_proto_struct_list();
+  std::string serialized;
+  obj.SerializeToString(&serialized);
+
+  for (auto _ : state) {
+    protobuf::StructList pb_result;
+    pb_result.ParseFromString(serialized);
+    StructList result = from_pb_struct_list(pb_result);
+    benchmark::DoNotOptimize(result);
+  }
+}
+BENCHMARK(BM_Protobuf_StructList_Deserialize);
+
+static void BM_Fory_SampleList_Serialize(benchmark::State &state) {
+  auto fory = fory::serialization::Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .check_struct_version(false)
+                  .build();
+  register_fory_types(fory);
+  SampleList obj = create_sample_list();
+
+  fory::Buffer buffer;
+  buffer.reserve(131072);
+
+  for (auto _ : state) {
+    buffer.writer_index(0);
+    auto result = fory.serialize_to(buffer, obj);
+    benchmark::DoNotOptimize(result);
+    benchmark::DoNotOptimize(buffer.data());
+  }
+}
+BENCHMARK(BM_Fory_SampleList_Serialize);
+
+static void BM_Protobuf_SampleList_Serialize(benchmark::State &state) {
+  SampleList obj = create_sample_list();
+  protobuf::SampleList pb = to_pb_sample_list(obj);
+  std::vector<uint8_t> output;
+  output.resize(pb.ByteSizeLong());
+
+  for (auto _ : state) {
+    pb = to_pb_sample_list(obj);
+    pb.SerializeToArray(output.data(), static_cast<int>(output.size()));
+    benchmark::DoNotOptimize(output);
+  }
+}
+BENCHMARK(BM_Protobuf_SampleList_Serialize);
+
+static void BM_Fory_SampleList_Deserialize(benchmark::State &state) {
+  auto fory = fory::serialization::Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .check_struct_version(false)
+                  .build();
+  register_fory_types(fory);
+  SampleList obj = create_sample_list();
+  auto serialized = fory.serialize(obj);
+  if (!serialized.ok()) {
+    state.SkipWithError("Serialization failed");
+    return;
+  }
+  auto &bytes = serialized.value();
+
+  auto test_result = fory.deserialize<SampleList>(bytes.data(), bytes.size());
+  if (!test_result.ok()) {
+    state.SkipWithError("Deserialization test failed");
+    return;
+  }
+
+  for (auto _ : state) {
+    auto result = fory.deserialize<SampleList>(bytes.data(), bytes.size());
+    benchmark::DoNotOptimize(result);
+  }
+}
+BENCHMARK(BM_Fory_SampleList_Deserialize);
+
+static void BM_Protobuf_SampleList_Deserialize(benchmark::State &state) {
+  protobuf::SampleList obj = create_proto_sample_list();
+  std::string serialized;
+  obj.SerializeToString(&serialized);
+
+  for (auto _ : state) {
+    protobuf::SampleList pb_result;
+    pb_result.ParseFromString(serialized);
+    SampleList result = from_pb_sample_list(pb_result);
+    benchmark::DoNotOptimize(result);
+  }
+}
+BENCHMARK(BM_Protobuf_SampleList_Deserialize);
+
+static void BM_Fory_MediaContentList_Serialize(benchmark::State &state) {
+  auto fory = fory::serialization::Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .check_struct_version(false)
+                  .build();
+  register_fory_types(fory);
+  MediaContentList obj = create_media_content_list();
+
+  fory::Buffer buffer;
+  buffer.reserve(131072);
+
+  for (auto _ : state) {
+    buffer.writer_index(0);
+    auto result = fory.serialize_to(buffer, obj);
+    benchmark::DoNotOptimize(result);
+    benchmark::DoNotOptimize(buffer.data());
+  }
+}
+BENCHMARK(BM_Fory_MediaContentList_Serialize);
+
+static void BM_Protobuf_MediaContentList_Serialize(benchmark::State &state) {
+  MediaContentList obj = create_media_content_list();
+  protobuf::MediaContentList pb = to_pb_media_content_list(obj);
+  std::vector<uint8_t> output;
+  output.resize(pb.ByteSizeLong());
+
+  for (auto _ : state) {
+    pb = to_pb_media_content_list(obj);
+    pb.SerializeToArray(output.data(), static_cast<int>(output.size()));
+    benchmark::DoNotOptimize(output);
+  }
+}
+BENCHMARK(BM_Protobuf_MediaContentList_Serialize);
+
+static void BM_Fory_MediaContentList_Deserialize(benchmark::State &state) {
+  auto fory = fory::serialization::Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .check_struct_version(false)
+                  .build();
+  register_fory_types(fory);
+  MediaContentList obj = create_media_content_list();
+  auto serialized = fory.serialize(obj);
+  if (!serialized.ok()) {
+    state.SkipWithError("Serialization failed");
+    return;
+  }
+  auto &bytes = serialized.value();
+
+  auto test_result =
+      fory.deserialize<MediaContentList>(bytes.data(), bytes.size());
+  if (!test_result.ok()) {
+    state.SkipWithError("Deserialization test failed");
+    return;
+  }
+
+  for (auto _ : state) {
+    auto result =
+        fory.deserialize<MediaContentList>(bytes.data(), bytes.size());
+    benchmark::DoNotOptimize(result);
+  }
+}
+BENCHMARK(BM_Fory_MediaContentList_Deserialize);
+
+static void BM_Protobuf_MediaContentList_Deserialize(benchmark::State &state) {
+  protobuf::MediaContentList obj = create_proto_media_content_list();
+  std::string serialized;
+  obj.SerializeToString(&serialized);
+
+  for (auto _ : state) {
+    protobuf::MediaContentList pb_result;
+    pb_result.ParseFromString(serialized);
+    MediaContentList result = from_pb_media_content_list(pb_result);
+    benchmark::DoNotOptimize(result);
+  }
+}
+BENCHMARK(BM_Protobuf_MediaContentList_Deserialize);
+
+// ============================================================================
 // Serialized size comparison (printed once at the end)
 // ============================================================================
 
@@ -710,18 +1112,32 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
   NumericStruct fory_struct = create_numeric_struct();
   Sample fory_sample = create_sample();
   MediaContent fory_media = create_media_content();
+  StructList fory_struct_list = create_struct_list();
+  SampleList fory_sample_list = create_sample_list();
+  MediaContentList fory_media_list = create_media_content_list();
   auto fory_struct_bytes = fory.serialize(fory_struct).value();
   auto fory_sample_bytes = fory.serialize(fory_sample).value();
   auto fory_media_bytes = fory.serialize(fory_media).value();
+  auto fory_struct_list_bytes = fory.serialize(fory_struct_list).value();
+  auto fory_sample_list_bytes = fory.serialize(fory_sample_list).value();
+  auto fory_media_list_bytes = fory.serialize(fory_media_list).value();
 
   // Protobuf
   protobuf::Struct proto_struct = create_proto_struct();
   protobuf::Sample proto_sample = create_proto_sample();
   protobuf::MediaContent proto_media = create_proto_media_content();
-  std::string proto_struct_bytes, proto_sample_bytes, proto_media_bytes;
+  protobuf::StructList proto_struct_list = create_proto_struct_list();
+  protobuf::SampleList proto_sample_list = create_proto_sample_list();
+  protobuf::MediaContentList proto_media_list =
+      create_proto_media_content_list();
+  std::string proto_struct_bytes, proto_sample_bytes, proto_media_bytes,
+      proto_struct_list_bytes, proto_sample_list_bytes, proto_media_list_bytes;
   proto_struct.SerializeToString(&proto_struct_bytes);
   proto_sample.SerializeToString(&proto_sample_bytes);
   proto_media.SerializeToString(&proto_media_bytes);
+  proto_struct_list.SerializeToString(&proto_struct_list_bytes);
+  proto_sample_list.SerializeToString(&proto_sample_list_bytes);
+  proto_media_list.SerializeToString(&proto_media_list_bytes);
 
   for (auto _ : state) {
     // Just run once to print sizes
@@ -733,5 +1149,11 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
   state.counters["proto_sample_size"] = proto_sample_bytes.size();
   state.counters["fory_media_size"] = fory_media_bytes.size();
   state.counters["proto_media_size"] = proto_media_bytes.size();
+  state.counters["fory_struct_list_size"] = fory_struct_list_bytes.size();
+  state.counters["proto_struct_list_size"] = proto_struct_list_bytes.size();
+  state.counters["fory_sample_list_size"] = fory_sample_list_bytes.size();
+  state.counters["proto_sample_list_size"] = proto_sample_list_bytes.size();
+  state.counters["fory_media_list_size"] = fory_media_list_bytes.size();
+  state.counters["proto_media_list_size"] = proto_media_list_bytes.size();
 }
 BENCHMARK(BM_PrintSerializedSizes)->Iterations(1);
