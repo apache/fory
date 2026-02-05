@@ -1084,17 +1084,9 @@ pub(crate) fn gen_read_compatible_with_construction(
             &std::any::TypeId::of::<Self>(),
             <Self as fory_core::StructSerializer>::fory_type_index(),
         )?;
-        let local_type_hash = if context.is_compatible() {
-            meta.get_schema_hash()
-        } else {
-            meta.get_hash()
-        };
+        let local_type_hash = meta.get_hash();
         let remote_meta = type_info.get_type_meta_ref();
-        let remote_type_hash = if context.is_compatible() {
-            remote_meta.get_schema_hash()
-        } else {
-            remote_meta.get_hash()
-        };
+        let remote_type_hash = remote_meta.get_hash();
         if remote_type_hash == local_type_hash {
             return <Self as fory_core::Serializer>::fory_read_data(context);
         }

@@ -1278,11 +1278,7 @@ impl TypeResolver {
         let type_meta_by_index: Vec<Option<Rc<crate::meta::TypeMeta>>> = rust_type_id_by_index
             .iter()
             .map(|id| {
-                id.and_then(|rust_id| {
-                    type_info_map
-                        .get(&rust_id)
-                        .map(|info| info.get_type_meta())
-                })
+                id.and_then(|rust_id| type_info_map.get(&rust_id).map(|info| info.get_type_meta()))
             })
             .collect();
 
