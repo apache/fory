@@ -19,14 +19,11 @@
 
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/fory_header_const.dart';
-import 'package:fory/src/const/lang.dart';
-import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 
 typedef HeaderBrief = ({
   bool isXLang,
-  Language peerLang,
   bool oobEnabled,
 });
 
@@ -47,21 +44,8 @@ final class ForyHeaderSerializer {
     assert (isXLang, 'Now Fory Dart only supports xlang mode');
     bool oobEnabled = (bitmap & ForyHeaderConst.outOfBandFlag) != 0;
     //TODO: oobEnabled unsupported yet.
-    // header: peer_lang
-    int peerLangInd = br.readInt8();
-    if (peerLangInd < Language.peerLangBeginIndex || peerLangInd > Language.peerLangEndIndex){
-      throw DeserializationRangeException(peerLangInd, Language.values);
-    }
-    Language.values[peerLangInd];
-    // if (!conf.xlangMode && serialPack.peerLang != Language.DART){
-    //   throw ForyException.deserConflict(
-    //       'PeerLang:${serialPack.peerLang}',
-    //       'XLangMode: false'
-    //   );
-    // }
     return (
       isXLang: isXLang,
-      peerLang: Language.values[peerLangInd],
       oobEnabled: oobEnabled,
     );
   }
@@ -73,7 +57,6 @@ final class ForyHeaderSerializer {
     }
     // callback must be null
     bd.writeInt8(bitmap);
-    bd.writeInt8(Language.dart.index);
     // Next is xWriteRef, handed over to the outside
   }
 }

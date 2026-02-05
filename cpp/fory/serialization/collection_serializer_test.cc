@@ -74,6 +74,7 @@ Fory create_fory() {
 void register_types(Fory &fory) {
   fory.register_struct<VectorPolymorphicHolder>(100);
   fory.register_struct<VectorHomogeneousHolder>(101);
+  fory.register_struct<Animal>("test", "Animal");
   fory.register_struct<Dog>("test", "Dog");
   fory.register_struct<Cat>("test", "Cat");
 }

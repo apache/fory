@@ -162,7 +162,7 @@ pub trait ForyDefault: Sized {
 ///         // Read your type's fields
 ///     }
 ///
-///     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+///     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<fory_core::TypeId, Error> {
 ///         Self::fory_get_type_id(type_resolver)
 ///     }
 ///
@@ -378,7 +378,7 @@ pub trait Serializer: 'static {
     ///         Ok(Point { x, y })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -431,7 +431,7 @@ pub trait Serializer: 'static {
     ///         Ok(Person { name, age, scores })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -490,7 +490,7 @@ pub trait Serializer: 'static {
     /// ```rust,ignore
     /// fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
     ///     let rs_type_id = std::any::TypeId::of::<Self>();
-    ///     context.write_any_typeinfo(Self::fory_static_type_id() as u32, rs_type_id)?;
+    ///     context.write_any_type_info(Self::fory_static_type_id() as u32, rs_type_id)?;
     ///     Ok(())
     /// }
     /// ```
@@ -519,7 +519,7 @@ pub trait Serializer: 'static {
     {
         // Serializer for internal types should overwrite this method for faster performance.
         let rs_type_id = std::any::TypeId::of::<Self>();
-        context.write_any_typeinfo(Self::fory_static_type_id() as u32, rs_type_id)?;
+        context.write_any_type_info(Self::fory_static_type_id() as u32, rs_type_id)?;
         Ok(())
     }
 
@@ -725,7 +725,7 @@ pub trait Serializer: 'static {
     ///         Ok(Point { x, y })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -779,7 +779,7 @@ pub trait Serializer: 'static {
     ///         Ok(Person { name, age, scores })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -830,7 +830,7 @@ pub trait Serializer: 'static {
     ///         Ok(Config { name, timeout })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -902,7 +902,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust,ignore
     /// fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-    ///     context.read_any_typeinfo()?;
+    ///     context.read_any_type_info()?;
     ///     Ok(())
     /// }
     /// ```
@@ -930,7 +930,7 @@ pub trait Serializer: 'static {
         Self: Sized,
     {
         // Serializer for internal types should overwrite this method for faster performance.
-        context.read_any_typeinfo()?;
+        context.read_any_type_info()?;
         Ok(())
     }
 
@@ -1095,12 +1095,23 @@ pub trait Serializer: 'static {
     ///
     /// [`fory_type_id_dyn`]: Serializer::fory_type_id_dyn
     #[inline(always)]
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error>
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<TypeId, Error>
     where
         Self: Sized,
     {
         match type_resolver.get_type_info(&std::any::TypeId::of::<Self>()) {
             Ok(info) => Ok(info.get_type_id()),
+            Err(e) => Err(Error::enhance_type_error::<Self>(e)),
+        }
+    }
+
+    #[inline(always)]
+    fn fory_get_type_info(type_resolver: &TypeResolver) -> Result<Rc<TypeInfo>, Error>
+    where
+        Self: Sized,
+    {
+        match type_resolver.get_type_info(&std::any::TypeId::of::<Self>()) {
+            Ok(info) => Ok(info),
             Err(e) => Err(Error::enhance_type_error::<Self>(e)),
         }
     }
@@ -1123,7 +1134,7 @@ pub trait Serializer: 'static {
     /// For most types, simply delegate to [`fory_get_type_id`]:
     ///
     /// ```rust,ignore
-    /// fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    /// fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///     Self::fory_get_type_id(type_resolver)
     /// }
     /// ```
@@ -1131,14 +1142,14 @@ pub trait Serializer: 'static {
     /// For polymorphic types, return the actual runtime type:
     ///
     /// ```rust,ignore
-    /// fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+    /// fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///     // Get the actual type ID based on runtime type
     ///     self.get_actual_type().fory_get_type_id(type_resolver)
     /// }
     /// ```
     ///
     /// [`fory_get_type_id`]: Serializer::fory_get_type_id
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error>;
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error>;
 
     /// Get Rust's `std::any::TypeId` for this instance.
     ///

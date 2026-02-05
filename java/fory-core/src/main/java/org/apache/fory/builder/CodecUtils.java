@@ -26,7 +26,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.collection.Tuple3;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.Serializer;
@@ -55,7 +55,7 @@ public class CodecUtils {
   }
 
   public static <T> Class<? extends Serializer<T>> loadOrGenMetaSharedCodecClass(
-      Fory fory, Class<T> cls, ClassDef classDef) {
+      Fory fory, Class<T> cls, TypeDef typeDef) {
     Preconditions.checkNotNull(fory);
     return loadSerializer(
         "loadOrGenMetaSharedCodecClass",
@@ -63,7 +63,7 @@ public class CodecUtils {
         fory,
         () ->
             loadOrGenCodecClass(
-                cls, fory, new MetaSharedCodecBuilder(TypeRef.of(cls), fory, classDef)));
+                cls, fory, new MetaSharedCodecBuilder(TypeRef.of(cls), fory, typeDef)));
   }
 
   /**
@@ -71,12 +71,12 @@ public class CodecUtils {
    *
    * @param cls the target class
    * @param fory the Fory instance
-   * @param layerClassDef the ClassDef for this layer only
+   * @param layerTypeDef the TypeDef for this layer only
    * @param layerMarkerClass the marker class for this layer
    * @return the generated serializer class
    */
   public static <T> Class<? extends Serializer<T>> loadOrGenMetaSharedLayerCodecClass(
-      Class<T> cls, Fory fory, ClassDef layerClassDef, Class<?> layerMarkerClass) {
+      Class<T> cls, Fory fory, TypeDef layerTypeDef, Class<?> layerMarkerClass) {
     Preconditions.checkNotNull(fory);
     return loadSerializer(
         "loadOrGenMetaSharedLayerCodecClass",
@@ -87,7 +87,7 @@ public class CodecUtils {
                 cls,
                 fory,
                 new MetaSharedLayerCodecBuilder(
-                    TypeRef.of(cls), fory, layerClassDef, layerMarkerClass)));
+                    TypeRef.of(cls), fory, layerTypeDef, layerMarkerClass)));
   }
 
   @SuppressWarnings("unchecked")

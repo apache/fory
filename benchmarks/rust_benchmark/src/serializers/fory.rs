@@ -29,7 +29,7 @@ pub struct ForySerializer {
 
 impl ForySerializer {
     pub fn new() -> Self {
-        let mut fory = Fory::default();
+        let mut fory = Fory::default().compatible(true);
 
         // Register simple types
         fory.register::<SimpleStruct>(100).unwrap();

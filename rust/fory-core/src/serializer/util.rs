@@ -25,10 +25,11 @@ use crate::types::{is_user_type, ENUM, NAMED_ENUM, UNION};
 #[inline(always)]
 pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    let remote_type_id = context.reader.read_varuint32()?;
+    let local_type_id_u32 = local_type_id as u32;
+    let remote_type_id = context.reader.read_u8()? as u32;
     ensure!(
-        local_type_id == remote_type_id,
-        Error::type_mismatch(local_type_id, remote_type_id)
+        local_type_id_u32 == remote_type_id,
+        Error::type_mismatch(local_type_id_u32, remote_type_id)
     );
     Ok(())
 }
@@ -42,11 +43,10 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
 /// Keep as const fn for compile time evaluation or constant folding
 #[inline]
 pub const fn field_need_read_type_info(type_id: u32) -> bool {
-    let internal_type_id = type_id & 0xff;
-    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM || internal_type_id == UNION {
+    if type_id == ENUM || type_id == NAMED_ENUM || type_id == UNION {
         return false;
     }
-    is_user_type(internal_type_id)
+    is_user_type(type_id)
 }
 
 /// Keep as const fn for compile time evaluation or constant folding
@@ -83,7 +83,7 @@ pub fn write_dyn_data_generic<T: Serializer>(
     let any_value = value.as_any();
     let concrete_type_id = any_value.type_id();
     let serializer_fn = context
-        .write_any_typeinfo(T::fory_static_type_id() as u32, concrete_type_id)?
+        .write_any_type_info(T::fory_static_type_id() as u32, concrete_type_id)?
         .get_harness()
         .get_write_data_fn();
     serializer_fn(any_value, context, has_generics)

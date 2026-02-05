@@ -38,7 +38,7 @@ import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
-import org.apache.fory.meta.ClassDefEncoderTest;
+import org.apache.fory.meta.NativeTypeDefEncoderTest;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
@@ -670,7 +670,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
             .withScopedMetaShare(false)
             .build();
     Object o =
-        new ClassDefEncoderTest
+        new NativeTypeDefEncoderTest
             .TestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLength
             .InnerClassTestLengthInnerClassTestLengthInnerClassTestLength();
     serDeMetaSharedCheck(fory, o);

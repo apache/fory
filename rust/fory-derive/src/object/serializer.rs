@@ -75,8 +75,13 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         syn::Data::Struct(s) => {
             let source_fields = source_fields(&s.fields);
             let fields = extract_fields(&source_fields);
+            let actual_type_id_ts = if attrs.evolving == Some(false) {
+                misc::gen_actual_type_id_no_evolving()
+            } else {
+                misc::gen_actual_type_id()
+            };
             (
-                misc::gen_actual_type_id(),
+                actual_type_id_ts,
                 misc::gen_get_sorted_field_names(&fields),
                 misc::gen_field_fields_info(&source_fields),
                 quote! { Ok(Vec::new()) }, // No variants for structs
@@ -189,13 +194,15 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
 
         impl #impl_generics fory_core::Serializer for #name #ty_generics #where_clause {
             #[inline(always)]
-            fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
-                type_resolver.get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
-                    .map_err(fory_core::error::Error::enhance_type_error::<Self>)
+            fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::error::Error> {
+                let type_id = type_resolver
+                    .get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
+                    .map_err(fory_core::error::Error::enhance_type_error::<Self>)?;
+                Ok(type_id)
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
+            fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::error::Error> {
                 Self::fory_get_type_id(type_resolver)
             }
 

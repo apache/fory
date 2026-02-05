@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import enum
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -47,6 +46,8 @@ USE_TYPE_NAME = 0
 USE_TYPE_ID = 1
 # preserve 0 as flag for type id not set in TypeInfo`
 NO_TYPE_ID = 0
+# 0xffffffff means "unset" for user type id.
+NO_USER_TYPE_ID = 0xFFFFFFFF
 INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
@@ -57,17 +58,6 @@ NOT_NULL_FLOAT64_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (FLOAT64_TYPE_ID << 8
 NOT_NULL_BOOL_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (BOOL_TYPE_ID << 8)
 NOT_NULL_STRING_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (STRING_TYPE_ID << 8)
 SMALL_STRING_THRESHOLD = 16
-
-
-class Language(enum.Enum):
-    XLANG = 0
-    JAVA = 1
-    PYTHON = 2
-    CPP = 3
-    GO = 4
-    JAVA_SCRIPT = 5
-    RUST = 6
-    DART = 7
 
 
 class BufferObject(ABC):
@@ -145,10 +135,9 @@ class Fory:
     """
 
     __slots__ = (
-        "language",
-        "is_py",
+        "xlang",
         "compatible",
-        "ref_tracking",
+        "track_ref",
         "ref_resolver",
         "type_resolver",
         "serialization_context",
@@ -159,7 +148,6 @@ class Fory:
         "metastring_resolver",
         "_unsupported_callback",
         "_unsupported_objects",
-        "_peer_language",
         "is_peer_out_of_band_enabled",
         "max_depth",
         "depth",
@@ -177,7 +165,6 @@ class Fory:
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
-        **kwargs,
     ):
         """
         Initialize a Fory serialization instance.
@@ -224,23 +211,16 @@ class Fory:
             >>> # Cross-language mode with schema evolution
             >>> fory = Fory(xlang=True, compatible=True)
         """
-        self.language = Language.XLANG if xlang else Language.PYTHON
-        if kwargs.get("language") is not None:
-            self.language = kwargs.get("language")
-        self.is_py = self.language == Language.PYTHON
-        if kwargs.get("ref_tracking") is not None:
-            ref = kwargs.get("ref_tracking")
-        self.ref_tracking = ref
-        if self.ref_tracking:
+        self.xlang = xlang
+        self.track_ref = ref
+        if self.track_ref:
             self.ref_resolver = MapRefResolver()
         else:
             self.ref_resolver = NoRefResolver()
-        if kwargs.get("require_type_registration") is not None:
-            strict = kwargs.get("require_type_registration")
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
-        self.field_nullable = field_nullable if self.is_py else False
+        self.field_nullable = field_nullable if not self.xlang else False
         from pyfory.serialization import MetaStringResolver, SerializationContext
         from pyfory.registry import TypeResolver
 
@@ -254,7 +234,6 @@ class Fory:
         self._buffers = None
         self._unsupported_callback = None
         self._unsupported_objects = None
-        self._peer_language = None
         self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
@@ -483,11 +462,9 @@ class Fory:
         else:
             clear_bit(buffer, mask_index, 0)
 
-        if self.language == Language.XLANG:
+        if self.xlang:
             # set reader as x_lang.
             set_bit(buffer, mask_index, 1)
-            # set writer language.
-            buffer.write_int8(Language.PYTHON.value)
         else:
             # set reader as native.
             clear_bit(buffer, mask_index, 1)
@@ -497,7 +474,7 @@ class Fory:
             clear_bit(buffer, mask_index, 2)
         # Type definitions are now written inline (streaming) instead of deferred to end
 
-        if self.language == Language.PYTHON:
+        if not self.xlang:
             self.write_ref(buffer, obj)
         else:
             self.xwrite_ref(buffer, obj)
@@ -523,27 +500,27 @@ class Fory:
         if self.ref_resolver.write_ref_or_null(buffer, obj):
             return
         if typeinfo is None:
-            typeinfo = self.type_resolver.get_typeinfo(cls)
-        self.type_resolver.write_typeinfo(buffer, typeinfo)
+            typeinfo = self.type_resolver.get_type_info(cls)
+        self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.write(buffer, obj)
 
     def write_no_ref(self, buffer, obj):
         cls = type(obj)
         if cls is str:
-            buffer.write_var_uint32(STRING_TYPE_ID)
+            buffer.write_uint8(STRING_TYPE_ID)
             buffer.write_string(obj)
             return
         elif cls is int:
-            buffer.write_var_uint32(INT64_TYPE_ID)
+            buffer.write_uint8(INT64_TYPE_ID)
             buffer.write_varint64(obj)
             return
         elif cls is bool:
-            buffer.write_var_uint32(BOOL_TYPE_ID)
+            buffer.write_uint8(BOOL_TYPE_ID)
             buffer.write_bool(obj)
             return
         else:
-            typeinfo = self.type_resolver.get_typeinfo(cls)
-            self.type_resolver.write_typeinfo(buffer, typeinfo)
+            typeinfo = self.type_resolver.get_type_info(cls)
+            self.type_resolver.write_type_info(buffer, typeinfo)
             typeinfo.serializer.write(buffer, obj)
 
     def xwrite_ref(self, buffer, obj, serializer=None):
@@ -562,8 +539,8 @@ class Fory:
             serializer.xwrite(buffer, obj)
             return
         cls = type(obj)
-        typeinfo = self.type_resolver.get_typeinfo(cls)
-        self.type_resolver.write_typeinfo(buffer, typeinfo)
+        typeinfo = self.type_resolver.get_type_info(cls)
+        self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.xwrite(buffer, obj)
 
     def deserialize(
@@ -616,10 +593,6 @@ class Fory:
         if get_bit(buffer, reader_index, 0):
             return None
         is_target_x_lang = get_bit(buffer, reader_index, 1)
-        if is_target_x_lang:
-            self._peer_language = Language(buffer.read_int8())
-        else:
-            self._peer_language = Language.PYTHON
         self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
         if self.is_peer_out_of_band_enabled:
             assert buffers is not None, "buffers shouldn't be null when the serialized stream is produced with buffer_callback not null."
@@ -641,7 +614,7 @@ class Fory:
         ref_id = ref_resolver.try_preserve_ref_id(buffer)
         # indicates that the object is first read.
         if ref_id >= NOT_NULL_VALUE_FLAG:
-            typeinfo = self.type_resolver.read_typeinfo(buffer)
+            typeinfo = self.type_resolver.read_type_info(buffer)
             self.inc_depth()
             o = typeinfo.serializer.read(buffer)
             self.dec_depth()
@@ -652,7 +625,7 @@ class Fory:
 
     def read_no_ref(self, buffer):
         """Deserialize not-null and non-reference object from buffer."""
-        typeinfo = self.type_resolver.read_typeinfo(buffer)
+        typeinfo = self.type_resolver.read_type_info(buffer)
         self.inc_depth()
         o = typeinfo.serializer.read(buffer)
         self.dec_depth()
@@ -677,17 +650,17 @@ class Fory:
 
     def xread_no_ref(self, buffer, serializer=None):
         if serializer is None:
-            serializer = self.type_resolver.read_typeinfo(buffer).serializer
+            serializer = self.type_resolver.read_type_info(buffer).serializer
         # Push -1 to read_ref_ids so reference() can pop it and skip reference tracking
         # This handles the case where xread_no_ref is called directly without xread_ref
-        if self.ref_tracking:
+        if self.track_ref:
             self.ref_resolver.read_ref_ids.append(-1)
         return self._xread_no_ref_internal(buffer, serializer)
 
     def _xread_no_ref_internal(self, buffer, serializer):
         """Internal method to read without pushing to read_ref_ids."""
         if serializer is None:
-            serializer = self.type_resolver.read_typeinfo(buffer).serializer
+            serializer = self.type_resolver.read_type_info(buffer).serializer
         self.inc_depth()
         o = serializer.xread(buffer)
         self.dec_depth()
@@ -746,8 +719,8 @@ class Fory:
         if self.ref_resolver.write_ref_or_null(buffer, value):
             return
         if typeinfo is None:
-            typeinfo = self.type_resolver.get_typeinfo(type(value))
-        self.type_resolver.write_typeinfo(buffer, typeinfo)
+            typeinfo = self.type_resolver.get_type_info(type(value))
+        self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.write(buffer, value)
 
     def read_ref_pyobject(self, buffer):

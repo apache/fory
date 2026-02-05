@@ -24,7 +24,7 @@ import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 /// Result of uint annotation analysis
 class UintAnnotationResult {

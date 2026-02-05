@@ -58,7 +58,7 @@ struct Serializer<MyExt> {
     (void)has_generics;
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      auto result = ctx.write_any_typeinfo(
+      auto result = ctx.write_any_type_info(
           static_cast<uint32_t>(TypeId::UNKNOWN),
           std::type_index(typeid(MyExt)));
       if (!result.ok()) {
@@ -88,7 +88,7 @@ struct Serializer<MyExt> {
       return MyExt{};
     }
     if (read_type) {
-      const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+      const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
       if (ctx.has_error()) {
         return MyExt{};
       }
@@ -190,7 +190,7 @@ struct Serializer<CustomType> {
     (void)has_generics;
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      auto result = ctx.write_any_typeinfo(
+      auto result = ctx.write_any_type_info(
           static_cast<uint32_t>(TypeId::UNKNOWN),
           std::type_index(typeid(CustomType)));
       if (!result.ok()) {
@@ -220,7 +220,7 @@ struct Serializer<CustomType> {
       return CustomType{};
     }
     if (read_type) {
-      const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
+      const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
       if (ctx.has_error()) {
         return CustomType{};
       }

@@ -28,18 +28,21 @@
 #include <string>
 #include <vector>
 
-#include "addressbook.h"
-#include "any_example.h"
-#include "collection.h"
-#include "complex_fbs.h"
-#include "complex_pb.h"
 #include "fory/serialization/any_serializer.h"
 #include "fory/serialization/fory.h"
-#include "graph.h"
-#include "monster.h"
-#include "optional_types.h"
-#include "root.h"
-#include "tree.h"
+#include "generated/addressbook.h"
+#include "generated/any_example.h"
+#include "generated/auto_id.h"
+#include "generated/collection.h"
+#include "generated/complex_fbs.h"
+#include "generated/complex_pb.h"
+#include "generated/evolving1.h"
+#include "generated/evolving2.h"
+#include "generated/graph.h"
+#include "generated/monster.h"
+#include "generated/optional_types.h"
+#include "generated/root.h"
+#include "generated/tree.h"
 
 namespace {
 
@@ -158,6 +161,70 @@ fory::Result<void, fory::Error> ValidateGraph(const graph::Graph &graph_value) {
   return fory::Result<void, fory::Error>();
 }
 
+fory::Result<void, fory::Error> RunEvolvingRoundTrip() {
+  auto fory_v1 = fory::serialization::Fory::builder()
+                     .xlang(true)
+                     .compatible(true)
+                     .check_struct_version(false)
+                     .track_ref(false)
+                     .build();
+  auto fory_v2 = fory::serialization::Fory::builder()
+                     .xlang(true)
+                     .compatible(true)
+                     .check_struct_version(false)
+                     .track_ref(false)
+                     .build();
+  evolving1::register_types(fory_v1);
+  evolving2::register_types(fory_v2);
+
+  evolving1::EvolvingMessage msg_v1;
+  msg_v1.set_id(1);
+  msg_v1.set_name("Alice");
+  msg_v1.set_city("NYC");
+
+  FORY_TRY(bytes, fory_v1.serialize(msg_v1));
+  FORY_TRY(decoded, fory_v2.deserialize<evolving2::EvolvingMessage>(bytes));
+  if (decoded.id() != msg_v1.id() || decoded.name() != msg_v1.name() ||
+      decoded.city() != msg_v1.city()) {
+    return fory::Unexpected(fory::Error::invalid("evolving message mismatch"));
+  }
+  decoded.set_email("alice@example.com");
+
+  FORY_TRY(round_bytes, fory_v2.serialize(decoded));
+  FORY_TRY(round_trip,
+           fory_v1.deserialize<evolving1::EvolvingMessage>(round_bytes));
+  if (!(round_trip == msg_v1)) {
+    return fory::Unexpected(
+        fory::Error::invalid("evolving roundtrip mismatch"));
+  }
+
+  evolving1::FixedMessage fixed_v1;
+  fixed_v1.set_id(10);
+  fixed_v1.set_name("Bob");
+  fixed_v1.set_score(90);
+  fixed_v1.set_note("note");
+
+  FORY_TRY(fixed_bytes, fory_v1.serialize(fixed_v1));
+  auto fixed_v2 = fory_v2.deserialize<evolving2::FixedMessage>(fixed_bytes);
+  if (!fixed_v2.ok()) {
+    return fory::Result<void, fory::Error>();
+  }
+  auto fixed_round = fory_v2.serialize(fixed_v2.value());
+  if (!fixed_round.ok()) {
+    return fory::Result<void, fory::Error>();
+  }
+  auto fixed_back =
+      fory_v1.deserialize<evolving1::FixedMessage>(fixed_round.value());
+  if (!fixed_back.ok()) {
+    return fory::Result<void, fory::Error>();
+  }
+  if (fixed_back.value() == fixed_v1) {
+    return fory::Unexpected(
+        fory::Error::invalid("fixed message unexpectedly compatible"));
+  }
+  return fory::Result<void, fory::Error>();
+}
+
 using StringMap = std::map<std::string, std::string>;
 
 fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
@@ -170,11 +237,16 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
 
   complex_pb::register_types(fory);
   addressbook::register_types(fory);
+  auto_id::register_types(fory);
   monster::register_types(fory);
   complex_fbs::register_types(fory);
   collection::register_types(fory);
   optional_types::register_types(fory);
   any_example::register_types(fory);
+
+  if (compatible) {
+    FORY_RETURN_IF_ERROR(RunEvolvingRoundTrip());
+  }
 
   FORY_RETURN_IF_ERROR(
       fory::serialization::register_any_type<bool>(fory.type_resolver()));
@@ -241,6 +313,43 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   if (!(animal_roundtrip == animal)) {
     return fory::Unexpected(
         fory::Error::invalid("animal to_bytes roundtrip mismatch"));
+  }
+
+  auto_id::Envelope::Payload auto_payload;
+  auto_payload.set_value(42);
+  auto_id::Envelope::Detail auto_detail =
+      auto_id::Envelope::Detail::payload(auto_payload);
+  auto_id::Envelope auto_envelope;
+  auto_envelope.set_id("env-1");
+  *auto_envelope.mutable_payload() = auto_payload;
+  *auto_envelope.mutable_detail() = auto_detail;
+  auto_envelope.set_status(auto_id::Status::OK);
+
+  FORY_TRY(auto_bytes, fory.serialize(auto_envelope));
+  FORY_TRY(auto_roundtrip, fory.deserialize<auto_id::Envelope>(
+                               auto_bytes.data(), auto_bytes.size()));
+  if (!(auto_roundtrip == auto_envelope)) {
+    return fory::Unexpected(
+        fory::Error::invalid("auto_id envelope roundtrip mismatch"));
+  }
+
+  auto_id::Envelope auto_envelope_for_wrapper;
+  auto_envelope_for_wrapper.set_id(auto_envelope.id());
+  if (auto_envelope.has_payload()) {
+    *auto_envelope_for_wrapper.mutable_payload() = auto_envelope.payload();
+  }
+  *auto_envelope_for_wrapper.mutable_detail() = auto_envelope.detail();
+  auto_envelope_for_wrapper.set_status(auto_envelope.status());
+
+  auto_id::Wrapper auto_wrapper =
+      auto_id::Wrapper::envelope(std::move(auto_envelope_for_wrapper));
+  FORY_TRY(auto_wrapper_bytes, fory.serialize(auto_wrapper));
+  FORY_TRY(auto_wrapper_roundtrip,
+           fory.deserialize<auto_id::Wrapper>(auto_wrapper_bytes.data(),
+                                              auto_wrapper_bytes.size()));
+  if (!(auto_wrapper_roundtrip == auto_wrapper)) {
+    return fory::Unexpected(
+        fory::Error::invalid("auto_id wrapper roundtrip mismatch"));
   }
 
   addressbook::Person multi_owner;
@@ -535,6 +644,19 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
     }
     FORY_TRY(peer_bytes, fory.serialize(peer_book));
     FORY_RETURN_IF_ERROR(WriteFile(data_file, peer_bytes));
+  }
+
+  const char *auto_id_file = std::getenv("DATA_FILE_AUTO_ID");
+  if (auto_id_file != nullptr && auto_id_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(auto_id_file));
+    FORY_TRY(peer_envelope, fory.deserialize<auto_id::Envelope>(
+                                payload.data(), payload.size()));
+    if (!(peer_envelope == auto_envelope)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer auto_id payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_envelope));
+    FORY_RETURN_IF_ERROR(WriteFile(auto_id_file, peer_bytes));
   }
 
   const char *primitive_file = std::getenv("DATA_FILE_PRIMITIVES");

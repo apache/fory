@@ -76,6 +76,18 @@ int main() {
 }
 ```
 
+### Disable Evolution for Stable Structs
+
+If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Use `FORY_STRUCT_EVOLVING` after `FORY_STRUCT`:
+
+```cpp
+struct StableMessage {
+  int32_t id;
+};
+FORY_STRUCT(StableMessage, id);
+FORY_STRUCT_EVOLVING(StableMessage, false);
+```
+
 ## Schema Evolution Features
 
 Compatible mode supports the following schema changes:

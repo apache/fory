@@ -30,6 +30,7 @@
  */
 
 #include "fory/serialization/fory.h"
+#include "fory/type/type.h"
 #include "gtest/gtest.h"
 #include <cfloat>
 #include <climits>
@@ -187,6 +188,20 @@ struct Scene {
   }
   FORY_STRUCT(Scene, camera, light, viewport);
 };
+
+struct EvolvingStruct {
+  int32_t id;
+
+  FORY_STRUCT(EvolvingStruct, id);
+};
+
+struct FixedStruct {
+  int32_t id;
+
+  FORY_STRUCT(FixedStruct, id);
+};
+
+FORY_STRUCT_EVOLVING(FixedStruct, false);
 
 // Containers
 struct VectorStruct {
@@ -410,6 +425,8 @@ inline void register_all_test_types(Fory &fory) {
   fory.register_struct<nested_test::inner::OutClassStruct>(type_id++);
   fory.register_struct<external_test::ExternalStruct>(type_id++);
   fory.register_struct<external_test::ExternalEmpty>(type_id++);
+  fory.register_enum<Color>(type_id++);
+  fory.register_enum<Status>(type_id++);
 }
 
 template <typename T> void test_roundtrip(const T &original) {
@@ -643,6 +660,22 @@ TEST(StructComprehensiveTest, ExternalStruct) {
 
 TEST(StructComprehensiveTest, ExternalEmptyStruct) {
   test_roundtrip(external_test::ExternalEmpty{});
+}
+
+TEST(StructComprehensiveTest, StructEvolvingOverride) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<EvolvingStruct>(1).ok());
+  ASSERT_TRUE(fory.register_struct<FixedStruct>(2).ok());
+
+  auto evolving_info = fory.type_resolver().get_type_info<EvolvingStruct>();
+  ASSERT_TRUE(evolving_info.ok());
+  EXPECT_EQ(evolving_info.value()->type_id,
+            static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT));
+
+  auto fixed_info = fory.type_resolver().get_type_info<FixedStruct>();
+  ASSERT_TRUE(fixed_info.ok());
+  EXPECT_EQ(fixed_info.value()->type_id, static_cast<uint32_t>(TypeId::STRUCT));
 }
 
 } // namespace test

@@ -89,16 +89,16 @@ public final class CodegenSerializer {
           if (interpreterSerializer != null) {
             return interpreterSerializer;
           }
-          fory.getClassResolver().getClassInfo(type).setSerializer(null);
+          fory.getClassResolver().getTypeInfo(type).setSerializer(null);
           if (fory.getConfig().isAsyncCompilationEnabled()) {
             // jit not finished, avoid recursive call current serializer.
             Class<? extends Serializer> sc =
                 fory.getClassResolver().getSerializerClass(type, false);
-            fory.getClassResolver().getClassInfo(type).setSerializer(this);
+            fory.getClassResolver().getTypeInfo(type).setSerializer(this);
             return interpreterSerializer = Serializers.newSerializer(fory, type, sc);
           } else {
             Class<? extends Serializer> sc = fory.getClassResolver().getSerializerClass(type);
-            fory.getClassResolver().getClassInfo(type).setSerializer(this);
+            fory.getClassResolver().getTypeInfo(type).setSerializer(this);
             checkArgument(
                 Generated.GeneratedSerializer.class.isAssignableFrom(sc),
                 "Expect jit serializer but got %s for class %s",

@@ -52,7 +52,7 @@ export class CodegenRegistry {
   }
 
   static get(typeId: number) {
-    return this.map.get(typeId & 0xff);
+    return this.map.get(typeId);
   }
 
   static getExternal() {

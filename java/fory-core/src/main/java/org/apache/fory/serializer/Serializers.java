@@ -47,7 +47,7 @@ import org.apache.fory.builder.Generated;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.ExceptionUtils;
@@ -87,8 +87,8 @@ public class Serializers {
         return new ObjectSerializer(fory, type);
       }
       if (serializerClass == MetaSharedSerializer.class) {
-        ClassDef classDef = fory.getClassResolver().getTypeDef(type, true);
-        return new MetaSharedSerializer(fory, type, classDef);
+        TypeDef typeDef = fory.getClassResolver().getTypeDef(type, true);
+        return new MetaSharedSerializer(fory, type, typeDef);
       }
       Tuple2<MethodType, MethodHandle> ctrInfo = CTR_MAP.getIfPresent(serializerClass);
       if (ctrInfo != null) {

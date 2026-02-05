@@ -22,10 +22,13 @@ import os
 from pathlib import Path
 
 import addressbook
+import auto_id
 import any_example
 import complex_fbs
 import complex_pb
 import collection
+import evolving1
+import evolving2
 import monster
 import optional_types
 import graph
@@ -93,6 +96,21 @@ def build_root_holder() -> "root.MultiHolder":
     )
 
 
+def build_auto_id_envelope() -> "auto_id.Envelope":
+    payload = auto_id.Envelope.Payload(value=42)
+    detail = auto_id.Envelope.Detail.payload(payload)
+    return auto_id.Envelope(
+        id="env-1",
+        payload=payload,
+        detail=detail,
+        status=auto_id.Status.OK,
+    )
+
+
+def build_auto_id_wrapper(envelope: "auto_id.Envelope") -> "auto_id.Wrapper":
+    return auto_id.Wrapper.envelope(envelope)
+
+
 def local_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
     data = fory.serialize(book)
     decoded = fory.deserialize(data)
@@ -127,6 +145,60 @@ def file_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
     assert isinstance(decoded, addressbook.AddressBook)
     assert decoded == book
     Path(data_file).write_bytes(fory.serialize(decoded))
+
+
+def local_roundtrip_auto_id(fory: pyfory.Fory, envelope: "auto_id.Envelope") -> None:
+    data = fory.serialize(envelope)
+    decoded = fory.deserialize(data)
+    assert isinstance(decoded, auto_id.Envelope)
+    assert decoded == envelope
+
+
+def local_roundtrip_auto_wrapper(fory: pyfory.Fory, wrapper: "auto_id.Wrapper") -> None:
+    data = fory.serialize(wrapper)
+    decoded = fory.deserialize(data)
+    assert isinstance(decoded, auto_id.Wrapper)
+    assert decoded == wrapper
+
+
+def file_roundtrip_auto_id(fory: pyfory.Fory, envelope: "auto_id.Envelope") -> None:
+    data_file = os.environ.get("DATA_FILE_AUTO_ID")
+    if not data_file:
+        return
+    payload = Path(data_file).read_bytes()
+    decoded = fory.deserialize(payload)
+    assert isinstance(decoded, auto_id.Envelope)
+    assert decoded == envelope
+    Path(data_file).write_bytes(fory.serialize(decoded))
+
+
+def local_roundtrip_evolving() -> None:
+    fory_v1 = pyfory.Fory(xlang=True, ref=False, compatible=True)
+    fory_v2 = pyfory.Fory(xlang=True, ref=False, compatible=True)
+    evolving1.register_evolving1_types(fory_v1)
+    evolving2.register_evolving2_types(fory_v2)
+
+    msg_v1 = evolving1.EvolvingMessage(id=1, name="Alice", city="NYC")
+    data = fory_v1.serialize(msg_v1)
+    msg_v2 = fory_v2.deserialize(data)
+    assert isinstance(msg_v2, evolving2.EvolvingMessage)
+    assert msg_v2.id == msg_v1.id
+    assert msg_v2.name == msg_v1.name
+    assert msg_v2.city == msg_v1.city
+    msg_v2.email = "alice@example.com"
+    round_bytes = fory_v2.serialize(msg_v2)
+    msg_v1_round = fory_v1.deserialize(round_bytes)
+    assert msg_v1_round == msg_v1
+
+    fixed_v1 = evolving1.FixedMessage(id=10, name="Bob", score=90, note="note")
+    fixed_bytes = fory_v1.serialize(fixed_v1)
+    try:
+        fixed_v2 = fory_v2.deserialize(fixed_bytes)
+    except Exception:
+        return
+    round_fixed = fory_v2.serialize(fixed_v2)
+    fixed_v1_round = fory_v1.deserialize(round_fixed)
+    assert fixed_v1_round != fixed_v1
 
 
 def build_primitive_types() -> "complex_pb.PrimitiveTypes":
@@ -669,6 +741,7 @@ def run_roundtrip(compatible: bool) -> None:
     fory = pyfory.Fory(xlang=True, compatible=compatible)
     complex_pb.register_complex_pb_types(fory)
     addressbook.register_addressbook_types(fory)
+    auto_id.register_auto_id_types(fory)
     monster.register_monster_types(fory)
     complex_fbs.register_complex_fbs_types(fory)
     collection.register_collection_types(fory)
@@ -680,6 +753,12 @@ def run_roundtrip(compatible: bool) -> None:
     bytes_roundtrip_root(build_root_holder())
     local_roundtrip(fory, book)
     file_roundtrip(fory, book)
+
+    auto_envelope = build_auto_id_envelope()
+    auto_wrapper = build_auto_id_wrapper(auto_envelope)
+    local_roundtrip_auto_id(fory, auto_envelope)
+    local_roundtrip_auto_wrapper(fory, auto_wrapper)
+    file_roundtrip_auto_id(fory, auto_envelope)
 
     primitives = build_primitive_types()
     local_roundtrip_primitives(fory, primitives)
@@ -720,6 +799,9 @@ def run_roundtrip(compatible: bool) -> None:
     graph_value = build_graph()
     local_roundtrip_graph(ref_fory, graph_value)
     file_roundtrip_graph(ref_fory, graph_value)
+
+    if compatible:
+        local_roundtrip_evolving()
 
 
 def resolve_compatible_modes() -> list[bool]:

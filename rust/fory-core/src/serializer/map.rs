@@ -170,8 +170,8 @@ where
     let val_is_shared_ref = V::fory_is_shared_ref();
 
     // Track the current chunk's key and value types (for polymorphic types)
-    let mut current_key_type_id: Option<u32> = None;
-    let mut current_val_type_id: Option<u32> = None;
+    let mut current_key_type_id: Option<std::any::TypeId> = None;
+    let mut current_val_type_id: Option<std::any::TypeId> = None;
 
     for (key, value) in iter {
         // Handle null key/value entries (write as separate single-entry chunks)
@@ -197,7 +197,7 @@ where
                 } else {
                     context.writer.write_u8(chunk_header);
                     if key_is_polymorphic {
-                        context.write_any_typeinfo(
+                        context.write_any_type_info(
                             K::fory_static_type_id() as u32,
                             key.fory_concrete_type_id(),
                         )?;
@@ -223,7 +223,7 @@ where
                 } else {
                     context.writer.write_u8(chunk_header);
                     if val_is_polymorphic {
-                        context.write_any_typeinfo(
+                        context.write_any_type_info(
                             V::fory_static_type_id() as u32,
                             value.fory_concrete_type_id(),
                         )?;
@@ -242,12 +242,12 @@ where
 
         // Get type IDs for polymorphic types
         let key_type_id = if key_is_polymorphic {
-            Some(key.fory_type_id_dyn(context.get_type_resolver())?)
+            Some(key.fory_concrete_type_id())
         } else {
             None
         };
         let val_type_id = if val_is_polymorphic {
-            Some(value.fory_type_id_dyn(context.get_type_resolver())?)
+            Some(value.fory_concrete_type_id())
         } else {
             None
         };
@@ -281,7 +281,7 @@ where
             } else {
                 // Write type info for key
                 if key_is_polymorphic {
-                    context.write_any_typeinfo(
+                    context.write_any_type_info(
                         K::fory_static_type_id() as u32,
                         key.fory_concrete_type_id(),
                     )?;
@@ -299,7 +299,7 @@ where
             } else {
                 // Write type info for value
                 if val_is_polymorphic {
-                    context.write_any_typeinfo(
+                    context.write_any_type_info(
                         V::fory_static_type_id() as u32,
                         value.fory_concrete_type_id(),
                     )?;
@@ -379,7 +379,7 @@ macro_rules! impl_read_map_dyn_ref {
                     // Determine value type info (if any)
                     let value_type_info: Option<Rc<TypeInfo>> = if !value_declared {
                         if val_is_polymorphic {
-                            Some(context.read_any_typeinfo()?)
+                            Some(context.read_any_type_info()?)
                         } else {
                             V::fory_read_type_info(context)?;
                             None
@@ -414,7 +414,7 @@ macro_rules! impl_read_map_dyn_ref {
 
                     let key_type_info: Option<Rc<TypeInfo>> = if !key_declared {
                         if key_is_polymorphic {
-                            Some(context.read_any_typeinfo()?)
+                            Some(context.read_any_type_info()?)
                         } else {
                             K::fory_read_type_info(context)?;
                             None
@@ -450,7 +450,7 @@ macro_rules! impl_read_map_dyn_ref {
 
                 let key_type_info: Option<Rc<TypeInfo>> = if !key_declared {
                     if key_is_polymorphic {
-                        Some(context.read_any_typeinfo()?)
+                        Some(context.read_any_type_info()?)
                     } else {
                         K::fory_read_type_info(context)?;
                         None
@@ -460,7 +460,7 @@ macro_rules! impl_read_map_dyn_ref {
                 };
                 let value_type_info: Option<Rc<TypeInfo>> = if !value_declared {
                     if val_is_polymorphic {
-                        Some(context.read_any_typeinfo()?)
+                        Some(context.read_any_type_info()?)
                     } else {
                         V::fory_read_type_info(context)?;
                         None
@@ -646,12 +646,12 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         size_of::<i32>()
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::MAP as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::MAP)
     }
 
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::MAP as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::MAP)
     }
 
     fn fory_static_type_id() -> TypeId
@@ -666,7 +666,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::MAP as u32);
+        context.writer.write_u8(TypeId::MAP as u8);
         Ok(())
     }
 
@@ -796,12 +796,12 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
         size_of::<i32>()
     }
 
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::MAP as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::MAP)
     }
 
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::MAP as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::MAP)
     }
 
     fn fory_static_type_id() -> TypeId
@@ -816,7 +816,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::MAP as u32);
+        context.writer.write_u8(TypeId::MAP as u8);
         Ok(())
     }
 

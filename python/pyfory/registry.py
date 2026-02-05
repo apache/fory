@@ -28,8 +28,8 @@ from typing import TypeVar, Union
 from enum import Enum
 
 from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
-from pyfory import Language
 from pyfory.error import TypeUnregisteredError
+from pyfory.field import extract_object_meta
 
 from pyfory.serializer import (
     Serializer,
@@ -100,6 +100,7 @@ from pyfory.types import (
     float32,
     float64,
     is_struct_type,
+    needs_user_type_id,
 )
 from pyfory.type_util import (
     load_class,
@@ -109,6 +110,7 @@ from pyfory._fory import (
     DYNAMIC_TYPE_ID,
     # preserve 0 as flag for type id not set in TypeInfo`
     NO_TYPE_ID,
+    NO_USER_TYPE_ID,
 )
 from pyfory.meta.typedef import TypeDef
 from pyfory.meta.typedef_decoder import decode_typedef, skip_typedef
@@ -131,6 +133,7 @@ else:
         __slots__ = (
             "cls",
             "type_id",
+            "user_type_id",
             "serializer",
             "namespace_bytes",
             "typename_bytes",
@@ -142,6 +145,7 @@ else:
             self,
             cls: type = None,
             type_id: int = NO_TYPE_ID,
+            user_type_id: int = NO_USER_TYPE_ID,
             serializer: Serializer = None,
             namespace_bytes=None,
             typename_bytes=None,
@@ -150,6 +154,7 @@ else:
         ):
             self.cls = cls
             self.type_id = type_id
+            self.user_type_id = user_type_id
             self.serializer = serializer
             self.namespace_bytes = namespace_bytes
             self.typename_bytes = typename_bytes
@@ -157,7 +162,7 @@ else:
             self.type_def = type_def
 
         def __repr__(self):
-            return f"TypeInfo(cls={self.cls}, type_id={self.type_id}, serializer={self.serializer})"
+            return f"TypeInfo(cls={self.cls}, type_id={self.type_id}, user_type_id={self.user_type_id}, serializer={self.serializer})"
 
         def decode_namespace(self) -> str:
             if self.namespace_bytes is None:
@@ -178,13 +183,13 @@ class TypeResolver:
         "_types_info",
         "_hash_to_metastring",
         "_metastr_to_type",
-        "_hash_to_typeinfo",
-        "_dynamic_id_to_typeinfo_list",
+        "_hash_to_type_info",
+        "_dynamic_id_to_type_info_list",
         "_dynamic_id_to_metastr_list",
         "_dynamic_write_string_id",
         "_dynamic_written_metastr",
-        "_ns_type_to_typeinfo",
-        "_named_type_to_typeinfo",
+        "_ns_type_to_type_info",
+        "_named_type_to_type_info",
         "namespace_encoder",
         "namespace_decoder",
         "typename_encoder",
@@ -192,9 +197,10 @@ class TypeResolver:
         "meta_compressor",
         "require_registration",
         "metastring_resolver",
-        "language",
-        "_type_id_to_typeinfo",
-        "_meta_shared_typeinfo",
+        "_type_id_to_type_info",
+        "_user_type_id_to_type_info",
+        "_used_user_type_ids",
+        "_meta_shared_type_info",
         "meta_share",
         "serialization_context",
         "_internal_py_serializer_map",
@@ -203,25 +209,26 @@ class TypeResolver:
     def __init__(self, fory, meta_share=False, meta_compressor=None):
         self.fory = fory
         self.metastring_resolver = fory.metastring_resolver
-        self.language = fory.language
         self.require_registration = fory.strict
         self._metastr_to_str = dict()
         self._metastr_to_type = dict()
         self._hash_to_metastring = dict()
-        self._hash_to_typeinfo = dict()
+        self._hash_to_type_info = dict()
         self._dynamic_written_metastr = []
-        self._type_id_to_typeinfo = dict()
+        self._type_id_to_type_info = dict()
+        self._user_type_id_to_type_info = dict()
+        self._used_user_type_ids = set()
         self._type_id_counter = 64
         self._dynamic_write_string_id = 0
         # hold objects to avoid gc, since `flat_hash_map/vector` doesn't
         # hold python reference.
         self._types_info = dict()
-        self._ns_type_to_typeinfo = dict()
-        self._named_type_to_typeinfo = dict()
+        self._ns_type_to_type_info = dict()
+        self._named_type_to_type_info = dict()
         self.namespace_encoder = MetaStringEncoder(".", "_")
         self.namespace_decoder = MetaStringDecoder(".", "_")
         # Cache for TypeDef and TypeInfo tuples (similar to Java's classIdToDef)
-        self._meta_shared_typeinfo = {}
+        self._meta_shared_type_info = {}
         self.typename_encoder = MetaStringEncoder("$", "_")
         self.typename_decoder = MetaStringDecoder("$", "_")
         self.meta_compressor = meta_compressor if meta_compressor is not None else DeflaterMetaCompressor()
@@ -230,7 +237,7 @@ class TypeResolver:
 
     def initialize(self):
         self._initialize_common()
-        if self.fory.language == Language.PYTHON:
+        if not self.fory.xlang:
             self._initialize_py()
         else:
             self._initialize_xlang()
@@ -238,7 +245,6 @@ class TypeResolver:
 
     def _initialize_py(self):
         register = functools.partial(self._register_type, internal=True)
-        register(type(None), serializer=NoneSerializer)
         register(tuple, serializer=TupleSerializer)
         register(slice, serializer=SliceSerializer)
         if np is not None:
@@ -280,7 +286,7 @@ class TypeResolver:
     def _initialize_common(self):
         register = functools.partial(self._register_type, internal=True)
         register(type(None), type_id=TypeId.NONE, serializer=NoneSerializer)
-        # Also register None value to map to type(None) for get_typeinfo(None) calls
+        # Also register None value to map to type(None) for get_type_info(None) calls
         self._types_info[None] = self._types_info[type(None)]
         register(bool, type_id=TypeId.BOOL, serializer=BooleanSerializer)
         # Signed integers
@@ -340,7 +346,7 @@ class TypeResolver:
                     type_id=typeid,
                     serializer=Numpy1DArraySerializer(self.fory, ftype, dtype),
                 )
-                self._type_id_to_typeinfo[typeid] = typeinfo
+                self._type_id_to_type_info[typeid] = typeinfo
         register(list, type_id=TypeId.LIST, serializer=ListSerializer)
         register(set, type_id=TypeId.SET, serializer=SetSerializer)
         register(dict, type_id=TypeId.MAP, serializer=MapSerializer)
@@ -386,12 +392,15 @@ class TypeResolver:
         if typename is None and type_id is None:
             type_id = self._next_type_id()
         if type_id not in {0, None}:
-            actual_type_id = (type_id << 8) + TypeId.TYPED_UNION
+            user_type_id = type_id
+            type_id = TypeId.TYPED_UNION
         else:
-            actual_type_id = TypeId.NAMED_UNION
+            user_type_id = NO_USER_TYPE_ID
+            type_id = TypeId.NAMED_UNION
         return self.__register_type(
             cls,
-            type_id=actual_type_id,
+            type_id=type_id,
+            user_type_id=user_type_id,
             namespace=namespace,
             typename=typename,
             serializer=serializer,
@@ -403,6 +412,7 @@ class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
+        user_type_id: int = NO_USER_TYPE_ID,
         namespace: str = None,
         typename: str = None,
         serializer=None,
@@ -410,6 +420,12 @@ class TypeResolver:
     ):
         """Register type with given type id or typename. If typename is not None, it will be used for
         cross-language serialization."""
+        if internal:
+            if type_id is not None and type_id >= 0 and type_id > 0xFF:
+                raise ValueError(f"Internal type id overflow: {type_id}")
+        else:
+            if user_type_id not in {None, NO_USER_TYPE_ID} and (user_type_id < 0 or user_type_id > 0xFFFFFFFE):
+                raise ValueError(f"user_type_id must be in range [0, 0xfffffffe], got {user_type_id}")
         if serializer is not None and not isinstance(serializer, Serializer):
             try:
                 serializer = serializer(self.fory, cls)
@@ -418,21 +434,27 @@ class TypeResolver:
                     serializer = serializer(self.fory)
                 except BaseException:
                     serializer = serializer()
+        if (
+            cls in self._types_info
+            and type_id is None
+            and typename is None
+            and namespace is None
+            and serializer is None
+            and user_type_id in {None, NO_USER_TYPE_ID}
+        ):
+            return self._types_info[cls]
         n_params = len({typename, type_id, None}) - 1
         if n_params == 0 and typename is None:
             type_id = self._next_type_id()
         if n_params == 2:
             raise TypeError(f"type name {typename} and id {type_id} should not be set at the same time")
-        if type_id not in {0, None}:
-            # multiple type can have same tpe id
-            if type_id in self._type_id_to_typeinfo and cls in self._types_info:
-                raise TypeError(f"{cls} registered already")
-        elif cls in self._types_info:
+        if cls in self._types_info:
             raise TypeError(f"{cls} registered already")
-        register_type = self._register_xtype if self.fory.language == Language.XLANG else self._register_pytype
+        register_type = self._register_xtype if self.fory.xlang else self._register_pytype
         return register_type(
             cls,
             type_id=type_id,
+            user_type_id=user_type_id,
             namespace=namespace,
             typename=typename,
             serializer=serializer,
@@ -444,27 +466,53 @@ class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
+        user_type_id: int = NO_USER_TYPE_ID,
         namespace: str = None,
         typename: str = None,
         serializer=None,
         internal=False,
     ):
+        object_meta = extract_object_meta(cls)
+        evolving = True
+        if object_meta is not None:
+            evolving = object_meta.evolving
         if serializer is None:
             if issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
-                type_id = TypeId.NAMED_ENUM if type_id is None else ((type_id << 8) + TypeId.ENUM)
+                if type_id is None:
+                    type_id = TypeId.NAMED_ENUM
+                    user_type_id = NO_USER_TYPE_ID
+                else:
+                    user_type_id = type_id
+                    type_id = TypeId.ENUM
             else:
                 serializer = None
-                if self.meta_share:
-                    type_id = TypeId.NAMED_COMPATIBLE_STRUCT if type_id is None else ((type_id << 8) + TypeId.COMPATIBLE_STRUCT)
+                if self.meta_share and evolving:
+                    if type_id is None:
+                        type_id = TypeId.NAMED_COMPATIBLE_STRUCT
+                        user_type_id = NO_USER_TYPE_ID
+                    else:
+                        user_type_id = type_id
+                        type_id = TypeId.COMPATIBLE_STRUCT
                 else:
-                    type_id = TypeId.NAMED_STRUCT if type_id is None else ((type_id << 8) + TypeId.STRUCT)
+                    if type_id is None:
+                        type_id = TypeId.NAMED_STRUCT
+                        user_type_id = NO_USER_TYPE_ID
+                    else:
+                        user_type_id = type_id
+                        type_id = TypeId.STRUCT
         elif not internal:
-            type_id = TypeId.NAMED_EXT if type_id is None else ((type_id << 8) + TypeId.EXT)
+            if type_id is None:
+                type_id = TypeId.NAMED_EXT
+                user_type_id = NO_USER_TYPE_ID
+            else:
+                user_type_id = type_id
+                type_id = TypeId.EXT
 
         return self.__register_type(
             cls,
             type_id=type_id,
+            user_type_id=user_type_id,
             serializer=serializer,
             namespace=namespace,
             typename=typename,
@@ -476,6 +524,7 @@ class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
+        user_type_id: int = NO_USER_TYPE_ID,
         namespace: str = None,
         typename: str = None,
         serializer: Serializer = None,
@@ -487,6 +536,7 @@ class TypeResolver:
         return self.__register_type(
             cls,
             type_id=type_id,
+            user_type_id=user_type_id,
             namespace=namespace,
             typename=typename,
             serializer=serializer,
@@ -498,6 +548,7 @@ class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
+        user_type_id: int = NO_USER_TYPE_ID,
         namespace: str = None,
         typename: str = None,
         serializer: Serializer = None,
@@ -505,17 +556,15 @@ class TypeResolver:
     ):
         dynamic_type = type_id is not None and type_id < 0
         # In metashare mode, for struct types, we want to keep serializer=None
-        # so that _set_typeinfo will be called to create the TypeDef-based serializer
+        # so that _set_type_info will be called to create the TypeDef-based serializer
         # This applies to both types registered by name and by ID
-        should_create_serializer = (
-            not internal and serializer is None and not (self.meta_share and type_id is not None and is_struct_type(type_id & 0xFF))
-        )
+        should_create_serializer = not internal and serializer is None and not (self.meta_share and type_id is not None and is_struct_type(type_id))
 
         if should_create_serializer:
             serializer = self._create_serializer(cls)
 
         if typename is None:
-            typeinfo = TypeInfo(cls, type_id, serializer, None, None, dynamic_type)
+            typeinfo = TypeInfo(cls, type_id, user_type_id, serializer, None, None, dynamic_type)
         else:
             if namespace is None:
                 splits = typename.rsplit(".", 1)
@@ -527,26 +576,34 @@ class TypeResolver:
             ns_meta_bytes = self.metastring_resolver.get_metastr_bytes(ns_metastr)
             type_metastr = self.typename_encoder.encode(typename)
             type_meta_bytes = self.metastring_resolver.get_metastr_bytes(type_metastr)
-            typeinfo = TypeInfo(cls, type_id, serializer, ns_meta_bytes, type_meta_bytes, dynamic_type)
-            self._named_type_to_typeinfo[(namespace, typename)] = typeinfo
-            self._ns_type_to_typeinfo[(ns_meta_bytes, type_meta_bytes)] = typeinfo
+            typeinfo = TypeInfo(cls, type_id, user_type_id, serializer, ns_meta_bytes, type_meta_bytes, dynamic_type)
+            self._named_type_to_type_info[(namespace, typename)] = typeinfo
+            self._ns_type_to_type_info[(ns_meta_bytes, type_meta_bytes)] = typeinfo
         self._types_info[cls] = typeinfo
-        if type_id is not None and type_id != 0 and (self.language == Language.PYTHON or not TypeId.is_namespaced_type(type_id)):
-            if type_id not in self._type_id_to_typeinfo or not internal:
-                self._type_id_to_typeinfo[type_id] = typeinfo
+        if type_id is not None and type_id != 0:
+            if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
+                existing = self._user_type_id_to_type_info.get(user_type_id)
+                if existing is not None and existing.cls is not cls:
+                    raise TypeError(f"user_type_id {user_type_id} already registered for {existing.cls}")
+            if needs_user_type_id(type_id) and user_type_id not in {None, NO_USER_TYPE_ID}:
+                if user_type_id not in self._user_type_id_to_type_info or not internal:
+                    self._user_type_id_to_type_info[user_type_id] = typeinfo
+                self._used_user_type_ids.add(user_type_id)
+            elif not self.fory.xlang or not TypeId.is_namespaced_type(type_id):
+                if type_id not in self._type_id_to_type_info or not internal:
+                    self._type_id_to_type_info[type_id] = typeinfo
         self._types_info[cls] = typeinfo
         # Create TypeDef for named non-struct types when meta_share is enabled
         if self.meta_share and type_id is not None:
-            base_type_id = type_id & 0xFF
-            if base_type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT, TypeId.NAMED_UNION):
-                type_def = encode_typedef(self, cls, include_fields=is_struct_type(base_type_id))
+            if type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT, TypeId.NAMED_UNION):
+                type_def = encode_typedef(self, cls, include_fields=is_struct_type(type_id))
                 if type_def is not None:
                     typeinfo.type_def = type_def
         return typeinfo
 
     def _next_type_id(self):
         type_id = self._type_id_counter = self._type_id_counter + 1
-        while type_id in self._type_id_to_typeinfo:
+        while type_id in self._used_user_type_ids:
             type_id = self._type_id_counter = self._type_id_counter + 1
         return type_id
 
@@ -555,17 +612,25 @@ class TypeResolver:
         if cls not in self._types_info:
             raise TypeUnregisteredError(f"{cls} not registered")
         typeinfo = self._types_info[cls]
-        if self.fory.language == Language.PYTHON:
+        if not self.fory.xlang:
             typeinfo.serializer = serializer
             return
-        type_id = prev_type_id = typeinfo.type_id
-        self._type_id_to_typeinfo.pop(prev_type_id)
+        prev_type_id = typeinfo.type_id
+        prev_user_type_id = typeinfo.user_type_id
+        if needs_user_type_id(prev_type_id) and prev_user_type_id not in {None, NO_USER_TYPE_ID}:
+            self._user_type_id_to_type_info.pop(prev_user_type_id, None)
+        else:
+            self._type_id_to_type_info.pop(prev_type_id, None)
         if typeinfo.serializer is not serializer:
             if typeinfo.typename_bytes is not None:
-                type_id = typeinfo.type_id & 0xFFFFFF00 | TypeId.NAMED_EXT
+                typeinfo.type_id = TypeId.NAMED_EXT
+                typeinfo.user_type_id = NO_USER_TYPE_ID
             else:
-                type_id = typeinfo.type_id & 0xFFFFFF00 | TypeId.EXT
-        self._type_id_to_typeinfo[type_id] = typeinfo
+                typeinfo.type_id = TypeId.EXT
+        if needs_user_type_id(typeinfo.type_id) and typeinfo.user_type_id not in {None, NO_USER_TYPE_ID}:
+            self._user_type_id_to_type_info[typeinfo.user_type_id] = typeinfo
+        else:
+            self._type_id_to_type_info[typeinfo.type_id] = typeinfo
 
     def get_serializer(self, cls: type):
         """
@@ -573,24 +638,24 @@ class TypeResolver:
         -------
             Returns or create serializer for the provided type
         """
-        return self.get_typeinfo(cls).serializer
+        return self.get_type_info(cls).serializer
 
-    def get_typeinfo(self, cls, create=True):
+    def get_type_info(self, cls, create=True):
         type_info = self._types_info.get(cls)
         if type_info is not None:
             if type_info.serializer is None:
-                self._set_typeinfo(type_info)
+                self._set_type_info(type_info)
             return type_info
         elif not create:
             return None
         if cls is NonExistEnum:
-            return self._get_nonexist_enum_typeinfo()
+            return self._get_nonexist_enum_type_info()
         if self.require_registration and not issubclass(cls, Enum):
             raise TypeUnregisteredError(f"{cls} not registered")
         logger.info("Type %s not registered", cls)
         serializer = self._create_serializer(cls)
         type_id = None
-        if self.language == Language.PYTHON:
+        if not self.fory.xlang:
             if isinstance(serializer, EnumSerializer):
                 type_id = TypeId.NAMED_ENUM
             elif isinstance(serializer, (ObjectSerializer, StatefulSerializer)):
@@ -612,15 +677,15 @@ class TypeResolver:
             serializer=serializer,
         )
 
-    def _set_typeinfo(self, typeinfo):
-        type_id = typeinfo.type_id & 0xFF
+    def _set_type_info(self, typeinfo):
+        type_id = typeinfo.type_id
         if is_struct_type(type_id):
             from pyfory.struct import DataClassSerializer, DataClassStubSerializer
 
             # Set a stub serializer FIRST to break recursion for self-referencing types.
-            # get_typeinfo() only calls _set_typeinfo when serializer is None,
+            # get_type_info() only calls _set_type_info when serializer is None,
             # so setting stub first prevents re-entry for circular type references.
-            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls, xlang=not self.fory.is_py)
+            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
 
             if self.meta_share:
                 type_def = encode_typedef(self, typeinfo.cls)
@@ -628,9 +693,9 @@ class TypeResolver:
                     typeinfo.serializer = type_def.create_serializer(self)
                     typeinfo.type_def = type_def
                 else:
-                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=not self.fory.is_py)
+                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
             else:
-                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=not self.fory.is_py)
+                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
         else:
             typeinfo.serializer = self._create_serializer(typeinfo.cls)
 
@@ -667,7 +732,7 @@ class TypeResolver:
                 # lazy create serializer to handle nested struct fields.
                 from pyfory.struct import DataClassStubSerializer
 
-                serializer = DataClassStubSerializer(self.fory, cls, xlang=not self.fory.is_py)
+                serializer = DataClassStubSerializer(self.fory, cls, xlang=self.fory.xlang)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
             elif ("builtin_function_or_method" in str(cls) or "cython_function_or_method" in str(cls)) and "<locals>" not in str(cls):
@@ -703,16 +768,22 @@ class TypeResolver:
         typeinfo = self._types_info.get(cls)
         if typeinfo is None:
             return False
-        return TypeId.is_namespaced_type(typeinfo.type_id & 0xFF)
+        return TypeId.is_namespaced_type(typeinfo.type_id)
 
-    def is_registered_by_id(self, cls=None, type_id=None):
+    def is_registered_by_id(self, cls=None, type_id=None, user_type_id=NO_USER_TYPE_ID):
         if cls is not None:
             typeinfo = self._types_info.get(cls)
             if typeinfo is None:
                 return False
-            return not TypeId.is_namespaced_type(typeinfo.type_id & 0xFF)
+            return not TypeId.is_namespaced_type(typeinfo.type_id)
         else:
-            return type_id in self._type_id_to_typeinfo
+            if type_id is None:
+                return False
+            if needs_user_type_id(type_id):
+                if user_type_id in {None, NO_USER_TYPE_ID}:
+                    return False
+                return user_type_id in self._user_type_id_to_type_info
+            return type_id in self._type_id_to_type_info
 
     def get_registered_name(self, cls):
         typeinfo = self._types_info.get(cls)
@@ -724,108 +795,129 @@ class TypeResolver:
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.type_id
 
-    def _load_metabytes_to_typeinfo(self, ns_metabytes, type_metabytes):
-        typeinfo = self._ns_type_to_typeinfo.get((ns_metabytes, type_metabytes))
+    def get_registered_user_type_id(self, cls):
+        typeinfo = self._types_info.get(cls)
+        assert typeinfo is not None, f"{cls} not registered"
+        return typeinfo.user_type_id
+
+    def get_registered_type_ids(self, cls):
+        typeinfo = self._types_info.get(cls)
+        assert typeinfo is not None, f"{cls} not registered"
+        return typeinfo.type_id, typeinfo.user_type_id
+
+    def _load_metabytes_to_type_info(self, ns_metabytes, type_metabytes):
+        typeinfo = self._ns_type_to_type_info.get((ns_metabytes, type_metabytes))
         if typeinfo is not None:
             return typeinfo
         ns = ns_metabytes.decode(self.namespace_decoder)
         typename = type_metabytes.decode(self.typename_decoder)
         # the hash computed between languages may be different.
-        typeinfo = self._named_type_to_typeinfo.get((ns, typename))
+        typeinfo = self._named_type_to_type_info.get((ns, typename))
         if typeinfo is None and typename:
             alt_typename = typename[0].upper() + typename[1:]
-            typeinfo = self._named_type_to_typeinfo.get((ns, alt_typename))
+            typeinfo = self._named_type_to_type_info.get((ns, alt_typename))
         if typeinfo is not None:
-            self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+            self._ns_type_to_type_info[(ns_metabytes, type_metabytes)] = typeinfo
             return typeinfo
         cls = load_class(ns + "#" + typename)
-        typeinfo = self.get_typeinfo(cls)
-        self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+        typeinfo = self.get_type_info(cls)
+        self._ns_type_to_type_info[(ns_metabytes, type_metabytes)] = typeinfo
         return typeinfo
 
-    def write_typeinfo(self, buffer, typeinfo):
+    def write_type_info(self, buffer, typeinfo):
         if typeinfo.dynamic_type:
             return
-        # Check if meta share is enabled first
-        if self.meta_share:
+        type_id = typeinfo.type_id
+        buffer.write_uint8(type_id)
+        if type_id in {TypeId.ENUM, TypeId.STRUCT, TypeId.EXT, TypeId.TYPED_UNION}:
+            if typeinfo.user_type_id in {None, NO_USER_TYPE_ID}:
+                raise TypeError(f"user_type_id required for type_id {type_id}")
+            buffer.write_var_uint32(typeinfo.user_type_id)
+            return
+        if type_id in {TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT}:
             self.write_shared_type_meta(buffer, typeinfo)
             return
-        type_id = typeinfo.type_id
-        internal_type_id = type_id & 0xFF
-        buffer.write_var_uint32(type_id)
-        if TypeId.is_namespaced_type(internal_type_id):
-            self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
-            self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
+        if TypeId.is_namespaced_type(type_id):
+            if self.meta_share:
+                self.write_shared_type_meta(buffer, typeinfo)
+            else:
+                self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
+                self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
 
-    def read_typeinfo(self, buffer):
-        # Check if meta share is enabled first
-        if self.meta_share:
-            return self.read_shared_type_meta(buffer)
-
-        type_id = buffer.read_var_uint32()
-        internal_type_id = type_id & 0xFF
-        if TypeId.is_namespaced_type(internal_type_id):
+    def read_type_info(self, buffer):
+        type_id = buffer.read_uint8()
+        if type_id in {TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT}:
+            return self.serialization_context.meta_context.read_shared_type_info_with_type_id(buffer, type_id)
+        if TypeId.is_namespaced_type(type_id):
+            if self.meta_share:
+                return self.serialization_context.meta_context.read_shared_type_info_with_type_id(buffer, type_id)
             ns_metabytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             type_metabytes = self.metastring_resolver.read_meta_string_bytes(buffer)
-            typeinfo = self._ns_type_to_typeinfo.get((ns_metabytes, type_metabytes))
+            typeinfo = self._ns_type_to_type_info.get((ns_metabytes, type_metabytes))
             if typeinfo is None:
                 ns = ns_metabytes.decode(self.namespace_decoder)
                 typename = type_metabytes.decode(self.typename_decoder)
-                typeinfo = self._named_type_to_typeinfo.get((ns, typename))
+                typeinfo = self._named_type_to_type_info.get((ns, typename))
                 if typeinfo is None and typename:
                     alt_typename = typename[0].upper() + typename[1:]
-                    typeinfo = self._named_type_to_typeinfo.get((ns, alt_typename))
+                    typeinfo = self._named_type_to_type_info.get((ns, alt_typename))
                 if typeinfo is not None:
-                    self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+                    self._ns_type_to_type_info[(ns_metabytes, type_metabytes)] = typeinfo
                     return typeinfo
                 if not ns and "." in typename:
                     split_ns, split_typename = typename.rsplit(".", 1)
-                    typeinfo = self._named_type_to_typeinfo.get((split_ns, split_typename))
+                    typeinfo = self._named_type_to_type_info.get((split_ns, split_typename))
                     if typeinfo is not None:
-                        self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+                        self._ns_type_to_type_info[(ns_metabytes, type_metabytes)] = typeinfo
                         return typeinfo
                     typename = split_typename
                     ns = split_ns
                 if typename:
-                    matches = [info for (reg_ns, reg_typename), info in self._named_type_to_typeinfo.items() if reg_typename == typename]
+                    matches = [info for (reg_ns, reg_typename), info in self._named_type_to_type_info.items() if reg_typename == typename]
                     if len(matches) == 1:
                         typeinfo = matches[0]
-                        self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+                        self._ns_type_to_type_info[(ns_metabytes, type_metabytes)] = typeinfo
                         return typeinfo
                 name = ns + "." + typename if ns else typename
                 raise TypeUnregisteredError(f"{name} not registered")
             return typeinfo
-        else:
-            return self._type_id_to_typeinfo.get(type_id)
+        if type_id in {TypeId.ENUM, TypeId.STRUCT, TypeId.EXT, TypeId.TYPED_UNION}:
+            user_type_id = buffer.read_var_uint32()
+            return self.get_type_info_by_id(type_id, user_type_id=user_type_id)
+        return self.get_type_info_by_id(type_id)
 
-    def get_typeinfo_by_id(self, type_id):
+    def get_type_info_by_id(self, type_id, user_type_id=NO_USER_TYPE_ID):
         """Get typeinfo by type_id. Never returns None.
 
         For unknown ENUM types, returns NonExistEnum typeinfo.
         For other unknown types, raises TypeUnregisteredError.
         """
-        typeinfo = self._type_id_to_typeinfo.get(type_id)
+        if needs_user_type_id(type_id):
+            if user_type_id in {None, NO_USER_TYPE_ID}:
+                raise TypeUnregisteredError(f"type id {type_id} missing user_type_id")
+            typeinfo = self._user_type_id_to_type_info.get(user_type_id)
+        else:
+            typeinfo = self._type_id_to_type_info.get(type_id)
         if typeinfo is not None:
             return typeinfo
-        base_type_id = type_id & 0xFF
-        if base_type_id == TypeId.ENUM:
-            return self._get_nonexist_enum_typeinfo()
-        raise TypeUnregisteredError(f"type id {type_id} (base {base_type_id}) not registered")
+        if type_id == TypeId.ENUM:
+            return self._get_nonexist_enum_type_info()
+        raise TypeUnregisteredError(f"type id {type_id} (user {user_type_id}) not registered")
 
-    def _get_nonexist_enum_typeinfo(self):
+    def _get_nonexist_enum_type_info(self):
         """Get or create TypeInfo for NonExistEnum to handle unknown enum types."""
         from pyfory.serializer import NonExistEnum, NonExistEnumSerializer
 
         typeinfo = self._types_info.get(NonExistEnum)
         if typeinfo is None:
             serializer = NonExistEnumSerializer(self.fory)
-            typeinfo = TypeInfo(NonExistEnum, TypeId.ENUM, serializer, None, None, False)
+            typeinfo = TypeInfo(NonExistEnum, TypeId.ENUM, NO_USER_TYPE_ID, serializer, None, None, False)
             self._types_info[NonExistEnum] = typeinfo
         return typeinfo
 
-    def get_typeinfo_by_name(self, namespace, typename):
+    def get_type_info_by_name(self, namespace, typename):
         """Get typeinfo by namespace and typename."""
-        return self._named_type_to_typeinfo.get((namespace, typename))
+        return self._named_type_to_type_info.get((namespace, typename))
 
     def get_meta_compressor(self):
         return self.meta_compressor
@@ -833,13 +925,13 @@ class TypeResolver:
     def write_shared_type_meta(self, buffer, typeinfo):
         """Write shared type meta information."""
         meta_context = self.fory.serialization_context.meta_context
-        meta_context.write_shared_typeinfo(buffer, typeinfo)
+        meta_context.write_shared_type_info(buffer, typeinfo)
 
     def read_shared_type_meta(self, buffer):
         """Read shared type meta information."""
         meta_context = self.serialization_context.meta_context
         assert meta_context is not None, "Meta context must be set when meta share is enabled"
-        return meta_context.read_shared_typeinfo(buffer)
+        return meta_context.read_shared_type_info(buffer)
 
     def _build_type_info_from_typedef(self, type_def):
         """Build TypeInfo from TypeDef using TypeDef's create_serializer method."""
@@ -852,6 +944,7 @@ class TypeResolver:
         typeinfo = TypeInfo(
             type_def.cls,
             type_def.type_id,
+            type_def.user_type_id,
             serializer,
             ns_meta_bytes,
             type_meta_bytes,
@@ -860,7 +953,7 @@ class TypeResolver:
         )
         return typeinfo
 
-    def _read_and_build_typeinfo(self, buffer):
+    def _read_and_build_type_info(self, buffer):
         """Read TypeDef inline from buffer and build TypeInfo.
 
         Used for streaming meta share where TypeDef is written inline.
@@ -868,7 +961,7 @@ class TypeResolver:
         # Read the header (first 8 bytes) to get the type ID
         header = buffer.read_int64()
         # Check if we already have this TypeDef cached
-        type_info = self._meta_shared_typeinfo.get(header)
+        type_info = self._meta_shared_type_info.get(header)
         if type_info is not None:
             # Skip the rest of the TypeDef binary for faster performance
             skip_typedef(buffer, header)
@@ -877,7 +970,7 @@ class TypeResolver:
             type_def = decode_typedef(buffer, self, header=header)
             type_info = self._build_type_info_from_typedef(type_def)
             # Cache the tuple for future use
-            self._meta_shared_typeinfo[header] = type_info
+            self._meta_shared_type_info[header] = type_info
         return type_info
 
     def reset(self):

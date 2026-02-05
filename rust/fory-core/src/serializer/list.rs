@@ -151,22 +151,22 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
-            Ok(id as u32)
+            Ok(id)
         } else {
-            Ok(TypeId::LIST as u32)
+            Ok(TypeId::LIST)
         }
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
         let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
-            Ok(id as u32)
+            Ok(id)
         } else {
-            Ok(TypeId::LIST as u32)
+            Ok(TypeId::LIST)
         }
     }
 
@@ -232,13 +232,13 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
@@ -295,13 +295,13 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]

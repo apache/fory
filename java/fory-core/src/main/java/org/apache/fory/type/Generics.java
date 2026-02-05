@@ -21,7 +21,7 @@ package org.apache.fory.type;
 
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.TypeInfo;
 
 // Derived from
 // https://github.com/EsotericSoftware/kryo/blob/135df69526615bb3f6b34846e58ba3fec3b631c3/src/com/esotericsoftware/kryo/util/DefaultGenerics.java.
@@ -50,7 +50,7 @@ public class Generics {
    * {@link #nextGenericType}. Fory serialization depth should be increased after this call and
    * before {@link #nextGenericType}.
    *
-   * @see Fory#writeRef(MemoryBuffer, Object, ClassInfo)
+   * @see Fory#writeRef(MemoryBuffer, Object, TypeInfo)
    */
   public void pushGenericType(GenericType fieldType) {
     int size = genericTypesSize++;
@@ -78,7 +78,7 @@ public class Generics {
    * #pushGenericType(GenericType)} was not called. Fory serialization depth should be decreased
    * before this call and after {@link #nextGenericType}.
    *
-   * @see Fory#writeRef(MemoryBuffer, Object, ClassInfo)
+   * @see Fory#writeRef(MemoryBuffer, Object, TypeInfo)
    */
   public void popGenericType() {
     int size = genericTypesSize;

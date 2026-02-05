@@ -17,25 +17,25 @@
  * under the License.
  */
 
-package org.apache.fory.resolver;
+package org.apache.fory.annotation;
 
-import org.apache.fory.serializer.Serializer;
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-/** A helper class for holding and update {@link ClassInfo} to reduce map look-up. */
-@SuppressWarnings("rawtypes")
-public class ClassInfoHolder {
-  public ClassInfo classInfo;
-
-  public ClassInfoHolder(ClassInfo classInfo) {
-    this.classInfo = classInfo;
-  }
-
-  public Serializer getSerializer() {
-    return classInfo.serializer;
-  }
-
-  @Override
-  public String toString() {
-    return "Holder{" + classInfo + '}';
-  }
+/** Marker annotation for Fory-serializable types with optional serialization behavior settings. */
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface ForyObject {
+  /**
+   * Whether the annotated type should use schema evolution in compatible mode.
+   *
+   * <p>When {@code true} (default), compatible mode uses COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT
+   * to include schema metadata for evolution. When {@code false}, STRUCT/NAMED_STRUCT is used to
+   * avoid that overhead.
+   */
+  boolean evolving() default true;
 }

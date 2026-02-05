@@ -15,7 +15,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 
 For comprehensive documentation, see the [FDL Schema Guide](../docs/compiler/index.md):
 
-- [FDL Syntax Reference](../docs/compiler/fdl-syntax.md) - Complete language syntax and grammar
+- [FDL Syntax Reference](../docs/compiler/schema-idl.md) - Complete language syntax and grammar
 - [Type System](../docs/compiler/type-system.md) - Primitive types, collections, and language mappings
 - [Compiler Guide](../docs/compiler/compiler-guide.md) - CLI options and build integration
 - [Generated Code](../docs/compiler/generated-code.md) - Output format for each target language
@@ -229,7 +229,11 @@ FDL uses plain option keys without a `(fory)` prefix:
 ```fdl
 option use_record_for_java_message = true;
 option polymorphism = true;
+option enable_auto_type_id = true;
 ```
+
+`enable_auto_type_id` defaults to `true`. Set it to `false` to keep namespace-based registration
+for types that omit explicit IDs.
 
 **Message/Enum options:**
 

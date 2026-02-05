@@ -29,9 +29,9 @@ import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.RefMode;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.type.Descriptor;
@@ -120,9 +120,10 @@ public class FieldGroups {
 
   public static final class SerializationFieldInfo {
     public final Descriptor descriptor;
+    public final Class<?> type;
     public final TypeRef<?> typeRef;
     public final int dispatchId;
-    public final ClassInfo classInfo;
+    public final TypeInfo typeInfo;
     public final Serializer serializer;
     public final String qualifiedFieldName;
     public final FieldAccessor fieldAccessor;
@@ -135,30 +136,31 @@ public class FieldGroups {
     public final boolean useDeclaredTypeInfo;
 
     public final GenericType genericType;
-    public final ClassInfoHolder classInfoHolder;
+    public final TypeInfoHolder classInfoHolder;
     public final boolean isArray;
-    public final ClassInfo containerClassInfo;
+    public final TypeInfo containerTypeInfo;
 
     SerializationFieldInfo(Fory fory, Descriptor d) {
       this.descriptor = d;
+      this.type = descriptor.getRawType();
       this.typeRef = d.getTypeRef();
       this.dispatchId = DispatchId.getDispatchId(fory, d);
       TypeResolver resolver = fory.getTypeResolver();
       // invoke `copy` to avoid ObjectSerializer construct clear serializer by `clearSerializer`.
       if (resolver.isMonomorphic(descriptor)) {
-        classInfo = SerializationUtils.getClassInfo(fory, typeRef.getRawType());
+        typeInfo = SerializationUtils.getTypeInfo(fory, typeRef.getRawType());
         if (!fory.isShareMeta()
             && !fory.isCompatible()
-            && classInfo.getSerializer() instanceof ReplaceResolveSerializer) {
+            && typeInfo.getSerializer() instanceof ReplaceResolveSerializer) {
           // overwrite replace resolve serializer for final field
-          classInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, classInfo.getCls()));
+          typeInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, typeInfo.getCls()));
         }
       } else {
-        classInfo = null;
+        typeInfo = null;
       }
-      useDeclaredTypeInfo = classInfo != null && resolver.isMonomorphic(descriptor);
-      if (classInfo != null) {
-        serializer = classInfo.getSerializer();
+      useDeclaredTypeInfo = typeInfo != null && resolver.isMonomorphic(descriptor);
+      if (typeInfo != null) {
+        serializer = typeInfo.getSerializer();
       } else {
         serializer = null;
       }
@@ -199,15 +201,15 @@ public class FieldGroups {
       if (field != null) {
         TypeUtils.applyRefTrackingOverride(t, field.getAnnotatedType(), fory.trackingRef());
       }
-      classInfoHolder = resolver.nilClassInfoHolder();
+      classInfoHolder = resolver.nilTypeInfoHolder();
       isArray = cls.isArray();
       if (!fory.isCrossLanguage()) {
-        containerClassInfo = null;
+        containerTypeInfo = null;
       } else {
         if (resolver.isMap(cls) || resolver.isCollection(cls) || resolver.isSet(cls)) {
-          containerClassInfo = resolver.getClassInfo(cls);
+          containerTypeInfo = resolver.getTypeInfo(cls);
         } else {
-          containerClassInfo = null;
+          containerTypeInfo = null;
         }
       }
     }

@@ -458,7 +458,7 @@ class SomeClass:
     f2: Dict[str, str]
     f3: Dict[str, str]
 
-fory = pyfory.Fory(ref_tracking=True)
+fory = pyfory.Fory(ref=True)
 fory.register_type(SomeClass, typename="example.SomeClass")
 obj = SomeClass()
 obj.f2 = {"k1": "v1", "k2": "v2"}

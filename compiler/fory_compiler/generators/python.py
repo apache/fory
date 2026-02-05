@@ -266,7 +266,7 @@ class PythonGenerator(BaseGenerator):
         imports: Set[str] = set()
 
         # Collect all imports
-        imports.add("from dataclasses import dataclass, field")
+        imports.add("from dataclasses import field")
         imports.add("from enum import Enum, IntEnum")
         imports.add("from typing import Dict, List, Optional, cast")
         imports.add("import pyfory")
@@ -367,7 +367,19 @@ class PythonGenerator(BaseGenerator):
         ind = "    " * indent
         lineage = (parent_stack or []) + [message]
 
-        lines.append(f"{ind}@dataclass")
+        comment = self.format_type_id_comment(message, f"{ind}#")
+        if comment:
+            lines.append(comment)
+        needs_repr = self.message_needs_safe_repr(message)
+        decorator_args: List[str] = []
+        if not self.get_effective_evolving(message):
+            decorator_args.append("evolving=False")
+        if needs_repr:
+            decorator_args.append("repr=False")
+        if decorator_args:
+            lines.append(f"{ind}@pyfory.dataclass({', '.join(decorator_args)})")
+        else:
+            lines.append(f"{ind}@pyfory.dataclass")
         lines.append(f"{ind}class {message.name}:")
 
         # Generate nested enums first (they need to be defined before fields reference them)
@@ -408,7 +420,12 @@ class PythonGenerator(BaseGenerator):
         ):
             lines.append("")
 
-        lines.extend(self.generate_bytes_methods(message.name, indent))
+        if needs_repr:
+            lines.extend(self.generate_repr_method(message, indent=indent))
+            lines.append("")
+
+        return_type = ".".join([msg.name for msg in lineage])
+        lines.extend(self.generate_bytes_methods(return_type, indent))
 
         return lines
 
@@ -434,6 +451,9 @@ class PythonGenerator(BaseGenerator):
             lines.append(f"{ind}    {case_name} = {field.number}")
         lines.append("")
 
+        comment = self.format_type_id_comment(union, f"{ind}#")
+        if comment:
+            lines.append(comment)
         lines.append(f"{ind}class {union.name}(Union):")
         lines.append(f'{ind}    __slots__ = ("_case",)')
         lines.append("")
@@ -627,6 +647,55 @@ class PythonGenerator(BaseGenerator):
             field_type.element_type.kind in self.ARRAY_TYPE_HINTS
             and not element_optional
         )
+
+    def field_type_has_any(self, field_type: FieldType) -> bool:
+        """Return True if field type or its children is any."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind == PrimitiveKind.ANY
+        if isinstance(field_type, ListType):
+            return self.field_type_has_any(field_type.element_type)
+        if isinstance(field_type, MapType):
+            return self.field_type_has_any(
+                field_type.key_type
+            ) or self.field_type_has_any(field_type.value_type)
+        return False
+
+    def field_has_ref(self, field: Field) -> bool:
+        if field.ref:
+            return True
+        if isinstance(field.field_type, ListType):
+            return field.element_ref
+        if isinstance(field.field_type, MapType):
+            return field.field_type.value_ref
+        return False
+
+    def field_needs_safe_repr(self, field: Field) -> bool:
+        return self.field_has_ref(field) or self.field_type_has_any(field.field_type)
+
+    def message_needs_safe_repr(self, message: Message) -> bool:
+        return any(self.field_needs_safe_repr(field) for field in message.fields)
+
+    def generate_repr_method(self, message: Message, indent: int = 0) -> List[str]:
+        """Generate a repr method that avoids recursive ref expansion."""
+        lines: List[str] = []
+        ind = "    " * indent
+        lines.append(f"{ind}    def __repr__(self) -> str:")
+        if not message.fields:
+            lines.append(f'{ind}        return "{message.name}()"')
+            return lines
+        lines.append(f"{ind}        parts = []")
+        for field in message.fields:
+            field_name = self.safe_name(self.to_snake_case(field.name))
+            if self.field_needs_safe_repr(field):
+                type_label = self.format_idl_type(field.field_type)
+                placeholder = f"{type_label}(...)"
+                placeholder_literal = repr(placeholder)
+                expr = f"({placeholder_literal} if self.{field_name} is not None else 'None')"
+            else:
+                expr = f"repr(self.{field_name})"
+            lines.append(f'{ind}        parts.append("{field_name}=" + {expr})')
+        lines.append(f'{ind}        return "{message.name}(" + ", ".join(parts) + ")"')
+        return lines
 
     def get_default_factory(self, field: Field) -> Optional[str]:
         """Get default factory name for list/map fields."""
@@ -987,8 +1056,7 @@ class PythonGenerator(BaseGenerator):
         # In Python, nested class references use Outer.Inner syntax
         class_ref = f"{parent_path}.{enum.name}" if parent_path else enum.name
         type_name = class_ref if parent_path else enum.name
-
-        if enum.type_id is not None:
+        if self.should_register_by_id(enum):
             lines.append(f"    fory.register_type({class_ref}, type_id={enum.type_id})")
         else:
             ns = self.package or "default"
@@ -1003,8 +1071,7 @@ class PythonGenerator(BaseGenerator):
         # In Python, nested class references use Outer.Inner syntax
         class_ref = f"{parent_path}.{message.name}" if parent_path else message.name
         type_name = class_ref if parent_path else message.name
-
-        if message.type_id is not None:
+        if self.should_register_by_id(message):
             lines.append(
                 f"    fory.register_type({class_ref}, type_id={message.type_id})"
             )
@@ -1037,8 +1104,7 @@ class PythonGenerator(BaseGenerator):
             if parent_path
             else f"{union.name}Serializer"
         )
-
-        if union.type_id is not None:
+        if self.should_register_by_id(union):
             lines.append(
                 f"    fory.register_union({class_ref}, type_id={union.type_id}, serializer={serializer_ref}(fory))"
             )

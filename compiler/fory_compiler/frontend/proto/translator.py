@@ -97,6 +97,7 @@ class ProtoTranslator:
     def translate(self) -> Schema:
         return Schema(
             package=self.proto_schema.package,
+            package_alias=None,
             imports=self._translate_imports(),
             enums=[self._translate_enum(e) for e in self.proto_schema.enums],
             messages=[self._translate_message(m) for m in self.proto_schema.messages],

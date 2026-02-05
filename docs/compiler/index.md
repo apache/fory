@@ -28,24 +28,39 @@ FDL provides a simple, intuitive syntax for defining cross-language data structu
 ```protobuf
 package example;
 
-enum Status [id=100] {
+enum Status {
     PENDING = 0;
     ACTIVE = 1;
     COMPLETED = 2;
 }
 
-message User [id=101] {
+message User {
     string name = 1;
     int32 age = 2;
     optional string email = 3;
     repeated string tags = 4;
 }
 
-message Order [id=102] {
+message Order {
     ref User customer = 1;
     repeated Item items = 2;
     Status status = 3;
     map<string, int32> metadata = 4;
+}
+
+message Dog [id=104] {
+    string name = 1;
+    int32 bark_volume = 2;
+}
+
+message Cat [id=105] {
+    string name = 1;
+    int32 lives = 2;
+}
+
+union Animal [id=106] {
+    Dog dog = 1;
+    Cat cat = 2;
 }
 ```
 
@@ -84,8 +99,7 @@ Generated code uses native language constructs:
 ### 1. Install the Compiler
 
 ```bash
-cd compiler
-pip install -e .
+pip install fory-compiler
 ```
 
 ### 2. Write Your Schema
@@ -95,7 +109,7 @@ Create `example.fdl`:
 ```protobuf
 package example;
 
-message Person [id=100] {
+message Person {
     string name = 1;
     int32 age = 2;
     optional string email = 3;
@@ -117,26 +131,20 @@ foryc example.fdl --lang java,python --output ./generated
 **Java:**
 
 ```java
-Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
-ExampleForyRegistration.register(fory);
-
 Person person = new Person();
 person.setName("Alice");
 person.setAge(30);
-byte[] data = fory.serialize(person);
+byte[] data = person.toBytes();
 ```
 
 **Python:**
 
 ```python
 import pyfory
-from example import Person, register_example_types
-
-fory = pyfory.Fory()
-register_example_types(fory)
+from example import Person
 
 person = Person(name="Alice", age=30)
-data = fory.serialize(person)
+data = bytes(person) # or `person.to_bytes()`
 ```
 
 ## Documentation
@@ -151,22 +159,6 @@ data = fory.serialize(person)
 | [FlatBuffers IDL Support](flatbuffers-idl.md)   | FlatBuffers mapping rules and codegen differences |
 
 ## Key Concepts
-
-### Type Registration
-
-FDL supports two registration modes:
-
-**Numeric Type IDs** - Fast and compact:
-
-```protobuf
-message User [id=100] { ... }  // Registered with ID 100
-```
-
-**Namespace-based** - Flexible and readable:
-
-```protobuf
-message Config { ... }  // Registered as "package.Config"
-```
 
 ### Field Modifiers
 

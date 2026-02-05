@@ -77,6 +77,7 @@ class FbsTranslator:
     def translate(self) -> Schema:
         return Schema(
             package=self.schema.namespace,
+            package_alias=None,
             imports=[Import(path=inc) for inc in self.schema.includes],
             enums=[self._translate_enum(e) for e in self.schema.enums],
             unions=[self._translate_union(u) for u in self.schema.unions],

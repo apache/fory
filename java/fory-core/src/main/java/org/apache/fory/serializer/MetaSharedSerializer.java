@@ -31,7 +31,7 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.ClassDef;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.MapRefResolver;
 import org.apache.fory.resolver.RefResolver;
@@ -50,8 +50,8 @@ import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
 
 /**
- * A meta-shared compatible deserializer builder based on {@link ClassDef}. This serializer will
- * compare fields between {@link ClassDef} and class fields, then create serializer to read and
+ * A meta-shared compatible deserializer builder based on {@link TypeDef}. This serializer will
+ * compare fields between {@link TypeDef} and class fields, then create serializer to read and
  * set/skip corresponding fields to support type forward/backward compatibility. Serializer are
  * forward to {@link ObjectSerializer} for now. We can consolidate fields between peers to create
  * better serializers to serialize common fields between peers for efficiency.
@@ -77,7 +77,7 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   private final boolean hasDefaultValues;
   private final DefaultValueUtils.DefaultValueField[] defaultValueFields;
 
-  public MetaSharedSerializer(Fory fory, Class<T> type, ClassDef classDef) {
+  public MetaSharedSerializer(Fory fory, Class<T> type, TypeDef typeDef) {
     super(fory, type);
     Preconditions.checkArgument(
         !fory.getConfig().checkClassVersion(),
@@ -85,13 +85,13 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     Preconditions.checkArgument(
         fory.getConfig().isMetaShareEnabled(), "Meta share must be enabled.");
     if (Utils.DEBUG_OUTPUT_ENABLED) {
-      LOG.info("========== MetaSharedSerializer ClassDef for {} ==========", type.getName());
-      LOG.info("ClassDef fieldsInfo count: {}", classDef.getFieldCount());
-      for (int i = 0; i < classDef.getFieldsInfo().size(); i++) {
-        LOG.info("  [{}] {}", i, classDef.getFieldsInfo().get(i));
+      LOG.info("========== MetaSharedSerializer TypeDef for {} ==========", type.getName());
+      LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
+      for (int i = 0; i < typeDef.getFieldsInfo().size(); i++) {
+        LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
       }
     }
-    Collection<Descriptor> descriptors = consolidateFields(fory.getTypeResolver(), type, classDef);
+    Collection<Descriptor> descriptors = consolidateFields(fory.getTypeResolver(), type, typeDef);
     DescriptorGrouper descriptorGrouper =
         fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
@@ -202,6 +202,9 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     }
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
+      if (Utils.DEBUG_OUTPUT_VERBOSE) {
+        printFieldDebugInfo(fieldInfo, buffer);
+      }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer, targetObject);
@@ -216,6 +219,9 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     }
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
+      if (Utils.DEBUG_OUTPUT_VERBOSE) {
+        printFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue =
           AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
@@ -224,6 +230,9 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       }
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
+      if (Utils.DEBUG_OUTPUT_VERBOSE) {
+        printFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue = binding.readField(fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
@@ -244,6 +253,9 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     SerializationBinding binding = this.binding;
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printFieldDebugInfo(fieldInfo, buffer);
+      }
       if (fieldInfo.fieldAccessor != null) {
         fields[counter++] =
             AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer);
@@ -258,18 +270,32 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     }
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue =
           AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
       fields[counter++] = fieldValue;
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        printFieldDebugInfo(fieldInfo, buffer);
+      }
       Object fieldValue = binding.readField(fieldInfo, buffer);
       fields[counter++] = fieldValue;
     }
   }
 
+  private void printFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
+    LOG.info(
+        "[Java] read field {} of type {}, reader index {}",
+        fieldInfo.descriptor.getName(),
+        fieldInfo.typeRef,
+        buffer.readerIndex());
+  }
+
   public static Collection<Descriptor> consolidateFields(
-      TypeResolver resolver, Class<?> cls, ClassDef classDef) {
-    return classDef.getDescriptors(resolver, cls);
+      TypeResolver resolver, Class<?> cls, TypeDef typeDef) {
+    return typeDef.getDescriptors(resolver, cls);
   }
 }

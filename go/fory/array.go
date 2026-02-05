@@ -30,7 +30,7 @@ func writeArrayRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, va
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.Buffer().WriteVarUint32Small7(uint32(typeId))
+		ctx.Buffer().WriteUint8(uint8(typeId))
 	}
 	return false
 }
@@ -55,12 +55,13 @@ func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		}
 	}
 	if readType {
-		typeID := buf.ReadVarUint32Small7(err)
+		typeID := uint32(buf.ReadUint8(err))
 		if ctx.HasError() {
 			return false
 		}
-		if IsNamespacedType(TypeId(typeID)) {
-			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, err)
+		if typeID != uint32(LIST) {
+			ctx.SetError(DeserializationErrorf("array type mismatch: expected LIST (%d), got %d", LIST, typeID))
+			return false
 		}
 	}
 	return false
@@ -82,7 +83,7 @@ func (s arraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 }
 
 func (s arraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, -LIST)
+	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
 	if ctx.HasError() {
 		return
 	}
@@ -175,10 +176,10 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 	if elemTypeInfo != nil {
 		internalTypeID = elemTypeInfo.TypeID
 	}
-	if IsNamespacedType(TypeId(internalTypeID)) {
+	if elemTypeInfo != nil {
 		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
 	} else {
-		buf.WriteVarUint32Small7(uint32(internalTypeID))
+		buf.WriteUint8(uint8(internalTypeID))
 	}
 
 	// Write elements
@@ -216,7 +217,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 }
 
 func (s *arrayConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	writeArrayRefAndType(ctx, refMode, writeType, value, -LIST)
+	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
 	if ctx.HasError() {
 		return
 	}
@@ -239,12 +240,7 @@ func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.
 		// Read element type info if present
 		if (collectFlag & CollectionIsSameType) != 0 {
 			if (collectFlag & CollectionIsDeclElementType) == 0 {
-				typeID := buf.ReadVarUint32(err)
-				if ctx.HasError() {
-					return
-				}
-				// Read additional metadata for namespaced types
-				ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, err)
+				ctx.TypeResolver().ReadTypeInfo(buf, err)
 			}
 		}
 

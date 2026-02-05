@@ -54,13 +54,13 @@ impl Serializer for NaiveDateTime {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::TIMESTAMP as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::TIMESTAMP)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::TIMESTAMP as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::TIMESTAMP)
     }
 
     #[inline(always)]
@@ -75,7 +75,7 @@ impl Serializer for NaiveDateTime {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::TIMESTAMP as u32);
+        context.writer.write_u8(TypeId::TIMESTAMP as u8);
         Ok(())
     }
 
@@ -108,13 +108,13 @@ impl Serializer for NaiveDate {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::DATE as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::DATE)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::DATE as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::DATE)
     }
 
     #[inline(always)]
@@ -129,7 +129,7 @@ impl Serializer for NaiveDate {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::DATE as u32);
+        context.writer.write_u8(TypeId::DATE as u8);
         Ok(())
     }
 
@@ -176,13 +176,13 @@ impl Serializer for Duration {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::DURATION as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::DURATION)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::DURATION as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::DURATION)
     }
 
     #[inline(always)]
@@ -197,7 +197,7 @@ impl Serializer for Duration {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::DURATION as u32);
+        context.writer.write_u8(TypeId::DURATION as u8);
         Ok(())
     }
 

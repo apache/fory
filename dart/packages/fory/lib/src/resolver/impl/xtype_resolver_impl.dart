@@ -20,7 +20,7 @@
 import 'dart:collection';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/collection/long_long_key.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/exception/registration_exception.dart' show UnregisteredTagException, UnregisteredTypeException;
 import 'package:fory/src/fory_context.dart';
@@ -153,9 +153,19 @@ final class XtypeResolverImpl extends XtypeResolver {
 
   @override
   TypeInfo readTypeInfo(ByteReader br) {
-    int xtypeId = br.readVarUint32Small14();
+    int xtypeId = br.readUint8();
     ObjType xtype = ObjType.fromId(xtypeId)!;
     switch(xtype){
+      case ObjType.ENUM:
+      case ObjType.STRUCT:
+      case ObjType.COMPATIBLE_STRUCT:
+      case ObjType.EXT:
+        int userTypeId = br.readVarUint32();
+        TypeInfo? idTypeInfo = _ctx.userTypeId2TypeInfo[LongLongKey(xtypeId, userTypeId)];
+        if (idTypeInfo != null) {
+          return idTypeInfo;
+        }
+        throw UnregisteredTypeException(xtype);
       case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:
@@ -193,7 +203,7 @@ final class XtypeResolverImpl extends XtypeResolver {
     String qualifiedName = StringUtil.addingTypeNameAndNs(ns, tn);
     TypeInfo? typeInfo = _ctx.tag2TypeInfo[qualifiedName];
     if (typeInfo == null) {
-      // TODO: Does not support non-existent class, foryJava seems to have some support
+      // TODO: Does not support non-existent or unknown class, foryJava seems to have some support
       throw UnregisteredTagException(qualifiedName);
     }
     _tagHash2Info[key] = typeInfo;
@@ -207,8 +217,14 @@ final class XtypeResolverImpl extends XtypeResolver {
     if (typeInfo == null){
       throw UnregisteredTypeException(dartType);
     }
-    bw.writeVarUint32Small7(typeInfo.objType.id);
+    bw.writeUint8(typeInfo.objType.id);
     switch(typeInfo.objType){
+      case ObjType.ENUM:
+      case ObjType.STRUCT:
+      case ObjType.COMPATIBLE_STRUCT:
+      case ObjType.EXT:
+        bw.writeVarUint32(typeInfo.userTypeId);
+        break;
       case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:

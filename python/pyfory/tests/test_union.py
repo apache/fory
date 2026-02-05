@@ -87,7 +87,7 @@ def test_union_with_collections():
 
 def test_union_with_optional():
     """Test Union with Optional (Union[T, None])"""
-    fory = Fory(ref_tracking=True)
+    fory = Fory(ref=True)
 
     # Test with non-None value
     value: Union[int, None] = 42
@@ -185,7 +185,7 @@ def test_union_with_bytes():
 
 def test_union_cross_language():
     """Test Union with cross-language serialization"""
-    fory = Fory(language="xlang")
+    fory = Fory(xlang=True)
 
     # Test with int value
     value_int: Union[int, str] = 42

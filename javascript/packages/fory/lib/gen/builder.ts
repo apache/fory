@@ -292,7 +292,7 @@ class ReferenceResolverBuilder {
   }
 }
 
-class ClassResolverBuilder {
+class TypeResolverBuilder {
   constructor(private holder: string) {
 
   }
@@ -301,8 +301,11 @@ class ClassResolverBuilder {
     return this.holder;
   }
 
-  getSerializerById(id: string | number) {
-    return `${this.holder}.getSerializerById(${id})`;
+  getSerializerById(id: string | number, userTypeId?: string | number) {
+    if (userTypeId === undefined) {
+      return `${this.holder}.getSerializerById(${id})`;
+    }
+    return `${this.holder}.getSerializerById(${id}, ${userTypeId})`;
   }
 
   getSerializerByName(name: string) {
@@ -375,18 +378,18 @@ export class CodecBuilder {
   writer: BinaryWriterBuilder;
   typeMeta: TypeMetaBuilder; // Use the TypeMetaWrapper
   referenceResolver: ReferenceResolverBuilder;
-  classResolver: ClassResolverBuilder;
+  typeResolver: TypeResolverBuilder;
   typeMetaResolver: TypeMetaResolverBuilder;
   metaStringResolver: MetaStringResolverBuilder;
 
   constructor(scope: Scope, public fory: Fory) {
     const br = scope.declareByName("br", "fory.binaryReader");
     const bw = scope.declareByName("bw", "fory.binaryWriter");
-    const cr = scope.declareByName("cr", "fory.classResolver");
+    const cr = scope.declareByName("cr", "fory.typeResolver");
     const rr = scope.declareByName("rr", "fory.referenceResolver");
     this.reader = new BinaryReaderBuilder(br);
     this.writer = new BinaryWriterBuilder(bw);
-    this.classResolver = new ClassResolverBuilder(cr);
+    this.typeResolver = new TypeResolverBuilder(cr);
     this.referenceResolver = new ReferenceResolverBuilder(rr);
     this.typeMeta = new TypeMetaBuilder("fory"); // Initialize the TypeMetaWrapper
     this.typeMetaResolver = new TypeMetaResolverBuilder("fory.typeMetaResolver");

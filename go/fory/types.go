@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-type TypeId = int16
+type TypeId = uint8
 
 const (
 	// UNKNOWN Unknown/polymorphic type marker
@@ -57,85 +57,93 @@ const (
 	VAR_UINT64 = 14
 	// TAGGED_UINT64 a 64-bit unsigned integer which uses fory hybrid encoding
 	TAGGED_UINT64 = 15
+	// FLOAT8 1-byte floating point value
+	FLOAT8 = 16
 	// FLOAT16 2-byte floating point value
-	FLOAT16 = 16
+	FLOAT16 = 17
+	// BFLOAT16 2-byte brain floating point value
+	BFLOAT16 = 18
 	// FLOAT32 4-byte floating point value
-	FLOAT32 = 17
+	FLOAT32 = 19
 	// FLOAT64 8-byte floating point value
-	FLOAT64 = 18
+	FLOAT64 = 20
 	// STRING UTF8 variable-length string as List<Char>
-	STRING = 19
+	STRING = 21
 	// LIST A list of some logical data type
-	LIST = 20
+	LIST = 22
 	// SET an unordered set of unique elements
-	SET = 21
+	SET = 23
 	// MAP Map a repeated struct logical type
-	MAP = 22
+	MAP = 24
 	// ENUM a data type consisting of a set of named values
-	ENUM = 23
+	ENUM = 25
 	// NAMED_ENUM an enum whose value will be serialized as the registered name
-	NAMED_ENUM = 24
+	NAMED_ENUM = 26
 	// STRUCT a morphic(final) type serialized by Fory Struct serializer
-	STRUCT = 25
+	STRUCT = 27
 	// COMPATIBLE_STRUCT a morphic(final) type serialized by Fory compatible Struct serializer
-	COMPATIBLE_STRUCT = 26
+	COMPATIBLE_STRUCT = 28
 	// NAMED_STRUCT a struct whose type mapping will be encoded as a name
-	NAMED_STRUCT = 27
+	NAMED_STRUCT = 29
 	// NAMED_COMPATIBLE_STRUCT a compatible_struct whose type mapping will be encoded as a name
-	NAMED_COMPATIBLE_STRUCT = 28
+	NAMED_COMPATIBLE_STRUCT = 30
 	// EXT a type which will be serialized by a customized serializer
-	EXT = 29
+	EXT = 31
 	// NAMED_EXT an ext type whose type mapping will be encoded as a name
-	NAMED_EXT = 30
+	NAMED_EXT = 32
 	// UNION a union value whose schema identity is not embedded
-	UNION = 31
+	UNION = 33
 	// TYPED_UNION a union value with embedded numeric union type ID
-	TYPED_UNION = 32
+	TYPED_UNION = 34
 	// NAMED_UNION a union value with embedded union type name/TypeDef
-	NAMED_UNION = 33
+	NAMED_UNION = 35
 	// NONE a null value with no data
-	NONE = 34
+	NONE = 36
 	// DURATION Measure of elapsed time in either seconds milliseconds microseconds
-	DURATION = 35
+	DURATION = 37
 	// TIMESTAMP Exact timestamp encoded with seconds(int64) + nanos(uint32) since UNIX epoch
-	TIMESTAMP = 36
+	TIMESTAMP = 38
 	// DATE a naive date without timezone
-	DATE = 37
+	DATE = 39
 	// DECIMAL Precision- and scale-based decimal type
-	DECIMAL = 38
+	DECIMAL = 40
 	// BINARY Variable-length bytes (no guarantee of UTF8-ness)
-	BINARY = 39
+	BINARY = 41
 	// ARRAY a multidimensional array which every sub-array can have different sizes but all have the same type
-	ARRAY = 40
+	ARRAY = 42
 	// BOOL_ARRAY one dimensional bool array
-	BOOL_ARRAY = 41
+	BOOL_ARRAY = 43
 	// INT8_ARRAY one dimensional int8 array
-	INT8_ARRAY = 42
+	INT8_ARRAY = 44
 	// INT16_ARRAY one dimensional int16 array
-	INT16_ARRAY = 43
+	INT16_ARRAY = 45
 	// INT32_ARRAY one dimensional int32 array
-	INT32_ARRAY = 44
+	INT32_ARRAY = 46
 	// INT64_ARRAY one dimensional int64 array
-	INT64_ARRAY = 45
+	INT64_ARRAY = 47
 	// UINT8_ARRAY one dimensional uint8 array
-	UINT8_ARRAY = 46
+	UINT8_ARRAY = 48
 	// UINT16_ARRAY one dimensional uint16 array
-	UINT16_ARRAY = 47
+	UINT16_ARRAY = 49
 	// UINT32_ARRAY one dimensional uint32 array
-	UINT32_ARRAY = 48
+	UINT32_ARRAY = 50
 	// UINT64_ARRAY one dimensional uint64 array
-	UINT64_ARRAY = 49
+	UINT64_ARRAY = 51
+	// FLOAT8_ARRAY one dimensional float8 array
+	FLOAT8_ARRAY = 52
 	// FLOAT16_ARRAY one dimensional float16 array
-	FLOAT16_ARRAY = 50
+	FLOAT16_ARRAY = 53
+	// BFLOAT16_ARRAY one dimensional bfloat16 array
+	BFLOAT16_ARRAY = 54
 	// FLOAT32_ARRAY one dimensional float32 array
-	FLOAT32_ARRAY = 51
+	FLOAT32_ARRAY = 55
 	// FLOAT64_ARRAY one dimensional float64 array
-	FLOAT64_ARRAY = 52
+	FLOAT64_ARRAY = 56
 )
 
 // IsNamespacedType checks whether the given type ID is a namespace type
 func IsNamespacedType(typeID TypeId) bool {
-	switch typeID & 0xFF {
+	switch typeID {
 	case NAMED_EXT, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_UNION:
 		return true
 	default:
@@ -146,8 +154,7 @@ func IsNamespacedType(typeID TypeId) bool {
 // NeedsTypeMetaWrite checks whether a type needs additional type meta written after type ID
 // This includes namespaced types and struct types that need meta share in compatible mode
 func NeedsTypeMetaWrite(typeID TypeId) bool {
-	internalID := typeID & 0xFF
-	switch TypeId(internalID) {
+	switch typeID {
 	case NAMED_EXT, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_UNION, COMPATIBLE_STRUCT, STRUCT:
 		return true
 	default:
@@ -155,7 +162,16 @@ func NeedsTypeMetaWrite(typeID TypeId) bool {
 	}
 }
 
-func isPrimitiveType(typeID int16) bool {
+func isUserTypeRegisteredById(typeID TypeId) bool {
+	switch typeID {
+	case ENUM, STRUCT, COMPATIBLE_STRUCT, EXT, TYPED_UNION:
+		return true
+	default:
+		return false
+	}
+}
+
+func isPrimitiveType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL,
 		INT8,
@@ -172,7 +188,9 @@ func isPrimitiveType(typeID int16) bool {
 		UINT64,
 		VAR_UINT64,
 		TAGGED_UINT64,
+		FLOAT8,
 		FLOAT16,
+		BFLOAT16,
 		FLOAT32,
 		FLOAT64:
 		return true
@@ -187,7 +205,7 @@ func isPrimitiveType(typeID int16) bool {
 func NeedWriteRef(typeID TypeId) bool {
 	switch typeID {
 	case BOOL, INT8, INT16, INT32, INT64, VARINT32, VARINT64, TAGGED_INT64,
-		FLOAT32, FLOAT64, FLOAT16,
+		FLOAT32, FLOAT64, FLOAT16, FLOAT8, BFLOAT16,
 		STRING, TIMESTAMP, DATE, DURATION, NONE:
 		return false
 	default:
@@ -195,23 +213,23 @@ func NeedWriteRef(typeID TypeId) bool {
 	}
 }
 
-func isListType(typeID int16) bool {
+func isListType(typeID TypeId) bool {
 	return typeID == LIST
 }
 
-func isSetType(typeID int16) bool {
+func isSetType(typeID TypeId) bool {
 	return typeID == SET
 }
 
-func isMapType(typeID int16) bool {
+func isMapType(typeID TypeId) bool {
 	return typeID == MAP
 }
 
-func isCollectionType(typeID int16) bool {
+func isCollectionType(typeID TypeId) bool {
 	return typeID == LIST || typeID == SET || typeID == MAP
 }
 
-func isPrimitiveArrayType(typeID int16) bool {
+func isPrimitiveArrayType(typeID TypeId) bool {
 	switch typeID {
 	case BOOL_ARRAY,
 		INT8_ARRAY,
@@ -222,7 +240,9 @@ func isPrimitiveArrayType(typeID int16) bool {
 		UINT16_ARRAY,
 		UINT32_ARRAY,
 		UINT64_ARRAY,
+		FLOAT8_ARRAY,
 		FLOAT16_ARRAY,
+		BFLOAT16_ARRAY,
 		FLOAT32_ARRAY,
 		FLOAT64_ARRAY:
 		return true
@@ -231,13 +251,15 @@ func isPrimitiveArrayType(typeID int16) bool {
 	}
 }
 
-var primitiveTypeSizes = map[int16]int{
+var primitiveTypeSizes = map[TypeId]int{
 	BOOL:          1,
 	INT8:          1,
 	UINT8:         1,
 	INT16:         2,
 	UINT16:        2,
+	FLOAT8:        1,
 	FLOAT16:       2,
+	BFLOAT16:      2,
 	INT32:         4,
 	VARINT32:      4,
 	UINT32:        4,
@@ -261,26 +283,25 @@ const MinInt31 int64 = -0x40000000 // -2^30
 // MaxInt31Signed is MaxInt31 as a signed int64 for TAGGED_INT64 encoding
 const MaxInt31Signed int64 = 0x3FFFFFFF // 2^30 - 1
 
-func getPrimitiveTypeSize(typeID int16) int {
+func getPrimitiveTypeSize(typeID TypeId) int {
 	if sz, ok := primitiveTypeSizes[typeID]; ok {
 		return sz
 	}
 	return -1
 }
 
-func isUserDefinedType(typeID int16) bool {
-	id := int(typeID & 0xff)
-	return id == STRUCT ||
-		id == COMPATIBLE_STRUCT ||
-		id == NAMED_STRUCT ||
-		id == NAMED_COMPATIBLE_STRUCT ||
-		id == EXT ||
-		id == NAMED_EXT ||
-		id == ENUM ||
-		id == NAMED_ENUM ||
-		id == UNION ||
-		id == TYPED_UNION ||
-		id == NAMED_UNION
+func isUserDefinedType(typeID TypeId) bool {
+	return typeID == STRUCT ||
+		typeID == COMPATIBLE_STRUCT ||
+		typeID == NAMED_STRUCT ||
+		typeID == NAMED_COMPATIBLE_STRUCT ||
+		typeID == EXT ||
+		typeID == NAMED_EXT ||
+		typeID == ENUM ||
+		typeID == NAMED_ENUM ||
+		typeID == UNION ||
+		typeID == TYPED_UNION ||
+		typeID == NAMED_UNION
 }
 
 // ============================================================================
@@ -488,7 +509,7 @@ func IsPrimitiveTypeId(typeId TypeId) bool {
 	switch typeId {
 	case BOOL, INT8, INT16, INT32, VARINT32, INT64, VARINT64, TAGGED_INT64,
 		UINT8, UINT16, UINT32, VAR_UINT32, UINT64, VAR_UINT64, TAGGED_UINT64,
-		FLOAT16, FLOAT32, FLOAT64, STRING:
+		FLOAT8, FLOAT16, BFLOAT16, FLOAT32, FLOAT64, STRING:
 		return true
 	default:
 		return false
@@ -728,8 +749,7 @@ func getVarintMaxSizeByDispatchId(dispatchId DispatchId) int {
 
 // getEncodingFromTypeId returns the encoding string ("fixed", "varint", "tagged") from a TypeId.
 func getEncodingFromTypeId(typeId TypeId) string {
-	internalId := typeId & 0xFF
-	switch TypeId(internalId) {
+	switch typeId {
 	case INT32, INT64, UINT32, UINT64:
 		return "fixed"
 	case VARINT32, VARINT64, VAR_UINT32, VAR_UINT64:

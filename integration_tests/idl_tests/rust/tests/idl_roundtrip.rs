@@ -21,19 +21,25 @@ use std::{env, fs};
 
 use chrono::NaiveDate;
 use fory::{ArcWeak, Fory};
-use idl_tests::addressbook::{
+use idl_tests::generated::addressbook::{
     self,
     person::{PhoneNumber, PhoneType},
     AddressBook, Animal, Cat, Dog, Person,
 };
-use idl_tests::complex_pb::{self, PrimitiveTypes};
-use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
-use idl_tests::collection::{self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections, NumericCollectionsArray};
-use idl_tests::monster::{self, Color, Monster, Vec3};
-use idl_tests::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
-use idl_tests::any_example::{self, AnyHolder, AnyInner, AnyUnion};
-use idl_tests::root;
-use idl_tests::{graph, tree};
+use idl_tests::generated::any_example::{self, AnyHolder, AnyInner, AnyUnion};
+use idl_tests::generated::auto_id;
+use idl_tests::generated::collection::{
+    self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections,
+    NumericCollectionsArray,
+};
+use idl_tests::generated::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
+use idl_tests::generated::complex_pb::{self, PrimitiveTypes};
+use idl_tests::generated::evolving1;
+use idl_tests::generated::evolving2;
+use idl_tests::generated::monster::{self, Color, Monster, Vec3};
+use idl_tests::generated::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
+use idl_tests::generated::root;
+use idl_tests::generated::{graph, tree};
 
 fn build_address_book() -> AddressBook {
     let mobile = PhoneNumber {
@@ -103,6 +109,21 @@ fn build_root_holder() -> root::MultiHolder {
         root: Some(root_node),
         owner: Some(owner),
     }
+}
+
+fn build_auto_id_envelope() -> auto_id::Envelope {
+    let payload = auto_id::envelope::Payload { value: 42 };
+    let detail = auto_id::envelope::Detail::Payload(payload.clone());
+    auto_id::Envelope {
+        id: "env-1".to_string(),
+        payload: Some(payload),
+        detail,
+        status: auto_id::Status::Ok,
+    }
+}
+
+fn build_auto_id_wrapper(envelope: auto_id::Envelope) -> auto_id::Wrapper {
+    auto_id::Wrapper::Envelope(envelope)
 }
 
 #[test]
@@ -484,10 +505,62 @@ fn test_address_book_roundtrip_schema_consistent() {
     run_address_book_roundtrip(false);
 }
 
+#[test]
+fn test_evolving_roundtrip() {
+    let mut fory_v1 = Fory::default().xlang(true).compatible(true);
+    evolving1::register_types(&mut fory_v1).expect("register evolving1 types");
+    let mut fory_v2 = Fory::default().xlang(true).compatible(true);
+    evolving2::register_types(&mut fory_v2).expect("register evolving2 types");
+
+    let msg_v1 = evolving1::EvolvingMessage {
+        id: 1,
+        name: "Alice".to_string(),
+        city: "NYC".to_string(),
+    };
+    let bytes = fory_v1.serialize(&msg_v1).expect("serialize evolving v1");
+    let mut msg_v2: evolving2::EvolvingMessage = fory_v2
+        .deserialize(&bytes)
+        .expect("deserialize evolving v2");
+    assert_eq!(msg_v1.id, msg_v2.id);
+    assert_eq!(msg_v1.name, msg_v2.name);
+    assert_eq!(msg_v1.city, msg_v2.city);
+
+    msg_v2.email = Some("alice@example.com".to_string());
+    let round_bytes = fory_v2.serialize(&msg_v2).expect("serialize evolving v2");
+    let msg_v1_round: evolving1::EvolvingMessage = fory_v1
+        .deserialize(&round_bytes)
+        .expect("deserialize evolving v1");
+    assert_eq!(msg_v1, msg_v1_round);
+
+    let fixed_v1 = evolving1::FixedMessage {
+        id: 10,
+        name: "Bob".to_string(),
+        score: 90,
+        note: "note".to_string(),
+    };
+    let fixed_bytes = fory_v1
+        .serialize(&fixed_v1)
+        .expect("serialize fixed v1");
+    let fixed_v2 = fory_v2.deserialize::<evolving2::FixedMessage>(&fixed_bytes);
+    match fixed_v2 {
+        Err(_) => return,
+        Ok(value) => {
+            let round = fory_v2.serialize(&value);
+            if let Ok(round_bytes) = round {
+                let fixed_round = fory_v1.deserialize::<evolving1::FixedMessage>(&round_bytes);
+                if let Ok(fixed_round) = fixed_round {
+                    assert_ne!(fixed_round, fixed_v1);
+                }
+            }
+        }
+    }
+}
+
 fn run_address_book_roundtrip(compatible: bool) {
     let mut fory = Fory::default().xlang(true).compatible(compatible);
     complex_pb::register_types(&mut fory).expect("register complex pb types");
     addressbook::register_types(&mut fory).expect("register types");
+    auto_id::register_types(&mut fory).expect("register auto_id types");
     monster::register_types(&mut fory).expect("register monster types");
     complex_fbs::register_types(&mut fory).expect("register flatbuffers types");
     collection::register_types(&mut fory).expect("register collection types");
@@ -500,6 +573,20 @@ fn run_address_book_roundtrip(compatible: bool) {
 
     assert_eq!(book, roundtrip);
 
+    let auto_env = build_auto_id_envelope();
+    let auto_bytes = fory.serialize(&auto_env).expect("serialize auto_id");
+    let auto_roundtrip: auto_id::Envelope =
+        fory.deserialize(&auto_bytes).expect("deserialize auto_id");
+    assert_eq!(auto_env, auto_roundtrip);
+
+    let auto_wrapper = build_auto_id_wrapper(auto_env.clone());
+    let wrapper_bytes = fory
+        .serialize(&auto_wrapper)
+        .expect("serialize auto_id wrapper");
+    let wrapper_roundtrip: auto_id::Wrapper =
+        fory.deserialize(&wrapper_bytes).expect("deserialize auto_id wrapper");
+    assert_eq!(auto_wrapper, wrapper_roundtrip);
+
     let data_file = match env::var("DATA_FILE") {
         Ok(path) => path,
         Err(_) => return,
@@ -511,6 +598,16 @@ fn run_address_book_roundtrip(compatible: bool) {
     assert_eq!(book, peer_book);
     let encoded = fory.serialize(&peer_book).expect("serialize peer payload");
     fs::write(data_file, encoded).expect("write data file");
+
+    if let Ok(data_file) = env::var("DATA_FILE_AUTO_ID") {
+        let payload = fs::read(&data_file).expect("read auto_id data file");
+        let peer_env: auto_id::Envelope = fory
+            .deserialize(&payload)
+            .expect("deserialize auto_id peer payload");
+        assert_eq!(auto_env, peer_env);
+        let encoded = fory.serialize(&peer_env).expect("serialize auto_id payload");
+        fs::write(data_file, encoded).expect("write auto_id data file");
+    }
 
     let types = build_primitive_types();
     let bytes = fory.serialize(&types).expect("serialize");

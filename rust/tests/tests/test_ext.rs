@@ -74,7 +74,7 @@ fn test_use() {
         fn fory_type_id_dyn(
             &self,
             type_resolver: &TypeResolver,
-        ) -> Result<u32, fory_core::error::Error> {
+        ) -> Result<fory_core::TypeId, fory_core::error::Error> {
             Self::fory_get_type_id(type_resolver)
         }
 

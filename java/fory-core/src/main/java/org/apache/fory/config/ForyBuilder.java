@@ -59,7 +59,7 @@ public final class ForyBuilder {
 
   String name;
   boolean checkClassVersion = false;
-  Language language = Language.JAVA;
+  boolean xlang = false;
   boolean trackingRef = false;
   boolean copyRef = false;
   boolean stringRefIgnored = true;
@@ -78,7 +78,7 @@ public final class ForyBuilder {
   Boolean metaShareEnabled;
   Boolean scopedMetaShareEnabled;
   boolean codeGenEnabled = true;
-  Boolean deserializeNonexistentClass;
+  Boolean deserializeUnknownClass;
   boolean asyncCompilationEnabled = false;
   boolean registerGuavaTypes = true;
   boolean scalaOptimizationEnabled = false;
@@ -93,16 +93,16 @@ public final class ForyBuilder {
   public ForyBuilder() {}
 
   /**
-   * Whether cross-language serialize the object. If you used fory for java only, please set
-   * language to {@link Language#JAVA}, which will have much better performance.
+   * Whether cross-language serialize the object. If you used fory for java only, please keep it in
+   * java mode, which will have much better performance.
    */
   public ForyBuilder withLanguage(Language language) {
-    this.language = language;
+    this.xlang = language == Language.XLANG;
     return this;
   }
 
   public ForyBuilder withXlang(boolean xlang) {
-    this.language = xlang ? Language.XLANG : Language.JAVA;
+    this.xlang = xlang;
     return this;
   }
 
@@ -132,9 +132,12 @@ public final class ForyBuilder {
   }
 
   /** ignore Enum Deserialize array out of bounds. */
-  public ForyBuilder deserializeNonexistentEnumValueAsNull(
-      boolean deserializeNonexistentEnumValueAsNull) {
-    this.unknownEnumValueStrategy = UnknownEnumValueStrategy.RETURN_NULL;
+  public ForyBuilder deserializeUnknownEnumValueAsNull(boolean deserializeUnknownEnumValueAsNull) {
+    if (deserializeUnknownEnumValueAsNull) {
+      this.unknownEnumValueStrategy = UnknownEnumValueStrategy.RETURN_NULL;
+    } else {
+      this.unknownEnumValueStrategy = UnknownEnumValueStrategy.NOT_ALLOWED;
+    }
     return this;
   }
 
@@ -268,9 +271,7 @@ public final class ForyBuilder {
    * class won't evolve.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
-    if (language == Language.XLANG
-        && compatibleMode == CompatibleMode.SCHEMA_CONSISTENT
-        && !checkClassVersion) {
+    if (xlang && compatibleMode == CompatibleMode.SCHEMA_CONSISTENT && !checkClassVersion) {
       throw new IllegalArgumentException(
           "XLANG Schema consistent mode must enable class version check");
     }
@@ -352,10 +353,10 @@ public final class ForyBuilder {
   /**
    * Whether deserialize/skip data of un-existed class.
    *
-   * @see Config#deserializeNonexistentClass()
+   * @see Config#deserializeUnknownClass()
    */
-  public ForyBuilder withDeserializeNonexistentClass(boolean deserializeNonexistentClass) {
-    this.deserializeNonexistentClass = deserializeNonexistentClass;
+  public ForyBuilder withDeserializeUnknownClass(boolean deserializeUnknownClass) {
+    this.deserializeUnknownClass = deserializeUnknownClass;
     return this;
   }
 
@@ -430,7 +431,7 @@ public final class ForyBuilder {
         classLoader = Fory.class.getClassLoader();
       }
     }
-    if (language != Language.JAVA) {
+    if (xlang) {
       stringRefIgnored = true;
       longEncoding = LongEncoding.VARINT;
       compressInt = true;
@@ -451,12 +452,12 @@ public final class ForyBuilder {
           Serializer.class);
     }
     if (writeNumUtf16BytesForUtf8Encoding == null) {
-      writeNumUtf16BytesForUtf8Encoding = language == Language.JAVA;
+      writeNumUtf16BytesForUtf8Encoding = !xlang;
     }
     if (compatibleMode == CompatibleMode.COMPATIBLE) {
       checkClassVersion = false;
-      if (deserializeNonexistentClass == null) {
-        deserializeNonexistentClass = true;
+      if (deserializeUnknownClass == null) {
+        deserializeUnknownClass = true;
       }
       if (scopedMetaShareEnabled == null) {
         if (metaShareEnabled == null) {
@@ -471,8 +472,8 @@ public final class ForyBuilder {
         }
       }
     } else {
-      if (deserializeNonexistentClass == null) {
-        deserializeNonexistentClass = false;
+      if (deserializeUnknownClass == null) {
+        deserializeUnknownClass = false;
       }
       if (scopedMetaShareEnabled != null && scopedMetaShareEnabled) {
         LOG.warn("Scoped meta share is for CompatibleMode only, disable it for {}", compatibleMode);
@@ -481,7 +482,7 @@ public final class ForyBuilder {
       if (metaShareEnabled == null) {
         metaShareEnabled = false;
       }
-      if (language != Language.JAVA) {
+      if (xlang) {
         checkClassVersion = true;
       }
     }
@@ -500,7 +501,7 @@ public final class ForyBuilder {
 
   /**
    * Create Fory and print exception when failed. Many application will create fory as a static
-   * variable, Fory creation exception will be swallowed by {@link NoClassDefFoundError}. We print
+   * variable, Fory creation exception will be swallowed by {@link NoTypeDefFoundError}. We print
    * exception explicitly for better debugging.
    */
   private static Fory newFory(ForyBuilder builder, ClassLoader classLoader) {
