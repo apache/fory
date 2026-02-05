@@ -84,9 +84,13 @@ func readUTF16LE(buf *ByteBuffer, byteCount int, err *Error) string {
 	data := buf.ReadBinary(byteCount, err)
 
 	// Reconstruct UTF-16 code units
+	// Note: byteCount should always be even for valid UTF-16, but handle odd counts
+	// gracefully to avoid index out of range panics from malformed data.
 	charCount := byteCount / 2
 	u16s := make([]uint16, charCount)
-	for i := 0; i < byteCount; i += 2 {
+	// Only iterate up to the last complete pair (round down to even boundary)
+	evenByteCount := byteCount &^ 1
+	for i := 0; i < evenByteCount; i += 2 {
 		u16s[i/2] = uint16(data[i]) | uint16(data[i+1])<<8
 	}
 
