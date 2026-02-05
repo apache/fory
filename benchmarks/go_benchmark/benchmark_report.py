@@ -117,6 +117,41 @@ def parse_benchmark_json(filepath):
     return final_results
 
 
+def parse_serialized_sizes(text):
+    sizes = {}
+    current = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("="):
+            continue
+        if line.endswith(":") and not line.startswith(("Fory:", "Protobuf:", "Msgpack:")):
+            current = line.rstrip(":")
+            sizes[current] = {}
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^(Fory|Protobuf|Msgpack):\s+(\d+)\s+bytes$", line)
+        if match:
+            serializer = match.group(1).lower()
+            size = int(match.group(2))
+            sizes[current][serializer] = size
+    return sizes
+
+
+def load_serialized_sizes(output_dir):
+    size_files = [
+        Path(output_dir) / "serialized_sizes.txt",
+        Path(output_dir) / "benchmark_results.txt",
+    ]
+    for path in size_files:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if "Serialized Sizes (bytes):" in text:
+            return parse_serialized_sizes(text)
+    return {}
+
+
 def generate_plots(results, output_dir):
     """Generate comparison plots for each data type."""
     if not HAS_MATPLOTLIB:
@@ -345,6 +380,38 @@ def generate_markdown_report(results, output_dir):
             )
 
     report.append("")
+
+    # Serialized size section
+    sizes = load_serialized_sizes(output_dir)
+    report.append("### Serialized Data Sizes (bytes)\n")
+    if sizes:
+        report.append("| Data Type | Fory | Protobuf | Msgpack |")
+        report.append("|-----------|------|----------|---------|")
+        name_map = {
+            "NumericStruct": "Struct",
+            "Sample": "Sample",
+            "MediaContent": "MediaContent",
+            "StructList": "StructList",
+            "SampleList": "SampleList",
+            "MediaContentList": "MediaContentList",
+        }
+        ordered = [
+            "NumericStruct",
+            "Sample",
+            "MediaContent",
+            "StructList",
+            "SampleList",
+            "MediaContentList",
+        ]
+        for key in ordered:
+            if key not in sizes:
+                continue
+            entry = sizes[key]
+            report.append(
+                f"| {name_map.get(key, key)} | {entry.get('fory', 'N/A')} | {entry.get('protobuf', 'N/A')} | {entry.get('msgpack', 'N/A')} |"
+            )
+    else:
+        report.append("No serialized size data found.\n")
 
     # Plots section
     if HAS_MATPLOTLIB:
