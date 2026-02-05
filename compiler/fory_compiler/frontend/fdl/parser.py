@@ -587,13 +587,14 @@ class Parser:
         """Parse a field: optional ref repeated Type name = 1 [options];
 
         Supports:
-        - Keyword modifiers: optional ref repeated
+        - Keyword modifiers: optional ref repeated (repeated is an alias for list)
+        - list<T> type syntax for list fields
         - Bracket options: [deprecated=true, ref=true]
         """
         start = self.current()
 
         # Parse modifiers (optional/ref before repeated apply to the collection/field,
-        # optional/ref after repeated apply to elements)
+        # optional/ref after repeated apply to elements).
         optional = False
         ref = False
         ref_options = {}
@@ -617,19 +618,30 @@ class Parser:
                     ref = True
                     ref_options = options
                 continue
-            if self.match(TokenType.REPEATED):
+            if self.check(TokenType.REPEATED):
                 if repeated:
                     raise self.error("Repeated modifier specified more than once")
+                self.advance()
                 repeated = True
                 continue
             break
 
         # Parse type
         field_type = self.parse_type()
+        if not repeated and isinstance(field_type, ListType):
+            element_optional = field_type.element_optional
+            element_ref = field_type.element_ref
+            element_ref_options = field_type.element_ref_options
 
         # Wrap in ListType if repeated
         if repeated:
-            field_type = ListType(field_type, location=self.make_location(start))
+            field_type = ListType(
+                field_type,
+                element_optional=element_optional,
+                element_ref=element_ref,
+                element_ref_options=element_ref_options,
+                location=self.make_location(start),
+            )
 
         # Parse field name
         if self.check(TokenType.IDENT) or self.check(TokenType.TO):
@@ -665,6 +677,10 @@ class Parser:
                 ref_options,
                 element_ref_options,
             )
+            if isinstance(field_type, ListType):
+                field_type.element_optional = element_optional
+                field_type.element_ref = element_ref
+                field_type.element_ref_options = element_ref_options
 
         self.consume(TokenType.SEMI, "Expected ';' after field declaration")
 
@@ -704,6 +720,9 @@ class Parser:
             elif self.check(TokenType.REPEATED):
                 self.advance()
                 option_name = "repeated"
+            elif self.check(TokenType.LIST):
+                self.advance()
+                option_name = "list"
             elif self.check(TokenType.WEAK):
                 self.advance()
                 option_name = "weak"
@@ -871,9 +890,11 @@ class Parser:
         return options
 
     def parse_type(self) -> FieldType:
-        """Parse a type: int32, string, map<K, V>, Parent.Child, or a named type."""
+        """Parse a type: int32, string, list<T>, map<K, V>, Parent.Child, or a named type."""
         if self.check(TokenType.MAP):
             return self.parse_map_type()
+        if self.check(TokenType.LIST):
+            return self.parse_list_type()
 
         if not self.check(TokenType.IDENT):
             raise self.error(f"Expected type name, got {self.current().type.name}")
@@ -895,6 +916,35 @@ class Parser:
 
         # It's a named type (reference to message or enum)
         return NamedType(type_name, location=type_location)
+
+    def parse_list_type(self) -> ListType:
+        """Parse a list type: list<ElementType>."""
+        start = self.consume(TokenType.LIST)
+        self.consume(TokenType.LANGLE, "Expected '<' after 'list'")
+
+        element_optional = False
+        element_ref = False
+        element_ref_options = {}
+        while True:
+            if self.match(TokenType.OPTIONAL):
+                element_optional = True
+                continue
+            if self.match(TokenType.REF):
+                element_ref = True
+                element_ref_options = self.parse_ref_options(name="list element")
+                continue
+            break
+
+        element_type = self.parse_type()
+        self.consume(TokenType.RANGLE, "Expected '>' after list element type")
+
+        return ListType(
+            element_type,
+            element_optional=element_optional,
+            element_ref=element_ref,
+            element_ref_options=element_ref_options,
+            location=self.make_location(start),
+        )
 
     def parse_map_type(self) -> MapType:
         """Parse a map type: map<KeyType, ValueType>"""

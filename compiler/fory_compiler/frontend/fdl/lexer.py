@@ -36,6 +36,7 @@ class TokenType(Enum):
     OPTIONAL = auto()
     REF = auto()
     REPEATED = auto()
+    LIST = auto()
     MAP = auto()
     OPTION = auto()
     TRUE = auto()
@@ -103,6 +104,7 @@ class Lexer:
         "optional": TokenType.OPTIONAL,
         "ref": TokenType.REF,
         "repeated": TokenType.REPEATED,
+        "list": TokenType.LIST,
         "map": TokenType.MAP,
         "option": TokenType.OPTION,
         "true": TokenType.TRUE,

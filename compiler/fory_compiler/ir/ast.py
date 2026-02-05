@@ -57,13 +57,23 @@ class NamedType:
 
 @dataclass
 class ListType:
-    """A list/repeated type."""
+    """A list type (list/repeated)."""
 
     element_type: "FieldType"
+    element_optional: bool = False
+    element_ref: bool = False
+    element_ref_options: dict = field(default_factory=dict)
     location: Optional[SourceLocation] = None
 
     def __repr__(self) -> str:
-        return f"ListType({self.element_type})"
+        suffix = ""
+        if self.element_optional:
+            suffix = ", element_optional=True"
+        if self.element_ref:
+            suffix += ", element_ref=True"
+            if self.element_ref_options:
+                suffix += f", element_ref_options={self.element_ref_options}"
+        return f"ListType({self.element_type}{suffix})"
 
 
 @dataclass

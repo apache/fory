@@ -191,6 +191,8 @@ class ProtoTranslator:
         if ref and isinstance(field_type, ListType):
             element_ref = True
             element_ref_options = ref_options
+            field_type.element_ref = True
+            field_type.element_ref_options = ref_options
             ref = False
         if ref and isinstance(field_type, MapType):
             field_type = MapType(
