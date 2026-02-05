@@ -219,7 +219,7 @@ NumericStruct create_numeric_struct() {
   };
 }
 
-constexpr int kListSize = 20;
+constexpr int kListSize = 5;
 
 // ============================================================================
 // Protobuf conversion functions (like Java benchmark's
