@@ -57,7 +57,7 @@ class NamedType:
 
 @dataclass
 class ListType:
-    """A list/repeated type."""
+    """A list type (list/repeated)."""
 
     element_type: "FieldType"
     location: Optional[SourceLocation] = None

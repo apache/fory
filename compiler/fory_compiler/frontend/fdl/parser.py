@@ -554,7 +554,7 @@ class Parser:
             raise self.error("Union cases do not support optional/ref modifiers")
 
         repeated = False
-        if self.check(TokenType.REPEATED):
+        if self.check(TokenType.REPEATED) or self.check(TokenType.LIST):
             self.advance()
             repeated = True
 
@@ -584,10 +584,10 @@ class Parser:
         )
 
     def parse_field(self) -> Field:
-        """Parse a field: optional ref repeated Type name = 1 [options];
+        """Parse a field: optional ref list|repeated Type name = 1 [options];
 
         Supports:
-        - Keyword modifiers: optional ref repeated
+        - Keyword modifiers: optional ref list (repeated)
         - Bracket options: [deprecated=true, ref=true]
         """
         start = self.current()
@@ -617,9 +617,10 @@ class Parser:
                     ref = True
                     ref_options = options
                 continue
-            if self.match(TokenType.REPEATED):
+            if self.check(TokenType.REPEATED) or self.check(TokenType.LIST):
                 if repeated:
-                    raise self.error("Repeated modifier specified more than once")
+                    raise self.error("List modifier specified more than once")
+                self.advance()
                 repeated = True
                 continue
             break
@@ -627,7 +628,7 @@ class Parser:
         # Parse type
         field_type = self.parse_type()
 
-        # Wrap in ListType if repeated
+        # Wrap in ListType if list/repeated
         if repeated:
             field_type = ListType(field_type, location=self.make_location(start))
 
@@ -704,6 +705,9 @@ class Parser:
             elif self.check(TokenType.REPEATED):
                 self.advance()
                 option_name = "repeated"
+            elif self.check(TokenType.LIST):
+                self.advance()
+                option_name = "list"
             elif self.check(TokenType.WEAK):
                 self.advance()
                 option_name = "weak"

@@ -145,7 +145,7 @@ class FDLEmitter:
             parts.append(self._emit_ref_modifier(field.ref_options))
         is_list = isinstance(field.field_type, ListType)
         if is_list:
-            parts.append("repeated")
+            parts.append("list")
             if field.element_optional:
                 parts.append("optional")
             if field.element_ref:

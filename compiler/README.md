@@ -8,7 +8,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 - **Rich type system**: Primitives, enums, messages, lists, maps
 - **Cross-language serialization**: Generated code works seamlessly with Apache Fory
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
-- **Field modifiers**: Optional fields, reference tracking, repeated fields
+- **Field modifiers**: Optional fields, reference tracking, list fields
 - **File imports**: Modular schemas with import support
 
 ## Documentation
@@ -51,7 +51,7 @@ message Dog [id=102] {
 message Cat [id=103] {
     ref Dog friend = 1;
     optional string name = 2;
-    repeated string tags = 3;
+    list string tags = 3;
     map<string, int32> scores = 4;
     int32 lives = 5;
 }
@@ -202,21 +202,21 @@ message Config { ... }  // Registered as "package.Config"
 ### Collection Types
 
 ```fdl
-repeated string tags = 1;           // List<String>
-map<string, int32> scores = 2;      // Map<String, Integer>
+list string tags = 1;           // List<String>
+map<string, int32> scores = 2;  // Map<String, Integer>
 ```
 
 ### Field Modifiers
 
 - **`optional`**: Field can be null/None
 - **`ref`**: Enable reference tracking for shared/circular references
-- **`repeated`**: Field is a list/array
+- **`list`**: Field is a list/array (alias: `repeated`)
 
 ```fdl
 message Example {
     optional string nullable_field = 1;
     ref OtherMessage shared_ref = 2;
-    repeated int32 numbers = 3;
+    list int32 numbers = 3;
 }
 ```
 
