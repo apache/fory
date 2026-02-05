@@ -124,7 +124,9 @@ def parse_serialized_sizes(text):
         line = line.strip()
         if not line or line.startswith("="):
             continue
-        if line.endswith(":") and not line.startswith(("Fory:", "Protobuf:", "Msgpack:")):
+        if line.endswith(":") and not line.startswith(
+            ("Fory:", "Protobuf:", "Msgpack:")
+        ):
             current = line.rstrip(":")
             sizes[current] = {}
             continue
