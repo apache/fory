@@ -228,6 +228,7 @@ export class TypeMeta {
   }
 
   static fromTypeInfo(typeInfo: StructTypeInfo) {
+    const structTypeInfo = typeInfo;
     let fieldInfo = Object.entries(typeInfo.options.props!).map(([fieldName, typeInfo]) => {
       let fieldTypeId = typeInfo.typeId;
       if (fieldTypeId === TypeId.NAMED_ENUM) {
@@ -235,12 +236,13 @@ export class TypeMeta {
       } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
         fieldTypeId = TypeId.UNION;
       }
+      const { trackingRef, nullable } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
       return new FieldInfo(
         fieldName,
         fieldTypeId,
-        -1,
-        false,
-        false,
+        typeInfo.userTypeId,
+        trackingRef,
+        nullable,
         typeInfo.options,
       );
     });

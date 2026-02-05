@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId } from "./type";
+import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinInt32 } from "./type";
 import { Gen } from "./gen";
 import { Type, TypeInfo } from "./typeInfo";
 import Fory from "./fory";
@@ -91,6 +91,8 @@ export default class TypeResolver {
     registerSerializer(Type.int16());
     registerSerializer(Type.int32());
     registerSerializer(Type.varInt32());
+    registerSerializer(Type.varUInt64());
+    registerSerializer(Type.varInt64());
     registerSerializer(Type.int64());
     registerSerializer(Type.sliInt64());
     registerSerializer(Type.float16());
@@ -109,7 +111,10 @@ export default class TypeResolver {
     registerSerializer(Type.float32Array());
     registerSerializer(Type.float64Array());
 
-    this.numberSerializer = this.getSerializerById(TypeId.FLOAT64);
+    this.float64Serializer = this.getSerializerById(TypeId.FLOAT64);
+    this.float32Serializer = this.getSerializerById(TypeId.FLOAT32);
+    this.varint32Serializer = this.getSerializerById(TypeId.VARINT32);
+    this.taggedint64Serializer = this.getSerializerById(TypeId.TAGGED_INT64);
     this.int64Serializer = this.getSerializerById((TypeId.INT64));
     this.boolSerializer = this.getSerializerById((TypeId.BOOL));
     this.dateSerializer = this.getSerializerById((TypeId.TIMESTAMP));
@@ -127,7 +132,10 @@ export default class TypeResolver {
     this.int64ArraySerializer = this.getSerializerById(TypeId.INT64_ARRAY);
   }
 
-  private numberSerializer: null | Serializer = null;
+  private float64Serializer: null | Serializer = null;
+  private float32Serializer: null | Serializer = null;
+  private varint32Serializer: null | Serializer = null;
+  private taggedint64Serializer: null | Serializer = null;
   private int64Serializer: null | Serializer = null;
   private boolSerializer: null | Serializer = null;
   private dateSerializer: null | Serializer = null;
@@ -240,7 +248,20 @@ export default class TypeResolver {
   getSerializerByData(v: any) {
     // internal types
     if (typeof v === "number") {
-      return this.numberSerializer;
+      if (Number.isInteger(v)) {
+        if (v > MaxInt32 || v < MinInt32) {
+          return this.taggedint64Serializer;
+        }
+        return this.varint32Serializer;
+      }
+      if (v > MaxInt32 || v < MinInt32) {
+        return this.float64Serializer;
+      }
+      return this.float32Serializer;
+    }
+
+    if (typeof v === "bigint") {
+      return this.taggedint64Serializer;
     }
 
     if (typeof v === "string") {

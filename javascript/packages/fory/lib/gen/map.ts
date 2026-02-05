@@ -305,7 +305,6 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             ${chunkSize} = 0;
           }
           ${chunkSizeOffset} = ${this.builder.writer.getCursor()}
-          debugger;
           ${this.builder.writer.uint16(
               `((${valueHeader} | (valueIsNull ? ${MapFlags.HAS_NULL} : 0)) << 3) | (${keyHeader} | (keyIsNull ? ${MapFlags.HAS_NULL} : 0))`
             )
@@ -371,7 +370,6 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
-      debugger;
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}
