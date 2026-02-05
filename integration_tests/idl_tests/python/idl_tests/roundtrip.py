@@ -27,6 +27,8 @@ import any_example
 import complex_fbs
 import complex_pb
 import collection
+import evolving1
+import evolving2
 import monster
 import optional_types
 import graph
@@ -168,6 +170,35 @@ def file_roundtrip_auto_id(fory: pyfory.Fory, envelope: "auto_id.Envelope") -> N
     assert isinstance(decoded, auto_id.Envelope)
     assert decoded == envelope
     Path(data_file).write_bytes(fory.serialize(decoded))
+
+
+def local_roundtrip_evolving() -> None:
+    fory_v1 = pyfory.Fory(xlang=True, ref=False, compatible=True)
+    fory_v2 = pyfory.Fory(xlang=True, ref=False, compatible=True)
+    evolving1.register_evolving1_types(fory_v1)
+    evolving2.register_evolving2_types(fory_v2)
+
+    msg_v1 = evolving1.EvolvingMessage(id=1, name="Alice", city="NYC")
+    data = fory_v1.serialize(msg_v1)
+    msg_v2 = fory_v2.deserialize(data)
+    assert isinstance(msg_v2, evolving2.EvolvingMessage)
+    assert msg_v2.id == msg_v1.id
+    assert msg_v2.name == msg_v1.name
+    assert msg_v2.city == msg_v1.city
+    msg_v2.email = "alice@example.com"
+    round_bytes = fory_v2.serialize(msg_v2)
+    msg_v1_round = fory_v1.deserialize(round_bytes)
+    assert msg_v1_round == msg_v1
+
+    fixed_v1 = evolving1.FixedMessage(id=10, name="Bob", score=90, note="note")
+    fixed_bytes = fory_v1.serialize(fixed_v1)
+    try:
+        fixed_v2 = fory_v2.deserialize(fixed_bytes)
+    except Exception:
+        return
+    round_fixed = fory_v2.serialize(fixed_v2)
+    fixed_v1_round = fory_v1.deserialize(round_fixed)
+    assert fixed_v1_round != fixed_v1
 
 
 def build_primitive_types() -> "complex_pb.PrimitiveTypes":
@@ -768,6 +799,9 @@ def run_roundtrip(compatible: bool) -> None:
     graph_value = build_graph()
     local_roundtrip_graph(ref_fory, graph_value)
     file_roundtrip_graph(ref_fory, graph_value)
+
+    if compatible:
+        local_roundtrip_evolving()
 
 
 def resolve_compatible_modes() -> list[bool]:

@@ -60,8 +60,9 @@ type FieldMeta struct {
 	FixedSize int // 0 if not fixed-size, else 1/2/4/8
 
 	// Pre-computed flags for serialization (computed at init time)
-	WriteType   bool // whether to write type info (true for struct fields in compatible mode)
-	HasGenerics bool // whether element types are known from TypeDef (for container fields)
+	WriteType      bool // whether to write type info (true for struct fields in compatible mode)
+	CachedTypeInfo *TypeInfo
+	HasGenerics    bool // whether element types are known from TypeDef (for container fields)
 
 	// Tag-based configuration (from fory struct tags)
 	TagID          int  // -1 = use field name, >=0 = use tag ID

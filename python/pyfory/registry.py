@@ -29,6 +29,7 @@ from enum import Enum
 
 from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.error import TypeUnregisteredError
+from pyfory.field import extract_object_meta
 
 from pyfory.serializer import (
     Serializer,
@@ -471,6 +472,10 @@ class TypeResolver:
         serializer=None,
         internal=False,
     ):
+        object_meta = extract_object_meta(cls)
+        evolving = True
+        if object_meta is not None:
+            evolving = object_meta.evolving
         if serializer is None:
             if issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
@@ -482,7 +487,7 @@ class TypeResolver:
                     type_id = TypeId.ENUM
             else:
                 serializer = None
-                if self.meta_share:
+                if self.meta_share and evolving:
                     if type_id is None:
                         type_id = TypeId.NAMED_COMPATIBLE_STRUCT
                         user_type_id = NO_USER_TYPE_ID

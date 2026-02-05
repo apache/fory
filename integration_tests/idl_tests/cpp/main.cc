@@ -36,6 +36,8 @@
 #include "generated/collection.h"
 #include "generated/complex_fbs.h"
 #include "generated/complex_pb.h"
+#include "generated/evolving1.h"
+#include "generated/evolving2.h"
 #include "generated/graph.h"
 #include "generated/monster.h"
 #include "generated/optional_types.h"
@@ -159,6 +161,70 @@ fory::Result<void, fory::Error> ValidateGraph(const graph::Graph &graph_value) {
   return fory::Result<void, fory::Error>();
 }
 
+fory::Result<void, fory::Error> RunEvolvingRoundTrip() {
+  auto fory_v1 = fory::serialization::Fory::builder()
+                     .xlang(true)
+                     .compatible(true)
+                     .check_struct_version(false)
+                     .track_ref(false)
+                     .build();
+  auto fory_v2 = fory::serialization::Fory::builder()
+                     .xlang(true)
+                     .compatible(true)
+                     .check_struct_version(false)
+                     .track_ref(false)
+                     .build();
+  evolving1::register_types(fory_v1);
+  evolving2::register_types(fory_v2);
+
+  evolving1::EvolvingMessage msg_v1;
+  msg_v1.set_id(1);
+  msg_v1.set_name("Alice");
+  msg_v1.set_city("NYC");
+
+  FORY_TRY(bytes, fory_v1.serialize(msg_v1));
+  FORY_TRY(decoded, fory_v2.deserialize<evolving2::EvolvingMessage>(bytes));
+  if (decoded.id() != msg_v1.id() || decoded.name() != msg_v1.name() ||
+      decoded.city() != msg_v1.city()) {
+    return fory::Unexpected(fory::Error::invalid("evolving message mismatch"));
+  }
+  decoded.set_email("alice@example.com");
+
+  FORY_TRY(round_bytes, fory_v2.serialize(decoded));
+  FORY_TRY(round_trip,
+           fory_v1.deserialize<evolving1::EvolvingMessage>(round_bytes));
+  if (!(round_trip == msg_v1)) {
+    return fory::Unexpected(
+        fory::Error::invalid("evolving roundtrip mismatch"));
+  }
+
+  evolving1::FixedMessage fixed_v1;
+  fixed_v1.set_id(10);
+  fixed_v1.set_name("Bob");
+  fixed_v1.set_score(90);
+  fixed_v1.set_note("note");
+
+  FORY_TRY(fixed_bytes, fory_v1.serialize(fixed_v1));
+  auto fixed_v2 = fory_v2.deserialize<evolving2::FixedMessage>(fixed_bytes);
+  if (!fixed_v2.ok()) {
+    return fory::Result<void, fory::Error>();
+  }
+  auto fixed_round = fory_v2.serialize(fixed_v2.value());
+  if (!fixed_round.ok()) {
+    return fory::Result<void, fory::Error>();
+  }
+  auto fixed_back =
+      fory_v1.deserialize<evolving1::FixedMessage>(fixed_round.value());
+  if (!fixed_back.ok()) {
+    return fory::Result<void, fory::Error>();
+  }
+  if (fixed_back.value() == fixed_v1) {
+    return fory::Unexpected(
+        fory::Error::invalid("fixed message unexpectedly compatible"));
+  }
+  return fory::Result<void, fory::Error>();
+}
+
 using StringMap = std::map<std::string, std::string>;
 
 fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
@@ -177,6 +243,10 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   collection::register_types(fory);
   optional_types::register_types(fory);
   any_example::register_types(fory);
+
+  if (compatible) {
+    FORY_RETURN_IF_ERROR(RunEvolvingRoundTrip());
+  }
 
   FORY_RETURN_IF_ERROR(
       fory::serialization::register_any_type<bool>(fory.type_resolver()));

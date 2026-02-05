@@ -683,7 +683,7 @@ class GoGenerator(BaseGenerator):
                     return "fory.NAMED_UNION"
                 return "fory.UNION"
             if isinstance(type_def, Message):
-                evolving = bool(type_def.options.get("evolving"))
+                evolving = self.get_effective_evolving(type_def)
                 if type_def.type_id is None:
                     if evolving:
                         return "fory.NAMED_COMPATIBLE_STRUCT"
@@ -761,6 +761,11 @@ class GoGenerator(BaseGenerator):
 
         lines.append("}")
         lines.append("")
+        if not self.get_effective_evolving(message):
+            lines.append(f"func (*{type_name}) ForyEvolving() bool {{")
+            lines.append("\treturn false")
+            lines.append("}")
+            lines.append("")
         lines.append(f"func (m *{type_name}) ToBytes() ([]byte, error) {{")
         lines.append("\treturn getFory().Serialize(m)")
         lines.append("}")

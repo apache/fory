@@ -373,6 +373,52 @@ impl FieldInfo {
     }
 }
 
+const FNV_OFFSET_BASIS: u64 = 14695981039346656037;
+const FNV_PRIME: u64 = 1099511628211;
+
+#[inline(always)]
+fn fnv1a_hash_bytes(mut hash: u64, bytes: &[u8]) -> u64 {
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+#[inline(always)]
+fn fnv1a_hash_u8(hash: u64, value: u8) -> u64 {
+    fnv1a_hash_bytes(hash, &[value])
+}
+
+#[inline(always)]
+fn fnv1a_hash_u32(hash: u64, value: u32) -> u64 {
+    fnv1a_hash_bytes(hash, &value.to_le_bytes())
+}
+
+#[inline(always)]
+fn hash_field_type(mut hash: u64, field_type: &FieldType) -> u64 {
+    let type_id = normalize_type_id_for_eq(field_type.type_id);
+    hash = fnv1a_hash_u32(hash, type_id);
+    hash = fnv1a_hash_u32(hash, field_type.user_type_id);
+    hash = fnv1a_hash_u8(hash, field_type.nullable as u8);
+    hash = fnv1a_hash_u8(hash, field_type.track_ref as u8);
+    hash = fnv1a_hash_u32(hash, field_type.generics.len() as u32);
+    for generic in &field_type.generics {
+        hash = hash_field_type(hash, generic);
+    }
+    hash
+}
+
+#[inline(always)]
+fn compute_schema_hash(field_infos: &[FieldInfo]) -> i64 {
+    let mut hash = fnv1a_hash_u32(FNV_OFFSET_BASIS, field_infos.len() as u32);
+    for field in field_infos {
+        hash = fnv1a_hash_bytes(hash, field.field_name.as_bytes());
+        hash = hash_field_type(hash, &field.field_type);
+    }
+    hash as i64
+}
+
 /// Sorts field infos according to the provided sorted field names and assigns field IDs.
 ///
 /// This function takes a vector of field infos and a slice of sorted field names,
@@ -436,6 +482,7 @@ impl PartialEq for FieldType {
 pub struct TypeMeta {
     // assigned valid value and used, only during deserializing
     hash: i64,
+    schema_hash: i64,
     type_id: u32,
     user_type_id: u32,
     namespace: Rc<MetaString>,
@@ -454,8 +501,10 @@ impl TypeMeta {
         register_by_name: bool,
         field_infos: Vec<FieldInfo>,
     ) -> Result<TypeMeta, Error> {
+        let schema_hash = compute_schema_hash(&field_infos);
         let mut meta = TypeMeta {
             hash: 0,
+            schema_hash,
             type_id,
             user_type_id,
             namespace: Rc::from(namespace),
@@ -491,6 +540,11 @@ impl TypeMeta {
     }
 
     #[inline(always)]
+    pub fn get_schema_hash(&self) -> i64 {
+        self.schema_hash
+    }
+
+    #[inline(always)]
     pub fn get_type_name(&self) -> Rc<MetaString> {
         self.type_name.clone()
     }
@@ -509,6 +563,7 @@ impl TypeMeta {
     pub fn empty() -> Result<TypeMeta, Error> {
         Ok(TypeMeta {
             hash: 0,
+            schema_hash: 0,
             type_id: 0,
             user_type_id: NO_USER_TYPE_ID,
             namespace: Rc::from(MetaString::get_empty().clone()),
@@ -524,6 +579,7 @@ impl TypeMeta {
     pub fn deep_clone(&self) -> TypeMeta {
         TypeMeta {
             hash: self.hash,
+            schema_hash: self.schema_hash,
             type_id: self.type_id,
             user_type_id: self.user_type_id,
             namespace: Rc::new((*self.namespace).clone()),

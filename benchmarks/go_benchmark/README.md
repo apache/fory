@@ -10,11 +10,14 @@ This directory contains benchmarks comparing [Apache Fory](https://github.com/ap
 
 ## Data Types Benchmarked
 
-| Data Type     | Description                                      |
-| ------------- | ------------------------------------------------ |
-| NumericStruct | Simple struct with 8 int32 fields                |
-| Sample        | Complex struct with primitives and 7 array types |
-| MediaContent  | Nested objects with strings, enums, and lists    |
+| Data Type        | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| NumericStruct    | Simple struct with 8 int32 fields                |
+| Sample           | Complex struct with primitives and 7 array types |
+| MediaContent     | Nested objects with strings, enums, and lists    |
+| StructList       | List of NumericStruct (20 elements)              |
+| SampleList       | List of Sample (20 elements)                     |
+| MediaContentList | List of MediaContent (20 elements)               |
 
 The benchmark data matches the C++ benchmark for cross-language comparison.
 
@@ -47,6 +50,9 @@ apt-get install protobuf-compiler
 ./run.sh --data struct
 ./run.sh --data sample
 ./run.sh --data mediacontent
+./run.sh --data structlist
+./run.sh --data samplelist
+./run.sh --data mediacontentlist
 
 # Run specific serializer
 ./run.sh --serializer fory
@@ -96,7 +102,7 @@ Example results on Apple M1 Pro:
 | Mediacontent | Serialize   | 4.93M        | 2.30M            | 1.17M           | 2.14x      | 4.21x      |
 | Mediacontent | Deserialize | 2.74M        | 1.87M            | 751K            | 1.46x      | 3.65x      |
 
-_Note: Results vary by hardware. Run benchmarks on your own system for accurate comparisons._
+_Note: Results vary by hardware. Run benchmarks on your own system for accurate comparisons. List benchmarks are included in the generated report._
 
 ## Benchmark Methodology
 

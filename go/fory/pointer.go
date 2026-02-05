@@ -94,6 +94,47 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 	s.WriteData(ctx, value)
 }
 
+func (s *ptrToValueSerializer) writeWithTypeInfo(ctx *WriteContext, refMode RefMode, value reflect.Value, typeInfo *TypeInfo) {
+	switch refMode {
+	case RefModeTracking:
+		if value.IsNil() {
+			ctx.Buffer().WriteInt8(NullFlag)
+			return
+		}
+		refWritten, err := ctx.RefResolver().WriteRefOrNull(ctx.Buffer(), value)
+		if err != nil {
+			ctx.SetError(FromError(err))
+			return
+		}
+		if refWritten {
+			return
+		}
+	case RefModeNullOnly:
+		if value.IsNil() {
+			ctx.Buffer().WriteInt8(NullFlag)
+			return
+		}
+		ctx.Buffer().WriteInt8(NotNullValueFlag)
+	case RefModeNone:
+		if value.IsNil() {
+			zeroValue := reflect.New(value.Type().Elem()).Elem()
+			if typeInfo == nil {
+				s.Write(ctx, refMode, true, false, value)
+				return
+			}
+			ctx.TypeResolver().WriteTypeInfo(ctx.Buffer(), typeInfo, ctx.Err())
+			s.valueSerializer.WriteData(ctx, zeroValue)
+			return
+		}
+	}
+	if typeInfo == nil {
+		s.Write(ctx, refMode, true, false, value)
+		return
+	}
+	ctx.TypeResolver().WriteTypeInfo(ctx.Buffer(), typeInfo, ctx.Err())
+	s.WriteData(ctx, value)
+}
+
 func (s *ptrToValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Check if value is already allocated (for circular reference handling)
 	var newVal reflect.Value

@@ -74,6 +74,11 @@ message ForyFileOptions {
   // namespace and type name. When false, types without explicit IDs are
   // registered by namespace and name.
   optional bool enable_auto_type_id = 3;
+
+  // Enable schema evolution for all messages in this file by default.
+  // When false, messages default to STRUCT/NAMED_STRUCT unless overridden.
+  // Default: true.
+  optional bool evolving = 4;
 }
 
 extend google.protobuf.FileOptions { optional ForyFileOptions fory = 50001; }

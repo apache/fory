@@ -218,29 +218,25 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_string_serializer", () => {
-    const fory = new Fory();
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
     // Deserialize strings from Java
     const deserializedStrings = [];
     let cursor = 0;
     for (let i = 0; i < 7; i++) { // 7 test strings
-      const deserializedString = fory.deserialize(content.slice(cursor));
+      const deserializedString = fory.deserialize(content.subarray(cursor));
       cursor += fory.binaryReader.getCursor();
       deserializedStrings.push(deserializedString);
     }
-
-    const writer = new BinaryWriter();
-    writer.reserve(1024);
-
+    const bfs = []
     // Serialize each deserialized string back
     for (const testString of deserializedStrings) {
       const serializedData = fory.serialize(testString);
-      writer.buffer(serializedData);
+      bfs.push(serializedData);
     }
 
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
   test("test_cross_language_serializer", () => {
     if (Boolean("1")) { return; }
@@ -306,10 +302,12 @@ describe("bool", () => {
 
     // Define SimpleStruct class with field type registration
     @Type.struct(103, {
+      f1: Type.map(Type.varInt32(), Type.float64()),
       f2: Type.varInt32(),
       f3: Type.struct(102),
       f4: Type.string(),
       f5: Type.enum(101, Color),
+      f6: Type.array(Type.string()),
       f7: Type.varInt32(),
       f8: Type.varInt32(),
       last: Type.varInt32()
@@ -319,6 +317,8 @@ describe("bool", () => {
       f3: Item | null = null;
       f4: string = "";
       f5: number = 0; // Color enum value
+      f1 = new Map([[1, 1.0], [2, 2.0]])
+      f6 = ["f6"]
       f7: number = 0;
       f8: number = 0;
       last: number = 0;
@@ -334,15 +334,13 @@ describe("bool", () => {
     // Serialize the deserialized object back
     const serializedData = fory.serialize(deserializedObj);
 
-    const deserializedObj2 = fory.deserialize(serializedData);
-
-    console.log('===')
-    // writeToFile(serializedData as Buffer);
+    writeToFile(serializedData as Buffer);
   });
   test("test_named_simple_struct", () => {
-    if (Boolean("1")) { return; }
     // Same as test_simple_struct but with named registration
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     // Define Color enum
     const Color = {
@@ -364,15 +362,15 @@ describe("bool", () => {
 
     // Define SimpleStruct class with field type registration
     @Type.struct({ namespace: "demo", typeName: "simple_struct" }, {
-      f1: Type.map(Type.int32(), Type.float64()),
-      f2: Type.int32(),
+      f1: Type.map(Type.varInt32(), Type.float64()),
+      f2: Type.varInt32(),
       f3: Type.struct({ namespace: "demo", typeName: "item" }),
       f4: Type.string(),
       f5: Type.enum({ namespace: 'demo', typeName: "color" }, Color),
       f6: Type.array(Type.string()),
-      f7: Type.int32(),
-      f8: Type.int32(),
-      last: Type.int32()
+      f7: Type.varInt32(),
+      f8: Type.varInt32(),
+      last: Type.varInt32()
     })
     class SimpleStruct {
       f1: Map<number, number> = new Map();
@@ -387,20 +385,17 @@ describe("bool", () => {
     }
     fory.registerSerializer(SimpleStruct);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
     // Deserialize the object from Java
-    const deserializedObj = fory.deserialize(reader.buffer(reader.varUInt32()));
-
+    const deserializedObj = fory.deserialize(content);
     // Serialize the deserialized object back
     const serializedData = fory.serialize(deserializedObj);
     writeToFile(serializedData as Buffer);
   });
 
   test("test_list", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(102, {
       name: Type.string()
@@ -410,26 +405,24 @@ describe("bool", () => {
     }
     fory.registerSerializer(Item);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize all lists from Java
     const deserializedLists = [];
+    let cursor = 0;
     for (let i = 0; i < 4; i++) { // 4 lists
-      const deserializedList = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedList = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedLists.push(deserializedList);
     }
 
-    const writer = new BinaryWriter();
-    writer.reserve(512);
+    const bfs = [];
 
     // Serialize each deserialized list back
     for (const list of deserializedLists) {
       const serializedData = fory.serialize(list);
-      writer.buffer(serializedData);
+      bfs.push(serializedData)
     }
-
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
 
   test("test_map", () => {
@@ -468,16 +461,17 @@ describe("bool", () => {
   });
 
   test("test_integer", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory();
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
 
     @Type.struct(101, {
-      f1: Type.int32(),
-      f2: Type.int32(),
-      f3: Type.int32(),
-      f4: Type.int32(),
-      f5: Type.int32(),
-      f6: Type.int32()
+      f1: Type.varInt32(),
+      f2: Type.varInt32(),
+      f3: Type.varInt32(),
+      f4: Type.varInt32(),
+      f5: Type.varInt32(),
+      f6: Type.varInt32()
     })
     class Item1 {
       f1: number = 0;
@@ -490,26 +484,24 @@ describe("bool", () => {
 
     fory.registerSerializer(Item1);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize item and individual integers from Java
     const deserializedData = [];
+    let cursor = 0;
     for (let i = 0; i < 7; i++) { // 1 item + 6 integers
-      const deserializedItem = fory.deserialize(reader.buffer(reader.varUInt32()));
+      const deserializedItem = fory.deserialize(content.subarray(cursor));
+      cursor += fory.binaryReader.getCursor();
       deserializedData.push(deserializedItem);
     }
 
-    const writer = new BinaryWriter();
-    writer.reserve(256);
-
+    const bfs = []
     // Serialize each deserialized item back
     for (const item of deserializedData) {
       const serializedData = fory.serialize(item);
-      writer.buffer(serializedData);
+      bfs.push(serializedData);
     }
 
-    writeToFile(writer.dump() as Buffer);
+    writeToFile(Buffer.concat(bfs));
   });
 
   test("test_item", () => {

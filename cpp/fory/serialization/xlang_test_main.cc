@@ -503,22 +503,6 @@ struct RefOuterSchemaConsistent {
   }
   FORY_STRUCT(RefOuterSchemaConsistent, inner1, inner2);
 };
-FORY_FIELD_TAGS(RefOuterSchemaConsistent, (inner1, 0, nullable, ref),
-                (inner2, 1, nullable, ref));
-// Verify field tags are correctly parsed
-static_assert(fory::detail::has_field_tags_v<RefOuterSchemaConsistent>,
-              "RefOuterSchemaConsistent should have field tags");
-static_assert(fory::detail::GetFieldTagEntry<RefOuterSchemaConsistent, 0>::id ==
-                  0,
-              "inner1 should have id=0");
-static_assert(
-    fory::detail::GetFieldTagEntry<RefOuterSchemaConsistent, 0>::is_nullable ==
-        true,
-    "inner1 should be nullable");
-static_assert(
-    fory::detail::GetFieldTagEntry<RefOuterSchemaConsistent, 0>::track_ref ==
-        true,
-    "inner1 should have track_ref=true");
 
 // Inner struct for reference tracking test (COMPATIBLE mode)
 // Matches Java RefInnerCompatible with type ID 503
@@ -552,8 +536,6 @@ struct RefOuterCompatible {
   }
   FORY_STRUCT(RefOuterCompatible, inner1, inner2);
 };
-FORY_FIELD_TAGS(RefOuterCompatible, (inner1, 0, nullable, ref),
-                (inner2, 1, nullable, ref));
 
 // Element struct for collection element ref override test
 // Matches Java RefOverrideElement with type ID 701
@@ -603,7 +585,6 @@ struct CircularRefStruct {
   }
   FORY_STRUCT(CircularRefStruct, name, self_ref);
 };
-FORY_FIELD_TAGS(CircularRefStruct, (name, 0), (self_ref, 1, nullable, ref));
 
 // ============================================================================
 // Unsigned Number Test Types

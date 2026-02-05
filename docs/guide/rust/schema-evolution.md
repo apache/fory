@@ -69,6 +69,20 @@ assert_eq!(person_v2.age, 30);
 assert_eq!(person_v2.phone, None);
 ```
 
+### Disable Evolution for Stable Structs
+
+If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Use `#[fory(evolving = false)]`:
+
+```rust
+use fory::ForyObject;
+
+#[derive(ForyObject)]
+#[fory(evolving = false)]
+struct StableMessage {
+    id: i32,
+}
+```
+
 ## Schema Evolution Features
 
 - Add new fields with default values

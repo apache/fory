@@ -49,6 +49,27 @@ func FromPbStruct(pb *pb.Struct) NumericStruct {
 	}
 }
 
+// ToPbStructList converts StructList to protobuf StructList
+func ToPbStructList(obj StructList) *pb.StructList {
+	list := make([]*pb.Struct, len(obj.StructList))
+	for i, item := range obj.StructList {
+		list[i] = ToPbStruct(item)
+	}
+	return &pb.StructList{StructList: list}
+}
+
+// FromPbStructList converts protobuf StructList to StructList
+func FromPbStructList(pbList *pb.StructList) StructList {
+	if pbList == nil {
+		return StructList{}
+	}
+	list := make([]NumericStruct, len(pbList.StructList))
+	for i, item := range pbList.StructList {
+		list[i] = FromPbStruct(item)
+	}
+	return StructList{StructList: list}
+}
+
 // ToPbSample converts Sample to protobuf Sample
 func ToPbSample(obj Sample) *pb.Sample {
 	return &pb.Sample{
@@ -103,6 +124,27 @@ func FromPbSample(pb *pb.Sample) Sample {
 		BooleanArray:      pb.BooleanArray,
 		String:            pb.String_,
 	}
+}
+
+// ToPbSampleList converts SampleList to protobuf SampleList
+func ToPbSampleList(obj SampleList) *pb.SampleList {
+	list := make([]*pb.Sample, len(obj.SampleList))
+	for i, item := range obj.SampleList {
+		list[i] = ToPbSample(item)
+	}
+	return &pb.SampleList{SampleList: list}
+}
+
+// FromPbSampleList converts protobuf SampleList to SampleList
+func FromPbSampleList(pbList *pb.SampleList) SampleList {
+	if pbList == nil {
+		return SampleList{}
+	}
+	list := make([]Sample, len(pbList.SampleList))
+	for i, item := range pbList.SampleList {
+		list[i] = FromPbSample(item)
+	}
+	return SampleList{SampleList: list}
 }
 
 // ToPbImage converts Image to protobuf Image
@@ -199,4 +241,25 @@ func FromPbMediaContent(pbMC *pb.MediaContent) MediaContent {
 		Media:  FromPbMedia(pbMC.Media),
 		Images: images,
 	}
+}
+
+// ToPbMediaContentList converts MediaContentList to protobuf MediaContentList
+func ToPbMediaContentList(obj MediaContentList) *pb.MediaContentList {
+	list := make([]*pb.MediaContent, len(obj.MediaContentList))
+	for i, item := range obj.MediaContentList {
+		list[i] = ToPbMediaContent(item)
+	}
+	return &pb.MediaContentList{MediaContentList: list}
+}
+
+// FromPbMediaContentList converts protobuf MediaContentList to MediaContentList
+func FromPbMediaContentList(pbList *pb.MediaContentList) MediaContentList {
+	if pbList == nil {
+		return MediaContentList{}
+	}
+	list := make([]MediaContent, len(pbList.MediaContentList))
+	for i, item := range pbList.MediaContentList {
+		list[i] = FromPbMediaContent(item)
+	}
+	return MediaContentList{MediaContentList: list}
 }
