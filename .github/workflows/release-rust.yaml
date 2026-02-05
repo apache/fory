@@ -20,7 +20,7 @@ run-name: "Rust Release: ${{ github.ref_name }}"
 
 on:
   push:
-    tags: ['v*']
+    tags: ['disabled*']
 
 permissions:
   contents: read
