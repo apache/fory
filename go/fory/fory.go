@@ -134,7 +134,7 @@ func New(opts ...Option) *Fory {
 	// Initialize meta context if compatible mode is enabled
 	if f.config.Compatible {
 		f.metaContext = &MetaContext{
-			typeMap:               make(map[reflect.Type]uint32),
+			typeMap:               make(map[uintptr]uint32),
 			readTypeInfos:         make([]*TypeInfo, 0),
 			scopedMetaShareEnable: true,
 		}

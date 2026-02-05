@@ -66,9 +66,17 @@ message Sample {
   string string = 22;
 }
 
+message SampleList {
+  repeated Sample sample_list = 1;
+}
+
 message MediaContent {
   Media media = 1;
   repeated Image images = 2;
+}
+
+message MediaContentList {
+  repeated MediaContent media_content_list = 1;
 }
 
 message Media {

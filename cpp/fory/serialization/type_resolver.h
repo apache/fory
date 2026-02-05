@@ -713,6 +713,12 @@ constexpr int16_t compute_field_id() {
   if constexpr (is_fory_field_v<ActualFieldType>) {
     return field_tag_id_v<ActualFieldType>;
   }
+  if constexpr (::fory::detail::has_field_tags_v<T>) {
+    constexpr int16_t tag_id = ::fory::detail::GetFieldTagEntry<T, Index>::id;
+    if constexpr (tag_id >= 0) {
+      return tag_id;
+    }
+  }
   return -1;
 }
 

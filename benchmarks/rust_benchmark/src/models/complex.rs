@@ -24,47 +24,73 @@ use std::collections::HashMap;
 // Fory models
 #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
 pub struct ForyProduct {
+    #[fory(id = 0)]
     pub id: String,
+    #[fory(id = 1)]
     pub name: String,
+    #[fory(id = 2)]
     pub price: f64,
+    #[fory(id = 3)]
     pub categories: Vec<String>,
+    #[fory(id = 4)]
     pub attributes: HashMap<String, String>,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyOrderItem {
+    #[fory(id = 0)]
     pub product: ForyProduct,
+    #[fory(id = 1)]
     pub quantity: i32,
+    #[fory(id = 2)]
     pub unit_price: f64,
+    #[fory(id = 3)]
     pub customizations: HashMap<String, String>,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
 pub struct ForyCustomer {
+    #[fory(id = 0)]
     pub id: String,
+    #[fory(id = 1)]
     pub name: String,
+    #[fory(id = 2)]
     pub email: String,
+    #[fory(id = 3)]
     pub phone_numbers: Vec<String>,
+    #[fory(id = 4)]
     pub preferences: HashMap<String, String>,
+    #[fory(id = 5)]
     pub member_since: NaiveDateTime,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyOrder {
+    #[fory(id = 0)]
     pub id: String,
+    #[fory(id = 1)]
     pub customer: ForyCustomer,
+    #[fory(id = 2)]
     pub items: Vec<ForyOrderItem>,
+    #[fory(id = 3)]
     pub total_amount: f64,
+    #[fory(id = 4)]
     pub status: String,
+    #[fory(id = 5)]
     pub order_date: NaiveDateTime,
+    #[fory(id = 6)]
     pub metadata: HashMap<String, String>,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ECommerceData {
+    #[fory(id = 0)]
     pub orders: Vec<ForyOrder>,
+    #[fory(id = 1)]
     pub customers: Vec<ForyCustomer>,
+    #[fory(id = 2)]
     pub products: Vec<ForyProduct>,
+    #[fory(id = 3)]
     pub order_lookup: HashMap<String, ForyOrder>,
 }
 
