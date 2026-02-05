@@ -507,7 +507,9 @@ class SchemaValidator:
                 check_field(f, None)
 
     def _check_collection_nesting(self) -> None:
-        def check_field(field: Field, enclosing_messages: Optional[List[Message]] = None):
+        def check_field(
+            field: Field, enclosing_messages: Optional[List[Message]] = None
+        ):
             field_type = field.field_type
             if isinstance(field_type, ListType):
                 if isinstance(field_type.element_type, (ListType, MapType)):

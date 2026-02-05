@@ -118,8 +118,7 @@ def test_weak_ref_requires_repeated_ref():
     validator = SchemaValidator(schema)
     assert not validator.validate()
     assert any(
-        "weak_ref requires list element refs" in err.message
-        for err in validator.errors
+        "weak_ref requires list element refs" in err.message for err in validator.errors
     )
 
 

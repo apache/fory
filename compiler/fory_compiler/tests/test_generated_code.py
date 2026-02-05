@@ -182,7 +182,6 @@ def test_generated_code_integer_encoding_variants_equivalent():
     }
     assert_all_languages_equal(schemas)
 
-
     python_output = render_files(generate_files(schemas["fdl"], PythonGenerator))
     assert "pyfory.tagged_int64" in python_output
     assert "pyfory.tagged_uint64" in python_output

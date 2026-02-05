@@ -165,7 +165,7 @@ class FDLEmitter:
             if field_type.element_ref:
                 parts.append(self._emit_ref_modifier(field_type.element_ref_options))
             parts.append(self._emit_type(field_type.element_type))
-            return f"list<{ ' '.join(parts) }>"
+            return f"list<{' '.join(parts)}>"
         if isinstance(field_type, MapType):
             key = self._emit_type(field_type.key_type)
             value = self._emit_type(field_type.value_type)
