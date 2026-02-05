@@ -606,7 +606,6 @@ static void BM_Fory_Struct_Serialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   NumericStruct obj = create_numeric_struct();
@@ -644,7 +643,6 @@ static void BM_Fory_Struct_Deserialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   NumericStruct obj = create_numeric_struct();
@@ -695,7 +693,6 @@ static void BM_Fory_Sample_Serialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   Sample obj = create_sample();
@@ -730,7 +727,6 @@ static void BM_Fory_Sample_Deserialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   Sample obj = create_sample();
@@ -777,7 +773,6 @@ static void BM_Fory_MediaContent_Serialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   MediaContent obj = create_media_content();
@@ -814,7 +809,6 @@ static void BM_Fory_MediaContent_Deserialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   MediaContent obj = create_media_content();
@@ -862,7 +856,6 @@ static void BM_Fory_StructList_Serialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   StructList obj = create_struct_list();
@@ -898,7 +891,6 @@ static void BM_Fory_StructList_Deserialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   StructList obj = create_struct_list();
@@ -941,7 +933,6 @@ static void BM_Fory_SampleList_Serialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   SampleList obj = create_sample_list();
@@ -977,7 +968,6 @@ static void BM_Fory_SampleList_Deserialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   SampleList obj = create_sample_list();
@@ -1020,7 +1010,6 @@ static void BM_Fory_MediaContentList_Serialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   MediaContentList obj = create_media_content_list();
@@ -1056,7 +1045,6 @@ static void BM_Fory_MediaContentList_Deserialize(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   MediaContentList obj = create_media_content_list();
@@ -1106,7 +1094,6 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
                   .xlang(true)
                   .compatible(true)
                   .track_ref(false)
-                  .check_struct_version(false)
                   .build();
   register_fory_types(fory);
   NumericStruct fory_struct = create_numeric_struct();
