@@ -26,46 +26,180 @@ const read2 = (buffer: Uint8Array, cursor: number) => {
   return String.fromCharCode(buffer[cursor], buffer[cursor + 1]);
 };
 const read3 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+  );
 };
 const read4 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+  );
 };
 const read5 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+  );
 };
 const read6 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+  );
 };
 const read7 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+  );
 };
 const read8 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+  );
 };
 const read9 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+  );
 };
 const read10 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8], buffer[cursor + 9]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+    buffer[cursor + 9],
+  );
 };
 const read11 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8], buffer[cursor + 9], buffer[cursor + 10]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+    buffer[cursor + 9],
+    buffer[cursor + 10],
+  );
 };
 const read12 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8], buffer[cursor + 9], buffer[cursor + 10], buffer[cursor + 11]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+    buffer[cursor + 9],
+    buffer[cursor + 10],
+    buffer[cursor + 11],
+  );
 };
 const read13 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8], buffer[cursor + 9], buffer[cursor + 10], buffer[cursor + 11], buffer[cursor + 12]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+    buffer[cursor + 9],
+    buffer[cursor + 10],
+    buffer[cursor + 11],
+    buffer[cursor + 12],
+  );
 };
 const read14 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8], buffer[cursor + 9], buffer[cursor + 10], buffer[cursor + 11], buffer[cursor + 12], buffer[cursor + 13]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+    buffer[cursor + 9],
+    buffer[cursor + 10],
+    buffer[cursor + 11],
+    buffer[cursor + 12],
+    buffer[cursor + 13],
+  );
 };
 const read15 = (buffer: Uint8Array, cursor: number) => {
-  return String.fromCharCode(buffer[cursor], buffer[cursor + 1], buffer[cursor + 2], buffer[cursor + 3], buffer[cursor + 4], buffer[cursor + 5], buffer[cursor + 6], buffer[cursor + 7], buffer[cursor + 8], buffer[cursor + 9], buffer[cursor + 10], buffer[cursor + 11], buffer[cursor + 12], buffer[cursor + 13], buffer[cursor + 14]);
+  return String.fromCharCode(
+    buffer[cursor],
+    buffer[cursor + 1],
+    buffer[cursor + 2],
+    buffer[cursor + 3],
+    buffer[cursor + 4],
+    buffer[cursor + 5],
+    buffer[cursor + 6],
+    buffer[cursor + 7],
+    buffer[cursor + 8],
+    buffer[cursor + 9],
+    buffer[cursor + 10],
+    buffer[cursor + 11],
+    buffer[cursor + 12],
+    buffer[cursor + 13],
+    buffer[cursor + 14],
+  );
 };
 
-export const readLatin1String = (buffer: PlatformBuffer, len: number, cursor: number) => {
+export const readLatin1String = (
+  buffer: PlatformBuffer,
+  len: number,
+  cursor: number,
+) => {
   switch (len) {
     case 0:
       return "";
@@ -100,6 +234,6 @@ export const readLatin1String = (buffer: PlatformBuffer, len: number, cursor: nu
     case 15:
       return read15(buffer, cursor);
     default:
-      return buffer.toString("latin1", cursor, cursor + len,);
+      return buffer.toString("latin1", cursor, cursor + len);
   }
 };

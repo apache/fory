@@ -38,5 +38,13 @@ module.exports = {
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-var-requires": "off",
   },
-  ignorePatterns: ["test/*", "dist/*", "*.js", "murmurHash3.ts", "packages/**/dist/*", "packages/**/build/*", "**/typeInfo.ts"],
+  ignorePatterns: [
+    "test/*",
+    "dist/*",
+    "*.js",
+    "murmurHash3.ts",
+    "packages/**/dist/*",
+    "packages/**/build/*",
+    "**/typeInfo.ts",
+  ],
 };

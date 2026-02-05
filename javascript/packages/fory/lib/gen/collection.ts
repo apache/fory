@@ -41,9 +41,7 @@ export const CollectionFlags = {
 };
 
 class CollectionAnySerializer {
-  constructor(private fory: Fory) {
-
-  }
+  constructor(private fory: Fory) {}
 
   protected writeElementsHeader(arr: any) {
     let flag = 0;
@@ -53,7 +51,7 @@ class CollectionAnySerializer {
     let trackingRef = false;
 
     for (const item of arr) {
-      if ((item === undefined || item === null)) {
+      if (item === undefined || item === null) {
         includeNone = true;
         continue;
       }
@@ -65,7 +63,11 @@ class CollectionAnySerializer {
         trackingRef = current.needToWriteRef();
       }
       if (isSame) {
-        if (serializer !== null && serializer !== undefined && current !== serializer) {
+        if (
+          serializer !== null &&
+          serializer !== undefined &&
+          current !== serializer
+        ) {
           isSame = false;
         } else {
           serializer = current;
@@ -94,7 +96,8 @@ class CollectionAnySerializer {
 
   write(value: any, size: number) {
     this.fory.binaryWriter.writeVarUint32Small7(size);
-    const { serializer, isSame, includeNone, trackingRef } = this.writeElementsHeader(value);
+    const { serializer, isSame, includeNone, trackingRef } =
+      this.writeElementsHeader(value);
     if (isSame) {
       serializer!.writeTypeInfo(value);
       if (trackingRef) {
@@ -141,7 +144,11 @@ class CollectionAnySerializer {
     }
   }
 
-  read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
+  read(
+    accessor: (result: any, index: number, v: any) => void,
+    createCollection: (len: number) => any,
+    fromRef: boolean,
+  ): any {
     void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
     const flags = this.fory.binaryReader.uint8();
@@ -158,7 +165,11 @@ class CollectionAnySerializer {
           const refFlag = this.fory.referenceResolver.readRefFlag();
           if (refFlag === RefFlags.RefFlag) {
             const refId = this.fory.binaryReader.varUInt32();
-            accessor(result, i, this.fory.referenceResolver.getReadObject(refId));
+            accessor(
+              result,
+              i,
+              this.fory.referenceResolver.getReadObject(refId),
+            );
           } else if (refFlag === RefFlags.RefValueFlag) {
             accessor(result, i, serializer!.read(true));
           } else {
@@ -214,7 +225,11 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
     const inner = this.genericTypeDescriptin();
-    this.innerGenerator = CodegenRegistry.newGeneratorByTypeInfo(inner, this.builder, this.scope);
+    this.innerGenerator = CodegenRegistry.newGeneratorByTypeInfo(
+      inner,
+      this.builder,
+      this.scope,
+    );
   }
 
   abstract genericTypeDescriptin(): TypeInfo;
@@ -231,8 +246,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
 
   protected writeElementsHeader(accessor: string, flagAccessor: string) {
     const item = this.scope.uniqueName("item");
-    const stmts = [
-    ];
+    const stmts = [];
     stmts.push(`
         for (const ${item} of ${accessor}) {
             if (${item} === null || ${item} === undefined) {
@@ -288,7 +302,10 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
         `;
   }
 
-  readSpecificType(accessor: (expr: string) => string, refState: string): string {
+  readSpecificType(
+    accessor: (expr: string) => string,
+    refState: string,
+  ): string {
     const result = this.scope.uniqueName("result");
     const len = this.scope.uniqueName("len");
     const flags = this.scope.uniqueName("flags");
@@ -306,7 +323,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     switch (${refFlag}) {
                         case ${RefFlags.NotNullValueFlag}:
                         case ${RefFlags.RefValueFlag}:
-                            ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                            ${this.innerGenerator.read((x) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                             break;
                         case ${RefFlags.RefFlag}:
                             ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()), idx)}
@@ -321,13 +338,13 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     if (${this.builder.reader.int8()} == ${RefFlags.NullFlag}) {
                         ${this.putAccessor(result, "null", idx)}
                     } else {
-                        ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                        ${this.innerGenerator.read((x) => `${this.putAccessor(result, x, idx)}`, "false")}
                     }
                 }
 
             } else {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                    ${this.innerGenerator.read((x) => `${this.putAccessor(result, x, idx)}`, "false")}
                 }
             }
             ${accessor(result)}

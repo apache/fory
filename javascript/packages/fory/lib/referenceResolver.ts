@@ -17,18 +17,14 @@
  * under the License.
  */
 
-import {
-  RefFlags,
-} from "./type";
+import { RefFlags } from "./type";
 import { BinaryReader } from "./reader";
 
 export class ReferenceResolver {
   private readObjects: any[] = [];
   private writeObjects: Map<any, number> = new Map();
 
-  constructor(private binaryReader: BinaryReader) {
-
-  }
+  constructor(private binaryReader: BinaryReader) {}
 
   reset() {
     this.readObjects = [];

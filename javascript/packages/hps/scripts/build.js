@@ -23,19 +23,22 @@ const { engines } = require("../package.json");
 const versionValid = semver.satisfies(process.version, engines.node);
 
 function watchError(child) {
-    child.on("error", (error) => {
-      console.error(error);
-      process.exit(1);
-    });
-    child.on("exit", (code, signal) => {
-      if (code !== 0) {
-        process.exit(code);
-      }
-    });
+  child.on("error", (error) => {
+    console.error(error);
+    process.exit(1);
+  });
+  child.on("exit", (code, signal) => {
+    if (code !== 0) {
+      process.exit(code);
+    }
+  });
 }
 
 if (versionValid) {
-  const gyp = spawn("npx", ["node-gyp", "rebuild"], { stdio: 'inherit', shell: true });
+  const gyp = spawn("npx", ["node-gyp", "rebuild"], {
+    stdio: "inherit",
+    shell: true,
+  });
   watchError(gyp);
 }
-watchError(spawn("npx", ["tsc"], { stdio: 'inherit', shell: true }));
+watchError(spawn("npx", ["tsc"], { stdio: "inherit", shell: true }));

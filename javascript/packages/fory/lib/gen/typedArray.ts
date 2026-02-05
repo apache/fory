@@ -32,7 +32,11 @@ function build(inner: TypeInfo) {
     constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
       super(typeInfo, builder, scope);
       this.typeInfo = <TypeInfo>typeInfo;
-      this.innerGenerator = CodegenRegistry.newGeneratorByTypeInfo(inner, builder, scope);
+      this.innerGenerator = CodegenRegistry.newGeneratorByTypeInfo(
+        inner,
+        builder,
+        scope,
+      );
     }
 
     write(accessor: string): string {
@@ -56,7 +60,7 @@ function build(inner: TypeInfo) {
                 const ${result} = new Array(${len});
                 ${this.maybeReference(result, refState)}
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    ${this.innerGenerator.read(x => `${result}[${idx}] = ${x};`, "false")}
+                    ${this.innerGenerator.read((x) => `${result}[${idx}] = ${x};`, "false")}
                 }
                 ${accessor(result)}
              `;

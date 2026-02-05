@@ -22,7 +22,11 @@ import { SerializerGenerator } from "./serializer";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
 
-type SerializerGeneratorConstructor = new (typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) => SerializerGenerator;
+type SerializerGeneratorConstructor = new (
+  typeInfo: TypeInfo,
+  builder: CodecBuilder,
+  scope: Scope,
+) => SerializerGenerator;
 
 export class CodegenRegistry {
   static map = new Map<number, SerializerGeneratorConstructor>();
@@ -43,7 +47,11 @@ export class CodegenRegistry {
     this.external.set(object.name, object);
   }
 
-  static newGeneratorByTypeInfo(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
+  static newGeneratorByTypeInfo(
+    typeInfo: TypeInfo,
+    builder: CodecBuilder,
+    scope: Scope,
+  ) {
     const constructor = CodegenRegistry.get(typeInfo.typeId);
     if (!constructor) {
       throw new Error("type not registered");
@@ -56,6 +64,11 @@ export class CodegenRegistry {
   }
 
   static getExternal() {
-    return Object.fromEntries(Array.from(CodegenRegistry.external.entries()).map(([key, value]) => [key, value]));
+    return Object.fromEntries(
+      Array.from(CodegenRegistry.external.entries()).map(([key, value]) => [
+        key,
+        value,
+      ]),
+    );
   }
 }

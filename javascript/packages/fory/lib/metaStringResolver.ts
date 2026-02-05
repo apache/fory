@@ -18,18 +18,18 @@
  */
 
 import fory from "./fory";
-import { MetaString, MetaStringDecoder, MetaStringEncoder } from "./meta/MetaString";
+import {
+  MetaString,
+  MetaStringDecoder,
+  MetaStringEncoder,
+} from "./meta/MetaString";
 import { BinaryReader } from "./reader";
 import { BinaryWriter } from "./writer";
 
 class MetaStringBytes {
   dynamicWriteStringId = -1;
 
-  constructor(
-    public bytes: MetaString,
-  ) {
-
-  }
+  constructor(public bytes: MetaString) {}
 }
 
 export class MetaStringResolver {
@@ -40,9 +40,7 @@ export class MetaStringResolver {
   private namespaceDecoder = new MetaStringDecoder(".", "_");
   private typenameEncoder = new MetaStringEncoder("$", "_");
   private typenameDecoder = new MetaStringDecoder("$", "_");
-  constructor(private fory: fory) {
-
-  }
+  constructor(private fory: fory) {}
 
   writeBytes(writer: BinaryWriter, bytes: MetaStringBytes) {
     if (bytes.dynamicWriteStringId !== -1) {

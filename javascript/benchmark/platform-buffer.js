@@ -17,7 +17,7 @@
  * under the License.
  */
 
-const { BrowserBuffer } = require('@apache-fory/fory/dist/lib/platformBuffer')
+const { BrowserBuffer } = require("@apache-fory/fory/dist/lib/platformBuffer");
 const Benchmark = require("benchmark");
 const { spawn } = require("child_process");
 
@@ -31,7 +31,7 @@ async function start() {
   const result = {
     writeComparison: {},
     toStringComparison: {},
-  }
+  };
 
   {
     const platformBufferA = new BrowserBuffer(jsonString.length);
@@ -44,10 +44,10 @@ async function start() {
         platformBufferA.utf8Write(jsonString, 0);
       })
       .add("browser write", function () {
-        platformBufferB.write(jsonString, 0, 'utf8');
+        platformBufferB.write(jsonString, 0, "utf8");
       })
       .add("native write", function () {
-        nativeBuffer.write(jsonString, 0, 'utf8');
+        nativeBuffer.write(jsonString, 0, "utf8");
       })
       .on("complete", function (e) {
         e.currentTarget.forEach(({ name, hz }) => {
@@ -55,23 +55,23 @@ async function start() {
         });
       })
       .run({ async: false });
-    console.log("Write operation per second")
+    console.log("Write operation per second");
     console.table(result.writeComparison);
   }
 
   {
     const browserBuffer = new BrowserBuffer(jsonString.length);
     const nativeBuffer = Buffer.alloc(jsonString.length);
-    browserBuffer.write(jsonString, 0, 'utf8');
-    nativeBuffer.write(jsonString, 0, 'utf8');
+    browserBuffer.write(jsonString, 0, "utf8");
+    nativeBuffer.write(jsonString, 0, "utf8");
 
     var suite = new Benchmark.Suite();
     suite
       .add("browser toString", function () {
-        browserBuffer.toString('utf8', 0, jsonString.length);
+        browserBuffer.toString("utf8", 0, jsonString.length);
       })
       .add("native toString", function () {
-        nativeBuffer.toString('utf8', 0, jsonString.length);
+        nativeBuffer.toString("utf8", 0, jsonString.length);
       })
       .on("complete", function (e) {
         e.currentTarget.forEach(({ name, hz }) => {
@@ -79,21 +79,35 @@ async function start() {
         });
       })
       .run({ async: false });
-    console.log("toString operation per second")
+    console.log("toString operation per second");
     console.table(result.toStringComparison);
   }
 
-  const args = ['platform-buffer-draw.py', result.writeComparison['browser utf8Write'], result.writeComparison['browser write'], result.writeComparison['native write'], result.toStringComparison['browser toString'], result.toStringComparison['native toString']];
+  const args = [
+    "platform-buffer-draw.py",
+    result.writeComparison["browser utf8Write"],
+    result.writeComparison["browser write"],
+    result.writeComparison["native write"],
+    result.toStringComparison["browser toString"],
+    result.toStringComparison["native toString"],
+  ];
 
-  console.log("Running python script to draw the graph")
-  console.log("python3", ...args)
+  console.log("Running python script to draw the graph");
+  console.log("python3", ...args);
 
   spawn(
     `python3`,
-    ['platform-buffer-draw.py', result.writeComparison['browser utf8Write'], result.writeComparison['browser write'], result.writeComparison['native write'], result.toStringComparison['browser toString'], result.toStringComparison['native toString']],
+    [
+      "platform-buffer-draw.py",
+      result.writeComparison["browser utf8Write"],
+      result.writeComparison["browser write"],
+      result.writeComparison["native write"],
+      result.toStringComparison["browser toString"],
+      result.toStringComparison["native toString"],
+    ],
     {
       cwd: __dirname,
-    }
-  )
+    },
+  );
 }
 start();

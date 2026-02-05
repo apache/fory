@@ -18,7 +18,13 @@
  */
 
 import { TypeId, Serializer } from "../type";
-import { ArrayTypeInfo, MapTypeInfo, StructTypeInfo, SetTypeInfo, TypeInfo } from "../typeInfo";
+import {
+  ArrayTypeInfo,
+  MapTypeInfo,
+  StructTypeInfo,
+  SetTypeInfo,
+  TypeInfo,
+} from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
@@ -40,16 +46,19 @@ import Fory from "../fory";
 export class Gen {
   static external = CodegenRegistry.getExternal();
 
-  constructor(private fory: Fory, private regOptions: { [key: string]: any } = {}) {
-
-  }
+  constructor(
+    private fory: Fory,
+    private regOptions: { [key: string]: any } = {},
+  ) {}
 
   private generate(typeInfo: TypeInfo) {
     // Robust check for typeId with fallback to internal _typeId property
     const typeId = typeInfo.typeId ?? (typeInfo as any)._typeId;
 
     if (typeId === undefined) {
-      throw new Error(`Cannot generate serializer for undefined typeId. Object: ${JSON.stringify(typeInfo)}`);
+      throw new Error(
+        `Cannot generate serializer for undefined typeId. Object: ${JSON.stringify(typeInfo)}`,
+      );
     }
 
     const InnerGeneratorClass = CodegenRegistry.get(typeId);
@@ -57,7 +66,11 @@ export class Gen {
       throw new Error(`${typeId} generator not exists`);
     }
     const scope = new Scope();
-    const generator = new InnerGeneratorClass(typeInfo, new CodecBuilder(scope, this.fory), scope);
+    const generator = new InnerGeneratorClass(
+      typeInfo,
+      new CodecBuilder(scope, this.fory),
+      scope,
+    );
 
     const funcString = generator.toSerializer();
     if (this.fory.config && this.fory.config.hooks) {
@@ -95,11 +108,14 @@ export class Gen {
           this.traversalContainer(x);
         });
         const func = this.generate(typeInfo);
-        this.register(typeInfo as StructTypeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
+        this.register(
+          typeInfo as StructTypeInfo,
+          func()(this.fory, Gen.external, typeInfo, this.regOptions),
+        );
       }
-      return; 
+      return;
     }
-    
+
     // 2. Handle Collection Types (Recursive check for nested types)
     if (typeId === TypeId.LIST) {
       const inner = (typeInfo as ArrayTypeInfo).options?.inner;
@@ -121,13 +137,13 @@ export class Gen {
 
   generateSerializer(typeInfo: TypeInfo) {
     this.traversalContainer(typeInfo);
-    
+
     const typeId = typeInfo.typeId ?? (typeInfo as any)._typeId;
 
     if (TypeId.userDefinedType(typeId) && this.isRegistered(typeInfo)) {
       return this.fory.typeResolver.getSerializerByTypeInfo(typeInfo);
     }
-    
+
     return this.reGenerateSerializer(typeInfo);
   }
 }

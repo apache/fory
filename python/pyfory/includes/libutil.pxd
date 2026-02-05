@@ -223,3 +223,4 @@ cdef extern from "fory/util/bit_util.h" namespace "fory::util" nogil:
 
 cdef extern from "fory/util/string_util.h" namespace "fory" nogil:
     c_bool utf16_has_surrogate_pairs(uint16_t* data, size_t size)
+    

@@ -64,7 +64,9 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string): string {
     const seconds = this.builder.reader.int64();
     const nanos = this.builder.reader.uint32();
-    return accessor(`new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`);
+    return accessor(
+      `new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`,
+    );
   }
 
   getFixedSize(): number {
@@ -81,7 +83,10 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
-    const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
+    const epoch = this.scope.declareByName(
+      "epoch",
+      `new Date("1970/01/01 00:00").getTime()`,
+    );
     return `
       if (${accessor} instanceof Date) {
         ${this.builder.writer.int32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
@@ -92,7 +97,10 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
   }
 
   read(accessor: (expr: string) => string): string {
-    const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
+    const epoch = this.scope.declareByName(
+      "epoch",
+      `new Date("1970/01/01 00:00").getTime()`,
+    );
     return accessor(`
             new Date(${epoch} + (${this.builder.reader.int32()} * (24 * 60 * 60) * 1000))
         `);

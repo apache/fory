@@ -21,35 +21,33 @@
 
 module.exports = {
   collectCoverage: true,
-  preset: 'ts-jest',
-  testEnvironment: 'node',
+  preset: "ts-jest",
+  testEnvironment: "node",
   collectCoverageFrom: [
     "**/*.ts",
     "!**/dist/**",
     "!**/build/**",
-    "!packages/fory/lib/murmurHash3.ts"
+    "!packages/fory/lib/murmurHash3.ts",
   ],
   testPathIgnorePatterns: [
-    // Cross-language tests are now enabled for verification
+    "/node_modules/",
+    "/dist/",
+    "/build/",
+    // Cross-language tests are explicitly enabled by not adding them here
   ],
   transform: {
-    '\\.ts$': ['ts-jest', {
-      tsconfig: {
-        target: "ES2021",
-        experimentalDecorators: true
+    "\\.ts$": [
+      "ts-jest",
+      {
+        tsconfig: {
+          target: "ES2021",
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true, // Ensures SimpleStruct decorators work correctly
+        },
+        diagnostics: {
+          ignoreCodes: [151001],
+        },
       },
-      diagnostics: {
-        ignoreCodes: [151001]
-      }
-    }],
+    ],
   },
-  // todo: JavaScript codebase is iterating rapidly, remove this restriction temporary 
-  // coverageThreshold: {
-  //   global: {
-  //     branches: 91,
-  //     functions: 99,
-  //     lines: 98,
-  //     statements: 98
-  //   }
-  // }
 };

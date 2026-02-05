@@ -29,29 +29,32 @@ export class TypeMetaResolver {
   private dynamicTypeId = 0;
   private typeMeta: TypeMeta[] = [];
 
-  constructor(private fory: fory) {
-
-  }
+  constructor(private fory: fory) {}
 
   private updateTypeInfo(typeMeta: TypeMeta, typeInfo: TypeInfo) {
-    typeInfo.options.props = Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
-      const typeId = x.getTypeId();
-      const fieldName = x.getFieldName();
-      const declared = typeInfo.options.props?.[fieldName];
-      const fieldTypeInfo = declared ?? this.fory.typeResolver.getTypeInfo(typeId);
-      if (!fieldTypeInfo) {
-        throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
-      }
-      if (!typeInfo.options.fieldInfo) {
-        typeInfo.options.fieldInfo = {};
-      }
-      typeInfo.options.fieldInfo[x.fieldName] = {
-        nullable: x.nullable,
-        trackingRef: x.trackingRef,
-        ...typeInfo.options.fieldInfo[x.fieldName],
-      };
-      return [fieldName, fieldTypeInfo];
-    }));
+    typeInfo.options.props = Object.fromEntries(
+      typeMeta.getFieldInfo().map((x) => {
+        const typeId = x.getTypeId();
+        const fieldName = x.getFieldName();
+        const declared = typeInfo.options.props?.[fieldName];
+        const fieldTypeInfo =
+          declared ?? this.fory.typeResolver.getTypeInfo(typeId);
+        if (!fieldTypeInfo) {
+          throw new Error(
+            `typeid: ${typeId} in prop ${fieldName} not registered`,
+          );
+        }
+        if (!typeInfo.options.fieldInfo) {
+          typeInfo.options.fieldInfo = {};
+        }
+        typeInfo.options.fieldInfo[x.fieldName] = {
+          nullable: x.nullable,
+          trackingRef: x.trackingRef,
+          ...typeInfo.options.fieldInfo[x.fieldName],
+        };
+        return [fieldName, fieldTypeInfo];
+      }),
+    );
   }
 
   genSerializerByTypeMetaRuntime(typeMeta: TypeMeta): Serializer {
@@ -84,7 +87,11 @@ export class TypeMetaResolver {
     }
   }
 
-  writeTypeMeta(typeInfo: StructTypeInfo, writer: BinaryWriter, bytes: Uint8Array) {
+  writeTypeMeta(
+    typeInfo: StructTypeInfo,
+    writer: BinaryWriter,
+    bytes: Uint8Array,
+  ) {
     if (typeInfo.dynamicTypeId !== -1) {
       // Reference to previously written type: (index << 1) | 1, LSB=1
       writer.varUInt32((typeInfo.dynamicTypeId << 1) | 1);

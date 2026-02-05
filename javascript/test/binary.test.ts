@@ -17,27 +17,22 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
-import { describe, expect, test } from '@jest/globals';
+import Fory, { Type } from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
-
-describe('binary', () => {
-    test('should binary work', () => {
-        const typeinfo = Type.struct("example.foo", {
-            a: Type.binary()
-        })
-
-        const fory = new Fory({ refTracking: true });    
-        const serializer = fory.registerSerializer(typeinfo).serializer;
-        const input = fory.serialize({ a: new Uint8Array([1, 2, 3]) }, serializer);
-        const result = fory.deserialize(
-            input
-        );
-        expect(result instanceof Uint8Array)
-        expect(result.a[0] === 1);
-        expect(result.a[1] === 2);
-        expect(result.a[2] === 3);
+describe("binary", () => {
+  test("should binary work", () => {
+    const typeinfo = Type.struct("example.foo", {
+      a: Type.binary(),
     });
+
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(typeinfo).serializer;
+    const input = fory.serialize({ a: new Uint8Array([1, 2, 3]) }, serializer);
+    const result = fory.deserialize(input);
+    expect(result instanceof Uint8Array);
+    expect(result.a[0] === 1);
+    expect(result.a[1] === 2);
+    expect(result.a[2] === 3);
+  });
 });
-
-

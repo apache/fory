@@ -25,6 +25,22 @@ import * as fs from "node:fs";
 import * as beautify from "js-beautify";
 
 // Simple struct used only in the skipped test
+import Fury, {
+  BinaryReader as FuryBinaryReader,
+  BinaryWriter as FuryBinaryWriter,
+  Mode as FuryMode,
+  Type as FuryType,
+} from "../packages/fory/index";
+import {
+  describe as furyDescribe,
+  expect as furyExpect,
+  it as furyIt,
+  test as furyTest,
+} from "@jest/globals";
+import * as furyFs from "node:fs";
+import * as furyBeautify from "js-beautify";
+
+// 1. Define the class with the correct decorator syntax
 class SimpleStruct {
   @Type.string()
   name: string = "";
@@ -68,6 +84,7 @@ describe("Cross Language Tests", () => {
     expect(deserialized.get("key")).toBe("value");
   });
 
+  // Leave SimpleStruct covered but can be skipped if library still fails
   it.skip("Struct: Simple object serialization", () => {
     const input = new SimpleStruct();
     input.name = "Fory";
@@ -240,7 +257,6 @@ describe("cross-language serialization", () => {
   test("test_murmurhash3", () => {
     const reader = new BinaryReader({});
     reader.reset(content);
-
     const hash1Bytes = new Uint8Array(16);
     for (let i = 0; i < 16; i++) {
       hash1Bytes[i] = reader.uint8();
@@ -280,7 +296,7 @@ describe("cross-language serialization", () => {
     let cursor = 0;
     for (let i = 0; i < 7; i++) {
       const deserializedString = fory.deserialize(
-        content.slice(cursor)
+        content.slice(cursor),
       ) as string;
       cursor += fory.binaryReader.getCursor();
       deserializedStrings.push(deserializedString);
@@ -315,7 +331,7 @@ describe("cross-language serialization", () => {
     const deserializedData: unknown[] = [];
     for (let i = 0; i < 28; i++) {
       const deserializedItem = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedData.push(deserializedItem);
     }
@@ -332,7 +348,7 @@ describe("cross-language serialization", () => {
   });
 
   test("test_simple_struct", () => {
-    const fory = new Fory({
+    const fory = new Fury({
       mode: Mode.Compatible,
       hooks: {
         afterCodeGenerated: (code) => {
@@ -405,14 +421,14 @@ describe("cross-language serialization", () => {
       White: 3,
     };
     fory.registerSerializer(
-      Type.enum({ namespace: "demo", typeName: "color" }, Color)
+      Type.enum({ namespace: "demo", typeName: "color" }, Color),
     );
 
     @Type.struct(
       { namespace: "demo", typeName: "item" },
       {
         name: Type.string(),
-      }
+      },
     )
     class Item {
       name: string = "";
@@ -431,7 +447,7 @@ describe("cross-language serialization", () => {
         f7: Type.int32(),
         f8: Type.int32(),
         last: Type.int32(),
-      }
+      },
     )
     class SimpleStructNamed {
       f1: Map<number, number> = new Map();
@@ -449,9 +465,7 @@ describe("cross-language serialization", () => {
     const reader = new BinaryReader({});
     reader.reset(content);
 
-    const deserializedObj = fory.deserialize(
-      reader.buffer(reader.varUInt32())
-    );
+    const deserializedObj = fory.deserialize(reader.buffer(reader.varUInt32()));
 
     const serializedData = fory.serialize(deserializedObj);
     writeToFile(serializedData as Buffer);
@@ -475,7 +489,7 @@ describe("cross-language serialization", () => {
     const deserializedLists: unknown[] = [];
     for (let i = 0; i < 4; i++) {
       const deserializedList = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedLists.push(deserializedList);
     }
@@ -510,7 +524,7 @@ describe("cross-language serialization", () => {
     const deserializedMaps: unknown[] = [];
     for (let i = 0; i < 2; i++) {
       const deserializedMap = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedMaps.push(deserializedMap);
     }
@@ -555,7 +569,7 @@ describe("cross-language serialization", () => {
     const deserializedData: unknown[] = [];
     for (let i = 0; i < 7; i++) {
       const deserializedItem = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedData.push(deserializedItem);
     }
@@ -589,7 +603,7 @@ describe("cross-language serialization", () => {
     const deserializedItems: unknown[] = [];
     for (let i = 0; i < 3; i++) {
       const deserializedItem = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedItems.push(deserializedItem);
     }
@@ -623,7 +637,7 @@ describe("cross-language serialization", () => {
     const deserializedColors: unknown[] = [];
     for (let i = 0; i < 4; i++) {
       const deserializedColor = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedColors.push(deserializedColor);
     }
@@ -657,7 +671,7 @@ describe("cross-language serialization", () => {
     const deserializedStructs: unknown[] = [];
     for (let i = 0; i < 2; i++) {
       const deserializedStruct = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedStructs.push(deserializedStruct);
     }
@@ -691,7 +705,7 @@ describe("cross-language serialization", () => {
     const deserializedStructs: unknown[] = [];
     for (let i = 0; i < 2; i++) {
       const deserializedStruct = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedStructs.push(deserializedStruct);
     }
@@ -719,7 +733,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedWrapper = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedWrapper);
@@ -738,7 +752,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedWrapper = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedWrapper);
@@ -756,14 +770,14 @@ describe("cross-language serialization", () => {
       White: 3,
     };
     fory.registerSerializer(
-      Type.enum({ namespace: "", typeName: "color" }, Color)
+      Type.enum({ namespace: "", typeName: "color" }, Color),
     );
 
     @Type.struct(
       { namespace: "", typeName: "my_struct" },
       {
         id: Type.int32(),
-      }
+      },
     )
     class MyStruct {
       id: number = 0;
@@ -777,7 +791,7 @@ describe("cross-language serialization", () => {
       { namespace: "", typeName: "my_ext" },
       {
         id: Type.int32(),
-      }
+      },
     )
     class MyExt {
       id: number = 0;
@@ -793,7 +807,7 @@ describe("cross-language serialization", () => {
     const deserializedData: unknown[] = [];
     for (let i = 0; i < 9; i++) {
       const deserializedItem = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedData.push(deserializedItem);
     }
@@ -829,7 +843,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -888,7 +902,7 @@ describe("cross-language serialization", () => {
     const deserializedData: unknown[] = [];
     for (let i = 0; i < 2; i++) {
       const deserializedItem = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedData.push(deserializedItem);
     }
@@ -956,7 +970,7 @@ describe("cross-language serialization", () => {
     const deserializedData: unknown[] = [];
     for (let i = 0; i < 2; i++) {
       const deserializedItem = fory.deserialize(
-        reader.buffer(reader.varUInt32())
+        reader.buffer(reader.varUInt32()),
       );
       deserializedData.push(deserializedItem);
     }
@@ -988,7 +1002,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1011,7 +1025,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1036,7 +1050,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1055,7 +1069,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1085,7 +1099,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1115,7 +1129,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1147,7 +1161,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1173,7 +1187,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1202,7 +1216,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1231,7 +1245,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1260,7 +1274,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1289,7 +1303,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1324,7 +1338,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedOuter = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedOuter);
@@ -1359,7 +1373,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedOuter = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedOuter);
@@ -1384,7 +1398,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1399,17 +1413,17 @@ describe("cross-language serialization", () => {
       name: Type.string(),
       selfRef: Type.struct(602),
     })
-    class CircularRefStruct {
+    class CircularRefStructCompatible {
       name: string = "";
-      selfRef: CircularRefStruct | null = null;
+      selfRef: CircularRefStructCompatible | null = null;
     }
-    fory.registerSerializer(CircularRefStruct);
+    fory.registerSerializer(CircularRefStructCompatible);
 
     const reader = new BinaryReader({});
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1434,7 +1448,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1463,7 +1477,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);
@@ -1492,7 +1506,7 @@ describe("cross-language serialization", () => {
     reader.reset(content);
 
     const deserializedStruct = fory.deserialize(
-      reader.buffer(reader.varUInt32())
+      reader.buffer(reader.varUInt32()),
     );
 
     const serializedData = fory.serialize(deserializedStruct);

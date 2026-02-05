@@ -32,18 +32,18 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
   if (!typeInfo.options.props) {
     typeInfo.options.props = {};
   }
-  Object.assign(typeInfo.options.props, targetFields.get(target) || {})
+  Object.assign(typeInfo.options.props, targetFields.get(target) || {});
   Object.defineProperties(target.prototype, {
     [ForyTypeInfoSymbol]: {
       get() {
         return {
-          structTypeInfo: typeInfo
+          structTypeInfo: typeInfo,
         };
       },
       enumerable: false,
       configurable: true,
     },
-  })
+  });
 };
 
 const targetFields = new WeakMap<new () => any, { [key: string]: TypeInfo }>();
@@ -81,19 +81,24 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   static attach(fory: Fory) {
     TypeInfo.fory = new WeakRef(fory);
   }
-  
+
   static detach() {
     TypeInfo.fory = null;
   }
 
-  public constructor(private _typeId: number, userTypeId = -1) {
+  public constructor(
+    private _typeId: number,
+    userTypeId = -1,
+  ) {
     super(function (target: any, key?: string | { name?: string }) {
       if (key === undefined) {
         initMeta(target, that as unknown as StructTypeInfo);
       } else {
         const keyString = typeof key === "string" ? key : key?.name;
         if (!keyString) {
-          throw new Error("Decorators can only be placed on classes and fields");
+          throw new Error(
+            "Decorators can only be placed on classes and fields",
+          );
         }
         addField(target.constructor, keyString, that);
       }
@@ -101,7 +106,11 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     // eslint-disable-next-line
     const that = this;
     if (userTypeId !== -1) {
-      if (!Number.isInteger(userTypeId) || userTypeId < 0 || userTypeId > 0xFFFFFFFE) {
+      if (
+        !Number.isInteger(userTypeId) ||
+        userTypeId < 0 ||
+        userTypeId > 0xfffffffe
+      ) {
         throw new Error("userTypeId must be in range [0, 0xfffffffe]");
       }
     }
@@ -112,17 +121,26 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
 
   computeTypeId(fory?: Fory) {
     const internalTypeId = this._typeId;
-    if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
+    if (
+      internalTypeId !== TypeId.STRUCT &&
+      internalTypeId !== TypeId.NAMED_STRUCT
+    ) {
       return this._typeId;
     }
     const actualFory = fory || TypeInfo.fory?.deref();
     if (!actualFory) {
       return this._typeId;
     }
-    if (internalTypeId === TypeId.NAMED_STRUCT && actualFory.config.mode === Mode.Compatible) {
+    if (
+      internalTypeId === TypeId.NAMED_STRUCT &&
+      actualFory.config.mode === Mode.Compatible
+    ) {
       return TypeId.NAMED_COMPATIBLE_STRUCT;
     }
-    if (internalTypeId === TypeId.STRUCT && actualFory.config.mode === Mode.Compatible) {
+    if (
+      internalTypeId === TypeId.STRUCT &&
+      actualFory.config.mode === Mode.Compatible
+    ) {
       return TypeId.COMPATIBLE_STRUCT;
     }
     return this._typeId;
@@ -153,7 +171,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
           return internalTypeId != TypeId.UNKNOWN;
         }
         if (fory.isCompatible()) {
-          return !TypeId.userDefinedType(this._typeId) && internalTypeId != TypeId.UNKNOWN;
+          return (
+            !TypeId.userDefinedType(this._typeId) &&
+            internalTypeId != TypeId.UNKNOWN
+          );
         }
         return internalTypeId != TypeId.UNKNOWN;
     }
@@ -169,17 +190,24 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     }>(typeId);
   }
 
-  static fromStruct<T = any>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, props?: Record<string, TypeInfo>, {
-    withConstructor = false,
-    fieldInfo = {},
-  }: {
-    withConstructor?: boolean;
-    fieldInfo?: Record<string, StructFieldInfo>
-  } = {}) {
+  static fromStruct<T = any>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    props?: Record<string, TypeInfo>,
+    {
+      withConstructor = false,
+      fieldInfo = {},
+    }: {
+      withConstructor?: boolean;
+      fieldInfo?: Record<string, StructFieldInfo>;
+    } = {},
+  ) {
     let typeId: number | undefined;
     let namespace: string | undefined;
     let typeName: string | undefined;
@@ -193,7 +221,9 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       typeId = nameInfo.typeId;
     }
     if (typeId !== undefined && typeName !== undefined) {
-      throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
+      throw new Error(
+        `type name ${typeName} and id ${typeId} should not be set at the same time`,
+      );
     }
     if (!typeId && !typeName) {
       throw new Error(`type name and type id should be set at least one`);
@@ -213,11 +243,14 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     } else {
       finalTypeId = TypeId.NAMED_STRUCT;
     }
-    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId).cast<StructTypeInfo>();
+    const typeInfo = new TypeInfo<T>(
+      finalTypeId,
+      userTypeId,
+    ).cast<StructTypeInfo>();
     typeInfo.options = {
       props: props || {},
       withConstructor,
-      fieldInfo
+      fieldInfo,
     };
     typeInfo.namespace = namespace || "";
     typeInfo.typeName = typeId !== undefined ? "" : typeName!;
@@ -234,11 +267,17 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     return typeInfo;
   }
 
-  static fromEnum<T>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, props: { [key: string]: any }) {
+  static fromEnum<T>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    props: { [key: string]: any },
+  ) {
     let typeId: number | undefined;
     let namespace: string | undefined;
     let typeName: string | undefined;
@@ -272,11 +311,11 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   }
 }
 
-type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean}
+type StructFieldInfo = { nullable?: boolean; trackingRef?: boolean };
 export interface StructTypeInfo extends TypeInfo {
   options: {
     props?: { [key: string]: TypeInfo };
-    fieldInfo?: {[key: string]: StructFieldInfo};
+    fieldInfo?: { [key: string]: StructFieldInfo };
     withConstructor?: boolean;
     constructor?: Function;
   };
@@ -313,8 +352,8 @@ type Props<T> = T extends {
   };
 }
   ? {
-    [P in keyof T2]?: (InputType<T2[P]> | null);
-  }
+      [P in keyof T2]?: InputType<T2[P]> | null;
+    }
   : unknown;
 
 type InnerProps<T> = T extends {
@@ -334,7 +373,6 @@ type MapProps<T> = T extends {
   ? Map<InputType<T2>, InputType<T3> | null>
   : unknown;
 
-
 type Value<T> = T extends { [s: string]: infer T2 } ? T2 : unknown;
 
 type EnumProps<T> = T extends {
@@ -350,183 +388,200 @@ type SetProps<T> = T extends {
     key: infer T2 extends TypeInfo;
   };
 }
-  ? Set<(InputType<T2> | null)>
+  ? Set<InputType<T2> | null>
   : unknown;
 
 export type InputType<T> = T extends TypeInfo<infer M> ? HintInput<M> : unknown;
-
 
 export type HintInput<T> = T extends {
   type: typeof TypeId.STRUCT;
 }
   ? Props<T>
   : T extends {
-    type: typeof TypeId.STRING;
-  }
-  ? string
-  : T extends {
-    type:
-    | typeof TypeId["INT8"]
-    | typeof TypeId.INT16
-    | typeof TypeId.INT32
-    | typeof TypeId.VARINT32
-    | typeof TypeId.UINT8
-    | typeof TypeId.UINT16
-    | typeof TypeId.UINT32
-    | typeof TypeId.UINT64
-    | typeof TypeId.VAR_UINT64
-    | typeof TypeId.VAR_UINT32
-    | typeof TypeId.FLOAT8
-    | typeof TypeId.FLOAT16
-    | typeof TypeId.BFLOAT16
-    | typeof TypeId.FLOAT32
-    | typeof TypeId.FLOAT64;
-  }
-  ? number
+        type: typeof TypeId.STRING;
+      }
+    ? string
+    : T extends {
+          type:
+            | (typeof TypeId)["INT8"]
+            | typeof TypeId.INT16
+            | typeof TypeId.INT32
+            | typeof TypeId.VARINT32
+            | typeof TypeId.UINT8
+            | typeof TypeId.UINT16
+            | typeof TypeId.UINT32
+            | typeof TypeId.UINT64
+            | typeof TypeId.VAR_UINT64
+            | typeof TypeId.VAR_UINT32
+            | typeof TypeId.FLOAT8
+            | typeof TypeId.FLOAT16
+            | typeof TypeId.BFLOAT16
+            | typeof TypeId.FLOAT32
+            | typeof TypeId.FLOAT64;
+        }
+      ? number
+      : T extends {
+            type:
+              | typeof TypeId.VARINT64
+              | typeof TypeId.TAGGED_INT64
+              | typeof TypeId.INT64
+              | typeof TypeId.UINT64
+              | typeof TypeId.VAR_UINT64
+              | typeof TypeId.TAGGED_UINT64;
+          }
+        ? bigint
+        : T extends {
+              type: typeof TypeId.MAP;
+            }
+          ? MapProps<T>
+          : T extends {
+                type: typeof TypeId.SET;
+              }
+            ? SetProps<T>
+            : T extends {
+                  type: typeof TypeId.LIST;
+                }
+              ? InnerProps<T>
+              : T extends {
+                    type: typeof TypeId.BOOL;
+                  }
+                ? boolean
+                : T extends {
+                      type: typeof TypeId.DURATION;
+                    }
+                  ? Date
+                  : T extends {
+                        type: typeof TypeId.TIMESTAMP;
+                      }
+                    ? number
+                    : T extends {
+                          type: typeof TypeId.BINARY;
+                        }
+                      ? Uint8Array
+                      : T extends {
+                            type: typeof TypeId.ENUM;
+                          }
+                        ? EnumProps<T>
+                        : any;
 
-  : T extends {
-    type: typeof TypeId.VARINT64
-    | typeof TypeId.TAGGED_INT64
-    | typeof TypeId.INT64
-    | typeof TypeId.UINT64
-    | typeof TypeId.VAR_UINT64
-    | typeof TypeId.TAGGED_UINT64;
-  }
-  ? bigint
-  : T extends {
-    type: typeof TypeId.MAP;
-  }
-  ? MapProps<T>
-  : T extends {
-    type: typeof TypeId.SET;
-  }
-  ? SetProps<T>
-  : T extends {
-    type: typeof TypeId.LIST;
-  }
-  ? InnerProps<T>
-  : T extends {
-    type: typeof TypeId.BOOL;
-  }
-  ? boolean
-  : T extends {
-    type: typeof TypeId.DURATION;
-  }
-  ? Date
-  : T extends {
-    type: typeof TypeId.TIMESTAMP;
-  }
-  ? number
-  : T extends {
-    type: typeof TypeId.BINARY;
-  }
-  ? Uint8Array
-  : T extends {
-    type: typeof TypeId.ENUM;
-  }
-  ? EnumProps<T> : any;
+export type ResultType<T> =
+  T extends TypeInfo<infer M> ? HintResult<M> : HintResult<T>;
 
-export type ResultType<T> = T extends TypeInfo<infer M> ? HintResult<M> : HintResult<T>;
-
-export type HintResult<T> = T extends never ? any : T extends {
-  type: typeof TypeId.STRUCT;
-}
-  ? Props<T>
+export type HintResult<T> = T extends never
+  ? any
   : T extends {
-    type: typeof TypeId.STRING;
-  }
-  ? string
-  : T extends {
-    type:
-    | typeof TypeId.INT8
-    | typeof TypeId.INT16
-    | typeof TypeId.INT32
-    | typeof TypeId.VARINT32
-    | typeof TypeId.UINT8
-    | typeof TypeId.UINT16
-    | typeof TypeId.UINT32
-    | typeof TypeId.VAR_UINT32
-    | typeof TypeId.FLOAT8
-    | typeof TypeId.FLOAT16
-    | typeof TypeId.BFLOAT16
-    | typeof TypeId.FLOAT32
-    | typeof TypeId.FLOAT64;
-  }
-  ? number
-
-  : T extends {
-    type: typeof TypeId.TAGGED_INT64
-    | typeof TypeId.INT64
-    | typeof TypeId.UINT64
-    | typeof TypeId.VAR_UINT64
-    | typeof TypeId.TAGGED_UINT64;
-  }
-  ? bigint
-  : T extends {
-    type: typeof TypeId.MAP;
-  }
-  ? MapProps<T>
-  : T extends {
-    type: typeof TypeId.SET;
-  }
-  ? SetProps<T>
-  : T extends {
-    type: typeof TypeId.LIST;
-  }
-  ? InnerProps<T>
-  : T extends {
-    type: typeof TypeId.BOOL;
-  }
-  ? boolean
-  : T extends {
-    type: typeof TypeId.DURATION;
-  }
-  ? Date
-  : T extends {
-    type: typeof TypeId.TIMESTAMP;
-  }
-  ? number
-  : T extends {
-    type: typeof TypeId.BINARY;
-  }
-  ? Uint8Array : T extends {
-    type: typeof TypeId.ENUM;
-  }
-  ? EnumProps<T>: unknown;
+        type: typeof TypeId.STRUCT;
+      }
+    ? Props<T>
+    : T extends {
+          type: typeof TypeId.STRING;
+        }
+      ? string
+      : T extends {
+            type:
+              | typeof TypeId.INT8
+              | typeof TypeId.INT16
+              | typeof TypeId.INT32
+              | typeof TypeId.VARINT32
+              | typeof TypeId.UINT8
+              | typeof TypeId.UINT16
+              | typeof TypeId.UINT32
+              | typeof TypeId.VAR_UINT32
+              | typeof TypeId.FLOAT8
+              | typeof TypeId.FLOAT16
+              | typeof TypeId.BFLOAT16
+              | typeof TypeId.FLOAT32
+              | typeof TypeId.FLOAT64;
+          }
+        ? number
+        : T extends {
+              type:
+                | typeof TypeId.TAGGED_INT64
+                | typeof TypeId.INT64
+                | typeof TypeId.UINT64
+                | typeof TypeId.VAR_UINT64
+                | typeof TypeId.TAGGED_UINT64;
+            }
+          ? bigint
+          : T extends {
+                type: typeof TypeId.MAP;
+              }
+            ? MapProps<T>
+            : T extends {
+                  type: typeof TypeId.SET;
+                }
+              ? SetProps<T>
+              : T extends {
+                    type: typeof TypeId.LIST;
+                  }
+                ? InnerProps<T>
+                : T extends {
+                      type: typeof TypeId.BOOL;
+                    }
+                  ? boolean
+                  : T extends {
+                        type: typeof TypeId.DURATION;
+                      }
+                    ? Date
+                    : T extends {
+                          type: typeof TypeId.TIMESTAMP;
+                        }
+                      ? number
+                      : T extends {
+                            type: typeof TypeId.BINARY;
+                          }
+                        ? Uint8Array
+                        : T extends {
+                              type: typeof TypeId.ENUM;
+                            }
+                          ? EnumProps<T>
+                          : unknown;
 
 export const Type = {
   any() {
     return TypeInfo.fromNonParam<typeof TypeId.UNKNOWN>(TypeId.UNKNOWN);
   },
   array<T extends TypeInfo>(inner: T) {
-    return TypeInfo.fromWithOptions<typeof TypeId.LIST, { inner: T }>(TypeId.LIST, {
-      inner,
-    });
+    return TypeInfo.fromWithOptions<typeof TypeId.LIST, { inner: T }>(
+      TypeId.LIST,
+      {
+        inner,
+      },
+    );
   },
-  map<T1 extends TypeInfo, T2 extends TypeInfo>(
-    key: T1,
-    value: T2
-  ) {
-    return TypeInfo.fromWithOptions<typeof TypeId.MAP, {
-      key: T1,
-      value: T2
-    }>(TypeId.MAP, {
+  map<T1 extends TypeInfo, T2 extends TypeInfo>(key: T1, value: T2) {
+    return TypeInfo.fromWithOptions<
+      typeof TypeId.MAP,
+      {
+        key: T1;
+        value: T2;
+      }
+    >(TypeId.MAP, {
       key,
       value,
     });
   },
   set<T extends TypeInfo>(key: T) {
-    return TypeInfo.fromWithOptions<typeof TypeId.SET, {
-      key: T
-    }>(TypeId.SET, {
+    return TypeInfo.fromWithOptions<
+      typeof TypeId.SET,
+      {
+        key: T;
+      }
+    >(TypeId.SET, {
       key,
     });
   },
-  enum<T1 extends { [key: string]: any }>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, t1: T1) {
+  enum<T1 extends { [key: string]: any }>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    t1: T1,
+  ) {
     return TypeInfo.fromEnum<{
       type: typeof TypeId.ENUM;
       options: {
@@ -534,17 +589,24 @@ export const Type = {
       };
     }>(nameInfo, t1);
   },
-  struct<T extends { [key: string]: TypeInfo }>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, props?: T, {
-    withConstructor = false,
-    fieldInfo,
-  }: {
-    withConstructor?: boolean;
-    fieldInfo?: Record<string, StructFieldInfo>
-  } = {}) {
+  struct<T extends { [key: string]: TypeInfo }>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    props?: T,
+    {
+      withConstructor = false,
+      fieldInfo,
+    }: {
+      withConstructor?: boolean;
+      fieldInfo?: Record<string, StructFieldInfo>;
+    } = {},
+  ) {
     return TypeInfo.fromStruct<{
       type: typeof TypeId.STRUCT;
       options: {
@@ -552,7 +614,7 @@ export const Type = {
       };
     }>(nameInfo, props, {
       withConstructor,
-      fieldInfo
+      fieldInfo,
     });
   },
   string() {
@@ -577,7 +639,9 @@ export const Type = {
     return TypeInfo.fromNonParam<typeof TypeId.INT64>(TypeId.INT64);
   },
   sliInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_INT64>(TypeId.TAGGED_INT64);
+    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_INT64>(
+      TypeId.TAGGED_INT64,
+    );
   },
   float16() {
     return TypeInfo.fromNonParam<typeof TypeId.FLOAT16>(TypeId.FLOAT16);
@@ -610,7 +674,9 @@ export const Type = {
     return TypeInfo.fromNonParam<typeof TypeId.VARINT64>(TypeId.VARINT64);
   },
   taggedUInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_UINT64>(TypeId.TAGGED_UINT64);
+    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_UINT64>(
+      TypeId.TAGGED_UINT64,
+    );
   },
   binary() {
     return TypeInfo.fromNonParam<typeof TypeId.BINARY>(TypeId.BINARY);
@@ -640,21 +706,33 @@ export const Type = {
     return TypeInfo.fromNonParam<typeof TypeId.UINT8_ARRAY>(TypeId.UINT8_ARRAY);
   },
   uint16Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT16_ARRAY>(TypeId.UINT16_ARRAY);
+    return TypeInfo.fromNonParam<typeof TypeId.UINT16_ARRAY>(
+      TypeId.UINT16_ARRAY,
+    );
   },
   uint32Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT32_ARRAY>(TypeId.UINT32_ARRAY);
+    return TypeInfo.fromNonParam<typeof TypeId.UINT32_ARRAY>(
+      TypeId.UINT32_ARRAY,
+    );
   },
   uint64Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT64_ARRAY>(TypeId.UINT64_ARRAY);
+    return TypeInfo.fromNonParam<typeof TypeId.UINT64_ARRAY>(
+      TypeId.UINT64_ARRAY,
+    );
   },
   float16Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16_ARRAY>(TypeId.FLOAT16_ARRAY);
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16_ARRAY>(
+      TypeId.FLOAT16_ARRAY,
+    );
   },
   float32Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32_ARRAY>(TypeId.FLOAT32_ARRAY);
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32_ARRAY>(
+      TypeId.FLOAT32_ARRAY,
+    );
   },
   float64Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64_ARRAY>(TypeId.FLOAT64_ARRAY);
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64_ARRAY>(
+      TypeId.FLOAT64_ARRAY,
+    );
   },
 };

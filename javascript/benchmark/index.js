@@ -19,20 +19,20 @@
 
 const Fory = require("@apache-fory/fory");
 const utils = require("@apache-fory/fory/dist/lib/util");
-const hps = require('@apache-fory/hps').default;
-const fory = new Fory.default({ hps, refTracking: false, useSliceString: true });
+const hps = require("@apache-fory/hps").default;
+const fory = new Fory.default({
+  hps,
+  refTracking: false,
+  useSliceString: true,
+});
 const Benchmark = require("benchmark");
 const protobuf = require("protobufjs");
-const path = require('path');
+const path = require("path");
 const Type = Fory.Type;
-const assert = require('assert');
+const assert = require("assert");
 const { spawn } = require("child_process");
 
-
-export const data2TypeInfo = (
-  data,
-  typeName,
-) => {
+export const data2TypeInfo = (data, typeName) => {
   if (data === null || data === undefined) {
     return null;
   }
@@ -75,7 +75,7 @@ export const data2TypeInfo = (
 
     return Type.struct(
       {
-        typeName
+        typeName,
       },
       Object.fromEntries(
         Object.entries(data)
@@ -89,7 +89,6 @@ export const data2TypeInfo = (
 
   throw new Error(`unknown data type ${typeof data}`);
 };
-
 
 const sample = {
   id: 123456,
@@ -169,16 +168,16 @@ const sample = {
   `,
 };
 
-
 const typeinfo = utils.data2TypeInfo(sample, "fory.test.foo");
-const { serialize, deserialize, serializeVolatile } = fory.registerSerializer(typeinfo);
+const { serialize, deserialize, serializeVolatile } =
+  fory.registerSerializer(typeinfo);
 
 const foryAb = serialize(sample);
 const sampleJson = JSON.stringify(sample);
 
 function loadProto() {
   return new Promise((resolve) => {
-    protobuf.load(path.join(__dirname, 'sample.proto'), function (err, root) {
+    protobuf.load(path.join(__dirname, "sample.proto"), function (err, root) {
       if (err) throw err;
       const AwesomeMessage = root.lookupType("SomeMessage");
       resolve({
@@ -205,7 +204,10 @@ async function start() {
   const protobufBf = protobufEncode(sample);
 
   {
-    console.log('sample json size: ', `${(sampleJson.length / 1000).toFixed()}k`);
+    console.log(
+      "sample json size: ",
+      `${(sampleJson.length / 1000).toFixed()}k`,
+    );
     assert(JSON.stringify(protobufDecode(protobufBf)) === sampleJson);
     assert.deepEqual(deserialize(foryAb), sample);
   }
@@ -221,8 +223,8 @@ async function start() {
     json: {
       serialize: 0,
       deserialize: 0,
-    }
-  }
+    },
+  };
 
   {
     var suite = new Benchmark.Suite();
@@ -243,7 +245,6 @@ async function start() {
       })
       .run({ async: false });
   }
-
 
   {
     var suite = new Benchmark.Suite();
@@ -268,10 +269,18 @@ async function start() {
 
   spawn(
     `python3`,
-    ['draw.py', result.json.serialize, result.json.deserialize, result.protobuf.serialize, result.protobuf.deserialize, result.fory.serialize, result.fory.deserialize],
+    [
+      "draw.py",
+      result.json.serialize,
+      result.json.deserialize,
+      result.protobuf.serialize,
+      result.protobuf.deserialize,
+      result.fory.serialize,
+      result.fory.deserialize,
+    ],
     {
       cwd: __dirname,
-    }
-  )
+    },
+  );
 }
 start();

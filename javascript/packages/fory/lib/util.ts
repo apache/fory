@@ -17,14 +17,17 @@
  * under the License.
  */
 
-export const isNodeEnv: boolean
-  = typeof process !== "undefined"
-  && process.versions != null
-  && process.env.ECMA_ONLY !== "true"
-  && process.versions.node != null;
+export const isNodeEnv: boolean =
+  typeof process !== "undefined" &&
+  process.versions != null &&
+  process.env.ECMA_ONLY !== "true" &&
+  process.versions.node != null;
 
 export const hasBuffer = isNodeEnv && typeof Buffer !== "undefined";
 
 export function isUint8Array(obj: any): obj is Uint8Array {
-  return obj instanceof Uint8Array || Object.prototype.toString.call(obj) === "[object Uint8Array]";
+  return (
+    obj instanceof Uint8Array ||
+    Object.prototype.toString.call(obj) === "[object Uint8Array]"
+  );
 }

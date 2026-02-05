@@ -9,11 +9,11 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "baseUrl": "./",
-    "rootDir": "../../", 
+    "rootDir": "../../",
     "paths": {
       "*": ["node_modules/*", "./*"]
     },
-    
+
     /* Relaxed Type Checking to bypass the 25+ errors */
     "strict": true,
     "noImplicitAny": false,
@@ -33,12 +33,6 @@
     /* Types */
     "types": ["jest", "node"]
   },
-  "include": [
-    "**/*.ts",
-    "../../test/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "../../dist"
-  ]
+  "include": ["**/*.ts", "../../test/**/*.ts"],
+  "exclude": ["node_modules", "../../dist"]
 }

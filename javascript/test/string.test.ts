@@ -17,49 +17,39 @@
  * under the License.
  */
 
-import Fory from '../packages/fory/index';
-import {describe, expect, test} from '@jest/globals';
+import Fory from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
 const config = {};
 
-describe('string', () => {
-  test('should latin1 string work', () => {
-    
-    const fory = new Fory(config);    
-    const input = fory.serialize("123")
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual("123")
+describe("string", () => {
+  test("should latin1 string work", () => {
+    const fory = new Fory(config);
+    const input = fory.serialize("123");
+    const result = fory.deserialize(input);
+    expect(result).toEqual("123");
   });
 
-  test('should utf8 string work', () => {
-    
-    const fory = new Fory(config);    
-    const input = fory.serialize("我是Fory, 你好！😁א")
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual("我是Fory, 你好！😁א")
+  test("should utf8 string work", () => {
+    const fory = new Fory(config);
+    const input = fory.serialize("我是Fory, 你好！😁א");
+    const result = fory.deserialize(input);
+    expect(result).toEqual("我是Fory, 你好！😁א");
   });
 
-  test('should long latin1 string work', () => {
+  test("should long latin1 string work", () => {
     const str = new Array(100).fill("123").join();
-    const fory = new Fory(config);    
-    const input = fory.serialize(str)
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(str)
+    const fory = new Fory(config);
+    const input = fory.serialize(str);
+    const result = fory.deserialize(input);
+    expect(result).toEqual(str);
   });
 
-  test('should long utf8 string work', () => {
+  test("should long utf8 string work", () => {
     const str = new Array(10).fill("我是Fory, 你好！😁א").join();
-    const fory = new Fory(config);    
-    const input = fory.serialize(str)
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(str)
+    const fory = new Fory(config);
+    const input = fory.serialize(str);
+    const result = fory.deserialize(input);
+    expect(result).toEqual(str);
   });
 });
