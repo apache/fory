@@ -101,14 +101,14 @@ FORY_STRUCT(Sample, int_value, long_value, float_value, double_value,
             short_value_boxed, char_value_boxed, boolean_value_boxed, int_array,
             long_array, float_array, double_array, short_array, char_array,
             boolean_array, string);
-FORY_FIELD_TAGS(
-    Sample, (int_value, 1), (long_value, 2), (float_value, 3),
-    (double_value, 4), (short_value, 5), (char_value, 6), (boolean_value, 7),
-    (int_value_boxed, 8), (long_value_boxed, 9), (float_value_boxed, 10),
-    (double_value_boxed, 11), (short_value_boxed, 12), (char_value_boxed, 13),
-    (boolean_value_boxed, 14), (int_array, 15), (long_array, 16),
-    (float_array, 17), (double_array, 18), (short_array, 19),
-    (char_array, 20), (boolean_array, 21), (string, 22));
+FORY_FIELD_TAGS(Sample, (int_value, 1), (long_value, 2), (float_value, 3),
+                (double_value, 4), (short_value, 5), (char_value, 6),
+                (boolean_value, 7), (int_value_boxed, 8), (long_value_boxed, 9),
+                (float_value_boxed, 10), (double_value_boxed, 11),
+                (short_value_boxed, 12), (char_value_boxed, 13),
+                (boolean_value_boxed, 14), (int_array, 15), (long_array, 16),
+                (float_array, 17), (double_array, 18), (short_array, 19),
+                (char_array, 20), (boolean_array, 21), (string, 22));
 
 // Enums for MediaContent benchmark
 enum class Player : int32_t { JAVA = 0, FLASH = 1 };
