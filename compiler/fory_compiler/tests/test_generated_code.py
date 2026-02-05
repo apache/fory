@@ -215,11 +215,11 @@ def test_generated_code_list_modifier_aliases_equivalent():
         }
 
         message Container {
-            list string tags = 1;
-            optional list string labels = 2;
-            list optional string aliases = 3;
-            ref list Item items = 4;
-            list ref Item children = 5;
+            list<string> tags = 1;
+            optional list<string> labels = 2;
+            list<optional string> aliases = 3;
+            ref list<Item> items = 4;
+            list<ref Item> children = 5;
         }
         """
     )

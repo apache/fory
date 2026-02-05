@@ -38,12 +38,12 @@ message User {
     string name = 1;
     int32 age = 2;
     optional string email = 3;
-    list string tags = 4;
+    list<string> tags = 4;
 }
 
 message Order {
     ref User customer = 1;
-    list Item items = 2;
+    list<Item> items = 2;
     Status status = 3;
     map<string, int32> metadata = 4;
 }
@@ -170,7 +170,7 @@ data = bytes(person) # or `person.to_bytes()`
 message Example {
     optional string nullable = 1;
     ref Node parent = 2;
-    list int32 numbers = 3;
+    list<int32> numbers = 3;
 }
 ```
 

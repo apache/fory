@@ -630,9 +630,9 @@ message SearchResponse {
     message Result {
         string url = 1;
         string title = 2;
-        list string snippets = 3;
+        list<string> snippets = 3;
     }
-    list Result results = 1;
+    list<Result> results = 1;
 }
 ```
 
@@ -664,7 +664,7 @@ message SearchResponse {
 message SearchResultCache {
     // Reference nested type with qualified name
     SearchResponse.Result cached_result = 1;
-    list SearchResponse.Result all_results = 2;
+    list<SearchResponse.Result> all_results = 2;
 }
 ```
 
@@ -760,22 +760,23 @@ field_type field_name = field_number;
 ### With Modifiers
 
 ```protobuf
-optional list string tags = 1;  // Nullable list
-list optional string tags = 2;  // Elements may be null
-ref list Node nodes = 3;        // Collection tracked as a reference
-list ref Node nodes = 4;        // Elements tracked as references
+optional list<string> tags = 1;  // Nullable list
+list<optional string> tags = 2;  // Elements may be null
+ref list<Node> nodes = 3;        // Collection tracked as a reference
+list<ref Node> nodes = 4;        // Elements tracked as references
 ```
 
 **Grammar:**
 
 ```
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER ';'
-modifiers    := { 'optional' | 'ref' } ['list' { 'optional' | 'ref' }]
-field_type   := primitive_type | named_type | map_type
+modifiers    := { 'optional' | 'ref' }
+field_type   := primitive_type | named_type | list_type | map_type
+list_type    := 'list' '<' { 'optional' | 'ref' } field_type '>'
 ```
 
-Modifiers before `list` apply to the field/collection. Modifiers after `list`
-apply to list elements. `repeated` is accepted as an alias for `list`.
+Modifiers apply to the field/collection. Use `list<...>` to describe element
+modifiers. `repeated` is accepted as an alias for `list`.
 
 ### Field Modifiers
 
@@ -815,7 +816,7 @@ Enables reference tracking for shared/circular references:
 message Node {
     string value = 1;
     ref Node parent = 2;     // Can point to shared object
-    list ref Node children = 3;
+    list<ref Node> children = 3;
 }
 ```
 
@@ -844,8 +845,8 @@ Marks the field as a list/array:
 
 ```protobuf
 message Document {
-    list string tags = 1;
-    list User authors = 2;
+    list<string> tags = 1;
+    list<User> authors = 2;
 }
 ```
 
@@ -865,10 +866,10 @@ Modifiers can be combined:
 
 ```fdl
 message Example {
-    optional list string tags = 1;  // Nullable list
-    list optional string aliases = 2; // Elements may be null
-    ref list Node nodes = 3;          // Collection tracked as a reference
-    list ref Node children = 4;       // Elements tracked as references
+    optional list<string> tags = 1;  // Nullable list
+    list<optional string> aliases = 2; // Elements may be null
+    ref list<Node> nodes = 3;          // Collection tracked as a reference
+    list<ref Node> children = 4;       // Elements tracked as references
     optional ref User owner = 5;          // Nullable tracked reference
 }
 ```
@@ -878,12 +879,12 @@ apply to elements. `repeated` is accepted as an alias for `list`.
 
 **List modifier mapping:**
 
-| FDL                    | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
-| ---------------------- | ---------------------------------------------- | --------------------------------------- | ----------------------- | --------------------- | ----------------------------------------- |
-| `optional list string` | `List<String>` + `@ForyField(nullable = true)` | `Optional[List[str]]`                   | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` |
-| `list optional string` | `List<String>` (nullable elements)             | `List[Optional[str]]`                   | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` |
-| `ref list User`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
-| `list ref User`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
+| FDL                     | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
+| ----------------------- | ---------------------------------------------- | --------------------------------------- | ----------------------- | --------------------- | ----------------------------------------- |
+| `optional list<string>` | `List<String>` + `@ForyField(nullable = true)` | `Optional[List[str]]`                   | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` |
+| `list<optional string>` | `List<String>` (nullable elements)             | `List[Optional[str]]`                   | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` |
+| `ref list<User>`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
+| `list<ref User>`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
 
 Use `ref(thread_safe = false)` in FDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
 to generate `Rc` instead of `Arc` in Rust.
@@ -1164,7 +1165,7 @@ message Order {
 
 #### List (`list`)
 
-Use the `list` modifier for list types. `repeated` is accepted as an alias. See [Field Modifiers](#field-modifiers) for
+Use the `list<...>` type for list fields. `repeated` is accepted as an alias. See [Field Modifiers](#field-modifiers) for
 modifier combinations and language mapping.
 
 #### Map
@@ -1333,7 +1334,7 @@ message Product [id=202] {
     string description = 3;
     float64 price = 4;
     int32 stock = 5;
-    list string categories = 6;
+    list<string> categories = 6;
     map<string, string> attributes = 7;
 }
 
@@ -1346,7 +1347,7 @@ message OrderItem [id=203] {
 message Order [id=204] {
     string id = 1;
     ref Customer customer = 2;
-    list OrderItem items = 3;
+    list<OrderItem> items = 3;
     OrderStatus status = 4;
     PaymentMethod payment_method = 5;
     float64 total = 6;
@@ -1360,7 +1361,7 @@ message ShopConfig {
     string store_name = 1;
     string currency = 2;
     float64 tax_rate = 3;
-    list string supported_countries = 4;
+    list<string> supported_countries = 4;
 }
 ```
 
@@ -1462,11 +1463,11 @@ message Example {
 | `weak_ref`            | bool | C++/Rust only: generate weak pointers for `ref` fields    |
 
 **Note:** For FDL, use `ref` (and optional `ref(...)`) modifiers:
-`ref MyType friend = 1;`, `list ref(weak = true) Child children = 2;`,
+`ref MyType friend = 1;`, `list<ref(weak = true) Child> children = 2;`,
 `map<string, ref(weak = true) Node> nodes = 3;`. For protobuf, use
 `[(fory).ref = true]` and `[(fory).weak_ref = true]`. `weak_ref` is a codegen
 hint for C++/Rust and is ignored by Java/Python/Go. It must be used with `ref`
-(`list ref` for collections, or `map<..., ref T>` for map values).
+(`list<ref T>` for collections, or `map<..., ref T>` for map values).
 
 To use `Rc` instead of `Arc` in Rust for a specific field:
 

@@ -105,7 +105,7 @@ message User [id=101] {
     string name = 2;
     optional string email = 3;
     int32 age = 4;
-    list string tags = 5;
+    list<string> tags = 5;
     map<string, string> metadata = 6;
 }
 ```
@@ -138,7 +138,7 @@ message OrderItem [id=200] {
 }
 
 message Order [id=201] {
-    list OrderItem items = 1;
+    list<OrderItem> items = 1;
 }
 ```
 
@@ -169,12 +169,12 @@ FDL's killer feature is first-class reference tracking:
 message TreeNode [id=300] {
     string value = 1;
     ref TreeNode parent = 2;
-    list ref TreeNode children = 3; // Element refs
-    ref list TreeNode path = 4;     // Collection ref
+    list<ref TreeNode> children = 3; // Element refs
+    ref list<TreeNode> path = 4;     // Collection ref
 }
 
 message Graph [id=301] {
-    list ref Node nodes = 1;  // Shared references preserved (elements)
+    list<ref Node> nodes = 1;  // Shared references preserved (elements)
 }
 ```
 
@@ -215,7 +215,7 @@ message TreeNode {
 | Timestamp  | `google.protobuf.Timestamp`                                                                            | `timestamp`                                                                                     |
 | Date       | Not built-in                                                                                           | `date`                                                                                          |
 | Duration   | `google.protobuf.Duration`                                                                             | Not built-in                                                                                    |
-| List       | `repeated T`                                                                                           | `list T` (alias: `repeated T`)                                                                  |
+| List       | `repeated T`                                                                                           | `list<T>` (alias: `repeated T`)                                                                 |
 | Map        | `map<K, V>`                                                                                            | `map<K, V>`                                                                                     |
 | Nullable   | `optional T` (proto3)                                                                                  | `optional T`                                                                                    |
 | Oneof      | `oneof`                                                                                                | `union` (case id = field number)                                                                |
@@ -346,7 +346,7 @@ message Address [id=100] {
 message Person [id=101] {
     string name = 1;
     int32 age = 2;
-    list string emails = 3;
+    list<string> emails = 3;
     Address address = 4;
 }
 ```

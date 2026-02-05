@@ -435,7 +435,7 @@ class SchemaValidator:
                 and field.element_ref
             ):
                 self._error(
-                    "ref is not allowed on repeated any fields",
+                    "ref is not allowed on list<any> fields",
                     field.location,
                 )
 
@@ -452,8 +452,8 @@ class SchemaValidator:
             if field.ref:
                 if isinstance(field.field_type, (ListType, MapType)):
                     self._error(
-                        "ref is not allowed on repeated/map fields; "
-                        "use `repeated ref` for list elements or `map<..., ref T>` for map values",
+                        "ref is not allowed on list/map fields; "
+                        "use `list<ref T>` (or `repeated ref T`) for list elements or `map<..., ref T>` for map values",
                         field.location,
                     )
                 else:
@@ -467,7 +467,7 @@ class SchemaValidator:
             if field.element_ref:
                 if not isinstance(field.field_type, ListType):
                     self._error(
-                        "repeated ref is only valid for list fields",
+                        "`list<ref T>` (or `repeated ref T`) is only valid for list fields",
                         field.location,
                     )
                 else:
@@ -526,7 +526,7 @@ class SchemaValidator:
             if isinstance(field.field_type, ListType):
                 if not field.element_ref:
                     self._error(
-                        "weak_ref requires repeated ref fields (use `repeated ref`)",
+                        "weak_ref requires list element refs (use `list<ref T>` or `repeated ref T`)",
                         field.location,
                     )
                     return

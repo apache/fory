@@ -44,7 +44,7 @@ message User [id=101] {
 message Order [id=102] {
     string id = 1;
     ref User customer = 2;
-    list string items = 3;
+    list<string> items = 3;
     map<string, int32> quantities = 4;
     Status status = 5;
 }
@@ -88,7 +88,7 @@ message SearchResponse {
         string url = 1;
         string title = 2;
     }
-    list Result results = 1;
+    list<Result> results = 1;
 }
 ```
 

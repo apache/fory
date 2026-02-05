@@ -51,7 +51,7 @@ message Dog [id=102] {
 message Cat [id=103] {
     ref Dog friend = 1;
     optional string name = 2;
-    list string tags = 3;
+    list<string> tags = 3;
     map<string, int32> scores = 4;
     int32 lives = 5;
 }
@@ -202,7 +202,7 @@ message Config { ... }  // Registered as "package.Config"
 ### Collection Types
 
 ```fdl
-list string tags = 1;           // List<String>
+list<string> tags = 1;          // List<String>
 map<string, int32> scores = 2;  // Map<String, Integer>
 ```
 
@@ -216,7 +216,7 @@ map<string, int32> scores = 2;  // Map<String, Integer>
 message Example {
     optional string nullable_field = 1;
     ref OtherMessage shared_ref = 2;
-    list int32 numbers = 3;
+    list<int32> numbers = 3;
 }
 ```
 
