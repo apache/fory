@@ -642,7 +642,7 @@ fn register_all_types(fory: &mut Fory) -> Result<(), fory::Error> {
 `register_types`.
 
 **Note:** Rust uses `Arc` by default for `ref` fields. In FDL, use
-`ref(thread_safe = false)` to generate `Rc`, and `ref(weak = true)` to generate
+`ref(thread_safe=false)` to generate `Rc`, and `ref(weak=true)` to generate
 `ArcWeak`/`RcWeak`. For protobuf/IDL extensions, use
 `[(fory).thread_safe_pointer = false]` and `[(fory).weak_ref = true]`.
 
@@ -787,7 +787,7 @@ int main() {
 ```
 
 **Note:** C++ uses `std::shared_ptr<T>` for `ref` fields. Set
-`ref(weak = true)` in FDL (or `[(fory).weak_ref = true]` in protobuf) to generate
+`ref(weak=true)` in FDL (or `[(fory).weak_ref = true]` in protobuf) to generate
 `fory::serialization::SharedWeak<T>` for weak references.
 
 ## Generated Annotations Summary

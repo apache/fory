@@ -836,7 +836,7 @@ message Node {
 | Rust     | `parent: Node` | `parent: Arc<Node>`                       |
 | C++      | `Node parent`  | `std::shared_ptr<Node> parent`            |
 
-Rust uses `Arc` by default; use `ref(thread_safe = false)` or `ref(weak = true)`
+Rust uses `Arc` by default; use `ref(thread_safe=false)` or `ref(weak=true)`
 to customize pointer types (see [Field-Level Fory Options](#field-level-fory-options)).
 
 #### `list`
@@ -886,7 +886,7 @@ apply to elements. `repeated` is accepted as an alias for `list`.
 | `ref list<User>`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
 | `list<ref User>`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
 
-Use `ref(thread_safe = false)` in FDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
+Use `ref(thread_safe=false)` in FDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
 to generate `Rc` instead of `Arc` in Rust.
 
 ## Field Numbers
@@ -1450,7 +1450,7 @@ message Example {
     ref MyType friend = 1;
     string nickname = 2 [nullable = true];
     ref MyType data = 3 [nullable = true];
-    ref(weak = true) MyType parent = 4;
+    ref(weak=true) MyType parent = 4;
 }
 ```
 
@@ -1463,8 +1463,8 @@ message Example {
 | `weak_ref`            | bool | C++/Rust only: generate weak pointers for `ref` fields    |
 
 **Note:** For FDL, use `ref` (and optional `ref(...)`) modifiers:
-`ref MyType friend = 1;`, `list<ref(weak = true) Child> children = 2;`,
-`map<string, ref(weak = true) Node> nodes = 3;`. For protobuf, use
+`ref MyType friend = 1;`, `list<ref(weak=true) Child> children = 2;`,
+`map<string, ref(weak=true) Node> nodes = 3;`. For protobuf, use
 `[(fory).ref = true]` and `[(fory).weak_ref = true]`. `weak_ref` is a codegen
 hint for C++/Rust and is ignored by Java/Python/Go. It must be used with `ref`
 (`list<ref T>` for collections, or `map<..., ref T>` for map values).
@@ -1473,7 +1473,7 @@ To use `Rc` instead of `Arc` in Rust for a specific field:
 
 ```fdl
 message Graph {
-    ref(thread_safe = false) Node root = 1;
+    ref(thread_safe=false) Node root = 1;
 }
 ```
 
