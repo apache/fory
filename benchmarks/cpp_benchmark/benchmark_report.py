@@ -97,6 +97,19 @@ def parse_benchmark_name(name):
     return None, None, None
 
 
+def format_datatype_label(datatype):
+    if not datatype:
+        return ""
+    if datatype.endswith("list"):
+        base = datatype[: -len("list")]
+        if base == "mediacontent":
+            return "MediaContent\nList"
+        return f"{base.capitalize()}\nList"
+    if datatype == "mediacontent":
+        return "MediaContent"
+    return datatype.capitalize()
+
+
 # === Read and parse benchmark JSON ===
 def load_benchmark_data(json_file):
     with open(json_file, "r", encoding="utf-8") as f:
@@ -243,7 +256,7 @@ for idx, op in enumerate(operations):
     ax.set_ylabel("Throughput (ops/sec)")
     ax.set_title(f"{op.capitalize()} Throughput (higher is better)")
     ax.set_xticks(x)
-    ax.set_xticklabels([dt.capitalize() for dt in datatypes])
+    ax.set_xticklabels([format_datatype_label(dt) for dt in datatypes])
     ax.legend()
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
