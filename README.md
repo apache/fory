@@ -27,7 +27,7 @@ Apache Fory™ delivers excellent performance through advanced optimization tech
 - **Zero-Copy Operations**: Direct memory access without intermediate buffer copies; row format enables random access and partial serialization
 - **Meta Packing & Sharing**: Class metadata packing and sharing reduces redundant type information across serializations
 
-### 🌍 Cross-Language Serialization
+### 🔄 Cross-Language Serialization
 
 The **[xlang serialization format](docs/specification/xlang_serialization_spec.md)** enables seamless data exchange across programming languages:
 
@@ -46,14 +46,14 @@ A cache-friendly **[row format](docs/specification/row_format_spec.md)** optimiz
 - **Apache Arrow Integration**: Seamless conversion to columnar format for analytics pipelines
 - **Multi-Language**: Available in Java, Python, Rust and C++
 
-### 🔒 Security & Production-Readiness
+### 🚀 Security & Production-Readiness
 
 Enterprise-grade security and compatibility:
 
 - **Class Registration**: Whitelist-based deserialization control (enabled by default)
 - **Depth Limiting**: Protection against recursive object graph attacks
 - **Configurable Policies**: Custom class checkers and deserialization policies
-- **Platform Support**: Java 8-24, GraalVM native image, multiple OS platforms
+- **Platform Support**: Java 8-25, GraalVM native image, multiple OS platforms
 
 ## Protocols
 
