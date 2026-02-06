@@ -26,43 +26,43 @@ python benchmark_report.py --log-file cargo_bench.log --output-dir=report_output
 **company**
 
 <p align="center">
-<img src="company.png" width="90%">
+<img src="company.png" width="90%" />
 </p>
 
 **ecommerce_data**
 
 <p align="center">
-<img src="ecommerce_data.png" width="90%">
+<img src="ecommerce_data.png" width="90%" />
 </p>
 
 **person**
 
 <p align="center">
-<img src="person.png" width="90%">
+<img src="person.png" width="90%" />
 </p>
 
 **simple_list**
 
 <p align="center">
-<img src="simple_list.png" width="90%">
+<img src="simple_list.png" width="90%" />
 </p>
 
 **simple_map**
 
 <p align="center">
-<img src="simple_map.png" width="90%">
+<img src="simple_map.png" width="90%" />
 </p>
 
 **simple_struct**
 
 <p align="center">
-<img src="simple_struct.png" width="90%">
+<img src="simple_struct.png" width="90%" />
 </p>
 
 **system_data**
 
 <p align="center">
-<img src="system_data.png" width="90%">
+<img src="system_data.png" width="90%" />
 </p>
 
 ### Serialize Results

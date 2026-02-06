@@ -21,11 +21,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - ".github/sync.yml"
+      - "docs/guide/**"
+      - "docs/specification/**"
+      - "docs/compiler/**"
+      - "docs/benchmarks/**"
+      - ".github/workflows/sync.yml"
+  pull_request:
+    types: ["opened", "reopened", "synchronize", "ready_for_review"]
+  workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    if: github.repository == 'apache/fory'
+    if: github.repository == 'apache/fory' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
       - name: Sync files
@@ -33,3 +43,31 @@ jobs:
         with:
           GH_PAT: ${{ secrets.GH_PAT }}
           SKIP_PR: true
+
+  validate_site_build:
+    name: Validate Fory Site Build
+    runs-on: ubuntu-latest
+    if: github.repository == 'apache/fory' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    steps:
+      - name: Checkout fory
+        uses: actions/checkout@v5
+        with:
+          path: fory
+
+      - name: Checkout fory-site
+        uses: actions/checkout@v5
+        with:
+          repository: apache/fory-site
+          ref: main
+          path: fory-site
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: fory-site/package-lock.json
+
+      - name: Sync files and validate site build
+        run: |
+          python3 fory/ci/validate_fory_site_sync.py fory fory-site
