@@ -86,19 +86,13 @@ The following benchmarks compare Fory against popular Java serialization framewo
 **Serialization Throughput**:
 
 <p align="center">
-<img width="24%" alt="Struct Serialization Compatible" src="docs/benchmarks/java/compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png">
-<img width="24%" alt="MediaContent Serialization Compatible" src="docs/benchmarks/java/compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png">
-<img width="24%" alt="MediaContent Serialization" src="docs/benchmarks/java/serialization/bench_serialize_MEDIA_CONTENT_to_array_tps.png">
-<img width="24%" alt="Sample Serialization" src="docs/benchmarks/java/serialization/bench_serialize_SAMPLE_to_array_tps.png">
+<img src="docs/benchmarks/java/java_repo_serialization_throughput.png" width="95%" alt="Java Serialization Throughput">
 </p>
 
 **Deserialization Throughput**:
 
 <p align="center">
-<img width="24%" alt="Struct Deserialization Compatible" src="docs/benchmarks/java/compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png">
-<img width="24%" alt="MediaContent Deserialization Compatible" src="docs/benchmarks/java/compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png">
-<img width="24%" alt="MediaContent Deserialization" src="docs/benchmarks/java/deserialization/bench_deserialize_MEDIA_CONTENT_from_array_tps.png">
-<img width="24%" alt="Sample Deserialization" src="docs/benchmarks/java/deserialization/bench_deserialize_SAMPLE_from_array_tps.png">
+<img src="docs/benchmarks/java/java_repo_deserialization_throughput.png" width="95%" alt="Java Deserialization Throughput">
 </p>
 
 **Important**: Fory's runtime code generation requires proper warm-up for performance measurement:
