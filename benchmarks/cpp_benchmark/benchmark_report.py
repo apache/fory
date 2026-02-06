@@ -234,34 +234,51 @@ for datatype in datatypes:
     plt.close()
 
 # === Create combined TPS comparison plot ===
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+non_list_datatypes = [dt for dt in datatypes if not dt.endswith("list")]
+list_datatypes = [dt for dt in datatypes if dt.endswith("list")]
 
-for idx, op in enumerate(operations):
-    ax = axes[idx]
-    x = np.arange(len(datatypes))
+
+def plot_combined_tps_subplot(ax, grouped_datatypes, operation, title):
+    if not grouped_datatypes:
+        ax.set_title(f"{title}\nNo Data")
+        ax.axis("off")
+        return
+
+    x = np.arange(len(grouped_datatypes))
     width = 0.35
 
-    fory_times = [data[dt][op].get("fory", 0) for dt in datatypes]
-    proto_times = [data[dt][op].get("protobuf", 0) for dt in datatypes]
+    fory_times = [data[dt][operation].get("fory", 0) for dt in grouped_datatypes]
+    proto_times = [data[dt][operation].get("protobuf", 0) for dt in grouped_datatypes]
 
     # Convert to TPS (operations per second)
     fory_tps = [1e9 / t if t > 0 else 0 for t in fory_times]
     proto_tps = [1e9 / t if t > 0 else 0 for t in proto_times]
 
-    bars1 = ax.bar(x - width / 2, fory_tps, width, label="Fory", color=FORY_COLOR)
-    bars2 = ax.bar(
-        x + width / 2, proto_tps, width, label="Protobuf", color=PROTOBUF_COLOR
-    )
+    ax.bar(x - width / 2, fory_tps, width, label="Fory", color=FORY_COLOR)
+    ax.bar(x + width / 2, proto_tps, width, label="Protobuf", color=PROTOBUF_COLOR)
 
-    ax.set_ylabel("Throughput (ops/sec)")
-    ax.set_title(f"{op.capitalize()} Throughput (higher is better)")
+    ax.set_title(title)
     ax.set_xticks(x)
-    ax.set_xticklabels([format_datatype_label(dt) for dt in datatypes])
+    ax.set_xticklabels([format_datatype_label(dt) for dt in grouped_datatypes])
     ax.legend()
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
-    # Format y-axis with K/M suffixes
+    # Use a dedicated y-scale per subplot so list benchmarks are not compressed.
     ax.ticklabel_format(style="scientific", axis="y", scilimits=(0, 0))
+
+
+fig, axes = plt.subplots(1, 4, figsize=(24, 6))
+fig.supylabel("Throughput (ops/sec)")
+
+combined_subplots = [
+    (axes[0], non_list_datatypes, "serialize", "Serialize Throughput"),
+    (axes[1], non_list_datatypes, "deserialize", "Deserialize Throughput"),
+    (axes[2], list_datatypes, "serialize", "Serialize Throughput (*List)"),
+    (axes[3], list_datatypes, "deserialize", "Deserialize Throughput (*List)"),
+]
+
+for ax, grouped_datatypes, op, title in combined_subplots:
+    plot_combined_tps_subplot(ax, grouped_datatypes, op, f"{title} (higher is better)")
 
 fig.tight_layout()
 combined_plot_path = os.path.join(output_dir, "throughput.png")
@@ -294,7 +311,7 @@ for datatype, img in plot_images:
     img_path_report = args.plot_prefix + img_filename
     md_report.append(f"\n### {datatype.replace('_', ' ').title()}\n\n")
     md_report.append(
-        f'<p align="center">\n<img src="{img_path_report}" width="90%">\n</p>\n'
+        f'<p align="center">\n<img src="{img_path_report}" width="90%" />\n</p>\n'
     )
 
 # Results table
