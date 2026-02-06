@@ -50,6 +50,8 @@ const (
 	ErrKindHashMismatch
 	// ErrKindInvalidTag indicates invalid fory struct tag configuration
 	ErrKindInvalidTag
+	// ErrKindInvalidUTF16String indicates malformed UTF-16 string data
+	ErrKindInvalidUTF16String
 )
 
 // Error is a lightweight error type optimized for hot path performance.
@@ -254,6 +256,14 @@ func InvalidTagErrorf(format string, args ...any) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidTag,
 		message: fmt.Sprintf(format, args...),
+	})
+}
+
+// InvalidUTF16StringError creates an invalid UTF-16 string error
+func InvalidUTF16StringError(byteCount int) Error {
+	return panicIfEnabled(Error{
+		kind:    ErrKindInvalidUTF16String,
+		message: fmt.Sprintf("invalid UTF-16 string byte count %d: must be even", byteCount),
 	})
 }
 
