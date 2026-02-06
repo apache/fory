@@ -23,7 +23,7 @@ The Fory compiler can ingest FlatBuffers schemas (`.fbs`) and translate them int
 Fory IR before code generation. This provides a smooth migration path when you
 already have FlatBuffers schemas but want Fory-native serialization and codegen.
 
-## Key Differences vs FDL
+## Key Differences vs Fory
 
 - **Field numbering**: FlatBuffers fields have no explicit IDs; Fory assigns
   sequential field numbers based on declaration order, starting at 1.

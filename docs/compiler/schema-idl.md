@@ -263,17 +263,14 @@ message Payment {
 }
 ```
 
-### Fory Extension Options
+### Protobuf Compatibility Options
 
-FDL supports protobuf-style extension options for Fory-specific configuration:
+FDL accepts protobuf-style extension syntax (for example, `(fory).id`) for
+compatibility, but native FDL style uses plain option keys such as `id`,
+`evolving`, `ref`, and `nullable` without the `(fory)` prefix.
 
-```protobuf
-option (fory).use_record_for_java_message = true;
-option (fory).polymorphism = true;
-option (fory).enable_auto_type_id = true;
-```
-
-See the [Fory Extension Options](#fory-extension-options) section for the complete list of file, message, enum, union, and field options.
+For the protobuf-specific extension option guide, see
+[Protocol Buffers IDL Support](protobuf-idl.md#fory-extension-options-protobuf).
 
 ### Option Priority
 
@@ -1368,174 +1365,8 @@ message ShopConfig {
 }
 ```
 
-## Fory Extension Options
-
-FDL supports protobuf-style extension options for Fory-specific configuration. These use the `(fory)` prefix to indicate they are Fory extensions.
-
-### File-Level Fory Options
-
-```protobuf
-option (fory).use_record_for_java_message = true;
-option (fory).polymorphism = true;
-option (fory).enable_auto_type_id = true;
-option (fory).evolving = true;
-```
-
-| Option                        | Type   | Description                                                                                                                         |
-| ----------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `use_record_for_java_message` | bool   | Generate Java records instead of classes                                                                                            |
-| `polymorphism`                | bool   | Enable polymorphism for all types                                                                                                   |
-| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)                                                                         |
-| `evolving`                    | bool   | Default schema evolution for messages in this file (default: true). Set false to reduce payload size for messages that never change |
-| `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase`                                                                        |
-
-### Message-Level Fory Options
-
-Options can be specified inside the message body:
-
-```protobuf
-message MyMessage {
-    option (fory).id = 100;
-    option (fory).evolving = false;
-    option (fory).use_record_for_java = true;
-    string name = 1;
-}
-```
-
-| Option                | Type   | Description                                                                                                        |
-| --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
-| `id`                  | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true)                               |
-| `alias`               | string | Alternate name used as hash source for auto-generated IDs                                                          |
-| `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct and avoids compatible metadata |
-| `use_record_for_java` | bool   | Generate Java record for this message                                                                              |
-| `deprecated`          | bool   | Mark this message as deprecated                                                                                    |
-| `namespace`           | string | Custom namespace for type registration                                                                             |
-
-**Note:** `option (fory).id = 100` is equivalent to the inline syntax `message MyMessage [id=100]`.
-
-### Union-Level Fory Options
-
-```protobuf
-union MyUnion [id=100, alias="MyUnionAlias"] {
-    string text = 1;
-}
-```
-
-| Option       | Type   | Description                                                                          |
-| ------------ | ------ | ------------------------------------------------------------------------------------ |
-| `id`         | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true) |
-| `alias`      | string | Alternate name used as hash source for auto-generated IDs                            |
-| `deprecated` | bool   | Mark this union as deprecated                                                        |
-
-### Enum-Level Fory Options
-
-```protobuf
-enum Status {
-    option (fory).id = 101;
-    option (fory).deprecated = true;
-    UNKNOWN = 0;
-    ACTIVE = 1;
-}
-```
-
-| Option       | Type | Description                              |
-| ------------ | ---- | ---------------------------------------- |
-| `id`         | int  | Type ID for serialization (sets type_id) |
-| `deprecated` | bool | Mark this enum as deprecated             |
-
-### Field-Level Fory Options
-
-Field options are specified in brackets after the field number (FDL uses `ref` modifiers instead
-of bracket options for reference settings):
-
-```protobuf
-message Example {
-    ref MyType friend = 1;
-    string nickname = 2 [nullable = true];
-    ref MyType data = 3 [nullable = true];
-    ref(weak=true) MyType parent = 4;
-}
-```
-
-| Option                | Type | Description                                               |
-| --------------------- | ---- | --------------------------------------------------------- |
-| `ref`                 | bool | Enable reference tracking (protobuf extension option)     |
-| `nullable`            | bool | Mark field as nullable (sets optional flag)               |
-| `deprecated`          | bool | Mark this field as deprecated                             |
-| `thread_safe_pointer` | bool | Rust only: use `Arc` (true) or `Rc` (false) for ref types |
-| `weak_ref`            | bool | C++/Rust only: generate weak pointers for `ref` fields    |
-
-**Note:** For FDL, use `ref` (and optional `ref(...)`) modifiers:
-`ref MyType friend = 1;`, `list<ref(weak=true) Child> children = 2;`,
-`map<string, ref(weak=true) Node> nodes = 3;`. For protobuf, use
-`[(fory).ref = true]` and `[(fory).weak_ref = true]`. `weak_ref` is a codegen
-hint for C++/Rust and is ignored by Java/Python/Go. It must be used with `ref`
-(`list<ref T>` for collections, or `map<..., ref T>` for map values).
-
-To use `Rc` instead of `Arc` in Rust for a specific field:
-
-```fdl
-message Graph {
-    ref(thread_safe=false) Node root = 1;
-}
-```
-
-### Combining Standard and Fory Options
-
-You can combine standard options with Fory extension options:
-
-```protobuf
-message User {
-    option deprecated = true;        // Standard option
-    option (fory).evolving = false; // Fory extension option
-
-    string name = 1;
-    MyType data = 2 [deprecated = true, (fory).ref = true];
-}
-```
-
-### Fory Options Proto File
-
-For reference, the Fory options are defined in `extension/fory_options.proto`:
-
-```protobuf
-// File-level options
-extend google.protobuf.FileOptions {
-    optional ForyFileOptions fory = 50001;
-}
-
-message ForyFileOptions {
-    optional bool use_record_for_java_message = 1;
-    optional bool polymorphism = 2;
-    optional bool enable_auto_type_id = 3;
-    optional bool evolving = 4;
-}
-
-// Message-level options
-extend google.protobuf.MessageOptions {
-    optional ForyMessageOptions fory = 50001;
-}
-
-message ForyMessageOptions {
-    optional int32 id = 1;
-    optional bool evolving = 2;
-    optional bool use_record_for_java = 3;
-    optional bool deprecated = 4;
-    optional string namespace = 5;
-}
-
-// Field-level options
-extend google.protobuf.FieldOptions {
-    optional ForyFieldOptions fory = 50001;
-}
-
-message ForyFieldOptions {
-    optional bool ref = 1;
-    optional bool nullable = 2;
-    optional bool deprecated = 3;
-    optional bool weak_ref = 4;
-}
-```
+For protobuf-specific extension options and `(fory).` syntax, see
+[Protocol Buffers IDL Support](protobuf-idl.md#fory-extension-options-protobuf).
 
 ## Grammar Summary
 
