@@ -91,7 +91,7 @@ class Person:
     name: str
     age: pyfory.Int32Type
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 fory.register_type(Person, typename="example.Person")
 
 # Receive bytes from Java

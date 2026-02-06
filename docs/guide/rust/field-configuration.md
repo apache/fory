@@ -36,9 +36,9 @@ Apache Fory™ provides the `#[fory(...)]` attribute macro to specify optional f
 The `#[fory(...)]` attribute is placed on individual struct fields:
 
 ```rust
-use fory::Fory;
+use fory::ForyObject;
 
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Person {
     #[fory(id = 0)]
     name: String,
@@ -60,7 +60,7 @@ Multiple options are separated by commas.
 Assigns a numeric ID to a field to minimize struct field meta size overhead:
 
 ```rust
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct User {
     #[fory(id = 0)]
     id: i64,
@@ -91,7 +91,7 @@ struct User {
 Excludes a field from serialization:
 
 ```rust
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct User {
     #[fory(id = 0)]
     id: i64,
@@ -113,7 +113,7 @@ Controls whether null flags are written for fields:
 ```rust
 use fory::{Fory, RcWeak};
 
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Record {
     // RcWeak is nullable by default, override to non-nullable
     #[fory(id = 0, nullable = false)]
@@ -143,7 +143,7 @@ Controls per-field reference tracking for shared ownership types:
 use std::rc::Rc;
 use std::sync::Arc;
 
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Container {
     // Enable reference tracking (default for Rc/Arc)
     #[fory(id = 0, ref = true)]
@@ -174,7 +174,7 @@ struct Container {
 Controls how integer fields are encoded:
 
 ```rust
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Metrics {
     // Variable-length encoding (smaller for small values)
     #[fory(id = 0, encoding = "varint")]
@@ -208,7 +208,7 @@ struct Metrics {
 A convenience shorthand for controlling integer encoding:
 
 ```rust
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Data {
     // compress = true -> varint encoding (default)
     #[fory(id = 0, compress)]
@@ -245,10 +245,10 @@ Fory classifies field types to determine default behavior:
 ## Complete Example
 
 ```rust
-use fory::Fory;
+use fory::ForyObject;
 use std::rc::Rc;
 
-#[derive(Fory, Default)]
+#[derive(ForyObject, Default)]
 struct Document {
     // Required fields with tag IDs
     #[fory(id = 0)]
@@ -307,7 +307,7 @@ Invalid configurations are caught at compile time:
 
 ```rust
 // Error: duplicate field IDs
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Bad {
     #[fory(id = 0)]
     field1: String,
@@ -317,14 +317,14 @@ struct Bad {
 }
 
 // Error: invalid id value
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Bad2 {
     #[fory(id = -2)]  // Compile error: id must be >= -1
     field: String,
 }
 
 // Error: conflicting encoding attributes
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Bad3 {
     #[fory(compress = true, encoding = "fixed")]  // Compile error: conflict
     field: i32,
@@ -336,7 +336,7 @@ struct Bad3 {
 When serializing data to be read by other languages (Java, C++, Go, Python), use field configuration to match encoding expectations:
 
 ```rust
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct CrossLangData {
     // Matches Java Integer with varint
     #[fory(id = 0, encoding = "varint")]
@@ -362,7 +362,7 @@ Compatible mode supports schema evolution. It is recommended to configure field 
 
 ```rust
 // Version 1
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct DataV1 {
     #[fory(id = 0)]
     id: i64,
@@ -372,7 +372,7 @@ struct DataV1 {
 }
 
 // Version 2: Added new field
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct DataV2 {
     #[fory(id = 0)]
     id: i64,
@@ -390,7 +390,7 @@ Data serialized with V1 can be deserialized with V2 (new field will be `None`).
 Alternatively, field IDs can be omitted (field names will be used in metadata with larger overhead):
 
 ```rust
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct Data {
     id: i64,
     name: String,
@@ -411,7 +411,7 @@ You **need to configure fields** when:
 
 ```rust
 // Xlang mode: explicit configuration required
-#[derive(Fory)]
+#[derive(ForyObject)]
 struct User {
     #[fory(id = 0)]
     name: String,                    // Non-nullable by default

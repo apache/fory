@@ -121,7 +121,7 @@ class Person:
     name: str
     age: pyfory.int32
 
-fory = pyfory.Fory(ref=True)
+fory = pyfory.Fory(xlang=True, ref=True)
 fory.register_type(Person, type_id=100)  # Same ID as Rust
 
 person = fory.deserialize(bytes_from_rust)

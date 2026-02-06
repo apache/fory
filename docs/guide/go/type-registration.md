@@ -214,7 +214,9 @@ fory.register(User, typename="example.User")
 **Rust**:
 
 ```rust
-#[derive(Fory)]
+use fory::{Fory, ForyObject};
+
+#[derive(ForyObject)]
 struct User {
     id: i64,
     name: String,
