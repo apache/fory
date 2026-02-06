@@ -104,11 +104,11 @@ For additional benchmarks covering type forward/backward compatibility, off-heap
 Fory Rust demonstrates competitive performance compared to other Rust serialization frameworks.
 
 <p align="center">
-<img src="docs/benchmarks/rust/ecommerce_data.png" width="70%">
+<img src="docs/benchmarks/rust/ecommerce_data.png" width="90%">
 </p>
 
 <p align="center">
-<img src="docs/benchmarks/rust/system_data.png" width="70%">
+<img src="docs/benchmarks/rust/system_data.png" width="90%">
 </p>
 
 For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust_benchmark).
@@ -118,7 +118,7 @@ For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/r
 Fory C++ demonstrates competitive performance compared to protobuf c++ serialization framework.
 
 <p align="center">
-<img src="docs/benchmarks/cpp/throughput.png" width="70%">
+<img src="docs/benchmarks/cpp/throughput.png" width="95%">
 </p>
 
 For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp_benchmark).

@@ -8,6 +8,10 @@ Generated: 2026-02-06 11:26:58
 - **Architecture**: arm64
 - **Python**: 3.10.8
 
+## Performance Charts
+
+![Benchmark](benchmark_combined.png)
+
 ## Performance Summary
 
 | Data Type        | Operation   | Fory (ops/s) | Protobuf (ops/s) | Msgpack (ops/s) | Fory vs PB | Fory vs MP |
@@ -53,32 +57,3 @@ Generated: 2026-02-06 11:26:58
 | SampleList       | 7600 | 7560     | 10486   |
 | MediaContentList | 5776 | 6080     | 8006    |
 
-## Performance Charts
-
-### Combined Overview
-
-![Combined Benchmark](benchmark_combined.png)
-
-### Struct
-
-![Struct Benchmark](benchmark_struct.png)
-
-### Structlist
-
-![Structlist Benchmark](benchmark_structlist.png)
-
-### Sample
-
-![Sample Benchmark](benchmark_sample.png)
-
-### Samplelist
-
-![Samplelist Benchmark](benchmark_samplelist.png)
-
-### Mediacontent
-
-![Mediacontent Benchmark](benchmark_mediacontent.png)
-
-### Mediacontentlist
-
-![Mediacontentlist Benchmark](benchmark_mediacontentlist.png)
