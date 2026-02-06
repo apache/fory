@@ -28,6 +28,26 @@ import re
 import sys
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
+repo_root = Path(dir_path).parent.parent
+java_benchmark_dir = repo_root / "docs/benchmarks/java"
+java_benchmark_data_dir = java_benchmark_dir / "data"
+java_benchmark_readme = java_benchmark_dir / "README.md"
+
+lib_order = [
+    "Fory",
+    "Forymetashared",
+    "Kryo",
+    "Fst",
+    "Hession",
+    "Jdk",
+    "Protostuff",
+]
+
+java_serialization_files = [
+    "jmh-jdk-11-serialization.csv",
+    "jmh-jdk-11-deserialization.csv",
+]
+java_zero_copy_file = "jmh-jdk-11-zerocopy.csv"
 
 
 def to_markdown(df: pd.DataFrame, filepath: str):
@@ -57,6 +77,107 @@ def _to_markdown(df: pd.DataFrame):
     return md_table
 
 
+def _format_tps(value):
+    if pd.isna(value):
+        return ""
+    return f"{float(value):.6f}"
+
+
+def _pivot_lib_columns(df: pd.DataFrame, index_columns):
+    table_df = (
+        df.pivot_table(
+            index=index_columns, columns="Lib", values="Tps", aggfunc="first", sort=False
+        )
+        .reset_index()
+        .copy()
+    )
+    available_libs = table_df.columns.tolist()
+    sorted_lib_columns = [name for name in lib_order if name in available_libs]
+    extra_lib_columns = sorted(
+        [name for name in available_libs if name not in index_columns + sorted_lib_columns]
+    )
+    table_df = table_df[index_columns + sorted_lib_columns + extra_lib_columns]
+    if "references" in table_df.columns:
+        table_df["references"] = table_df["references"].astype(str).str.capitalize()
+    for column in sorted_lib_columns + extra_lib_columns:
+        table_df[column] = table_df[column].map(_format_tps)
+    return table_df
+
+
+def _replace_table_section(content: str, heading: str, table_markdown: str):
+    lines = content.splitlines()
+    start_index = None
+    for index, line in enumerate(lines):
+        if line.strip() == heading:
+            start_index = index
+            break
+    if start_index is None:
+        raise ValueError(f"Failed to find section {heading}")
+    end_index = len(lines)
+    for index in range(start_index + 1, len(lines)):
+        if lines[index].startswith("### "):
+            end_index = index
+            break
+    updated_lines = lines[: start_index + 1] + ["", table_markdown, ""]
+    if end_index < len(lines):
+        updated_lines.extend(lines[end_index:])
+    return "\n".join(updated_lines).rstrip() + "\n"
+
+
+def _update_java_benchmark_readme(data_dir: Path, readme_path: Path):
+    benchmark_dfs = []
+    for file_name in java_serialization_files:
+        _, bench_df = process_data(str(data_dir / file_name))
+        benchmark_dfs.append(bench_df)
+    benchmark_df = pd.concat(benchmark_dfs, ignore_index=True)
+    benchmark_df = (
+        benchmark_df.assign(
+            _benchmark_order=benchmark_df["Benchmark"].map(
+                {
+                    "serialize": 0,
+                    "serialize_compatible": 1,
+                    "deserialize": 2,
+                    "deserialize_compatible": 3,
+                }
+            ),
+            _buffer_order=benchmark_df["bufferType"].map({"array": 0, "directBuffer": 1}),
+            _object_order=benchmark_df["objectType"].map(
+                {"STRUCT": 0, "STRUCT2": 1, "MEDIA_CONTENT": 2, "SAMPLE": 3}
+            ),
+        )
+        .sort_values(["_benchmark_order", "_object_order", "_buffer_order", "references"])
+        .drop(columns=["_benchmark_order", "_buffer_order", "_object_order"])
+        .reset_index(drop=True)
+    )
+    benchmark_table = _pivot_lib_columns(
+        benchmark_df, ["Benchmark", "objectType", "bufferType", "references"]
+    )
+
+    zero_copy_df, _ = process_data(str(data_dir / java_zero_copy_file))
+    zero_copy_df = (
+        zero_copy_df.assign(
+            _benchmark_order=zero_copy_df["Benchmark"].map({"serialize": 0, "deserialize": 1}),
+            _buffer_order=zero_copy_df["bufferType"].map({"array": 0, "directBuffer": 1}),
+            _data_type_order=zero_copy_df["dataType"].map({"BUFFER": 0, "PRIMITIVE_ARRAY": 1}),
+        )
+        .sort_values(["_benchmark_order", "array_size", "_buffer_order", "_data_type_order"])
+        .drop(columns=["_benchmark_order", "_buffer_order", "_data_type_order"])
+        .reset_index(drop=True)
+    )
+    zero_copy_table = _pivot_lib_columns(
+        zero_copy_df, ["Benchmark", "array_size", "bufferType", "dataType"]
+    )
+
+    readme_content = readme_path.read_text()
+    readme_content = _replace_table_section(
+        readme_content, "### Java Serialization", _to_markdown(benchmark_table)
+    )
+    readme_content = _replace_table_section(
+        readme_content, "### Java Zero-copy", _to_markdown(zero_copy_table)
+    )
+    readme_path.write_text(readme_content)
+
+
 def process_data(filepath: str):
     df = pd.read_csv(filepath)
     columns = list(df.columns.values)
@@ -80,10 +201,10 @@ def process_data(filepath: str):
             bench_df.drop(["Threads"], axis=1, inplace=True)
         return bench_df
 
-    zero_copy_bench = df[df["Benchmark"].str.contains("ZeroCopy")]
+    zero_copy_bench = df[df["Benchmark"].str.contains("ZeroCopy")].copy()
     zero_copy_bench = process_df(zero_copy_bench)
 
-    bench = df[~df["Benchmark"].str.contains("ZeroCopy")]
+    bench = df[~df["Benchmark"].str.contains("ZeroCopy")].copy()
     bench = process_df(bench)
 
     return zero_copy_bench, bench
@@ -260,14 +381,18 @@ if __name__ == "__main__":
     # print(size_markdown)
     args = sys.argv[1:]
     if args:
-        file_name = args[0]
+        file_path = Path(args[0])
     else:
-        file_name = "jmh-jdk-11-deserialization.csv"
-    file_dir = f"{dir_path}/../../docs/benchmarks/data"
-    zero_copy_bench, bench = process_data(os.path.join(file_dir, file_name))
+        file_path = Path("jmh-jdk-11-deserialization.csv")
+    if not file_path.is_file():
+        file_path = java_benchmark_data_dir / file_path
+    file_name = file_path.name
+    plot_output_dir = str(java_benchmark_dir)
+    zero_copy_bench, bench = process_data(str(file_path))
     if zero_copy_bench.shape[0] > 0:
         to_markdown(zero_copy_bench, str(Path(file_name).with_suffix(".zero_copy.md")))
-        plot_zero_copy(zero_copy_bench, file_dir, "zero_copy_bench", column="Tps")
+        plot_zero_copy(zero_copy_bench, plot_output_dir, "zero_copy_bench", column="Tps")
     if bench.shape[0] > 0:
         to_markdown(bench, str(Path(file_name).with_suffix(".bench.md")))
-        plot(bench, file_dir, "bench", column="Tps")
+        plot(bench, plot_output_dir, "bench", column="Tps")
+    _update_java_benchmark_readme(java_benchmark_data_dir, java_benchmark_readme)
