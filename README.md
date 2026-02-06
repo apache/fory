@@ -20,7 +20,7 @@
 
 ### 🚀 High-Performance Serialization
 
-Apache Fory™ delivers exceptional performance through advanced optimization techniques:
+Apache Fory™ delivers excellent performance through advanced optimization techniques:
 
 - **JIT Compilation**: Runtime code generation for Java eliminates virtual method calls and inlines hot paths
 - **Static Code Generation**: Compile-time code generation for Rust, C++, and Go delivers peak performance without runtime overhead
@@ -121,13 +121,24 @@ For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/r
 
 ### C++ Serialization Performance
 
-Fory Rust demonstrates competitive performance compared to protobuf c++ serialization framework.
+Fory C++ demonstrates competitive performance compared to protobuf c++ serialization framework.
 
 <p align="center">
 <img src="docs/benchmarks/cpp/throughput.png" width="70%">
 </p>
 
 For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp_benchmark).
+
+### Go Serialization Performance
+
+Fory Go demonstrates excellent performance compared to other go serialization frameworks:
+
+<p align="center">
+<img src="docs/benchmarks/go/benchmark_combined.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go_benchmark).
+
 
 ## Installation
 
