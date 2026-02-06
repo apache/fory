@@ -151,8 +151,8 @@ data = bytes(person) # or `person.to_bytes()`
 
 | Document                                        | Description                                       |
 | ----------------------------------------------- | ------------------------------------------------- |
-| [FDL Syntax Reference](fdl-syntax.md)           | Complete language syntax and grammar              |
-| [Type System](type-system.md)                   | Primitive types, collections, and type rules      |
+| [Fory Schema IDL](schema-idl.md)                | Complete language syntax and grammar              |
+| [Type System](schema-idl.md#type-system)        | Primitive types, collections, and type rules      |
 | [Compiler Guide](compiler-guide.md)             | CLI options and build integration                 |
 | [Generated Code](generated-code.md)             | Output format for each target language            |
 | [Protocol Buffers IDL Support](protobuf-idl.md) | Comparison with protobuf and migration guide      |
@@ -184,7 +184,7 @@ FDL types map to native types in each language:
 | `string` | `String`  | `str`  | `string` | `String` | `std::string` |
 | `bool`   | `boolean` | `bool` | `bool`   | `bool`   | `bool`        |
 
-See [Type System](type-system.md) for complete mappings.
+See [Type System](schema-idl.md#type-system) for complete mappings.
 
 ## Best Practices
 

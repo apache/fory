@@ -11,8 +11,8 @@
 Define cross-language data structures with FDL and generate native code for multiple languages.
 
 - [FDL Overview](compiler/index.md) - Introduction and quick start
-- [FDL Syntax Reference](compiler/fdl-syntax.md) - Complete language syntax
-- [Type System](compiler/type-system.md) - Primitive types, collections, and mappings
+- [Fory Schema IDL](compiler/schema-idl.md) - Complete language syntax
+- [Type System](compiler/schema-idl.md#type-system) - Primitive types, collections, and mappings
 - [Compiler Guide](compiler/compiler-guide.md) - CLI usage and build integration
 - [Generated Code](compiler/generated-code.md) - Output format for each language
 - [Protocol Buffers vs FDL](compiler/protobuf-idl.md) - Feature comparison and migration
