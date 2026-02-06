@@ -536,9 +536,9 @@ Enums keep Go-style unscoped constant names:
 type DeviceTier int32
 
 const (
-	DeviceTierUnknown DeviceTier = 0
-	DeviceTierTier1   DeviceTier = 1
-	DeviceTierTier2   DeviceTier = 2
+    DeviceTierUnknown DeviceTier = 0
+    DeviceTierTier1   DeviceTier = 1
+    DeviceTierTier2   DeviceTier = 2
 )
 ```
 
@@ -546,18 +546,18 @@ Messages are regular structs with fory tags:
 
 ```go
 type User struct {
-	Id    string                    `fory:"id=1"`
-	Name  string                    `fory:"id=2"`
-	Email optional.Optional[string] `fory:"id=3,nullable"`
+    Id    string                    `fory:"id=1"`
+    Name  string                    `fory:"id=2"`
+    Email optional.Optional[string] `fory:"id=3,nullable"`
 }
 
 type Order struct {
-	Id         string            `fory:"id=1"`
-	Customer   *User             `fory:"id=2,nullable,ref"`
-	Items      []string          `fory:"id=3"`
-	Quantities map[string]int32  `fory:"id=4"`
-	Tier       DeviceTier        `fory:"id=5"`
-	Pet        Animal            `fory:"id=6"`
+    Id         string            `fory:"id=1"`
+    Customer   *User             `fory:"id=2,nullable,ref"`
+    Items      []string          `fory:"id=3"`
+    Quantities map[string]int32  `fory:"id=4"`
+    Tier       DeviceTier        `fory:"id=5"`
+    Pet        Animal            `fory:"id=6"`
 }
 ```
 
@@ -578,10 +578,10 @@ Unions generate typed case helpers:
 ```go
 pet := DogAnimal(&Dog{Name: "Rex"})
 if dog, ok := pet.AsDog(); ok {
-	_ = dog
+    _ = dog
 }
 _ = pet.Visit(AnimalVisitor{
-	Dog: func(d *Dog) error { return nil },
+    Dog: func(d *Dog) error { return nil },
 })
 ```
 
@@ -591,17 +591,17 @@ Generated registration function:
 
 ```go
 func RegisterTypes(f *fory.Fory) error {
-	if err := f.RegisterEnum(DeviceTier(0), 100); err != nil {
-		return err
-	}
-	if err := f.RegisterUnion(Animal{}, 106, ...); err != nil {
-		return err
-	}
-	if err := f.RegisterStruct(User{}, 101); err != nil {
-		return err
-	}
-	// ... SearchResponse_Result, SearchResponse, Dog, Cat, Order
-	return nil
+    if err := f.RegisterEnum(DeviceTier(0), 100); err != nil {
+        return err
+    }
+    if err := f.RegisterUnion(Animal{}, 106, ...); err != nil {
+        return err
+    }
+    if err := f.RegisterStruct(User{}, 101); err != nil {
+        return err
+    }
+    // ... SearchResponse_Result, SearchResponse, Dog, Cat, Order
+    return nil
 }
 ```
 
@@ -617,20 +617,20 @@ if err := f.RegisterNamedUnion(Holder{}, "myapp.models.Holder", ...); err != nil
 ```go
 email := optional.Some("alice@example.com")
 order := &Order{
-	Id:       "o456",
-	Customer: &User{Id: "u1", Name: "Alice", Email: email},
-	Items:    []string{"a", "b"},
-	Tier:     DeviceTierTier1,
-	Pet:      DogAnimal(&Dog{Name: "Rex"}),
+    Id:       "o456",
+    Customer: &User{Id: "u1", Name: "Alice", Email: email},
+    Items:    []string{"a", "b"},
+    Tier:     DeviceTierTier1,
+    Pet:      DogAnimal(&Dog{Name: "Rex"}),
 }
 
 data, err := order.ToBytes()
 if err != nil {
-	panic(err)
+    panic(err)
 }
 var restored Order
 if err := restored.FromBytes(data); err != nil {
-	panic(err)
+    panic(err)
 }
 ```
 
