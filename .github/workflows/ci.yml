@@ -514,8 +514,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: [3.8, 3.12, 3.13.3]
+        python-version: ['3.8', '3.12', '3.13']
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-2022]
+        # windows-2022 runners don't have Python 3.8 preinstalled, and pinned 3.13.3
+        # forces a download/reinstall; use cached 3.11/3.12/3.13 on Windows instead.
+        exclude:
+          - os: windows-2022
+            python-version: '3.8'
+        include:
+          - os: windows-2022
+            python-version: '3.11'
     steps:
       - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
