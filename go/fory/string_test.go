@@ -38,19 +38,17 @@ func TestReadUTF16LE_EvenByteCount(t *testing.T) {
 }
 
 func TestReadUTF16LE_OddByteCount(t *testing.T) {
-	// Test edge case: odd byte count (malformed UTF-16 data)
-	// This should not panic, but gracefully handle by ignoring the trailing byte
-	// Data: 5 bytes where only first 4 form valid UTF-16
+	// Test edge case: odd byte count (malformed UTF-16 data).
+	// This should return a typed decode error rather than silently truncating.
 	data := []byte{0x48, 0x00, 0x69, 0x00, 0xFF}
 	buf := NewByteBuffer(data)
 	err := &Error{}
 
-	// This should not panic even with odd byte count
 	result := readUTF16LE(buf, 5, err)
 
-	require.False(t, err.HasError())
-	// Should decode only the first 4 bytes (2 complete UTF-16 code units)
-	require.Equal(t, "Hi", result)
+	require.True(t, err.HasError())
+	require.Equal(t, ErrKindInvalidUTF16String, err.Kind())
+	require.Equal(t, "", result)
 }
 
 func TestReadUTF16LE_SingleByte(t *testing.T) {
@@ -61,8 +59,8 @@ func TestReadUTF16LE_SingleByte(t *testing.T) {
 
 	result := readUTF16LE(buf, 1, err)
 
-	require.False(t, err.HasError())
-	// Should return empty string since no complete UTF-16 pairs
+	require.True(t, err.HasError())
+	require.Equal(t, ErrKindInvalidUTF16String, err.Kind())
 	require.Equal(t, "", result)
 }
 

@@ -81,16 +81,20 @@ func readLatin1(buf *ByteBuffer, size int, err *Error) string {
 }
 
 func readUTF16LE(buf *ByteBuffer, byteCount int, err *Error) string {
+	if byteCount&1 != 0 {
+		err.SetError(InvalidUTF16StringError(byteCount))
+		return ""
+	}
+
 	data := buf.ReadBinary(byteCount, err)
+	if err.HasError() {
+		return ""
+	}
 
 	// Reconstruct UTF-16 code units
-	// Note: byteCount should always be even for valid UTF-16, but handle odd counts
-	// gracefully to avoid index out of range panics from malformed data.
 	charCount := byteCount / 2
 	u16s := make([]uint16, charCount)
-	// Only iterate up to the last complete pair (round down to even boundary)
-	evenByteCount := byteCount &^ 1
-	for i := 0; i < evenByteCount; i += 2 {
+	for i := 0; i < byteCount; i += 2 {
 		u16s[i/2] = uint16(data[i]) | uint16(data[i+1])<<8
 	}
 
