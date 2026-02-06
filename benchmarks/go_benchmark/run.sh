@@ -199,7 +199,16 @@ go test $BENCH_ARGS -benchmem -count=1 -benchtime=$BENCHTIME -json > "$OUTPUT_DI
 # Print serialized sizes
 echo ""
 go test -run TestPrintSerializedSizes -v 2>&1 | \
-    grep -A 20 "Serialized Sizes" | \
+    awk '
+        /Serialized Sizes \(bytes\):/ { capture = 1 }
+        capture { print }
+        capture && /^=+$/ {
+            separator_count++
+            if (separator_count == 2) {
+                exit
+            }
+        }
+    ' | \
     tee "$OUTPUT_DIR/serialized_sizes.txt"
 
 # Generate report
