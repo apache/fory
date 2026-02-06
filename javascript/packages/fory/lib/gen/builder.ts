@@ -21,9 +21,7 @@ import { Scope } from "./scope";
 import Fory from "../fory";
 
 class TypeMetaBuilder {
-  constructor(private fory: string) {
-
-  }
+  constructor(private fory: string) {}
 
   fromBytes(reader: string) {
     return `${this.fory}.typeMeta.fromBytes(${reader})`;
@@ -31,9 +29,7 @@ class TypeMetaBuilder {
 }
 
 export class BinaryReaderBuilder {
-  constructor(private holder: string) {
-
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -145,9 +141,7 @@ export class BinaryReaderBuilder {
 }
 
 class BinaryWriterBuilder {
-  constructor(private holder: string) {
-
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -221,7 +215,8 @@ class BinaryWriterBuilder {
     return `${this.holder}.uint64(${v})`;
   }
 
-  buffer(v: string) { // Accepting Uint8Array as a parameter
+  buffer(v: string) {
+    // Accepting Uint8Array as a parameter
     return `${this.holder}.buffer(${v})`;
   }
 
@@ -267,9 +262,7 @@ class BinaryWriterBuilder {
 }
 
 class ReferenceResolverBuilder {
-  constructor(private holder: string) {
-
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -293,9 +286,7 @@ class ReferenceResolverBuilder {
 }
 
 class TypeResolverBuilder {
-  constructor(private holder: string) {
-
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -322,9 +313,7 @@ class TypeResolverBuilder {
 }
 
 class TypeMetaResolverBuilder {
-  constructor(private holder: string) {
-
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -344,9 +333,7 @@ class TypeMetaResolverBuilder {
 }
 
 class MetaStringResolverBuilder {
-  constructor(private holder: string) {
-
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -382,7 +369,10 @@ export class CodecBuilder {
   typeMetaResolver: TypeMetaResolverBuilder;
   metaStringResolver: MetaStringResolverBuilder;
 
-  constructor(scope: Scope, public fory: Fory) {
+  constructor(
+    scope: Scope,
+    public fory: Fory,
+  ) {
     const br = scope.declareByName("br", "fory.binaryReader");
     const bw = scope.declareByName("bw", "fory.binaryWriter");
     const cr = scope.declareByName("cr", "fory.typeResolver");
@@ -392,12 +382,18 @@ export class CodecBuilder {
     this.typeResolver = new TypeResolverBuilder(cr);
     this.referenceResolver = new ReferenceResolverBuilder(rr);
     this.typeMeta = new TypeMetaBuilder("fory"); // Initialize the TypeMetaWrapper
-    this.typeMetaResolver = new TypeMetaResolverBuilder("fory.typeMetaResolver");
-    this.metaStringResolver = new MetaStringResolverBuilder("fory.metaStringResolver");
+    this.typeMetaResolver = new TypeMetaResolverBuilder(
+      "fory.typeMetaResolver",
+    );
+    this.metaStringResolver = new MetaStringResolverBuilder(
+      "fory.metaStringResolver",
+    );
   }
 
   static isReserved(key: string) {
-    return /^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/.test(key);
+    return /^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/.test(
+      key,
+    );
   }
 
   static isDotPropAccessor(prop: string) {
@@ -405,25 +401,34 @@ export class CodecBuilder {
   }
 
   static replaceBackslashAndQuote(v: string) {
-    return v.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+    return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
 
   static safeString(target: string) {
-    if (!CodecBuilder.isDotPropAccessor(target) || CodecBuilder.isReserved(target)) {
+    if (
+      !CodecBuilder.isDotPropAccessor(target) ||
+      CodecBuilder.isReserved(target)
+    ) {
       return `"${CodecBuilder.replaceBackslashAndQuote(target)}"`;
     }
     return `"${target}"`;
   }
 
   static safePropAccessor(prop: string) {
-    if (!CodecBuilder.isDotPropAccessor(prop) || CodecBuilder.isReserved(prop)) {
+    if (
+      !CodecBuilder.isDotPropAccessor(prop) ||
+      CodecBuilder.isReserved(prop)
+    ) {
       return `["${CodecBuilder.replaceBackslashAndQuote(prop)}"]`;
     }
     return `.${prop}`;
   }
 
   static safePropName(prop: string) {
-    if (!CodecBuilder.isDotPropAccessor(prop) || CodecBuilder.isReserved(prop)) {
+    if (
+      !CodecBuilder.isDotPropAccessor(prop) ||
+      CodecBuilder.isReserved(prop)
+    ) {
       return `["${CodecBuilder.replaceBackslashAndQuote(prop)}"]`;
     }
     return prop;

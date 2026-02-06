@@ -18,7 +18,12 @@
  */
 
 interface Hps {
-  serializeString: (dist: Uint8Array, str: string, offset: number, maxLength: number) => number;
+  serializeString: (
+    dist: Uint8Array,
+    str: string,
+    offset: number,
+    maxLength: number,
+  ) => number;
 }
 
 const build = () => {

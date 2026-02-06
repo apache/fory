@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -21,7 +21,15 @@ import TypeResolver from "./typeResolver";
 import { BinaryWriter } from "./writer";
 import { BinaryReader } from "./reader";
 import { ReferenceResolver } from "./referenceResolver";
-import { ConfigFlags, Serializer, Config, Mode, ForyTypeInfoSymbol, WithForyClsInfo, TypeId } from "./type";
+import {
+  ConfigFlags,
+  Serializer,
+  Config,
+  Mode,
+  ForyTypeInfoSymbol,
+  WithForyClsInfo,
+  TypeId,
+} from "./type";
 import { OwnershipError } from "./error";
 import { InputType, ResultType, StructTypeInfo, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
@@ -55,7 +63,11 @@ export default class {
 
   private initConfig(config: Partial<Config> | undefined) {
     return {
-      refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
+      // Fix: Ensure refTracking is null if undefined, not coerced to false
+      refTracking:
+        config?.refTracking !== undefined && config?.refTracking !== null
+          ? Boolean(config.refTracking)
+          : null,
       useSliceString: Boolean(config?.useSliceString),
       hooks: config?.hooks || {},
       mode: config?.mode || Mode.SchemaConsistent,
@@ -66,7 +78,10 @@ export default class {
     return this.config.mode === Mode.Compatible;
   }
 
-  registerSerializer<T extends new () => any>(constructor: T): {
+  // Overload: class with decorators
+  registerSerializer<T extends new () => any>(
+    constructor: T,
+  ): {
     serializer: Serializer;
     serialize(data: Partial<InstanceType<T>> | null): PlatformBuffer;
     serializeVolatile(data: Partial<InstanceType<T>>): {
@@ -75,7 +90,11 @@ export default class {
     };
     deserialize(bytes: Uint8Array): InstanceType<T> | null;
   };
-  registerSerializer<T extends TypeInfo>(typeInfo: T): {
+
+  // Overload: explicit TypeInfo
+  registerSerializer<T extends TypeInfo>(
+    typeInfo: T,
+  ): {
     serializer: Serializer;
     serialize(data: InputType<T> | null): PlatformBuffer;
     serializeVolatile(data: InputType<T>): {
@@ -84,19 +103,31 @@ export default class {
     };
     deserialize(bytes: Uint8Array): ResultType<T>;
   };
-  registerSerializer(constructor: any) {
+
+  registerSerializer(constructorOrType: any) {
     let serializer: Serializer;
+
     TypeInfo.attach(this);
-    if (constructor.prototype?.[ForyTypeInfoSymbol]) {
-      const typeInfo: TypeInfo = (<WithForyClsInfo>(constructor.prototype[ForyTypeInfoSymbol])).structTypeInfo;
-      serializer = new Gen(this, { constructor }).generateSerializer(typeInfo);
-      this.typeResolver.registerSerializer(typeInfo, serializer);
-    } else {
-      const typeInfo = constructor;
-      serializer = new Gen(this).generateSerializer(typeInfo);
-      this.typeResolver.registerSerializer(typeInfo, serializer);
+    try {
+      if (constructorOrType.prototype?.[ForyTypeInfoSymbol]) {
+        const typeInfo: TypeInfo = (
+          constructorOrType.prototype[ForyTypeInfoSymbol] as WithForyClsInfo
+        ).structTypeInfo;
+
+        serializer = new Gen(this, {
+          constructor: constructorOrType,
+        }).generateSerializer(typeInfo);
+
+        this.typeResolver.registerSerializer(typeInfo, serializer);
+      } else {
+        const typeInfo: TypeInfo = constructorOrType;
+        serializer = this.typeResolver.getSerializerByTypeInfo(typeInfo);
+        this.typeResolver.registerSerializer(typeInfo, serializer);
+      }
+    } finally {
+      TypeInfo.detach();
     }
-    TypeInfo.detach();
+
     return {
       serializer,
       serialize: (data: any) => {
@@ -116,35 +147,52 @@ export default class {
 
   replaceSerializerReader(typeInfo: TypeInfo) {
     TypeInfo.attach(this);
-    const serializer = new Gen(this, { constroctor: (typeInfo as StructTypeInfo).options.constructor }).reGenerateSerializer(typeInfo);
-    const result = this.typeResolver.registerSerializer(typeInfo, {
-      getHash: serializer.getHash,
-      read: serializer.read,
-      readNoRef: serializer.readNoRef,
-      readRef: serializer.readRef,
-      readTypeInfo: serializer.readTypeInfo,
-    } as any)!;
-    TypeInfo.detach();
-    return result;
+    try {
+      const serializer = new Gen(this, {
+        constructor: (typeInfo as StructTypeInfo).options.constructor,
+      }).reGenerateSerializer(typeInfo);
+
+      const result = this.typeResolver.registerSerializer(typeInfo, {
+        getHash: serializer.getHash,
+        read: serializer.read,
+        readNoRef: serializer.readNoRef,
+        readRef: serializer.readRef,
+        readTypeInfo: serializer.readTypeInfo,
+      } as any)!;
+
+      return result;
+    } finally {
+      TypeInfo.detach();
+    }
   }
 
-  deserialize<T = any>(bytes: Uint8Array, serializer: Serializer = this.anySerializer): T | null {
+  deserialize<T = any>(
+    bytes: Uint8Array,
+    serializer: Serializer = this.anySerializer,
+  ): T | null {
     this.referenceResolver.reset();
     this.binaryReader.reset(bytes);
     this.typeMetaResolver.reset();
     this.metaStringResolver.reset();
+
     const bitmap = this.binaryReader.uint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
     }
-    const isCrossLanguage = (bitmap & ConfigFlags.isCrossLanguageFlag) == ConfigFlags.isCrossLanguageFlag;
+
+    const isCrossLanguage =
+      (bitmap & ConfigFlags.isCrossLanguageFlag) ==
+      ConfigFlags.isCrossLanguageFlag;
     if (!isCrossLanguage) {
       throw new Error("support crosslanguage mode only");
     }
-    const isOutOfBandEnabled = (bitmap & ConfigFlags.isOutOfBandFlag) === ConfigFlags.isOutOfBandFlag;
+
+    const isOutOfBandEnabled =
+      (bitmap & ConfigFlags.isOutOfBandFlag) === ConfigFlags.isOutOfBandFlag;
     if (isOutOfBandEnabled) {
       throw new Error("outofband mode is not supported now");
     }
+
     return serializer.readRef();
   }
 
@@ -153,19 +201,31 @@ export default class {
       this.binaryWriter.reset();
     } catch (e) {
       if (e instanceof OwnershipError) {
-        throw new Error("Permission denied. To release the serialization ownership, you must call the dispose function returned by serializeVolatile.");
+        throw new Error(
+          "Permission denied. To release the serialization ownership, you must call the dispose function returned by serializeVolatile.",
+        );
       }
       throw e;
     }
+
     this.referenceResolver.reset();
+
     let bitmap = 0;
-    if (data === null) {
+    const isNull = data === null;
+    if (isNull) {
       bitmap |= ConfigFlags.isNullFlag;
     }
     bitmap |= ConfigFlags.isCrossLanguageFlag;
+
     this.binaryWriter.uint8(bitmap);
-    // reserve fixed size
-    this.binaryWriter.reserve(serializer.fixedSize);
+
+    // Fix: Short-circuit on null to prevent writeRef errors
+    if (isNull) {
+      return this.binaryWriter;
+    }
+
+    // reserve fixed size and safeguard against undefined/null fixedSize
+    this.binaryWriter.reserve(serializer.fixedSize || 0);
     // start write
     serializer.writeRef(data);
     return this.binaryWriter;
@@ -175,7 +235,10 @@ export default class {
     return this.serializeInternal(data, serializer).dump();
   }
 
-  serializeVolatile<T = any>(data: T, serializer: Serializer = this.anySerializer) {
+  serializeVolatile<T = any>(
+    data: T,
+    serializer: Serializer = this.anySerializer,
+  ) {
     return this.serializeInternal(data, serializer).dumpAndOwn();
   }
 }

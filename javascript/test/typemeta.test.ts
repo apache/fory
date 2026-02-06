@@ -17,60 +17,61 @@
  * under the License.
  */
 
-import Fory, { Type, Mode } from '../packages/fory/index';
-import {describe, expect, test} from '@jest/globals';
-import * as beautify from 'js-beautify';
+import Fory, { Type, Mode } from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
+import * as beautify from "js-beautify";
 
-
-describe('typemeta', () => {
-  test('should evaluation scheme work', () => {
-    
+describe("typemeta", () => {
+  test("should evaluation scheme work", () => {
     const fory = new Fory({
-        mode: Mode.Compatible
-    });    
+      mode: Mode.Compatible,
+    });
 
     @Type.struct("example.foo")
     class Foo {
-        @Type.string()
-        bar: string;
+      @Type.string()
+      bar: string;
 
-        @Type.int32()
-        bar2: number;
+      @Type.int32()
+      bar2: number;
 
-        setBar(bar: string) {
-            this.bar = bar;
-            return this;
-        }
+      setBar(bar: string) {
+        this.bar = bar;
+        return this;
+      }
 
-        setBar2(bar2: number) {
-            this.bar2 = bar2;
-            return this;
-        }
+      setBar2(bar2: number) {
+        this.bar2 = bar2;
+        return this;
+      }
     }
 
     const { serialize } = fory.registerSerializer(Foo);
     const bin = serialize(new Foo().setBar("hello").setBar2(123));
 
-
     @Type.struct("example.foo")
     class Foo2 {
-        @Type.string()
-        bar: string;
+      @Type.string()
+      bar: string;
     }
 
     const fory2 = new Fory({
-        mode: Mode.Compatible,
-        hooks: {
-            afterCodeGenerated: (code: string) => {
-                return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
-              }        
-            }
-    });    
-    const { deserialize  } = fory2.registerSerializer(Foo2);
+      mode: Mode.Compatible,
+      hooks: {
+        afterCodeGenerated: (code: string) => {
+          return beautify.js(code, {
+            indent_size: 2,
+            space_in_empty_paren: true,
+            indent_empty_lines: true,
+          });
+        },
+      },
+    });
+    const { deserialize } = fory2.registerSerializer(Foo2);
     const r = deserialize(bin);
     expect(r).toEqual({
-        bar: "hello",
-        bar2: 123,
-    })
+      bar: "hello",
+      bar2: 123,
+    });
   });
 });

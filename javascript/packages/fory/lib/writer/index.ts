@@ -44,11 +44,13 @@ export class BinaryWriter {
   };
 
   private hpsEnable = false;
-  private internalStringDetector: (((content: string) => boolean) | null) = null;
+  private internalStringDetector: ((content: string) => boolean) | null = null;
 
-  constructor(config: {
-    hps?: Hps;
-  } = {}) {
+  constructor(
+    config: {
+      hps?: Hps;
+    } = {},
+  ) {
     this.initPoll();
     this.config = config;
     this.hpsEnable = Boolean(config?.hps);
@@ -58,7 +60,10 @@ export class BinaryWriter {
   private initPoll() {
     this.byteLength = 1024 * 100;
     this.platformBuffer = alloc(this.byteLength);
-    this.dataView = new DataView(this.platformBuffer.buffer, this.platformBuffer.byteOffset);
+    this.dataView = new DataView(
+      this.platformBuffer.buffer,
+      this.platformBuffer.byteOffset,
+    );
   }
 
   reserve(len: number) {
@@ -68,13 +73,18 @@ export class BinaryWriter {
       this.platformBuffer.copy(newAb, 0);
       this.platformBuffer = newAb;
       this.byteLength = this.platformBuffer.byteLength;
-      this.dataView = new DataView(this.platformBuffer.buffer, this.platformBuffer.byteOffset);
+      this.dataView = new DataView(
+        this.platformBuffer.buffer,
+        this.platformBuffer.byteOffset,
+      );
     }
   }
 
   reset() {
     if (this.locked) {
-      throw new OwnershipError("Ownership of writer was held by dumpAndOwn, but not released");
+      throw new OwnershipError(
+        "Ownership of writer was held by dumpAndOwn, but not released",
+      );
     }
     this.cursor = 0;
     this.reserved = 0;
@@ -186,8 +196,8 @@ export class BinaryWriter {
         this.dataView.setUint16(offset, (u1 << 8) | u2);
         offset += 2;
       } else if (
-        (c1 & 0xfc00) === 0xd800
-        && ((c2 = string.charCodeAt(i + 1)) & 0xfc00) === 0xdc00
+        (c1 & 0xfc00) === 0xd800 &&
+        ((c2 = string.charCodeAt(i + 1)) & 0xfc00) === 0xdc00
       ) {
         c1 = 0x10000 + ((c1 & 0x03ff) << 10) + (c2 & 0x03ff);
         ++i;
@@ -195,7 +205,10 @@ export class BinaryWriter {
         const u2 = ((c1 >> 12) & 63) | 128;
         const u3 = ((c1 >> 6) & 63) | 128;
         const u4 = (c1 & 63) | 128;
-        this.dataView.setUint32(offset, (u1 << 24) | (u2 << 16) | (u3 << 8) | u4);
+        this.dataView.setUint32(
+          offset,
+          (u1 << 24) | (u2 << 16) | (u3 << 8) | u4,
+        );
         offset += 4;
       } else {
         const u1 = (c1 >> 12) | 224;
@@ -267,7 +280,7 @@ export class BinaryWriter {
   }
 
   varUInt32(value: number) {
-    value = (value >>> 0) & 0xFFFFFFFF; // keep only the lower 32 bits
+    value = (value >>> 0) & 0xffffffff; // keep only the lower 32 bits
 
     if (value >> 7 == 0) {
       this.platformBuffer[this.cursor++] = value;
@@ -276,16 +289,27 @@ export class BinaryWriter {
     const rawCursor = this.cursor;
     let u32 = 0;
     if (value >> 14 == 0) {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7) << 16);
+      u32 = (((value & 0x7f) | 0x80) << 24) | ((value >> 7) << 16);
       this.cursor += 2;
     } else if (value >> 21 == 0) {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7 & 0x7f | 0x80) << 16) | ((value >> 14) << 8);
+      u32 =
+        (((value & 0x7f) | 0x80) << 24) |
+        ((((value >> 7) & 0x7f) | 0x80) << 16) |
+        ((value >> 14) << 8);
       this.cursor += 3;
     } else if (value >> 28 == 0) {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7 & 0x7f | 0x80) << 16) | ((value >> 14 & 0x7f | 0x80) << 8) | (value >> 21);
+      u32 =
+        (((value & 0x7f) | 0x80) << 24) |
+        ((((value >> 7) & 0x7f) | 0x80) << 16) |
+        ((((value >> 14) & 0x7f) | 0x80) << 8) |
+        (value >> 21);
       this.cursor += 4;
     } else {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7 & 0x7f | 0x80) << 16) | ((value >> 14 & 0x7f | 0x80) << 8) | (value >> 21 & 0x7f | 0x80);
+      u32 =
+        (((value & 0x7f) | 0x80) << 24) |
+        ((((value >> 7) & 0x7f) | 0x80) << 16) |
+        ((((value >> 14) & 0x7f) | 0x80) << 8) |
+        (((value >> 21) & 0x7f) | 0x80);
       this.platformBuffer[rawCursor + 4] = value >> 28;
       this.cursor += 5;
     }
@@ -301,8 +325,8 @@ export class BinaryWriter {
   }
 
   private continueWriteVarUint32Small7(value: number) {
-    let encoded = (value & 0x7F);
-    encoded |= (((value & 0x3f80) << 1) | 0x80);
+    let encoded = value & 0x7f;
+    encoded |= ((value & 0x3f80) << 1) | 0x80;
     const writerIdx = this.cursor;
     if (value >>> 14 === 0) {
       this.dataView.setUint32(writerIdx, encoded, true);
@@ -311,9 +335,13 @@ export class BinaryWriter {
     return this.continuePutVarInt36(writerIdx, encoded, value);
   }
 
-  private continuePutVarInt36(index: number, encoded: number, value: number): number {
+  private continuePutVarInt36(
+    index: number,
+    encoded: number,
+    value: number,
+  ): number {
     // 0x1fc000: 0b1111111 << 14
-    encoded |= (((value & 0x1fc000) << 2) | 0x8000);
+    encoded |= ((value & 0x1fc000) << 2) | 0x8000;
     if (value >>> 21 === 0) {
       this.dataView.setUint32(index, encoded, true);
       return 3;
@@ -343,13 +371,13 @@ export class BinaryWriter {
     if (typeof val !== "bigint") {
       val = BigInt(val);
     }
-    val = val & 0xFFFFFFFFFFFFFFFFn; // keep only the lower 64 bits
+    val = val & 0xffffffffffffffffn; // keep only the lower 64 bits
 
     // Match Java's 1-9 byte varuint64 encoding:
     // - 7 bits per byte for the first 8 bytes
     // - the 9th byte (if present) uses full 8 bits, allowing values with the 64th bit set
     for (let i = 0; i < 8; i++) {
-      if ((val >> 7n) === 0n) {
+      if (val >> 7n === 0n) {
         this.platformBuffer[this.cursor++] = Number(val);
         return;
       }

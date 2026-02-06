@@ -27,8 +27,9 @@ export function toFloat16(value: number) {
   const exponent = ((floatValue >>> 23) & 0xff) - 127; // extract exponent from floatValue
   const significand = floatValue & 0x7fffff; // extract significand from floatValue
 
-  if (exponent === 128) { // floatValue is NaN or Infinity
-    return sign | ((exponent === 128) ? 0x7c00 : 0x7fff);
+  if (exponent === 128) {
+    // floatValue is NaN or Infinity
+    return sign | (exponent === 128 ? 0x7c00 : 0x7fff);
   }
 
   if (exponent > 15) {

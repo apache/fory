@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -18,7 +18,13 @@
  */
 
 import { TypeId, Serializer } from "../type";
-import { ArrayTypeInfo, MapTypeInfo, StructTypeInfo, SetTypeInfo, TypeInfo } from "../typeInfo";
+import {
+  ArrayTypeInfo,
+  MapTypeInfo,
+  StructTypeInfo,
+  SetTypeInfo,
+  TypeInfo,
+} from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
@@ -40,17 +46,31 @@ import Fory from "../fory";
 export class Gen {
   static external = CodegenRegistry.getExternal();
 
-  constructor(private fory: Fory, private regOptions: { [key: string]: any } = {}) {
-
-  }
+  constructor(
+    private fory: Fory,
+    private regOptions: { [key: string]: any } = {},
+  ) {}
 
   private generate(typeInfo: TypeInfo) {
-    const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
+    // Robust check for typeId with fallback to internal _typeId property
+    const typeId = typeInfo.typeId ?? (typeInfo as any)._typeId;
+
+    if (typeId === undefined) {
+      throw new Error(
+        `Cannot generate serializer for undefined typeId. Object: ${JSON.stringify(typeInfo)}`,
+      );
+    }
+
+    const InnerGeneratorClass = CodegenRegistry.get(typeId);
     if (!InnerGeneratorClass) {
-      throw new Error(`${typeInfo.typeId} generator not exists`);
+      throw new Error(`${typeId} generator not exists`);
     }
     const scope = new Scope();
-    const generator = new InnerGeneratorClass(typeInfo, new CodecBuilder(scope, this.fory), scope);
+    const generator = new InnerGeneratorClass(
+      typeInfo,
+      new CodecBuilder(scope, this.fory),
+      scope,
+    );
 
     const funcString = generator.toSerializer();
     if (this.fory.config && this.fory.config.hooks) {
@@ -71,29 +91,42 @@ export class Gen {
   }
 
   private traversalContainer(typeInfo: TypeInfo) {
-    if (TypeId.userDefinedType(typeInfo.typeId)) {
+    if (!typeInfo) return;
+
+    // Use fallback for typeId here as well
+    const typeId = typeInfo.typeId ?? (typeInfo as any)._typeId;
+
+    // 1. Handle User Defined Types (Structs/Classes)
+    if (TypeId.userDefinedType(typeId)) {
       if (this.isRegistered(typeInfo)) {
         return;
       }
-      const options = (<StructTypeInfo>typeInfo).options;
-      if (options.props) {
-        this.register(<StructTypeInfo>typeInfo);
+      const options = (typeInfo as StructTypeInfo).options;
+      if (options && options.props) {
+        this.register(typeInfo as StructTypeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);
         });
         const func = this.generate(typeInfo);
-        this.register(<StructTypeInfo>typeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
+        this.register(
+          typeInfo as StructTypeInfo,
+          func()(this.fory, Gen.external, typeInfo, this.regOptions),
+        );
       }
+      return;
     }
-    if (typeInfo.typeId === TypeId.LIST) {
-      this.traversalContainer((<ArrayTypeInfo>typeInfo).options.inner);
-    }
-    if (typeInfo.typeId === TypeId.SET) {
-      this.traversalContainer((<SetTypeInfo>typeInfo).options.key);
-    }
-    if (typeInfo.typeId === TypeId.MAP) {
-      this.traversalContainer((<MapTypeInfo>typeInfo).options.key);
-      this.traversalContainer((<MapTypeInfo>typeInfo).options.value);
+
+    // 2. Handle Collection Types (Recursive check for nested types)
+    if (typeId === TypeId.LIST) {
+      const inner = (typeInfo as ArrayTypeInfo).options?.inner;
+      if (inner) this.traversalContainer(inner);
+    } else if (typeId === TypeId.SET) {
+      const inner = (typeInfo as SetTypeInfo).options?.key;
+      if (inner) this.traversalContainer(inner);
+    } else if (typeId === TypeId.MAP) {
+      const options = (typeInfo as MapTypeInfo).options;
+      if (options?.key) this.traversalContainer(options.key);
+      if (options?.value) this.traversalContainer(options.value);
     }
   }
 
@@ -104,10 +137,13 @@ export class Gen {
 
   generateSerializer(typeInfo: TypeInfo) {
     this.traversalContainer(typeInfo);
-    const exists = this.isRegistered(typeInfo);
-    if (exists) {
+
+    const typeId = typeInfo.typeId ?? (typeInfo as any)._typeId;
+
+    if (TypeId.userDefinedType(typeId) && this.isRegistered(typeInfo)) {
       return this.fory.typeResolver.getSerializerByTypeInfo(typeInfo);
     }
+
     return this.reGenerateSerializer(typeInfo);
   }
 }

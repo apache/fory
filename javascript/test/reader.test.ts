@@ -17,50 +17,47 @@
  * under the License.
  */
 
-import { alloc } from '../packages/fory/lib/platformBuffer';
-import { BinaryReader } from '../packages/fory/lib/reader';
-import { BinaryWriter } from '../packages/fory/lib/writer';
-import { describe, expect, test } from '@jest/globals';
+import { alloc } from "../packages/fory/lib/platformBuffer";
+import { BinaryReader } from "../packages/fory/lib/reader";
+import { BinaryWriter } from "../packages/fory/lib/writer";
+import { describe, expect, test } from "@jest/globals";
 
+describe("writer", () => {
+  test("should uint8 work", () => {
+    const writer = new BinaryWriter({});
+    {
+      writer.uint8(10);
+      var ab = writer.dump();
+      expect(ab.byteLength).toBe(1);
+      expect(ab[0]).toBe(10);
+      expect(writer.getCursor()).toBe(1);
+    }
 
-describe('writer', () => {
-    test('should uint8 work', () => {
-        const writer = new BinaryWriter({});
-        {
-            writer.uint8(10);
-            var ab = writer.dump();
-            expect(ab.byteLength).toBe(1);
-            expect(ab[0]).toBe(10);
-            expect(writer.getCursor()).toBe(1);
-        }
+    {
+      writer.uint8(256);
+      var ab = writer.dump();
 
-        {
-            writer.uint8(256);
-            var ab = writer.dump();
-
-            expect(ab.byteLength).toBe(2);
-            expect(ab[1]).toBe(0);
-            expect(writer.getCursor()).toBe(2);
-        }
-    });
+      expect(ab.byteLength).toBe(2);
+      expect(ab[1]).toBe(0);
+      expect(writer.getCursor()).toBe(2);
+    }
+  });
 });
 
+describe("reader", () => {
+  test("should bufferRef work", () => {
+    const bb = alloc(100);
+    bb.write("hello", 0, "latin1");
+    const target = new Uint8Array(5);
+    bb.copy(target, 0, 0, 5);
+    expect([...target]).toEqual([104, 101, 108, 108, 111]);
 
-describe('reader', () => {
+    const reader = new BinaryReader({});
 
-    test('should bufferRef work', () => {
-        const bb = alloc(100);
-        bb.write("hello", 0, 'latin1');
-        const target = new Uint8Array(5);
-        bb.copy(target, 0, 0, 5);
-        expect([...target]).toEqual([ 104, 101, 108, 108, 111 ])
-
-        const reader = new BinaryReader({});
-
-        reader.reset(bb);
-        const ref = reader.bufferRef(5);
-        ref[0] = 0;
-        bb.copy(target, 0, 0, 5);
-        expect([...target]).toEqual([ 0, 101, 108, 108, 111 ])
-    })
-})
+    reader.reset(bb);
+    const ref = reader.bufferRef(5);
+    ref[0] = 0;
+    bb.copy(target, 0, 0, 5);
+    expect([...target]).toEqual([0, 101, 108, 108, 111]);
+  });
+});

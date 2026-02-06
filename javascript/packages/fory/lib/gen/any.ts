@@ -35,7 +35,10 @@ export class AnyHelper {
     }
     let serializer: Serializer | undefined;
 
-    function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
+    function tryUpdateSerializer(
+      serializer: Serializer | undefined | null,
+      typeMeta: TypeMeta,
+    ) {
       if (!serializer) {
         throw new Error(`can't find implements of typeId: ${typeId}`);
       }
@@ -49,8 +52,13 @@ export class AnyHelper {
     switch (typeId) {
       case TypeId.COMPATIBLE_STRUCT:
         {
-          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
-          serializer = fory.typeResolver.getSerializerById(typeId, typeMeta.getUserTypeId());
+          const typeMeta = fory.typeMetaResolver.readTypeMeta(
+            fory.binaryReader,
+          );
+          serializer = fory.typeResolver.getSerializerById(
+            typeId,
+            typeMeta.getUserTypeId(),
+          );
           serializer = tryUpdateSerializer(serializer, typeMeta);
         }
         break;
@@ -59,16 +67,28 @@ export class AnyHelper {
       case TypeId.NAMED_EXT:
       case TypeId.NAMED_UNION:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
-        if (fory.config.mode === Mode.Compatible || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
-          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
+        if (
+          fory.config.mode === Mode.Compatible ||
+          typeId === TypeId.NAMED_COMPATIBLE_STRUCT
+        ) {
+          const typeMeta = fory.typeMetaResolver.readTypeMeta(
+            fory.binaryReader,
+          );
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();
           const named = `${ns}$${typeName}`;
-          serializer = tryUpdateSerializer(fory.typeResolver.getSerializerByName(named), typeMeta);
+          serializer = tryUpdateSerializer(
+            fory.typeResolver.getSerializerByName(named),
+            typeMeta,
+          );
         } else {
           const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
-          const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);
-          serializer = fory.typeResolver.getSerializerByName(`${ns}$${typeName}`);
+          const typeName = fory.metaStringResolver.readTypeName(
+            fory.binaryReader,
+          );
+          serializer = fory.typeResolver.getSerializerByName(
+            `${ns}$${typeName}`,
+          );
         }
         break;
       default:
@@ -88,7 +108,9 @@ export class AnyHelper {
 
     const serializer = fory.typeResolver.getSerializerByData(v);
     if (!serializer) {
-      throw new Error(`Failed to detect the Fory serializer from JavaScript type: ${typeof v}`);
+      throw new Error(
+        `Failed to detect the Fory serializer from JavaScript type: ${typeof v}`,
+      );
     }
     fory.binaryWriter.reserve(serializer.fixedSize);
     return serializer;
@@ -102,7 +124,10 @@ class AnySerializerGenerator extends BaseSerializerGenerator {
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
-    this.detectedSerializer = this.scope.declareVar("detectedSerializer", "null");
+    this.detectedSerializer = this.scope.declareVar(
+      "detectedSerializer",
+      "null",
+    );
     this.writerSerializer = this.scope.declareVar("writerSerializer", "null");
   }
 

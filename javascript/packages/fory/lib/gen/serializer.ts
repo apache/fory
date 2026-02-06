@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -39,18 +39,15 @@ export interface SerializerGenerator {
   writeTypeInfo(accessor: string): string;
   write(accessor: string): string;
   writeEmbed(): any;
-
   toSerializer(): string;
   getFixedSize(): number;
   needToWriteRef(): boolean;
-
   readRef(assignStmt: (v: string) => string, withoutTypeInfo?: boolean): string;
   readNoRef(assignStmt: (v: string) => string, refState: string): string;
   readTypeInfo(): string;
   read(assignStmt: (v: string) => string, refState: string): string;
   readEmbed(): any;
   getHash(): string;
-
   getType(): number;
   getTypeId(): number | undefined;
 }
@@ -60,14 +57,13 @@ export enum RefStateType {
   True = "true",
   False = "false",
 }
+
 export abstract class BaseSerializerGenerator implements SerializerGenerator {
   constructor(
     protected typeInfo: TypeInfo,
     protected builder: CodecBuilder,
     protected scope: Scope,
-  ) {
-
-  }
+  ) {}
 
   abstract getFixedSize(): number;
 
@@ -106,7 +102,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     const noneedWrite = this.scope.uniqueName("noneedWrite");
     return `
       let ${noneedWrite} = false;
-      ${this.writeRefOrNull(expr => `${noneedWrite} = ${expr}`, accessor)}
+      ${this.writeRefOrNull((expr) => `${noneedWrite} = ${expr}`, accessor)}
       if (!${noneedWrite}) {
         ${this.writeNoRef(accessor)}
       }
@@ -152,9 +148,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     void accessor;
     const typeId = this.getTypeId();
     const userTypeId = this.typeInfo.userTypeId;
-    const userTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
-      ? this.builder.writer.writeVarUint32Small7(userTypeId)
-      : "";
+    const userTypeStmt =
+      TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
+        ? this.builder.writer.writeVarUint32Small7(userTypeId)
+        : "";
     return ` 
       ${this.builder.writer.uint8(typeId)};
       ${userTypeStmt}
@@ -181,9 +178,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   readTypeInfo(): string {
     const typeId = this.getTypeId();
-    const readUserTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
-      ? `${this.builder.reader.readVarUint32Small7()};`
-      : "";
+    const readUserTypeStmt =
+      TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
+        ? `${this.builder.reader.readVarUint32Small7()};`
+        : "";
     return `
       ${this.builder.reader.uint8()};
       ${readUserTypeStmt}
@@ -258,19 +256,19 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         ${this.writeNoRef("v")}
       };
       const writeRefOrNull = (v) => {
-        ${this.writeRefOrNull(expr => `return ${expr};`, "v")}
+        ${this.writeRefOrNull((expr) => `return ${expr};`, "v")}
       };
       const writeTypeInfo = (v) => {
         ${this.writeTypeInfo("v")}
       };
       const read = (fromRef) => {
-        ${this.read(assignStmt => `return ${assignStmt}`, "fromRef")}
+        ${this.read((assignStmt) => `return ${assignStmt}`, "fromRef")}
       };
       const readRef = () => {
-        ${this.readRef(assignStmt => `return ${assignStmt}`)}
+        ${this.readRef((assignStmt) => `return ${assignStmt}`)}
       };
       const readNoRef = (fromRef) => {
-        ${this.readNoRef(assignStmt => `return ${assignStmt}`, "fromRef")}
+        ${this.readNoRef((assignStmt) => `return ${assignStmt}`, "fromRef")}
       };
       const readTypeInfo = () => {
         ${this.readTypeInfo()}
@@ -286,13 +284,11 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               getTypeId: () => ${this.getTypeId()},
               getUserTypeId: () => ${this.getUserTypeId()},
               getHash,
-
               write,
               writeRef,
               writeNoRef,
               writeRefOrNull,
               writeTypeInfo,
-
               read,
               readRef,
               readNoRef,

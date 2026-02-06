@@ -44,7 +44,12 @@ export class MetaString {
    * @param bytes The encoded string data as a byte array.
    */
   public constructor(
-    string: string, encoding: Encoding, specialChar1: string, specialChar2: string, bytes: Uint8Array) {
+    string: string,
+    encoding: Encoding,
+    specialChar1: string,
+    specialChar2: string,
+    bytes: Uint8Array,
+  ) {
     this.string = string;
     this.encoding = encoding;
     this.specialChar1 = specialChar1;
@@ -119,18 +124,21 @@ export class MetaStringDecoder {
     const stripLastChar = (data[0] & 0x80) != 0; // Check the first bit of the first byte
     const bitMask = 0b11111; // 5 bits for the mask
     let bitIndex = 1; // Start from the second bit
-    while (bitIndex + 5 <= totalBits && !(stripLastChar && (bitIndex + 2 * 5 > totalBits))) {
+    while (
+      bitIndex + 5 <= totalBits &&
+      !(stripLastChar && bitIndex + 2 * 5 > totalBits)
+    ) {
       const byteIndex = Math.floor(bitIndex / 8);
       const intraByteIndex = bitIndex % 8;
       // Extract the 5-bit character value across byte boundaries if needed
       let charValue;
       if (intraByteIndex > 3) {
-        charValue
-            = ((data[byteIndex] & 0xFF) << 8)
-            | (byteIndex + 1 < data.length ? (data[byteIndex + 1] & 0xFF) : 0);
-        charValue = ((charValue >> (11 - intraByteIndex)) & bitMask);
+        charValue =
+          ((data[byteIndex] & 0xff) << 8) |
+          (byteIndex + 1 < data.length ? data[byteIndex + 1] & 0xff : 0);
+        charValue = (charValue >> (11 - intraByteIndex)) & bitMask;
       } else {
-        charValue = data[byteIndex] >> (3 - intraByteIndex) & bitMask;
+        charValue = (data[byteIndex] >> (3 - intraByteIndex)) & bitMask;
       }
       bitIndex += 5;
       decoded.push(this.decodeLowerSpecialChar(charValue));
@@ -144,19 +152,22 @@ export class MetaStringDecoder {
     const stripLastChar = (data[0] & 0x80) != 0; // Check the first bit of the first byte
     const bitMask = 0b111111; // 6 bits for mask
     const numBits = data.length * 8;
-    while (bitIndex + 6 <= numBits && !(stripLastChar && (bitIndex + 2 * 6 > numBits))) {
+    while (
+      bitIndex + 6 <= numBits &&
+      !(stripLastChar && bitIndex + 2 * 6 > numBits)
+    ) {
       const byteIndex = Math.floor(bitIndex / 8);
       const intraByteIndex = bitIndex % 8;
 
       // Extract the 6-bit character value across byte boundaries if needed
       let charValue;
       if (intraByteIndex > 2) {
-        charValue
-            = ((data[byteIndex] & 0xFF) << 8)
-            | (byteIndex + 1 < data.length ? (data[byteIndex + 1] & 0xFF) : 0);
-        charValue = (((charValue >> (10 - intraByteIndex)) & bitMask));
+        charValue =
+          ((data[byteIndex] & 0xff) << 8) |
+          (byteIndex + 1 < data.length ? data[byteIndex + 1] & 0xff : 0);
+        charValue = (charValue >> (10 - intraByteIndex)) & bitMask;
       } else {
-        charValue = data[byteIndex] >> (2 - intraByteIndex) & bitMask;
+        charValue = (data[byteIndex] >> (2 - intraByteIndex)) & bitMask;
       }
       bitIndex += 6;
       decoded.push(this.decodeLowerUpperDigitSpecialChar(charValue));
@@ -177,7 +188,9 @@ export class MetaStringDecoder {
     } else if (charValue === 29) {
       return "|";
     } else {
-      throw new Error("Invalid character value for LOWER_SPECIAL: " + charValue);
+      throw new Error(
+        "Invalid character value for LOWER_SPECIAL: " + charValue,
+      );
     }
   }
 
@@ -195,7 +208,8 @@ export class MetaStringDecoder {
       return this.specialChar2;
     } else {
       throw new Error(
-        "Invalid character value for LOWER_UPPER_DIGIT_SPECIAL: " + charValue);
+        "Invalid character value for LOWER_UPPER_DIGIT_SPECIAL: " + charValue,
+      );
     }
   }
 
@@ -232,10 +246,8 @@ class StringStatistics {
     public digitCount: number,
     public upperCount: number,
     public canLowerSpecialEncoded: boolean,
-    public canLowerUpperDigitSpecialEncoded: boolean
-  ) {
-
-  }
+    public canLowerUpperDigitSpecialEncoded: boolean,
+  ) {}
 }
 
 /** Encodes plain text strings into MetaString objects with specified encoding mechanisms. */
@@ -262,7 +274,13 @@ export class MetaStringEncoder {
    * @return A MetaString object representing the encoded string.
    */
   public encode(input: string): MetaString {
-    return this.encodeByEncodings(input, [Encoding.ALL_TO_LOWER_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.UTF_8]);
+    return this.encodeByEncodings(input, [
+      Encoding.ALL_TO_LOWER_SPECIAL,
+      Encoding.FIRST_TO_LOWER_SPECIAL,
+      Encoding.LOWER_SPECIAL,
+      Encoding.LOWER_UPPER_DIGIT_SPECIAL,
+      Encoding.UTF_8,
+    ]);
   }
 
   public isLatin1(str: string) {
@@ -271,7 +289,13 @@ export class MetaStringEncoder {
 
   public encodeByEncodings(input: string, encodings: Encoding[]) {
     if (!input) {
-      return new MetaString(input, Encoding.UTF_8, this.specialChar1, this.specialChar2, new Uint8Array());
+      return new MetaString(
+        input,
+        Encoding.UTF_8,
+        this.specialChar1,
+        this.specialChar2,
+        new Uint8Array(),
+      );
     }
     if (!this.isLatin1(input)) {
       return new MetaString(
@@ -279,7 +303,8 @@ export class MetaStringEncoder {
         Encoding.UTF_8,
         this.specialChar1,
         this.specialChar2,
-        new TextEncoder().encode(input));
+        new TextEncoder().encode(input),
+      );
     }
     const encoding = this.computeEncodingByEncodings(input, encodings);
     return this.encodeByEncoding(input, encoding);
@@ -297,34 +322,75 @@ export class MetaStringEncoder {
       throw new Error("Non-ASCII characters in meta string are not allowed");
     }
     if (!input) {
-      return new MetaString(input, Encoding.UTF_8, this.specialChar1, this.specialChar2, new Uint8Array());
+      return new MetaString(
+        input,
+        Encoding.UTF_8,
+        this.specialChar1,
+        this.specialChar2,
+        new Uint8Array(),
+      );
     }
     let bytes: Uint8Array;
     switch (encoding) {
       case Encoding.LOWER_SPECIAL:
         bytes = this.encodeLowerSpecial(input);
-        return new MetaString(input, encoding, this.specialChar1, this.specialChar2, bytes);
+        return new MetaString(
+          input,
+          encoding,
+          this.specialChar1,
+          this.specialChar2,
+          bytes,
+        );
       case Encoding.LOWER_UPPER_DIGIT_SPECIAL:
         bytes = this.encodeLowerUpperDigitSpecial(input);
-        return new MetaString(input, encoding, this.specialChar1, this.specialChar2, bytes);
+        return new MetaString(
+          input,
+          encoding,
+          this.specialChar1,
+          this.specialChar2,
+          bytes,
+        );
       case Encoding.FIRST_TO_LOWER_SPECIAL:
         bytes = this.encodeFirstToLowerSpecial([...input]);
-        return new MetaString(input, encoding, this.specialChar1, this.specialChar2, bytes);
-      case Encoding.ALL_TO_LOWER_SPECIAL:
-      {
+        return new MetaString(
+          input,
+          encoding,
+          this.specialChar1,
+          this.specialChar2,
+          bytes,
+        );
+      case Encoding.ALL_TO_LOWER_SPECIAL: {
         const chars = [...input];
         const upperCount = this.countUppers(chars);
         bytes = this.encodeAllToLowerSpecial(chars, upperCount);
-        return new MetaString(input, encoding, this.specialChar1, this.specialChar2, bytes);
+        return new MetaString(
+          input,
+          encoding,
+          this.specialChar1,
+          this.specialChar2,
+          bytes,
+        );
       }
       default:
         bytes = new TextEncoder().encode(input);
-        return new MetaString(input, Encoding.UTF_8, this.specialChar1, this.specialChar2, bytes);
+        return new MetaString(
+          input,
+          Encoding.UTF_8,
+          this.specialChar1,
+          this.specialChar2,
+          bytes,
+        );
     }
   }
 
   public computeEncoding(input: string) {
-    return this.computeEncodingByEncodings(input, [Encoding.ALL_TO_LOWER_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.UTF_8]);
+    return this.computeEncodingByEncodings(input, [
+      Encoding.ALL_TO_LOWER_SPECIAL,
+      Encoding.FIRST_TO_LOWER_SPECIAL,
+      Encoding.LOWER_SPECIAL,
+      Encoding.LOWER_UPPER_DIGIT_SPECIAL,
+      Encoding.UTF_8,
+    ]);
   }
 
   public computeEncodingByEncodings(input: string, encodings: Encoding[]) {
@@ -353,7 +419,7 @@ export class MetaStringEncoder {
           return Encoding.FIRST_TO_LOWER_SPECIAL;
         }
       }
-      if ((chars.length + upperCount) * 5 < (chars.length * 6)) {
+      if ((chars.length + upperCount) * 5 < chars.length * 6) {
         if (encodingSet.has(Encoding.ALL_TO_LOWER_SPECIAL)) {
           return Encoding.ALL_TO_LOWER_SPECIAL;
         }
@@ -392,16 +458,29 @@ export class MetaStringEncoder {
     let upperCount = 0;
     for (const c of chars) {
       if (canLowerUpperDigitSpecialEncoded) {
-        if (!((c >= "a" && c <= "z")
-          || (c >= "A" && c <= "Z")
-          || (c >= "0" && c <= "9")
-          || (c === this.specialChar1 || c === this.specialChar2))) {
+        if (
+          !(
+            (c >= "a" && c <= "z") ||
+            (c >= "A" && c <= "Z") ||
+            (c >= "0" && c <= "9") ||
+            c === this.specialChar1 ||
+            c === this.specialChar2
+          )
+        ) {
           // Character outside of LOWER_UPPER_DIGIT_SPECIAL set
           canLowerUpperDigitSpecialEncoded = false;
         }
       }
       if (canLowerSpecialEncoded) {
-        if (!((c >= "a" && c <= "z") || (c === "." || c === "_" || c === "$" || c === "|"))) {
+        if (
+          !(
+            (c >= "a" && c <= "z") ||
+            c === "." ||
+            c === "_" ||
+            c === "$" ||
+            c === "|"
+          )
+        ) {
           // Character outside of LOWER_SPECIAL set
           canLowerSpecialEncoded = false;
         }
@@ -414,7 +493,11 @@ export class MetaStringEncoder {
       }
     }
     return new StringStatistics(
-      digitCount, upperCount, canLowerSpecialEncoded, canLowerUpperDigitSpecialEncoded);
+      digitCount,
+      upperCount,
+      canLowerSpecialEncoded,
+      canLowerUpperDigitSpecialEncoded,
+    );
   }
 
   private countUppers(chars: string[]) {
@@ -460,22 +543,24 @@ export class MetaStringEncoder {
     const bytes = new Uint8Array(byteLength).fill(0);
     let currentBit = 1;
     for (const c of chars) {
-      const value
-          = (bitsPerChar === 5) ? this.charToValueLowerSpecial(c) : this.charToValueLowerUpperDigitSpecial(c);
+      const value =
+        bitsPerChar === 5
+          ? this.charToValueLowerSpecial(c)
+          : this.charToValueLowerUpperDigitSpecial(c);
       // Encode the value in bitsPerChar bits
       for (let i = bitsPerChar - 1; i >= 0; i--) {
         if ((value & (1 << i)) != 0) {
           // Set the bit in the byte array
           const bytePos = Math.floor(currentBit / 8);
           const bitPos = currentBit % 8;
-          bytes[bytePos] |= (1 << (7 - bitPos));
+          bytes[bytePos] |= 1 << (7 - bitPos);
         }
         currentBit++;
       }
     }
     const stripLastChar = bytes.length * 8 >= totalBits + bitsPerChar;
     if (stripLastChar) {
-      bytes[0] = (bytes[0] | 0x80);
+      bytes[0] = bytes[0] | 0x80;
     }
     return bytes;
   }
@@ -511,7 +596,8 @@ export class MetaStringEncoder {
       return 63;
     } else {
       throw new Error(
-        "Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: " + c);
+        "Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: " + c,
+      );
     }
   }
 }

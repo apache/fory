@@ -17,12 +17,7 @@
  * under the License.
  */
 
-import {
-  StructTypeInfo,
-  TypeInfo,
-  ArrayTypeInfo,
-  Type,
-} from "./lib/typeInfo";
+import { StructTypeInfo, TypeInfo, ArrayTypeInfo, Type } from "./lib/typeInfo";
 import { Serializer, Mode } from "./lib/type";
 import Fory from "./lib/fory";
 import { BinaryReader } from "./lib/reader";
