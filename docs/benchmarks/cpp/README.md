@@ -26,9 +26,7 @@ python benchmark_report.py --json-file build/benchmark_results.json --output-dir
 
 ## Benchmark Plots
 
-<p align="center">
-<img src="throughput.png" width="90%" />
-</p>
+![Throughput](throughput.png)
 
 ## Benchmark Results
 
