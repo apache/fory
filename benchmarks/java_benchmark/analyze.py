@@ -173,6 +173,7 @@ repo_plot_combined_groups = [
     },
 ]
 
+
 def _to_markdown(df: pd.DataFrame):
     lines = list(df.values.tolist())
     width = len(df.columns)
@@ -193,7 +194,11 @@ def _format_tps(value):
 def _pivot_lib_columns(df: pd.DataFrame, index_columns):
     table_df = (
         df.pivot_table(
-            index=index_columns, columns="Lib", values="Tps", aggfunc="first", sort=False
+            index=index_columns,
+            columns="Lib",
+            values="Tps",
+            aggfunc="first",
+            sort=False,
         )
         .reset_index()
         .copy()
@@ -201,7 +206,11 @@ def _pivot_lib_columns(df: pd.DataFrame, index_columns):
     available_libs = table_df.columns.tolist()
     sorted_lib_columns = [name for name in lib_order if name in available_libs]
     extra_lib_columns = sorted(
-        [name for name in available_libs if name not in index_columns + sorted_lib_columns]
+        [
+            name
+            for name in available_libs
+            if name not in index_columns + sorted_lib_columns
+        ]
     )
     table_df = table_df[index_columns + sorted_lib_columns + extra_lib_columns]
     if "references" in table_df.columns:
@@ -290,9 +299,7 @@ def _build_single_plot_frame(spec, benchmark_data, zero_copy_data):
         if spec["benchmark"].startswith("serialize"):
             title = f"{spec['benchmark']} {spec['objectType']} to {spec['bufferType']} (Tps)"
         else:
-            title = (
-                f"{spec['benchmark']} {spec['objectType']} from {spec['bufferType']} (Tps)"
-            )
+            title = f"{spec['benchmark']} {spec['objectType']} from {spec['bufferType']} (Tps)"
         xlabel = "enable_references"
         width = 0.7 * bar_width_scale
     else:
@@ -307,7 +314,9 @@ def _build_single_plot_frame(spec, benchmark_data, zero_copy_data):
             .unstack("Lib")
         )
         if spec["benchmark"].startswith("serialize"):
-            title = f"{spec['benchmark']} {spec['dataType']} to {spec['bufferType']} (Tps)"
+            title = (
+                f"{spec['benchmark']} {spec['dataType']} to {spec['bufferType']} (Tps)"
+            )
         else:
             title = f"{spec['benchmark']} {spec['dataType']} from {spec['bufferType']} (Tps)"
         xlabel = "array_size"
@@ -335,7 +344,9 @@ def _plot_combined_group(group, benchmark_data, zero_copy_data, output_path: Pat
             axis.set_ylabel("")
         add_upper_right_legend(axis, libs)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=170, bbox_inches="tight", pad_inches=0.03, facecolor="white")
+    fig.savefig(
+        output_path, dpi=170, bbox_inches="tight", pad_inches=0.03, facecolor="white"
+    )
     plt.close(fig)
 
 
@@ -363,12 +374,16 @@ def _update_java_benchmark_readme(data_dir: Path, readme_path: Path):
                     "deserialize_compatible": 3,
                 }
             ),
-            _buffer_order=benchmark_df["bufferType"].map({"array": 0, "directBuffer": 1}),
+            _buffer_order=benchmark_df["bufferType"].map(
+                {"array": 0, "directBuffer": 1}
+            ),
             _object_order=benchmark_df["objectType"].map(
                 {"STRUCT": 0, "STRUCT2": 1, "MEDIA_CONTENT": 2, "SAMPLE": 3}
             ),
         )
-        .sort_values(["_benchmark_order", "_object_order", "_buffer_order", "references"])
+        .sort_values(
+            ["_benchmark_order", "_object_order", "_buffer_order", "references"]
+        )
         .drop(columns=["_benchmark_order", "_buffer_order", "_object_order"])
         .reset_index(drop=True)
     )
@@ -379,11 +394,19 @@ def _update_java_benchmark_readme(data_dir: Path, readme_path: Path):
     zero_copy_df, _ = process_data(str(data_dir / java_zero_copy_file))
     zero_copy_df = (
         zero_copy_df.assign(
-            _benchmark_order=zero_copy_df["Benchmark"].map({"serialize": 0, "deserialize": 1}),
-            _buffer_order=zero_copy_df["bufferType"].map({"array": 0, "directBuffer": 1}),
-            _data_type_order=zero_copy_df["dataType"].map({"BUFFER": 0, "PRIMITIVE_ARRAY": 1}),
+            _benchmark_order=zero_copy_df["Benchmark"].map(
+                {"serialize": 0, "deserialize": 1}
+            ),
+            _buffer_order=zero_copy_df["bufferType"].map(
+                {"array": 0, "directBuffer": 1}
+            ),
+            _data_type_order=zero_copy_df["dataType"].map(
+                {"BUFFER": 0, "PRIMITIVE_ARRAY": 1}
+            ),
         )
-        .sort_values(["_benchmark_order", "array_size", "_buffer_order", "_data_type_order"])
+        .sort_values(
+            ["_benchmark_order", "array_size", "_buffer_order", "_data_type_order"]
+        )
         .drop(columns=["_benchmark_order", "_buffer_order", "_data_type_order"])
         .reset_index(drop=True)
     )
@@ -464,7 +487,9 @@ def format_scaler(x):
 
 
 def add_upper_right_legend(ax, labels):
-    legend_labels = [str(label).replace("ForyMetaShared", "ForyMeta\nShared") for label in labels]
+    legend_labels = [
+        str(label).replace("ForyMetaShared", "ForyMeta\nShared") for label in labels
+    ]
     ax.legend(
         legend_labels,
         loc="upper right",
