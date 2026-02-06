@@ -84,7 +84,7 @@ Class forward/backward compatibility are supported in this mode.
 <p align="center">
 <img width="24%" alt="" src="serialization/bench_serialize_compatible_STRUCT_to_array_tps.png">
 <img width="24%" alt="" src="serialization/bench_serialize_compatible_STRUCT2_to_array_tps.png">
-<img width="24%" alt="" src="serialization/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png">
+<img width="24%" alt="" src="compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png">
 <img width="24%" alt="" src="serialization/bench_serialize_compatible_SAMPLE_to_array_tps.png">
 </p>
 
@@ -108,7 +108,7 @@ Class forward/backward compatibility are supported in this mode.
 <p align="center">
 <img width="24%" alt="" src="deserialization/bench_deserialize_compatible_STRUCT_from_array_tps.png">
 <img width="24%" alt="" src="deserialization/bench_deserialize_compatible_STRUCT2_from_array_tps.png">
-<img width="24%" alt="" src="deserialization/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png">
+<img width="24%" alt="" src="compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png">
 <img width="24%" alt="" src="deserialization/bench_deserialize_compatible_SAMPLE_from_array_tps.png">
 </p>
 
@@ -134,7 +134,7 @@ The deserialization peer can have different class definition with the serializat
 Class forward/backward compatibility are supported in this mode.
 
 <p align="center">
-<img width="24%" alt="" src="serialization/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png">
+<img width="24%" alt="" src="compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png">
 <img width="24%" alt="" src="serialization/bench_serialize_compatible_STRUCT2_to_directBuffer_tps.png">
 <img width="24%" alt="" src="serialization/bench_serialize_compatible_MEDIA_CONTENT_to_directBuffer_tps.png">
 <img width="24%" alt="" src="serialization/bench_serialize_SAMPLE_to_directBuffer_tps.png">
@@ -158,7 +158,7 @@ The deserialization peer can have different class definition with the serializat
 Class forward/backward compatibility are supported in this mode.
 
 <p align="center">
-<img width="24%" alt="" src="deserialization/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png">
+<img width="24%" alt="" src="compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png">
 <img width="24%" alt="" src="deserialization/bench_deserialize_compatible_STRUCT2_from_directBuffer_tps.png">
 <img width="24%" alt="" src="deserialization/bench_deserialize_compatible_MEDIA_CONTENT_from_directBuffer_tps.png">
 <img width="24%" alt="" src="deserialization/bench_deserialize_compatible_SAMPLE_from_directBuffer_tps.png">

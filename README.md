@@ -79,31 +79,31 @@ The following benchmarks compare Fory against popular Java serialization framewo
 
 **Test Classes**:
 
-- `Struct`: Class with [100 primitive fields](docs/benchmarks#Struct)
+- `Struct`: Class with [100 primitive fields](docs/benchmarks/java#Struct)
 - `MediaContent`: Class from [jvm-serializers](https://github.com/eishay/jvm-serializers/blob/master/tpc/src/data/media/MediaContent.java)
 - `Sample`: Class from [Kryo benchmark](https://github.com/EsotericSoftware/kryo/blob/master/benchmarks/src/main/java/com/esotericsoftware/kryo/benchmarks/data/Sample.java)
 
 **Serialization Throughput**:
 
 <p align="center">
-<img width="24%" alt="Struct Serialization Compatible" src="docs/benchmarks/compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png">
-<img width="24%" alt="MediaContent Serialization Compatible" src="docs/benchmarks/compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png">
-<img width="24%" alt="MediaContent Serialization" src="docs/benchmarks/serialization/bench_serialize_MEDIA_CONTENT_to_array_tps.png">
-<img width="24%" alt="Sample Serialization" src="docs/benchmarks/serialization/bench_serialize_SAMPLE_to_array_tps.png">
+<img width="24%" alt="Struct Serialization Compatible" src="docs/benchmarks/java/compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png">
+<img width="24%" alt="MediaContent Serialization Compatible" src="docs/benchmarks/java/compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png">
+<img width="24%" alt="MediaContent Serialization" src="docs/benchmarks/java/serialization/bench_serialize_MEDIA_CONTENT_to_array_tps.png">
+<img width="24%" alt="Sample Serialization" src="docs/benchmarks/java/serialization/bench_serialize_SAMPLE_to_array_tps.png">
 </p>
 
 **Deserialization Throughput**:
 
 <p align="center">
-<img width="24%" alt="Struct Deserialization Compatible" src="docs/benchmarks/compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png">
-<img width="24%" alt="MediaContent Deserialization Compatible" src="docs/benchmarks/compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png">
-<img width="24%" alt="MediaContent Deserialization" src="docs/benchmarks/deserialization/bench_deserialize_MEDIA_CONTENT_from_array_tps.png">
-<img width="24%" alt="Sample Deserialization" src="docs/benchmarks/deserialization/bench_deserialize_SAMPLE_from_array_tps.png">
+<img width="24%" alt="Struct Deserialization Compatible" src="docs/benchmarks/java/compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png">
+<img width="24%" alt="MediaContent Deserialization Compatible" src="docs/benchmarks/java/compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png">
+<img width="24%" alt="MediaContent Deserialization" src="docs/benchmarks/java/deserialization/bench_deserialize_MEDIA_CONTENT_from_array_tps.png">
+<img width="24%" alt="Sample Deserialization" src="docs/benchmarks/java/deserialization/bench_deserialize_SAMPLE_from_array_tps.png">
 </p>
 
 **Important**: Fory's runtime code generation requires proper warm-up for performance measurement:
 
-For additional benchmarks covering type forward/backward compatibility, off-heap support, and zero-copy serialization, see [Java Benchmarks](docs/benchmarks).
+For additional benchmarks covering type forward/backward compatibility, off-heap support, and zero-copy serialization, see [Java Benchmarks](docs/benchmarks/java).
 
 ### Rust Serialization Performance
 

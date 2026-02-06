@@ -30,7 +30,7 @@ Define cross-language data structures with Fory IDL and generate native code for
   - Python: [Python Benchmarks Source](../benchmarks/cpython_benchmark)
   - Rust: [Rust Benchmarks Source](../benchmarks/rust_benchmark/)
 - Benchmark result:
-  - Java: [Java Benchmarks](benchmarks/)
+  - Java: [Java Benchmarks](benchmarks/java/)
   - Rust: [Rust Benchmarks](benchmarks/rust_benchmark).
 
 ## Development
