@@ -172,7 +172,7 @@ But if you serialize data between processes on same node and use shared-memory, 
 
 ### Java Serialization
 
-| Benchmark              | objectType    | bufferType   | references | Fory           | Forymetashared  | Kryo           | Fst           | Hession       | Jdk           | Protostuff    |
+| Benchmark              | objectType    | bufferType   | references | Fory           | ForyMetaShared  | Kryo           | Fst           | Hession       | Jdk           | Protostuff    |
 | ---------------------- | ------------- | ------------ | ---------- | -------------- | --------------- | -------------- | ------------- | ------------- | ------------- | ------------- |
 | serialize              | STRUCT        | array        | False      | 7501415.567260 |                 | 558194.100861  | 882178.995727 | 258233.998931 | 155908.244240 | 330975.350403 |
 | serialize              | STRUCT        | array        | True       | 6264439.154428 |                 | 557542.628765  | 757753.756691 | 260845.209485 | 151258.539369 |               |

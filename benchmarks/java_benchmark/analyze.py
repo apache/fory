@@ -35,7 +35,7 @@ java_benchmark_readme = java_benchmark_dir / "README.md"
 
 lib_order = [
     "Fory",
-    "Forymetashared",
+    "ForyMetaShared",
     "Kryo",
     "Fst",
     "Hession",
@@ -198,6 +198,9 @@ def process_data(filepath: str):
                 pat="_", n=1, expand=True
             )
             bench_df["Lib"] = bench_df["Lib"].str.capitalize()
+            bench_df["Lib"] = bench_df["Lib"].replace(
+                {"Forymetashared": "ForyMetaShared"}
+            )
             bench_df.drop(["Threads"], axis=1, inplace=True)
         return bench_df
 
@@ -211,8 +214,8 @@ def process_data(filepath: str):
 
 
 color_map = {
-    "Fory": "#7845FD",
-    "Forymetashared": "#B237ED",  # (1, 0.65, 0.55)
+    "Fory": "#FF6f01",  # Orange
+    "ForyMetaShared": "#FFB266",  # Shallow orange
     # "Kryo": (1, 0.5, 1),
     # "Kryo": (1, 0.84, 0.25),
     "Kryo": "#55BCC2",
@@ -236,6 +239,19 @@ def format_scaler(x):
         return round(x, 1)
 
 
+def add_upper_right_legend(ax, labels):
+    legend_labels = [str(label).replace("ForyMetaShared", "ForyMeta\nShared") for label in labels]
+    ax.legend(
+        legend_labels,
+        loc="upper right",
+        bbox_to_anchor=(0.98, 0.98),
+        borderaxespad=0.2,
+        prop={"size": 10},
+        frameon=True,
+        framealpha=0.9,
+    )
+
+
 def plot(df: pd.DataFrame, file_dir, filename, column="Tps"):
     df["ns"] = (1 / df["Tps"] * 10**9).astype(int)
     data = df.fillna("")
@@ -250,10 +266,6 @@ def plot(df: pd.DataFrame, file_dir, filename, column="Tps"):
         jdk = data[data["Lib"].str.contains("Jdk")].copy()
         jdk["Benchmark"] = jdk["Benchmark"] + "_compatible"
         data = pd.concat([data, jdk])
-        fory_metashared_color = plot_color_map["Forymetashared"]
-        fory_color = plot_color_map["Fory"]
-        plot_color_map["Fory"] = fory_metashared_color
-        plot_color_map["Forymetashared"] = fory_color
     ylabel = column
     if column == "Tps":
         ylabel = f"Tps/{scaler}"
@@ -291,10 +303,10 @@ def plot(df: pd.DataFrame, file_dir, filename, column="Tps"):
             ax.bar_label(container)
         ax.set_xlabel("enable_references")
         ax.set_ylabel(ylabel)
-        libs = libs.str.replace("metashared", "meta\nshared")
-        ax.legend(libs, loc="upper right", prop={"size": 13})
+        add_upper_right_legend(ax, libs)
         save_dir = get_plot_dir(file_dir)
         sub_plot.get_figure().savefig(save_dir + "/" + save_filename)
+        plt.close(fig)
 
 
 def plot_zero_copy(df: pd.DataFrame, file_dir, filename, column="Tps"):
@@ -340,9 +352,10 @@ def plot_zero_copy(df: pd.DataFrame, file_dir, filename, column="Tps"):
             ax.bar_label(container)
         ax.set_xlabel("array_size")
         ax.set_ylabel(ylabel)
-        ax.legend(libs, bbox_to_anchor=(0.23, 0.99), prop={"size": 13})
+        add_upper_right_legend(ax, libs)
         save_dir = get_plot_dir(file_dir)
         sub_plot.get_figure().savefig(save_dir + "/" + save_filename)
+        plt.close(fig)
 
 
 time_str = datetime.datetime.now().strftime("%m%d_%H%M_%S")
