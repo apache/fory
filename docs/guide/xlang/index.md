@@ -19,11 +19,11 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ xlang (cross-language) serialization enables seamless data exchange between different programming languages. Serialize data in one language and deserialize it in another—without IDL definitions, schema compilation, or manual data conversion.
+Apache Fory™ xlang (cross-language) serialization enables seamless data exchange between different programming languages. Serialize data in one language and deserialize it in another without manual data conversion. You can use either direct native types (no IDL) or a schema-first Fory IDL workflow.
 
 ## Features
 
-- **No IDL Required**: Serialize any object automatically without Protocol Buffers, Thrift, or other IDL definitions
+- **No IDL Required**: Serialize objects directly with native language types
 - **Multi-Language Support**: Java, Python, C++, Go, Rust, JavaScript all interoperate seamlessly
 - **Reference Support**: Shared and circular references work across language boundaries
 - **Schema Evolution**: Forward/backward compatibility when class definitions change
@@ -91,13 +91,50 @@ class Person:
     name: str
     age: pyfory.Int32Type
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 fory.register_type(Person, typename="example.Person")
 
 # Receive bytes from Java
 person = fory.deserialize(bytes_from_java)
 print(f"{person.name}, {person.age}")  # Alice, 30
 ```
+
+## Fory IDL
+
+For schema-first projects, Fory also provides **Fory IDL** and code generation.
+
+- Compiler docs: [Fory IDL Overview](../../compiler/index.md)
+- Best for large multi-language message contracts and long-lived schemas
+
+### Minimal IDL Example
+
+Create `person.fdl`:
+
+```protobuf
+package example;
+
+message Person {
+    string name = 1;
+    int32 age = 2;
+    optional string email = 3;
+}
+```
+
+Generate code:
+
+```bash
+foryc person.fdl --lang java,python,go,rust,cpp --output ./generated
+```
+
+This generates native language types with consistent field/type mappings across all targets.
+
+## When to Fory IDL
+
+| Option                             | Use When                                                               | Why                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Native xlang types (no IDL)        | You only have a few message types and want to move quickly             | Avoids the integration/setup cost of introducing and operating the compiler      |
+| Fory IDL (schema-first + codegen)  | You have many messages across multiple languages/teams/services        | Provides a single contract, stronger consistency, and easier long-term evolution |
+| Hybrid (start native, move to IDL) | Project starts small but message count and cross-team dependency grows | Lets you keep early velocity, then standardize once schema complexity increases  |
 
 ## Documentation
 

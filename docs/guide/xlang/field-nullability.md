@@ -137,10 +137,9 @@ fory.register_type(Person, typename="example.Person")
 ### Rust
 
 ```rust
-use fory::Fory;
+use fory::{Fory, ForyObject};
 
-#[derive(Fory)]
-#[tag("example.Person")]
+#[derive(ForyObject)]
 struct Person {
     // Non-nullable by default
     name: String,
@@ -167,8 +166,8 @@ type Person struct {
     Bio      *string  // Can be nil
 }
 
-fory := forygo.NewFory()
-fory.RegisterTagType("example.Person", Person{})
+fory := forygo.NewFory(forygo.WithXlang(true))
+fory.RegisterNamedStruct(Person{}, "example.Person")
 ```
 
 ### C++

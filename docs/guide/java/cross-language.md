@@ -112,7 +112,7 @@ class Person:
     age: pyfory.int32
 
 # Create Fory in xlang mode
-fory = pyfory.Fory(ref=True)
+fory = pyfory.Fory(xlang=True, ref=True)
 
 # Register with the SAME name as Java
 fory.register_type(Person, typename="example.Person")
