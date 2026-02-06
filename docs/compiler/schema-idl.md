@@ -19,19 +19,28 @@ license: |
   limitations under the License.
 ---
 
-This document provides a complete reference for the Fory Definition Language (FDL) syntax.
+This document provides the syntax and semantic reference for Fory IDL.
+
+For compiler usage and build integration, see
+[Compiler Guide](compiler-guide.md). For protobuf/FlatBuffers frontend mapping
+rules, see [Protocol Buffers IDL Support](protobuf-idl.md) and
+[FlatBuffers IDL Support](flatbuffers-idl.md).
 
 ## File Structure
 
-An FDL file consists of:
+An Fory IDL file typically consists of:
 
 1. Optional package declaration
-2. Optional import statements
-3. Type definitions (enums, messages, and unions)
+2. Optional file-level options
+3. Optional import statements
+4. Type definitions (enums, messages, and unions)
 
 ```protobuf
 // Optional package declaration
 package com.example.models;
+
+// Optional file-level options
+option java_package = "com.example.models";
 
 // Import statements
 import "common/types.fdl";
@@ -45,7 +54,7 @@ union Event [id=103] { ... }
 
 ## Comments
 
-FDL supports both single-line and block comments:
+Fory IDL supports both single-line and block comments:
 
 ```protobuf
 // This is a single-line comment
@@ -119,7 +128,7 @@ message Payment {
 
 - Generated Java files will be in `com/mycorp/payment/v1/` directory
 - Java package declaration will be `package com.mycorp.payment.v1;`
-- Type registration still uses the FDL package (`payment`) for cross-language compatibility
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
 
 ### Go Package Option
 
@@ -140,7 +149,7 @@ message Payment {
 
 - Generated Go files will have `package paymentv1`
 - The import path can be used in other Go code
-- Type registration still uses the FDL package (`payment`) for cross-language compatibility
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
 
 ### Java Outer Classname Option
 
@@ -265,9 +274,26 @@ message Payment {
 
 ### Protobuf Compatibility Options
 
-FDL accepts protobuf-style extension syntax (for example, `(fory).id`) for
-compatibility, but native FDL style uses plain option keys such as `id`,
+Fory IDL accepts protobuf-style extension syntax (for example, `(fory).id`) for
+compatibility, but native Fory IDL style uses plain option keys such as `id`,
 `evolving`, `ref`, and `nullable` without the `(fory)` prefix.
+
+Equivalent forms:
+
+```protobuf
+// Native Fory IDL style (preferred in .fdl files)
+message Node [id=100] {
+    ref Node parent = 1;
+    optional string nickname = 2;
+}
+
+// Protobuf-style compatibility syntax
+message Node {
+    option (fory).id = 100;
+    Node parent = 1 [(fory).ref = true];
+    string nickname = 2 [(fory).nullable = true];
+}
+```
 
 For the protobuf-specific extension option guide, see
 [Protocol Buffers IDL Support](protobuf-idl.md#fory-extension-options-protobuf).
@@ -278,7 +304,7 @@ For language-specific packages:
 
 1. Command-line package override (highest priority)
 2. Language-specific option (`java_package`, `go_package`)
-3. FDL package declaration (fallback)
+3. Fory IDL package declaration (fallback)
 
 **Example:**
 
@@ -315,7 +341,7 @@ All languages will register `User` with namespace `myapp.models`, enabling:
 
 ## Import Statement
 
-Import statements allow you to use types defined in other FDL files.
+Import statements allow you to use types defined in other Fory IDL files.
 
 ### Basic Syntax
 
@@ -397,9 +423,9 @@ import public "other.fdl";
 import weak "other.fdl";
 ```
 
-**`import public`**: FDL uses a simpler import model. All imported types are available to the importing file only. Re-exporting is not supported. Import each file directly where needed.
+**`import public`**: Fory IDL uses a simpler import model. All imported types are available to the importing file only. Re-exporting is not supported. Import each file directly where needed.
 
-**`import weak`**: FDL requires all imports to be present at compile time. Optional dependencies are not supported.
+**`import weak`**: Fory IDL requires all imports to be present at compile time. Optional dependencies are not supported.
 
 ### Import Errors
 
@@ -834,7 +860,8 @@ message Node {
 | C++      | `Node parent`  | `std::shared_ptr<Node> parent`            |
 
 Rust uses `Arc` by default; use `ref(thread_safe=false)` or `ref(weak=true)`
-to customize pointer types (see [Field-Level Fory Options](#field-level-fory-options)).
+to customize pointer types. For protobuf option syntax, see
+[Protocol Buffers IDL Support](protobuf-idl.md#field-level-options).
 
 #### `list`
 
@@ -876,14 +903,14 @@ apply to elements. `repeated` is accepted as an alias for `list`.
 
 **List modifier mapping:**
 
-| FDL                     | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
+| Fory IDL                | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
 | ----------------------- | ---------------------------------------------- | --------------------------------------- | ----------------------- | --------------------- | ----------------------------------------- |
 | `optional list<string>` | `List<String>` + `@ForyField(nullable = true)` | `Optional[List[str]]`                   | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` |
 | `list<optional string>` | `List<String>` (nullable elements)             | `List[Optional[str]]`                   | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` |
 | `ref list<User>`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
 | `list<ref User>`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
 
-Use `ref(thread_safe=false)` in FDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
+Use `ref(thread_safe=false)` in Fory IDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
 to generate `Rc` instead of `Arc` in Rust.
 
 ## Field Numbers
@@ -898,24 +925,20 @@ message Example {
 }
 ```
 
-**Rules:**
+**Rules and best practices:**
 
-- Must be unique within a message
-- Must be positive integers
-- Used for field ordering and identification
-- Gaps in numbering are allowed (useful for deprecating fields)
-
-**Best Practices:**
-
-- Use sequential numbers starting from 1
-- Reserve number ranges for different categories
-- Never reuse numbers for different fields (even after deletion)
+- Numbers must be unique within a message.
+- Numbers must be positive integers.
+- Gaps are allowed and are useful when fields are removed.
+- Prefer sequential numbering from `1`.
+- Never reuse a removed field number for a different field.
 
 ## Type System
 
-FDL provides a cross-language type system for primitives, named types, and collections.
-Field modifiers like `optional`, `list`, and `ref` define nullability, collections, and
-reference tracking (see [Field Modifiers](#field-modifiers)).
+Fory IDL provides a cross-language type system for primitives, named types, and
+collections. Field modifiers (`optional`, `list`, `ref`) control nullability,
+collection behavior, and reference tracking (see
+[Field Modifiers](#field-modifiers)).
 
 ### Primitive Types
 
@@ -948,10 +971,6 @@ reference tracking (see [Field Modifiers](#field-modifiers)).
 
 #### Boolean
 
-```protobuf
-bool is_active = 1;
-```
-
 | Language | Type                  | Notes              |
 | -------- | --------------------- | ------------------ |
 | Java     | `boolean` / `Boolean` | Primitive or boxed |
@@ -962,27 +981,27 @@ bool is_active = 1;
 
 #### Integer Types
 
-FDL provides fixed-width signed integers (varint encoding for 32/64-bit by default):
+Fory IDL provides fixed-width signed integers (varint encoding for 32/64-bit by default):
 
-| FDL Type | Size   | Range             |
-| -------- | ------ | ----------------- |
-| `int8`   | 8-bit  | -128 to 127       |
-| `int16`  | 16-bit | -32,768 to 32,767 |
-| `int32`  | 32-bit | -2^31 to 2^31 - 1 |
-| `int64`  | 64-bit | -2^63 to 2^63 - 1 |
+| Fory IDL Type | Size   | Range             |
+| ------------- | ------ | ----------------- |
+| `int8`        | 8-bit  | -128 to 127       |
+| `int16`       | 16-bit | -32,768 to 32,767 |
+| `int32`       | 32-bit | -2^31 to 2^31 - 1 |
+| `int64`       | 64-bit | -2^63 to 2^63 - 1 |
 
 **Language Mapping (Signed):**
 
-| FDL     | Java    | Python         | Go      | Rust  | C++       |
-| ------- | ------- | -------------- | ------- | ----- | --------- |
-| `int8`  | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  |
-| `int16` | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
-| `int32` | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
-| `int64` | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
+| Fory IDL | Java    | Python         | Go      | Rust  | C++       |
+| -------- | ------- | -------------- | ------- | ----- | --------- |
+| `int8`   | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  |
+| `int16`  | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
+| `int32`  | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
+| `int64`  | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
 
-FDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
+Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
 
-| FDL      | Size   | Range         |
+| Fory IDL | Size   | Range         |
 | -------- | ------ | ------------- |
 | `uint8`  | 8-bit  | 0 to 255      |
 | `uint16` | 16-bit | 0 to 65,535   |
@@ -991,44 +1010,19 @@ FDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by def
 
 **Language Mapping (Unsigned):**
 
-| FDL      | Java    | Python          | Go       | Rust  | C++        |
+| Fory IDL | Java    | Python          | Go       | Rust  | C++        |
 | -------- | ------- | --------------- | -------- | ----- | ---------- |
 | `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  |
 | `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` |
 | `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` |
 | `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` |
 
-**Examples:**
-
-```protobuf
-message Counters {
-    int8 tiny = 1;
-    int16 small = 2;
-    int32 medium = 3;
-    int64 large = 4;
-}
-```
-
-**Python type hints:**
-
-```python
-from dataclasses import dataclass
-from pyfory import int8, int16, int32
-
-@dataclass
-class Counters:
-    tiny: int8
-    small: int16
-    medium: int32
-    large: int  # int64 maps to native int
-```
-
 #### Integer Encoding Variants
 
-For 32/64-bit integers, FDL uses varint encoding by default. Use explicit types when
+For 32/64-bit integers, Fory IDL uses varint encoding by default. Use explicit types when
 you need fixed-width or tagged encoding:
 
-| FDL Type        | Encoding | Notes                    |
+| Fory IDL Type   | Encoding | Notes                    |
 | --------------- | -------- | ------------------------ |
 | `fixed_int32`   | fixed    | Signed 32-bit            |
 | `fixed_int64`   | fixed    | Signed 64-bit            |
@@ -1039,25 +1033,19 @@ you need fixed-width or tagged encoding:
 
 #### Floating-Point Types
 
-| FDL Type  | Size   | Precision     |
-| --------- | ------ | ------------- |
-| `float32` | 32-bit | ~7 digits     |
-| `float64` | 64-bit | ~15-16 digits |
+| Fory IDL Type | Size   | Precision     |
+| ------------- | ------ | ------------- |
+| `float32`     | 32-bit | ~7 digits     |
+| `float64`     | 64-bit | ~15-16 digits |
 
 **Language Mapping:**
 
-| FDL       | Java     | Python           | Go        | Rust  | C++      |
+| Fory IDL  | Java     | Python           | Go        | Rust  | C++      |
 | --------- | -------- | ---------------- | --------- | ----- | -------- |
 | `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  |
 | `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` |
 
 #### String Type
-
-UTF-8 encoded text:
-
-```protobuf
-string name = 1;
-```
 
 | Language | Type          | Notes                 |
 | -------- | ------------- | --------------------- |
@@ -1068,12 +1056,6 @@ string name = 1;
 | C++      | `std::string` |                       |
 
 #### Bytes Type
-
-Raw binary data:
-
-```protobuf
-bytes data = 1;
-```
 
 | Language | Type                   | Notes     |
 | -------- | ---------------------- | --------- |
@@ -1087,12 +1069,6 @@ bytes data = 1;
 
 ##### Date
 
-Calendar date without time:
-
-```protobuf
-date birth_date = 1;
-```
-
 | Language | Type                        | Notes                   |
 | -------- | --------------------------- | ----------------------- |
 | Java     | `java.time.LocalDate`       |                         |
@@ -1102,12 +1078,6 @@ date birth_date = 1;
 | C++      | `fory::serialization::Date` |                         |
 
 ##### Timestamp
-
-Date and time with nanosecond precision:
-
-```protobuf
-timestamp created_at = 1;
-```
 
 | Language | Type                             | Notes                   |
 | -------- | -------------------------------- | ----------------------- |
@@ -1119,12 +1089,6 @@ timestamp created_at = 1;
 
 #### Any
 
-Dynamic value with runtime type information:
-
-```protobuf
-any payload = 1;
-```
-
 | Language | Type           | Notes                |
 | -------- | -------------- | -------------------- |
 | Java     | `Object`       | Runtime type written |
@@ -1132,6 +1096,34 @@ any payload = 1;
 | Go       | `any`          | Runtime type written |
 | Rust     | `Box<dyn Any>` | Runtime type written |
 | C++      | `std::any`     | Runtime type written |
+
+**Example:**
+
+```protobuf
+enum EventType [id=120] {
+    CREATED = 0;
+    DELETED = 1;
+}
+
+message UserCreated [id=121] {
+    string user_id = 1;
+}
+
+message Envelope [id=122] {
+    EventType type = 1;
+    any payload = 2;
+}
+```
+
+**Generated Code (`Envelope.payload`):**
+
+| Language | Generated Field Type    |
+| -------- | ----------------------- |
+| Java     | `Object payload`        |
+| Python   | `payload: Any`          |
+| Go       | `Payload any`           |
+| Rust     | `payload: Box<dyn Any>` |
+| C++      | `std::any payload`      |
 
 **Notes:**
 
@@ -1182,7 +1174,7 @@ message Config {
 
 **Language Mapping:**
 
-| FDL                  | Java                   | Python            | Go                 | Rust                    | C++                              |
+| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              |
 | -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- |
 | `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` |
 | `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    |
@@ -1255,22 +1247,14 @@ message Config { ... }  // Auto-generated when enable_auto_type_id = true
 
 You can set `[alias="..."]` to change the hash source without renaming the type.
 
-### Pay-as-you-go principle
+### Practical Notes
 
-- IDs: Messages, unions, and enums use numeric IDs; if omitted and
-  `enable_auto_type_id = true`, the compiler auto-generates one.
-- Auto-generation: If no ID is provided, fory generates one using
-  MurmurHash3(utf8(package.type_name)) (32-bit). If a package alias is specified,
-  the alias is used instead of the package name; if a type alias is specified,
-  the alias is used instead of the type name.
-- Space Efficiency:
-  - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
-  - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
-- Conflict Resolution: While the collision probability is extremely low, conflicts are detected
-  at compile-time. The compiler raises an error and asks you to specify an explicit `id` or use
-  the `alias` option to change the hash source.
-
-Explicit is better than implicit, but automation is better than toil.
+- If a type omits `id` and `enable_auto_type_id = true`, Fory generates an ID
+  with `MurmurHash3(utf8(package.type_name))` (32-bit).
+- Package alias and type alias change the hash input and can be used to resolve
+  hash collisions without renaming public types.
+- Manual IDs in the small varint range (`0-127`) are compact on the wire; auto
+  IDs are typically larger and usually consume 4-5 bytes.
 
 ### ID Assignment Strategy
 
@@ -1405,7 +1389,7 @@ reserved_item := INTEGER | INTEGER 'to' INTEGER | INTEGER 'to' 'max' | STRING
 
 modifiers    := { 'optional' | 'ref' } ['list' { 'optional' | 'ref' }]
 
-field_type   := primitive_type | named_type | map_type
+field_type   := primitive_type | named_type | list_type | map_type
 primitive_type := 'bool'
                | 'int8' | 'int16' | 'int32' | 'int64'
                | 'uint8' | 'uint16' | 'uint32' | 'uint64'
@@ -1417,6 +1401,7 @@ primitive_type := 'bool'
                | 'any'
 named_type   := qualified_name
 qualified_name := IDENTIFIER ('.' IDENTIFIER)*   // e.g., Parent.Child
+list_type    := 'list' '<' { 'optional' | 'ref' } field_type '>'
 map_type     := 'map' '<' field_type ',' field_type '>'
 
 type_options := '[' type_option (',' type_option)* ']'
