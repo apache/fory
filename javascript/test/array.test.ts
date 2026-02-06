@@ -23,7 +23,7 @@ import * as beautify from 'js-beautify';
 
 describe('array', () => {
   test('should array work', () => {
-    
+
 
     const typeinfo = Type.struct({
       typeName: "example.bar"
@@ -35,9 +35,9 @@ describe('array', () => {
       }))
     });
     const fory = new Fory({ refTracking: true, hooks: {
-      afterCodeGenerated: (code: string) => {
-        return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
-      }
+        afterCodeGenerated: (code: string) => {
+          return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
+        }
     } });
     const { serialize, deserialize } = fory.registerSerializer(typeinfo);
     const o = { a: "123" };
@@ -82,7 +82,7 @@ describe('array', () => {
     }, {
       a5: Type.float32Array(),
     })
-    
+
     const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
     const input = fory.serialize({
       a5: [2.43, 654.4, 55],
@@ -93,6 +93,25 @@ describe('array', () => {
     expect(result.a5[0]).toBeCloseTo(2.43)
     expect(result.a5[1]).toBeCloseTo(654.4)
     expect(result.a5[2]).toBeCloseTo(55)
+  });
+
+  test('should float16Array work', () => {
+    const typeinfo = Type.struct({
+      typeName: "example.foo"
+    }, {
+      a6: Type.float16Array(),
+    })
+
+    const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
+    const input = fory.serialize({
+      a6: [1.5, 2.5, -4.5],
+    }, serialize);
+    const result = fory.deserialize(
+      input
+    );
+    expect(result.a6[0]).toBeCloseTo(1.5, 1)
+    expect(result.a6[1]).toBeCloseTo(2.5, 1)
+    expect(result.a6[2]).toBeCloseTo(-4.5, 1)
   });
 });
 

@@ -90,7 +90,7 @@ CodegenRegistry.register(TypeId.TAGGED_INT64,
 );
 CodegenRegistry.register(TypeId.FLOAT16,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.float32(accessor),
+    (builder, accessor) => builder.writer.float16(accessor),
     builder => builder.reader.float16()
   )
 );

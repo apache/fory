@@ -233,6 +233,10 @@ class BinaryWriterBuilder {
     return `${this.holder}.float32(${v})`;
   }
 
+  float16(v: number | string) {
+    return `${this.holder}.float16(${v})`;
+  }
+
   int64(v: number | string) {
     return `${this.holder}.int64(${v})`;
   }
