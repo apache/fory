@@ -1,7 +1,7 @@
 # Apache Fory™ Java
 
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Java Version](https://img.shields.io/badge/Java-8%20to%2024-blue?style=for-the-badge)](https://www.oracle.com/java/)
+[![Java Version](https://img.shields.io/badge/Java-8%20to%2025-blue?style=for-the-badge)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](https://opensource.org/licenses/Apache-2.0)
 
 Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem, delivering up to **170x performance improvement** over traditional frameworks through JIT compilation and zero-copy techniques.

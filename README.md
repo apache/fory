@@ -30,7 +30,6 @@ Apache Fory™ delivers excellent performance through advanced optimization tech
 
 The **[xlang serialization format](docs/specification/xlang_serialization_spec.md)** enables seamless data exchange across programming languages:
 
-- **Automatic Type Mapping**: Automatic conversion between language-specific types ([type mapping](docs/specification/xlang_type_mapping.md))
 - **Reference Preservation**: Shared and circular references work correctly across languages
 - **Polymorphism**: Objects serialize/deserialize with their actual runtime types
 - **Schema Evolution**: Optional forward/backward compatibility for evolving schemas
