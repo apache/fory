@@ -139,7 +139,6 @@ Fory Go demonstrates excellent performance compared to other go serialization fr
 
 For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go_benchmark).
 
-
 ## Installation
 
 **Java**:
