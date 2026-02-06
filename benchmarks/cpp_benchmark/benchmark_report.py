@@ -311,7 +311,7 @@ for datatype, img in plot_images:
     img_path_report = args.plot_prefix + img_filename
     md_report.append(f"\n### {datatype.replace('_', ' ').title()}\n\n")
     md_report.append(
-        f'<p align="center">\n<img src="{img_path_report}" width="90%">\n</p>\n'
+        f'<p align="center">\n<img src="{img_path_report}" width="90%" />\n</p>\n'
     )
 
 # Results table

@@ -29,43 +29,43 @@ python benchmark_report.py --json-file build/benchmark_results.json --output-dir
 ### Mediacontent
 
 <p align="center">
-<img src="mediacontent.png" width="90%">
+<img src="mediacontent.png" width="90%" />
 </p>
 
 ### Mediacontentlist
 
 <p align="center">
-<img src="mediacontentlist.png" width="90%">
+<img src="mediacontentlist.png" width="90%" />
 </p>
 
 ### Sample
 
 <p align="center">
-<img src="sample.png" width="90%">
+<img src="sample.png" width="90%" />
 </p>
 
 ### Samplelist
 
 <p align="center">
-<img src="samplelist.png" width="90%">
+<img src="samplelist.png" width="90%" />
 </p>
 
 ### Struct
 
 <p align="center">
-<img src="struct.png" width="90%">
+<img src="struct.png" width="90%" />
 </p>
 
 ### Structlist
 
 <p align="center">
-<img src="structlist.png" width="90%">
+<img src="structlist.png" width="90%" />
 </p>
 
 ### Throughput
 
 <p align="center">
-<img src="throughput.png" width="90%">
+<img src="throughput.png" width="90%" />
 </p>
 
 ## Benchmark Results
