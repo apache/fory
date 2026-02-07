@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from libc.stdint cimport int32_t, uint8_t
+from libc.stdint cimport int32_t, int64_t, uint8_t
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport CBuffer
 
@@ -92,5 +92,70 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
     cdef c_bool is_type_share_meta(TypeId type_id)
 
 cdef extern from "fory/python/pyfory.h" namespace "fory":
+    cdef enum ForyPyStringMapValueKind:
+        kForyPyStringMapValueNone
+        kForyPyStringMapValueInt64
+        kForyPyStringMapValueString
+
+    cdef enum ForyPySequenceValueKind:
+        kForyPySequenceValueNone
+        kForyPySequenceValueString
+        kForyPySequenceValueInt64
+        kForyPySequenceValueBool
+        kForyPySequenceValueFloat64
+
     int Fory_PyBooleanSequenceWriteToBuffer(object collection, CBuffer *buffer, Py_ssize_t start_index)
     int Fory_PyFloatSequenceWriteToBuffer(object collection, CBuffer *buffer, Py_ssize_t start_index)
+    int Fory_PyInt64SequenceWriteVarintToBuffer(object collection, CBuffer *buffer)
+    int Fory_PyStringSequenceWriteToBuffer(object collection, CBuffer *buffer)
+    int Fory_PyDetectStringKeyMapValueKind(object map)
+    int Fory_PyStringInt64MapWriteChunkToBuffer(
+        object map,
+        Py_ssize_t *pos,
+        Py_ssize_t chunk_size,
+        CBuffer *buffer,
+    )
+    int Fory_PyStringStringMapWriteChunkToBuffer(
+        object map,
+        Py_ssize_t *pos,
+        Py_ssize_t chunk_size,
+        CBuffer *buffer,
+    )
+    int Fory_PyStringInt64MapWriteContiguousChunkToBuffer(
+        object map,
+        Py_ssize_t *pos,
+        object first_key,
+        object first_value,
+        Py_ssize_t max_chunk_size,
+        CBuffer *buffer,
+        Py_ssize_t *written_chunk_size,
+        int *has_next,
+        int64_t *next_key_addr,
+        int64_t *next_value_addr,
+    )
+    int Fory_PyStringStringMapWriteContiguousChunkToBuffer(
+        object map,
+        Py_ssize_t *pos,
+        object first_key,
+        object first_value,
+        Py_ssize_t max_chunk_size,
+        CBuffer *buffer,
+        Py_ssize_t *written_chunk_size,
+        int *has_next,
+        int64_t *next_key_addr,
+        int64_t *next_value_addr,
+    )
+    int Fory_PyStringInt64MapReadChunkFromBuffer(
+        object map,
+        Py_ssize_t chunk_size,
+        CBuffer *buffer,
+    )
+    int Fory_PyStringStringMapReadChunkFromBuffer(
+        object map,
+        Py_ssize_t chunk_size,
+        CBuffer *buffer,
+    )
+    int Fory_PyDetectSequenceNoNullExactTypeKind(object collection)
+    int Fory_PyBooleanSequenceReadFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)
+    int Fory_PyFloatSequenceReadFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)
+    int Fory_PyInt64SequenceReadVarintFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)

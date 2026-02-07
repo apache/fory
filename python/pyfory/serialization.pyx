@@ -37,7 +37,21 @@ from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
 from pyfory.includes.libserialization cimport \
     (TypeId, TypeRegistrationKind, get_type_registration_kind,
      is_namespaced_type, is_type_share_meta,
-     Fory_PyBooleanSequenceWriteToBuffer, Fory_PyFloatSequenceWriteToBuffer)
+     Fory_PyBooleanSequenceWriteToBuffer, Fory_PyFloatSequenceWriteToBuffer,
+     Fory_PyInt64SequenceWriteVarintToBuffer,
+     Fory_PyStringSequenceWriteToBuffer,
+     Fory_PyBooleanSequenceReadFromBuffer, Fory_PyFloatSequenceReadFromBuffer,
+     Fory_PyInt64SequenceReadVarintFromBuffer,
+     Fory_PyDetectStringKeyMapValueKind, Fory_PyStringInt64MapWriteChunkToBuffer,
+     Fory_PyStringStringMapWriteChunkToBuffer,
+     Fory_PyStringInt64MapWriteContiguousChunkToBuffer,
+     Fory_PyStringStringMapWriteContiguousChunkToBuffer,
+     Fory_PyStringInt64MapReadChunkFromBuffer,
+     Fory_PyStringStringMapReadChunkFromBuffer,
+     Fory_PyDetectSequenceNoNullExactTypeKind,
+     kForyPyStringMapValueNone, kForyPyStringMapValueInt64, kForyPyStringMapValueString,
+     kForyPySequenceValueNone, kForyPySequenceValueString, kForyPySequenceValueInt64,
+     kForyPySequenceValueBool, kForyPySequenceValueFloat64)
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
@@ -45,8 +59,8 @@ from libcpp.vector cimport vector
 from cpython cimport PyObject
 from cpython.dict cimport PyDict_Next
 from cpython.ref cimport *
-from cpython.list cimport PyList_New, PyList_SET_ITEM
-from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM
+from cpython.list cimport PyList_New, PyList_SET_ITEM, PyList_GET_ITEM
+from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM, PyTuple_GET_ITEM
 from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
@@ -136,7 +150,28 @@ cdef class MapRefResolver:
             buffer.write_int8(NULL_FLAG)
             return True
         cdef uint64_t object_id = <uintptr_t> <PyObject *> obj
+        cdef int32_t existing_size = self.written_objects.size()
         cdef int32_t next_id
+        cdef int32_t i
+        cdef PyObject *written_obj
+        cdef uint64_t written_object_id
+        if self.written_objects_id.size() == 0:
+            if existing_size < WRITE_REF_LINEAR_SCAN_LIMIT:
+                for i in range(existing_size):
+                    written_obj = self.written_objects[i]
+                    if written_obj == <PyObject *> obj:
+                        buffer.write_int8(REF_FLAG)
+                        buffer.write_var_uint32(<uint64_t> i)
+                        return True
+                self.written_objects.push_back(<PyObject *> obj)
+                Py_INCREF(obj)
+                buffer.write_int8(REF_VALUE_FLAG)
+                return False
+            self.written_objects_id.reserve(self.written_objects.size() * 2)
+            for i in range(existing_size):
+                written_obj = self.written_objects[i]
+                written_object_id = <uintptr_t> written_obj
+                self.written_objects_id[written_object_id] = i
         cdef flat_hash_map[uint64_t, int32_t].iterator it = \
             self.written_objects_id.find(object_id)
         if it == self.written_objects_id.end():
@@ -205,6 +240,24 @@ cdef class MapRefResolver:
             # this object is not referenceable (it's a value type, not a reference type)
             self.read_ref_ids.push_back(-1)
             return head_flag
+
+    cpdef inline int32_t try_preserve_ref_id_no_stub(self, Buffer buffer):
+        if not self.track_ref:
+            return buffer.read_int8()
+        head_flag = buffer.read_int8()
+        cdef int32_t ref_id
+        cdef PyObject *obj
+        if head_flag == REF_FLAG:
+            ref_id = buffer.read_var_uint32()
+            assert 0 <= ref_id < self.read_objects.size(), f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
+            obj = self.read_objects[ref_id]
+            assert obj != NULL, f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
+            self.read_object = <object> obj
+            return head_flag
+        self.read_object = None
+        if head_flag == REF_VALUE_FLAG:
+            return self.preserve_ref_id()
+        return head_flag
 
     cpdef inline int32_t last_preserved_ref_id(self):
         cdef int32_t length = self.read_ref_ids.size()
@@ -282,6 +335,7 @@ cdef int32_t NOT_NULL_FLOAT64_FLAG = fmod.NOT_NULL_FLOAT64_FLAG
 cdef int32_t NOT_NULL_BOOL_FLAG = fmod.NOT_NULL_BOOL_FLAG
 cdef int32_t NOT_NULL_STRING_FLAG = fmod.NOT_NULL_STRING_FLAG
 cdef int32_t SMALL_STRING_THRESHOLD = fmod.SMALL_STRING_THRESHOLD
+cdef int32_t WRITE_REF_LINEAR_SCAN_LIMIT = 3
 
 
 cdef inline uint64_t _mix64(uint64_t x):
