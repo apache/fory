@@ -17,12 +17,13 @@
 
 import pytest
 from fory_compiler.frontend.fdl.parser import Parser, ParseError
-from fory_compiler.ir.ast import Service, RpcMethod
+
 
 def parse(source: str):
     parser = Parser.from_source(source)
     schema = parser.parse()
     return schema
+
 
 def test_empty_service():
     source = """
@@ -34,6 +35,7 @@ def test_empty_service():
     service = schema.services[0]
     assert service.name == "Greeter"
     assert len(service.methods) == 0
+
 
 def test_unary_rpc():
     source = """
@@ -56,6 +58,7 @@ def test_unary_rpc():
     assert not method.client_streaming
     assert not method.server_streaming
 
+
 def test_client_streaming_rpc():
     source = """
     package test;
@@ -73,6 +76,7 @@ def test_client_streaming_rpc():
     assert method.name == "LotsOfGreetings"
     assert method.client_streaming
     assert not method.server_streaming
+
 
 def test_server_streaming_rpc():
     source = """
@@ -92,6 +96,7 @@ def test_server_streaming_rpc():
     assert not method.client_streaming
     assert method.server_streaming
 
+
 def test_bidi_streaming_rpc():
     source = """
     package test;
@@ -110,6 +115,7 @@ def test_bidi_streaming_rpc():
     assert method.client_streaming
     assert method.server_streaming
 
+
 def test_service_options():
     source = """
     package test;
@@ -121,6 +127,7 @@ def test_service_options():
     schema = parse(source)
     service = schema.services[0]
     assert service.options["deprecated"] is True
+
 
 def test_method_options():
     source = """
@@ -140,6 +147,7 @@ def test_method_options():
     method = service.methods[0]
     assert method.options["deprecated"] is True
 
+
 def test_invalid_syntax_missing_returns():
     source = """
     package test;
@@ -150,6 +158,7 @@ def test_invalid_syntax_missing_returns():
     with pytest.raises(ParseError):
         parse(source)
 
+
 def test_invalid_syntax_missing_parens():
     source = """
     package test;
@@ -159,4 +168,3 @@ def test_invalid_syntax_missing_parens():
     """
     with pytest.raises(ParseError):
         parse(source)
-
