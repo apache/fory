@@ -850,7 +850,9 @@ class Parser:
             if self.check(TokenType.OPTION):
                 # Service-level option
                 name_token = self.current()
-                opt_name, opt_value = self.parse_file_option()  # Reusing generic option parser
+                opt_name, opt_value = (
+                    self.parse_file_option()
+                )  # Reusing generic option parser
                 options[opt_name] = opt_value
                 if opt_name not in KNOWN_SERVICE_OPTIONS:
                     warnings.warn(
@@ -885,11 +887,10 @@ class Parser:
         if self.check(TokenType.STREAM):
             self.advance()
             client_streaming = True
-        
+
         req_type_token = self.consume(TokenType.IDENT, "Expected request message type")
         request_type = NamedType(
-            name=req_type_token.value,
-            location=self.make_location(req_type_token)
+            name=req_type_token.value, location=self.make_location(req_type_token)
         )
         self.consume(TokenType.RPAREN, "Expected ')' after request type")
 
@@ -903,8 +904,7 @@ class Parser:
 
         res_type_token = self.consume(TokenType.IDENT, "Expected response message type")
         response_type = NamedType(
-            name=res_type_token.value,
-            location=self.make_location(res_type_token)
+            name=res_type_token.value, location=self.make_location(res_type_token)
         )
         self.consume(TokenType.RPAREN, "Expected ')' after response type")
 
@@ -918,13 +918,13 @@ class Parser:
                     opt_name, opt_value = self.parse_file_option()
                     options[opt_name] = opt_value
                     if opt_name not in KNOWN_METHOD_OPTIONS:
-                         warnings.warn(
+                        warnings.warn(
                             f"Line {name_token.line}: ignoring unknown method option '{opt_name}'",
                             stacklevel=2,
                         )
                 elif self.check(TokenType.SEMI):
-                     # Allow empty ; inside block
-                     self.advance()
+                    # Allow empty ; inside block
+                    self.advance()
                 else:
                     raise self.error("Expected 'option' inside method block")
             self.consume(TokenType.RBRACE, "Expected '}' after method options")
