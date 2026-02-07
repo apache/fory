@@ -150,13 +150,13 @@ TUPLE = (
     ],
     60,
 )
-LARGE_TUPLE = tuple(range(2**20 + 1))
-LARGE_FLOAT_TUPLE = tuple([random.random() * 10000 for _ in range(2**20 + 1)])
-LARGE_BOOLEAN_TUPLE = tuple([bool(random.random() > 0.5) for _ in range(2**20 + 1)])
+LARGE_TUPLE = tuple(range(2**8 + 1))
+LARGE_FLOAT_TUPLE = tuple([random.random() * 10000 for _ in range(2**8 + 1)])
+LARGE_BOOLEAN_TUPLE = tuple([bool(random.random() > 0.5) for _ in range(2**8 + 1)])
 
 
 LIST = [[list(range(10)), list(range(10))] for _ in range(10)]
-LARGE_LIST = [i for i in range(2**20 + 1)]
+LARGE_LIST = [i for i in range(2**8 + 1)]
 
 
 def mutate_dict(orig_dict, random_source):
