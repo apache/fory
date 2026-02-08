@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 )
 
@@ -1329,4 +1330,82 @@ func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 		result[i] = readString(buf, err)
 	}
 	return result
+}
+
+// ============================================================================
+// bfloat16SliceSerializer - optimized []bfloat16.BFloat16 serialization
+// ============================================================================
+
+type bfloat16SliceSerializer struct{}
+
+func (s bfloat16SliceSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	// Cast to []bfloat16.BFloat16
+	v := value.Interface().([]bfloat16.BFloat16)
+	buf := ctx.Buffer()
+	length := len(v)
+	size := length * 2
+	buf.WriteLength(size)
+	if length > 0 {
+		ptr := unsafe.Pointer(&v[0])
+		if isLittleEndian {
+			buf.WriteBinary(unsafe.Slice((*byte)(ptr), size))
+		} else {
+			for i := 0; i < length; i++ {
+				buf.WriteUint16(v[i].Bits())
+			}
+		}
+	}
+}
+
+func (s bfloat16SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	done := writeSliceRefAndType(ctx, refMode, writeType, value, BFLOAT16_ARRAY)
+	if done || ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s bfloat16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(BFLOAT16_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected BFLOAT16_ARRAY (%d), got %d", BFLOAT16_ARRAY, typeId))
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s bfloat16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+func (s bfloat16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
+	size := buf.ReadLength(ctxErr)
+	length := size / 2
+	if ctx.HasError() {
+		return
+	}
+
+	ptr := (*[]bfloat16.BFloat16)(value.Addr().UnsafePointer())
+	if length == 0 {
+		*ptr = make([]bfloat16.BFloat16, 0)
+		return
+	}
+
+	result := make([]bfloat16.BFloat16, length)
+
+	if isLittleEndian {
+		raw := buf.ReadBinary(size, ctxErr)
+		targetPtr := unsafe.Pointer(&result[0])
+		copy(unsafe.Slice((*byte)(targetPtr), size), raw)
+	} else {
+		for i := 0; i < length; i++ {
+			result[i] = bfloat16.BFloat16FromBits(buf.ReadUint16(ctxErr))
+		}
+	}
+	*ptr = result
 }
