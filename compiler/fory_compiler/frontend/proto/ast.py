@@ -93,7 +93,7 @@ class ProtoMessage:
 
 @dataclass
 class ProtoRpcMethod:
-    """ An RPC method declaration. """
+    """An RPC method declaration."""
 
     name: str
     request_type: str

@@ -438,7 +438,7 @@ class Parser:
         client_streaming = False
         if self.match(TokenType.STREAM):
             client_streaming = True
-        
+
         req_type = self.parse_full_ident()
         self.consume(TokenType.RPAREN, "Expected ')' after request type")
 
@@ -449,7 +449,7 @@ class Parser:
         server_streaming = False
         if self.match(TokenType.STREAM):
             server_streaming = True
-        
+
         res_type = self.parse_full_ident()
         self.consume(TokenType.RPAREN, "Expected ')' after response type")
 
