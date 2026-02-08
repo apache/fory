@@ -135,7 +135,8 @@ static bool py_read_string_from_buffer(fory::Buffer *buffer, PyObject **out) {
   }
 
   uint32_t reader_index = buffer->reader_index();
-  const char *bytes = reinterpret_cast<const char *>(buffer->data() + reader_index);
+  const char *bytes =
+      reinterpret_cast<const char *>(buffer->data() + reader_index);
   uint32_t encoding = static_cast<uint32_t>(header & 0b11);
   PyObject *value = nullptr;
   if (encoding == 0) {
@@ -224,13 +225,27 @@ int Fory_PyInt64SequenceWriteVarintToBuffer(PyObject *collection,
   if (size < 0) {
     return -1;
   }
+  uint64_t max_write_bytes = static_cast<uint64_t>(size) * 9;
+  if (max_write_bytes > std::numeric_limits<uint32_t>::max()) {
+    return -1;
+  }
+  buffer->grow(static_cast<uint32_t>(max_write_bytes));
+  uint32_t writer_index = buffer->writer_index();
   for (Py_ssize_t i = 0; i < size; i++) {
     int64_t value;
     if (!py_parse_int64(items[i], &value)) {
       return -1;
     }
-    buffer->write_var_int64(value);
+    uint64_t zigzag = (static_cast<uint64_t>(value) << 1) ^
+                      static_cast<uint64_t>(value >> 63);
+    if (FORY_PREDICT_TRUE(zigzag < 0x80)) {
+      buffer->unsafe_put_byte(writer_index, static_cast<uint8_t>(zigzag));
+      writer_index += 1;
+    } else {
+      writer_index += buffer->put_var_uint64(writer_index, zigzag);
+    }
   }
+  buffer->writer_index(writer_index);
   return 0;
 }
 
@@ -299,6 +314,56 @@ int Fory_PyDetectSequenceNoNullExactTypeKind(PyObject *collection) {
     }
   }
   return kind;
+}
+
+int Fory_PyDetectSequenceTypeAndNull(PyObject *collection, int *has_null,
+                                     int *has_same_type,
+                                     int64_t *element_type_addr) {
+  if (has_null == nullptr || has_same_type == nullptr ||
+      element_type_addr == nullptr) {
+    return -1;
+  }
+  PyObject **items = py_sequence_get_items(collection);
+  if (items == nullptr) {
+    return -1;
+  }
+  Py_ssize_t size = Py_SIZE(collection);
+  *has_null = 0;
+  *has_same_type = 1;
+  *element_type_addr = 0;
+  PyTypeObject *element_type = nullptr;
+  for (Py_ssize_t i = 0; i < size; i++) {
+    PyObject *item = items[i];
+    if (item == Py_None) {
+      *has_null = 1;
+      continue;
+    }
+    PyTypeObject *current_type = Py_TYPE(item);
+    if (element_type == nullptr) {
+      element_type = current_type;
+    } else if (*has_same_type != 0 && current_type != element_type) {
+      *has_same_type = 0;
+    }
+  }
+  if (element_type != nullptr) {
+    *element_type_addr =
+        static_cast<int64_t>(reinterpret_cast<intptr_t>(element_type));
+  }
+  return 0;
+}
+
+int Fory_PySequenceHasNull(PyObject *collection) {
+  PyObject **items = py_sequence_get_items(collection);
+  if (items == nullptr) {
+    return -1;
+  }
+  Py_ssize_t size = Py_SIZE(collection);
+  for (Py_ssize_t i = 0; i < size; i++) {
+    if (items[i] == Py_None) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 int Fory_PyDetectStringKeyMapValueKind(PyObject *map) {
@@ -379,9 +444,9 @@ int Fory_PyStringStringMapWriteChunkToBuffer(PyObject *map, Py_ssize_t *pos,
 }
 
 static void set_map_contiguous_chunk_write_result(
-    Py_ssize_t chunk_size, int has_next, PyObject *next_key, PyObject *next_value,
-    Py_ssize_t *written_chunk_size, int *has_next_out, int64_t *next_key_addr,
-    int64_t *next_value_addr) {
+    Py_ssize_t chunk_size, int has_next, PyObject *next_key,
+    PyObject *next_value, Py_ssize_t *written_chunk_size, int *has_next_out,
+    int64_t *next_key_addr, int64_t *next_value_addr) {
   if (written_chunk_size != nullptr) {
     *written_chunk_size = chunk_size;
   }
@@ -389,16 +454,16 @@ static void set_map_contiguous_chunk_write_result(
     *has_next_out = has_next;
   }
   if (next_key_addr != nullptr) {
-    *next_key_addr = has_next == 0
-                         ? 0
-                         : static_cast<int64_t>(
-                               reinterpret_cast<intptr_t>(next_key));
+    *next_key_addr =
+        has_next == 0
+            ? 0
+            : static_cast<int64_t>(reinterpret_cast<intptr_t>(next_key));
   }
   if (next_value_addr != nullptr) {
-    *next_value_addr = has_next == 0
-                           ? 0
-                           : static_cast<int64_t>(
-                                 reinterpret_cast<intptr_t>(next_value));
+    *next_value_addr =
+        has_next == 0
+            ? 0
+            : static_cast<int64_t>(reinterpret_cast<intptr_t>(next_value));
   }
 }
 
@@ -428,25 +493,25 @@ int Fory_PyStringInt64MapWriteContiguousChunkToBuffer(
     write_var_int64_to_buffer(buffer, int64_value);
     chunk_size += 1;
     if (chunk_size >= max_chunk_size) {
-      int iter_has_next = PyDict_Next(map, pos, &current_key, &current_value)
-                              ? 1
-                              : 0;
+      int iter_has_next =
+          PyDict_Next(map, pos, &current_key, &current_value) ? 1 : 0;
       set_map_contiguous_chunk_write_result(
           chunk_size, iter_has_next, current_key, current_value,
           written_chunk_size, has_next, next_key_addr, next_value_addr);
       return 0;
     }
     if (!PyDict_Next(map, pos, &current_key, &current_value)) {
-      set_map_contiguous_chunk_write_result(
-          chunk_size, 0, nullptr, nullptr, written_chunk_size, has_next,
-          next_key_addr, next_value_addr);
+      set_map_contiguous_chunk_write_result(chunk_size, 0, nullptr, nullptr,
+                                            written_chunk_size, has_next,
+                                            next_key_addr, next_value_addr);
       return 0;
     }
-    if (!PyUnicode_CheckExact(current_key) || !PyLong_CheckExact(current_value) ||
-        current_value == Py_True || current_value == Py_False) {
+    if (!PyUnicode_CheckExact(current_key) ||
+        !PyLong_CheckExact(current_value) || current_value == Py_True ||
+        current_value == Py_False) {
       set_map_contiguous_chunk_write_result(
-          chunk_size, 1, current_key, current_value, written_chunk_size, has_next,
-          next_key_addr, next_value_addr);
+          chunk_size, 1, current_key, current_value, written_chunk_size,
+          has_next, next_key_addr, next_value_addr);
       return 0;
     }
   }
@@ -473,24 +538,24 @@ int Fory_PyStringStringMapWriteContiguousChunkToBuffer(
     }
     chunk_size += 1;
     if (chunk_size >= max_chunk_size) {
-      int iter_has_next = PyDict_Next(map, pos, &current_key, &current_value)
-                              ? 1
-                              : 0;
+      int iter_has_next =
+          PyDict_Next(map, pos, &current_key, &current_value) ? 1 : 0;
       set_map_contiguous_chunk_write_result(
           chunk_size, iter_has_next, current_key, current_value,
           written_chunk_size, has_next, next_key_addr, next_value_addr);
       return 0;
     }
     if (!PyDict_Next(map, pos, &current_key, &current_value)) {
-      set_map_contiguous_chunk_write_result(
-          chunk_size, 0, nullptr, nullptr, written_chunk_size, has_next,
-          next_key_addr, next_value_addr);
+      set_map_contiguous_chunk_write_result(chunk_size, 0, nullptr, nullptr,
+                                            written_chunk_size, has_next,
+                                            next_key_addr, next_value_addr);
       return 0;
     }
-    if (!PyUnicode_CheckExact(current_key) || !PyUnicode_CheckExact(current_value)) {
+    if (!PyUnicode_CheckExact(current_key) ||
+        !PyUnicode_CheckExact(current_value)) {
       set_map_contiguous_chunk_write_result(
-          chunk_size, 1, current_key, current_value, written_chunk_size, has_next,
-          next_key_addr, next_value_addr);
+          chunk_size, 1, current_key, current_value, written_chunk_size,
+          has_next, next_key_addr, next_value_addr);
       return 0;
     }
   }
@@ -613,17 +678,57 @@ int Fory_PyInt64SequenceReadVarintFromBuffer(PyObject *collection,
   if (items == nullptr) {
     return -1;
   }
+  if (size < 0) {
+    return -1;
+  }
+  uint32_t reader_index = buffer->reader_index();
+  uint8_t *data = buffer->data();
+  uint32_t buffer_size = buffer->size();
   Error error;
   for (Py_ssize_t i = 0; i < size; i++) {
-    int64_t value = buffer->read_var_int64(error);
-    if (FORY_PREDICT_FALSE(!error.ok())) {
+    if (FORY_PREDICT_FALSE(reader_index >= buffer_size)) {
       return -1;
+    }
+    int64_t value;
+    uint8_t first = data[reader_index];
+    if (FORY_PREDICT_TRUE((first & 0x80) == 0)) {
+      uint64_t zigzag = first;
+      value = static_cast<int64_t>((zigzag >> 1) ^
+                                   -static_cast<int64_t>(zigzag & 1));
+      reader_index += 1;
+    } else {
+      buffer->reader_index(reader_index);
+      value = buffer->read_var_int64(error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        return -1;
+      }
+      reader_index = buffer->reader_index();
     }
     PyObject *obj = PyLong_FromLongLong(value);
     if (obj == nullptr) {
       return -1;
     }
     items[i] = obj;
+  }
+  buffer->reader_index(reader_index);
+  return 0;
+}
+
+int Fory_PyStringSequenceReadFromBuffer(PyObject *collection, Buffer *buffer,
+                                        Py_ssize_t size) {
+  if (Py_SIZE(collection) != size) {
+    return -1;
+  }
+  PyObject **items = py_sequence_get_items(collection);
+  if (items == nullptr) {
+    return -1;
+  }
+  for (Py_ssize_t i = 0; i < size; i++) {
+    PyObject *value = nullptr;
+    if (!py_read_string_from_buffer(buffer, &value)) {
+      return -1;
+    }
+    items[i] = value;
   }
   return 0;
 }

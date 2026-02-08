@@ -94,6 +94,9 @@ cdef class CollectionSerializer(Serializer):
         cdef type value_type = type(value)
         cdef Py_ssize_t seq_size
         cdef Py_ssize_t i
+        cdef int has_null_i
+        cdef int has_same_type_i
+        cdef int64_t elem_type_addr
         cdef object s
         if elem_type is None:
             if value_type is list or value_type is tuple:
@@ -108,19 +111,54 @@ cdef class CollectionSerializer(Serializer):
                     elem_type = float
             if fast_kind == kForyPySequenceValueNone:
                 if value_type is list or value_type is tuple:
-                    seq_size = Py_SIZE(value)
-                    for i in range(seq_size):
-                        if value_type is list:
-                            s = <object>PyList_GET_ITEM(value, i)
-                        else:
-                            s = <object>PyTuple_GET_ITEM(value, i)
-                        if not has_null and s is None:
-                            has_null = True
-                            continue
-                        if elem_type is None:
-                            elem_type = type(s)
-                        elif has_same_type and type(s) is not elem_type:
-                            has_same_type = False
+                    has_null_i = 0
+                    has_same_type_i = 1
+                    elem_type_addr = 0
+                    if Fory_PyDetectSequenceTypeAndNull(
+                            value, &has_null_i, &has_same_type_i, &elem_type_addr) == 0:
+                        has_null = has_null_i != 0
+                        has_same_type = has_same_type_i != 0
+                        if elem_type_addr != 0:
+                            if elem_type_addr == <int64_t><uintptr_t><PyObject *>list:
+                                elem_type = list
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>tuple:
+                                elem_type = tuple
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>set:
+                                elem_type = set
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>dict:
+                                elem_type = dict
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>str:
+                                elem_type = str
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>int:
+                                elem_type = int
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>bool:
+                                elem_type = bool
+                            elif elem_type_addr == <int64_t><uintptr_t><PyObject *>float:
+                                elem_type = float
+                            else:
+                                seq_size = Py_SIZE(value)
+                                for i in range(seq_size):
+                                    if value_type is list:
+                                        s = <object>PyList_GET_ITEM(value, i)
+                                    else:
+                                        s = <object>PyTuple_GET_ITEM(value, i)
+                                    if s is not None:
+                                        elem_type = type(s)
+                                        break
+                    else:
+                        seq_size = Py_SIZE(value)
+                        for i in range(seq_size):
+                            if value_type is list:
+                                s = <object>PyList_GET_ITEM(value, i)
+                            else:
+                                s = <object>PyTuple_GET_ITEM(value, i)
+                            if not has_null and s is None:
+                                has_null = True
+                                continue
+                            if elem_type is None:
+                                elem_type = type(s)
+                            elif has_same_type and type(s) is not elem_type:
+                                has_same_type = False
                 else:
                     for s in value:
                         if not has_null and s is None:
@@ -136,15 +174,19 @@ cdef class CollectionSerializer(Serializer):
         else:
             collect_flag |= COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
             if value_type is list or value_type is tuple:
-                seq_size = Py_SIZE(value)
-                for i in range(seq_size):
-                    if value_type is list:
-                        s = <object>PyList_GET_ITEM(value, i)
-                    else:
-                        s = <object>PyTuple_GET_ITEM(value, i)
-                    if s is None:
-                        has_null = True
-                        break
+                has_null_i = Fory_PySequenceHasNull(value)
+                if has_null_i >= 0:
+                    has_null = has_null_i != 0
+                else:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_type is list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if s is None:
+                            has_null = True
+                            break
             else:
                 for s in value:
                     if s is None:
@@ -295,6 +337,10 @@ cdef class CollectionSerializer(Serializer):
             buffer.write_string(s)
 
     cdef inline _read_string(self, Buffer buffer, int64_t len_, object collection_):
+        collection_type = type(collection_)
+        if collection_type is list or collection_type is tuple:
+            if Fory_PyStringSequenceReadFromBuffer(collection_, &buffer.c_buffer, len_) == 0:
+                return
         for i in range(len_):
             self._add_element(collection_, i, buffer.read_string())
 
@@ -421,55 +467,291 @@ cdef class CollectionSerializer(Serializer):
 
     cpdef _write_same_type_ref(self, Buffer buffer, value, TypeInfo typeinfo):
         cdef MapRefResolver ref_resolver = self.ref_resolver
+        cdef Serializer item_serializer = typeinfo.serializer
+        cdef type item_cls = typeinfo.cls
+        cdef ListSerializer list_serializer
+        cdef TupleSerializer tuple_serializer
+        cdef SetSerializer set_serializer
+        cdef MapSerializer map_serializer
         cdef type value_type = type(value)
         cdef object s
         cdef Py_ssize_t i
         cdef Py_ssize_t seq_size
-        if not self.fory.xlang:
-            if value_type is list or value_type is tuple:
+        cdef c_bool value_is_list = value_type is list
+        cdef c_bool value_is_tuple = value_type is tuple
+        cdef c_bool is_py = not self.fory.xlang
+        if item_cls is list:
+            list_serializer = <ListSerializer> item_serializer
+            if is_py:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            list_serializer.write(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            list_serializer.write(buffer, s)
+            else:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            list_serializer.xwrite(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            list_serializer.xwrite(buffer, s)
+            return
+        if item_cls is tuple:
+            tuple_serializer = <TupleSerializer> item_serializer
+            if is_py:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            tuple_serializer.write(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            tuple_serializer.write(buffer, s)
+            else:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            tuple_serializer.xwrite(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            tuple_serializer.xwrite(buffer, s)
+            return
+        if item_cls is set:
+            set_serializer = <SetSerializer> item_serializer
+            if is_py:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            set_serializer.write(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            set_serializer.write(buffer, s)
+            else:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            set_serializer.xwrite(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            set_serializer.xwrite(buffer, s)
+            return
+        if item_cls is dict:
+            map_serializer = <MapSerializer> item_serializer
+            if is_py:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            map_serializer.write(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            map_serializer.write(buffer, s)
+            else:
+                if value_is_list or value_is_tuple:
+                    seq_size = Py_SIZE(value)
+                    for i in range(seq_size):
+                        if value_is_list:
+                            s = <object>PyList_GET_ITEM(value, i)
+                        else:
+                            s = <object>PyTuple_GET_ITEM(value, i)
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            map_serializer.xwrite(buffer, s)
+                else:
+                    for s in value:
+                        if not ref_resolver.write_ref_or_null(buffer, s):
+                            map_serializer.xwrite(buffer, s)
+            return
+        if is_py:
+            if value_is_list or value_is_tuple:
                 seq_size = Py_SIZE(value)
                 for i in range(seq_size):
-                    if value_type is list:
+                    if value_is_list:
                         s = <object>PyList_GET_ITEM(value, i)
                     else:
                         s = <object>PyTuple_GET_ITEM(value, i)
                     if not ref_resolver.write_ref_or_null(buffer, s):
-                        typeinfo.serializer.write(buffer, s)
+                        item_serializer.write(buffer, s)
             else:
                 for s in value:
                     if not ref_resolver.write_ref_or_null(buffer, s):
-                        typeinfo.serializer.write(buffer, s)
+                        item_serializer.write(buffer, s)
         else:
-            if value_type is list or value_type is tuple:
+            if value_is_list or value_is_tuple:
                 seq_size = Py_SIZE(value)
                 for i in range(seq_size):
-                    if value_type is list:
+                    if value_is_list:
                         s = <object>PyList_GET_ITEM(value, i)
                     else:
                         s = <object>PyTuple_GET_ITEM(value, i)
                     if not ref_resolver.write_ref_or_null(buffer, s):
-                        typeinfo.serializer.xwrite(buffer, s)
+                        item_serializer.xwrite(buffer, s)
             else:
                 for s in value:
                     if not ref_resolver.write_ref_or_null(buffer, s):
-                        typeinfo.serializer.xwrite(buffer, s)
+                        item_serializer.xwrite(buffer, s)
 
     cpdef _read_same_type_ref(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
         cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef TypeResolver type_resolver = self.type_resolver
+        cdef Serializer item_serializer = typeinfo.serializer
+        cdef type item_cls = typeinfo.cls
+        cdef ListSerializer list_serializer
+        cdef TupleSerializer tuple_serializer
+        cdef SetSerializer set_serializer
+        cdef MapSerializer map_serializer
         cdef c_bool is_py = not self.fory.xlang
+        cdef int32_t ref_id
+        cdef object obj
+        cdef int64_t i
         self.fory.inc_depth()
-        for i in range(len_):
-            ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
-            if ref_id < NOT_NULL_VALUE_FLAG:
-                obj = ref_resolver.read_object
+        if item_cls is list:
+            list_serializer = <ListSerializer> item_serializer
+            if is_py:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = list_serializer.read(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
             else:
-                if is_py:
-                    obj = typeinfo.serializer.read(buffer)
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = list_serializer.xread(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            self.fory.dec_depth()
+            return
+        if item_cls is tuple:
+            tuple_serializer = <TupleSerializer> item_serializer
+            if is_py:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = tuple_serializer.read(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            else:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = tuple_serializer.xread(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            self.fory.dec_depth()
+            return
+        if item_cls is set:
+            set_serializer = <SetSerializer> item_serializer
+            if is_py:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = set_serializer.read(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            else:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = set_serializer.xread(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            self.fory.dec_depth()
+            return
+        if item_cls is dict:
+            map_serializer = <MapSerializer> item_serializer
+            if is_py:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = map_serializer.read(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            else:
+                for i in range(len_):
+                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    if ref_id < NOT_NULL_VALUE_FLAG:
+                        obj = ref_resolver.read_object
+                    else:
+                        obj = map_serializer.xread(buffer)
+                        ref_resolver.set_read_object(ref_id, obj)
+                    self._add_element(collection_, i, obj)
+            self.fory.dec_depth()
+            return
+        if is_py:
+            for i in range(len_):
+                ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                if ref_id < NOT_NULL_VALUE_FLAG:
+                    obj = ref_resolver.read_object
                 else:
-                    obj = typeinfo.serializer.xread(buffer)
-                ref_resolver.set_read_object(ref_id, obj)
-            self._add_element(collection_, i, obj)
+                    obj = item_serializer.read(buffer)
+                    ref_resolver.set_read_object(ref_id, obj)
+                self._add_element(collection_, i, obj)
+        else:
+            for i in range(len_):
+                ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                if ref_id < NOT_NULL_VALUE_FLAG:
+                    obj = ref_resolver.read_object
+                else:
+                    obj = item_serializer.xread(buffer)
+                    ref_resolver.set_read_object(ref_id, obj)
+                self._add_element(collection_, i, obj)
         self.fory.dec_depth()
 
     cpdef _add_element(self, object collection_, int64_t index, object element):

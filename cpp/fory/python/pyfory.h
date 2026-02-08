@@ -45,6 +45,10 @@ enum ForyPySequenceValueKind : int {
 };
 
 int Fory_PyDetectSequenceNoNullExactTypeKind(PyObject *collection);
+int Fory_PyDetectSequenceTypeAndNull(PyObject *collection, int *has_null,
+                                     int *has_same_type,
+                                     int64_t *element_type_addr);
+int Fory_PySequenceHasNull(PyObject *collection);
 
 int Fory_PyDetectStringKeyMapValueKind(PyObject *map);
 int Fory_PyStringInt64MapWriteChunkToBuffer(PyObject *map, Py_ssize_t *pos,
@@ -74,4 +78,6 @@ int Fory_PyFloatSequenceReadFromBuffer(PyObject *collection, Buffer *buffer,
                                        Py_ssize_t size);
 int Fory_PyInt64SequenceReadVarintFromBuffer(PyObject *collection,
                                              Buffer *buffer, Py_ssize_t size);
+int Fory_PyStringSequenceReadFromBuffer(PyObject *collection, Buffer *buffer,
+                                        Py_ssize_t size);
 } // namespace fory

@@ -156,6 +156,14 @@ cdef extern from "fory/python/pyfory.h" namespace "fory":
         CBuffer *buffer,
     )
     int Fory_PyDetectSequenceNoNullExactTypeKind(object collection)
+    int Fory_PyDetectSequenceTypeAndNull(
+        object collection,
+        int *has_null,
+        int *has_same_type,
+        int64_t *element_type_addr,
+    )
+    int Fory_PySequenceHasNull(object collection)
     int Fory_PyBooleanSequenceReadFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)
     int Fory_PyFloatSequenceReadFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)
     int Fory_PyInt64SequenceReadVarintFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)
+    int Fory_PyStringSequenceReadFromBuffer(object collection, CBuffer *buffer, Py_ssize_t size)

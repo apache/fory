@@ -27,7 +27,6 @@ import time
 import warnings
 from typing import TypeVar, Union, Iterable
 
-from pyfory.buffer import get_bit, set_bit, clear_bit
 from pyfory import _fory as fmod
 from pyfory._fory import _ENABLE_TYPE_REGISTRATION_FORCIBLY
 from pyfory.lib import mmh3
@@ -42,6 +41,7 @@ from pyfory.includes.libserialization cimport \
      Fory_PyStringSequenceWriteToBuffer,
      Fory_PyBooleanSequenceReadFromBuffer, Fory_PyFloatSequenceReadFromBuffer,
      Fory_PyInt64SequenceReadVarintFromBuffer,
+     Fory_PyStringSequenceReadFromBuffer,
      Fory_PyDetectStringKeyMapValueKind, Fory_PyStringInt64MapWriteChunkToBuffer,
      Fory_PyStringStringMapWriteChunkToBuffer,
      Fory_PyStringInt64MapWriteContiguousChunkToBuffer,
@@ -49,6 +49,8 @@ from pyfory.includes.libserialization cimport \
      Fory_PyStringInt64MapReadChunkFromBuffer,
      Fory_PyStringStringMapReadChunkFromBuffer,
      Fory_PyDetectSequenceNoNullExactTypeKind,
+     Fory_PyDetectSequenceTypeAndNull,
+     Fory_PySequenceHasNull,
      kForyPyStringMapValueNone, kForyPyStringMapValueInt64, kForyPyStringMapValueString,
      kForyPySequenceValueNone, kForyPySequenceValueString, kForyPySequenceValueInt64,
      kForyPySequenceValueBool, kForyPySequenceValueFloat64)
@@ -64,8 +66,9 @@ from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM, PyTuple_GET_ITEM
 from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
-from pyfory.buffer cimport Buffer
+from pyfory.buffer cimport Buffer, get_address
 from pyfory.includes.libabsl cimport flat_hash_map
+from pyfory.includes.libutil cimport CBuffer
 from pyfory.meta.metastring import MetaStringDecoder
 
 try:
@@ -335,7 +338,7 @@ cdef int32_t NOT_NULL_FLOAT64_FLAG = fmod.NOT_NULL_FLOAT64_FLAG
 cdef int32_t NOT_NULL_BOOL_FLAG = fmod.NOT_NULL_BOOL_FLAG
 cdef int32_t NOT_NULL_STRING_FLAG = fmod.NOT_NULL_STRING_FLAG
 cdef int32_t SMALL_STRING_THRESHOLD = fmod.SMALL_STRING_THRESHOLD
-cdef int32_t WRITE_REF_LINEAR_SCAN_LIMIT = 3
+cdef int32_t WRITE_REF_LINEAR_SCAN_LIMIT = 2
 
 
 cdef inline uint64_t _mix64(uint64_t x):
@@ -345,6 +348,19 @@ cdef inline uint64_t _mix64(uint64_t x):
     x *= <uint64_t> 0xc4ceb9fe1a85ec53
     x ^= x >> 33
     return x
+
+
+cdef inline Buffer _wrap_bytes_no_copy(bytes data):
+    cdef Buffer buffer = Buffer.__new__(Buffer)
+    cdef Py_ssize_t length = len(data)
+    cdef uint8_t* address = NULL
+    if length > 0:
+        address = get_address(data)
+    buffer.data = data
+    buffer.c_buffer = CBuffer(address, <uint32_t>length, False)
+    buffer.c_buffer.reader_index(0)
+    buffer.c_buffer.writer_index(0)
+    return buffer
 
 
 cdef inline int64_t _hash_small_metastring(int64_t v1,
@@ -1360,25 +1376,14 @@ cdef class Fory:
         if buffer is None:
             self.buffer.set_writer_index(0)
             buffer = self.buffer
-        cdef int32_t mask_index = buffer.get_writer_index()
-        # 1byte used for bit mask
-        buffer.grow(1)
-        buffer.set_writer_index(mask_index + 1)
+        cdef uint8_t mask = 0
         if obj is None:
-            set_bit(buffer, mask_index, 0)
-        else:
-            clear_bit(buffer, mask_index, 0)
-
+            mask |= <uint8_t>0b1
         if self.xlang:
-            # set reader as x_lang.
-            set_bit(buffer, mask_index, 1)
-        else:
-            # set reader as native.
-            clear_bit(buffer, mask_index, 1)
+            mask |= <uint8_t>0b10
         if self.buffer_callback is not None:
-            set_bit(buffer, mask_index, 2)
-        else:
-            clear_bit(buffer, mask_index, 2)
+            mask |= <uint8_t>0b100
+        buffer.write_uint8(mask)
         cdef int32_t start_offset
         if not self.xlang:
             self.write_ref(buffer, obj)
@@ -1492,7 +1497,7 @@ cdef class Fory:
         """
         try:
             if type(buffer) == bytes:
-                buffer = Buffer(buffer)
+                buffer = _wrap_bytes_no_copy(buffer)
             return self._deserialize(buffer, buffers, unsupported_objects)
         finally:
             self.reset_read()
@@ -1503,12 +1508,11 @@ cdef class Fory:
         self.depth += 1
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
-        cdef int32_t reader_index = buffer.get_reader_index()
-        buffer.set_reader_index(reader_index + 1)
-        if get_bit(buffer, reader_index, 0):
+        cdef uint8_t mask = buffer.read_uint8()
+        if (mask & <uint8_t>0b1) != 0:
             return None
-        cdef c_bool is_target_x_lang = get_bit(buffer, reader_index, 1)
-        self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
+        cdef c_bool is_target_x_lang = (mask & <uint8_t>0b10) != 0
+        self.is_peer_out_of_band_enabled = (mask & <uint8_t>0b100) != 0
         if self.is_peer_out_of_band_enabled:
             assert buffers is not None, (
                 "buffers shouldn't be null when the serialized stream is "
@@ -1530,9 +1534,9 @@ cdef class Fory:
 
     cpdef inline read_ref(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id(buffer)
+        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
         if ref_id < NOT_NULL_VALUE_FLAG:
-            return ref_resolver.get_read_object()
+            return ref_resolver.read_object
         # indicates that the object is first read.
         cdef TypeInfo typeinfo = self.type_resolver.read_type_info(buffer)
         cls = typeinfo.cls
@@ -1572,7 +1576,7 @@ cdef class Fory:
         cdef int32_t ref_id
         if serializer is None or serializer.need_to_write_ref:
             ref_resolver = self.ref_resolver
-            ref_id = ref_resolver.try_preserve_ref_id(buffer)
+            ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
             # indicates that the object is first read.
             if ref_id >= NOT_NULL_VALUE_FLAG:
                 # Don't push -1 here - try_preserve_ref_id already pushed ref_id
@@ -1580,7 +1584,7 @@ cdef class Fory:
                 ref_resolver.set_read_object(ref_id, o)
                 return o
             else:
-                return ref_resolver.get_read_object()
+                return ref_resolver.read_object
         cdef int8_t head_flag = buffer.read_int8()
         if head_flag == NULL_FLAG:
             return None
@@ -1688,9 +1692,9 @@ cdef class Fory:
 
     cpdef inline read_ref_pyobject(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id(buffer)
+        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
         if ref_id < NOT_NULL_VALUE_FLAG:
-            return ref_resolver.get_read_object()
+            return ref_resolver.read_object
         # indicates that the object is first read.
         cdef TypeInfo typeinfo = self.type_resolver.read_type_info(buffer)
         self.inc_depth()
