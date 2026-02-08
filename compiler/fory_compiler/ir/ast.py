@@ -246,6 +246,47 @@ class Union:
 
 
 @dataclass
+class RpcMethod:
+    """An RPC method inside a service."""
+
+    name: str
+    request_type: NamedType
+    response_type: NamedType
+    client_streaming: bool = False
+    server_streaming: bool = False
+    options: dict = field(default_factory=dict)
+    line: int = 0
+    column: int = 0
+    location: Optional[SourceLocation] = None
+
+    def __repr__(self) -> str:
+        opts_str = f" [{self.options}]" if self.options else ""
+        req_stream = "stream " if self.client_streaming else ""
+        res_stream = "stream " if self.server_streaming else ""
+        return (
+            f"RpcMethod({self.name} "
+            f"({req_stream}{self.request_type}) returns ({res_stream}{self.response_type})"
+            f"{opts_str})"
+        )
+
+
+@dataclass
+class Service:
+    """A service definition."""
+
+    name: str
+    methods: List[RpcMethod] = field(default_factory=list)
+    options: dict = field(default_factory=dict)
+    line: int = 0
+    column: int = 0
+    location: Optional[SourceLocation] = None
+
+    def __repr__(self) -> str:
+        opts_str = f", options={len(self.options)}" if self.options else ""
+        return f"Service({self.name}, methods={len(self.methods)}{opts_str})"
+
+
+@dataclass
 class Schema:
     """The root AST node representing a complete FDL file."""
 
@@ -255,6 +296,7 @@ class Schema:
     enums: List[Enum] = field(default_factory=list)
     messages: List[Message] = field(default_factory=list)
     unions: List[Union] = field(default_factory=list)
+    services: List[Service] = field(default_factory=list)
     options: dict = field(
         default_factory=dict
     )  # File-level options (java_package, go_package, etc.)
@@ -266,7 +308,8 @@ class Schema:
         alias = f", package_alias={self.package_alias}" if self.package_alias else ""
         return (
             f"Schema(package={self.package}{alias}, imports={len(self.imports)}, "
-            f"enums={len(self.enums)}, messages={len(self.messages)}, unions={len(self.unions)}{opts})"
+            f"enums={len(self.enums)}, messages={len(self.messages)}, unions={len(self.unions)}, "
+            f"services={len(self.services)}{opts})"
         )
 
     def get_option(self, name: str, default: Optional[str] = None) -> Optional[str]:

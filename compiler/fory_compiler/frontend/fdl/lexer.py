@@ -44,6 +44,10 @@ class TokenType(Enum):
     RESERVED = auto()
     TO = auto()
     MAX = auto()
+    SERVICE = auto()
+    RPC = auto()
+    RETURNS = auto()
+    STREAM = auto()
 
     # Literals
     IDENT = auto()
@@ -112,6 +116,10 @@ class Lexer:
         "reserved": TokenType.RESERVED,
         "to": TokenType.TO,
         "max": TokenType.MAX,
+        "service": TokenType.SERVICE,
+        "rpc": TokenType.RPC,
+        "returns": TokenType.RETURNS,
+        "stream": TokenType.STREAM,
     }
 
     PUNCTUATION = {

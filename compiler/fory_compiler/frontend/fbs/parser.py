@@ -30,6 +30,8 @@ from fory_compiler.frontend.fbs.ast import (
     FbsTypeName,
     FbsTypeRef,
     FbsVectorType,
+    FbsService,
+    FbsRpcMethod,
 )
 from fory_compiler.frontend.fbs.lexer import Token, TokenType
 
@@ -96,7 +98,9 @@ class Parser:
         enums: List[FbsEnum] = []
         unions: List[FbsUnion] = []
         tables: List[FbsTable] = []
+        tables: List[FbsTable] = []
         structs: List[FbsStruct] = []
+        services: List[FbsService] = []
         root_type: Optional[str] = None
 
         while not self.at_end():
@@ -122,6 +126,8 @@ class Parser:
                 self.parse_file_extension()
             elif self.check(TokenType.UNION):
                 unions.append(self.parse_union())
+            elif self.check(TokenType.SERVICE) or self.check(TokenType.RPC):
+                services.append(self.parse_service())
             elif self.check(TokenType.SEMI):
                 self.advance()
             else:
@@ -135,6 +141,7 @@ class Parser:
             unions=unions,
             tables=tables,
             structs=structs,
+            services=services,
             root_type=root_type,
             source_file=self.filename,
         )
@@ -369,7 +376,11 @@ class Parser:
         if self.match(TokenType.FALSE):
             return False
         if self.check(TokenType.INT):
-            return int(self.advance().value, 0)
+            value = self.advance().value
+            try:
+                return int(value, 0)
+            except ValueError:
+                return int(value)
         if self.check(TokenType.FLOAT):
             return float(self.advance().value)
         if self.check(TokenType.STRING):
@@ -377,3 +388,65 @@ class Parser:
         if self.check(TokenType.IDENT):
             return self.advance().value
         raise self.error("Expected value")
+
+    def parse_service(self) -> FbsService:
+        start = self.current()
+        # Support both 'service' and 'rpc_service' keywords for defining services.
+        if self.check(TokenType.SERVICE):
+            self.advance()
+        elif self.check(TokenType.RPC):
+            # 'rpc_service' is mapped to TokenType.SERVICE in the lexer,
+            # but we also check for separate 'rpc' token just in case.
+            self.advance()
+            if self.check(TokenType.SERVICE):
+                self.advance()
+        else:
+            raise self.error("Expected 'service' or 'rpc_service'")
+
+        name = self.consume(TokenType.IDENT, "Expected service name").value
+        attributes = self.parse_metadata()
+        self.consume(TokenType.LBRACE, "Expected '{' after service name")
+
+        methods: List[FbsRpcMethod] = []
+        while not self.check(TokenType.RBRACE):
+            if self.check(TokenType.SEMI):
+                self.advance()
+                continue
+            methods.append(self.parse_rpc_method())
+
+        self.consume(TokenType.RBRACE, "Expected '}' after service body")
+        if self.check(TokenType.SEMI):
+            self.advance()
+
+        return FbsService(
+            name=name,
+            methods=methods,
+            attributes=attributes,
+            line=start.line,
+            column=start.column,
+        )
+
+    def parse_rpc_method(self) -> FbsRpcMethod:
+        # Parse method signature: name(RequestType):ResponseType;
+        start = self.current()
+        name = self.consume(TokenType.IDENT, "Expected method name").value
+
+        self.consume(TokenType.LPAREN, "Expected '(' after method name")
+        # Parsing request type. FBS allows type name here.
+        req_type = self.parse_qualified_ident()
+        self.consume(TokenType.RPAREN, "Expected ')' after request type")
+
+        self.consume(TokenType.COLON, "Expected ':' before response type")
+        res_type = self.parse_qualified_ident()
+
+        attributes = self.parse_metadata()
+        self.consume(TokenType.SEMI, "Expected ';' after method declaration")
+
+        return FbsRpcMethod(
+            name=name,
+            request_type=req_type,
+            response_type=res_type,
+            attributes=attributes,
+            line=start.line,
+            column=start.column,
+        )
