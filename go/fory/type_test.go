@@ -18,9 +18,11 @@
 package fory
 
 import (
-	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
+
+	"github.com/apache/fory/go/fory/bfloat16"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTypeResolver(t *testing.T) {
@@ -39,6 +41,9 @@ func TestTypeResolver(t *testing.T) {
 		{reflect.TypeOf((*int)(nil)), "*int"},
 		{reflect.TypeOf((*[10]int)(nil)), "*[10]int"},
 		{reflect.TypeOf((*[10]int)(nil)).Elem(), "[10]int"},
+		{reflect.TypeOf((*bfloat16.BFloat16)(nil)).Elem(), "bfloat16.BFloat16"},
+		{reflect.TypeOf((*[]bfloat16.BFloat16)(nil)).Elem(), "[]bfloat16.BFloat16"},
+		{reflect.TypeOf((*[10]bfloat16.BFloat16)(nil)).Elem(), "[10]bfloat16.BFloat16"},
 		{reflect.TypeOf((*[]map[string][]map[string]*any)(nil)).Elem(),
 			"[]map[string][]map[string]*interface {}"},
 		{reflect.TypeOf((*A)(nil)), "*@example.A"},
