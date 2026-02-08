@@ -155,7 +155,7 @@ enum NewEvent {
     KeyPress(String),  // New variant
 }
 
-let mut fory = Fory::builder().compatible().build();
+let mut fory = Fory::default().compatible(true);
 
 // Serialize with old schema
 let old_bytes = fory.serialize(&OldEvent::Click { x: 100, y: 200 })?;

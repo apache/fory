@@ -98,8 +98,8 @@ String compression can be enabled via `ForyBuilder#withStringCompressed(true)`. 
 | ------------------- | --------------------------------------------- | ------- |
 | `compressInt`       | Enable int compression                        | `true`  |
 | `compressLong`      | Enable long compression                       | `true`  |
-| `compressIntArray`  | Enable SIMD int array compression (Java 16+)  | `true`  |
-| `compressLongArray` | Enable SIMD long array compression (Java 16+) | `true`  |
+| `compressIntArray`  | Enable SIMD int array compression (Java 16+)  | `false` |
+| `compressLongArray` | Enable SIMD long array compression (Java 16+) | `false` |
 | `compressString`    | Enable string compression                     | `false` |
 
 ## Performance Considerations
