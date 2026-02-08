@@ -25,6 +25,7 @@
 #include "fory/util/error.h"
 #include "fory/util/string_util.h"
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -113,9 +114,14 @@ inline std::string read_string_data(ReadContext &ctx) {
     return std::string();
   }
 
-  // Validate length against buffer remaining size
-  if (length > ctx.buffer().remaining_size()) {
-    ctx.set_error(Error::invalid_data("String length exceeds buffer size"));
+  const uint64_t target =
+      static_cast<uint64_t>(ctx.buffer().reader_index()) + length;
+  if (target > std::numeric_limits<uint32_t>::max()) {
+    ctx.set_error(Error::invalid_data("String length exceeds uint32 range"));
+    return std::string();
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_size(
+          static_cast<uint32_t>(target), ctx.error()))) {
     return std::string();
   }
 
@@ -176,9 +182,14 @@ inline std::u16string read_u16string_data(ReadContext &ctx) {
     return std::u16string();
   }
 
-  // Validate length against buffer remaining size
-  if (length > ctx.buffer().remaining_size()) {
-    ctx.set_error(Error::invalid_data("String length exceeds buffer size"));
+  const uint64_t target =
+      static_cast<uint64_t>(ctx.buffer().reader_index()) + length;
+  if (target > std::numeric_limits<uint32_t>::max()) {
+    ctx.set_error(Error::invalid_data("String length exceeds uint32 range"));
+    return std::u16string();
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_size(
+          static_cast<uint32_t>(target), ctx.error()))) {
     return std::u16string();
   }
 
