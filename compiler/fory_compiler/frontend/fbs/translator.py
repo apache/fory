@@ -27,9 +27,6 @@ from fory_compiler.frontend.fbs.ast import (
     FbsTypeName,
     FbsTypeRef,
     FbsVectorType,
-    FbsTypeName,
-    FbsTypeRef,
-    FbsVectorType,
     FbsUnion,
     FbsService,
     FbsRpcMethod,
@@ -41,9 +38,6 @@ from fory_compiler.ir.ast import (
     Import,
     ListType,
     Message,
-    NamedType,
-    PrimitiveType,
-    Schema,
     NamedType,
     PrimitiveType,
     Schema,
@@ -304,11 +298,11 @@ class FbsTranslator:
         # Map FBS 'streaming' attribute to Fory's client_streaming/server_streaming flags.
         # Expected 'streaming' values: "client", "server", "bidi".
         # Default is unary (no streaming).
-        
+
         attributes = dict(fbs_method.attributes)
         client_streaming = False
         server_streaming = False
-        
+
         # Check for streaming attributes if any (convention)
         if attributes.get("streaming") == "client":
             client_streaming = True
@@ -317,7 +311,7 @@ class FbsTranslator:
         elif attributes.get("streaming") == "bidi":
             client_streaming = True
             server_streaming = True
-            
+
         return RpcMethod(
             name=fbs_method.name,
             request_type=NamedType(

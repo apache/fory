@@ -29,8 +29,6 @@ from fory_compiler.frontend.fbs.ast import (
     FbsUnion,
     FbsTypeName,
     FbsTypeRef,
-    FbsTypeName,
-    FbsTypeRef,
     FbsVectorType,
     FbsService,
     FbsRpcMethod,
@@ -432,18 +430,18 @@ class Parser:
         # Parse method signature: name(RequestType):ResponseType;
         start = self.current()
         name = self.consume(TokenType.IDENT, "Expected method name").value
-        
+
         self.consume(TokenType.LPAREN, "Expected '(' after method name")
         # Parsing request type. FBS allows type name here.
         req_type = self.parse_qualified_ident()
         self.consume(TokenType.RPAREN, "Expected ')' after request type")
-        
+
         self.consume(TokenType.COLON, "Expected ':' before response type")
         res_type = self.parse_qualified_ident()
-        
+
         attributes = self.parse_metadata()
         self.consume(TokenType.SEMI, "Expected ';' after method declaration")
-        
+
         return FbsRpcMethod(
             name=name,
             request_type=req_type,

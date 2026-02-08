@@ -89,19 +89,19 @@ def test_streaming_attributes():
     """
     schema = parse_and_translate(source)
     service = schema.services[0]
-    
+
     # Client streaming
     m1 = service.methods[0]
     assert m1.name == "ClientStream"
     assert m1.client_streaming is True
     assert m1.server_streaming is False
-    
+
     # Server streaming
     m2 = service.methods[1]
     assert m2.name == "ServerStream"
     assert m2.client_streaming is False
     assert m2.server_streaming is True
-    
+
     # Bidi streaming
     m3 = service.methods[2]
     assert m3.name == "BidiStream"
