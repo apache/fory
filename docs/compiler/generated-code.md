@@ -579,14 +579,14 @@ Nested types use underscore naming by default (`Person_PhoneType`, `Person_Phone
 type Person_PhoneType int32
 
 const (
-	Person_PhoneTypeMobile Person_PhoneType = 0
-	Person_PhoneTypeHome   Person_PhoneType = 1
-	Person_PhoneTypeWork   Person_PhoneType = 2
+    Person_PhoneTypeMobile Person_PhoneType = 0
+    Person_PhoneTypeHome   Person_PhoneType = 1
+    Person_PhoneTypeWork   Person_PhoneType = 2
 )
 
 type Person_PhoneNumber struct {
-	Number    string           `fory:"id=1"`
-	PhoneType Person_PhoneType `fory:"id=2"`
+    Number    string           `fory:"id=1"`
+    PhoneType Person_PhoneType `fory:"id=2"`
 }
 ```
 
@@ -594,10 +594,10 @@ Messages generate structs with `fory` tags and byte helpers:
 
 ```go
 type Person struct {
-	Name   string               `fory:"id=1"`
-	Id     int32                `fory:"id=2,compress=true"`
-	Phones []Person_PhoneNumber `fory:"id=7"`
-	Pet    Animal               `fory:"id=8"`
+    Name   string               `fory:"id=1"`
+    Id     int32                `fory:"id=2,compress=true"`
+    Phones []Person_PhoneNumber `fory:"id=7"`
+    Pet    Animal               `fory:"id=8"`
 }
 
 func (m *Person) ToBytes() ([]byte, error) { ... }
@@ -610,8 +610,8 @@ Unions generate typed case structs with constructors/accessors/visitor APIs:
 type AnimalCase uint32
 
 type Animal struct {
-	case_ AnimalCase
-	value any
+    case_ AnimalCase
+    value any
 }
 
 func DogAnimal(v *Dog) Animal { ... }
@@ -628,19 +628,19 @@ Generated registration function:
 
 ```go
 func RegisterTypes(f *fory.Fory) error {
-	if err := f.RegisterUnion(Animal{}, 106, fory.NewUnionSerializer(...)); err != nil {
-		return err
-	}
-	if err := f.RegisterEnum(Person_PhoneType(0), 101); err != nil {
-		return err
-	}
-	if err := f.RegisterStruct(Person_PhoneNumber{}, 102); err != nil {
-		return err
-	}
-	if err := f.RegisterStruct(Person{}, 100); err != nil {
-		return err
-	}
-	return nil
+    if err := f.RegisterUnion(Animal{}, 106, fory.NewUnionSerializer(...)); err != nil {
+        return err
+    }
+    if err := f.RegisterEnum(Person_PhoneType(0), 101); err != nil {
+        return err
+    }
+    if err := f.RegisterStruct(Person_PhoneNumber{}, 102); err != nil {
+        return err
+    }
+    if err := f.RegisterStruct(Person{}, 100); err != nil {
+        return err
+    }
+    return nil
 }
 ```
 
@@ -671,17 +671,17 @@ option go_nested_type_style = "camelcase";
 
 ```go
 person := &Person{
-	Name: "Alice",
-	Pet:  DogAnimal(&Dog{Name: "Rex"}),
+    Name: "Alice",
+    Pet:  DogAnimal(&Dog{Name: "Rex"}),
 }
 
 data, err := person.ToBytes()
 if err != nil {
-	panic(err)
+    panic(err)
 }
 var restored Person
 if err := restored.FromBytes(data); err != nil {
-	panic(err)
+    panic(err)
 }
 ```
 
