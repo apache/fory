@@ -94,3 +94,5 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
 cdef extern from "fory/python/pyfory.h" namespace "fory":
     int Fory_PyBooleanSequenceWriteToBuffer(object collection, CBuffer *buffer, Py_ssize_t start_index)
     int Fory_PyFloatSequenceWriteToBuffer(object collection, CBuffer *buffer, Py_ssize_t start_index)
+    Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(object collection, CBuffer *buffer) except? -1
+    Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(object list, CBuffer *buffer, Py_ssize_t count) except? -1
