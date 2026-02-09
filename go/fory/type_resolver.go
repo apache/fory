@@ -248,6 +248,9 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 	for _, t := range []reflect.Type{
 		boolType,
 		byteType,
+		uint16Type,
+		uint32Type,
+		uint64Type,
 		int8Type,
 		int16Type,
 		int32Type,
@@ -1704,6 +1707,12 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		case reflect.Uint8:
 			// []byte uses byteSliceSerializer
 			return byteSliceSerializer{}, nil
+		case reflect.Uint16:
+			return uint16SliceSerializer{}, nil
+		case reflect.Uint32:
+			return uint32SliceSerializer{}, nil
+		case reflect.Uint64:
+			return uint64SliceSerializer{}, nil
 		case reflect.String:
 			return stringSliceSerializer{}, nil
 		}
