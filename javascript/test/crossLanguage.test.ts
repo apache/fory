@@ -183,7 +183,7 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_murmurhash3", () => {
-  const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
+    const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
     const reader = new BinaryReader({});
     reader.reset(content);
     let dataview = x64hash128(new Uint8Array([1, 2, 8]), 47);
@@ -898,7 +898,7 @@ describe("bool", () => {
       f1: Type.string()
     })
     class OneStringFieldStruct {
-      @ForyField({nullable: true})
+      @ForyField({ nullable: true })
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
@@ -921,7 +921,7 @@ describe("bool", () => {
       f1: Type.string()
     })
     class OneStringFieldStruct {
-      @ForyField({nullable: true})
+      @ForyField({ nullable: true })
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
@@ -1115,28 +1115,165 @@ describe("bool", () => {
     writeToFile(serializedData as Buffer);
   });
 
+  const buildClass = (id = 402) => {
+    @Type.struct({ typeId: id })
+    class NullableComprehensiveCompatible {
+      // Base non-nullable primitive fields
+      @Type.int8()
+      byteField: number = 0;
+      @Type.int16()
+      shortField: number = 0;
+      @Type.varInt32()
+      intField: number = 0;
+      @Type.varInt64()
+      longField: number = 0;
+      @Type.float32()
+      floatField: number = 0;
+      @Type.float64()
+      doubleField: number = 0;
+      @Type.bool()
+      boolField: boolean = false;
+
+      // Base non-nullable boxed fields (not nullable by default in xlang)
+      @Type.varInt32()
+      boxedInt: number = 0;
+      @Type.varInt64()
+      boxedLong: number = 0;
+      @Type.float32()
+      boxedFloat: number = 0;
+      @Type.float64()
+      boxedDouble: number = 0;
+      @Type.bool()
+      boxedBool = false;
+
+      // Base non-nullable reference fields
+      @Type.string()
+      stringField: string = '';
+      @Type.array(Type.string())
+      listField: string[] = [];
+      @Type.set(Type.string())
+      setField: Set<string> = new Set();
+      @Type.map(Type.string(), Type.string())
+      mapField: Map<string, string> = new Map();
+
+      // Nullable group 1 - boxed types with @ForyField(nullable=true)
+      @ForyField({ nullable: true })
+      @Type.varInt32()
+      nullableInt1: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.varInt64()
+      nullableLong1: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.float32()
+      nullableFloat1: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.float64()
+      nullableDouble1: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.bool()
+      nullableBool1: boolean | null = null;
+
+      // Nullable group 2 - reference types with @ForyField(nullable=true)
+      @ForyField({ nullable: true })
+      @Type.string()
+      nullableString2: string | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.array(Type.string())
+      nullableList2: string[] | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.set(Type.string())
+      nullableSet2: Set<string> | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.map(Type.string(), Type.string())
+      nullableMap2: Map<string, string> | null = null;
+    }
+    return NullableComprehensiveCompatible;
+  }
+
+  const buildClassConsistent = (id = 401) => {
+    @Type.struct({ typeId: id })
+    class NullableComprehensiveConsistent {
+      // Base non-nullable primitive fields
+      @Type.int8()
+      byteField: number = 0;
+      @Type.int16()
+      shortField: number = 0;
+      @Type.varInt32()
+      intField: number = 0;
+      @Type.varInt64()
+      longField: number = 0;
+      @Type.float32()
+      floatField: number = 0;
+      @Type.float64()
+      doubleField: number = 0;
+      @Type.bool()
+      boolField: boolean = false;
+
+      // Base non-nullable reference fields
+      @Type.string()
+      stringField: string = '';
+      @Type.array(Type.string())
+      listField: string[] = [];
+      @Type.set(Type.string())
+      setField: Set<string> = new Set();
+      @Type.map(Type.string(), Type.string())
+      mapField: Map<string, string> = new Map();
+
+      // Nullable group 1 - boxed types with @ForyField(nullable=true)
+      @ForyField({ nullable: true })
+      @Type.varInt32()
+      nullableInt: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.varInt64()
+      nullableLong: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.float32()
+      nullableFloat: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.float64()
+      nullableDouble: number | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.bool()
+      nullableBool: boolean | null = null;
+
+      // Nullable group 2 - reference types with @ForyField(nullable=true)
+      @ForyField({ nullable: true })
+      @Type.string()
+      nullableString: string | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.array(Type.string())
+      nullableList: string[] | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.set(Type.string())
+      nullableSet: Set<string> | null = null;
+
+      @ForyField({ nullable: true })
+      @Type.map(Type.string(), Type.string())
+      nullableMap: Map<string, string> | null = null;
+    }
+    return NullableComprehensiveConsistent
+
+  }
+
   test("test_nullable_field_schema_consistent_not_null", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
 
-    @Type.struct(401, {
-      intField: Type.int32(),
-      stringField: Type.string(),
-      nullableInt: Type.int32(),
-      nullableString: Type.string()
-    })
-    class NullableStruct {
-      intField: number = 0;
-      stringField: string = "";
-      nullableInt: number | null = null;
-      nullableString: string | null = null;
-    }
-    fory.registerSerializer(NullableStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    fory.registerSerializer(buildClassConsistent(401));
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1147,26 +1284,14 @@ describe("bool", () => {
     const serializedData = fory.serialize(deserializedStruct);
     writeToFile(serializedData as Buffer);
   });
+
 
   test("test_nullable_field_schema_consistent_null", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
-
-    @Type.struct(401, {
-      intField: Type.int32(),
-      stringField: Type.string(),
-      nullableInt: Type.int32(),
-      nullableString: Type.string()
-    })
-    class NullableStruct {
-      intField: number = 0;
-      stringField: string = "";
-      nullableInt: number | null = null;
-      nullableString: string | null = null;
-    }
-    fory.registerSerializer(NullableStruct);
+    fory.registerSerializer(buildClassConsistent());
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1181,28 +1306,13 @@ describe("bool", () => {
     writeToFile(serializedData as Buffer);
   });
 
+
   test("test_nullable_field_compatible_not_null", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
 
-    @Type.struct(402, {
-      intField: Type.int32(),
-      stringField: Type.string(),
-      nullableInt: Type.int32(),
-      nullableString: Type.string()
-    })
-    class NullableStruct {
-      intField: number = 0;
-      stringField: string = "";
-      nullableInt: number | null = null;
-      nullableString: string | null = null;
-    }
-    fory.registerSerializer(NullableStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    fory.registerSerializer(buildClass());
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1475,6 +1585,6 @@ describe("bool", () => {
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
-   // writeToFile(serializedData as Buffer);
+    // writeToFile(serializedData as Buffer);
   });
 });
