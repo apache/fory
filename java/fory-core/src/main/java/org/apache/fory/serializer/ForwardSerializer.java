@@ -62,7 +62,7 @@ public class ForwardSerializer {
       throw new UnsupportedOperationException();
     }
 
-    protected void register(T serializer, Class<?> clz, int id) {
+    protected void register(T serializer, Class<?> clz, long id) {
       throw new UnsupportedOperationException();
     }
 
@@ -151,8 +151,8 @@ public class ForwardSerializer {
     }
 
     @Override
-    protected void register(LoaderBinding binding, Class<?> clz, int id) {
-      binding.register(clz, (short) id);
+    protected void register(LoaderBinding binding, Class<?> clz, long id) {
+      binding.register(clz, id);
     }
 
     @Override
@@ -237,7 +237,7 @@ public class ForwardSerializer {
             });
   }
 
-  public synchronized void register(Class<?> clz, int id) {
+  public synchronized void register(Class<?> clz, long id) {
     serializerSet.forEach(serializer -> proxy.register(serializer, clz, id));
     serializerCallback =
         serializerCallback.andThen(

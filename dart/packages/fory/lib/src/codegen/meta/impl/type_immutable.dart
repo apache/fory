@@ -18,7 +18,7 @@
  */
 
 import 'package:meta/meta.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 @immutable
 class TypeImmutable {

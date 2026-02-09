@@ -1,7 +1,7 @@
 # Apache Fory™ Java
 
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Java Version](https://img.shields.io/badge/Java-8%20to%2024-blue?style=for-the-badge)](https://www.oracle.com/java/)
+[![Java Version](https://img.shields.io/badge/Java-8%20to%2025-blue?style=for-the-badge)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](https://opensource.org/licenses/Apache-2.0)
 
 Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem, delivering up to **170x performance improvement** over traditional frameworks through JIT compilation and zero-copy techniques.
@@ -36,11 +36,12 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ## Documentation
 
-| Topic                       | Description               | Source Doc Link                                                                | Website Doc Link                                                                                   |
-| --------------------------- | ------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| **Java Serialization**      | Comprehensive usage guide | [java_serialization_guide.md](../docs/guide/java_serialization_guide.md)       | [Java Serialization Guide](https://fory.apache.org/docs/docs/guide/java_serialization)             |
-| **GraalVM Native Image**    | Native image support      | [graalvm_guide.md](../docs/guide/graalvm_guide.md)                             | [GraalVM Guide](https://fory.apache.org/docs/docs/guide/graalvm_serialization)                     |
-| **Java Serialization Spec** | Protocol specification    | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/fory_java_serialization_spec) |
+| Topic                       | Description                | Source Doc Link                                                                | Website Doc Link                                                                                   |
+| --------------------------- | -------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| **Java Serialization**      | Comprehensive usage guide  | [java_serialization_guide.md](../docs/guide/java_serialization_guide.md)       | [Java Serialization Guide](https://fory.apache.org/docs/docs/guide/java_serialization)             |
+| **GraalVM Native Image**    | Native image support       | [graalvm_guide.md](../docs/guide/graalvm_guide.md)                             | [GraalVM Guide](https://fory.apache.org/docs/docs/guide/graalvm_serialization)                     |
+| **Java Serialization Spec** | Protocol specification     | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/fory_java_serialization_spec) |
+| **Java Benchmarks**         | Performance data and plots | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                                    |
 
 ## Modules
 
@@ -60,28 +61,28 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 
 <!-- Optional: Row format support -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 
 <!-- Optional: Serializers for Protobuf data -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-extensions</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 
 <!-- Optional: SIMD acceleration (Java 16+) -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-simd</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 ```
 
@@ -89,11 +90,11 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ```gradle
 dependencies {
-    implementation 'org.apache.fory:fory-core:0.14.1'
+    implementation 'org.apache.fory:fory-core:0.15.0'
     // Optional modules
-    implementation 'org.apache.fory:fory-format:0.14.1'
-    implementation 'org.apache.fory:fory-simd:0.14.1'
-    implementation 'org.apache.fory:fory-extensions:0.14.1'
+    implementation 'org.apache.fory:fory-format:0.15.0'
+    implementation 'org.apache.fory:fory-simd:0.15.0'
+    implementation 'org.apache.fory:fory-extensions:0.15.0'
 }
 ```
 

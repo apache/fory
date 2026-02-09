@@ -18,7 +18,7 @@
  */
 
 import 'dart:typed_data';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';

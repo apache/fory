@@ -8,14 +8,14 @@ The FDL compiler generates cross-language serialization code from schema definit
 - **Rich type system**: Primitives, enums, messages, lists, maps
 - **Cross-language serialization**: Generated code works seamlessly with Apache Fory
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
-- **Field modifiers**: Optional fields, reference tracking, repeated fields
+- **Field modifiers**: Optional fields, reference tracking, list fields
 - **File imports**: Modular schemas with import support
 
 ## Documentation
 
 For comprehensive documentation, see the [FDL Schema Guide](../docs/compiler/index.md):
 
-- [FDL Syntax Reference](../docs/compiler/fdl-syntax.md) - Complete language syntax and grammar
+- [FDL Syntax Reference](../docs/compiler/schema-idl.md) - Complete language syntax and grammar
 - [Type System](../docs/compiler/type-system.md) - Primitive types, collections, and language mappings
 - [Compiler Guide](../docs/compiler/compiler-guide.md) - CLI options and build integration
 - [Generated Code](../docs/compiler/generated-code.md) - Output format for each target language
@@ -51,7 +51,7 @@ message Dog [id=102] {
 message Cat [id=103] {
     ref Dog friend = 1;
     optional string name = 2;
-    repeated string tags = 3;
+    list<string> tags = 3;
     map<string, int32> scores = 4;
     int32 lives = 5;
 }
@@ -202,21 +202,21 @@ message Config { ... }  // Registered as "package.Config"
 ### Collection Types
 
 ```fdl
-repeated string tags = 1;           // List<String>
-map<string, int32> scores = 2;      // Map<String, Integer>
+list<string> tags = 1;          // List<String>
+map<string, int32> scores = 2;  // Map<String, Integer>
 ```
 
 ### Field Modifiers
 
 - **`optional`**: Field can be null/None
 - **`ref`**: Enable reference tracking for shared/circular references
-- **`repeated`**: Field is a list/array
+- **`list`**: Field is a list/array (alias: `repeated`)
 
 ```fdl
 message Example {
     optional string nullable_field = 1;
     ref OtherMessage shared_ref = 2;
-    repeated int32 numbers = 3;
+    list<int32> numbers = 3;
 }
 ```
 
@@ -229,7 +229,11 @@ FDL uses plain option keys without a `(fory)` prefix:
 ```fdl
 option use_record_for_java_message = true;
 option polymorphism = true;
+option enable_auto_type_id = true;
 ```
+
+`enable_auto_type_id` defaults to `true`. Set it to `false` to keep namespace-based registration
+for types that omit explicit IDs.
 
 **Message/Enum options:**
 

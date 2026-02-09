@@ -41,7 +41,7 @@ final class MetaStringWritingResolverImpl extends MetaStringWritingResolver{
     bw.writeVarUint32Small7(bytesLen << 1);
     if (bytesLen > smallStringThreshold){
       bw.writeInt64(msb.hashCode);
-    }else {
+    }else if (bytesLen != 0) {
       bw.writeInt8(msb.encoding.id);
     }
     bw.writeBytes(msb.bytes);

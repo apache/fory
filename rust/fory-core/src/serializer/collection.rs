@@ -36,7 +36,7 @@ pub fn write_collection_type_info(
     context: &mut WriteContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    context.writer.write_var_uint32(collection_type_id);
+    context.writer.write_u8(collection_type_id as u8);
     Ok(())
 }
 
@@ -164,7 +164,7 @@ where
                     "Unable to determine concrete type for polymorphic collection elements",
                 )
             })?;
-            context.write_any_typeinfo(T::fory_static_type_id() as u32, type_id)?;
+            context.write_any_type_info(T::fory_static_type_id() as u32, type_id)?;
         } else {
             T::fory_write_type_info(context)?;
         }
@@ -206,7 +206,7 @@ pub fn read_collection_type_info(
     context: &mut ReadContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    let remote_collection_type_id = context.reader.read_varuint32()?;
+    let remote_collection_type_id = context.reader.read_u8()? as u32;
     if PRIMITIVE_ARRAY_TYPES.contains(&remote_collection_type_id) {
         return Err(Error::type_error(
             "Vec<number> belongs to the `number_array` type, \
@@ -236,7 +236,7 @@ where
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
     if !declared {
-        // context.read_any_typeinfo();
+        // context.read_any_type_info();
         // TODO check whether type info consistent with T
         T::fory_read_type_info(context)?;
     }
@@ -260,6 +260,97 @@ where
             })
             .collect::<Result<C, Error>>()
     }
+}
+
+#[inline(always)]
+pub fn read_vec_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error>
+where
+    T: Serializer + ForyDefault,
+{
+    let len = context.reader.read_varuint32()?;
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
+        return read_vec_data_dyn_ref(context, len);
+    }
+    let header = context.reader.read_u8()?;
+    let declared = (header & DECL_ELEMENT_TYPE) != 0;
+    if !declared {
+        T::fory_read_type_info(context)?;
+    }
+    let has_null = (header & HAS_NULL) != 0;
+    ensure!(
+        (header & IS_SAME_TYPE) != 0,
+        Error::type_error("Type inconsistent, target type is not polymorphic")
+    );
+    let mut vec = Vec::with_capacity(len as usize);
+    if !has_null {
+        for _ in 0..len {
+            vec.push(T::fory_read_data(context)?);
+        }
+    } else {
+        for _ in 0..len {
+            let flag = context.reader.read_i8()?;
+            if flag == RefFlag::Null as i8 {
+                vec.push(T::fory_default());
+            } else {
+                vec.push(T::fory_read_data(context)?);
+            }
+        }
+    }
+    Ok(vec)
+}
+
+#[inline(always)]
+fn read_vec_data_dyn_ref<T>(context: &mut ReadContext, len: u32) -> Result<Vec<T>, Error>
+where
+    T: Serializer + ForyDefault,
+{
+    let header = context.reader.read_u8()?;
+    let is_track_ref = (header & TRACKING_REF) != 0;
+    let is_same_type = (header & IS_SAME_TYPE) != 0;
+    let has_null = (header & HAS_NULL) != 0;
+    let is_declared = (header & DECL_ELEMENT_TYPE) != 0;
+
+    let elem_ref_mode = if is_track_ref {
+        RefMode::Tracking
+    } else if has_null {
+        RefMode::NullOnly
+    } else {
+        RefMode::None
+    };
+
+    let mut vec = Vec::with_capacity(len as usize);
+    if is_same_type {
+        let type_info = if !is_declared {
+            context.read_any_type_info()?
+        } else {
+            T::fory_get_type_info(context.get_type_resolver())?
+        };
+        if elem_ref_mode == RefMode::None {
+            for _ in 0..len {
+                vec.push(T::fory_read_with_type_info(
+                    context,
+                    RefMode::None,
+                    type_info.clone(),
+                )?);
+            }
+        } else {
+            for _ in 0..len {
+                vec.push(T::fory_read_with_type_info(
+                    context,
+                    elem_ref_mode,
+                    type_info.clone(),
+                )?);
+            }
+        }
+    } else {
+        for _ in 0..len {
+            vec.push(T::fory_read(context, elem_ref_mode, true)?);
+        }
+    }
+    Ok(vec)
 }
 
 /// Slow but versatile collection deserialization for dynamic trait object and shared/circular reference.
@@ -287,21 +378,9 @@ where
     // Read elements
     if is_same_type {
         let type_info = if !is_declared {
-            context.read_any_typeinfo()?
-        } else if T::fory_is_shared_ref() {
-            let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-            context
-                .get_type_resolver()
-                .get_type_info_by_id(type_id)
-                .ok_or_else(|| {
-                    Error::type_error(format!(
-                        "Type ID {} not found for shared ref element",
-                        type_id
-                    ))
-                })?
+            context.read_any_type_info()?
         } else {
-            let rs_type_id = std::any::TypeId::of::<T>();
-            context.get_type_resolver().get_type_info(&rs_type_id)?
+            T::fory_get_type_info(context.get_type_resolver())?
         };
         // All elements are same type
         if elem_ref_mode == RefMode::None {

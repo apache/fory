@@ -68,6 +68,16 @@ pub fn gen_actual_type_id() -> TokenStream {
     }
 }
 
+pub fn gen_actual_type_id_no_evolving() -> TokenStream {
+    quote! {
+        if register_by_name {
+            fory_core::types::TypeId::NAMED_STRUCT as u32
+        } else {
+            fory_core::types::TypeId::STRUCT as u32
+        }
+    }
+}
+
 pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
     let static_field_names = get_sort_fields_ts(fields);
     quote! {
@@ -85,11 +95,11 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
         let meta = parse_field_meta(field).unwrap_or_default();
         let type_class = classify_field_type(ty);
         // For nullable, check both the classified type AND whether outer type is Option
-        // This handles Option<Rc<T>> correctly - classify_field_type returns Rc for ref_tracking,
+        // This handles Option<Rc<T>> correctly - classify_field_type returns Rc for track_ref,
         // but we also need to detect that the outer wrapper is Option for nullable.
         let is_outer_option = is_option_type(ty);
         let nullable = meta.effective_nullable(type_class) || is_outer_option;
-        let ref_tracking = meta.effective_ref(type_class);
+        let track_ref = meta.effective_ref(type_class);
         // Only use explicit field ID when user sets #[fory(id = N)]
         // Otherwise use -1 to indicate field name encoding should be used
         let field_id = if meta.uses_tag_id() {
@@ -158,8 +168,9 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                             #name,
                             fory_core::meta::FieldType {
                                 type_id: #type_id_ts,
+                                user_type_id: u32::MAX,
                                 nullable: #nullable,
-                                ref_tracking: #ref_tracking,
+                                track_ref: #track_ref,
                                 generics: Vec::new()
                             }
                         )
@@ -180,8 +191,9 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                             #name,
                             fory_core::meta::FieldType {
                                 type_id: #type_id_ts,
+                                user_type_id: u32::MAX,
                                 nullable: #nullable,
-                                ref_tracking: #ref_tracking,
+                                track_ref: #track_ref,
                                 generics: Vec::new()
                             }
                         )
@@ -196,7 +208,7 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                             {
                                 let mut ft = #generic_token;
                                 ft.nullable = #nullable;
-                                ft.ref_tracking = #ref_tracking;
+                                ft.track_ref = #track_ref;
                                 ft
                             }
                         )
@@ -207,12 +219,14 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                 quote! {
                     fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::LIST as u32,
+                        user_type_id: u32::MAX,
                         nullable: #nullable,
-                        ref_tracking: #ref_tracking,
+                        track_ref: #track_ref,
                         generics: vec![fory_core::meta::FieldType {
                             type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            user_type_id: u32::MAX,
                             nullable: false,
-                            ref_tracking: false,
+                            track_ref: false,
                             generics: Vec::new()
                         }]
                     })
@@ -226,14 +240,16 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                 quote! {
                     fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::MAP as u32,
+                        user_type_id: u32::MAX,
                         nullable: #nullable,
-                        ref_tracking: #ref_tracking,
+                        track_ref: #track_ref,
                         generics: vec![
                             #key_generic_token,
                             fory_core::meta::FieldType {
                                 type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                                user_type_id: u32::MAX,
                                 nullable: false,
-                                ref_tracking: false,
+                                track_ref: false,
                                 generics: Vec::new()
                             }
                         ]
@@ -244,8 +260,9 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                 quote! {
                     fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                        user_type_id: u32::MAX,
                         nullable: #nullable,
-                        ref_tracking: #ref_tracking,
+                        track_ref: #track_ref,
                         generics: Vec::new()
                     })
                 }

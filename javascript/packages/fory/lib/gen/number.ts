@@ -155,3 +155,10 @@ CodegenRegistry.register(TypeId.TAGGED_UINT64,
     builder => builder.reader.varUInt64()
   )
 );
+
+CodegenRegistry.register(TypeId.VARINT64,
+  buildNumberSerializer(
+    (builder, accessor) => builder.writer.varInt64(accessor),
+    builder => builder.reader.varInt64()
+  )
+);

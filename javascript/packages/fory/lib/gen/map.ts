@@ -89,23 +89,40 @@ class MapChunkWriter {
     return flag;
   }
 
-  private writeHead(keyInfo: number, valueInfo: number) {
-    // chunkSize, max 255
-    this.chunkOffset = this.fory.binaryWriter.getCursor();
+  private writeHead(keyInfo: number, valueInfo: number, withOutSize = false) {
     // KV header
     const header = this.getHead(keyInfo, valueInfo);
     // chunkSize default 0 | KV header
-    this.fory.binaryWriter.uint16(header);
+    this.fory.binaryWriter.uint8(header);
+
+    if (!withOutSize) {
+      // chunkSize, max 255
+      this.chunkOffset = this.fory.binaryWriter.getCursor();
+      this.fory.binaryWriter.uint8(0);
+    } else {
+      this.chunkOffset = 0;
+    }
     if (this.keySerializer) {
-      this.keySerializer.writeClassInfo(null);
+      this.keySerializer.writeTypeInfo(null);
     }
     if (this.valueSerializer) {
-      this.valueSerializer.writeClassInfo(null);
+      this.valueSerializer.writeTypeInfo(null);
     }
     return header;
   }
 
+  public isFirst() {
+    return this.chunkSize === 0 || this.chunkSize === 1;
+  }
+
   next(keyInfo: number, valueInfo: number) {
+    if (keyInfo & MapFlags.HAS_NULL || valueInfo & MapFlags.HAS_NULL) {
+      this.endChunk();
+      this.header = this.writeHead(keyInfo, valueInfo, true);
+      this.preKeyInfo = keyInfo;
+      this.preValueInfo = valueInfo;
+      return this.header;
+    }
     // max size of chunk is 255
     if (this.chunkSize == 255
       || this.chunkOffset == 0
@@ -125,7 +142,7 @@ class MapChunkWriter {
 
   endChunk() {
     if (this.chunkOffset > 0) {
-      this.fory.binaryWriter.setUint8Position(this.chunkOffset + 1, this.chunkSize);
+      this.fory.binaryWriter.setUint8Position(this.chunkOffset, this.chunkSize);
       this.chunkSize = 0;
     }
   }
@@ -137,34 +154,25 @@ class MapAnySerializer {
 
   constructor(private fory: Fory, keySerializerId: null | number, valueSerializerId: null | number) {
     if (keySerializerId !== null) {
-      fory.classResolver.getSerializerById(keySerializerId);
+      fory.typeResolver.getSerializerById(keySerializerId);
     }
     if (valueSerializerId !== null) {
-      fory.classResolver.getSerializerById(valueSerializerId);
+      fory.typeResolver.getSerializerById(valueSerializerId);
     }
   }
 
   private writeFlag(header: number, v: any) {
+    if (header & MapFlags.HAS_NULL) {
+      return true;
+    }
     if (header & MapFlags.TRACKING_REF) {
-      if (v === null || v === undefined) {
-        this.fory.binaryWriter.uint8(RefFlags.NullFlag);
-        return true;
-      }
       const keyRef = this.fory.referenceResolver.existsWriteObject(v);
       if (keyRef !== undefined) {
-        this.fory.binaryWriter.uint8(RefFlags.RefFlag);
+        this.fory.binaryWriter.int8(RefFlags.RefFlag);
         this.fory.binaryWriter.uint16(keyRef);
         return true;
       } else {
-        this.fory.binaryWriter.uint8(RefFlags.RefValueFlag);
-        return false;
-      }
-    } else if (header & MapFlags.HAS_NULL) {
-      if (v === null || v === undefined) {
-        this.fory.binaryWriter.uint8(RefFlags.NullFlag);
-        return true;
-      } else {
-        this.fory.binaryWriter.uint8(RefFlags.NotNullValueFlag);
+        this.fory.binaryWriter.int8(RefFlags.RefValueFlag);
         return false;
       }
     }
@@ -175,22 +183,36 @@ class MapAnySerializer {
     const mapChunkWriter = new MapChunkWriter(this.fory, this.keySerializer, this.valueSerializer);
     this.fory.binaryWriter.writeVarUint32Small7(value.size);
     for (const [k, v] of value.entries()) {
-      const keySerializer = this.keySerializer !== null ? this.keySerializer : this.fory.classResolver.getSerializerByData(k);
-      const valueSerializer = this.valueSerializer !== null ? this.valueSerializer : this.fory.classResolver.getSerializerByData(v);
+      const keySerializer = this.keySerializer !== null ? this.keySerializer : this.fory.typeResolver.getSerializerByData(k);
+      const valueSerializer = this.valueSerializer !== null ? this.valueSerializer : this.fory.typeResolver.getSerializerByData(v);
 
       const header = mapChunkWriter.next(
-        MapHeadUtil.elementInfo(keySerializer!.getTypeId()!, k == null ? 1 : 0, keySerializer!.needToWriteRef() ? 1 : 0),
-        MapHeadUtil.elementInfo(valueSerializer!.getTypeId()!, v == null ? 1 : 0, valueSerializer!.needToWriteRef() ? 1 : 0)
+        MapHeadUtil.elementInfo(keySerializer?.getTypeId() ?? 0, k == null ? 1 : 0, keySerializer?.needToWriteRef() ? 1 : 0),
+        MapHeadUtil.elementInfo(valueSerializer?.getTypeId() ?? 0, v == null ? 1 : 0, valueSerializer?.needToWriteRef() ? 1 : 0)
       );
-      if (!this.writeFlag(header & 0b00001111, k)) {
-        if (this.keySerializer) {
+      const keyHeader = header & 0b111;
+      const valueHeader = (header >> 3);
+      if (mapChunkWriter.isFirst()) {
+        if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
+          if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+            keySerializer?.writeTypeInfo(null);
+          }
+          if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+            valueSerializer?.writeTypeInfo(null);
+          }
+        }
+      }
+
+      const includeNone = (keyHeader & MapFlags.HAS_NULL) || (valueHeader & MapFlags.HAS_NULL);
+      if (!this.writeFlag(keyHeader, k)) {
+        if (!includeNone) {
           keySerializer!.write(k);
         } else {
           keySerializer!.writeNoRef(k);
         }
       }
-      if (!this.writeFlag(header >> 4, v)) {
-        if (this.valueSerializer) {
+      if (!this.writeFlag(valueHeader, v)) {
+        if (!includeNone) {
           valueSerializer!.write(v);
         } else {
           valueSerializer!.writeNoRef(v);
@@ -201,25 +223,28 @@ class MapAnySerializer {
   }
 
   private readElement(header: number, serializer: Serializer | null) {
-    const declared = header & MapFlags.DECL_ELEMENT_TYPE;
     const includeNone = header & MapFlags.HAS_NULL;
     const trackingRef = header & MapFlags.TRACKING_REF;
 
-    if (!declared) {
-      serializer = AnyHelper.detectSerializer(this.fory);
+    if (includeNone) {
+      return null;
     }
-    if (!trackingRef && !includeNone) {
+    if (!trackingRef) {
+      serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
       return serializer!.read(false);
     }
-    const flag = this.fory.binaryReader.uint8();
+
+    const flag = this.fory.binaryReader.int8();
     switch (flag) {
       case RefFlags.RefValueFlag:
+        serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
         return serializer!.read(true);
       case RefFlags.RefFlag:
         return this.fory.referenceResolver.getReadObject(this.fory.binaryReader.varUInt32());
       case RefFlags.NullFlag:
         return null;
       case RefFlags.NotNullValueFlag:
+        serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
         return serializer!.read(false);
     }
   }
@@ -231,20 +256,28 @@ class MapAnySerializer {
       this.fory.referenceResolver.reference(result);
     }
     while (count > 0) {
-      const header = this.fory.binaryReader.uint16();
+      const header = this.fory.binaryReader.uint8();
       const valueHeader = (header >> 3) & 0b111;
       const keyHeader = header & 0b111;
-      const chunkSize = header >> 8;
-
-      let keySerializer = null;
-      let valueSerializer = null;
-
-      if (keyHeader & MapFlags.DECL_ELEMENT_TYPE) {
-        keySerializer = AnyHelper.detectSerializer(this.fory);
+      let chunkSize = 0;
+      if ((valueHeader & MapFlags.HAS_NULL) || (keyHeader & MapFlags.HAS_NULL)) {
+        chunkSize = 1;
+      } else {
+        chunkSize = this.fory.binaryReader.uint8();
       }
-      if (valueHeader & MapFlags.DECL_ELEMENT_TYPE) {
-        valueSerializer = AnyHelper.detectSerializer(this.fory);
+      let keySerializer = this.keySerializer;
+      let valueSerializer = this.valueSerializer;
+
+      if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
+        if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+          keySerializer = AnyHelper.detectSerializer(this.fory);
+        }
+
+        if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+          valueSerializer = AnyHelper.detectSerializer(this.fory);
+        }
       }
+
       for (let index = 0; index < chunkSize; index++) {
         const key = this.readElement(keyHeader, keySerializer);
         const value = this.readElement(valueHeader, valueSerializer);
@@ -299,58 +332,61 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       for (const [${k}, ${v}] of ${accessor}.entries()) {
         let keyIsNull = ${k} === null || ${k} === undefined;
         let valueIsNull = ${v} === null || ${v} === undefined;
-        if (${lastKeyIsNull} !== keyIsNull || ${lastValueIsNull} !== valueIsNull || ${chunkSize} === 0 || ${chunkSize} === 255) {
+        if (${lastKeyIsNull} !== keyIsNull || ${lastValueIsNull} !== valueIsNull || ${chunkSize} === 0 || ${chunkSize} === 255 || keyIsNull || valueIsNull) {
           if (${chunkSize} > 0) {
-            ${this.builder.writer.setUint8Position(`${chunkSizeOffset} + 1`, chunkSize)};
+            ${this.builder.writer.setUint8Position(`${chunkSizeOffset}`, chunkSize)};
             ${chunkSize} = 0;
           }
-          ${chunkSizeOffset} = ${this.builder.writer.getCursor()}
-          debugger;
-          ${this.builder.writer.uint16(
-              `((${valueHeader} | (valueIsNull ? ${MapFlags.HAS_NULL} : 0)) << 3) | (${keyHeader} | (keyIsNull ? ${MapFlags.HAS_NULL} : 0))`
-            )
+          if (keyIsNull || valueIsNull) {
+            ${this.builder.writer.uint8(
+                `((${valueHeader} | (valueIsNull ? ${MapFlags.HAS_NULL} : 0)) << 3) | (${keyHeader} | (keyIsNull ? ${MapFlags.HAS_NULL} : 0))`
+              )
+            }
+          } else {
+            ${chunkSizeOffset} = ${this.builder.writer.getCursor()} + 1;
+            ${this.builder.writer.uint16(
+                `((${valueHeader} | (valueIsNull ? ${MapFlags.HAS_NULL} : 0)) << 3) | (${keyHeader} | (keyIsNull ? ${MapFlags.HAS_NULL} : 0))`
+              )
+            }
           }
           ${lastKeyIsNull} = keyIsNull;
           ${lastValueIsNull} = valueIsNull;
         }
-        if (keyIsNull) {
-          ${this.builder.writer.uint8(RefFlags.NullFlag)}
-        } else {
+        if (!keyIsNull) {
           ${this.keyGenerator.needToWriteRef()
           ? `
               const ${keyRef} = ${this.builder.referenceResolver.existsWriteObject(v)};
               if (${keyRef} !== undefined) {
-                ${this.builder.writer.uint8(RefFlags.RefFlag)};
+                ${this.builder.writer.int8(RefFlags.RefFlag)};
                 ${this.builder.writer.uint16(keyRef)};
               } else {
-                ${this.builder.writer.uint8(RefFlags.RefValueFlag)};
+                ${this.builder.writer.int8(RefFlags.RefValueFlag)};
                 ${this.keyGenerator.writeEmbed().write(k)}
               }
           `
           : this.keyGenerator.writeEmbed().write(k)}
         }
 
-        if (valueIsNull) {
-          ${this.builder.writer.uint8(RefFlags.NullFlag)}
-        } else {
+        if (!valueIsNull) {
           ${this.valueGenerator.needToWriteRef()
           ? `
               const ${valueRef} = ${this.builder.referenceResolver.existsWriteObject(v)};
               if (${valueRef} !== undefined) {
-                ${this.builder.writer.uint8(RefFlags.RefFlag)};
+                ${this.builder.writer.int8(RefFlags.RefFlag)};
                 ${this.builder.writer.uint16(valueRef)};
               } else {
-                ${this.builder.writer.uint8(RefFlags.RefValueFlag)};
+                ${this.builder.writer.int8(RefFlags.RefValueFlag)};
                 ${this.valueGenerator.writeEmbed().write(v)};
               }
           `
           : this.valueGenerator.writeEmbed().write(v)}
         }
-
-        ${chunkSize}++;
+        if (!keyIsNull && !valueIsNull) {
+          ${chunkSize}++;
+        }
       }
       if (${chunkSize} > 0) {
-        ${this.builder.writer.setUint8Position(`${chunkSizeOffset} + 1`, chunkSize)};
+        ${this.builder.writer.setUint8Position(`${chunkSizeOffset}`, chunkSize)};
       }
     `;
   }
@@ -371,25 +407,29 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
-      debugger;
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}
       }
       while (${count} > 0) {
-        const header = ${this.builder.reader.uint16()};
+        const header = ${this.builder.reader.uint8()};
         const keyHeader = header & 0b111;
         const valueHeader = (header >> 3) & 0b111;
-        const chunkSize = header >> 8;
         const keyIncludeNone = keyHeader & ${MapFlags.HAS_NULL};
         const keyTrackingRef = keyHeader & ${MapFlags.TRACKING_REF};
         const valueIncludeNone = valueHeader & ${MapFlags.HAS_NULL};
         const valueTrackingRef = valueHeader & ${MapFlags.TRACKING_REF};
+        let chunkSize = 1;
+        if (!keyIncludeNone && !valueIncludeNone) {
+          chunkSize = ${this.builder.reader.uint8()};
+        }
         for (let index = 0; index < chunkSize; index++) {
           let key;
           let value;
-          if (keyTrackingRef || keyIncludeNone) {
-            const flag = ${this.builder.reader.uint8()};
+          if (keyIncludeNone) {
+             key = null;
+          } else if (keyTrackingRef) {
+            const flag = ${this.builder.reader.int8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
                 ${this.keyGenerator.read(x => `key = ${x}`, "true")}
@@ -408,8 +448,10 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
               ${this.keyGenerator.read(x => `key = ${x}`, "false")}
           }
           
-          if (valueTrackingRef || valueIncludeNone) {
-            const flag = ${this.builder.reader.uint8()};
+          if (valueIncludeNone) {
+            value = null;
+          } else if (valueTrackingRef) {
+            const flag = ${this.builder.reader.int8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
                 ${this.valueGenerator.read(x => `value = ${x}`, "true")}

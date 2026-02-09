@@ -32,8 +32,8 @@ import org.apache.fory.collection.LongMap;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
@@ -76,7 +76,7 @@ public class UnionSerializer extends Serializer<Union> {
 
   private final BiFunction<Integer, Object, Union> factory;
   private final Map<Integer, Class<?>> caseValueTypes;
-  private final LongMap<ClassInfo> finalCaseClassInfo;
+  private final LongMap<TypeInfo> finalCaseTypeInfo;
   private boolean finalCaseSerializersResolved;
   private final TypeResolver resolver;
 
@@ -88,7 +88,7 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       this.factory = createFactory(cls);
     }
-    finalCaseClassInfo = new LongMap<>();
+    finalCaseTypeInfo = new LongMap<>();
     this.caseValueTypes = resolveCaseValueTypes(cls);
     resolver = fory.getTypeResolver();
   }
@@ -172,12 +172,12 @@ public class UnionSerializer extends Serializer<Union> {
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       // ref value or not-null value
-      ClassInfo declared = getFinalCaseClassInfo(index);
-      ClassInfo readClassInfo = resolver.readClassInfo(buffer, declared);
+      TypeInfo declared = getFinalCaseTypeInfo(index);
+      TypeInfo readTypeInfo = resolver.readTypeInfo(buffer, declared);
       if (declared != null) {
         caseValue = Serializers.read(buffer, declared.getSerializer());
       } else {
-        caseValue = Serializers.read(buffer, readClassInfo.getSerializer());
+        caseValue = Serializers.read(buffer, readTypeInfo.getSerializer());
       }
       refResolver.setReadObject(nextReadRefId, caseValue);
     } else {
@@ -197,25 +197,25 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId, int caseId) {
-    byte internalTypeId = (byte) (typeId & 0xff);
+    byte internalTypeId = (byte) typeId;
     boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
     Serializer serializer;
-    ClassInfo classInfo;
+    TypeInfo typeInfo;
     if (value == null) {
       buffer.writeByte(Fory.NULL_FLAG);
       return;
     }
-    classInfo = getFinalCaseClassInfo(caseId);
-    if (classInfo == null) {
+    typeInfo = getFinalCaseTypeInfo(caseId);
+    if (typeInfo == null) {
       Preconditions.checkArgument(!primitiveArray);
       if (!Types.isUserDefinedType(internalTypeId)) {
-        classInfo = resolver.getClassInfoByTypeId(internalTypeId);
+        typeInfo = resolver.getTypeInfoByTypeId(internalTypeId);
       } else {
-        classInfo = resolver.getClassInfo(value.getClass());
+        typeInfo = resolver.getTypeInfo(value.getClass());
       }
     }
-    Preconditions.checkArgument(classInfo != null);
-    serializer = classInfo.getSerializer();
+    Preconditions.checkArgument(typeInfo != null);
+    serializer = typeInfo.getSerializer();
     RefResolver refResolver = fory.getRefResolver();
     if (serializer != null && serializer.needToWriteRef()) {
       if (refResolver.writeRefOrNull(buffer, value)) {
@@ -225,15 +225,15 @@ public class UnionSerializer extends Serializer<Union> {
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
     if (!Types.isUserDefinedType(internalTypeId)) {
-      buffer.writeVarUint32Small7(typeId);
+      buffer.writeUint8(typeId);
     } else {
-      resolver.writeClassInfo(buffer, classInfo);
+      resolver.writeTypeInfo(buffer, typeInfo);
     }
     writeValue(buffer, value, typeId, serializer);
   }
 
   private void writeValue(MemoryBuffer buffer, Object value, int typeId, Serializer serializer) {
-    int internalTypeId = typeId & 0xff;
+    int internalTypeId = typeId;
     switch (internalTypeId) {
       case Types.BOOL:
         buffer.writeBoolean((Boolean) value);
@@ -294,15 +294,15 @@ public class UnionSerializer extends Serializer<Union> {
     throw new IllegalStateException("Missing serializer for union type id " + typeId);
   }
 
-  private ClassInfo getFinalCaseClassInfo(int caseId) {
+  private TypeInfo getFinalCaseTypeInfo(int caseId) {
     if (!finalCaseSerializersResolved) {
-      resolveFinalCaseClassInfo();
+      resolveFinalCaseTypeInfo();
       finalCaseSerializersResolved = true;
     }
-    return finalCaseClassInfo.get(caseId);
+    return finalCaseTypeInfo.get(caseId);
   }
 
-  private void resolveFinalCaseClassInfo() {
+  private void resolveFinalCaseTypeInfo() {
     for (Map.Entry<Integer, Class<?>> entry : caseValueTypes.entrySet()) {
       Class<?> expectedType = entry.getValue();
       if (!isFinalCaseType(expectedType)) {
@@ -311,8 +311,8 @@ public class UnionSerializer extends Serializer<Union> {
       if (expectedType.isPrimitive()) {
         continue;
       }
-      ClassInfo classInfo = fory.getTypeResolver().getClassInfo(expectedType);
-      finalCaseClassInfo.put(entry.getKey(), classInfo);
+      TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(expectedType);
+      finalCaseTypeInfo.put(entry.getKey(), typeInfo);
     }
   }
 

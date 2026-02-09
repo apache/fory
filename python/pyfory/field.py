@@ -40,6 +40,7 @@ from typing import Any, Callable, Dict, Mapping, Optional
 
 # Key used to store Fory metadata in field.metadata
 FORY_FIELD_METADATA_KEY = "__fory__"
+FORY_OBJECT_METADATA_KEY = "__fory_object__"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,6 +68,38 @@ class ForyFieldMeta:
     def uses_tag_id(self) -> bool:
         """Returns True if this field uses tag ID encoding (id >= 0)."""
         return self.id >= 0
+
+
+@dataclasses.dataclass(frozen=True)
+class ForyObjectMeta:
+    """Fory object metadata stored on dataclass types."""
+
+    evolving: bool = True
+
+
+def dataclass(_cls=None, *, evolving: bool = True, slots: bool = False, **kwargs):
+    """Create a dataclass with Fory-specific metadata."""
+
+    def wrap(cls):
+        if slots:
+            import inspect
+
+            supports_slots = "slots" in inspect.signature(dataclasses.dataclass).parameters
+            if supports_slots:
+                dc = dataclasses.dataclass(cls, slots=True, **kwargs)
+            else:
+                dc = dataclasses.dataclass(cls, **kwargs)
+                from pyfory.type_util import dataslots
+
+                dc = dataslots(dc)
+        else:
+            dc = dataclasses.dataclass(cls, **kwargs)
+        setattr(dc, FORY_OBJECT_METADATA_KEY, ForyObjectMeta(evolving=evolving))
+        return dc
+
+    if _cls is None:
+        return wrap
+    return wrap(_cls)
 
 
 def field(
@@ -106,7 +139,7 @@ def field(
         ref: Whether to enable reference tracking for this field.
             - False (default): No tracking, skip IdentityMap overhead
             - True: Track references (handles circular refs, shared objects)
-            Note: If Fory(ref_tracking=False), all fields use ref=False
+            Note: If Fory(ref=False), all fields use ref=False
             regardless of this setting.
 
         ignore: Whether to ignore this field during serialization.
@@ -184,6 +217,11 @@ def extract_field_meta(dataclass_field: dataclasses.Field) -> Optional[ForyField
     if dataclass_field.metadata is None:
         return None
     return dataclass_field.metadata.get(FORY_FIELD_METADATA_KEY)
+
+
+def extract_object_meta(cls: type) -> Optional[ForyObjectMeta]:
+    """Extract ForyObjectMeta from a dataclass type if present."""
+    return getattr(cls, FORY_OBJECT_METADATA_KEY, None)
 
 
 def validate_field_metas(

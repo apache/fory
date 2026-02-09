@@ -60,7 +60,7 @@ static const std::vector<MetaEncoding> k_type_name_encodings = {
 WriteContext::WriteContext(const Config &config,
                            std::unique_ptr<TypeResolver> type_resolver)
     : buffer_(), config_(&config), type_resolver_(std::move(type_resolver)),
-      current_dyn_depth_(0) {}
+      current_dyn_depth_(0), write_type_info_index_map_(8) {}
 
 WriteContext::~WriteContext() = default;
 
@@ -75,17 +75,51 @@ WriteContext::write_type_meta(const std::type_index &type_id) {
 }
 
 void WriteContext::write_type_meta(const TypeInfo *type_info) {
-  auto it = write_type_info_index_map_.find(type_info);
-  if (it != write_type_info_index_map_.end()) {
+  const uint64_t key =
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(type_info));
+  if (!type_info_index_map_active_) {
+    if (!has_first_type_info_) {
+      has_first_type_info_ = true;
+      first_type_info_ = type_info;
+      buffer_.write_uint8(0); // (index << 1), index=0
+      buffer_.write_bytes(type_info->type_def.data(),
+                          type_info->type_def.size());
+      return;
+    }
+    if (type_info == first_type_info_) {
+      buffer_.write_uint8(1); // (index << 1) | 1, index=0
+      return;
+    }
+    type_info_index_map_active_ = true;
+    write_type_info_index_map_.clear();
+    const uint64_t first_key =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(first_type_info_));
+    write_type_info_index_map_.put(first_key, 0);
+  } else if (type_info == first_type_info_) {
+    buffer_.write_uint8(1); // (index << 1) | 1, index=0
+    return;
+  }
+
+  if (auto *entry = write_type_info_index_map_.find(key)) {
     // Reference to previously written type: (index << 1) | 1, LSB=1
-    buffer_.write_var_uint32(static_cast<uint32_t>((it->second << 1) | 1));
+    uint32_t marker = static_cast<uint32_t>((entry->value << 1) | 1);
+    if (marker < 0x80) {
+      buffer_.write_uint8(static_cast<uint8_t>(marker));
+    } else {
+      buffer_.write_var_uint32(marker);
+    }
     return;
   }
 
   // New type: index << 1, LSB=0, followed by TypeDef bytes inline
-  size_t index = write_type_info_index_map_.size();
-  buffer_.write_var_uint32(static_cast<uint32_t>(index << 1));
-  write_type_info_index_map_[type_info] = index;
+  uint32_t index = static_cast<uint32_t>(write_type_info_index_map_.size());
+  uint32_t marker = static_cast<uint32_t>(index << 1);
+  if (marker < 0x80) {
+    buffer_.write_uint8(static_cast<uint8_t>(marker));
+  } else {
+    buffer_.write_var_uint32(marker);
+  }
+  write_type_info_index_map_.put(key, index);
 
   // write TypeDef bytes inline
   buffer_.write_bytes(type_info->type_def.data(), type_info->type_def.size());
@@ -101,7 +135,7 @@ static void write_encoded_meta_string(Buffer &buffer,
   if (encoded_len > k_small_string_threshold) {
     // For large strings, write pre-computed hash
     buffer.write_int64(encoded.hash);
-  } else {
+  } else if (encoded_len > 0) {
     // For small strings, write encoding byte
     buffer.write_int8(static_cast<int8_t>(encoded.encoding));
   }
@@ -112,14 +146,16 @@ static void write_encoded_meta_string(Buffer &buffer,
 }
 
 Result<void, Error>
-WriteContext::write_enum_typeinfo(const std::type_index &type) {
+WriteContext::write_enum_type_info(const std::type_index &type) {
   FORY_TRY(type_info, type_resolver_->get_type_info(type));
   uint32_t type_id = type_info->type_id;
-  uint32_t type_id_low = type_id & 0xff;
-
-  buffer_.write_var_uint32(type_id);
-
-  if (type_id_low == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+  buffer_.write_uint8(static_cast<uint8_t>(type_id));
+  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
+    if (type_info->user_type_id == kInvalidUserTypeId) {
+      return Unexpected(Error::type_error("User type id is required for enum"));
+    }
+    buffer_.write_var_uint32(type_info->user_type_id);
+  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(type));
@@ -140,17 +176,20 @@ WriteContext::write_enum_typeinfo(const std::type_index &type) {
 }
 
 Result<void, Error>
-WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
+WriteContext::write_enum_type_info(const TypeInfo *type_info) {
   if (!type_info) {
     return Unexpected(Error::type_error("Enum type not registered"));
   }
 
   uint32_t type_id = type_info->type_id;
-  uint32_t type_id_low = type_id & 0xff;
 
-  buffer_.write_var_uint32(type_id);
-
-  if (type_id_low == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+  buffer_.write_uint8(static_cast<uint8_t>(type_id));
+  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
+    if (type_info->user_type_id == kInvalidUserTypeId) {
+      return Unexpected(Error::type_error("User type id is required for enum"));
+    }
+    buffer_.write_var_uint32(type_info->user_type_id);
+  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       write_type_meta(type_info);
@@ -171,11 +210,12 @@ WriteContext::write_enum_typeinfo(const TypeInfo *type_info) {
 }
 
 Result<const TypeInfo *, Error>
-WriteContext::write_any_typeinfo(uint32_t fory_type_id,
-                                 const std::type_index &concrete_type_id) {
+WriteContext::write_any_type_info(uint32_t fory_type_id,
+                                  const std::type_index &concrete_type_id) {
   // Check if it's an internal type
   if (is_internal_type(fory_type_id)) {
-    buffer_.write_var_uint32(fory_type_id);
+    // write type_id
+    buffer_.write_uint8(static_cast<uint8_t>(fory_type_id));
     FORY_TRY(type_info, type_resolver_->get_type_info_by_id(fory_type_id));
     return type_info;
   }
@@ -185,21 +225,25 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
   uint32_t type_id = type_info->type_id;
 
   // write type_id
-  buffer_.write_var_uint32(type_id);
+  buffer_.write_uint8(static_cast<uint8_t>(type_id));
 
   // Handle different type categories based on low byte
-  uint32_t type_id_low = type_id & 0xff;
-  switch (type_id_low) {
-  case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
-  case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    buffer_.write_var_uint32(type_info->user_type_id);
+    break;
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
     // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
     break;
-  }
-  case static_cast<uint32_t>(TypeId::NAMED_ENUM):
-  case static_cast<uint32_t>(TypeId::NAMED_EXT):
-  case static_cast<uint32_t>(TypeId::NAMED_STRUCT):
-  case static_cast<uint32_t>(TypeId::NAMED_UNION): {
+  case TypeId::NAMED_ENUM:
+  case TypeId::NAMED_EXT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_UNION:
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
@@ -214,7 +258,6 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
       }
     }
     break;
-  }
   default:
     // For other types, just writing type_id is sufficient
     break;
@@ -224,24 +267,72 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
 }
 
 Result<void, Error>
+WriteContext::write_any_type_info(const TypeInfo *type_info) {
+  if (FORY_PREDICT_FALSE(type_info == nullptr)) {
+    return Unexpected(Error::invalid("TypeInfo is null"));
+  }
+  uint32_t type_id = type_info->type_id;
+  buffer_.write_uint8(static_cast<uint8_t>(type_id));
+
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    buffer_.write_var_uint32(type_info->user_type_id);
+    break;
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+    // write type meta inline using streaming protocol
+    write_type_meta(type_info);
+    break;
+  case TypeId::NAMED_ENUM:
+  case TypeId::NAMED_EXT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_UNION:
+    if (config_->compatible) {
+      // write type meta inline using streaming protocol
+      write_type_meta(type_info);
+    } else {
+      // write pre-encoded namespace and type_name
+      if (type_info->encoded_namespace && type_info->encoded_type_name) {
+        write_encoded_meta_string(buffer_, *type_info->encoded_namespace);
+        write_encoded_meta_string(buffer_, *type_info->encoded_type_name);
+      } else {
+        return Unexpected(
+            Error::invalid("Encoded meta strings not initialized for type"));
+      }
+    }
+    break;
+  default:
+    // For other types, just writing type_id is sufficient
+    break;
+  }
+
+  return Result<void, Error>();
+}
+
+Result<void, Error>
 WriteContext::write_struct_type_info(const std::type_index &type_id) {
   // get type info with single lookup
   FORY_TRY(type_info, type_resolver_->get_type_info(type_id));
   uint32_t fory_type_id = type_info->type_id;
 
   // write type_id
-  buffer_.write_var_uint32(fory_type_id);
-
-  // Handle different struct type categories based on low byte
-  uint32_t type_id_low = fory_type_id & 0xff;
-  switch (type_id_low) {
-  case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
-  case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
+  buffer_.write_uint8(static_cast<uint8_t>(fory_type_id));
+  switch (static_cast<TypeId>(fory_type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    buffer_.write_var_uint32(type_info->user_type_id);
+    break;
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
     // write type meta inline using streaming protocol
     FORY_RETURN_NOT_OK(write_type_meta(type_id));
     break;
-  }
-  case static_cast<uint32_t>(TypeId::NAMED_STRUCT): {
+  case TypeId::NAMED_STRUCT:
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(type_id));
@@ -256,7 +347,6 @@ WriteContext::write_struct_type_info(const std::type_index &type_id) {
       }
     }
     break;
-  }
   default:
     // STRUCT type - just writing type_id is sufficient
     break;
@@ -270,18 +360,20 @@ WriteContext::write_struct_type_info(const TypeInfo *type_info) {
   uint32_t fory_type_id = type_info->type_id;
 
   // write type_id
-  buffer_.write_var_uint32(fory_type_id);
-
-  // Handle different struct type categories based on low byte
-  uint32_t type_id_low = fory_type_id & 0xff;
-  switch (type_id_low) {
-  case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
-  case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
+  buffer_.write_uint8(static_cast<uint8_t>(fory_type_id));
+  switch (static_cast<TypeId>(fory_type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION:
+    buffer_.write_var_uint32(type_info->user_type_id);
+    break;
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
     // write type meta inline using streaming protocol
     write_type_meta(type_info);
     break;
-  }
-  case static_cast<uint32_t>(TypeId::NAMED_STRUCT): {
+  case TypeId::NAMED_STRUCT:
     if (config_->compatible) {
       // write type meta inline using streaming protocol
       write_type_meta(type_info);
@@ -296,7 +388,6 @@ WriteContext::write_struct_type_info(const TypeInfo *type_info) {
       }
     }
     break;
-  }
   default:
     // STRUCT type - just writing type_id is sufficient
     break;
@@ -311,6 +402,9 @@ void WriteContext::reset() {
   ref_writer_.reset();
   // Clear meta map for streaming TypeMeta (size is used as counter)
   write_type_info_index_map_.clear();
+  first_type_info_ = nullptr;
+  has_first_type_info_ = false;
+  type_info_index_map_active_ = false;
   current_dyn_depth_ = 0;
   // reset buffer indices for reuse - no memory operations needed
   buffer_.writer_index(0);
@@ -349,14 +443,31 @@ ReadContext::read_enum_type_info(const std::type_index &type,
 
 Result<const TypeInfo *, Error>
 ReadContext::read_enum_type_info(uint32_t base_type_id) {
-  FORY_TRY(type_info, read_any_typeinfo());
-  uint32_t type_id_low = type_info->type_id & 0xff;
-  // Accept both ENUM and NAMED_ENUM as compatible types
-  if (type_id_low != static_cast<uint32_t>(TypeId::ENUM) &&
-      type_id_low != static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
-    return Unexpected(Error::type_mismatch(type_info->type_id, base_type_id));
+  Error error;
+  uint32_t type_id = buffer_->read_uint8(error);
+  if (type_id == static_cast<uint32_t>(TypeId::ENUM)) {
+    uint32_t user_type_id = buffer_->read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    FORY_TRY(type_info,
+             type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
+    return type_info;
+  } else if (type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+    if (config_->compatible) {
+      // Read type meta inline using streaming protocol
+      return read_type_meta();
+    }
+    FORY_TRY(namespace_str,
+             meta_string_table_.read_string(*buffer_, k_namespace_decoder));
+    FORY_TRY(type_name,
+             meta_string_table_.read_string(*buffer_, k_type_name_decoder));
+    FORY_TRY(type_info,
+             type_resolver_->get_type_info_by_name(namespace_str, type_name));
+    return type_info;
   }
-  return type_info;
+
+  return Unexpected(Error::type_mismatch(type_id, base_type_id));
 }
 
 // Maximum number of parsed type defs to cache (avoid OOM from malicious input)
@@ -386,12 +497,50 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   }
 
   // Check if we already parsed this type meta (cache lookup by header)
+  if (has_last_meta_header_ && meta_header == last_meta_header_) {
+    // Fast path: same header as last parsed
+    const TypeInfo *cached = last_meta_type_info_;
+    reading_type_infos_.push_back(cached);
+    if (cached && !cached->type_def.empty()) {
+      const size_t type_def_size = cached->type_def.size();
+      if (type_def_size >= sizeof(int64_t) &&
+          type_def_size <= std::numeric_limits<uint32_t>::max()) {
+        Error skip_error;
+        buffer_->skip(static_cast<uint32_t>(type_def_size - sizeof(int64_t)),
+                      skip_error);
+        if (FORY_PREDICT_FALSE(!skip_error.ok())) {
+          return Unexpected(std::move(skip_error));
+        }
+        return cached;
+      }
+    }
+    FORY_RETURN_NOT_OK(TypeMeta::skip_bytes(*buffer_, meta_header));
+    return cached;
+  }
+
   auto cache_it = parsed_type_infos_.find(meta_header);
   if (cache_it != parsed_type_infos_.end()) {
     // Found in cache - reuse and skip the bytes
-    reading_type_infos_.push_back(cache_it->second);
+    const TypeInfo *cached = cache_it->second;
+    reading_type_infos_.push_back(cached);
+    has_last_meta_header_ = true;
+    last_meta_header_ = meta_header;
+    last_meta_type_info_ = cached;
+    if (cached && !cached->type_def.empty()) {
+      const size_t type_def_size = cached->type_def.size();
+      if (type_def_size >= sizeof(int64_t) &&
+          type_def_size <= std::numeric_limits<uint32_t>::max()) {
+        Error skip_error;
+        buffer_->skip(static_cast<uint32_t>(type_def_size - sizeof(int64_t)),
+                      skip_error);
+        if (FORY_PREDICT_FALSE(!skip_error.ok())) {
+          return Unexpected(std::move(skip_error));
+        }
+        return cached;
+      }
+    }
     FORY_RETURN_NOT_OK(TypeMeta::skip_bytes(*buffer_, meta_header));
-    return cache_it->second;
+    return cached;
   }
 
   // Not in cache - parse the TypeMeta
@@ -407,9 +556,17 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
       local_type_info = result.value();
     }
   } else {
-    auto result = type_resolver_->get_type_info_by_id(parsed_meta->type_id);
-    if (result.ok()) {
-      local_type_info = result.value();
+    if (parsed_meta->user_type_id != kInvalidUserTypeId) {
+      auto result = type_resolver_->get_user_type_info_by_id(
+          parsed_meta->type_id, parsed_meta->user_type_id);
+      if (result.ok()) {
+        local_type_info = result.value();
+      }
+    } else {
+      auto result = type_resolver_->get_type_info_by_id(parsed_meta->type_id);
+      if (result.ok()) {
+        local_type_info = result.value();
+      }
     }
   }
 
@@ -423,6 +580,7 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
                                  parsed_meta->field_infos);
     }
     type_info->type_id = local_type_info->type_id;
+    type_info->user_type_id = local_type_info->user_type_id;
     type_info->type_meta = std::move(parsed_meta);
     type_info->type_def = local_type_info->type_def;
     // CRITICAL: copy the harness from the registered type_info
@@ -434,6 +592,7 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   } else {
     // No local type - create stub TypeInfo with parsed meta
     type_info->type_id = parsed_meta->type_id;
+    type_info->user_type_id = parsed_meta->user_type_id;
     type_info->type_meta = std::move(parsed_meta);
   }
 
@@ -441,11 +600,16 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   const TypeInfo *raw_ptr = type_info.get();
 
   // Store in primary storage
-  owned_reading_type_infos_.push_back(std::move(type_info));
-
-  // Cache the parsed TypeInfo (with size limit to prevent OOM)
   if (parsed_type_infos_.size() < k_max_parsed_num_type_defs) {
+    cached_type_infos_.push_back(std::move(type_info));
+    raw_ptr = cached_type_infos_.back().get();
     parsed_type_infos_[meta_header] = raw_ptr;
+    has_last_meta_header_ = true;
+    last_meta_header_ = meta_header;
+    last_meta_type_info_ = raw_ptr;
+  } else {
+    owned_reading_type_infos_.push_back(std::move(type_info));
+    raw_ptr = owned_reading_type_infos_.back().get();
   }
 
   reading_type_infos_.push_back(raw_ptr);
@@ -462,25 +626,33 @@ ReadContext::get_type_info_by_index(size_t index) const {
   return reading_type_infos_[index];
 }
 
-Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
+Result<const TypeInfo *, Error> ReadContext::read_any_type_info() {
   Error error;
-  uint32_t type_id = buffer_->read_var_uint32(error);
+  uint32_t type_id = buffer_->read_uint8(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
-  uint32_t type_id_low = type_id & 0xff;
-
-  // Use streaming protocol for type meta
-  switch (type_id_low) {
-  case static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT):
-  case static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT): {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::STRUCT:
+  case TypeId::EXT:
+  case TypeId::TYPED_UNION: {
+    uint32_t user_type_id = buffer_->read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    FORY_TRY(type_info,
+             type_resolver_->get_user_type_info_by_id(type_id, user_type_id));
+    return type_info;
+  }
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
     // Read type meta inline using streaming protocol
     return read_type_meta();
-  }
-  case static_cast<uint32_t>(TypeId::NAMED_ENUM):
-  case static_cast<uint32_t>(TypeId::NAMED_EXT):
-  case static_cast<uint32_t>(TypeId::NAMED_STRUCT):
-  case static_cast<uint32_t>(TypeId::NAMED_UNION): {
+  case TypeId::NAMED_ENUM:
+  case TypeId::NAMED_EXT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_UNION: {
     if (config_->compatible) {
       // Read type meta inline using streaming protocol
       return read_type_meta();
@@ -501,8 +673,8 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
   }
 }
 
-const TypeInfo *ReadContext::read_any_typeinfo(Error &error) {
-  auto result = read_any_typeinfo();
+const TypeInfo *ReadContext::read_any_type_info(Error &error) {
+  auto result = read_any_type_info();
   if (!result.ok()) {
     error = std::move(result).error();
     return nullptr;
@@ -515,7 +687,6 @@ void ReadContext::reset() {
   error_ = Error();
   ref_reader_.reset();
   reading_type_infos_.clear();
-  parsed_type_infos_.clear();
   owned_reading_type_infos_.clear();
   current_dyn_depth_ = 0;
   meta_string_table_.reset();

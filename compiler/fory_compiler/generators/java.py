@@ -442,6 +442,11 @@ class JavaGenerator(BaseGenerator):
             lines.append("")
 
         # Class declaration
+        comment = self.format_type_id_comment(message, "//")
+        if comment:
+            lines.append(comment)
+        if not self.get_effective_evolving(message):
+            lines.append("@ForyObject(evolving = false)")
         lines.append(f"public class {message.name} {{")
 
         # Generate nested enums as static inner classes
@@ -484,6 +489,10 @@ class JavaGenerator(BaseGenerator):
 
         # toBytes/fromBytes
         for line in self.generate_bytes_methods(message.name):
+            lines.append(f"    {line}")
+
+        # toString method
+        for line in self.generate_tostring_method(message):
             lines.append(f"    {line}")
 
         # equals method
@@ -584,6 +593,9 @@ class JavaGenerator(BaseGenerator):
         for field in message.fields:
             self.collect_field_imports(field, imports)
 
+        if not self.get_effective_evolving(message):
+            imports.add("org.apache.fory.annotation.ForyObject")
+
         # Add imports for equals/hashCode
         imports.add("java.util.Objects")
         if self.has_array_field_recursive(message):
@@ -646,6 +658,9 @@ class JavaGenerator(BaseGenerator):
         class_prefix = "public static final class" if nested else "public final class"
         case_enum = f"{union.name}Case"
 
+        comment = self.format_type_id_comment(union, f"{ind}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{ind}{class_prefix} {union.name} extends Union {{")
         lines.append(f"{ind}    public enum {case_enum} {{")
 
@@ -882,15 +897,15 @@ class JavaGenerator(BaseGenerator):
             if isinstance(type_def, Enum):
                 if type_def.type_id is None:
                     return "Types.NAMED_ENUM"
-                return f"({type_def.type_id} << 8) | Types.ENUM"
+                return "Types.ENUM"
             if isinstance(type_def, Union):
                 if type_def.type_id is None:
                     return "Types.NAMED_UNION"
-                return f"({type_def.type_id} << 8) | Types.UNION"
+                return "Types.UNION"
             if isinstance(type_def, Message):
                 if type_def.type_id is None:
                     return "Types.NAMED_STRUCT"
-                return f"({type_def.type_id} << 8) | Types.STRUCT"
+                return "Types.STRUCT"
         return "Types.UNKNOWN"
 
     def resolve_named_type(
@@ -941,6 +956,10 @@ class JavaGenerator(BaseGenerator):
             "char",
         }
 
+    def java_string_literal(self, value: str) -> str:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
     def generate_nested_message(
         self,
         message: Message,
@@ -952,6 +971,11 @@ class JavaGenerator(BaseGenerator):
         lineage = (parent_stack or []) + [message]
 
         # Class declaration
+        comment = self.format_type_id_comment(message, "    " * indent + "//")
+        if comment:
+            lines.append(comment)
+        if not self.get_effective_evolving(message):
+            lines.append("@ForyObject(evolving = false)")
         lines.append(f"public static class {message.name} {{")
 
         # Generate nested enums
@@ -999,6 +1023,10 @@ class JavaGenerator(BaseGenerator):
 
         # toBytes/fromBytes
         for line in self.generate_bytes_methods(message.name):
+            lines.append(f"    {line}")
+
+        # toString method
+        for line in self.generate_tostring_method(message):
             lines.append(f"    {line}")
 
         # equals method
@@ -1349,6 +1377,66 @@ class JavaGenerator(BaseGenerator):
                 )
         return False
 
+    def field_type_has_any(self, field_type: FieldType) -> bool:
+        """Return True if field type or its children is any."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind == PrimitiveKind.ANY
+        if isinstance(field_type, ListType):
+            return self.field_type_has_any(field_type.element_type)
+        if isinstance(field_type, MapType):
+            return self.field_type_has_any(
+                field_type.key_type
+            ) or self.field_type_has_any(field_type.value_type)
+        return False
+
+    def field_has_ref(self, field: Field) -> bool:
+        if field.ref:
+            return True
+        if isinstance(field.field_type, ListType):
+            return field.element_ref
+        if isinstance(field.field_type, MapType):
+            return field.field_type.value_ref
+        return False
+
+    def field_needs_safe_repr(self, field: Field) -> bool:
+        return self.field_has_ref(field) or self.field_type_has_any(field.field_type)
+
+    def message_needs_safe_repr(self, message: Message) -> bool:
+        return any(self.field_needs_safe_repr(field) for field in message.fields)
+
+    def generate_tostring_method(self, message: Message) -> List[str]:
+        """Generate toString() method for a message."""
+        lines: List[str] = []
+        lines.append("@Override")
+        lines.append("public String toString() {")
+        if not message.fields:
+            lines.append(f'    return "{message.name}()";')
+            lines.append("}")
+            lines.append("")
+            return lines
+        lines.append("    StringBuilder sb = new StringBuilder();")
+        lines.append(f'    sb.append("{message.name}(");')
+        for i, field in enumerate(message.fields):
+            field_name = self.to_camel_case(field.name)
+            if i > 0:
+                lines.append('    sb.append(", ");')
+            lines.append(f'    sb.append("{field_name}=");')
+            if self.field_needs_safe_repr(field):
+                placeholder = f"{self.format_idl_type(field.field_type)}(...)"
+                placeholder_literal = self.java_string_literal(placeholder)
+                lines.append(
+                    f'    sb.append({field_name} == null ? "null" : {placeholder_literal});'
+                )
+            elif self.is_primitive_array_field(field):
+                lines.append(f"    sb.append(Arrays.toString({field_name}));")
+            else:
+                lines.append(f"    sb.append({field_name});")
+        lines.append('    sb.append(")");')
+        lines.append("    return sb.toString();")
+        lines.append("}")
+        lines.append("")
+        return lines
+
     def generate_equals_method(self, message: Message) -> List[str]:
         """Generate equals() method for a message."""
         lines = []
@@ -1520,6 +1608,9 @@ class JavaGenerator(BaseGenerator):
             m for m in self.schema.messages if not self.is_imported_type(m)
         ]
         lines.append("    public static void register(Fory fory) {")
+        lines.append(
+            "        org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();"
+        )
 
         # Register enums (top-level)
         for enum in local_enums:
@@ -1554,13 +1645,15 @@ class JavaGenerator(BaseGenerator):
         class_ref = f"{parent_path}.{enum.name}" if parent_path else enum.name
         type_name = class_ref if parent_path else enum.name
 
-        if enum.type_id is not None:
-            lines.append(f"        fory.register({class_ref}.class, {enum.type_id});")
+        if self.should_register_by_id(enum):
+            lines.append(
+                f"        resolver.register({class_ref}.class, {enum.type_id}L);"
+            )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
             lines.append(
-                f'        fory.register({class_ref}.class, "{ns}", "{type_name}");'
+                f'        resolver.register({class_ref}.class, "{ns}", "{type_name}");'
             )
 
     def generate_message_registration(
@@ -1571,15 +1664,15 @@ class JavaGenerator(BaseGenerator):
         class_ref = f"{parent_path}.{message.name}" if parent_path else message.name
         type_name = class_ref if parent_path else message.name
 
-        if message.type_id is not None:
+        if self.should_register_by_id(message):
             lines.append(
-                f"        fory.register({class_ref}.class, {message.type_id});"
+                f"        resolver.register({class_ref}.class, {message.type_id}L);"
             )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
             lines.append(
-                f'        fory.register({class_ref}.class, "{ns}", "{type_name}");'
+                f'        resolver.register({class_ref}.class, "{ns}", "{type_name}");'
             )
 
         # Register nested enums
@@ -1604,14 +1697,14 @@ class JavaGenerator(BaseGenerator):
             f"new org.apache.fory.serializer.UnionSerializer(fory, {class_ref}.class)"
         )
 
-        if union.type_id is not None:
+        if self.should_register_by_id(union):
             lines.append(
-                f"        fory.registerUnion({class_ref}.class, {union.type_id}, {serializer_ref});"
+                f"        resolver.registerUnion({class_ref}.class, {union.type_id}L, {serializer_ref});"
             )
         else:
             ns = self.schema.package or "default"
             if parent_path:
                 ns = f"{ns}.{parent_path}"
             lines.append(
-                f'        fory.registerUnion({class_ref}.class, "{ns}", "{type_name}", {serializer_ref});'
+                f'        resolver.registerUnion({class_ref}.class, "{ns}", "{type_name}", {serializer_ref});'
             )

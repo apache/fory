@@ -10,11 +10,14 @@ This directory contains benchmarks comparing [Apache Fory](https://github.com/ap
 
 ## Data Types Benchmarked
 
-| Data Type     | Description                                      |
-| ------------- | ------------------------------------------------ |
-| NumericStruct | Simple struct with 8 int32 fields                |
-| Sample        | Complex struct with primitives and 7 array types |
-| MediaContent  | Nested objects with strings, enums, and lists    |
+| Data Type        | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| NumericStruct    | Simple struct with 8 int32 fields                |
+| Sample           | Complex struct with primitives and 7 array types |
+| MediaContent     | Nested objects with strings, enums, and lists    |
+| StructList       | List of NumericStruct (20 elements)              |
+| SampleList       | List of Sample (20 elements)                     |
+| MediaContentList | List of MediaContent (20 elements)               |
 
 The benchmark data matches the C++ benchmark for cross-language comparison.
 
@@ -47,6 +50,9 @@ apt-get install protobuf-compiler
 ./run.sh --data struct
 ./run.sh --data sample
 ./run.sh --data mediacontent
+./run.sh --data structlist
+./run.sh --data samplelist
+./run.sh --data mediacontentlist
 
 # Run specific serializer
 ./run.sh --serializer fory
@@ -87,16 +93,37 @@ go test -bench=BenchmarkFory_Struct -benchmem
 
 Example results on Apple M1 Pro:
 
-| Data Type    | Operation   | Fory (ops/s) | Protobuf (ops/s) | Msgpack (ops/s) | Fory vs PB | Fory vs MP |
-| ------------ | ----------- | ------------ | ---------------- | --------------- | ---------- | ---------- |
-| Struct       | Serialize   | 23.52M       | 10.83M           | 5.19M           | 2.17x      | 4.54x      |
-| Struct       | Deserialize | 15.01M       | 11.97M           | 3.28M           | 1.25x      | 4.58x      |
-| Sample       | Serialize   | 8.26M        | 3.01M            | 750K            | 2.75x      | 11.01x     |
-| Sample       | Deserialize | 4.52M        | 2.51M            | 387K            | 1.80x      | 11.70x     |
-| Mediacontent | Serialize   | 4.93M        | 2.30M            | 1.17M           | 2.14x      | 4.21x      |
-| Mediacontent | Deserialize | 2.74M        | 1.87M            | 751K            | 1.46x      | 3.65x      |
+<p align="center">
+<img src="../../docs/benchmarks/go/benchmark_combined.png" width="95%">
+</p>
 
-_Note: Results vary by hardware. Run benchmarks on your own system for accurate comparisons._
+| Data Type        | Operation   | Fory (ops/s) | Protobuf (ops/s) | Msgpack (ops/s) | Fory vs PB | Fory vs MP |
+| ---------------- | ----------- | ------------ | ---------------- | --------------- | ---------- | ---------- |
+| Struct           | Serialize   | 15.16M       | 10.23M           | 5.41M           | 1.48x      | 2.80x      |
+| Struct           | Deserialize | 12.10M       | 11.01M           | 3.23M           | 1.10x      | 3.75x      |
+| Structlist       | Serialize   | 1.58M        | 561K             | 299K            | 2.82x      | 5.28x      |
+| Structlist       | Deserialize | 1.10M        | 529K             | 175K            | 2.09x      | 6.30x      |
+| Sample           | Serialize   | 7.28M        | 2.72M            | 670K            | 2.68x      | 10.87x     |
+| Sample           | Deserialize | 3.79M        | 2.37M            | 376K            | 1.60x      | 10.09x     |
+| Samplelist       | Serialize   | 510K         | 141K             | 38K             | 3.61x      | 13.34x     |
+| Samplelist       | Deserialize | 236K         | 107K             | 19K             | 2.20x      | 12.66x     |
+| Mediacontent     | Serialize   | 3.72M        | 2.12M            | 1.29M           | 1.75x      | 2.88x      |
+| Mediacontent     | Deserialize | 2.34M        | 1.81M            | 698K            | 1.30x      | 3.35x      |
+| Mediacontentlist | Serialize   | 268K         | 110K             | 72K             | 2.44x      | 3.72x      |
+| Mediacontentlist | Deserialize | 138K         | 87K              | 36K             | 1.58x      | 3.86x      |
+
+_Note: Results vary by hardware. Run benchmarks on your own system for accurate comparisons. List benchmarks are included in the generated report._
+
+## Serialized Data Sizes (bytes)
+
+| Data Type        | Fory | Protobuf | Msgpack |
+| ---------------- | ---- | -------- | ------- |
+| Struct           | 58   | 61       | 57      |
+| Sample           | 446  | 375      | 524     |
+| MediaContent     | 342  | 301      | 400     |
+| StructList       | 560  | 1260     | 1146    |
+| SampleList       | 7600 | 7560     | 10486   |
+| MediaContentList | 5776 | 6080     | 8006    |
 
 ## Benchmark Methodology
 

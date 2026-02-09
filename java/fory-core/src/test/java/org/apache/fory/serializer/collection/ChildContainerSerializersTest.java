@@ -252,7 +252,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
     Fory fory =
         builder()
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withDeserializeNonexistentClass(true)
+            .withDeserializeUnknownClass(true)
             .withMetaShare(true)
             .withScopedMetaShare(false)
             .withCodegen(enableCodegen)

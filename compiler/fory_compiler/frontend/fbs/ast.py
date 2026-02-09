@@ -110,6 +110,29 @@ class FbsStruct:
 
 
 @dataclass
+class FbsRpcMethod:
+    """An RPC method declaration."""
+
+    name: str
+    request_type: str
+    response_type: str
+    attributes: Dict[str, object] = field(default_factory=dict)
+    line: int = 0
+    column: int = 0
+
+
+@dataclass
+class FbsService:
+    """A FlatBuffers service declaration."""
+
+    name: str
+    methods: List[FbsRpcMethod] = field(default_factory=list)
+    attributes: Dict[str, object] = field(default_factory=dict)
+    line: int = 0
+    column: int = 0
+
+
+@dataclass
 class FbsSchema:
     """The root node representing a FlatBuffers schema."""
 
@@ -120,5 +143,6 @@ class FbsSchema:
     unions: List[FbsUnion] = field(default_factory=list)
     tables: List[FbsTable] = field(default_factory=list)
     structs: List[FbsStruct] = field(default_factory=list)
+    services: List[FbsService] = field(default_factory=list)
     root_type: Optional[str] = None
     source_file: Optional[str] = None

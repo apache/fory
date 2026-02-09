@@ -24,42 +24,67 @@ use std::collections::HashMap;
 // Fory models
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyLogEntry {
+    #[fory(id = 0)]
     pub id: String,
+    #[fory(id = 1)]
     pub level: i32, // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=FATAL
+    #[fory(id = 2)]
     pub message: String,
+    #[fory(id = 3)]
     pub service: String,
+    #[fory(id = 4)]
     pub timestamp: NaiveDateTime,
+    #[fory(id = 5)]
     pub context: HashMap<String, String>,
+    #[fory(id = 6)]
     pub tags: Vec<String>,
+    #[fory(id = 7)]
     pub duration_ms: f64,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyUserProfile {
+    #[fory(id = 0)]
     pub user_id: String,
+    #[fory(id = 1)]
     pub username: String,
+    #[fory(id = 2)]
     pub email: String,
+    #[fory(id = 3)]
     pub preferences: HashMap<String, String>,
+    #[fory(id = 4)]
     pub permissions: Vec<String>,
+    #[fory(id = 5)]
     pub last_login: NaiveDateTime,
+    #[fory(id = 6)]
     pub is_active: bool,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyAPIMetrics {
+    #[fory(id = 0)]
     pub endpoint: String,
+    #[fory(id = 1)]
     pub request_count: i64,
+    #[fory(id = 2)]
     pub avg_response_time: f64,
+    #[fory(id = 3)]
     pub error_count: i64,
+    #[fory(id = 4)]
     pub status_codes: HashMap<String, i64>,
+    #[fory(id = 5)]
     pub measured_at: NaiveDateTime,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SystemData {
+    #[fory(id = 0)]
     pub logs: Vec<ForyLogEntry>,
+    #[fory(id = 1)]
     pub users: Vec<ForyUserProfile>,
+    #[fory(id = 2)]
     pub metrics: Vec<ForyAPIMetrics>,
+    #[fory(id = 3)]
     pub system_info: HashMap<String, String>,
 }
 

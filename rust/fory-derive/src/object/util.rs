@@ -507,12 +507,11 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
             fory_core::meta::FieldType::new(
                 fory_core::types::TypeId::LIST as u32,
                 true,
-                vec![fory_core::meta::FieldType {
-                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                    nullable: true,
-                    ref_tracking: false,
-                    generics: vec![],
-                }]
+                vec![fory_core::meta::FieldType::new(
+                    fory_core::types::TypeId::UNKNOWN as u32,
+                    true,
+                    vec![]
+                )]
             )
         };
     }
@@ -576,12 +575,11 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     fory_core::meta::FieldType::new(
                         fory_core::types::TypeId::LIST as u32,
                         true,
-                        vec![fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                            nullable: true,
-                            ref_tracking: false,
-                            generics: vec![],
-                        }]
+                        vec![fory_core::meta::FieldType::new(
+                            fory_core::types::TypeId::UNKNOWN as u32,
+                            true,
+                            vec![]
+                        )]
                     )
                 };
             }
@@ -595,7 +593,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     };
 
     // If Rc or Arc, unwrap to inner type - these are reference wrappers
-    // that don't add type info to the field type (handled by ref_tracking flag)
+    // that don't add type info to the field type (handled by track_ref flag)
     let base_node = if base_node.name == "Rc" || base_node.name == "Arc" {
         if let Some(inner) = base_node.generics.first() {
             inner
@@ -633,18 +631,14 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
         ts
     } else {
         quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)?
+            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)? as u32
         }
     };
 
     quote! {
         {
             let mut type_id = #get_type_id;
-            let internal_type_id = type_id & 0xff;
-            if internal_type_id == fory_core::types::TypeId::TYPED_UNION as u32
-                || internal_type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
-                type_id = fory_core::types::TypeId::UNION as u32;
-            }
+            let mut user_type_id = u32::MAX;
             let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
             // For tuples and sets, if no generic info is available, add UNKNOWN element
             // This handles type aliases to tuples where we can't detect the tuple at macro time
@@ -657,15 +651,32 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     vec![]
                 ));
             }
-            let is_custom = !fory_core::types::is_internal_type(type_id & 0xff);
+            let is_custom = !fory_core::types::is_internal_type(type_id);
             if is_custom {
+                let type_info = <#ty as fory_core::serializer::Serializer>::fory_get_type_info(type_resolver)?;
+                type_id = type_info.get_type_id() as u32;
+                user_type_id = type_info.get_user_type_id();
+                if type_id == fory_core::types::TypeId::TYPED_UNION as u32
+                    || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
+                    type_id = fory_core::types::TypeId::UNION as u32;
+                    user_type_id = u32::MAX;
+                }
                 if type_resolver.is_xlang() && generics.len() > 0 {
                     return Err(fory_core::error::Error::unsupported("serialization of generic structs and enums is not supported in xlang mode"));
                 } else {
                     generics = vec![];
                 }
+            } else if type_id == fory_core::types::TypeId::TYPED_UNION as u32
+                || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
+                type_id = fory_core::types::TypeId::UNION as u32;
             }
-            fory_core::meta::FieldType::new(type_id, #nullable, generics)
+            fory_core::meta::FieldType {
+                type_id,
+                user_type_id,
+                nullable: #nullable,
+                track_ref: false,
+                generics,
+            }
         }
     }
 }
@@ -1036,7 +1047,10 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
 }
 
 fn get_primitive_type_size(type_id_num: u32) -> i32 {
-    let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+    if type_id_num > u8::MAX as u32 {
+        return 0;
+    }
+    let type_id = TypeId::try_from(type_id_num as u8).unwrap();
     match type_id {
         TypeId::BOOL => 1,
         TypeId::INT8 => 1,
@@ -1046,7 +1060,9 @@ fn get_primitive_type_size(type_id_num: u32) -> i32 {
         TypeId::INT64 => 8,
         TypeId::VARINT64 => 8,
         TypeId::TAGGED_INT64 => 8,
+        TypeId::FLOAT8 => 1,
         TypeId::FLOAT16 => 2,
+        TypeId::BFLOAT16 => 2,
         TypeId::FLOAT32 => 4,
         TypeId::FLOAT64 => 8,
         TypeId::INT128 => 16,
@@ -1094,7 +1110,9 @@ fn is_internal_type_id(type_id: u32) -> bool {
         TypeId::INT32_ARRAY as u32,
         TypeId::INT64_ARRAY as u32,
         TypeId::INT128_ARRAY as u32,
+        TypeId::FLOAT8_ARRAY as u32,
         TypeId::FLOAT16_ARRAY as u32,
+        TypeId::BFLOAT16_ARRAY as u32,
         TypeId::FLOAT32_ARRAY as u32,
         TypeId::FLOAT64_ARRAY as u32,
         TypeId::UINT16_ARRAY as u32,
@@ -1307,7 +1325,7 @@ struct FieldFingerprintInfo {
     /// Whether the field has explicit nullable=true/false set via #[fory(nullable)]
     explicit_nullable: Option<bool>,
     /// Whether reference tracking is enabled
-    ref_tracking: bool,
+    track_ref: bool,
     /// The type ID (UNKNOWN for user-defined types including enums/unions)
     type_id: u32,
     /// Whether the field type is `Option<T>`
@@ -1395,7 +1413,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         };
 
         let type_class = classify_field_type(&field.ty);
-        let ref_tracking = meta.effective_ref(type_class);
+        let track_ref = meta.effective_ref(type_class);
         let explicit_nullable = meta.nullable;
 
         // Get compile-time TypeId, considering encoding attributes for u32/u64 fields
@@ -1415,7 +1433,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         field_infos.push(FieldFingerprintInfo {
             name_or_id,
             explicit_nullable,
-            ref_tracking,
+            track_ref,
             type_id,
             is_option_type,
         });
@@ -1427,7 +1445,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
     // Build fingerprint string
     let mut fingerprint = String::new();
     for info in &field_infos {
-        let ref_flag = if info.ref_tracking { "1" } else { "0" };
+        let ref_flag = if info.track_ref { "1" } else { "0" };
         let nullable = match info.explicit_nullable {
             Some(true) => true,
             Some(false) => false,
@@ -1508,9 +1526,9 @@ pub(crate) fn determine_field_ref_mode(field: &syn::Field) -> FieldRefMode {
     let meta = parse_field_meta(field).unwrap_or_default();
     let type_class = classify_field_type(&field.ty);
     let nullable = meta.effective_nullable(type_class);
-    let ref_tracking = meta.effective_ref(type_class);
+    let track_ref = meta.effective_ref(type_class);
 
-    if ref_tracking {
+    if track_ref {
         FieldRefMode::Tracking
     } else if nullable {
         FieldRefMode::NullOnly

@@ -57,16 +57,16 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
-  readClassInfo(): string {
-    return `
-      ${
-      // skip the typeId
-      this.builder.reader.readVarUint32Small7()
-      }
-
-      ${
-        TypeId.isNamedType(this.getTypeId())
-        ? `
+  readTypeInfo(): string {
+    const internalTypeId = this.getInternalTypeId();
+    let readUserTypeIdStmt = "";
+    let namesStmt = "";
+    switch (internalTypeId) {
+      case TypeId.ENUM:
+        readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
+        break;
+      case TypeId.NAMED_ENUM:
+        namesStmt = `
           ${
             // skip the namespace
             this.builder.metaStringResolver.readNamespace(this.builder.reader.ownName())
@@ -76,15 +76,29 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
           // skip the namespace
           this.builder.metaStringResolver.readTypeName(this.builder.reader.ownName())
           }
-        `
-        : ""}
+        `;
+        break;
+      default:
+        break;
+    }
+    return `
+      ${
+      // skip the typeId
+      this.builder.reader.uint8()
+      }
+      ${readUserTypeIdStmt}
+      ${namesStmt}
     `;
   }
 
-  writeClassInfo(): string {
+  writeTypeInfo(): string {
     const internalTypeId = this.getInternalTypeId();
     let typeMeta = "";
+    let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
+      case TypeId.ENUM:
+        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        break;
       case TypeId.NAMED_ENUM:
         {
           const typeInfo = this.typeInfo.castToStruct();
@@ -100,7 +114,8 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return ` 
-        ${this.builder.writer.writeVarUint32Small7(this.getTypeId())};
+        ${this.builder.writer.uint8(this.getTypeId())};
+        ${writeUserTypeIdStmt}
         ${typeMeta}
       `;
   }

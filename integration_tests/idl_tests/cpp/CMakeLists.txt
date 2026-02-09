@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(fory_idl_tests
-    VERSION 1.0.0
+    VERSION 0.16.0
     DESCRIPTION "Fory IDL compiler integration tests"
     LANGUAGES CXX
 )
@@ -45,7 +45,7 @@ if(DEFINED ENV{ENABLE_FORY_DEBUG_OUTPUT} AND "$ENV{ENABLE_FORY_DEBUG_OUTPUT}" ST
 endif()
 
 target_include_directories(idl_roundtrip PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/generated
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(idl_roundtrip PRIVATE fory::serialization)

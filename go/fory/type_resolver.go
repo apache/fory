@@ -50,6 +50,10 @@ const (
 	useStringValue          = 0
 	useStringId             = 1
 	SMALL_STRING_THRESHOLD  = 16
+	// 0xffffffff is reserved for "unset".
+	maxUserTypeID       uint32 = 0xfffffffe
+	invalidUserTypeID   uint32 = 0xffffffff
+	internalTypeIDLimit        = 0xFF
 )
 
 var (
@@ -131,12 +135,14 @@ type TypeInfo struct {
 	NameBytes     *MetaStringBytes
 	IsDynamic     bool
 	TypeID        uint32
-	DispatchId    DispatchId
-	Serializer    Serializer
-	NeedWriteDef  bool
-	NeedWriteRef  bool // Whether this type needs reference tracking
-	hashValue     uint64
-	TypeDef       *TypeDef
+	// User type ID is stored as unsigned uint32; 0xffffffff means unset.
+	UserTypeID   uint32
+	DispatchId   DispatchId
+	Serializer   Serializer
+	NeedWriteDef bool
+	NeedWriteRef bool // Whether this type needs reference tracking
+	hashValue    uint64
+	TypeDef      *TypeDef
 }
 type (
 	namedTypeKey [2]string
@@ -153,7 +159,7 @@ type TypeResolver struct {
 	typeToTypeInfo       map[reflect.Type]string
 	typeToTypeTag        map[reflect.Type]string
 	typeInfoToType       map[string]reflect.Type
-	typeIdToType         map[int16]reflect.Type
+	typeIdToType         map[TypeId]reflect.Type
 	dynamicStringToId    map[string]int16
 	dynamicIdToString    map[int16]string
 	dynamicStringId      int16
@@ -168,11 +174,11 @@ type TypeResolver struct {
 	metaStrToStr     map[string]string
 	metaStrToClass   map[string]reflect.Type
 	hashToMetaString map[uint64]string
-	hashToClassInfo  map[uint64]*TypeInfo
 
 	// Type tracking
 	dynamicWrittenMetaStr []string
 	typeIDToTypeInfo      map[uint32]*TypeInfo
+	userTypeIdToTypeInfo  map[uint32]*TypeInfo
 	typeIDCounter         uint32
 	dynamicWriteStringID  uint32
 
@@ -202,7 +208,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 	r := &TypeResolver{
 		typeTagToSerializers: map[string]Serializer{},
 		typeToSerializers:    map[reflect.Type]Serializer{},
-		typeIdToType:         map[int16]reflect.Type{},
+		typeIdToType:         map[TypeId]reflect.Type{},
 		typeToTypeInfo:       map[reflect.Type]string{},
 		typeInfoToType:       map[string]reflect.Type{},
 		dynamicStringToId:    map[string]int16{},
@@ -216,10 +222,10 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		metaStrToStr:     make(map[string]string),
 		metaStrToClass:   make(map[string]reflect.Type),
 		hashToMetaString: make(map[uint64]string),
-		hashToClassInfo:  make(map[uint64]*TypeInfo),
 
 		dynamicWrittenMetaStr: make([]string, 0),
 		typeIDToTypeInfo:      make(map[uint32]*TypeInfo),
+		userTypeIdToTypeInfo:  make(map[uint32]*TypeInfo),
 		typeIDCounter:         300,
 		dynamicWriteStringID:  0,
 
@@ -242,6 +248,9 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 	for _, t := range []reflect.Type{
 		boolType,
 		byteType,
+		uint16Type,
+		uint32Type,
+		uint64Type,
 		int8Type,
 		int16Type,
 		int32Type,
@@ -284,12 +293,12 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 
 		// 3. Register complete type information (critical for proper serialization)
 		// Codegen serializers are for named structs
-		_, err := r.registerType(type_, uint32(NAMED_STRUCT), pkgPath, typeName, codegenSerializer, false)
+		_, err := r.registerType(type_, uint32(NAMED_STRUCT), invalidUserTypeID, pkgPath, typeName, codegenSerializer, false)
 		if err != nil {
 			panic(fmt.Errorf("failed to register codegen type %s: %v", typeTag, err))
 		}
 		// 4. Register pointer type information
-		_, err = r.registerType(ptrType, uint32(NAMED_STRUCT), pkgPath, typeName, ptrCodegenSer, false)
+		_, err = r.registerType(ptrType, uint32(NAMED_STRUCT), invalidUserTypeID, pkgPath, typeName, ptrCodegenSer, false)
 		if err != nil {
 			panic(fmt.Errorf("failed to register codegen pointer type %s: %v", typeTag, err))
 		}
@@ -436,7 +445,7 @@ func (r *TypeResolver) initialize() {
 		{genericSetType, SET, setSerializer{}},
 	}
 	for _, elem := range serializers {
-		_, err := r.registerType(elem.Type, uint32(elem.TypeId), "", "", elem.Serializer, true)
+		_, err := r.registerType(elem.Type, uint32(elem.TypeId), invalidUserTypeID, "", "", elem.Serializer, true)
 		if err != nil {
 			panic(fmt.Errorf("init type error: %v", err))
 		}
@@ -479,7 +488,7 @@ func (r *TypeResolver) registerSerializer(type_ reflect.Type, typeId TypeId, s S
 	// Collection types (LIST, SET, MAP) can have multiple Go types mapping to them
 	// Primitive array types can also have multiple Go types (e.g., []int and []int64 both map to INT64_ARRAY on 64-bit systems)
 	// Also skip if type ID already registered (e.g., string and *string both map to STRING)
-	if !IsNamespacedType(typeId) && !isCollectionType(int16(typeId)) && !isPrimitiveArrayType(int16(typeId)) {
+	if !IsNamespacedType(typeId) && !isCollectionType(typeId) && !isPrimitiveArrayType(typeId) {
 		if typeId > NotSupportCrossLanguage {
 			if _, ok := r.typeIdToType[typeId]; !ok {
 				r.typeIdToType[typeId] = type_
@@ -489,16 +498,50 @@ func (r *TypeResolver) registerSerializer(type_ reflect.Type, typeId TypeId, s S
 	return nil
 }
 
-// RegisterStruct registers a type with a numeric type ID for cross-language serialization.
-// This is used when the full type ID (user_id << 8 | internal_id) is already calculated.
-func (r *TypeResolver) RegisterStruct(type_ reflect.Type, fullTypeID uint32) error {
+func validateOptionalFields(type_ reflect.Type) error {
+	if type_ == nil {
+		return nil
+	}
+	if type_.Kind() == reflect.Ptr {
+		type_ = type_.Elem()
+	}
+	if type_.Kind() != reflect.Struct {
+		return nil
+	}
+	for i := 0; i < type_.NumField(); i++ {
+		field := type_.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		foryTag := parseForyTag(field)
+		if foryTag.Ignore {
+			continue
+		}
+		optionalInfo, isOptional := getOptionalInfo(field.Type)
+		if isOptional {
+			if err := validateOptionalValueType(optionalInfo.valueType); err != nil {
+				return fmt.Errorf("field %s: %w", field.Name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// RegisterStruct registers a type with a numeric user type ID for cross-language serialization.
+func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTypeID uint32) error {
 	// Check if already registered
-	if info, ok := r.typeIDToTypeInfo[fullTypeID]; ok {
-		return fmt.Errorf("type %s with id %d has been registered", info.Type, fullTypeID)
+	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
+		if info.Type == type_ {
+			return nil
+		}
+		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
 	}
 
 	switch type_.Kind() {
 	case reflect.Struct:
+		if err := validateOptionalFields(type_); err != nil {
+			return err
+		}
 		// For struct types, check if serializer already registered
 		if prev, ok := r.typeToSerializers[type_]; ok {
 			return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
@@ -508,10 +551,6 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, fullTypeID uint32) err
 		tag := type_.Name()
 		serializer := newStructSerializer(type_, tag)
 		r.typeToSerializers[type_] = serializer
-		if err := serializer.initialize(r); err != nil {
-			delete(r.typeToSerializers, type_)
-			return err
-		}
 		r.typeToTypeInfo[type_] = "@" + tag
 		r.typeInfoToType["@"+tag] = type_
 
@@ -529,13 +568,13 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, fullTypeID uint32) err
 		r.typeInfoToType["*@"+tag] = ptrType
 
 		// Register value type with fullTypeID
-		_, err := r.registerType(type_, fullTypeID, "", "", serializer, false)
+		_, err := r.registerType(type_, uint32(typeID), userTypeID, "", "", serializer, false)
 		if err != nil {
 			return fmt.Errorf("failed to register type by ID: %w", err)
 		}
 
 		// Register pointer type with same fullTypeID (Java treats value and pointer types the same)
-		_, err = r.registerType(ptrType, fullTypeID, "", "", ptrSerializer, false)
+		_, err = r.registerType(ptrType, uint32(typeID), userTypeID, "", "", ptrSerializer, false)
 		if err != nil {
 			return fmt.Errorf("failed to register pointer type by ID: %w", err)
 		}
@@ -547,17 +586,13 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, fullTypeID uint32) err
 	return nil
 }
 
-// RegisterUnion registers a union type with a numeric type ID for cross-language serialization.
-// The fullTypeID should already be calculated as (user_id << 8) | TYPED_UNION.
-func (r *TypeResolver) RegisterUnion(type_ reflect.Type, fullTypeID uint32, serializer Serializer) error {
+// RegisterUnion registers a union type with a numeric user type ID for cross-language serialization.
+func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, serializer Serializer) error {
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
 	}
-	if info, ok := r.typeIDToTypeInfo[fullTypeID]; ok {
-		return fmt.Errorf("type %s with id %d has been registered", info.Type, fullTypeID)
-	}
-	if TypeId(fullTypeID&0xFF) != TYPED_UNION {
-		return fmt.Errorf("RegisterUnion requires internal type ID TYPED_UNION, got %d", fullTypeID&0xFF)
+	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
+		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
 	}
 	if type_.Kind() != reflect.Struct {
 		return fmt.Errorf("RegisterUnion only supports struct types; got: %v", type_.Kind())
@@ -578,22 +613,22 @@ func (r *TypeResolver) RegisterUnion(type_ reflect.Type, fullTypeID uint32, seri
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 	r.typeInfoToType["*@"+tag] = ptrType
 
-	_, err := r.registerType(type_, fullTypeID, "", "", serializer, false)
+	_, err := r.registerType(type_, uint32(TYPED_UNION), userTypeID, "", "", serializer, false)
 	if err != nil {
 		return fmt.Errorf("failed to register union by ID: %w", err)
 	}
-	_, err = r.registerType(ptrType, fullTypeID, "", "", ptrSerializer, false)
+	_, err = r.registerType(ptrType, uint32(TYPED_UNION), userTypeID, "", "", ptrSerializer, false)
 	if err != nil {
 		return fmt.Errorf("failed to register pointer union by ID: %w", err)
 	}
 	return nil
 }
 
-// RegisterEnum registers an enum type (numeric type in Go) with a full type ID
-func (r *TypeResolver) RegisterEnum(type_ reflect.Type, fullTypeID uint32) error {
+// RegisterEnum registers an enum type (numeric type in Go) with a user type ID.
+func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error {
 	// Check if already registered
-	if info, ok := r.typeIDToTypeInfo[fullTypeID]; ok {
-		return fmt.Errorf("type %s with id %d has been registered", info.Type, fullTypeID)
+	if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
+		return fmt.Errorf("type %s with id %d has been registered", info.Type, userTypeID)
 	}
 
 	// Verify it's a numeric type
@@ -606,7 +641,7 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, fullTypeID uint32) error
 	}
 
 	// Create enum serializer
-	serializer := &enumSerializer{type_: type_, typeID: fullTypeID}
+	serializer := &enumSerializer{type_: type_, typeID: uint32(ENUM)}
 	tag := type_.Name()
 
 	r.typeToSerializers[type_] = serializer
@@ -616,13 +651,14 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, fullTypeID uint32) error
 	// Create TypeInfo with serializer
 	typeInfo := &TypeInfo{
 		Type:       type_,
-		TypeID:     fullTypeID,
+		TypeID:     uint32(ENUM),
+		UserTypeID: userTypeID,
 		Serializer: serializer,
 		IsDynamic:  isDynamicType(type_),
 		DispatchId: GetDispatchId(type_),
 		hashValue:  calcTypeHash(type_),
 	}
-	r.typeIDToTypeInfo[fullTypeID] = typeInfo
+	r.userTypeIdToTypeInfo[userTypeID] = typeInfo
 	r.typesInfo[type_] = typeInfo
 
 	return nil
@@ -670,7 +706,7 @@ func (r *TypeResolver) RegisterNamedEnum(type_ reflect.Type, namespace, typeName
 	r.typeInfoToType["@"+tag] = type_
 
 	// Register the type
-	_, err := r.registerType(type_, typeId, namespace, typeName, serializer, false)
+	_, err := r.registerType(type_, typeId, invalidUserTypeID, namespace, typeName, serializer, false)
 	if err != nil {
 		return fmt.Errorf("failed to register enum by name: %w", err)
 	}
@@ -700,6 +736,9 @@ func (r *TypeResolver) RegisterNamedStruct(
 	if typeName == "" && namespace != "" {
 		return fmt.Errorf("typeName cannot be empty if namespace is provided")
 	}
+	if typeId > 0 && typeId > maxUserTypeID {
+		return fmt.Errorf("typeId must be in range [0, 0xfffffffe], got %d", typeId)
+	}
 	var tag string
 	if namespace == "" {
 		tag = typeName
@@ -721,30 +760,25 @@ func (r *TypeResolver) RegisterNamedStruct(
 	r.typeTagToSerializers[tag] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 	r.typeInfoToType["*@"+tag] = ptrType
+	var internalTypeID TypeId
+	userTypeID := invalidUserTypeID
 	if typeId == 0 {
-		if r.metaShareEnabled() {
-			typeId = (typeId << 8) | NAMED_COMPATIBLE_STRUCT
-		} else {
-			typeId = (typeId << 8) | NAMED_STRUCT
-		}
+		internalTypeID = r.structTypeID(type_, true)
 	} else {
-		if r.metaShareEnabled() {
-			typeId = (typeId << 8) | COMPATIBLE_STRUCT
-		} else {
-			typeId = (typeId << 8) | STRUCT
-		}
+		internalTypeID = r.structTypeID(type_, false)
+		userTypeID = typeId
 	}
 	if registerById {
-		if info, ok := r.typeIDToTypeInfo[typeId]; ok {
+		if info, ok := r.userTypeIdToTypeInfo[userTypeID]; ok {
 			return fmt.Errorf("type %s with id %d has been registered", info.Type, typeId)
 		}
 	}
 	// For named structs, directly register both their value and pointer types with same typeId
-	_, err := r.registerType(type_, typeId, namespace, typeName, nil, false)
+	_, err := r.registerType(type_, uint32(internalTypeID), userTypeID, namespace, typeName, nil, false)
 	if err != nil {
 		return fmt.Errorf("failed to register named structs: %w", err)
 	}
-	_, err = r.registerType(ptrType, typeId, namespace, typeName, nil, false)
+	_, err = r.registerType(ptrType, uint32(internalTypeID), userTypeID, namespace, typeName, nil, false)
 	if err != nil {
 		return fmt.Errorf("failed to register named structs: %w", err)
 	}
@@ -795,11 +829,11 @@ func (r *TypeResolver) RegisterNamedUnion(
 	r.typeInfoToType["*@"+tag] = ptrType
 
 	typeId := uint32(NAMED_UNION)
-	_, err := r.registerType(type_, typeId, namespace, typeName, serializer, false)
+	_, err := r.registerType(type_, typeId, invalidUserTypeID, namespace, typeName, serializer, false)
 	if err != nil {
 		return fmt.Errorf("failed to register union by name: %w", err)
 	}
-	_, err = r.registerType(ptrType, typeId, namespace, typeName, ptrSerializer, false)
+	_, err = r.registerType(ptrType, typeId, invalidUserTypeID, namespace, typeName, ptrSerializer, false)
 	if err != nil {
 		return fmt.Errorf("failed to register pointer union by name: %w", err)
 	}
@@ -855,16 +889,15 @@ func (r *TypeResolver) RegisterNamedExtension(
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 	r.typeInfoToType["*@"+tag] = ptrType
 
-	// Use NAMED_STRUCT type ID to match Java's behavior
-	// (Java uses NAMED_STRUCT when register() + registerSerializer() are used)
-	typeId := uint32(NAMED_STRUCT)
+	// Use NAMED_EXT type ID for extension types
+	typeId := uint32(NAMED_EXT)
 
 	// Register both value and pointer types
-	_, err := r.registerType(type_, typeId, namespace, typeName, nil, false)
+	_, err := r.registerType(type_, typeId, invalidUserTypeID, namespace, typeName, nil, false)
 	if err != nil {
 		return fmt.Errorf("failed to register extension type: %w", err)
 	}
-	_, err = r.registerType(ptrType, typeId, namespace, typeName, nil, false)
+	_, err = r.registerType(ptrType, typeId, invalidUserTypeID, namespace, typeName, nil, false)
 	if err != nil {
 		return fmt.Errorf("failed to register extension type: %w", err)
 	}
@@ -877,6 +910,9 @@ func (r *TypeResolver) RegisterExtension(
 	userTypeID uint32,
 	userSerializer ExtensionSerializer,
 ) error {
+	if userTypeID > maxUserTypeID {
+		return fmt.Errorf("typeID must be in range [0, 0xfffffffe], got %d", userTypeID)
+	}
 	if userSerializer == nil {
 		return fmt.Errorf("serializer cannot be nil for extension type %s", type_)
 	}
@@ -892,16 +928,14 @@ func (r *TypeResolver) RegisterExtension(
 	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
 	r.typeToSerializers[ptrType] = ptrSerializer
 
-	// Use EXT type ID to match Java's behavior for extension types
-	fullTypeID := (userTypeID << 8) | uint32(EXT)
-
 	// Register type info for both value and pointer types
 	typeInfo := &TypeInfo{
 		Type:       type_,
-		TypeID:     fullTypeID,
+		TypeID:     uint32(EXT),
+		UserTypeID: userTypeID,
 		Serializer: serializer,
 	}
-	r.typeIDToTypeInfo[fullTypeID] = typeInfo
+	r.userTypeIdToTypeInfo[userTypeID] = typeInfo
 	r.typesInfo[type_] = typeInfo
 	r.typesInfo[ptrType] = typeInfo
 
@@ -928,11 +962,11 @@ func (r *TypeResolver) getTypeIdByType(type_ reflect.Type) TypeId {
 		type_ = info.valueType
 	}
 	if info, ok := r.typesInfo[type_]; ok {
-		return TypeId(info.TypeID & 0xFF) // Extract base type ID
+		return TypeId(info.TypeID)
 	}
 	if type_ != nil && type_.Kind() == reflect.Ptr {
 		if info, ok := r.typesInfo[type_.Elem()]; ok {
-			return TypeId(info.TypeID & 0xFF)
+			return TypeId(info.TypeID)
 		}
 	}
 	return 0
@@ -949,7 +983,7 @@ func (r *TypeResolver) getSerializerByTypeTag(typeTag string) (Serializer, error
 // getSerializerByTypeID returns the serializer for a given type ID, or nil if not found.
 func (r *TypeResolver) getSerializerByTypeID(typeID uint32) Serializer {
 	// First try to get the type from typeIdToType
-	if t, ok := r.typeIdToType[int16(typeID)]; ok {
+	if t, ok := r.typeIdToType[TypeId(typeID)]; ok {
 		if serializer, ok := r.typeToSerializers[t]; ok {
 			return serializer
 		}
@@ -1048,6 +1082,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 				NameBytes:     elemInfo.NameBytes,
 				IsDynamic:     elemInfo.IsDynamic,
 				TypeID:        elemInfo.TypeID,
+				UserTypeID:    elemInfo.UserTypeID,
 				DispatchId:    elemInfo.DispatchId,
 				Serializer:    ptrSerializer,
 				NeedWriteDef:  elemInfo.NeedWriteDef,
@@ -1129,11 +1164,11 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	   All other slice types are treated as lists (typeID 21).
 	*/
 	if value.Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Type(), true))
 	} else if value.IsValid() && value.Kind() == reflect.Interface && value.Elem().Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Elem().Type(), true))
 	} else if value.IsValid() && value.Kind() == reflect.Ptr && value.Elem().Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Elem().Type(), true))
 	} else if value.Kind() == reflect.Map {
 		typeID = MAP
 	} else if value.Kind() == reflect.Array {
@@ -1225,6 +1260,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	return r.registerType(
 		type_,
 		typeID,
+		invalidUserTypeID,
 		pkgPath,
 		typeName,
 		nil, // serializer will be created during registration
@@ -1243,6 +1279,7 @@ func isMultiDimensionaSlice(v reflect.Value) bool {
 func (r *TypeResolver) registerType(
 	type_ reflect.Type,
 	typeID uint32,
+	userTypeID uint32,
 	namespace string,
 	typeName string,
 	serializer Serializer,
@@ -1255,8 +1292,11 @@ func (r *TypeResolver) registerType(
 	if typeName == "" && namespace != "" {
 		panic("namespace provided without typeName")
 	}
+	if internal && typeID > internalTypeIDLimit {
+		panic(fmt.Sprintf("internal type id overflow: %d", typeID))
+	}
 	if internal && serializer != nil {
-		if err := r.registerSerializer(type_, TypeId(typeID&0xFF), serializer); err != nil {
+		if err := r.registerSerializer(type_, TypeId(typeID), serializer); err != nil {
 			panic(fmt.Errorf("impossible error: %s", err))
 		}
 	}
@@ -1298,6 +1338,7 @@ func (r *TypeResolver) registerType(
 	typeInfo := &TypeInfo{
 		Type:         type_,
 		TypeID:       typeID,
+		UserTypeID:   userTypeID,
 		Serializer:   serializer,
 		PkgPathBytes: nsBytes,   // Encoded namespace bytes
 		NameBytes:    typeBytes, // Encoded type name bytes
@@ -1308,6 +1349,7 @@ func (r *TypeResolver) registerType(
 	}
 	if structSer, ok := serializer.(*structSerializer); ok {
 		structSer.typeID = typeID
+		structSer.userTypeID = userTypeID
 	}
 	// Update resolver caches:
 	r.typesInfo[type_] = typeInfo // Cache by type string
@@ -1326,7 +1368,17 @@ func (r *TypeResolver) registerType(
 	}
 
 	// Cache by type ID (for cross-language support)
-	if r.isXlang && !IsNamespacedType(TypeId(typeID)) {
+	if (TypeId(typeID) == ENUM || TypeId(typeID) == STRUCT ||
+		TypeId(typeID) == COMPATIBLE_STRUCT || TypeId(typeID) == EXT ||
+		TypeId(typeID) == TYPED_UNION) &&
+		userTypeID != invalidUserTypeID {
+		if _, ok := r.userTypeIdToTypeInfo[userTypeID]; !ok {
+			r.userTypeIdToTypeInfo[userTypeID] = typeInfo
+		}
+	} else if TypeId(typeID) != ENUM && TypeId(typeID) != STRUCT &&
+		TypeId(typeID) != COMPATIBLE_STRUCT && TypeId(typeID) != EXT &&
+		TypeId(typeID) != TYPED_UNION &&
+		!IsNamespacedType(TypeId(typeID)) {
 		/*
 		   This function is required to maintain the typeID registry: all types
 		   are registered at startup, and we keep this table updated.
@@ -1361,20 +1413,40 @@ func (r *TypeResolver) metaShareEnabled() bool {
 	return r.fory != nil && r.fory.metaContext != nil && r.fory.config.Compatible
 }
 
+func (r *TypeResolver) structTypeID(type_ reflect.Type, named bool) TypeId {
+	useCompatible := r.metaShareEnabled()
+	if useCompatible {
+		if evolving, ok := structEvolvingOverride(type_); ok && !evolving {
+			useCompatible = false
+		}
+	}
+	if named {
+		if useCompatible {
+			return NAMED_COMPATIBLE_STRUCT
+		}
+		return NAMED_STRUCT
+	}
+	if useCompatible {
+		return COMPATIBLE_STRUCT
+	}
+	return STRUCT
+}
+
 // WriteTypeInfo writes type info to buffer.
 // This is exported for use by generated code.
 func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err *Error) {
 	if typeInfo == nil {
 		return
 	}
-	// Extract the internal type ID (lower 8 bits)
 	typeID := typeInfo.TypeID
-	internalTypeID := TypeId(typeID & 0xFF)
-	// WriteData the type ID to buffer using VarUint32Small7 encoding (matches Java)
-	buffer.WriteVarUint32Small7(typeID)
+	buffer.WriteUint8(uint8(typeID))
 
-	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeClassInfo)
-	switch internalTypeID {
+	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeTypeInfo)
+	switch TypeId(typeID) {
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		buffer.WriteVarUint32(typeInfo.UserTypeID)
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		r.writeSharedTypeMeta(buffer, typeInfo, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
 			r.writeSharedTypeMeta(buffer, typeInfo, err)
@@ -1384,46 +1456,103 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 		r.metaStringResolver.WriteMetaStringBytes(buffer, typeInfo.PkgPathBytes, err)
 		// WriteData type name metadata
 		r.metaStringResolver.WriteMetaStringBytes(buffer, typeInfo.NameBytes, err)
-	case NAMED_COMPATIBLE_STRUCT, COMPATIBLE_STRUCT:
-		// Meta share must be enabled for compatible mode
-		if r.metaShareEnabled() {
-			r.writeSharedTypeMeta(buffer, typeInfo, err)
-		}
+	default:
+		break
 	}
 }
 
 func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInfo, err *Error) {
 	context := r.fory.MetaContext()
-	typ := typeInfo.Type
-
-	if index, exists := context.typeMap[typ]; exists {
-		// Reference to previously written type: (index << 1) | 1, LSB=1
-		buffer.WriteVarUint32((index << 1) | 1)
-		return
+	key := typePointer(typeInfo.Type)
+	writeTypeDefInline := func() {
+		// Only build TypeDef for struct types - enums don't have field definitions
+		actualType := typeInfo.Type
+		if actualType.Kind() == reflect.Ptr {
+			actualType = actualType.Elem()
+		}
+		if actualType.Kind() == reflect.Struct {
+			typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
+			// Write TypeDef bytes inline
+			typeDef.writeTypeDef(buffer, err)
+		}
 	}
-
-	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
-	newIndex := uint32(len(context.typeMap))
-	buffer.WriteVarUint32(newIndex << 1)
-	context.typeMap[typ] = newIndex
-
-	// Only build TypeDef for struct types - enums don't have field definitions
-	actualType := typ
-	if actualType.Kind() == reflect.Ptr {
-		actualType = actualType.Elem()
-	}
-	if actualType.Kind() == reflect.Struct {
+	writeTypeDefWithZeroMarker := func() {
+		actualType := typeInfo.Type
+		if actualType.Kind() == reflect.Ptr {
+			actualType = actualType.Elem()
+		}
+		if actualType.Kind() != reflect.Struct {
+			buffer.WriteUint8(0)
+			return
+		}
 		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
 		if typeDefErr != nil {
 			err.SetError(typeDefErr)
 			return
 		}
-		// Write TypeDef bytes inline
+		buffer.WriteUint8(0)
 		typeDef.writeTypeDef(buffer, err)
 	}
+	if !context.typeMapActive {
+		if !context.hasFirstType {
+			context.hasFirstType = true
+			context.firstTypePtr = key
+			// New type: index << 1, LSB=0, followed by TypeDef bytes inline
+			writeTypeDefWithZeroMarker()
+			return
+		}
+		if key == context.firstTypePtr {
+			// Reference to first type: (0 << 1) | 1
+			buffer.WriteUint8(1)
+			return
+		}
+		context.typeMapActive = true
+		if context.typeMap == nil {
+			context.typeMap = make(map[uintptr]uint32, 8)
+		} else if len(context.typeMap) != 0 {
+			for k := range context.typeMap {
+				delete(context.typeMap, k)
+			}
+		}
+		context.typeMap[context.firstTypePtr] = 0
+	} else if key == context.firstTypePtr {
+		buffer.WriteUint8(1)
+		return
+	}
+
+	if index, exists := context.typeMap[key]; exists {
+		// Reference to previously written type: (index << 1) | 1, LSB=1
+		marker := (index << 1) | 1
+		if marker < 0x80 {
+			buffer.WriteUint8(uint8(marker))
+		} else {
+			buffer.WriteVarUint32(marker)
+		}
+		return
+	}
+
+	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
+	newIndex := uint32(len(context.typeMap))
+	marker := newIndex << 1
+	if marker < 0x80 {
+		buffer.WriteUint8(uint8(marker))
+	} else {
+		buffer.WriteVarUint32(marker)
+	}
+	context.typeMap[key] = newIndex
+	writeTypeDefInline()
 }
 
 func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, error) {
+	// Normalize pointer types to their element type for consistent caching.
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
 	if existingTypeDef, exists := r.typeToTypeDef[typ]; exists {
 		return existingTypeDef, nil
 	}
@@ -1432,10 +1561,6 @@ func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 		return nil, fmt.Errorf("TypeDef not found for type %s", typ)
 	}
 
-	// don't create TypeDef for pointer types, we create TypeDef for its element type instead.
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
-	}
 	zero := reflect.Zero(typ)
 	typeDef, err := buildTypeDef(r.fory, zero)
 	if err != nil {
@@ -1497,14 +1622,14 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 		td = newTd
 	}
 
-	typeInfo, typeInfoErr := td.buildTypeInfoWithResolver(r)
+	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
 	if typeInfoErr != nil {
 		err.SetError(typeInfoErr)
 		return nil
 	}
 
-	context.readTypeInfos = append(context.readTypeInfos, &typeInfo)
-	return &typeInfo
+	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+	return typeInfo
 }
 
 func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s Serializer, err error) {
@@ -1582,6 +1707,12 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		case reflect.Uint8:
 			// []byte uses byteSliceSerializer
 			return byteSliceSerializer{}, nil
+		case reflect.Uint16:
+			return uint16SliceSerializer{}, nil
+		case reflect.Uint32:
+			return uint32SliceSerializer{}, nil
+		case reflect.Uint64:
+			return uint64SliceSerializer{}, nil
 		case reflect.String:
 			return stringSliceSerializer{}, nil
 		}
@@ -1959,15 +2090,55 @@ func (r *TypeResolver) readTypeByReadTag(buffer *ByteBuffer, err *Error) reflect
 	return nil
 }
 
+func (r *TypeResolver) resolveTypeInfoByMetaBytes(nsBytes, typeBytes *MetaStringBytes,
+	compositeKey nsTypeKey, typeID uint32, err *Error) *TypeInfo {
+	if typeInfo, exists := r.nsTypeToTypeInfo[compositeKey]; exists {
+		return typeInfo
+	}
+
+	ns, decErr := r.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
+	if decErr != nil {
+		err.SetError(fmt.Errorf("namespace decode failed: %w", decErr))
+		return nil
+	}
+
+	typeName, decErr := r.typeNameDecoder.Decode(typeBytes.Data, typeBytes.Encoding)
+	if decErr != nil {
+		err.SetError(fmt.Errorf("typename decode failed: %w", decErr))
+		return nil
+	}
+
+	nameKey := [2]string{ns, typeName}
+	if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
+		r.nsTypeToTypeInfo[compositeKey] = typeInfo
+		return typeInfo
+	}
+
+	fullName := typeName
+	if ns != "" {
+		fullName = ns + "." + typeName
+	}
+	err.SetError(fmt.Errorf("unregistered type: %s (typeID: %d)", fullName, typeID))
+	return nil
+}
+
 // ReadTypeInfo reads type info from buffer and returns it.
 // This is exported for use by generated code.
 func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
-	// ReadData variable-length type ID using VarUint32Small7 encoding (matches Java)
-	typeID := buffer.ReadVarUint32Small7(err)
-	internalTypeID := TypeId(typeID & 0xFF)
+	typeID := uint32(buffer.ReadUint8(err))
+	internalTypeID := TypeId(typeID)
 
-	// Handle type meta based on internal type ID (matching Java XtypeResolver.readClassInfo)
 	switch internalTypeID {
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		userTypeID := buffer.ReadVarUint32(err)
+		if err.HasError() {
+			return nil
+		}
+		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
+			return typeInfo
+		}
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		return r.readSharedTypeMeta(buffer, err)
 	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
 			return r.readSharedTypeMeta(buffer, err)
@@ -1982,41 +2153,9 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		compositeKey := nsTypeKey{nsBytes.Hashcode, typeBytes.Hashcode}
 		// For pointer and value types, use the negative ID system
 		// to obtain the correct TypeInfo for subsequent deserialization
-		if typeInfo, exists := r.nsTypeToTypeInfo[compositeKey]; exists {
-			return typeInfo
-		}
-
-		// If not found, decode the bytes to strings and try again
-		ns, decErr := r.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
-		if decErr != nil {
-			err.SetError(fmt.Errorf("namespace decode failed: %w", decErr))
-			return nil
-		}
-
-		typeName, decErr := r.typeNameDecoder.Decode(typeBytes.Data, typeBytes.Encoding)
-		if decErr != nil {
-			err.SetError(fmt.Errorf("typename decode failed: %w", decErr))
-			return nil
-		}
-
-		nameKey := [2]string{ns, typeName}
-		if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
-			r.nsTypeToTypeInfo[compositeKey] = typeInfo
-			return typeInfo
-		}
-		// Type not found
-		fullName := typeName
-		if ns != "" {
-			fullName = ns + "." + typeName
-		}
-		err.SetError(fmt.Errorf("unregistered type: %s (typeID: %d)", fullName, typeID))
-		return nil
-
-	case NAMED_COMPATIBLE_STRUCT, COMPATIBLE_STRUCT:
-		// Meta share must be enabled for compatible mode
-		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, err)
-		}
+		return r.resolveTypeInfoByMetaBytes(nsBytes, typeBytes, compositeKey, typeID, err)
+	default:
+		break
 	}
 
 	// Handle simple type IDs (non-namespaced types)
@@ -2024,119 +2163,11 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		return typeInfo
 	}
 
-	// Handle collection types (LIST, SET, MAP) that don't have specific registration
-	// Use generic types that can hold any element type
-	switch TypeId(typeID) {
-	case LIST, -LIST:
+	// Handle UNKNOWN type (0) - used for polymorphic types
+	if typeID == 0 {
 		return &TypeInfo{
-			Type:       interfaceSliceType,
+			Type:       interfaceType,
 			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceSliceType],
-			DispatchId: UnknownDispatchId,
-		}
-	case SET, -SET:
-		return &TypeInfo{
-			Type:       genericSetType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[genericSetType],
-			DispatchId: UnknownDispatchId,
-		}
-	case MAP, -MAP:
-		return &TypeInfo{
-			Type:       interfaceMapType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceMapType],
-			DispatchId: UnknownDispatchId,
-		}
-	case BOOL:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(false),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(false)],
-			DispatchId: PrimitiveBoolDispatchId,
-		}
-	case INT8:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int8(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int8(0))],
-			DispatchId: PrimitiveInt8DispatchId,
-		}
-	case UINT8:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint8(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint8(0))],
-			DispatchId: PrimitiveInt8DispatchId, // Use Int8 static ID for uint8
-		}
-	case INT16:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int16(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int16(0))],
-			DispatchId: PrimitiveInt16DispatchId,
-		}
-	case UINT16:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint16(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint16(0))],
-			DispatchId: PrimitiveInt16DispatchId, // Use Int16 static ID for uint16
-		}
-	case INT32, VARINT32:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int32(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int32(0))],
-			DispatchId: PrimitiveInt32DispatchId,
-		}
-	case UINT32:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint32(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint32(0))],
-			DispatchId: PrimitiveInt32DispatchId, // Use Int32 static ID for uint32
-		}
-	case INT64, VARINT64, TAGGED_INT64:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(int64(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(int64(0))],
-			DispatchId: PrimitiveInt64DispatchId,
-		}
-	case UINT64:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(uint64(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(uint64(0))],
-			DispatchId: PrimitiveInt64DispatchId, // Use Int64 static ID for uint64
-		}
-	case FLOAT32:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(float32(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(float32(0))],
-			DispatchId: PrimitiveFloat32DispatchId,
-		}
-	case FLOAT64:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(float64(0)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf(float64(0))],
-			DispatchId: PrimitiveFloat64DispatchId,
-		}
-	case STRING:
-		return &TypeInfo{
-			Type:       reflect.TypeOf(""),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf("")],
-			DispatchId: StringDispatchId,
-		}
-	case BINARY:
-		return &TypeInfo{
-			Type:       reflect.TypeOf([]byte(nil)),
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[reflect.TypeOf([]byte(nil))],
 			DispatchId: UnknownDispatchId,
 		}
 	}
@@ -2148,104 +2179,39 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 // readTypeInfoWithTypeID reads type info when the typeID has already been read from buffer.
 // This is used by collection serializers that read typeID separately before deciding how to proceed.
 func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32, err *Error) *TypeInfo {
-	internalTypeID := TypeId(typeID & 0xFF)
+	internalTypeID := TypeId(typeID)
 
-	if IsNamespacedType(TypeId(typeID)) {
+	switch internalTypeID {
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		userTypeID := buffer.ReadVarUint32(err)
+		if err.HasError() {
+			return nil
+		}
+		if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
+			return typeInfo
+		}
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		return r.readSharedTypeMeta(buffer, err)
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
 			return r.readSharedTypeMeta(buffer, err)
 		}
 		// ReadData namespace and type name metadata bytes
 		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
 		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		if err.HasError() {
+			return nil
+		}
 
 		compositeKey := nsTypeKey{nsBytes.Hashcode, typeBytes.Hashcode}
-		if typeInfo, exists := r.nsTypeToTypeInfo[compositeKey]; exists {
-			return typeInfo
-		}
-
-		// If not found, decode the bytes to strings and try again
-		ns, nsErr := r.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
-		if nsErr != nil {
-			err.SetError(fmt.Errorf("namespace decode failed: %w", nsErr))
-			return nil
-		}
-
-		typeName, tnErr := r.typeNameDecoder.Decode(typeBytes.Data, typeBytes.Encoding)
-		if tnErr != nil {
-			err.SetError(fmt.Errorf("typename decode failed: %w", tnErr))
-			return nil
-		}
-
-		nameKey := [2]string{ns, typeName}
-		if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
-			r.nsTypeToTypeInfo[compositeKey] = typeInfo
-			return typeInfo
-		}
-		err.SetError(fmt.Errorf("namespaced type not found: %s.%s", ns, typeName))
-		return nil
-	}
-
-	// Handle COMPATIBLE_STRUCT and STRUCT types - they also need to read shared type meta
-	if (internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT) && r.metaShareEnabled() {
-		return r.readSharedTypeMeta(buffer, err)
+		return r.resolveTypeInfoByMetaBytes(nsBytes, typeBytes, compositeKey, typeID, err)
+	default:
+		break
 	}
 
 	// Handle simple type IDs (non-namespaced types)
 	if typeInfo, exists := r.typeIDToTypeInfo[typeID]; exists {
 		return typeInfo
-	}
-
-	// Handle collection types (LIST, SET, MAP) that don't have specific registration
-	// Use generic types that can hold any element type
-	switch TypeId(typeID) {
-	case LIST:
-		return &TypeInfo{
-			Type:       interfaceSliceType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceSliceType],
-			DispatchId: UnknownDispatchId,
-		}
-	case SET:
-		return &TypeInfo{
-			Type:       genericSetType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[genericSetType],
-			DispatchId: UnknownDispatchId,
-		}
-	case MAP:
-		return &TypeInfo{
-			Type:       interfaceMapType,
-			TypeID:     typeID,
-			Serializer: r.typeToSerializers[interfaceMapType],
-			DispatchId: UnknownDispatchId,
-		}
-	// Handle primitive types that may not be explicitly registered
-	case BOOL:
-		return &TypeInfo{Type: boolType, TypeID: typeID, Serializer: r.typeToSerializers[boolType], DispatchId: PrimitiveBoolDispatchId}
-	case INT8:
-		return &TypeInfo{Type: int8Type, TypeID: typeID, Serializer: r.typeToSerializers[int8Type], DispatchId: PrimitiveInt8DispatchId}
-	case INT16:
-		return &TypeInfo{Type: int16Type, TypeID: typeID, Serializer: r.typeToSerializers[int16Type], DispatchId: PrimitiveInt16DispatchId}
-	case INT32, VARINT32:
-		return &TypeInfo{Type: int32Type, TypeID: typeID, Serializer: r.typeToSerializers[int32Type], DispatchId: PrimitiveInt32DispatchId}
-	case INT64, VARINT64, TAGGED_INT64:
-		return &TypeInfo{Type: int64Type, TypeID: typeID, Serializer: r.typeToSerializers[int64Type], DispatchId: PrimitiveInt64DispatchId}
-	case UINT8:
-		return &TypeInfo{Type: uint8Type, TypeID: typeID, Serializer: r.typeToSerializers[uint8Type], DispatchId: PrimitiveInt8DispatchId}
-	case UINT16:
-		return &TypeInfo{Type: uint16Type, TypeID: typeID, Serializer: r.typeToSerializers[uint16Type], DispatchId: PrimitiveInt16DispatchId}
-	case UINT32, VAR_UINT32:
-		return &TypeInfo{Type: uint32Type, TypeID: typeID, Serializer: r.typeToSerializers[uint32Type], DispatchId: PrimitiveInt32DispatchId}
-	case UINT64, VAR_UINT64, TAGGED_UINT64:
-		return &TypeInfo{Type: uint64Type, TypeID: typeID, Serializer: r.typeToSerializers[uint64Type], DispatchId: PrimitiveInt64DispatchId}
-	case FLOAT32:
-		return &TypeInfo{Type: float32Type, TypeID: typeID, Serializer: r.typeToSerializers[float32Type], DispatchId: PrimitiveFloat32DispatchId}
-	case FLOAT64:
-		return &TypeInfo{Type: float64Type, TypeID: typeID, Serializer: r.typeToSerializers[float64Type], DispatchId: PrimitiveFloat64DispatchId}
-	case STRING:
-		return &TypeInfo{Type: stringType, TypeID: typeID, Serializer: r.typeToSerializers[stringType], DispatchId: StringDispatchId}
-	case BINARY:
-		return &TypeInfo{Type: byteSliceType, TypeID: typeID, Serializer: r.typeToSerializers[byteSliceType], DispatchId: ByteSliceDispatchId}
 	}
 
 	// Handle UNKNOWN type (0) - used for polymorphic types
@@ -2268,43 +2234,46 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 // For STRUCT/NAMED_STRUCT: Gets serializer directly by the passed type (skips type resolution)
 // For COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: Reads type def and creates serializer with passed type
 func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
-	typeID := buffer.ReadVarUint32Small7(err)
-	internalTypeID := TypeId(typeID & 0xFF)
-
+	typeID := uint32(buffer.ReadUint8(err))
+	internalTypeID := TypeId(typeID)
 	switch internalTypeID {
-	case STRUCT, NAMED_STRUCT:
-		// Non-compatible mode: skip namespace/typename meta strings if present
-		if IsNamespacedType(TypeId(typeID)) {
-			// Skip namespace meta string
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-			// Skip typename meta string
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+	case ENUM, STRUCT, EXT, TYPED_UNION:
+		buffer.ReadVarUint32(err)
+		if internalTypeID == STRUCT {
+			return r.typeToSerializers[expectedType]
 		}
-		// Get serializer directly by the expected type - no map lookup needed
-		return r.typeToSerializers[expectedType]
-
-	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		// Compatible mode: read type def from shared meta
+		return nil
+	case NAMED_ENUM, NAMED_STRUCT, NAMED_EXT, NAMED_UNION:
 		if r.metaShareEnabled() {
 			typeInfo := r.readSharedTypeMeta(buffer, err)
 			if err.HasError() {
 				return nil
 			}
-			return typeInfo.Serializer
+			if internalTypeID == NAMED_STRUCT {
+				return typeInfo.Serializer
+			}
+			return nil
 		}
-		// Fallback: skip namespace/typename and use expected type's serializer
-		if IsNamespacedType(TypeId(typeID)) {
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-			r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		if internalTypeID == NAMED_STRUCT {
+			return r.typeToSerializers[expectedType]
 		}
-		return r.typeToSerializers[expectedType]
+		return nil
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+		// Compatible mode: read type def from shared meta
+		typeInfo := r.readSharedTypeMeta(buffer, err)
+		if err.HasError() {
+			return nil
+		}
+		return typeInfo.Serializer
 	default:
 		// For other types, return nil - caller should handle
 		return nil
 	}
 }
 
-func (r *TypeResolver) getTypeById(id int16) (reflect.Type, error) {
+func (r *TypeResolver) getTypeById(id TypeId) (reflect.Type, error) {
 	type_, ok := r.typeIdToType[id]
 	if !ok {
 		return nil, fmt.Errorf("type of id %d not supported, supported types: %v", id, r.typeIdToType)
@@ -2320,19 +2289,37 @@ func (r *TypeResolver) getTypeInfoById(id uint32) (*TypeInfo, error) {
 	}
 }
 
+func (r *TypeResolver) getUserTypeInfoById(userTypeID uint32) *TypeInfo {
+	if userTypeID == invalidUserTypeID {
+		return nil
+	}
+	if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
+		return typeInfo
+	}
+	return nil
+}
+
 func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Error) {
 	if id, ok := r.dynamicStringToId[str]; !ok {
 		dynamicStringId := r.dynamicStringId
 		r.dynamicStringId += 1
 		r.dynamicStringToId[str] = dynamicStringId
-		length := len(str)
+		encodedMeta, encErr := r.namespaceEncoder.EncodeWithEncoding(str, meta.UTF_8)
+		if encErr != nil {
+			err.SetError(encErr)
+			return
+		}
+		encoded := encodedMeta.GetEncodedBytes()
+		length := len(encoded)
 		buffer.WriteVarUint32(uint32(length << 1))
 		if length <= SMALL_STRING_THRESHOLD {
-			buffer.WriteByte_(uint8(meta.UTF_8))
+			if length != 0 {
+				buffer.WriteByte_(uint8(meta.UTF_8))
+			}
 		} else {
 			// TODO this hash should be unique, since we don't compare data equality for performance
 			h := fnv.New64a()
-			if _, hashErr := h.Write([]byte(str)); hashErr != nil {
+			if _, hashErr := h.Write(encoded); hashErr != nil {
 				err.SetError(hashErr)
 				return
 			}
@@ -2343,7 +2330,7 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 			err.SetError(fmt.Errorf("too long string: %s", str))
 			return
 		}
-		buffer.WriteBinary(unsafeGetBytes(str))
+		buffer.WriteBinary(encoded)
 	} else {
 		buffer.WriteVarUint32(uint32(((id + 1) << 1) | 1))
 	}
@@ -2353,13 +2340,26 @@ func (r *TypeResolver) readMetaString(buffer *ByteBuffer, err *Error) string {
 	header := buffer.ReadVarUint32(err)
 	var length = int(header >> 1)
 	if header&0b1 == 0 {
+		encoding := meta.UTF_8
 		if length <= SMALL_STRING_THRESHOLD {
-			buffer.ReadByte(err)
+			if length != 0 {
+				encoding = meta.Encoding(buffer.ReadByte(err))
+			}
 		} else {
 			// TODO support use computed hash
-			buffer.ReadInt64(err)
+			hash := buffer.ReadInt64(err)
+			encoding = meta.Encoding(hash & 0xFF)
 		}
-		str := string(buffer.ReadBinary(length, err))
+		raw := buffer.ReadBinary(length, err)
+		if length == 0 {
+			raw = nil
+		}
+		decoder := meta.NewDecoder('.', '_')
+		str, decErr := decoder.Decode(raw, encoding)
+		if decErr != nil {
+			err.SetError(decErr)
+			return ""
+		}
 		dynamicStringId := r.dynamicStringId
 		r.dynamicStringId += 1
 		r.dynamicIdToString[dynamicStringId] = str
@@ -2406,9 +2406,12 @@ var ErrTypeMismatch = errors.New("fory: type ID mismatch")
 
 // MetaContext holds metadata for schema evolution and type sharing
 type MetaContext struct {
-	typeMap               map[reflect.Type]uint32 // For writing: tracks written types
-	readTypeInfos         []*TypeInfo             // For reading: types read inline
+	typeMap               map[uintptr]uint32 // For writing: tracks written types
+	readTypeInfos         []*TypeInfo        // For reading: types read inline
 	scopedMetaShareEnable bool
+	firstTypePtr          uintptr
+	hasFirstType          bool
+	typeMapActive         bool
 }
 
 // IsScopedMetaShareEnabled returns whether scoped meta share is enabled
@@ -2418,6 +2421,10 @@ func (m *MetaContext) IsScopedMetaShareEnabled() bool {
 
 // Reset clears the meta context for reuse
 func (m *MetaContext) Reset() {
-	m.typeMap = make(map[reflect.Type]uint32)
-	m.readTypeInfos = nil
+	m.hasFirstType = false
+	m.typeMapActive = false
+	m.firstTypePtr = 0
+	if m.readTypeInfos != nil {
+		m.readTypeInfos = m.readTypeInfos[:0]
+	}
 }

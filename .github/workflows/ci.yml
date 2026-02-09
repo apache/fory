@@ -514,8 +514,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: [3.8, 3.12, 3.13.3]
+        python-version: ['3.8', '3.12', '3.13']
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-2022]
+        # windows-2022 runners don't have Python 3.8 preinstalled, and pinned 3.13.3
+        # forces a download/reinstall; use cached 3.11/3.12/3.13 on Windows instead.
+        exclude:
+          - os: windows-2022
+            python-version: '3.8'
+        include:
+          - os: windows-2022
+            python-version: '3.11'
     steps:
       - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
@@ -729,3 +737,31 @@ jobs:
           node-version: 20.x
       - name: Check code style
         run: python ./ci/run_ci.py format
+
+  validate_fory_site_build:
+    name: Validate Fory Site Build
+    runs-on: ubuntu-latest
+    if: github.repository == 'apache/fory' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    steps:
+      - name: Checkout fory
+        uses: actions/checkout@v5
+        with:
+          path: fory
+
+      - name: Checkout fory-site
+        uses: actions/checkout@v5
+        with:
+          repository: apache/fory-site
+          ref: main
+          path: fory-site
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: fory-site/package-lock.json
+
+      - name: Sync files and validate site build
+        run: |
+          python3 fory/ci/validate_fory_site_sync.py fory fory-site

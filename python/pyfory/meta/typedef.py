@@ -19,6 +19,7 @@ import enum
 import typing
 from typing import List
 from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type
+from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.buffer import Buffer
 from pyfory.type_util import infer_field
 from pyfory.meta.metastring import Encoding
@@ -51,12 +52,21 @@ TAG_ID_SIZE_THRESHOLD = 0b1111  # 4-bit threshold for tag IDs (0-14 inline, 15 =
 
 class TypeDef:
     def __init__(
-        self, namespace: str, typename: str, cls: type, type_id: int, fields: List["FieldInfo"], encoded: bytes = None, is_compressed: bool = False
+        self,
+        namespace: str,
+        typename: str,
+        cls: type,
+        type_id: int,
+        fields: List["FieldInfo"],
+        encoded: bytes = None,
+        is_compressed: bool = False,
+        user_type_id: int = NO_USER_TYPE_ID,
     ):
         self.namespace = namespace
         self.typename = typename
         self.cls = cls
         self.type_id = type_id
+        self.user_type_id = user_type_id
         self.fields = fields
         self.encoded = encoded
         self.is_compressed = is_compressed
@@ -132,17 +142,17 @@ class TypeDef:
         return resolved_names
 
     def create_serializer(self, resolver):
-        if self.type_id & 0xFF == TypeId.NAMED_EXT:
-            return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
-        if self.type_id & 0xFF == TypeId.NAMED_ENUM:
+        if self.type_id == TypeId.NAMED_EXT:
+            return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
+        if self.type_id == TypeId.NAMED_ENUM:
             try:
-                return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
+                return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
             except Exception:
                 from pyfory.serializer import NonExistEnumSerializer
 
                 return NonExistEnumSerializer(resolver.fory)
-        if self.type_id & 0xFF == TypeId.NAMED_UNION:
-            return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
+        if self.type_id == TypeId.NAMED_UNION:
+            return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
 
         from pyfory.struct import DataClassSerializer
 
@@ -157,17 +167,29 @@ class TypeDef:
             resolved_name = field_names[i]
             nullable_fields[resolved_name] = field_info.field_type.is_nullable
 
+        dynamic_fields = {}
+        for i, field_info in enumerate(self.fields):
+            resolved_name = field_names[i]
+            type_id = field_info.field_type.type_id
+            if is_polymorphic_type(type_id):
+                dynamic_fields[resolved_name] = True
+
         return DataClassSerializer(
             fory,
             self.cls,
-            xlang=not fory.is_py,
+            xlang=fory.xlang,
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
+            dynamic_fields=dynamic_fields,
         )
 
     def __repr__(self):
-        return f"TypeDef(namespace={self.namespace}, typename={self.typename}, cls={self.cls}, type_id={self.type_id}, fields={self.fields}, is_compressed={self.is_compressed})"
+        return (
+            f"TypeDef(namespace={self.namespace}, typename={self.typename}, cls={self.cls}, "
+            f"type_id={self.type_id}, user_type_id={self.user_type_id}, "
+            f"fields={self.fields}, is_compressed={self.is_compressed})"
+        )
 
 
 def _snake_to_camel(s: str) -> str:
@@ -213,8 +235,16 @@ class FieldInfo:
 
 
 class FieldType:
-    def __init__(self, type_id: int, is_monomorphic: bool, is_nullable: bool, is_tracking_ref: bool):
+    def __init__(
+        self,
+        type_id: int,
+        is_monomorphic: bool,
+        is_nullable: bool,
+        is_tracking_ref: bool,
+        user_type_id: int = NO_USER_TYPE_ID,
+    ):
         self.type_id = type_id
+        self.user_type_id = user_type_id
         self.is_monomorphic = is_monomorphic
         self.is_nullable = is_nullable
         self.is_tracking_ref = is_tracking_ref
@@ -228,7 +258,9 @@ class FieldType:
                 xtype_id |= 0b10
             if self.is_tracking_ref:
                 xtype_id |= 0b1
-        buffer.write_var_uint32(xtype_id)
+            buffer.write_var_uint32(xtype_id)
+        else:
+            buffer.write_uint8(xtype_id)
         # Handle nested types
         if self.type_id in [TypeId.LIST, TypeId.SET]:
             self.element_type.xwrite(buffer, True)
@@ -246,6 +278,7 @@ class FieldType:
 
     @classmethod
     def xread_with_type(cls, buffer: Buffer, resolver, xtype_id: int, is_nullable: bool, is_tracking_ref: bool):
+        user_type_id = NO_USER_TYPE_ID
         if xtype_id in [TypeId.LIST, TypeId.SET]:
             element_type = cls.xread(buffer, resolver)
             return CollectionFieldType(xtype_id, True, is_nullable, is_tracking_ref, element_type)
@@ -254,11 +287,11 @@ class FieldType:
             value_type = cls.xread(buffer, resolver)
             return MapFieldType(xtype_id, True, is_nullable, is_tracking_ref, key_type, value_type)
         elif xtype_id == TypeId.UNKNOWN:
-            return DynamicFieldType(xtype_id, False, is_nullable, is_tracking_ref)
+            return DynamicFieldType(xtype_id, False, is_nullable, is_tracking_ref, user_type_id=user_type_id)
         else:
             # For primitive types, determine if they are monomorphic based on the type
             is_monomorphic = not is_polymorphic_type(xtype_id)
-            return FieldType(xtype_id, is_monomorphic, is_nullable, is_tracking_ref)
+            return FieldType(xtype_id, is_monomorphic, is_nullable, is_tracking_ref, user_type_id=user_type_id)
 
     def create_serializer(self, resolver, type_):
         # Handle list wrapper
@@ -268,12 +301,12 @@ class FieldType:
             if type_ is None:
                 return None
             try:
-                return resolver.get_typeinfo(cls=type_).serializer
+                return resolver.get_type_info(cls=type_).serializer
             except Exception:
                 return None
         # Types that need to be handled dynamically during deserialization
         # For these types, we don't know the concrete type at compile time
-        if self.type_id & 0xFF in [
+        if self.type_id in [
             TypeId.EXT,
             TypeId.NAMED_EXT,
             TypeId.STRUCT,
@@ -282,26 +315,29 @@ class FieldType:
             TypeId.NAMED_COMPATIBLE_STRUCT,
             TypeId.UNKNOWN,
         ]:
-            return None
-        if self.type_id & 0xFF in [TypeId.ENUM, TypeId.NAMED_ENUM]:
+            if type_ is None:
+                return None
+            try:
+                return resolver.get_type_info(cls=type_).serializer
+            except Exception:
+                return None
+        if self.type_id in [TypeId.ENUM]:
             try:
                 if issubclass(type_, enum.Enum):
-                    return resolver.get_typeinfo(cls=type_).serializer
+                    return resolver.get_type_info(cls=type_).serializer
             except Exception:
                 pass
             from pyfory.serializer import NonExistEnumSerializer
 
             return NonExistEnumSerializer(resolver.fory)
-        typeinfo = resolver.get_typeinfo_by_id(self.type_id)
+        typeinfo = resolver.get_type_info_by_id(self.type_id)
         return typeinfo.serializer
 
     def __repr__(self):
-        type_id = self.type_id
-        if type_id > 128:
-            type_id = f"{type_id}, fory_id={type_id & 0xFF}, user_id={type_id >> 8}"
         return (
-            f"FieldType(type_id={type_id}, is_monomorphic={self.is_monomorphic}, "
-            f"is_nullable={self.is_nullable}, is_tracking_ref={self.is_tracking_ref})"
+            f"FieldType(type_id={self.type_id}, user_type_id={self.user_type_id}, "
+            f"is_monomorphic={self.is_monomorphic}, is_nullable={self.is_nullable}, "
+            f"is_tracking_ref={self.is_tracking_ref})"
         )
 
 
@@ -374,8 +410,15 @@ class MapFieldType(FieldType):
 
 
 class DynamicFieldType(FieldType):
-    def __init__(self, type_id: int, is_monomorphic: bool, is_nullable: bool, is_tracking_ref: bool):
-        super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref)
+    def __init__(
+        self,
+        type_id: int,
+        is_monomorphic: bool,
+        is_nullable: bool,
+        is_tracking_ref: bool,
+        user_type_id: int = NO_USER_TYPE_ID,
+    ):
+        super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref, user_type_id=user_type_id)
 
     def create_serializer(self, resolver, type_):
         # For dynamic field types (UNKNOWN, STRUCT, etc.), default to None so
@@ -422,7 +465,7 @@ def build_field_infos(type_resolver, cls):
     nullable_map = {}
     visitor = StructTypeIdVisitor(type_resolver.fory, cls)
     field_nullable = type_resolver.fory.field_nullable
-    global_ref_tracking = type_resolver.fory.ref_tracking
+    global_ref_tracking = type_resolver.fory.track_ref
 
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
@@ -440,21 +483,21 @@ def build_field_infos(type_resolver, cls):
         else:
             # For xlang mode: only Optional[T] types are nullable by default
             # For native mode: all reference types are nullable by default
-            if type_resolver.fory.is_py:
+            if not type_resolver.fory.xlang:
                 is_nullable = is_optional or not is_primitive_type(unwrapped_type)
             else:
                 # For xlang: only Optional[T] types are nullable
                 is_nullable = is_optional
 
-        # Determine ref tracking: field.ref AND global ref_tracking
+        # Determine ref tracking: field.ref AND global track_ref
         # For xlang mode: ref tracking defaults to false unless explicitly annotated
         # This matches Java's behavior in TypeResolver.getFieldDescriptors()
         if fory_meta is not None:
             is_tracking_ref = fory_meta.ref and global_ref_tracking
         else:
             # In xlang mode, default to false (matches Java's xlang behavior)
-            # In native mode, use global ref_tracking setting
-            is_tracking_ref = global_ref_tracking if type_resolver.fory.is_py else False
+            # In native mode, use global track_ref setting
+            is_tracking_ref = global_ref_tracking if not type_resolver.fory.xlang else False
 
         # Get tag_id from metadata (-1 if not specified)
         tag_id = fory_meta.id if fory_meta is not None else -1
@@ -516,8 +559,11 @@ def build_field_type_from_type_ids_with_ref(
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN
+    if type_id == TypeId.NAMED_ENUM:
+        type_id = TypeId.ENUM
+    if type_id in (TypeId.NAMED_UNION, TypeId.TYPED_UNION):
+        type_id = TypeId.UNION
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
-    type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
         elem_hint = None
@@ -592,30 +638,33 @@ def build_field_type_from_type_ids_with_ref(
         TypeId.COMPATIBLE_STRUCT,
         TypeId.NAMED_COMPATIBLE_STRUCT,
     ]:
-        return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref)
+        return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref, user_type_id=NO_USER_TYPE_ID)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
             raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
         # union/enum go here too
-        return FieldType(type_id, morphic, is_nullable, is_tracking_ref)
+        return FieldType(type_id, morphic, is_nullable, is_tracking_ref, user_type_id=NO_USER_TYPE_ID)
 
 
 def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_nullable=False):
     """Build field type from type hint."""
     type_ids = infer_field(field_name, type_hint, visitor)
     try:
-        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor, is_nullable)
+        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor, is_nullable, type_hint=type_hint)
     except Exception as e:
         raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
 
-def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor, is_nullable=False):
-    tracking_ref = type_resolver.fory.ref_tracking
+def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor, is_nullable=False, type_hint=None):
+    tracking_ref = type_resolver.fory.track_ref
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN
+    if type_id == TypeId.NAMED_ENUM:
+        type_id = TypeId.ENUM
+    if type_id in (TypeId.NAMED_UNION, TypeId.TYPED_UNION):
+        type_id = TypeId.UNION
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
-    type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
         elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
@@ -631,9 +680,9 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
         TypeId.NAMED_STRUCT,
         TypeId.COMPATIBLE_STRUCT,
         TypeId.NAMED_COMPATIBLE_STRUCT,
-    ] or is_union_type(type_id):
-        return DynamicFieldType(type_id, False, is_nullable, tracking_ref)
+    ]:
+        return DynamicFieldType(type_id, False, is_nullable, tracking_ref, user_type_id=NO_USER_TYPE_ID)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
             raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
-        return FieldType(type_id, morphic, is_nullable, tracking_ref)
+        return FieldType(type_id, morphic, is_nullable, tracking_ref, user_type_id=NO_USER_TYPE_ID)

@@ -189,7 +189,7 @@ f.Deserialize(fullData, &target)
 
 **Error**: `invalid reference ID`
 
-**Cause**: Reference to non-existent object in serialized data.
+**Cause**: Reference to non-existent or unknown object in serialized data.
 
 **Solutions**:
 

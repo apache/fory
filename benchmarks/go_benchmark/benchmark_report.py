@@ -45,6 +45,16 @@ COLORS = {
     "protobuf": "#55BCC2",  # Teal
     "msgpack": "#9B59B6",  # Purple
 }
+DATATYPES = [
+    "struct",
+    "structlist",
+    "sample",
+    "samplelist",
+    "mediacontent",
+    "mediacontentlist",
+]
+OPERATIONS = ["serialize", "deserialize"]
+SERIALIZERS = ["fory", "protobuf", "msgpack"]
 
 
 def parse_benchmark_txt(filepath):
@@ -107,16 +117,49 @@ def parse_benchmark_json(filepath):
     return final_results
 
 
+def parse_serialized_sizes(text):
+    sizes = {}
+    current = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("="):
+            continue
+        if line.endswith(":") and not line.startswith(
+            ("Fory:", "Protobuf:", "Msgpack:")
+        ):
+            current = line.rstrip(":")
+            sizes[current] = {}
+            continue
+        if current is None:
+            continue
+        match = re.match(r"^(Fory|Protobuf|Msgpack):\s+(\d+)\s+bytes$", line)
+        if match:
+            serializer = match.group(1).lower()
+            size = int(match.group(2))
+            sizes[current][serializer] = size
+    return sizes
+
+
+def load_serialized_sizes(output_dir):
+    size_files = [
+        Path(output_dir) / "serialized_sizes.txt",
+        Path(output_dir) / "benchmark_results.txt",
+    ]
+    for path in size_files:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if "Serialized Sizes (bytes):" in text:
+            return parse_serialized_sizes(text)
+    return {}
+
+
 def generate_plots(results, output_dir):
     """Generate comparison plots for each data type."""
     if not HAS_MATPLOTLIB:
         return
 
-    datatypes = ["struct", "sample", "mediacontent"]
-    operations = ["serialize", "deserialize"]
-    serializers = ["fory", "protobuf", "msgpack"]
-
-    for datatype in datatypes:
+    for datatype in DATATYPES:
         if datatype not in results:
             continue
 
@@ -127,14 +170,14 @@ def generate_plots(results, output_dir):
             fontweight="bold",
         )
 
-        for idx, op in enumerate(operations):
+        for idx, op in enumerate(OPERATIONS):
             ax = axes[idx]
 
             if op not in results[datatype]:
                 continue
 
             data = results[datatype][op]
-            available_serializers = [s for s in serializers if s in data]
+            available_serializers = [s for s in SERIALIZERS if s in data]
 
             if not available_serializers:
                 continue
@@ -165,21 +208,34 @@ def generate_plots(results, output_dir):
             # Add speedup annotations
             if "fory" in data:
                 fory_val = 1e9 / data["fory"]
+                speedup_lines = []
                 for s in available_serializers:
                     if s != "fory" and s in data:
                         other_val = 1e9 / data[s]
                         speedup = fory_val / other_val
                         if speedup > 1:
-                            ax.text(
-                                0.5,
-                                0.95,
-                                f"Fory {speedup:.1f}x faster",
-                                transform=ax.transAxes,
-                                ha="center",
-                                fontsize=10,
-                                color="green",
-                                fontweight="bold",
+                            speedup_lines.append(
+                                f"Fory {speedup:.1f}x faster than {s.title()}"
                             )
+
+                if speedup_lines:
+                    ax.text(
+                        0.98,
+                        0.98,
+                        "\n".join(speedup_lines),
+                        transform=ax.transAxes,
+                        ha="right",
+                        va="top",
+                        fontsize=9,
+                        color="green",
+                        fontweight="bold",
+                        bbox=dict(
+                            boxstyle="round,pad=0.25",
+                            facecolor="white",
+                            edgecolor="none",
+                            alpha=0.85,
+                        ),
+                    )
 
         plt.tight_layout()
         plt.savefig(
@@ -195,11 +251,15 @@ def generate_combined_plot(results, output_dir):
     if not HAS_MATPLOTLIB:
         return
 
-    datatypes = ["struct", "sample", "mediacontent"]
-    operations = ["serialize", "deserialize"]
-    serializers = ["fory", "protobuf", "msgpack"]
+    datatypes = DATATYPES
+    operations = OPERATIONS
+    serializers = SERIALIZERS
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    cols = len(datatypes)
+    fig_width = max(12, 3.5 * cols)
+    fig, axes = plt.subplots(len(operations), cols, figsize=(fig_width, 10))
+    if cols == 1:
+        axes = [[axes[row]] for row in range(len(operations))]
     fig.suptitle(
         "Go Serialization Benchmark: Fory vs Protobuf vs Msgpack",
         fontsize=14,
@@ -208,7 +268,7 @@ def generate_combined_plot(results, output_dir):
 
     for row, op in enumerate(operations):
         for col, datatype in enumerate(datatypes):
-            ax = axes[row, col]
+            ax = axes[row][col]
 
             if datatype not in results or op not in results[datatype]:
                 ax.text(
@@ -259,8 +319,8 @@ def generate_combined_plot(results, output_dir):
 
 def generate_markdown_report(results, output_dir):
     """Generate markdown report."""
-    datatypes = ["struct", "sample", "mediacontent"]
-    operations = ["serialize", "deserialize"]
+    datatypes = DATATYPES
+    operations = OPERATIONS
 
     report = []
     report.append("# Go Serialization Benchmark Report\n")
@@ -335,6 +395,38 @@ def generate_markdown_report(results, output_dir):
             )
 
     report.append("")
+
+    # Serialized size section
+    sizes = load_serialized_sizes(output_dir)
+    report.append("### Serialized Data Sizes (bytes)\n")
+    if sizes:
+        report.append("| Data Type | Fory | Protobuf | Msgpack |")
+        report.append("|-----------|------|----------|---------|")
+        name_map = {
+            "NumericStruct": "Struct",
+            "Sample": "Sample",
+            "MediaContent": "MediaContent",
+            "StructList": "StructList",
+            "SampleList": "SampleList",
+            "MediaContentList": "MediaContentList",
+        }
+        ordered = [
+            "NumericStruct",
+            "Sample",
+            "MediaContent",
+            "StructList",
+            "SampleList",
+            "MediaContentList",
+        ]
+        for key in ordered:
+            if key not in sizes:
+                continue
+            entry = sizes[key]
+            report.append(
+                f"| {name_map.get(key, key)} | {entry.get('fory', 'N/A')} | {entry.get('protobuf', 'N/A')} | {entry.get('msgpack', 'N/A')} |"
+            )
+    else:
+        report.append("No serialized size data found.\n")
 
     # Plots section
     if HAS_MATPLOTLIB:

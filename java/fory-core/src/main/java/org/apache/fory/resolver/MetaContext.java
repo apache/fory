@@ -30,6 +30,6 @@ public class MetaContext {
   /** Classes which has sent definitions to peer. */
   public final IdentityObjectIntMap<Class<?>> classMap = new IdentityObjectIntMap<>(1, 0.5f);
 
-  /** ClassInfos read from peer for reference lookup during deserialization. */
-  public final ObjectArray<ClassInfo> readClassInfos = new ObjectArray<>();
+  /** TypeInfos read from peer for reference lookup during deserialization. */
+  public final ObjectArray<TypeInfo> readTypeInfos = new ObjectArray<>();
 }

@@ -44,7 +44,9 @@ typeDef are layout as following:
   - next variable bytes: field definitions (see below)
 */
 type TypeDef struct {
-	typeId         uint32 // Full composite type ID (userId << 8 | internalTypeId)
+	typeId uint32
+	// User type ID is stored as unsigned uint32; 0xffffffff means unset.
+	userTypeId     uint32
 	nsName         *MetaStringBytes
 	typeName       *MetaStringBytes
 	compressed     bool
@@ -52,11 +54,13 @@ type TypeDef struct {
 	fieldDefs      []FieldDef
 	encoded        []byte
 	type_          reflect.Type
+	cachedTypeInfo *TypeInfo
 }
 
-func NewTypeDef(typeId uint32, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
+func NewTypeDef(typeId uint32, userTypeId uint32, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
 	return &TypeDef{
 		typeId:         typeId,
+		userTypeId:     userTypeId,
 		nsName:         nsName,
 		typeName:       typeName,
 		compressed:     compressed,
@@ -93,8 +97,8 @@ func (td *TypeDef) String() string {
 	for i, fd := range td.fieldDefs {
 		fieldStrs[i] = fd.String()
 	}
-	return fmt.Sprintf("TypeDef{typeId=%d, ns=%s, type=%s, registerByName=%v, compressed=%v, fields=[%s]}",
-		td.typeId, nsStr, typeStr, td.registerByName, td.compressed, strings.Join(fieldStrs, ", "))
+	return fmt.Sprintf("TypeDef{typeId=%d, userTypeId=%d, ns=%s, type=%s, registerByName=%v, compressed=%v, fields=[%s]}",
+		td.typeId, td.userTypeId, nsStr, typeStr, td.registerByName, td.compressed, strings.Join(fieldStrs, ", "))
 }
 
 // ComputeDiff computes the diff between this (decoded/remote) TypeDef and a local TypeDef.
@@ -237,6 +241,7 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 		} else {
 			// Known struct type - use structSerializer with fieldDefs
 			structSer := newStructSerializerFromTypeDef(type_, "", td.fieldDefs)
+			structSer.userTypeID = td.userTypeId
 			// Eagerly initialize the struct serializer with pre-computed field metadata
 			if resolver != nil {
 				if err := structSer.initialize(resolver); err != nil {
@@ -250,6 +255,7 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 	info := TypeInfo{
 		Type:         type_,
 		TypeID:       td.typeId,
+		UserTypeID:   td.userTypeId,
 		Serializer:   serializer,
 		PkgPathBytes: td.nsName,
 		NameBytes:    td.typeName,
@@ -257,6 +263,18 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 		TypeDef:      td,
 	}
 	return info, nil
+}
+
+func (td *TypeDef) getOrBuildTypeInfo(resolver *TypeResolver) (*TypeInfo, error) {
+	if td.cachedTypeInfo != nil {
+		return td.cachedTypeInfo, nil
+	}
+	info, err := td.buildTypeInfoWithResolver(resolver)
+	if err != nil {
+		return nil, err
+	}
+	td.cachedTypeInfo = &info
+	return td.cachedTypeInfo, nil
 }
 
 func readTypeDef(fory *Fory, buffer *ByteBuffer, header int64, err *Error) *TypeDef {
@@ -353,9 +371,9 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get type info for value %v: %w", value, err)
 	}
-	typeId := uint32(infoPtr.TypeID) // Use full uint32 type ID
-	registerByName := IsNamespacedType(TypeId(typeId & 0xFF))
-	typeDef := NewTypeDef(typeId, infoPtr.PkgPathBytes, infoPtr.NameBytes, registerByName, false, fieldDefs)
+	typeId := uint32(infoPtr.TypeID)
+	registerByName := IsNamespacedType(TypeId(typeId))
+	typeDef := NewTypeDef(typeId, infoPtr.UserTypeID, infoPtr.PkgPathBytes, infoPtr.NameBytes, registerByName, false, fieldDefs)
 
 	// encoding the typeDef, and save the encoded bytes
 	encoded, err := encodingTypeDef(fory.typeResolver, typeDef)
@@ -527,8 +545,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		//   so they are nullable by default.
 		// Can be overridden by explicit fory tag `fory:"nullable"`
 		typeId := ft.TypeId()
-		internalId := TypeId(typeId & 0xFF)
-		isEnumField := internalId == ENUM || internalId == NAMED_ENUM
+		isEnumField := typeId == ENUM
 		// Determine nullable based on mode
 		// In xlang mode: only pointer types are nullable by default (per xlang spec)
 		// In native mode: Go's natural semantics - all nil-able types are nullable
@@ -627,6 +644,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 // FieldType interface represents different field types, including object, collection, and map types
 type FieldType interface {
 	TypeId() TypeId
+	UserTypeId() uint32
 	String() string
 	write(*ByteBuffer)
 	writeWithFlags(*ByteBuffer, bool, bool)                  // writeWithFlags writes typeId with nullable/trackingRef flags
@@ -636,15 +654,17 @@ type FieldType interface {
 
 // BaseFieldType provides common functionality for field types
 type BaseFieldType struct {
-	typeId TypeId
+	typeId     TypeId
+	userTypeId uint32
 }
 
-func (b *BaseFieldType) TypeId() TypeId { return b.typeId }
+func (b *BaseFieldType) TypeId() TypeId     { return b.typeId }
+func (b *BaseFieldType) UserTypeId() uint32 { return b.userTypeId }
 func (b *BaseFieldType) String() string {
 	return fmt.Sprintf("FieldType{typeId=%d}", b.typeId)
 }
 func (b *BaseFieldType) write(buffer *ByteBuffer) {
-	buffer.WriteVarUint32Small7(uint32(b.typeId))
+	buffer.WriteUint8(uint8(b.typeId))
 }
 
 // writeWithFlags writes the typeId with nullable and trackingRef flags packed into the value.
@@ -677,6 +697,9 @@ func getFieldTypeSerializerWithResolver(resolver *TypeResolver, ft FieldType) (S
 }
 
 func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
+	if isUserDefinedType(b.typeId) {
+		return TypeInfo{}, nil
+	}
 	info, err := fory.typeResolver.getTypeInfoById(uint32(b.typeId))
 	if err != nil {
 		return TypeInfo{}, err
@@ -688,6 +711,9 @@ func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 }
 
 func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
+	if isUserDefinedType(b.typeId) {
+		return TypeInfo{}, nil
+	}
 	info, err := resolver.getTypeInfoById(uint32(b.typeId))
 	if err != nil {
 		return TypeInfo{}, err
@@ -701,9 +727,8 @@ func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInf
 // readFieldType reads field type info from the buffer according to the TypeId
 // This is called for top-level field types where flags are NOT embedded in the type ID
 func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
-	typeId := buffer.ReadVarUint32Small7(err)
-	// Use internal type ID (low byte) for switch, but store the full typeId
-	internalTypeId := TypeId(typeId & 0xFF)
+	typeId := buffer.ReadUint8(err)
+	internalTypeId := TypeId(typeId)
 
 	switch internalTypeId {
 	case LIST, SET:
@@ -725,9 +750,11 @@ func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 		}
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
 	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return NewDynamicFieldType(TypeId(typeId)), nil
+		ft := NewDynamicFieldType(TypeId(typeId))
+		return ft, nil
 	}
-	return NewSimpleFieldType(TypeId(typeId)), nil
+	ft := NewSimpleFieldType(TypeId(typeId))
+	return ft, nil
 }
 
 // readFieldTypeWithFlags reads field type info where flags are embedded in the type ID
@@ -738,8 +765,7 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	// trackingRef := (rawValue & 0b1) != 0  // Not used currently
 	// nullable := (rawValue & 0b10) != 0    // Not used currently
 	typeId := rawValue >> 2
-	// Use internal type ID (low byte) for switch, but store the full typeId
-	internalTypeId := TypeId(typeId & 0xFF)
+	internalTypeId := TypeId(typeId)
 
 	switch internalTypeId {
 	case LIST, SET:
@@ -759,9 +785,11 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 		}
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
 	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
-		return NewDynamicFieldType(TypeId(typeId)), nil
+		ft := NewDynamicFieldType(TypeId(typeId))
+		return ft, nil
 	}
-	return NewSimpleFieldType(TypeId(typeId)), nil
+	ft := NewSimpleFieldType(TypeId(typeId))
+	return ft, nil
 }
 
 // CollectionFieldType represents collection types like List, Slice
@@ -772,7 +800,7 @@ type CollectionFieldType struct {
 
 func NewCollectionFieldType(typeId TypeId, elementType FieldType) *CollectionFieldType {
 	return &CollectionFieldType{
-		BaseFieldType: BaseFieldType{typeId: typeId},
+		BaseFieldType: BaseFieldType{typeId: typeId, userTypeId: invalidUserTypeID},
 		elementType:   elementType,
 	}
 }
@@ -855,7 +883,7 @@ type MapFieldType struct {
 
 func NewMapFieldType(typeId TypeId, keyType, valueType FieldType) *MapFieldType {
 	return &MapFieldType{
-		BaseFieldType: BaseFieldType{typeId: typeId},
+		BaseFieldType: BaseFieldType{typeId: typeId, userTypeId: invalidUserTypeID},
 		keyType:       keyType,
 		valueType:     valueType,
 	}
@@ -950,7 +978,8 @@ type SimpleFieldType struct {
 func NewSimpleFieldType(typeId TypeId) *SimpleFieldType {
 	return &SimpleFieldType{
 		BaseFieldType: BaseFieldType{
-			typeId: typeId & 0xff,
+			typeId:     typeId,
+			userTypeId: invalidUserTypeID,
 		},
 	}
 }
@@ -967,7 +996,8 @@ type DynamicFieldType struct {
 func NewDynamicFieldType(typeId TypeId) *DynamicFieldType {
 	return &DynamicFieldType{
 		BaseFieldType: BaseFieldType{
-			typeId: typeId,
+			typeId:     typeId,
+			userTypeId: invalidUserTypeID,
 		},
 	}
 }
@@ -983,26 +1013,12 @@ func (d *DynamicFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 
 func (d *DynamicFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
 	// Try to resolve the actual type from the resolver
-	// The typeId might be a composite ID (customId << 8 + baseType)
 	typeId := d.typeId
 
 	// First try direct lookup
 	info, err := resolver.getTypeInfoById(uint32(typeId))
 	if err == nil && info != nil {
 		return *info, nil
-	}
-
-	// If direct lookup fails and it's a composite ID, extract the custom ID
-	baseType := typeId & 0xFF
-	if baseType == NAMED_STRUCT || baseType == NAMED_COMPATIBLE_STRUCT || baseType == COMPATIBLE_STRUCT {
-		customId := typeId >> 8
-		if customId > 0 {
-			// Try looking up by the custom ID
-			info, err = resolver.getTypeInfoById(uint32(customId))
-			if err == nil && info != nil {
-				return *info, nil
-			}
-		}
 	}
 
 	// Fallback to any for unknown types
@@ -1107,17 +1123,25 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 		return nil, err
 	}
 	typeId = TypeId(typeInfo.TypeID)
-
-	if isUserDefinedType(typeId) {
-		internalTypeId := TypeId(typeId & 0xFF)
-		switch internalTypeId {
-		case UNION, TYPED_UNION, NAMED_UNION, ENUM, NAMED_ENUM:
-			return NewSimpleFieldType(typeId), nil
-		}
-		return NewDynamicFieldType(typeId), nil
+	if typeId == NAMED_ENUM {
+		typeId = ENUM
+	}
+	if typeId == NAMED_UNION || typeId == TYPED_UNION {
+		typeId = UNION
 	}
 
-	return NewSimpleFieldType(typeId), nil
+	if isUserDefinedType(typeId) {
+		switch typeId {
+		case UNION, ENUM:
+			ft := NewSimpleFieldType(typeId)
+			return ft, nil
+		}
+		ft := NewDynamicFieldType(typeId)
+		return ft, nil
+	}
+
+	ft := NewSimpleFieldType(typeId)
+	return ft, nil
 }
 
 const (
@@ -1128,13 +1152,13 @@ const (
 
 // Field name encoding flags (2 bits in header)
 const (
-	FieldNameEncodingUTF8              = 0 // UTF-8 encoding
+	FieldNameEncodingUTF8              = 0 // UTF_8 encoding
 	FieldNameEncodingAllToLowerSpecial = 1 // ALL_TO_LOWER_SPECIAL encoding
 	FieldNameEncodingLowerUpperDigit   = 2 // LOWER_UPPER_DIGIT_SPECIAL encoding
 	FieldNameEncodingTagID             = 3 // Use tag ID instead of field name
 )
 
-// Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL` for fieldName
+// Encoding `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL` for fieldName
 // Note: TAG_ID (0b11) is a special encoding that uses tag ID instead of field name
 var fieldNameEncodings = []meta.Encoding{
 	meta.UTF_8,
@@ -1173,7 +1197,7 @@ func writeSimpleName(buffer *ByteBuffer, metaBytes *MetaStringBytes, encoder *me
 	encoding := metaBytes.Encoding
 
 	// Get encoding flags (0-2) - Java uses 2 bits for package encoding:
-	// 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
+	// 0=UTF_8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
 	var encodingFlags byte
 	switch encoding {
 	case meta.UTF_8:
@@ -1216,7 +1240,7 @@ func writeSimpleTypeName(buffer *ByteBuffer, metaBytes *MetaStringBytes, encoder
 	encoding := metaBytes.Encoding
 
 	// Get encoding flags (0-3) - Java uses 2 bits for typename encoding:
-	// 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
+	// 0=UTF_8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
 	var encodingFlags byte
 	switch encoding {
 	case meta.UTF_8:
@@ -1264,9 +1288,11 @@ func encodingTypeDef(typeResolver *TypeResolver, typeDef *TypeDef) ([]byte, erro
 			return nil, fmt.Errorf("failed to write typename: %w", err)
 		}
 	} else {
-		// Java uses WriteVarUint32 for type ID (unsigned varint)
-		// typeDef.typeId is already int32, no need for conversion
-		buffer.WriteVarUint32(uint32(typeDef.typeId))
+		buffer.WriteUint8(uint8(typeDef.typeId))
+		if typeDef.userTypeId == invalidUserTypeID {
+			return nil, fmt.Errorf("missing user type ID for typeID %d", typeDef.typeId)
+		}
+		buffer.WriteVarUint32(typeDef.userTypeId)
 	}
 
 	if err := writeFieldDefs(typeResolver, buffer, typeDef.fieldDefs); err != nil {
@@ -1461,6 +1487,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 
 	// ReadData name or type ID according to the registerByName flag
 	var typeId uint32
+	userTypeId := invalidUserTypeID
 	var nsBytes, nameBytes *MetaStringBytes
 	var type_ reflect.Type
 	if registeredByName {
@@ -1475,7 +1502,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			nsSize = int(metaBuffer.ReadVarUint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
 		}
 
-		// Java pkg encoding: 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
+		// Java pkg encoding: 0=UTF_8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
 		var nsEncoding meta.Encoding
 		switch nsEncodingFlags {
 		case 0:
@@ -1501,7 +1528,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			typeSize = int(metaBuffer.ReadVarUint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
 		}
 
-		// Java typename encoding: 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
+		// Java typename encoding: 0=UTF_8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
 		var typeEncoding meta.Encoding
 		switch typeEncodingFlags {
 		case 0:
@@ -1558,6 +1585,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 				type_ = type_.Elem()
 			}
 			typeId = uint32(info.TypeID)
+			userTypeId = info.UserTypeID
 		} else {
 			// Type not registered - use NAMED_STRUCT as default typeId
 			// The type_ will remain nil and will be set from field definitions later
@@ -1565,14 +1593,15 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			type_ = nil
 		}
 	} else {
-		// Java uses WriteVarUint32 for type ID in TypeDef
-		// The type ID is a composite: (userID << 8) | internalTypeID
-		typeId = metaBuffer.ReadVarUint32(&metaErr)
-		// Try to get the type from registry using the full type ID
-		if info, exists := fory.typeResolver.typeIDToTypeInfo[typeId]; exists {
+		typeId = uint32(metaBuffer.ReadUint8(&metaErr))
+		userTypeId = metaBuffer.ReadVarUint32(&metaErr)
+		if info, exists := fory.typeResolver.userTypeIdToTypeInfo[userTypeId]; exists {
 			type_ = info.Type
-		} else {
-			//Type not registered - will be built from field definitions
+		} else if info, exists := fory.typeResolver.typeIDToTypeInfo[typeId]; exists {
+			type_ = info.Type
+		}
+		if type_ == nil {
+			// Type not registered - will be built from field definitions
 			type_ = nil
 		}
 	}
@@ -1592,7 +1621,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	encoded := buildTypeDefEncoded(globalHeader, metaSizeBits, extraMetaSize, encodedMeta)
 
 	// Create TypeDef
-	typeDef := NewTypeDef(typeId, nsBytes, nameBytes, registeredByName, isCompressed, fieldInfos)
+	typeDef := NewTypeDef(typeId, userTypeId, nsBytes, nameBytes, registeredByName, isCompressed, fieldInfos)
 	typeDef.encoded = encoded
 	typeDef.type_ = type_
 

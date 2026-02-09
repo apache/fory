@@ -193,6 +193,33 @@ public abstract class ForyTestBase {
         Fory.builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(true)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .suppressClassRegistrationWarnings(true)
+            .build()
+      },
+      {
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(false)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .suppressClassRegistrationWarnings(true)
+            .build()
+      },
+      {
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .suppressClassRegistrationWarnings(true)
+            .build()
+      },
+      {
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(false)
             .withCodegen(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
@@ -251,9 +278,7 @@ public abstract class ForyTestBase {
     return Sets.cartesianProduct(
             ImmutableSet.of(true, false), // trackingRef
             ImmutableSet.of(true, false), // codeGen
-            ImmutableSet.of(true, false), // scoped meta share
-            ImmutableSet.of(
-                CompatibleMode.COMPATIBLE, CompatibleMode.SCHEMA_CONSISTENT)) // CompatibleMode
+            ImmutableSet.of(true, false)) // compatible
         .stream()
         .map(List::toArray)
         .toArray(Object[][]::new);

@@ -74,7 +74,7 @@ pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) ->
 }
 
 pub fn fory_write_type_info(context: &mut WriteContext, type_id: TypeId) -> Result<(), Error> {
-    context.writer.write_var_uint32(type_id as u32);
+    context.writer.write_u8(type_id as u8);
     Ok(())
 }
 
@@ -107,7 +107,7 @@ pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>
 }
 
 pub fn fory_read_type_info(context: &mut ReadContext, type_id: TypeId) -> Result<(), Error> {
-    let remote_type_id = context.reader.read_varuint32()?;
+    let remote_type_id = context.reader.read_u8()? as u32;
     if remote_type_id == TypeId::LIST as u32 {
         return Err(Error::type_error(
             "Vec<number> belongs to the `number_array` type, \

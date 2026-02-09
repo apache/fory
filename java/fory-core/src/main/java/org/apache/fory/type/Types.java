@@ -24,8 +24,8 @@ import java.lang.reflect.Field;
 import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.util.Preconditions;
 
 public class Types {
@@ -78,142 +78,155 @@ public class Types {
   /** tagged_uint64: a 64-bit unsigned integer which uses fory tagged int64 encoding. */
   public static final int TAGGED_UINT64 = 15;
 
+  /** float8: an 8-bit floating point number. */
+  public static final int FLOAT8 = 16;
+
   /** float16: a 16-bit floating point number. */
-  public static final int FLOAT16 = 16;
+  public static final int FLOAT16 = 17;
+
+  /** bfloat16: a 16-bit brain floating point number. */
+  public static final int BFLOAT16 = 18;
 
   /** float32: a 32-bit floating point number. */
-  public static final int FLOAT32 = 17;
+  public static final int FLOAT32 = 19;
 
   /** float64: a 64-bit floating point number including NaN and Infinity. */
-  public static final int FLOAT64 = 18;
+  public static final int FLOAT64 = 20;
 
   /** string: a text string encoded using Latin1/UTF16/UTF-8 encoding. */
-  public static final int STRING = 19;
+  public static final int STRING = 21;
 
   /** A sequence of objects. */
-  public static final int LIST = 20;
+  public static final int LIST = 22;
 
   /** An unordered set of unique elements. */
-  public static final int SET = 21;
+  public static final int SET = 23;
 
   /**
    * A map of key-value pairs. Mutable types such as `list/map/set/array/tensor/arrow` are not
    * allowed as key of map.
    */
-  public static final int MAP = 22;
+  public static final int MAP = 24;
 
   /** enum: a data type consisting of a set of named values. */
-  public static final int ENUM = 23;
+  public static final int ENUM = 25;
 
   /** named_enum: an enum whose value will be serialized as the registered name. */
-  public static final int NAMED_ENUM = 24;
+  public static final int NAMED_ENUM = 26;
 
   /**
    * A morphic(final) type serialized by Fory Struct serializer. i.e. it doesn't have subclasses.
    * Suppose we're deserializing {@code List<SomeClass>}, we can save dynamic serializer dispatch
    * since `SomeClass` is morphic(final).
    */
-  public static final int STRUCT = 25;
+  public static final int STRUCT = 27;
 
   /** A morphic(final) type serialized by Fory compatible Struct serializer. */
-  public static final int COMPATIBLE_STRUCT = 26;
+  public static final int COMPATIBLE_STRUCT = 28;
 
   /** A `struct` whose type mapping will be encoded as a name. */
-  public static final int NAMED_STRUCT = 27;
+  public static final int NAMED_STRUCT = 29;
 
   /** A `compatible_struct` whose type mapping will be encoded as a name. */
-  public static final int NAMED_COMPATIBLE_STRUCT = 28;
+  public static final int NAMED_COMPATIBLE_STRUCT = 30;
 
   /** A type which will be serialized by a customized serializer. */
-  public static final int EXT = 29;
+  public static final int EXT = 31;
 
   /** An `ext` type whose type mapping will be encoded as a name. */
-  public static final int NAMED_EXT = 30;
+  public static final int NAMED_EXT = 32;
 
   /** A tagged union value whose schema identity is not embedded. */
-  public static final int UNION = 31;
+  public static final int UNION = 33;
 
   /** A union value with embedded numeric union type ID. */
-  public static final int TYPED_UNION = 32;
+  public static final int TYPED_UNION = 34;
 
   /** A union value with embedded union type name/TypeDef. */
-  public static final int NAMED_UNION = 33;
+  public static final int NAMED_UNION = 35;
 
   /** Represents an empty/unit value with no data (e.g., for empty union alternatives). */
-  public static final int NONE = 34;
+  public static final int NONE = 36;
 
   /**
    * An absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
    */
-  public static final int DURATION = 35;
+  public static final int DURATION = 37;
 
   /**
    * A point in time, independent of any calendar/timezone, as a count of nanoseconds. The count is
    * relative to an epoch at UTC midnight on January 1, 1970.
    */
-  public static final int TIMESTAMP = 36;
+  public static final int TIMESTAMP = 38;
 
   /**
    * A naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1,
    * 1970.
    */
-  public static final int DATE = 37;
+  public static final int DATE = 39;
 
   /** Exact decimal value represented as an integer value in two's complement. */
-  public static final int DECIMAL = 38;
+  public static final int DECIMAL = 40;
 
   /** A variable-length array of bytes. */
-  public static final int BINARY = 39;
+  public static final int BINARY = 41;
 
   /**
    * A multidimensional array where every sub-array can have different sizes but all have the same
    * type. Only numeric components allowed. Other arrays will be taken as List. The implementation
    * should support interoperability between array and list.
    */
-  public static final int ARRAY = 40;
+  public static final int ARRAY = 42;
 
   /** One dimensional bool array. */
-  public static final int BOOL_ARRAY = 41;
+  public static final int BOOL_ARRAY = 43;
 
   /** One dimensional int8 array. */
-  public static final int INT8_ARRAY = 42;
+  public static final int INT8_ARRAY = 44;
 
   /** One dimensional int16 array. */
-  public static final int INT16_ARRAY = 43;
+  public static final int INT16_ARRAY = 45;
 
   /** One dimensional int32 array. */
-  public static final int INT32_ARRAY = 44;
+  public static final int INT32_ARRAY = 46;
 
   /** One dimensional int64 array. */
-  public static final int INT64_ARRAY = 45;
+  public static final int INT64_ARRAY = 47;
 
   /** One dimensional uint8 array. */
-  public static final int UINT8_ARRAY = 46;
+  public static final int UINT8_ARRAY = 48;
 
   /** One dimensional uint16 array. */
-  public static final int UINT16_ARRAY = 47;
+  public static final int UINT16_ARRAY = 49;
 
   /** One dimensional uint32 array. */
-  public static final int UINT32_ARRAY = 48;
+  public static final int UINT32_ARRAY = 50;
 
   /** One dimensional uint64 array. */
-  public static final int UINT64_ARRAY = 49;
+  public static final int UINT64_ARRAY = 51;
+
+  /** One dimensional float8 array. */
+  public static final int FLOAT8_ARRAY = 52;
 
   /** One dimensional float16 array. */
-  public static final int FLOAT16_ARRAY = 50;
+  public static final int FLOAT16_ARRAY = 53;
+
+  /** One dimensional bfloat16 array. */
+  public static final int BFLOAT16_ARRAY = 54;
 
   /** One dimensional float32 array. */
-  public static final int FLOAT32_ARRAY = 51;
+  public static final int FLOAT32_ARRAY = 55;
 
   /** One dimensional float64 array. */
-  public static final int FLOAT64_ARRAY = 52;
+  public static final int FLOAT64_ARRAY = 56;
 
   /** Bound value for range checks (types with id >= BOUND are not internal types). */
   public static final int BOUND = 64;
 
+  public static final int INVALID_USER_TYPE_ID = -1;
+
   // Helper methods
   public static boolean isNamedType(int value) {
-    assert value < 0xff;
     switch (value) {
       case NAMED_STRUCT:
       case NAMED_COMPATIBLE_STRUCT:
@@ -226,8 +239,21 @@ public class Types {
     }
   }
 
+  /** Return true if type is user type and registered by id. */
+  public static boolean isUserTypeRegisteredById(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   public static boolean isStructType(int value) {
-    assert value < 0xff;
     return value == STRUCT
         || value == COMPATIBLE_STRUCT
         || value == NAMED_STRUCT
@@ -249,7 +275,7 @@ public class Types {
     return value == UNION || value == TYPED_UNION || value == NAMED_UNION;
   }
 
-  public static boolean isUserDefinedType(byte typeId) {
+  public static boolean isUserDefinedType(int typeId) {
     return isStructType(typeId)
         || isExtType(typeId)
         || isEnumType(typeId)
@@ -274,7 +300,9 @@ public class Types {
       case UINT16_ARRAY:
       case UINT32_ARRAY:
       case UINT64_ARRAY:
+      case FLOAT8_ARRAY:
       case FLOAT16_ARRAY:
+      case BFLOAT16_ARRAY:
       case FLOAT32_ARRAY:
       case FLOAT64_ARRAY:
         return true;
@@ -305,8 +333,12 @@ public class Types {
         return UINT32_ARRAY;
       case UINT64:
         return UINT64_ARRAY;
+      case FLOAT8:
+        return FLOAT8_ARRAY;
       case FLOAT16:
         return FLOAT16_ARRAY;
+      case BFLOAT16:
+        return BFLOAT16_ARRAY;
       case FLOAT32:
         return FLOAT32_ARRAY;
       case FLOAT64:
@@ -352,12 +384,12 @@ public class Types {
   }
 
   private static int getUnionDescriptorTypeId(Fory fory, Class<?> rawType) {
-    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(rawType, false);
-    if (classInfo == null) {
+    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(rawType, false);
+    if (typeInfo == null) {
       return -1;
     }
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    if (Types.isUnionType(internalTypeId)) {
+    int typeId = typeInfo.getTypeId();
+    if (Types.isUnionType(typeId)) {
       return Types.UNION;
     }
     return -1;
@@ -386,9 +418,9 @@ public class Types {
         return Types.FLOAT64;
       }
     }
-    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(clz, false);
-    if (classInfo != null) {
-      return classInfo.getTypeId();
+    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(clz, false);
+    if (typeInfo != null) {
+      return typeInfo.getTypeId();
     }
     return Types.UNKNOWN;
   }
@@ -415,7 +447,9 @@ public class Types {
       case VAR_UINT64:
       case TAGGED_UINT64:
         return Long.class;
+      case FLOAT8:
       case FLOAT16:
+      case BFLOAT16:
       case FLOAT32:
         return Float.class;
       case FLOAT64:

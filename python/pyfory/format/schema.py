@@ -55,37 +55,37 @@ def arrow_type_to_fory_type_id(arrow_type):
 
     # Floating point types
     if pa_types.is_float16(arrow_type):
-        return 9  # FLOAT16
+        return 17  # FLOAT16
     if pa_types.is_float32(arrow_type):
-        return 10  # FLOAT32
+        return 19  # FLOAT32
     if pa_types.is_float64(arrow_type):
-        return 11  # FLOAT64
+        return 20  # FLOAT64
 
     # String and binary
     if pa_types.is_string(arrow_type) or pa_types.is_large_string(arrow_type):
-        return 12  # STRING
+        return 21  # STRING
     if pa_types.is_binary(arrow_type) or pa_types.is_large_binary(arrow_type):
-        return 28  # BINARY
+        return 41  # BINARY
 
     # Date/time types
     if pa_types.is_date32(arrow_type):
-        return 26  # DATE
+        return 39  # DATE
     if pa_types.is_timestamp(arrow_type):
-        return 25  # TIMESTAMP
+        return 38  # TIMESTAMP
     if pa_types.is_duration(arrow_type):
-        return 24  # DURATION
+        return 37  # DURATION
 
     # Decimal
     if pa_types.is_decimal(arrow_type):
-        return 27  # DECIMAL
+        return 40  # DECIMAL
 
     # Complex types
     if pa_types.is_list(arrow_type) or pa_types.is_large_list(arrow_type):
-        return 21  # LIST
+        return 22  # LIST
     if pa_types.is_map(arrow_type):
-        return 23  # MAP
+        return 24  # MAP
     if pa_types.is_struct(arrow_type):
-        return 15  # STRUCT
+        return 27  # STRUCT
 
     raise NotImplementedError(f"Unsupported Arrow type: {arrow_type}")
 
@@ -115,37 +115,37 @@ def fory_type_id_to_arrow_type(type_id, precision=None, scale=None, list_type=No
         3: pa.int16(),  # INT16
         4: pa.int32(),  # INT32
         6: pa.int64(),  # INT64
-        9: pa.float16(),  # FLOAT16
-        10: pa.float32(),  # FLOAT32
-        11: pa.float64(),  # FLOAT64
-        12: pa.utf8(),  # STRING
-        24: pa.duration("ns"),  # DURATION
-        25: pa.timestamp("us"),  # TIMESTAMP
-        26: pa.date32(),  # DATE
-        28: pa.binary(),  # BINARY
+        17: pa.float16(),  # FLOAT16
+        19: pa.float32(),  # FLOAT32
+        20: pa.float64(),  # FLOAT64
+        21: pa.utf8(),  # STRING
+        37: pa.duration("ns"),  # DURATION
+        38: pa.timestamp("us"),  # TIMESTAMP
+        39: pa.date32(),  # DATE
+        41: pa.binary(),  # BINARY
     }
 
     if type_id in type_map:
         return type_map[type_id]
 
     # Decimal
-    if type_id == 27:  # DECIMAL
+    if type_id == 40:  # DECIMAL
         return pa.decimal128(precision or 38, scale or 18)
 
     # List
-    if type_id == 21:  # LIST
+    if type_id == 22:  # LIST
         if list_type is None:
             raise ValueError("list_type must be provided for LIST type")
         return pa.list_(list_type)
 
     # Map
-    if type_id == 23:  # MAP
+    if type_id == 24:  # MAP
         if map_key_type is None or map_value_type is None:
             raise ValueError("map_key_type and map_value_type must be provided for MAP type")
         return pa.map_(map_key_type, map_value_type)
 
     # Struct
-    if type_id == 15:  # STRUCT
+    if type_id == 27:  # STRUCT
         if struct_fields is None:
             raise ValueError("struct_fields must be provided for STRUCT type")
         return pa.struct(struct_fields)

@@ -26,7 +26,7 @@ use std::collections::{LinkedList, VecDeque};
 use std::mem;
 
 use super::collection::{
-    read_collection_data, read_collection_type_info, write_collection_data,
+    read_collection_data, read_collection_type_info, read_vec_data, write_collection_data,
     write_collection_type_info,
 };
 
@@ -126,7 +126,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
         if is_primitive_type::<T>() {
             primitive_list::fory_read_data(context)
         } else {
-            read_collection_data(context)
+            read_vec_data(context)
         }
     }
 
@@ -151,22 +151,22 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
-            Ok(id as u32)
+            Ok(id)
         } else {
-            Ok(TypeId::LIST as u32)
+            Ok(TypeId::LIST)
         }
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
         let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
-            Ok(id as u32)
+            Ok(id)
         } else {
-            Ok(TypeId::LIST as u32)
+            Ok(TypeId::LIST)
         }
     }
 
@@ -232,13 +232,13 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
@@ -295,13 +295,13 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LIST as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::LIST)
     }
 
     #[inline(always)]

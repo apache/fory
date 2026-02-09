@@ -18,7 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::TypeMeta;
-use crate::resolver::type_resolver::TypeInfo;
+use crate::resolver::type_resolver::{TypeInfo, NO_USER_TYPE_ID};
 use crate::TypeResolver;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -77,6 +77,8 @@ impl MetaWriterResolver {
 pub struct MetaReaderResolver {
     pub reading_type_infos: Vec<Rc<TypeInfo>>,
     parsed_type_infos: HashMap<i64, Rc<TypeInfo>>,
+    last_meta_header: i64,
+    last_type_info: Option<Rc<TypeInfo>>,
 }
 
 impl MetaReaderResolver {
@@ -105,7 +107,18 @@ impl MetaReaderResolver {
         } else {
             // New type - read TypeMeta inline
             let meta_header = reader.read_i64()?;
+            if let Some(type_info) = self
+                .last_type_info
+                .as_ref()
+                .filter(|_| self.last_meta_header == meta_header)
+            {
+                self.reading_type_infos.push(type_info.clone());
+                TypeMeta::skip_bytes(reader, meta_header)?;
+                return Ok(type_info.clone());
+            }
             if let Some(type_info) = self.parsed_type_infos.get(&meta_header) {
+                self.last_meta_header = meta_header;
+                self.last_type_info = Some(type_info.clone());
                 self.reading_type_infos.push(type_info.clone());
                 TypeMeta::skip_bytes(reader, meta_header)?;
                 Ok(type_info.clone())
@@ -117,23 +130,11 @@ impl MetaReaderResolver {
                 )?);
 
                 // Try to find local type info
-                let type_info = if type_meta.get_namespace().original.is_empty() {
-                    // Registered by ID
-                    let type_id = type_meta.get_type_id();
-                    if let Some(local_type_info) = type_resolver.get_type_info_by_id(type_id) {
-                        // Use local harness with remote metadata
-                        Rc::new(TypeInfo::from_remote_meta(
-                            type_meta.clone(),
-                            Some(local_type_info.get_harness()),
-                        ))
-                    } else {
-                        // No local type found, use stub harness
-                        Rc::new(TypeInfo::from_remote_meta(type_meta.clone(), None))
-                    }
-                } else {
-                    // Registered by name
-                    let namespace = &type_meta.get_namespace().original;
-                    let type_name = &type_meta.get_type_name().original;
+                let namespace = &type_meta.get_namespace().original;
+                let type_name = &type_meta.get_type_name().original;
+                let register_by_name = !namespace.is_empty() || !type_name.is_empty();
+                let type_info = if register_by_name {
+                    // Registered by name (namespace can be empty)
                     if let Some(local_type_info) =
                         type_resolver.get_type_info_by_name(namespace, type_name)
                     {
@@ -141,10 +142,59 @@ impl MetaReaderResolver {
                         Rc::new(TypeInfo::from_remote_meta(
                             type_meta.clone(),
                             Some(local_type_info.get_harness()),
+                            Some(local_type_info.get_type_id() as u32),
+                            Some(local_type_info.get_user_type_id()),
                         ))
                     } else {
                         // No local type found, use stub harness
-                        Rc::new(TypeInfo::from_remote_meta(type_meta.clone(), None))
+                        Rc::new(TypeInfo::from_remote_meta(
+                            type_meta.clone(),
+                            None,
+                            None,
+                            None,
+                        ))
+                    }
+                } else {
+                    // Registered by ID
+                    let type_id = type_meta.get_type_id();
+                    let user_type_id = type_meta.get_user_type_id();
+                    if user_type_id != NO_USER_TYPE_ID {
+                        if let Some(local_type_info) =
+                            type_resolver.get_user_type_info_by_id(user_type_id)
+                        {
+                            // Use local harness with remote metadata
+                            Rc::new(TypeInfo::from_remote_meta(
+                                type_meta.clone(),
+                                Some(local_type_info.get_harness()),
+                                Some(local_type_info.get_type_id() as u32),
+                                Some(local_type_info.get_user_type_id()),
+                            ))
+                        } else {
+                            // No local type found, use stub harness
+                            Rc::new(TypeInfo::from_remote_meta(
+                                type_meta.clone(),
+                                None,
+                                None,
+                                None,
+                            ))
+                        }
+                    } else if let Some(local_type_info) = type_resolver.get_type_info_by_id(type_id)
+                    {
+                        // Use local harness with remote metadata
+                        Rc::new(TypeInfo::from_remote_meta(
+                            type_meta.clone(),
+                            Some(local_type_info.get_harness()),
+                            Some(local_type_info.get_type_id() as u32),
+                            Some(local_type_info.get_user_type_id()),
+                        ))
+                    } else {
+                        // No local type found, use stub harness
+                        Rc::new(TypeInfo::from_remote_meta(
+                            type_meta.clone(),
+                            None,
+                            None,
+                            None,
+                        ))
                     }
                 };
 
@@ -153,6 +203,8 @@ impl MetaReaderResolver {
                     self.parsed_type_infos
                         .insert(meta_header, type_info.clone());
                 }
+                self.last_meta_header = meta_header;
+                self.last_type_info = Some(type_info.clone());
                 self.reading_type_infos.push(type_info.clone());
                 Ok(type_info)
             }

@@ -27,14 +27,23 @@ use pprof::criterion::{Output, PProfProfiler};
 
 #[derive(Debug, ForyObject)]
 pub struct UserSessionMetrics {
+    #[fory(id = 0)]
     pub request_count: u64,
+    #[fory(id = 1)]
     pub unique_ip_count: u64,
+    #[fory(id = 2)]
     pub unique_user_agent_count: u64,
+    #[fory(id = 3)]
     pub unique_url_count: u64,
+    #[fory(id = 4)]
     pub unique_resource_count: u64,
+    #[fory(id = 5)]
     pub active_duration_secs: u64,
+    #[fory(id = 6)]
     pub first_seen_time: u64,
+    #[fory(id = 7)]
     pub last_seen_time: u64,
+    #[fory(id = 8)]
     pub updated_at: u64,
 }
 

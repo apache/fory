@@ -22,8 +22,10 @@ package org.apache.fory.util;
 /** Misc common utils. */
 public class Utils {
   public static final boolean DEBUG_OUTPUT_ENABLED;
+  public static final boolean DEBUG_OUTPUT_VERBOSE;
 
   static {
     DEBUG_OUTPUT_ENABLED = "1".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"));
+    DEBUG_OUTPUT_VERBOSE = "1".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT_VERBOSE"));
   }
 }

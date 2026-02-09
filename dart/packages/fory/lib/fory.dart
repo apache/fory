@@ -38,8 +38,7 @@ export 'src/meta/specs/enum_spec.dart';
 export 'src/fory_impl.dart';
 
 // Constants
-export 'src/const/lang.dart';
-export 'src/const/obj_type.dart';
+export 'src/const/types.dart';
 
 // User-related
 export 'src/furiable.dart';

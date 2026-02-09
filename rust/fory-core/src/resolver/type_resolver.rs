@@ -47,6 +47,9 @@ type ReadCompatibleFn = fn(&mut ReadContext, Rc<TypeInfo>) -> Result<Box<dyn Any
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 type BuildTypeInfosFn = fn(&TypeResolver) -> Result<Vec<(std::any::TypeId, TypeInfo)>, Error>;
 const EMPTY_STRING: String = String::new();
+const INTERNAL_TYPE_ID_LIMIT: usize = 256;
+const MAX_USER_TYPE_ID: u32 = 0xfffffffe;
+pub(crate) const NO_USER_TYPE_ID: u32 = u32::MAX;
 
 #[derive(Clone, Debug)]
 pub struct Harness {
@@ -145,7 +148,8 @@ impl Harness {
 pub struct TypeInfo {
     type_def: Rc<Vec<u8>>,
     type_meta: Rc<TypeMeta>,
-    type_id: u32,
+    type_id: TypeId,
+    user_type_id: u32,
     namespace: Rc<MetaString>,
     type_name: Rc<MetaString>,
     register_by_name: bool,
@@ -155,11 +159,14 @@ pub struct TypeInfo {
 impl TypeInfo {
     fn new(
         type_id: u32,
+        user_type_id: u32,
         namespace: &str,
         type_name: &str,
         register_by_name: bool,
         harness: Harness,
     ) -> Result<TypeInfo, Error> {
+        let type_id = TypeId::try_from(type_id as u8)
+            .map_err(|_| Error::type_error(format!("Unknown type id {}", type_id)))?;
         let namespace_meta_string =
             NAMESPACE_ENCODER.encode_with_encodings(namespace, NAMESPACE_ENCODINGS)?;
         let type_name_meta_string =
@@ -168,6 +175,7 @@ impl TypeInfo {
             type_def: Rc::from(vec![]),
             type_meta: Rc::new(TypeMeta::empty()?),
             type_id,
+            user_type_id,
             namespace: Rc::from(namespace_meta_string),
             type_name: Rc::from(type_name_meta_string),
             register_by_name,
@@ -176,7 +184,10 @@ impl TypeInfo {
     }
 
     fn new_with_type_meta(type_meta: Rc<TypeMeta>, harness: Harness) -> Result<TypeInfo, Error> {
-        let type_id = type_meta.get_type_id();
+        let type_id_raw = type_meta.get_type_id();
+        let type_id = TypeId::try_from(type_id_raw as u8)
+            .map_err(|_| Error::type_error(format!("Unknown type id {}", type_id_raw)))?;
+        let user_type_id = type_meta.get_user_type_id();
         let namespace = type_meta.get_namespace();
         let type_name = type_meta.get_type_name();
         let register_by_name = !namespace.original.is_empty() || !type_name.original.is_empty();
@@ -185,6 +196,7 @@ impl TypeInfo {
             type_def: Rc::from(type_def_bytes),
             type_meta,
             type_id,
+            user_type_id,
             namespace,
             type_name,
             register_by_name,
@@ -193,8 +205,13 @@ impl TypeInfo {
     }
 
     #[inline(always)]
-    pub fn get_type_id(&self) -> u32 {
+    pub fn get_type_id(&self) -> TypeId {
         self.type_id
+    }
+
+    #[inline(always)]
+    pub fn get_user_type_id(&self) -> u32 {
+        self.user_type_id
     }
 
     #[inline(always)]
@@ -218,6 +235,11 @@ impl TypeInfo {
     }
 
     #[inline(always)]
+    pub fn get_type_meta_ref(&self) -> &TypeMeta {
+        self.type_meta.as_ref()
+    }
+
+    #[inline(always)]
     pub fn is_registered_by_name(&self) -> bool {
         self.register_by_name
     }
@@ -234,6 +256,7 @@ impl TypeInfo {
             type_def: Rc::new((*self.type_def).clone()),
             type_meta: Rc::new(self.type_meta.deep_clone()),
             type_id: self.type_id,
+            user_type_id: self.user_type_id,
             namespace: Rc::new((*self.namespace).clone()),
             type_name: Rc::new((*self.type_name).clone()),
             register_by_name: self.register_by_name,
@@ -246,8 +269,12 @@ impl TypeInfo {
     pub fn from_remote_meta(
         remote_meta: Rc<TypeMeta>,
         local_harness: Option<&Harness>,
+        type_id_override: Option<u32>,
+        user_type_id_override: Option<u32>,
     ) -> TypeInfo {
-        let type_id = remote_meta.get_type_id();
+        let type_id_raw = type_id_override.unwrap_or_else(|| remote_meta.get_type_id());
+        let type_id = TypeId::try_from(type_id_raw as u8).unwrap_or(TypeId::UNKNOWN);
+        let user_type_id = user_type_id_override.unwrap_or_else(|| remote_meta.get_user_type_id());
         let namespace = remote_meta.get_namespace();
         let type_name = remote_meta.get_type_name();
         let type_def_bytes = remote_meta.get_bytes().to_owned();
@@ -272,6 +299,7 @@ impl TypeInfo {
             type_def: Rc::from(type_def_bytes),
             type_meta: remote_meta,
             type_id,
+            user_type_id,
             namespace,
             type_name,
             register_by_name,
@@ -342,7 +370,8 @@ fn build_struct_type_infos<T: StructSerializer>(
 
     // Build the main type info
     let type_meta = TypeMeta::from_fields(
-        partial_info.type_id,
+        partial_info.type_id as u32,
+        partial_info.user_type_id,
         (*partial_info.namespace).clone(),
         (*partial_info.type_name).clone(),
         partial_info.register_by_name,
@@ -353,6 +382,7 @@ fn build_struct_type_infos<T: StructSerializer>(
         type_def: Rc::from(type_def_bytes),
         type_meta: Rc::new(type_meta),
         type_id: partial_info.type_id,
+        user_type_id: partial_info.user_type_id,
         namespace: partial_info.namespace.clone(),
         type_name: partial_info.type_name.clone(),
         register_by_name: partial_info.register_by_name,
@@ -366,9 +396,7 @@ fn build_struct_type_infos<T: StructSerializer>(
     if type_resolver.compatible && is_enum_type_id(T::fory_static_type_id()) {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
-        for (idx, (variant_name, variant_type_id, fields_info)) in
-            variants_info.into_iter().enumerate()
-        {
+        for (variant_name, variant_type_id, fields_info) in variants_info.into_iter() {
             // Skip empty variant info (unit/unnamed variants)
             if fields_info.is_empty() {
                 continue;
@@ -383,30 +411,41 @@ fn build_struct_type_infos<T: StructSerializer>(
                     .encode_with_encodings(&variant_type_name, TYPE_NAME_ENCODINGS)?;
                 TypeMeta::from_fields(
                     TypeId::ENUM as u32,
+                    NO_USER_TYPE_ID,
                     namespace_ms,
                     type_name_ms,
                     true,
                     fields_info.clone(),
                 )?
             } else {
-                // add a check to avoid collision with main enum type_id
-                // since internal id is big alealdy, `74<<8 = 18944` is big enough to avoid collision most of time
-                let variant_id = (partial_info.type_id << 8) + idx as u32;
-
-                // Check if variant_id conflicts with any already registered type
-                if let Some(existing_info) = type_resolver.type_info_map_by_id.get(&variant_id) {
+                if partial_info.user_type_id == NO_USER_TYPE_ID {
+                    return Err(Error::type_error(
+                        "Enum variant metadata requires a user type id",
+                    ));
+                }
+                let variant_type_name = format!(
+                    "__fory_enum_variant__{}_{}",
+                    partial_info.user_type_id, variant_name
+                );
+                let namespace_ms = MetaString::get_empty().clone();
+                let type_name_ms = TYPE_NAME_ENCODER
+                    .encode_with_encodings(&variant_type_name, TYPE_NAME_ENCODINGS)?;
+                if type_resolver
+                    .get_type_info_by_name(&namespace_ms.original, &type_name_ms.original)
+                    .is_some()
+                {
                     return Err(Error::type_error(format!(
-                        "Enum variant type ID {} (calculated from enum type ID {} with variant index {}) conflicts with already registered type ID {}. \
+                        "Enum variant name {} conflicts with already registered type name. \
                          Please use a different type ID for the enum to avoid conflicts.",
-                        variant_id, partial_info.type_id, idx, existing_info.type_id
+                        variant_type_name
                     )));
                 }
-
                 TypeMeta::from_fields(
-                    variant_id,
-                    MetaString::get_empty().clone(),
-                    MetaString::get_empty().clone(),
-                    false,
+                    TypeId::ENUM as u32,
+                    NO_USER_TYPE_ID,
+                    namespace_ms,
+                    type_name_ms,
+                    true,
                     fields_info,
                 )?
             };
@@ -429,7 +468,8 @@ fn build_serializer_type_infos(
 ) -> Result<Vec<(std::any::TypeId, TypeInfo)>, Error> {
     // For ext types, we just build the type info with empty fields
     let type_meta = TypeMeta::from_fields(
-        partial_info.type_id,
+        partial_info.type_id as u32,
+        partial_info.user_type_id,
         (*partial_info.namespace).clone(),
         (*partial_info.type_name).clone(),
         partial_info.register_by_name,
@@ -440,6 +480,7 @@ fn build_serializer_type_infos(
         type_def: Rc::from(type_def_bytes),
         type_meta: Rc::new(type_meta),
         type_id: partial_info.type_id,
+        user_type_id: partial_info.user_type_id,
         namespace: partial_info.namespace.clone(),
         type_name: partial_info.type_name.clone(),
         register_by_name: partial_info.register_by_name,
@@ -451,13 +492,20 @@ fn build_serializer_type_infos(
 
 /// TypeResolver is a resolver for fast type/serializer dispatch.
 pub struct TypeResolver {
-    type_info_map_by_id: HashMap<u32, Rc<TypeInfo>>,
+    internal_type_info_by_id: Vec<Option<Rc<TypeInfo>>>,
+    user_type_info_by_id: HashMap<u32, Rc<TypeInfo>>,
     type_info_map: HashMap<std::any::TypeId, Rc<TypeInfo>>,
     type_info_map_by_name: HashMap<(String, String), Rc<TypeInfo>>,
     type_info_map_by_meta_string_name: HashMap<(Rc<MetaString>, Rc<MetaString>), Rc<TypeInfo>>,
     partial_type_infos: HashMap<std::any::TypeId, TypeInfo>,
     // Fast lookup by numeric ID for common types
-    type_id_index: Vec<u32>,
+    type_id_index: Vec<TypeId>,
+    // Fast lookup by type index for user type IDs
+    user_type_id_index: Vec<u32>,
+    // Mapping from type index to Rust TypeId for fast meta lookup
+    rust_type_id_by_index: Vec<Option<std::any::TypeId>>,
+    // Fast lookup by type index for TypeMeta
+    type_meta_by_index: Vec<Option<Rc<crate::meta::TypeMeta>>>,
     compatible: bool,
     xlang: bool,
 }
@@ -468,16 +516,20 @@ pub struct TypeResolver {
 unsafe impl Send for TypeResolver {}
 unsafe impl Sync for TypeResolver {}
 
-const NO_TYPE_ID: u32 = 1000000000;
+const NO_TYPE_ID: TypeId = TypeId::UNKNOWN;
 
 impl Default for TypeResolver {
     fn default() -> Self {
         let mut registry = TypeResolver {
-            type_info_map_by_id: HashMap::new(),
+            internal_type_info_by_id: vec![None; INTERNAL_TYPE_ID_LIMIT],
+            user_type_info_by_id: HashMap::new(),
             type_info_map: HashMap::new(),
             type_info_map_by_name: HashMap::new(),
             type_info_map_by_meta_string_name: HashMap::new(),
             type_id_index: Vec::new(),
+            user_type_id_index: Vec::new(),
+            rust_type_id_by_index: Vec::new(),
+            type_meta_by_index: Vec::new(),
             partial_type_infos: HashMap::new(),
             compatible: false,
             xlang: false,
@@ -501,8 +553,19 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_type_info_by_id(&self, id: u32) -> Option<Rc<TypeInfo>> {
-        self.type_info_map_by_id.get(&id).cloned()
+    pub fn get_type_info_by_id(&self, type_id: u32) -> Option<Rc<TypeInfo>> {
+        if crate::types::is_internal_type(type_id) {
+            let index = type_id as usize;
+            if index < self.internal_type_info_by_id.len() {
+                return self.internal_type_info_by_id[index].clone();
+            }
+        }
+        None
+    }
+
+    #[inline(always)]
+    pub fn get_user_type_info_by_id(&self, user_type_id: u32) -> Option<Rc<TypeInfo>> {
+        self.user_type_info_by_id.get(&user_type_id).cloned()
     }
 
     #[inline(always)]
@@ -525,12 +588,12 @@ impl TypeResolver {
 
     /// Fast path for getting type info by numeric ID (avoids HashMap lookup by TypeId)
     #[inline(always)]
-    pub fn get_type_id(&self, type_id: &std::any::TypeId, id: u32) -> Result<u32, Error> {
+    pub fn get_type_id(&self, type_id: &std::any::TypeId, id: u32) -> Result<TypeId, Error> {
         let id_usize = id as usize;
         if id_usize < self.type_id_index.len() {
-            let type_id = self.type_id_index[id_usize];
-            if type_id != NO_TYPE_ID {
-                return Ok(type_id);
+            let type_id_value = self.type_id_index[id_usize];
+            if type_id_value != NO_TYPE_ID {
+                return Ok(type_id_value);
             }
         }
         Err(Error::type_error(format!(
@@ -539,10 +602,83 @@ impl TypeResolver {
         )))
     }
 
+    /// Fast path for getting type info by type index (avoids HashMap lookup and TypeId::of)
+    #[inline(always)]
+    pub fn get_type_id_by_index(&self, index: u32) -> Result<TypeId, Error> {
+        let id_usize = index as usize;
+        if id_usize < self.type_id_index.len() {
+            let type_id_value = self.type_id_index[id_usize];
+            if type_id_value != NO_TYPE_ID {
+                return Ok(type_id_value);
+            }
+        }
+        Err(Error::type_error(format!(
+            "Type index {:?} not found in type_id_index, maybe you forgot to register some types",
+            index
+        )))
+    }
+
+    /// Fast path for getting user type ID by type index (avoids HashMap lookup by TypeId)
+    #[inline(always)]
+    pub fn get_user_type_id_by_index(
+        &self,
+        type_id: &std::any::TypeId,
+        id: u32,
+    ) -> Result<u32, Error> {
+        let id_usize = id as usize;
+        if id_usize < self.user_type_id_index.len() {
+            let user_type_id = self.user_type_id_index[id_usize];
+            if user_type_id != NO_USER_TYPE_ID {
+                return Ok(user_type_id);
+            }
+        }
+        Err(Error::type_error(format!(
+            "TypeId {:?} not found in user_type_id_index, maybe you forgot to register some types",
+            type_id
+        )))
+    }
+
+    /// Fast path for getting TypeMeta by type index (avoids HashMap lookup by TypeId)
+    #[inline(always)]
+    pub fn get_type_meta_by_index(
+        &self,
+        type_id: &std::any::TypeId,
+        index: u32,
+    ) -> Result<Rc<crate::meta::TypeMeta>, Error> {
+        let id_usize = index as usize;
+        if id_usize < self.type_meta_by_index.len() {
+            if let Some(meta) = &self.type_meta_by_index[id_usize] {
+                return Ok(meta.clone());
+            }
+        }
+        Err(Error::type_error(format!(
+            "TypeId {:?} not found in type_meta_by_index, maybe you forgot to register some types",
+            type_id
+        )))
+    }
+
+    /// Fast path for getting TypeMeta by type index without cloning Rc.
+    #[inline(always)]
+    pub fn get_type_meta_by_index_ref(
+        &self,
+        type_id: &std::any::TypeId,
+        index: u32,
+    ) -> Result<&crate::meta::TypeMeta, Error> {
+        let id_usize = index as usize;
+        if id_usize < self.type_meta_by_index.len() {
+            if let Some(meta) = &self.type_meta_by_index[id_usize] {
+                return Ok(meta.as_ref());
+            }
+        }
+        Err(Error::type_error(format!(
+            "TypeId {:?} not found in type_meta_by_index, maybe you forgot to register some types",
+            type_id
+        )))
+    }
+
     #[inline(always)]
     pub fn get_harness(&self, id: u32) -> Option<Rc<Harness>> {
-        self.type_info_map_by_id
-            .get(&id)
+        self.get_type_info_by_id(id)
             .map(|info| Rc::new(info.get_harness().clone()))
     }
 
@@ -559,9 +695,8 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_ext_harness(&self, id: u32) -> Result<Rc<Harness>, Error> {
-        self.type_info_map_by_id
-            .get(&id)
+    pub fn get_ext_harness(&self, _type_id: u32, user_type_id: u32) -> Result<Rc<Harness>, Error> {
+        self.get_user_type_info_by_id(user_type_id)
             .map(|info| Rc::new(info.get_harness().clone()))
             .ok_or_else(|| Error::type_error("ext type must be registered in both peers"))
     }
@@ -580,7 +715,7 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<u32> {
+    pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<TypeId> {
         self.type_info_map
             .get(&rust_type_id)
             .map(|info| info.get_type_id())
@@ -682,13 +817,19 @@ impl TypeResolver {
         _lazy: bool,
     ) -> Result<(), Error> {
         let register_by_name = !type_name.is_empty();
-        if !register_by_name && id == 0 {
-            return Err(Error::not_allowed(
-                "Either id must be non-zero for ID registration, or type_name must be non-empty for name registration",
-            ));
+        if !register_by_name && id > MAX_USER_TYPE_ID {
+            return Err(Error::not_allowed(format!(
+                "type id must be in range [0, 0xfffffffe], got {}",
+                id
+            )));
         }
         let actual_type_id =
             T::fory_actual_type_id(id, register_by_name, self.compatible, self.xlang);
+        let user_type_id = if register_by_name || crate::types::is_internal_type(actual_type_id) {
+            NO_USER_TYPE_ID
+        } else {
+            id
+        };
 
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
@@ -774,6 +915,7 @@ impl TypeResolver {
         );
         let type_info = TypeInfo::new(
             actual_type_id,
+            user_type_id,
             namespace,
             type_name,
             register_by_name,
@@ -793,8 +935,8 @@ impl TypeResolver {
         // 1. Internal types (type_id < TypeId::BOUND) as they can be shared
         // 2. Types registered by name (they use shared type IDs like NAMED_STRUCT)
         if !register_by_name
-            && actual_type_id >= TypeId::BOUND as u32
-            && self.type_info_map_by_id.contains_key(&actual_type_id)
+            && !crate::types::is_internal_type(actual_type_id)
+            && self.user_type_info_by_id.contains_key(&user_type_id)
         {
             return Err(Error::type_error(format!(
                 "Type ID {} conflicts with already registered type. Please use a different type ID.",
@@ -802,10 +944,12 @@ impl TypeResolver {
             )));
         }
 
-        // Update type_id_index for fast lookup
+        // Update type_id_index/user_type_id_index for fast lookup
         let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
+            self.user_type_id_index.resize(index + 1, NO_USER_TYPE_ID);
+            self.rust_type_id_by_index.resize(index + 1, None);
         } else if self.type_id_index[index] != NO_TYPE_ID {
             return Err(Error::type_error(format!(
                 "Type index {:?} already registered",
@@ -813,10 +957,23 @@ impl TypeResolver {
             )));
         }
         self.type_id_index[index] = type_info.type_id;
+        self.user_type_id_index[index] = type_info.user_type_id;
+        self.rust_type_id_by_index[index] = Some(rs_type_id);
 
-        // Insert partial type info into both maps
-        self.type_info_map_by_id
-            .insert(actual_type_id, Rc::new(type_info.clone()));
+        // Insert partial type info into id maps
+        if crate::types::is_internal_type(actual_type_id) {
+            let index = actual_type_id as usize;
+            if index >= self.internal_type_info_by_id.len() {
+                return Err(Error::not_allowed(format!(
+                    "Internal type id overflow: {}",
+                    actual_type_id
+                )));
+            }
+            self.internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
+        } else if user_type_id != NO_USER_TYPE_ID {
+            self.user_type_info_by_id
+                .insert(user_type_id, Rc::new(type_info.clone()));
+        }
         self.type_info_map
             .insert(rs_type_id, Rc::new(type_info.clone()));
         self.partial_type_infos.insert(rs_type_id, type_info);
@@ -857,7 +1014,14 @@ impl TypeResolver {
         &mut self,
         type_id: TypeId,
     ) -> Result<(), Error> {
-        self.register_serializer::<T>(type_id as u32, type_id as u32, &EMPTY_STRING, &EMPTY_STRING)
+        let raw_id = type_id as u32;
+        if raw_id >= INTERNAL_TYPE_ID_LIMIT as u32 {
+            return Err(Error::not_allowed(format!(
+                "Internal type id overflow: {}",
+                raw_id
+            )));
+        }
+        self.register_serializer::<T>(raw_id, raw_id, &EMPTY_STRING, &EMPTY_STRING)
     }
 
     fn register_serializer<T: Serializer + ForyDefault>(
@@ -868,10 +1032,11 @@ impl TypeResolver {
         type_name: &str,
     ) -> Result<(), Error> {
         let register_by_name = !type_name.is_empty();
-        if !register_by_name && id == 0 {
-            return Err(Error::not_allowed(
-                "Either id must be non-zero for ID registration, or type_name must be non-empty for name registration",
-            ));
+        if !register_by_name && id > MAX_USER_TYPE_ID {
+            return Err(Error::not_allowed(format!(
+                "type id must be in range [0, 0xfffffffe], got {}",
+                id
+            )));
         }
 
         fn write<T2: 'static + Serializer>(
@@ -960,8 +1125,14 @@ impl TypeResolver {
             build_type_infos::<T>,
         );
 
+        let user_type_id = if register_by_name {
+            NO_USER_TYPE_ID
+        } else {
+            id
+        };
         let type_info = TypeInfo::new(
             actual_type_id,
+            user_type_id,
             namespace,
             type_name,
             register_by_name,
@@ -977,9 +1148,10 @@ impl TypeResolver {
         }
 
         // Check if type_id conflicts with any already registered type
-        // Skip check for internal types (type_id < TypeId::BOUND) as they can be shared
-        if actual_type_id >= TypeId::BOUND as u32
-            && self.type_info_map_by_id.contains_key(&actual_type_id)
+        // Skip check for internal types as they can be shared
+        if !crate::types::is_internal_type(actual_type_id)
+            && user_type_id != NO_USER_TYPE_ID
+            && self.user_type_info_by_id.contains_key(&user_type_id)
         {
             return Err(Error::type_error(format!(
                 "Type ID {} conflicts with already registered type. Please use a different type ID.",
@@ -987,9 +1159,20 @@ impl TypeResolver {
             )));
         }
 
-        // Insert partial type info into both maps
-        self.type_info_map_by_id
-            .insert(actual_type_id, Rc::new(type_info.clone()));
+        // Insert partial type info into id maps
+        if crate::types::is_internal_type(actual_type_id) {
+            let index = actual_type_id as usize;
+            if index >= self.internal_type_info_by_id.len() {
+                return Err(Error::not_allowed(format!(
+                    "Internal type id overflow: {}",
+                    actual_type_id
+                )));
+            }
+            self.internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
+        } else if user_type_id != NO_USER_TYPE_ID {
+            self.user_type_info_by_id
+                .insert(user_type_id, Rc::new(type_info.clone()));
+        }
         self.type_info_map
             .insert(rs_type_id, Rc::new(type_info.clone()));
         self.partial_type_infos.insert(rs_type_id, type_info);
@@ -1050,11 +1233,14 @@ impl TypeResolver {
     /// cannot be retrieved or type metadata cannot be serialized.
     pub(crate) fn build_final_type_resolver(&self) -> Result<TypeResolver, Error> {
         // copy all type info from type_resolver to here
-        let mut type_info_map_by_id = self.type_info_map_by_id.clone();
+        let mut internal_type_info_by_id = self.internal_type_info_by_id.clone();
+        let mut user_type_info_by_id = self.user_type_info_by_id.clone();
         let mut type_info_map = self.type_info_map.clone();
         let mut type_info_map_by_name = self.type_info_map_by_name.clone();
         let mut type_info_map_by_meta_string_name = self.type_info_map_by_meta_string_name.clone();
         let type_id_index = self.type_id_index.clone();
+        let rust_type_id_by_index = self.rust_type_id_by_index.clone();
+        let user_type_id_index = self.user_type_id_index.clone();
 
         // Iterate over partial_type_infos and complete them
         for (_rust_type_id, partial_type_info) in self.partial_type_infos.iter() {
@@ -1064,8 +1250,15 @@ impl TypeResolver {
 
             // Iterate through all type infos uniformly
             for (type_rust_id, type_info) in type_infos.iter() {
-                // Insert into type_info_map_by_id
-                type_info_map_by_id.insert(type_info.type_id, Rc::new(type_info.clone()));
+                // Insert into id maps
+                if crate::types::is_internal_type(type_info.type_id as u32) {
+                    let index = type_info.type_id as usize;
+                    if index < internal_type_info_by_id.len() {
+                        internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));
+                    }
+                } else if type_info.user_type_id != NO_USER_TYPE_ID {
+                    user_type_info_by_id.insert(type_info.user_type_id, Rc::new(type_info.clone()));
+                }
 
                 // Insert into type_info_map with the TypeId
                 type_info_map.insert(*type_rust_id, Rc::new(type_info.clone()));
@@ -1082,13 +1275,24 @@ impl TypeResolver {
             }
         }
 
+        let type_meta_by_index: Vec<Option<Rc<crate::meta::TypeMeta>>> = rust_type_id_by_index
+            .iter()
+            .map(|id| {
+                id.and_then(|rust_id| type_info_map.get(&rust_id).map(|info| info.get_type_meta()))
+            })
+            .collect();
+
         Ok(TypeResolver {
-            type_info_map_by_id,
+            internal_type_info_by_id,
+            user_type_info_by_id,
             type_info_map,
             type_info_map_by_name,
             type_info_map_by_meta_string_name,
             partial_type_infos: HashMap::new(),
             type_id_index,
+            user_type_id_index,
+            rust_type_id_by_index,
+            type_meta_by_index,
             compatible: self.compatible,
             xlang: self.xlang,
         })
@@ -1133,8 +1337,14 @@ impl TypeResolver {
         };
 
         // Clone all maps with deep-cloned TypeInfo in new Rc wrappers
-        let type_info_map_by_id: HashMap<u32, Rc<TypeInfo>> = self
-            .type_info_map_by_id
+        let internal_type_info_by_id: Vec<Option<Rc<TypeInfo>>> = self
+            .internal_type_info_by_id
+            .iter()
+            .map(|opt| opt.as_ref().map(&mut get_or_clone_type_info))
+            .collect();
+
+        let user_type_info_by_id: HashMap<u32, Rc<TypeInfo>> = self
+            .user_type_info_by_id
             .iter()
             .map(|(k, v)| (*k, get_or_clone_type_info(v)))
             .collect();
@@ -1165,12 +1375,16 @@ impl TypeResolver {
             .collect();
 
         TypeResolver {
-            type_info_map_by_id,
+            internal_type_info_by_id,
+            user_type_info_by_id,
             type_info_map,
             type_info_map_by_name,
             type_info_map_by_meta_string_name,
             partial_type_infos: HashMap::new(),
             type_id_index: self.type_id_index.clone(),
+            user_type_id_index: self.user_type_id_index.clone(),
+            rust_type_id_by_index: self.rust_type_id_by_index.clone(),
+            type_meta_by_index: self.type_meta_by_index.clone(),
             compatible: self.compatible,
             xlang: self.xlang,
         }

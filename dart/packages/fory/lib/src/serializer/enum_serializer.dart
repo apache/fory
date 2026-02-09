@@ -18,7 +18,7 @@
  */
 
 import 'package:fory/src/config/fory_config.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserializer_pack.dart';
 import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
@@ -57,7 +57,7 @@ final class EnumSerializer extends CustomSerializer<Enum>{
   @override
   Enum read(ByteReader br, int refId, DeserializerPack pack) {
     int index = br.readVarUint32Small7();
-    // foryJava supports deserializeNonexistentEnumValueAsNull,
+    // foryJava supports deserializeUnknownEnumValueAsNull,
     // but here in Dart, it will definitely throw an error if the index is out of range
     if (index < 0 || index >= values.length) {
       throw DeserializationRangeException(index, values);

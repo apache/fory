@@ -94,6 +94,47 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 	s.WriteData(ctx, value)
 }
 
+func (s *ptrToValueSerializer) writeWithTypeInfo(ctx *WriteContext, refMode RefMode, value reflect.Value, typeInfo *TypeInfo) {
+	switch refMode {
+	case RefModeTracking:
+		if value.IsNil() {
+			ctx.Buffer().WriteInt8(NullFlag)
+			return
+		}
+		refWritten, err := ctx.RefResolver().WriteRefOrNull(ctx.Buffer(), value)
+		if err != nil {
+			ctx.SetError(FromError(err))
+			return
+		}
+		if refWritten {
+			return
+		}
+	case RefModeNullOnly:
+		if value.IsNil() {
+			ctx.Buffer().WriteInt8(NullFlag)
+			return
+		}
+		ctx.Buffer().WriteInt8(NotNullValueFlag)
+	case RefModeNone:
+		if value.IsNil() {
+			zeroValue := reflect.New(value.Type().Elem()).Elem()
+			if typeInfo == nil {
+				s.Write(ctx, refMode, true, false, value)
+				return
+			}
+			ctx.TypeResolver().WriteTypeInfo(ctx.Buffer(), typeInfo, ctx.Err())
+			s.valueSerializer.WriteData(ctx, zeroValue)
+			return
+		}
+	}
+	if typeInfo == nil {
+		s.Write(ctx, refMode, true, false, value)
+		return
+	}
+	ctx.TypeResolver().WriteTypeInfo(ctx.Buffer(), typeInfo, ctx.Err())
+	s.WriteData(ctx, value)
+}
+
 func (s *ptrToValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Check if value is already allocated (for circular reference handling)
 	var newVal reflect.Value
@@ -142,13 +183,13 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 	}
 	if readType {
 		// Read type info - in compatible mode this contains the serializer with fieldDefs
-		typeID := buf.ReadVarUint32Small7(ctxErr)
+		typeID := uint32(buf.ReadUint8(ctxErr))
 		if ctx.HasError() {
 			return
 		}
-		internalTypeID := TypeId(typeID & 0xFF)
+		internalTypeID := TypeId(typeID)
 		// Check if this is a struct type that needs type meta reading
-		if IsNamespacedType(TypeId(typeID)) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
+		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
 			// Use the serializer from TypeInfo which has the remote field definitions
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {

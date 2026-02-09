@@ -60,8 +60,9 @@ type FieldMeta struct {
 	FixedSize int // 0 if not fixed-size, else 1/2/4/8
 
 	// Pre-computed flags for serialization (computed at init time)
-	WriteType   bool // whether to write type info (true for struct fields in compatible mode)
-	HasGenerics bool // whether element types are known from TypeDef (for container fields)
+	WriteType      bool // whether to write type info (true for struct fields in compatible mode)
+	CachedTypeInfo *TypeInfo
+	HasGenerics    bool // whether element types are known from TypeDef (for container fields)
 
 	// Tag-based configuration (from fory struct tags)
 	TagID          int  // -1 = use field name, >=0 = use tag ID
@@ -260,13 +261,11 @@ func fieldHasNonPrimitiveSerializer(field *FieldInfo) bool {
 	if field.Serializer == nil {
 		return false
 	}
-	// ENUM (numeric ID), NAMED_ENUM (namespace/typename), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
+	// ENUM (numeric ID), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
 	// all require special serialization and should not use the primitive fast path
 	// Note: ENUM uses unsigned VarUint32Small7 for ordinals, not signed zigzag varint
-	// Use internal type ID (low 8 bits) since registered types have composite TypeIds like (userID << 8) | internalID
-	internalTypeId := TypeId(field.Meta.TypeId & 0xFF)
-	switch internalTypeId {
-	case ENUM, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT:
+	switch TypeId(field.Meta.TypeId) {
+	case ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT:
 		return true
 	default:
 		return false
@@ -278,8 +277,8 @@ func isEnumField(field *FieldInfo) bool {
 	if field.Serializer == nil {
 		return false
 	}
-	internalTypeId := field.Meta.TypeId & 0xFF
-	return internalTypeId == ENUM || internalTypeId == NAMED_ENUM
+	internalTypeId := field.Meta.TypeId
+	return internalTypeId == ENUM
 }
 
 // getFieldCategory returns the category for sorting remainingFields:
@@ -292,17 +291,17 @@ func getFieldCategory(field *FieldInfo) int {
 	if isNullableFixedSizePrimitive(field.DispatchId) || isNullableVarintPrimitive(field.DispatchId) {
 		return 0
 	}
-	internalId := int16(field.Meta.TypeId & 0xFF)
-	if internalId == UNKNOWN {
+	typeId := field.Meta.TypeId
+	if typeId == UNKNOWN {
 		return 4
 	}
-	if isUserDefinedType(internalId) {
+	if isUserDefinedType(typeId) {
 		return 4
 	}
-	if internalId == LIST || internalId == SET {
+	if typeId == LIST || typeId == SET {
 		return 2
 	}
-	if internalId == MAP {
+	if typeId == MAP {
 		return 3
 	}
 	// Internal build-in types: sorted by typeId, then sort key (matches Java build-in group)
@@ -518,10 +517,7 @@ func isStructFieldType(ft FieldType) bool {
 	}
 	typeId := ft.TypeId()
 	// Check base type IDs that need type info (struct and ext, NOT enum)
-	// Always check the internal type ID (low byte) to handle composite type IDs
-	// which may be negative when stored as int32 (e.g., -2288 = (short)128784)
-	internalTypeId := TypeId(typeId & 0xFF)
-	switch internalTypeId {
+	switch TypeId(typeId) {
 	case STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT,
 		EXT, NAMED_EXT:
 		return true
@@ -613,7 +609,7 @@ func ComputeStructFingerprint(fields []FieldFingerprintInfo) string {
 // Field sorting helpers
 
 type triple struct {
-	typeID     int16
+	typeID     TypeId
 	serializer Serializer
 	name       string
 	nullable   bool
@@ -711,7 +707,7 @@ func sortFields(
 	// Java sorts by: compressed (varint) types last, then by size (largest first), then by type ID (descending)
 	// Fixed types: BOOL, INT8, UINT8, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT32, FLOAT64
 	// Varint types: VARINT32, VARINT64, VAR_UINT32, VAR_UINT64, TAGGED_INT64, TAGGED_UINT64
-	isVarintTypeId := func(typeID int16) bool {
+	isVarintTypeId := func(typeID TypeId) bool {
 		return typeID == VARINT32 || typeID == VARINT64 ||
 			typeID == VAR_UINT32 || typeID == VAR_UINT64 ||
 			typeID == TAGGED_INT64 || typeID == TAGGED_UINT64

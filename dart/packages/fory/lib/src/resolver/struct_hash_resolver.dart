@@ -19,7 +19,7 @@
 
 import 'dart:collection';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/util/string_util.dart';
 

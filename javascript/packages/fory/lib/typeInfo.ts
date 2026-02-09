@@ -20,6 +20,26 @@
 import Fory from "./fory";
 import { ForyTypeInfoSymbol, TypeId, Mode } from "./type";
 
+const targetFieldInfo = new WeakMap<new () => any, { [key: string]: StructFieldInfo }>();
+
+export const ForyField = (fieldInfo: {
+  nullable?: boolean,
+  trackingRef?: boolean,
+  id?: number,
+}) => {
+  return (target: any, key: string | {name?: string}) => {
+    const creator = target.constructor;
+    if (!targetFieldInfo.has(creator)) {
+      targetFieldInfo.set(creator, {});
+    }
+    const keyString = typeof key === "string" ? key : key?.name;
+    if (!keyString) {
+      throw new Error("Decorators can only be placed on classes and fields");
+    }
+    targetFieldInfo.get(creator)![keyString] = fieldInfo;
+  };
+}
+
 const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
   if (!target.prototype) {
     target.prototype = {};
@@ -28,7 +48,17 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
     typeInfo.options = {};
   }
   typeInfo.options.withConstructor = true;
-  typeInfo.options.constructor = target;
+  typeInfo.options.creator = target;
+  if (!typeInfo.options.props) {
+    typeInfo.options.props = {}
+  }
+  if(targetFieldInfo.has(target)) {
+    const structTypeInfo = (typeInfo as StructTypeInfo);
+    if (!structTypeInfo.options.fieldInfo) {
+      structTypeInfo.options.fieldInfo = {};
+    }
+    Object.assign(structTypeInfo.options.fieldInfo, targetFieldInfo.get(target));
+  }
   Object.assign(typeInfo.options.props, targetFields.get(target) || {})
   Object.defineProperties(target.prototype, {
     [ForyTypeInfoSymbol]: {
@@ -71,6 +101,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   named = "";
   namespace = "";
   typeName = "";
+  // Stored as unsigned 32-bit; -1 (0xffffffff) means "unset".
+  userTypeId = -1;
   options?: any;
   dynamic: "TRUE" | "FALSE" | "AUTO" = "AUTO";
   static fory: WeakRef<Fory> | null = null;
@@ -83,7 +115,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     TypeInfo.fory = null;
   }
 
-  private constructor(private _typeId: number) {
+  private constructor(private _typeId: number, userTypeId = -1) {
     super(function (target: any, key?: string | { name?: string }) {
       if (key === undefined) {
         initMeta(target, that as unknown as StructTypeInfo);
@@ -97,10 +129,16 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     });
     // eslint-disable-next-line
     const that = this;
+    if (userTypeId !== -1) {
+      if (!Number.isInteger(userTypeId) || userTypeId < 0 || userTypeId > 0xFFFFFFFE) {
+        throw new Error("userTypeId must be in range [0, 0xfffffffe]");
+      }
+    }
+    this.userTypeId = userTypeId;
   }
 
   computeTypeId(fory?: Fory) {
-    const internalTypeId = this._typeId & 0xff;
+    const internalTypeId = this._typeId;
     if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
       return this._typeId;
     }
@@ -108,10 +146,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       throw new Error("fory is not attached")
     }
     if (internalTypeId === TypeId.NAMED_STRUCT && fory.config.mode === Mode.Compatible) {
-      return ((this._typeId >> 8) << 8) | TypeId.NAMED_COMPATIBLE_STRUCT
+      return TypeId.NAMED_COMPATIBLE_STRUCT;
     }
     if (internalTypeId === TypeId.STRUCT && fory.config.mode === Mode.Compatible) {
-      return ((this._typeId >> 8) << 8) | TypeId.COMPATIBLE_STRUCT
+      return TypeId.COMPATIBLE_STRUCT;
     }
     return this._typeId;
   }
@@ -133,7 +171,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         if (TypeId.enumType(this._typeId)) {
           return true;
         }
-        const internalTypeId = this._typeId & 0xff;
+        const internalTypeId = this._typeId;
         const fory = TypeInfo.fory?.deref();
         if (!fory) {
           throw new Error("fory is not attached")
@@ -153,6 +191,60 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     return new TypeInfo<{
       type: T;
     }>(typeId);
+  }
+
+  static fromExt<T = any>(nameInfo: {
+    typeId?: number;
+    namespace?: string;
+    typeName?: string;
+  } | string | number, {
+    withConstructor = false,
+  }: {
+    withConstructor?: boolean;
+  } = {}) {
+    let typeId: number | undefined;
+    let namespace: string | undefined;
+    let typeName: string | undefined;
+    if (typeof nameInfo === "string") {
+      typeName = nameInfo;
+    } else if (typeof nameInfo === "number") {
+      typeId = nameInfo;
+    } else {
+      namespace = nameInfo.namespace;
+      typeName = nameInfo.typeName;
+      typeId = nameInfo.typeId;
+    }
+    if (typeId !== undefined && typeName !== undefined) {
+      throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
+    }
+    if (!typeId) {
+      if (!typeName) {
+        throw new Error(`type name and type id should be set at least one`);
+      }
+    }
+    if (!namespace && typeName) {
+      const splits = typeName!.split(".");
+      if (splits.length > 1) {
+        namespace = splits[0];
+        typeName = splits.slice(1).join(".");
+      }
+    }
+    let finalTypeId = 0;
+    let userTypeId = -1;
+    if (typeId !== undefined) {
+      finalTypeId = TypeId.EXT;
+      userTypeId = typeId;
+    } else {
+      finalTypeId = TypeId.NAMED_EXT;
+    }
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId).cast<StructTypeInfo>();
+    typeInfo.options = {
+      withConstructor,
+    };
+    typeInfo.namespace = namespace || "";
+    typeInfo.typeName = typeId !== undefined ? "" : typeName!;
+    typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
+    return typeInfo as TypeInfo<T>;
   }
 
   static fromStruct<T = any>(nameInfo: {
@@ -194,12 +286,14 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       }
     }
     let finalTypeId = 0;
+    let userTypeId = -1;
     if (typeId !== undefined) {
-        finalTypeId = (typeId << 8) | TypeId.STRUCT;
+      finalTypeId = TypeId.STRUCT;
+      userTypeId = typeId;
     } else {
-        finalTypeId = TypeId.NAMED_STRUCT;
+      finalTypeId = TypeId.NAMED_STRUCT;
     }
-    const typeInfo = new TypeInfo<T>(finalTypeId).cast<StructTypeInfo>();
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId).cast<StructTypeInfo>();
     typeInfo.options = {
       props: props || {},
       withConstructor,
@@ -252,8 +346,9 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         typeName = splits.slice(1).join(".");
       }
     }
-    const finalTypeId = typeId !== undefined ? ((typeId << 8) | TypeId.ENUM) : TypeId.NAMED_ENUM;
-    const typeInfo = new TypeInfo<T>(finalTypeId);
+    const finalTypeId = typeId !== undefined ? TypeId.ENUM : TypeId.NAMED_ENUM;
+    const userTypeId = typeId !== undefined ? typeId : -1;
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId);
     typeInfo.cast<EnumTypeInfo>().options = {
       inner: props,
     };
@@ -272,13 +367,13 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   }
 }
 
-type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean}
+type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean, id?: number}
 export interface StructTypeInfo extends TypeInfo {
   options: {
     props?: { [key: string]: TypeInfo };
     fieldInfo?: {[key: string]: StructFieldInfo};
     withConstructor?: boolean;
-    constructor?: Function;
+    creator?: Function;
   };
 }
 
@@ -373,8 +468,12 @@ export type HintInput<T> = T extends {
     | typeof TypeId.UINT8
     | typeof TypeId.UINT16
     | typeof TypeId.UINT32
+    | typeof TypeId.UINT64
+    | typeof TypeId.VAR_UINT64
     | typeof TypeId.VAR_UINT32
+    | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
+    | typeof TypeId.BFLOAT16
     | typeof TypeId.FLOAT32
     | typeof TypeId.FLOAT64;
   }
@@ -442,7 +541,9 @@ export type HintResult<T> = T extends never ? any : T extends {
     | typeof TypeId.UINT16
     | typeof TypeId.UINT32
     | typeof TypeId.VAR_UINT32
+    | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
+    | typeof TypeId.BFLOAT16
     | typeof TypeId.FLOAT32
     | typeof TypeId.FLOAT64;
   }
@@ -527,6 +628,24 @@ export const Type = {
         inner: T1;
       };
     }>(nameInfo, t1);
+  },
+  ext<T extends { [key: string]: TypeInfo }>(nameInfo: {
+    typeId?: number;
+    namespace?: string;
+    typeName?: string;
+  } | string | number, {
+    withConstructor = false,
+  }: {
+    withConstructor?: boolean;
+  } = {}) {
+    return TypeInfo.fromExt<{
+      type: typeof TypeId.EXT;
+      options: {
+        props: T;
+      };
+    }>(nameInfo, {
+      withConstructor,
+    });
   },
   struct<T extends { [key: string]: TypeInfo }>(nameInfo: {
     typeId?: number;
@@ -640,6 +759,11 @@ export const Type = {
   varUInt64() {
     return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT64>(
       (TypeId.VAR_UINT64),
+    );
+  },
+  varInt64() {
+    return TypeInfo.fromNonParam<typeof TypeId.VARINT64>(
+      (TypeId.VARINT64),
     );
   },
   taggedUInt64() {

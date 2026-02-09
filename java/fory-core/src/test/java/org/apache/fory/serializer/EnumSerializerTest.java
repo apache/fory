@@ -102,7 +102,7 @@ public class EnumSerializerTest extends ForyTestBase {
             .withLanguage(Language.JAVA)
             .withRefTracking(true)
             .requireClassRegistration(false)
-            .deserializeNonexistentEnumValueAsNull(true)
+            .deserializeUnknownEnumValueAsNull(true)
             .withClassLoader(cls2.getClassLoader());
     Fory foryDeserialize = builderDeserialize.build();
     Fory forySerialization = builderSerialization.build();

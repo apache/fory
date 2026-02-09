@@ -23,7 +23,7 @@ import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
 import 'package:fory/src/codegen/meta/lib_import_pack.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 
-import 'package:fory/src/const/obj_type.dart';
+import 'package:fory/src/const/types.dart';
 
 final class TypeAdapter extends GenExport{
   final TypeSpecGen typeSpec;
