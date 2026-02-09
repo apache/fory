@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(fory
-    VERSION 0.15.0
+    VERSION 0.16.0
     DESCRIPTION "Apache Fory - A blazingly fast multi-language serialization framework"
     LANGUAGES CXX
 )
