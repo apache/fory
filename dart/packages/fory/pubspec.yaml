@@ -17,7 +17,7 @@
 
 name: fory
 description: apache fory dart support
-version: 0.15.0-dev
+version: 0.16.0-dev
 
 resolution: workspace
 
