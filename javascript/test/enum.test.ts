@@ -17,64 +17,58 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
-import {describe, expect, test} from '@jest/globals';
+import Fory, { Type } from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
-describe('enum', () => {
-    test('should javascript number enum work', () => {
-        const Foo = {
-            f1: 1,
-            f2: 2
-        }
-        const fory = new Fory({ refTracking: true });   
-        const {serialize, deserialize} = fory.registerSerializer(Type.enum("example.foo", Foo)) 
-        const input = serialize(Foo.f1);
-        const result = deserialize(
-            input
-        );
-        expect(result).toEqual(Foo.f1)
-      });
-    
-      test('should javascript string enum work', () => {
-        const Foo = {
-            f1: "hello",
-            f2: "world"
-        }
-        const fory = new Fory({ refTracking: true });   
-        fory.registerSerializer(Type.enum("example.foo", Foo)) 
-        const input = fory.serialize(Foo.f1);
-        const result = fory.deserialize(
-            input
-        );
-        expect(result).toEqual(Foo.f1)
-      });
-  test('should typescript number enum work', () => {
-    enum Foo {
-        f1 = 1,
-        f2 = 2
-    }
-    const fory = new Fory({ refTracking: true });   
-    const {serialize, deserialize} = fory.registerSerializer(Type.enum("example.foo", Foo)) 
-    const input = serialize(Foo.f1);
-    const result = deserialize(
-        input
+describe("enum", () => {
+  test("should javascript number enum work", () => {
+    const Foo = {
+      f1: 1,
+      f2: 2,
+    };
+    const fory = new Fory({ refTracking: true });
+    const { serialize, deserialize } = fory.registerSerializer(
+      Type.enum("example.foo", Foo),
     );
-    expect(result).toEqual(Foo.f1)
+    const input = serialize(Foo.f1);
+    const result = deserialize(input);
+    expect(result).toEqual(Foo.f1);
   });
 
-  test('should typescript string enum work', () => {
-    enum Foo {
-        f1 = "hello",
-        f2 = "world"
-    }
-    const fory = new Fory({ refTracking: true });   
-    fory.registerSerializer(Type.enum("example.foo", Foo)) 
+  test("should javascript string enum work", () => {
+    const Foo = {
+      f1: "hello",
+      f2: "world",
+    };
+    const fory = new Fory({ refTracking: true });
+    fory.registerSerializer(Type.enum("example.foo", Foo));
     const input = fory.serialize(Foo.f1);
-    const result = fory.deserialize(
-        input
+    const result = fory.deserialize(input);
+    expect(result).toEqual(Foo.f1);
+  });
+  test("should typescript number enum work", () => {
+    enum Foo {
+      f1 = 1,
+      f2 = 2,
+    }
+    const fory = new Fory({ refTracking: true });
+    const { serialize, deserialize } = fory.registerSerializer(
+      Type.enum("example.foo", Foo),
     );
-    expect(result).toEqual(Foo.f1)
+    const input = serialize(Foo.f1);
+    const result = deserialize(input);
+    expect(result).toEqual(Foo.f1);
+  });
+
+  test("should typescript string enum work", () => {
+    enum Foo {
+      f1 = "hello",
+      f2 = "world",
+    }
+    const fory = new Fory({ refTracking: true });
+    fory.registerSerializer(Type.enum("example.foo", Foo));
+    const input = fory.serialize(Foo.f1);
+    const result = fory.deserialize(input);
+    expect(result).toEqual(Foo.f1);
   });
 });
-
-

@@ -17,27 +17,26 @@
  * under the License.
  */
 
-import { BinaryReader } from '../packages/fory/index';
-import hps from '../packages/hps/index';
-import { describe, expect, test } from '@jest/globals';
+import { BinaryReader } from "../packages/fory/index";
+import hps from "../packages/hps/index";
+import { describe, expect, test } from "@jest/globals";
 
+const skipableDescribe = hps ? describe : describe.skip;
 
-const skipableDescribe = (hps ? describe : describe.skip);
+skipableDescribe("hps", () => {
+  test.only("should isLatin1 work", () => {
+    const { serializeString } = hps!;
+    for (let index = 0; index < 10000; index++) {
+      const bf = Buffer.alloc(100);
+      serializeString("hello", bf, 0);
+      var reader = new BinaryReader({});
+      reader.reset(bf);
+      expect(reader.stringWithHeader()).toBe("hello");
 
-skipableDescribe('hps', () => {
-    test.only('should isLatin1 work', () => {
-        const { serializeString } = hps!;
-        for (let index = 0; index < 10000; index++) {
-            const bf = Buffer.alloc(100);
-            serializeString("hello", bf, 0);
-            var reader = new BinaryReader({});
-            reader.reset(bf);
-            expect(reader.stringWithHeader()).toBe("hello")
-
-            serializeString("😁", bf, 0);
-            var reader = new BinaryReader({});
-            reader.reset(bf);
-            expect(reader.stringWithHeader()).toBe("😁")
-        }
-    });
+      serializeString("😁", bf, 0);
+      var reader = new BinaryReader({});
+      reader.reset(bf);
+      expect(reader.stringWithHeader()).toBe("😁");
+    }
+  });
 });

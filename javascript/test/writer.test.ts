@@ -17,50 +17,50 @@
  * under the License.
  */
 
-import { OwnershipError } from '../packages/fory/lib/error';
-import { BinaryWriter } from '../packages/fory/lib/writer';
-import { describe, expect, test } from '@jest/globals';
+import { OwnershipError } from "../packages/fory/lib/error";
+import { BinaryWriter } from "../packages/fory/lib/writer";
+import { describe, expect, test } from "@jest/globals";
 
-describe('writer', () => {
-    test('should dumpOwn dispose work', () => {
-        const writer = new BinaryWriter({});
-        {
-            writer.uint8(256);
-            const { get, dispose } = writer.dumpAndOwn();
-            const ab = get();
-            expect(ab.byteLength).toBe(1);
-            expect(ab[0]).toBe(0);
-            expect(writer.getCursor()).toBe(1);
-            dispose();
-        }
-        writer.reset();
-        {
-            writer.uint8(256);
-            const { get, dispose } = writer.dumpAndOwn();
-            const ab = get();
-            expect(ab.byteLength).toBe(1);
-            expect(ab[0]).toBe(0);
-            expect(writer.getCursor()).toBe(1);
-            dispose();
-        }
-    });
+describe("writer", () => {
+  test("should dumpOwn dispose work", () => {
+    const writer = new BinaryWriter({});
+    {
+      writer.uint8(256);
+      const { get, dispose } = writer.dumpAndOwn();
+      const ab = get();
+      expect(ab.byteLength).toBe(1);
+      expect(ab[0]).toBe(0);
+      expect(writer.getCursor()).toBe(1);
+      dispose();
+    }
+    writer.reset();
+    {
+      writer.uint8(256);
+      const { get, dispose } = writer.dumpAndOwn();
+      const ab = get();
+      expect(ab.byteLength).toBe(1);
+      expect(ab[0]).toBe(0);
+      expect(writer.getCursor()).toBe(1);
+      dispose();
+    }
+  });
 
-    test('should dumpOwn work', () => {
-        const writer = new BinaryWriter({});
-        {
-            writer.uint8(256);
-            const { get } = writer.dumpAndOwn();
-            const ab = get();
-            expect(ab.byteLength).toBe(1);
-            expect(ab[0]).toBe(0);
-            expect(writer.getCursor()).toBe(1);
-        }
-        try {
-            writer.reset();
-        } catch (error) {
-            expect(error instanceof OwnershipError).toBe(true);
-            return;
-        }
-        throw new Error("unreachable code")
-    });
+  test("should dumpOwn work", () => {
+    const writer = new BinaryWriter({});
+    {
+      writer.uint8(256);
+      const { get } = writer.dumpAndOwn();
+      const ab = get();
+      expect(ab.byteLength).toBe(1);
+      expect(ab[0]).toBe(0);
+      expect(writer.getCursor()).toBe(1);
+    }
+    try {
+      writer.reset();
+    } catch (error) {
+      expect(error instanceof OwnershipError).toBe(true);
+      return;
+    }
+    throw new Error("unreachable code");
+  });
 });

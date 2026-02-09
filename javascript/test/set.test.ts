@@ -17,34 +17,30 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
-import { describe, expect, test } from '@jest/globals';
+import Fory, { Type } from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
-describe('set', () => {
-    test('should set work', () => {
-        
-        const fory = new Fory({ refTracking: true });    
-        const input = fory.serialize(new Set(["foo1", "bar1", "cc2"]));
-        const result = fory.deserialize(
-            input
-        );
-        expect(result).toEqual(new Set(["foo1", "bar1", "cc2"]))
-    });
-    test('should set in object work', () => {
-        const typeinfo = Type.struct({
-            typeName: "example.foo"
-        }, {
-            a: Type.set(Type.string())
-        });
-        
-        const fory = new Fory({ refTracking: true });    
-        const { serialize, deserialize } = fory.registerSerializer(typeinfo);
-        const input = serialize({ a: new Set(["foo1", "bar2"]) });
-        const result = deserialize(
-            input
-        );
-        expect(result).toEqual({ a: new Set(["foo1", "bar2"]) })
-    });
+describe("set", () => {
+  test("should set work", () => {
+    const fory = new Fory({ refTracking: true });
+    const input = fory.serialize(new Set(["foo1", "bar1", "cc2"]));
+    const result = fory.deserialize(input);
+    expect(result).toEqual(new Set(["foo1", "bar1", "cc2"]));
+  });
+  test("should set in object work", () => {
+    const typeinfo = Type.struct(
+      {
+        typeName: "example.foo",
+      },
+      {
+        a: Type.set(Type.string()),
+      },
+    );
+
+    const fory = new Fory({ refTracking: true });
+    const { serialize, deserialize } = fory.registerSerializer(typeinfo);
+    const input = serialize({ a: new Set(["foo1", "bar2"]) });
+    const result = deserialize(input);
+    expect(result).toEqual({ a: new Set(["foo1", "bar2"]) });
+  });
 });
-
-
