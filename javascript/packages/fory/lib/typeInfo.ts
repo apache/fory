@@ -20,6 +20,26 @@
 import Fory from "./fory";
 import { ForyTypeInfoSymbol, TypeId, Mode } from "./type";
 
+const targetFieldInfo = new WeakMap<new () => any, { [key: string]: StructFieldInfo }>();
+
+export const ForyField = (fieldInfo: {
+  nullable?: boolean,
+  trackingRef?: boolean,
+  id?: number,
+}) => {
+  return (target: any, key: string | {name?: string}) => {
+    const creator = target.constructor;
+    if (!targetFieldInfo.has(creator)) {
+      targetFieldInfo.set(creator, {});
+    }
+    const keyString = typeof key === "string" ? key : key?.name;
+    if (!keyString) {
+      throw new Error("Decorators can only be placed on classes and fields");
+    }
+    targetFieldInfo.get(creator)![keyString] = fieldInfo;
+  };
+}
+
 const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
   if (!target.prototype) {
     target.prototype = {};
@@ -31,6 +51,13 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
   typeInfo.options.creator = target;
   if (!typeInfo.options.props) {
     typeInfo.options.props = {}
+  }
+  if(targetFieldInfo.has(target)) {
+    const structTypeInfo = (typeInfo as StructTypeInfo);
+    if (!structTypeInfo.options.fieldInfo) {
+      structTypeInfo.options.fieldInfo = {};
+    }
+    Object.assign(structTypeInfo.options.fieldInfo, targetFieldInfo.get(target));
   }
   Object.assign(typeInfo.options.props, targetFields.get(target) || {})
   Object.defineProperties(target.prototype, {
@@ -340,7 +367,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   }
 }
 
-type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean}
+type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean, id?: number}
 export interface StructTypeInfo extends TypeInfo {
   options: {
     props?: { [key: string]: TypeInfo };

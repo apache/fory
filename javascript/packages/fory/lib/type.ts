@@ -253,7 +253,6 @@ export interface Config {
     afterCodeGenerated?: (code: string) => string;
   };
   mode: Mode;
-  classVersionHash?: boolean;
 }
 
 export interface WithForyClsInfo {

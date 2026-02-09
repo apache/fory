@@ -59,7 +59,6 @@ export default class {
       useSliceString: Boolean(config?.useSliceString),
       hooks: config?.hooks || {},
       mode: config?.mode || Mode.SchemaConsistent,
-      classVersionHash: config?.classVersionHash || false,
     };
   }
 
