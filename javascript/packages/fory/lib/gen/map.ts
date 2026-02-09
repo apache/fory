@@ -161,7 +161,6 @@ class MapAnySerializer {
     }
   }
 
-
   private writeFlag(header: number, v: any) {
     if (header & MapFlags.HAS_NULL) {
       return true;
