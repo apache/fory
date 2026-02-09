@@ -1324,33 +1324,23 @@ describe("bool", () => {
   });
 
   test("test_nullable_field_compatible_null", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
 
-    @Type.struct(402, {
-      intField: Type.int32(),
-      stringField: Type.string(),
-      nullableInt: Type.int32(),
-      nullableString: Type.string()
-    })
-    class NullableStruct {
-      intField: number = 0;
-      stringField: string = "";
-      nullableInt: number | null = null;
-      nullableString: string | null = null;
-    }
-    fory.registerSerializer(NullableStruct);
+    fory.registerSerializer(buildClass());
 
     const reader = new BinaryReader({});
     reader.reset(content);
 
     // Deserialize struct from Java
     let cursor = 0;
-    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    const deserializedStruct: InstanceType<ReturnType<typeof buildClass>> | null = fory.deserialize(content.subarray(cursor));
     cursor += fory.binaryReader.getCursor();
 
+    if (deserializedStruct === null) {
+      throw new Error("deserializedStruct is null");
+    }
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
     writeToFile(serializedData as Buffer);
