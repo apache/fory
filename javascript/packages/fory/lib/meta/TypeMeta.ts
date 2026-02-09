@@ -347,9 +347,9 @@ export class TypeMeta {
     } else {
       // Read field name
       const encoding = FieldInfo.u8ToEncoding(encodingFlags);
-      
+
       fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
-      fieldName = TypeMeta.lowerUnderscoreToLowerCamelCase(fieldName)
+      fieldName = TypeMeta.lowerUnderscoreToLowerCamelCase(fieldName);
     }
 
     return new FieldInfo(fieldName, typeId, userTypeId, trackingRef, nullable, options, fieldId);
@@ -559,14 +559,14 @@ export class TypeMeta {
     let fromIndex = 0;
     let index;
 
-    while ((index = lowerUnderscore.indexOf('_', fromIndex)) !== -1) {
+    while ((index = lowerUnderscore.indexOf("_", fromIndex)) !== -1) {
       // 拼接下划线前的内容
       result += lowerUnderscore.substring(fromIndex, index);
 
       if (length > index + 1) {
         const symbol = lowerUnderscore.charAt(index + 1);
         // 判断是否为小写字母
-        if (symbol >= 'a' && symbol <= 'z') {
+        if (symbol >= "a" && symbol <= "z") {
           result += symbol.toUpperCase();
           fromIndex = index + 2;
           continue;
@@ -593,10 +593,10 @@ export class TypeMeta {
       const symbol = lowerCamel.charAt(i);
 
       // 检查是否为大写字母
-      if (symbol >= 'A' && symbol <= 'Z') {
+      if (symbol >= "A" && symbol <= "Z") {
         // 拼接从上一个索引到当前大写字母前的部分，加下划线，加小写化后的字母
         result += lowerCamel.substring(fromIndex, i);
-        result += '_';
+        result += "_";
         result += symbol.toLowerCase();
         // 更新起始索引
         fromIndex = i + 1;
@@ -610,7 +610,6 @@ export class TypeMeta {
 
     return result;
   }
-
 
   private prependHeader(buffer: Uint8Array, isCompressed: boolean, hasFieldsMeta: boolean): Uint8Array {
     const metaSize = buffer.length;
@@ -668,7 +667,7 @@ export class TypeMeta {
     return TypeMeta.toSnakeCase(i.fieldName);
   }
 
-  static groupFieldsByType<T extends { fieldName: string; nullable?: boolean; typeId: number, fieldId?: number }>(typeInfos: Array<T>): Array<T> {
+  static groupFieldsByType<T extends { fieldName: string; nullable?: boolean; typeId: number; fieldId?: number }>(typeInfos: Array<T>): Array<T> {
     const primitiveFields: Array<T> = [];
     const nullablePrimitiveFields: Array<T> = [];
     const internalTypeFields: Array<T> = [];
@@ -712,27 +711,26 @@ export class TypeMeta {
       const t2Compress = TypeId.isCompressedType(b.typeId);
 
       if ((t1Compress && t2Compress) || (!t1Compress && !t2Compress)) {
-          const sizea = getPrimitiveTypeSize(a.typeId);
-          const sizeb = getPrimitiveTypeSize(b.typeId);
-          // return nameSorter(a, b);
+        const sizea = getPrimitiveTypeSize(a.typeId);
+        const sizeb = getPrimitiveTypeSize(b.typeId);
+        // return nameSorter(a, b);
 
-          let c = sizeb - sizea;
-          if (c === 0) {
-            c = b.typeId - a.typeId;
-            // noinspection Duplicates
-            if (c == 0) {
-              return nameSorter(a, b);
-            }
-            return c;
+        let c = sizeb - sizea;
+        if (c === 0) {
+          c = b.typeId - a.typeId;
+          // noinspection Duplicates
+          if (c == 0) {
+            return nameSorter(a, b);
           }
           return c;
+        }
+        return c;
       }
       if (t1Compress) {
         return 1;
       }
       // t2 compress
       return -1;
-
     };
 
     const typeIdThenNameSorter = (a: T, b: T) => {
