@@ -164,7 +164,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     const hash = this.typeMeta.computeStructHash();
     return `
-      ${this.builder.fory.config.classVersionHash ? this.builder.writer.int32(hash) : ""}
+      ${!this.builder.fory.isCompatible() ? this.builder.writer.int32(hash) : ""}
       ${this.sortedProps.map(({ key, typeInfo }) => {
       const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
       if (!InnerGeneratorClass) {
@@ -182,7 +182,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     const result = this.scope.uniqueName("result");
     const hash = this.typeMeta.computeStructHash();
     return `
-      ${this.builder.fory.config.classVersionHash
+      ${!this.builder.fory.isCompatible()
 ? `
         if(${this.builder.reader.int32()} !== ${hash}) {
           throw new Error("Read class version is not consistent with ${hash} ")

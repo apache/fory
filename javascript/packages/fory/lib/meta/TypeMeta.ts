@@ -132,6 +132,7 @@ interface InnerFieldInfo {
   trackingRef: boolean;
   nullable: boolean;
   options?: InnerFieldInfoOptions;
+  fieldId?: number;
 }
 class FieldInfo {
   constructor(
@@ -141,6 +142,7 @@ class FieldInfo {
     public trackingRef = false,
     public nullable = false,
     public options: InnerFieldInfoOptions = {},
+    public fieldId?: number
   ) {
   }
 
@@ -153,11 +155,11 @@ class FieldInfo {
   }
 
   hasFieldId() {
-    return false; // todo not impl yet.
+    return typeof this.fieldId === "number";
   }
 
   getFieldId() {
-    return 0;
+    return this.fieldId;
   }
 
   static writeTypeId(writer: BinaryWriter, typeInfo: InnerFieldInfo, writeFlags = false) {
@@ -231,7 +233,10 @@ export class TypeMeta {
   computeStructFingerprint(fields: FieldInfo[]) {
     let fieldInfos = [];
     for (const field of fields) {
-      const typeId = field.getTypeId();
+      let typeId = field.getTypeId();
+      if (TypeId.userDefinedType(typeId)) {
+        typeId = TypeId.UNKNOWN;
+      }
       let fieldIdentifier = "";
       if (field.getFieldId()) {
         fieldIdentifier = `${field.getFieldId()}`;
@@ -270,7 +275,7 @@ export class TypeMeta {
         } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
           fieldTypeId = TypeId.UNION;
         }
-        const { trackingRef, nullable } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
+        const { trackingRef, nullable, id } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
         return new FieldInfo(
           fieldName,
           fieldTypeId,
@@ -278,6 +283,7 @@ export class TypeMeta {
           trackingRef,
           nullable,
           typeInfo.options,
+          id
         );
       });
     }
@@ -355,7 +361,7 @@ export class TypeMeta {
     }
 
     // Read type ID
-    const { typeId, userTypeId, trackingRef, nullable, options } = this.readTypeId(reader);
+    const { typeId, userTypeId, trackingRef, nullable, options, fieldId } = this.readTypeId(reader);
 
     let fieldName: string;
     if (encodingFlags === 3) {
@@ -367,7 +373,7 @@ export class TypeMeta {
       fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
     }
 
-    return new FieldInfo(fieldName, typeId, userTypeId, trackingRef, nullable, options);
+    return new FieldInfo(fieldName, typeId, userTypeId, trackingRef, nullable, options, fieldId);
   }
 
   private static readTypeId(reader: BinaryReader, readFlag = false): InnerFieldInfo {
@@ -536,7 +542,7 @@ export class TypeMeta {
       let encoded: Uint8Array | null = null;
 
       if (fieldInfo.hasFieldId()) {
-        size = fieldInfo.getFieldId();
+        size = fieldInfo.getFieldId()!;
         encodingFlags = 3; // TAG_ID encoding
       } else {
         // Convert camelCase to snake_case for xlang compatibility

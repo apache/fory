@@ -21,6 +21,7 @@ import Fory, {
   BinaryReader,
   BinaryWriter,
   Mode,
+  ForyField,
   Type,
 } from "../packages/fory/index";
 import { describe, expect, test } from "@jest/globals";
@@ -182,40 +183,12 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_murmurhash3", () => {
-    if (Boolean("1")) { return; }
+  const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
     const reader = new BinaryReader({});
     reader.reset(content);
-
-    // Read the two hash values written by Java
-    const hash1Bytes = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) {
-      hash1Bytes[i] = reader.uint8();
-    }
-
-    const hash2Bytes = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) {
-      hash2Bytes[i] = reader.uint8();
-    }
-
-    // Import murmurHash3 function
-    const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
-
-    // Test hash1: hash of [1, 2, 8] with seed 47
-    const testData1 = new Uint8Array([1, 2, 8]);
-    const result1 = x64hash128(testData1, 47);
-    const result1Bytes = new Uint8Array(result1.buffer);
-
-    // Test hash2: hash of "01234567890123456789" with seed 47
-    const testData2 = new TextEncoder().encode("01234567890123456789");
-    const result2 = x64hash128(testData2, 47);
-    const result2Bytes = new Uint8Array(result2.buffer);
-
-    // Write our computed hashes back
-    const writer = new BinaryWriter();
-    writer.reserve(32);
-    writer.buffer(result1Bytes);
-    writer.buffer(result2Bytes);
-    writeToFile(writer.dump() as Buffer);
+    let dataview = x64hash128(new Uint8Array([1, 2, 8]), 47);
+    expect(reader.int64()).toEqual(dataview.getBigInt64(0));
+    expect(reader.int64()).toEqual(dataview.getBigInt64(8));
   });
   test("test_string_serializer", () => {
     const fory = new Fory({
@@ -698,7 +671,6 @@ describe("bool", () => {
   test("test_consistent_named", () => {
     const fory = new Fory({
       mode: Mode.SchemaConsistent,
-      classVersionHash: true,
     });
 
     // Define and register Color enum
@@ -758,18 +730,18 @@ describe("bool", () => {
   });
 
   test("test_struct_version_check", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent,
     });
 
     @Type.struct(201, {
-      f1: Type.int32(),
+      f1: Type.varInt32(),
       f2: Type.string(),
       f3: Type.float64()
     })
     class VersionCheckStruct {
       f1: number = 0;
+      @ForyField({ nullable: true })
       f2: string | null = null;
       f3: number = 0;
     }
@@ -918,21 +890,18 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_one_string_field_schema", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
 
     @Type.struct(200, {
       f1: Type.string()
     })
     class OneStringFieldStruct {
+      @ForyField({nullable: true})
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -944,7 +913,6 @@ describe("bool", () => {
     writeToFile(serializedData as Buffer);
   });
   test("test_one_string_field_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
@@ -953,6 +921,7 @@ describe("bool", () => {
       f1: Type.string()
     })
     class OneStringFieldStruct {
+      @ForyField({nullable: true})
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
@@ -971,7 +940,6 @@ describe("bool", () => {
   });
 
   test("test_two_string_field_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
@@ -985,9 +953,6 @@ describe("bool", () => {
       f2: string = "";
     }
     fory.registerSerializer(TwoStringFieldStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1022,9 +987,8 @@ describe("bool", () => {
     writeToFile(serializedData as Buffer);
   });
   test("test_one_enum_field_schema", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
 
     // Define and register TestEnum
@@ -1057,7 +1021,6 @@ describe("bool", () => {
   });
 
   test("test_one_enum_field_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
@@ -1078,9 +1041,6 @@ describe("bool", () => {
     }
     fory.registerSerializer(OneEnumFieldStruct);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
@@ -1092,7 +1052,6 @@ describe("bool", () => {
   });
 
   test("test_two_enum_field_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       mode: Mode.Compatible
     });
@@ -1114,9 +1073,6 @@ describe("bool", () => {
       f2: number = 0; // enum value
     }
     fory.registerSerializer(TwoEnumFieldStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize struct from Java
     let cursor = 0;
