@@ -305,6 +305,7 @@ Common error kinds:
   - ErrKindUnknownType: Unknown type encountered
   - ErrKindMaxDepthExceeded: Recursion depth limit exceeded
   - ErrKindHashMismatch: Struct hash mismatch (schema changed)
+  - ErrKindInvalidUTF16String: Malformed UTF-16 string payload
 
 # Best Practices
 

@@ -84,7 +84,7 @@ import array
 import pyfory
 import numpy as np
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 
 # Data with large arrays
 data = [
@@ -115,7 +115,7 @@ import forygo "github.com/apache/fory/go/fory"
 import "fmt"
 
 func main() {
-  fory := forygo.NewFory()
+  serializer := forygo.NewFory(forygo.WithXlang(true))
 
   // Data with large arrays
   list := []any{
@@ -123,24 +123,26 @@ func main() {
     make([]byte, 1000), // Large byte array
   }
 
-  buf := fory.NewByteBuffer(nil)
-  var bufferObjects []fory.BufferObject
+  buf := forygo.NewByteBuffer(nil)
+  var bufferObjects []forygo.BufferObject
 
   // Collect buffer objects during serialization
-  fory.Serialize(buf, list, func(o fory.BufferObject) bool {
+  if err := serializer.SerializeWithCallback(buf, list, func(o forygo.BufferObject) bool {
     bufferObjects = append(bufferObjects, o)
     return false
-  })
+  }); err != nil {
+    panic(err)
+  }
 
   // Convert to buffers for transport
-  var buffers []*fory.ByteBuffer
+  var buffers []*forygo.ByteBuffer
   for _, o := range bufferObjects {
     buffers = append(buffers, o.ToBuffer())
   }
 
   // Deserialize with buffers
   var newList []any
-  if err := fory.Deserialize(buf, &newList, buffers); err != nil {
+  if err := serializer.DeserializeWithCallbackBuffers(buf, &newList, buffers); err != nil {
     panic(err)
   }
   fmt.Println(newList)

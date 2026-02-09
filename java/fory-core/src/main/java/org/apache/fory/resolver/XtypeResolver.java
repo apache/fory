@@ -203,7 +203,8 @@ public class XtypeResolver extends TypeResolver {
     if (type.isEnum()) {
       typeId = Types.ENUM;
     } else {
-      int structTypeId = shareMeta ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
+      int structTypeId =
+          shareMeta && isStructEvolving(type) ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
       if (serializer != null) {
         if (isStructType(serializer)) {
           typeId = structTypeId;
@@ -248,7 +249,11 @@ public class XtypeResolver extends TypeResolver {
     short xtypeId;
     if (serializer != null) {
       if (isStructType(serializer)) {
-        xtypeId = (short) (shareMeta ? Types.NAMED_COMPATIBLE_STRUCT : Types.NAMED_STRUCT);
+        xtypeId =
+            (short)
+                (shareMeta && isStructEvolving(type)
+                    ? Types.NAMED_COMPATIBLE_STRUCT
+                    : Types.NAMED_STRUCT);
       } else if (serializer instanceof EnumSerializer) {
         xtypeId = Types.NAMED_ENUM;
       } else {
@@ -258,7 +263,11 @@ public class XtypeResolver extends TypeResolver {
       if (type.isEnum()) {
         xtypeId = Types.NAMED_ENUM;
       } else {
-        xtypeId = (short) (shareMeta ? Types.NAMED_COMPATIBLE_STRUCT : Types.NAMED_STRUCT);
+        xtypeId =
+            (short)
+                (shareMeta && isStructEvolving(type)
+                    ? Types.NAMED_COMPATIBLE_STRUCT
+                    : Types.NAMED_STRUCT);
       }
     }
     register(type, serializer, namespace, typeName, xtypeId, -1);

@@ -26,6 +26,7 @@
 #include "fory/type/type.h"
 #include "fory/util/buffer.h"
 #include "fory/util/error.h"
+#include "fory/util/flat_int_map.h"
 #include "fory/util/result.h"
 
 #include "absl/container/flat_hash_map.h"
@@ -331,7 +332,11 @@ private:
 
   // Meta sharing state (for streaming inline TypeMeta)
   // Maps TypeInfo* to index for reference tracking - uses map size as counter
-  absl::flat_hash_map<const TypeInfo *, size_t> write_type_info_index_map_;
+  util::FlatIntMap<uint64_t, uint32_t> write_type_info_index_map_;
+  // Fast path for the common single-type stream: avoid hash map lookups.
+  const TypeInfo *first_type_info_ = nullptr;
+  bool has_first_type_info_ = false;
+  bool type_info_index_map_active_ = false;
 };
 
 /// Read context for deserialization operations.
@@ -607,12 +612,18 @@ private:
   uint32_t current_dyn_depth_;
 
   // Meta sharing state (for compatible mode)
-  // Primary storage for TypeInfo objects created during deserialization
+  // Per-message storage for TypeInfo objects not cached across messages.
   std::vector<std::unique_ptr<TypeInfo>> owned_reading_type_infos_;
+  // Persistent cache storage for TypeInfo objects keyed by meta header.
+  std::vector<std::unique_ptr<TypeInfo>> cached_type_infos_;
   // Index-based access (pointers to owned_reading_type_infos_ or type_resolver)
   std::vector<const TypeInfo *> reading_type_infos_;
-  // Cache by meta_header (pointers to owned_reading_type_infos_)
+  // Cache by meta_header (pointers to cached_type_infos_)
   absl::flat_hash_map<int64_t, const TypeInfo *> parsed_type_infos_;
+  // Fast path for repeated type meta headers.
+  int64_t last_meta_header_ = 0;
+  const TypeInfo *last_meta_type_info_ = nullptr;
+  bool has_last_meta_header_ = false;
 
   // Dynamic meta strings used for named type/class info.
   meta::MetaStringTable meta_string_table_;

@@ -23,6 +23,6 @@ message TreeNode {
     string id = 1;
     string name = 2;
 
-    repeated ref TreeNode children = 3;
+    list<ref TreeNode> children = 3;
     ref(weak=true) TreeNode parent = 4; // back-pointer
 }

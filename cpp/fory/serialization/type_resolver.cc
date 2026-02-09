@@ -160,10 +160,10 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
     }
     encoded_name = std::move(encoded.bytes);
   }
-  size_t name_size =
-      use_tag_id ? static_cast<size_t>(field_id) + 1 : encoded_name.size();
+  const size_t size_field =
+      use_tag_id ? static_cast<size_t>(field_id) : encoded_name.size() - 1;
   uint8_t header =
-      (std::min(FIELD_NAME_SIZE_THRESHOLD, name_size - 1) << 2) & 0x3C;
+      (std::min(FIELD_NAME_SIZE_THRESHOLD, size_field) << 2) & 0x3C;
 
   if (field_type.track_ref) {
     header |= 1; // bit 0 for ref tracking
@@ -175,8 +175,8 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
 
   buffer.write_uint8(header);
 
-  if (name_size - 1 >= FIELD_NAME_SIZE_THRESHOLD) {
-    buffer.write_var_uint32(name_size - 1 - FIELD_NAME_SIZE_THRESHOLD);
+  if (size_field >= FIELD_NAME_SIZE_THRESHOLD) {
+    buffer.write_var_uint32(size_field - FIELD_NAME_SIZE_THRESHOLD);
   }
 
   // write field type
@@ -209,15 +209,14 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   bool use_tag_id = encoding_idx == 3;
   bool track_ref = (header & 0b01u) != 0;
   bool nullable = (header & 0b10u) != 0;
-  size_t name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD);
-  if (name_size == FIELD_NAME_SIZE_THRESHOLD) {
+  size_t size_field = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD);
+  if (size_field == FIELD_NAME_SIZE_THRESHOLD) {
     uint32_t extra = buffer.read_var_uint32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
-    name_size += extra;
+    size_field += extra;
   }
-  name_size += 1;
 
   // Read field type with nullable and track_ref from header
   FORY_TRY(field_type,
@@ -225,7 +224,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
 
   if (use_tag_id) {
     FieldInfo info("", std::move(field_type));
-    info.field_id = static_cast<int16_t>(name_size - 1);
+    info.field_id = static_cast<int16_t>(size_field);
     return info;
   }
 
@@ -236,6 +235,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   // We mirror that here using MetaStringDecoder with '$' and '_' as
   // special characters (same as Encoders.FIELD_NAME_DECODER).
 
+  const size_t name_size = size_field + 1;
   std::vector<uint8_t> name_bytes(name_size);
   buffer.read_bytes(name_bytes.data(), static_cast<uint32_t>(name_size), error);
   if (FORY_PREDICT_FALSE(!error.ok())) {

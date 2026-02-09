@@ -143,13 +143,6 @@ class FDLEmitter:
             parts.append("optional")
         if field.ref:
             parts.append(self._emit_ref_modifier(field.ref_options))
-        is_list = isinstance(field.field_type, ListType)
-        if is_list:
-            parts.append("repeated")
-            if field.element_optional:
-                parts.append("optional")
-            if field.element_ref:
-                parts.append(self._emit_ref_modifier(field.element_ref_options))
         parts.append(self._emit_type(field.field_type))
         parts.append(field.name)
         parts.append("=")
@@ -166,7 +159,13 @@ class FDLEmitter:
         if isinstance(field_type, NamedType):
             return field_type.name
         if isinstance(field_type, ListType):
-            return self._emit_type(field_type.element_type)
+            parts: List[str] = []
+            if field_type.element_optional:
+                parts.append("optional")
+            if field_type.element_ref:
+                parts.append(self._emit_ref_modifier(field_type.element_ref_options))
+            parts.append(self._emit_type(field_type.element_type))
+            return f"list<{' '.join(parts)}>"
         if isinstance(field_type, MapType):
             key = self._emit_type(field_type.key_type)
             value = self._emit_type(field_type.value_type)

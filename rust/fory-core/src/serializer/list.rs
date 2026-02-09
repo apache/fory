@@ -26,7 +26,7 @@ use std::collections::{LinkedList, VecDeque};
 use std::mem;
 
 use super::collection::{
-    read_collection_data, read_collection_type_info, write_collection_data,
+    read_collection_data, read_collection_type_info, read_vec_data, write_collection_data,
     write_collection_type_info,
 };
 
@@ -126,7 +126,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
         if is_primitive_type::<T>() {
             primitive_list::fory_read_data(context)
         } else {
-            read_collection_data(context)
+            read_vec_data(context)
         }
     }
 

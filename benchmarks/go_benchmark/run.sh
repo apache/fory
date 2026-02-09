@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  --data <type>       Filter by data type: struct, sample, mediacontent"
+            echo "  --data <type>       Filter by data type: struct, sample, mediacontent, structlist, samplelist, mediacontentlist"
             echo "  --serializer <name> Filter by serializer: fory, protobuf, msgpack"
             echo "  --count <n>         Number of benchmark runs (default: 5)"
             echo "  --benchtime <dur>   Time for each benchmark (default: 1s)"
@@ -87,11 +87,20 @@ if [[ -n "$DATA_TYPE" ]]; then
         struct)
             FILTER="Struct"
             ;;
+        structlist|struct-list)
+            FILTER="StructList"
+            ;;
         sample)
             FILTER="Sample"
             ;;
+        samplelist|sample-list)
+            FILTER="SampleList"
+            ;;
         mediacontent|media)
             FILTER="MediaContent"
+            ;;
+        mediacontentlist|medialist|media-list)
+            FILTER="MediaContentList"
             ;;
         *)
             echo "Unknown data type: $DATA_TYPE"
@@ -189,7 +198,18 @@ go test $BENCH_ARGS -benchmem -count=1 -benchtime=$BENCHTIME -json > "$OUTPUT_DI
 
 # Print serialized sizes
 echo ""
-go test -run TestPrintSerializedSizes -v 2>&1 | grep -A 20 "Serialized Sizes"
+go test -run TestPrintSerializedSizes -v 2>&1 | \
+    awk '
+        /Serialized Sizes \(bytes\):/ { capture = 1 }
+        capture { print }
+        capture && /^=+$/ {
+            separator_count++
+            if (separator_count == 2) {
+                exit
+            }
+        }
+    ' | \
+    tee "$OUTPUT_DIR/serialized_sizes.txt"
 
 # Generate report
 if $GENERATE_REPORT; then

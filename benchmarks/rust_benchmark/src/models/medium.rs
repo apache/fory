@@ -24,27 +24,41 @@ use std::collections::HashMap;
 // Fory models
 #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
 pub struct ForyAddress {
+    #[fory(id = 0)]
     pub street: String,
+    #[fory(id = 1)]
     pub city: String,
+    #[fory(id = 2)]
     pub country: String,
+    #[fory(id = 3)]
     pub zip_code: String,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct Person {
+    #[fory(id = 0)]
     pub name: String,
+    #[fory(id = 1)]
     pub age: i32,
+    #[fory(id = 2)]
     pub address: ForyAddress,
+    #[fory(id = 3)]
     pub hobbies: Vec<String>,
+    #[fory(id = 4)]
     pub metadata: HashMap<String, String>,
+    #[fory(id = 5)]
     pub created_at: NaiveDateTime,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct Company {
+    #[fory(id = 0)]
     pub name: String,
+    #[fory(id = 1)]
     pub employees: Vec<Person>,
+    #[fory(id = 2)]
     pub offices: HashMap<String, ForyAddress>,
+    #[fory(id = 3)]
     pub is_public: bool,
 }
 

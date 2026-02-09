@@ -713,6 +713,12 @@ constexpr int16_t compute_field_id() {
   if constexpr (is_fory_field_v<ActualFieldType>) {
     return field_tag_id_v<ActualFieldType>;
   }
+  if constexpr (::fory::detail::has_field_tags_v<T>) {
+    constexpr int16_t tag_id = ::fory::detail::GetFieldTagEntry<T, Index>::id;
+    if constexpr (tag_id >= 0) {
+      return tag_id;
+    }
+  }
   return -1;
 }
 
@@ -1344,8 +1350,9 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
 
   if constexpr (is_fory_serializable_v<T>) {
     uint32_t actual_type_id =
-        compatible_ ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
-                    : static_cast<uint32_t>(TypeId::STRUCT);
+        compatible_ && meta::StructEvolving<T>::value
+            ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
+            : static_cast<uint32_t>(TypeId::STRUCT);
     uint32_t user_type_id = type_id;
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, user_type_id, "",
@@ -1398,8 +1405,9 @@ TypeResolver::register_by_name(const std::string &ns,
 
   if constexpr (is_fory_serializable_v<T>) {
     uint32_t actual_type_id =
-        compatible_ ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
-                    : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
+        compatible_ && meta::StructEvolving<T>::value
+            ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
+            : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, kInvalidUserTypeId,
                                              ns, type_name, true));

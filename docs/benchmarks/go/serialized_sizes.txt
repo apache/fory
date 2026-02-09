@@ -1,0 +1,27 @@
+Serialized Sizes (bytes):
+============================================
+NumericStruct:
+  Fory:     58 bytes
+  Protobuf: 61 bytes
+  Msgpack:  57 bytes
+Sample:
+  Fory:     446 bytes
+  Protobuf: 375 bytes
+  Msgpack:  524 bytes
+MediaContent:
+  Fory:     342 bytes
+  Protobuf: 301 bytes
+  Msgpack:  400 bytes
+StructList:
+  Fory:     560 bytes
+  Protobuf: 1260 bytes
+  Msgpack:  1146 bytes
+SampleList:
+  Fory:     7600 bytes
+  Protobuf: 7560 bytes
+  Msgpack:  10486 bytes
+MediaContentList:
+  Fory:     5776 bytes
+  Protobuf: 6080 bytes
+  Msgpack:  8006 bytes
+============================================

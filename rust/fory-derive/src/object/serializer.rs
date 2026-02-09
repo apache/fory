@@ -75,8 +75,13 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         syn::Data::Struct(s) => {
             let source_fields = source_fields(&s.fields);
             let fields = extract_fields(&source_fields);
+            let actual_type_id_ts = if attrs.evolving == Some(false) {
+                misc::gen_actual_type_id_no_evolving()
+            } else {
+                misc::gen_actual_type_id()
+            };
             (
-                misc::gen_actual_type_id(),
+                actual_type_id_ts,
                 misc::gen_get_sorted_field_names(&fields),
                 misc::gen_field_fields_info(&source_fields),
                 quote! { Ok(Vec::new()) }, // No variants for structs

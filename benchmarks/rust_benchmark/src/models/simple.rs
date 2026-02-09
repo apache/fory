@@ -23,21 +23,29 @@ use std::collections::HashMap;
 // Fory models
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SimpleStruct {
+    #[fory(id = 0)]
     pub id: i32,
+    #[fory(id = 1)]
     pub name: String,
+    #[fory(id = 2)]
     pub active: bool,
+    #[fory(id = 3)]
     pub score: f64,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SimpleList {
+    #[fory(id = 0)]
     pub numbers: Vec<i32>,
+    #[fory(id = 1)]
     pub names: Vec<String>,
 }
 
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SimpleMap {
+    #[fory(id = 0)]
     pub string_to_int: HashMap<String, i32>,
+    #[fory(id = 1)]
     pub int_to_string: HashMap<i32, String>,
 }
 

@@ -90,6 +90,9 @@ export default class TypeResolver {
     registerSerializer(Type.int8());
     registerSerializer(Type.int16());
     registerSerializer(Type.int32());
+    registerSerializer(Type.varInt32());
+    registerSerializer(Type.varUInt64());
+    registerSerializer(Type.varInt64());
     registerSerializer(Type.int64());
     registerSerializer(Type.uint8());
     registerSerializer(Type.uint16());

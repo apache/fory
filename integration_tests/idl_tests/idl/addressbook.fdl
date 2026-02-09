@@ -25,7 +25,7 @@ message Person [id=100] {
     string name = 1;
     int32 id = 2;
     string email = 3;
-    repeated string tags = 4;
+    list<string> tags = 4;
     map<string, int32> scores = 5;
     float64 salary = 6;
 
@@ -40,7 +40,7 @@ message Person [id=100] {
         PhoneType phone_type = 2;
     }
 
-    repeated PhoneNumber phones = 7;
+    list<PhoneNumber> phones = 7;
     Animal pet = 8;
 }
 
@@ -60,6 +60,6 @@ union Animal [id=106] {
 }
 
 message AddressBook [id=103] {
-    repeated Person people = 1;
+    list<Person> people = 1;
     map<string, Person> people_by_name = 2;
 }

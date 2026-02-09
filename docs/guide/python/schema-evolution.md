@@ -29,6 +29,27 @@ import pyfory
 f = pyfory.Fory(xlang=True, compatible=True)
 ```
 
+## Disable Evolution for Stable Classes
+
+If a dataclass schema is stable and will not change, you can disable evolution for that class to avoid compatible metadata overhead. Use `pyfory.dataclass` with `evolving=False`:
+
+```python
+import pyfory
+
+@pyfory.dataclass(evolving=False)
+class StableMessage:
+    id: int
+    name: str
+```
+
+`pyfory.dataclass` also supports `slots=True`:
+
+```python
+@pyfory.dataclass(slots=True)
+class SlotMessage:
+    id: int
+```
+
 ## Schema Evolution Example
 
 ```python
