@@ -111,6 +111,10 @@ class MapChunkWriter {
     return header;
   }
 
+  public isFirst() {
+    return this.chunkSize === 0 || this.chunkSize === 1;
+  }
+
   next(keyInfo: number, valueInfo: number) {
     if (keyInfo & MapFlags.HAS_NULL || valueInfo & MapFlags.HAS_NULL) {
       this.endChunk();
@@ -157,6 +161,7 @@ class MapAnySerializer {
     }
   }
 
+
   private writeFlag(header: number, v: any) {
     if (header & MapFlags.HAS_NULL) {
       return true;
@@ -188,14 +193,17 @@ class MapAnySerializer {
       );
       const keyHeader = header & 0b111;
       const valueHeader = (header >> 3);
-      if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
-        if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
-          keySerializer?.writeTypeInfo(null);
-        }
-        if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
-          valueSerializer?.writeTypeInfo(null);
+      if (mapChunkWriter.isFirst()) {
+        if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
+          if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+            keySerializer?.writeTypeInfo(null);
+          }
+          if (!(valueHeader & MapFlags.DECL_ELEMENT_TYPE)) {
+            valueSerializer?.writeTypeInfo(null);
+          }
         }
       }
+
       const includeNone = (keyHeader & MapFlags.HAS_NULL) || (valueHeader & MapFlags.HAS_NULL);
       if (!this.writeFlag(keyHeader, k)) {
         if (!includeNone) {
