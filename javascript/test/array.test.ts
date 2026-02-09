@@ -17,83 +17,103 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
-import { describe, expect, test } from '@jest/globals';
-import * as beautify from 'js-beautify';
+import Fory, { Type } from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
+import * as beautify from "js-beautify";
 
-describe('array', () => {
-  test('should array work', () => {
-    
-
-    const typeinfo = Type.struct({
-      typeName: "example.bar"
-    }, {
-      c: Type.array(Type.struct({
-        typeName: "example.foo"
-      }, {
-        a: Type.string()
-      }))
+describe("array", () => {
+  test("should array work", () => {
+    const typeinfo = Type.struct(
+      {
+        typeName: "example.bar",
+      },
+      {
+        c: Type.array(
+          Type.struct(
+            {
+              typeName: "example.foo",
+            },
+            {
+              a: Type.string(),
+            },
+          ),
+        ),
+      },
+    );
+    const fory = new Fory({
+      refTracking: true,
+      hooks: {
+        afterCodeGenerated: (code: string) => {
+          return beautify.js(code, {
+            indent_size: 2,
+            space_in_empty_paren: true,
+            indent_empty_lines: true,
+          });
+        },
+      },
     });
-    const fory = new Fory({ refTracking: true, hooks: {
-      afterCodeGenerated: (code: string) => {
-        return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
-      }
-    } });
     const { serialize, deserialize } = fory.registerSerializer(typeinfo);
     const o = { a: "123" };
-    expect(deserialize(serialize({ c: [o, o] }))).toEqual({ c: [o, o] })
+    expect(deserialize(serialize({ c: [o, o] }))).toEqual({ c: [o, o] });
   });
-  test('should typedarray work', () => {
-    const typeinfo = Type.struct({
-      typeName: "example.foo",
-    }, {
-      a: Type.boolArray(),
-      a2: Type.int16Array(),
-      a3: Type.int32Array(),
-      a4: Type.int64Array(),
-      a6: Type.float64Array()
-    });
-
-    const fory = new Fory({ refTracking: true }); const serializer = fory.registerSerializer(typeinfo).serializer;
-    const input = fory.serialize({
-      a: [true, false],
-      a2: [1, 2, 3],
-      a3: [3, 5, 76],
-      a4: [634, 564, 76],
-      a6: [234243.555, 55654.6786],
-    }, serializer);
-    const result = fory.deserialize(
-      input
+  test("should typedarray work", () => {
+    const typeinfo = Type.struct(
+      {
+        typeName: "example.foo",
+      },
+      {
+        a: Type.boolArray(),
+        a2: Type.int16Array(),
+        a3: Type.int32Array(),
+        a4: Type.int64Array(),
+        a6: Type.float64Array(),
+      },
     );
-    result.a4 = result.a4.map(x => Number(x));
+
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(typeinfo).serializer;
+    const input = fory.serialize(
+      {
+        a: [true, false],
+        a2: [1, 2, 3],
+        a3: [3, 5, 76],
+        a4: [634, 564, 76],
+        a6: [234243.555, 55654.6786],
+      },
+      serializer,
+    );
+    const result = fory.deserialize(input);
+    result.a4 = result.a4.map((x) => Number(x));
     expect(result).toEqual({
       a: [true, false],
       a2: [1, 2, 3],
       a3: [3, 5, 76],
       a4: [634, 564, 76],
       a6: [234243.555, 55654.6786],
-    })
+    });
   });
 
-
-  test('should floatarray work', () => {
-    const typeinfo = Type.struct({
-      typeName: "example.foo"
-    }, {
-      a5: Type.float32Array(),
-    })
-    
-    const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
-    const input = fory.serialize({
-      a5: [2.43, 654.4, 55],
-    }, serialize);
-    const result = fory.deserialize(
-      input
+  test("should floatarray work", () => {
+    const typeinfo = Type.struct(
+      {
+        typeName: "example.foo",
+      },
+      {
+        a5: Type.float32Array(),
+      },
     );
-    expect(result.a5[0]).toBeCloseTo(2.43)
-    expect(result.a5[1]).toBeCloseTo(654.4)
-    expect(result.a5[2]).toBeCloseTo(55)
+
+    const fory = new Fory({ refTracking: true });
+    const serialize = fory.registerSerializer(typeinfo).serializer;
+    const input = fory.serialize(
+      {
+        a5: [2.43, 654.4, 55],
+      },
+      serialize,
+    );
+    const result = fory.deserialize(input);
+    expect(result.a5[0]).toBeCloseTo(2.43);
+    expect(result.a5[1]).toBeCloseTo(654.4);
+    expect(result.a5[2]).toBeCloseTo(55);
   });
 });
-
-

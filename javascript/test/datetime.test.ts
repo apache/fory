@@ -17,34 +17,27 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
-import {describe, expect, test} from '@jest/globals';
+import Fory, { Type } from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
-describe('datetime', () => {
-  test('should date work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+describe("datetime", () => {
+  test("should date work", () => {
+    const fory = new Fory({ refTracking: true });
     const now = new Date();
     const input = fory.serialize(now);
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(now)
+    const result = fory.deserialize(input);
+    expect(result).toEqual(now);
   });
-  test('should datetime work', () => {
+  test("should datetime work", () => {
     const typeinfo = Type.struct("example.foo", {
       a: Type.timestamp(),
       b: Type.duration(),
-    })
-    const fory = new Fory({ refTracking: true });    
+    });
+    const fory = new Fory({ refTracking: true });
     const serializer = fory.registerSerializer(typeinfo).serializer;
-    const d = new Date('2021/10/20 09:13');
-    const input = fory.serialize({ a:  d, b: d}, serializer);
-    const result = fory.deserialize(
-      input
-    );
-    expect(result).toEqual({ a: d, b: new Date('2021/10/20 00:00') })
+    const d = new Date("2021/10/20 09:13");
+    const input = fory.serialize({ a: d, b: d }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: d, b: new Date("2021/10/20 00:00") });
   });
 });
-
-

@@ -17,85 +17,97 @@
  * under the License.
  */
 
-import Fory, { Type } from '../../packages/fory/index';
-import { describe, expect, test } from '@jest/globals';
+import Fory, { Type } from "../../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
+describe("protocol", () => {
+  test("should polymorphic work", () => {
+    const fory = new Fory({ refTracking: true });
+    const { serialize, deserialize } = fory.registerSerializer(
+      Type.struct(
+        {
+          typeName: "example.foo",
+        },
+        {
+          foo: Type.string(),
+          bar: Type.int32(),
+          any: Type.any(),
+          any2: Type.any(),
+        },
+      ),
+    );
+    const obj = {
+      foo: "123",
+      bar: 123,
+      any: "i am any1",
+      any2: "i am any2",
+    };
+    const bf = serialize(obj);
+    const result = deserialize(bf);
+    expect(result).toEqual(obj);
+  });
 
-describe('protocol', () => {
-    test('should polymorphic work', () => {
+  test("should enforce nullable flag for schema-based structs", () => {
+    const fory = new Fory();
 
-        const fory = new Fory({ refTracking: true });
-        const { serialize, deserialize } = fory.registerSerializer(Type.struct({
-            typeName: "example.foo"
-        }, {
-            foo: Type.string(),
-            bar: Type.int32(),
-            any: Type.any(),
-            any2: Type.any(),
-        }));
-        const obj = {
-            foo: "123",
-            bar: 123,
-            any: "i am any1",
-            any2: "i am any2",
-        };
-        const bf = serialize(obj);
-        const result = deserialize(bf);
-        expect(result).toEqual(obj);
+    // 1) nullable: false => null must throw
+    const nonNullable = Type.struct(
+      {
+        typeName: "example.nonNullable",
+      },
+      {
+        a: Type.string(),
+      },
+    );
+    const nonNullableSer = fory.registerSerializer(nonNullable);
+    expect(() => nonNullableSer.serialize({ a: null })).toThrow(
+      /Field "a" is not nullable/,
+    );
+
+    // 2) nullable not specified => keep old behavior (null allowed)
+    const nullableUnspecified = Type.struct(
+      {
+        typeName: "example.nullableUnspecified",
+      },
+      {
+        a: Type.string(),
+      },
+      {
+        fieldInfo: { a: { nullable: true } },
+      },
+    );
+    const { serialize, deserialize } =
+      fory.registerSerializer(nullableUnspecified);
+    expect(deserialize(serialize({ a: null }))).toEqual({ a: null });
+  });
+
+  test("should enforce nullable flag in schema-consistent mode", () => {
+    const fory = new Fory({ mode: "SCHEMA_CONSISTENT" as any });
+
+    const schema = Type.struct(
+      { typeName: "example.schemaConsistentNullable" },
+      {
+        a: Type.string(),
+        b: Type.string(),
+      },
+      {
+        fieldInfo: {
+          b: { nullable: true },
+        },
+      },
+    );
+
+    const { serialize, deserialize } = fory.registerSerializer(schema);
+
+    // non-nullable field must throw
+    expect(() => serialize({ a: null, b: "ok" })).toThrow(
+      /Field "a" is not nullable/,
+    );
+
+    // unspecified nullable field keeps old behavior
+    expect(deserialize(serialize({ a: "ok", b: null }))).toEqual({
+      a: "ok",
+      b: null,
     });
-
-    test('should enforce nullable flag for schema-based structs', () => {
-        const fory = new Fory();
-
-        // 1) nullable: false => null must throw
-        const nonNullable = Type.struct({
-            typeName: "example.nonNullable"
-        }, {
-            a: Type.string(),
-        });
-        const nonNullableSer = fory.registerSerializer(nonNullable);
-        expect(() => nonNullableSer.serialize({ a: null })).toThrow(/Field "a" is not nullable/);
-
-        // 2) nullable not specified => keep old behavior (null allowed)
-        const nullableUnspecified = Type.struct({
-            typeName: "example.nullableUnspecified"
-        }, {
-            a: Type.string(),
-        }, {
-            fieldInfo: {a: { nullable: true }}
-        });
-        const { serialize, deserialize } = fory.registerSerializer(nullableUnspecified);
-        expect(deserialize(serialize({ a: null }))).toEqual({ a: null });
-    });
-
-    test('should enforce nullable flag in schema-consistent mode', () => {
-        const fory = new Fory({ mode: 'SCHEMA_CONSISTENT' as any });
-
-        const schema = Type.struct(
-            { typeName: 'example.schemaConsistentNullable' },
-            {
-                a: Type.string(),
-                b: Type.string(),
-            },
-            {
-                fieldInfo: {
-                    b: { nullable: true}
-                }
-            }
-        );
-
-        const { serialize, deserialize } = fory.registerSerializer(schema);
-
-        // non-nullable field must throw
-        expect(() => serialize({ a: null, b: 'ok' }))
-            .toThrow(/Field "a" is not nullable/);
-
-        // unspecified nullable field keeps old behavior
-        expect(deserialize(serialize({ a: 'ok', b: null })))
-            .toEqual({ a: 'ok', b: null });
-    });
+  });
 });
-
-
-
-

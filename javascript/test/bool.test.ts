@@ -17,28 +17,20 @@
  * under the License.
  */
 
-import Fory from '../packages/fory/index';
-import {describe, expect, test} from '@jest/globals';
+import Fory from "../packages/fory/index";
+import { describe, expect, test } from "@jest/globals";
 
-describe('bool', () => {
-  test('should false work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+describe("bool", () => {
+  test("should false work", () => {
+    const fory = new Fory({ refTracking: true });
     const input = fory.serialize(false);
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(false)
+    const result = fory.deserialize(input);
+    expect(result).toEqual(false);
   });
-  test('should true work', () => {
-    
-    const fory = new Fory({ refTracking: true });    
+  test("should true work", () => {
+    const fory = new Fory({ refTracking: true });
     const input = fory.serialize(true);
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(true)
+    const result = fory.deserialize(input);
+    expect(result).toEqual(true);
   });
 });
-
-
