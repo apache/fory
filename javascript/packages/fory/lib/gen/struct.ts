@@ -62,11 +62,14 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: StructTypeInfo;
   sortedProps: { key: string; typeInfo: TypeInfo }[];
   metaChangedSerializer: string;
+  typeMeta: TypeMeta;
+
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = <StructTypeInfo>typeInfo;
     this.sortedProps = sortProps(this.typeInfo);
     this.metaChangedSerializer = this.scope.declareVar("metaChangedSerializer", "null");
+    this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo);
   }
 
   readField(fieldName: string, fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator, needToWriteRef: boolean) {
@@ -159,7 +162,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
+    const hash = this.typeMeta.computeStructHash();
     return `
+      ${this.builder.fory.config.classVersionHash ? this.builder.writer.int32(hash) : ""}
       ${this.sortedProps.map(({ key, typeInfo }) => {
       const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
       if (!InnerGeneratorClass) {
@@ -175,10 +180,18 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    const hash = this.typeMeta.computeStructHash();
     return `
+      ${this.builder.fory.config.classVersionHash
+? `
+        if(${this.builder.reader.int32()} !== ${hash}) {
+          throw new Error("Read class version is not consistent with ${hash} ")
+        }
+      `
+: ""}
       ${this.typeInfo.options.withConstructor
         ? `
-          const ${result} = new ${this.builder.getOptions("constructor")}();
+          const ${result} = new ${this.builder.getOptions("creator")}();
         `
         : `
           const ${result} = {

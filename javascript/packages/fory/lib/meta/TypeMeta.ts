@@ -20,9 +20,10 @@
 import { BinaryWriter } from "../writer";
 import { BinaryReader } from "../reader";
 import { Encoding, MetaStringDecoder, MetaStringEncoder } from "./MetaString";
-import { StructTypeInfo } from "../typeInfo";
+import { StructTypeInfo, TypeInfo } from "../typeInfo";
 import { TypeId } from "../type";
 import { x64hash128 } from "../murmurHash3";
+import { fromString } from "../platformBuffer";
 
 const fieldEncoder = new MetaStringEncoder("$", ".");
 const fieldDecoder = new MetaStringDecoder("$", ".");
@@ -227,26 +228,61 @@ export class TypeMeta {
     return this.fields.length;
   }
 
-  static fromTypeInfo(typeInfo: StructTypeInfo) {
-    const structTypeInfo = typeInfo;
-    let fieldInfo = Object.entries(typeInfo.options.props!).map(([fieldName, typeInfo]) => {
-      let fieldTypeId = typeInfo.typeId;
-      if (fieldTypeId === TypeId.NAMED_ENUM) {
-        fieldTypeId = TypeId.ENUM;
-      } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
-        fieldTypeId = TypeId.UNION;
+  computeStructFingerprint(fields: FieldInfo[]) {
+    let fieldInfos = [];
+    for (const field of fields) {
+      const typeId = field.getTypeId();
+      let fieldIdentifier = "";
+      if (field.getFieldId()) {
+        fieldIdentifier = `${field.getFieldId()}`;
+      } else {
+        fieldIdentifier = TypeMeta.toSnakeCase(field.getFieldName());
       }
-      const { trackingRef, nullable } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
-      return new FieldInfo(
-        fieldName,
-        fieldTypeId,
-        typeInfo.userTypeId,
-        trackingRef,
-        nullable,
-        typeInfo.options,
-      );
-    });
+      const ref = field.trackingRef ? "1" : "0";
+      const nullable = field.nullable ? "1" : "0";
+      fieldInfos.push([fieldIdentifier, `${typeId}`, ref, nullable]);
+    }
+    fieldInfos = fieldInfos.sort((a, b) => a[0].localeCompare(b[0]));
+    let result = "";
+    for (const fieldInfo of fieldInfos) {
+      result += [fieldInfo[0], fieldInfo[1], fieldInfo[2], fieldInfo[3]].join(",");
+      result += ";";
+    }
+    return result;
+  }
+
+  computeStructHash() {
+    const fields = TypeMeta.groupFieldsByType(this.fields);
+    const fingerprint = this.computeStructFingerprint(fields);
+    const bytes = fromString(fingerprint);
+    const hashLong = x64hash128(bytes, 47).getBigInt64(0);
+    return Number(BigInt.asIntN(32, hashLong));
+  }
+
+  static fromTypeInfo(typeInfo: TypeInfo) {
+    let fieldInfo: FieldInfo[] = [];
+    if (TypeId.structType(typeInfo.typeId)) {
+      const structTypeInfo = typeInfo as StructTypeInfo;
+      fieldInfo = Object.entries(structTypeInfo.options.props!).map(([fieldName, typeInfo]) => {
+        let fieldTypeId = typeInfo.typeId;
+        if (fieldTypeId === TypeId.NAMED_ENUM) {
+          fieldTypeId = TypeId.ENUM;
+        } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
+          fieldTypeId = TypeId.UNION;
+        }
+        const { trackingRef, nullable } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
+        return new FieldInfo(
+          fieldName,
+          fieldTypeId,
+          typeInfo.userTypeId,
+          trackingRef,
+          nullable,
+          typeInfo.options,
+        );
+      });
+    }
     fieldInfo = TypeMeta.groupFieldsByType(fieldInfo);
+
     return new TypeMeta(fieldInfo, {
       typeId: typeInfo.typeId,
       namespace: typeInfo.namespace,
@@ -561,6 +597,29 @@ export class TypeMeta {
     return writer.dump();
   }
 
+  static toSnakeCase(name: string) {
+    const result = [];
+    const chars = Array.from(name);
+
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (c >= "A" && c <= "Z") {
+        if (i > 0) {
+          const prevUpper = chars[i - 1] >= "A" && chars[i - 1] <= "Z";
+          const nextUpperOrEnd = i + 1 >= chars.length || (chars[i + 1] >= "A" && chars[i + 1] <= "Z");
+
+          if (!prevUpper || !nextUpperOrEnd) {
+            result.push("_");
+          }
+        }
+        result.push(c.toLowerCase());
+      } else {
+        result.push(c);
+      }
+    }
+    return result.join("");
+  }
+
   static groupFieldsByType<T extends { fieldName: string; nullable?: boolean; typeId: number }>(typeInfos: Array<T>): Array<T> {
     const primitiveFields: Array<T> = [];
     const nullablePrimitiveFields: Array<T> = [];
@@ -569,29 +628,6 @@ export class TypeMeta {
     const setFields: Array<T> = [];
     const mapFields: Array<T> = [];
     const otherFields: Array<T> = [];
-
-    const toSnakeCase = (name: string) => {
-      const result = [];
-      const chars = Array.from(name);
-
-      for (let i = 0; i < chars.length; i++) {
-        const c = chars[i];
-        if (c >= "A" && c <= "Z") {
-          if (i > 0) {
-            const prevUpper = chars[i - 1] >= "A" && chars[i - 1] <= "Z";
-            const nextUpperOrEnd = i + 1 >= chars.length || (chars[i + 1] >= "A" && chars[i + 1] <= "Z");
-
-            if (!prevUpper || !nextUpperOrEnd) {
-              result.push("_");
-            }
-          }
-          result.push(c.toLowerCase());
-        } else {
-          result.push(c);
-        }
-      }
-      return result.join("");
-    };
 
     for (const typeInfo of typeInfos) {
       const typeId = typeInfo.typeId;
@@ -644,7 +680,7 @@ export class TypeMeta {
     };
 
     const nameSorter = (a: T, b: T) => {
-      return toSnakeCase(a.fieldName).localeCompare(toSnakeCase(b.fieldName));
+      return TypeMeta.toSnakeCase(a.fieldName).localeCompare(TypeMeta.toSnakeCase(b.fieldName));
     };
 
     // Sort each group

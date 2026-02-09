@@ -257,7 +257,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             ${this.builder.writer.reserve(`${this.innerGenerator.getFixedSize()} * ${accessor}.${this.sizeProp()}`)};
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
                 for (const ${item} of ${accessor}) {
-                    if (${accessor} !== null && ${accessor} !== undefined) {
+                    if (${item} !== null && ${item} !== undefined) {
                         const ${existsId} = ${this.builder.referenceResolver.existsWriteObject(item)};
                         if (typeof ${existsId} === "number") {
                             ${this.builder.writer.int8(RefFlags.RefFlag)}
@@ -273,7 +273,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                 }
             } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
                 for (const ${item} of ${accessor}) {
-                    if (${accessor} !== null && ${accessor} !== undefined) {
+                    if (${item} !== null && ${item} !== undefined) {
                         ${this.builder.writer.int8(RefFlags.NotNullValueFlag)};
                         ${this.innerGenerator.writeEmbed().write(item)}
                     } else {

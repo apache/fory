@@ -28,7 +28,10 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
     typeInfo.options = {};
   }
   typeInfo.options.withConstructor = true;
-  typeInfo.options.constructor = target;
+  typeInfo.options.creator = target;
+  if (!typeInfo.options.props) {
+    typeInfo.options.props = {}
+  }
   Object.assign(typeInfo.options.props, targetFields.get(target) || {})
   Object.defineProperties(target.prototype, {
     [ForyTypeInfoSymbol]: {
@@ -163,6 +166,60 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     }>(typeId);
   }
 
+  static fromExt<T = any>(nameInfo: {
+    typeId?: number;
+    namespace?: string;
+    typeName?: string;
+  } | string | number, {
+    withConstructor = false,
+  }: {
+    withConstructor?: boolean;
+  } = {}) {
+    let typeId: number | undefined;
+    let namespace: string | undefined;
+    let typeName: string | undefined;
+    if (typeof nameInfo === "string") {
+      typeName = nameInfo;
+    } else if (typeof nameInfo === "number") {
+      typeId = nameInfo;
+    } else {
+      namespace = nameInfo.namespace;
+      typeName = nameInfo.typeName;
+      typeId = nameInfo.typeId;
+    }
+    if (typeId !== undefined && typeName !== undefined) {
+      throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
+    }
+    if (!typeId) {
+      if (!typeName) {
+        throw new Error(`type name and type id should be set at least one`);
+      }
+    }
+    if (!namespace && typeName) {
+      const splits = typeName!.split(".");
+      if (splits.length > 1) {
+        namespace = splits[0];
+        typeName = splits.slice(1).join(".");
+      }
+    }
+    let finalTypeId = 0;
+    let userTypeId = -1;
+    if (typeId !== undefined) {
+      finalTypeId = TypeId.EXT;
+      userTypeId = typeId;
+    } else {
+      finalTypeId = TypeId.NAMED_EXT;
+    }
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId).cast<StructTypeInfo>();
+    typeInfo.options = {
+      withConstructor,
+    };
+    typeInfo.namespace = namespace || "";
+    typeInfo.typeName = typeId !== undefined ? "" : typeName!;
+    typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
+    return typeInfo as TypeInfo<T>;
+  }
+
   static fromStruct<T = any>(nameInfo: {
     typeId?: number;
     namespace?: string;
@@ -289,7 +346,7 @@ export interface StructTypeInfo extends TypeInfo {
     props?: { [key: string]: TypeInfo };
     fieldInfo?: {[key: string]: StructFieldInfo};
     withConstructor?: boolean;
-    constructor?: Function;
+    creator?: Function;
   };
 }
 
@@ -544,6 +601,24 @@ export const Type = {
         inner: T1;
       };
     }>(nameInfo, t1);
+  },
+  ext<T extends { [key: string]: TypeInfo }>(nameInfo: {
+    typeId?: number;
+    namespace?: string;
+    typeName?: string;
+  } | string | number, {
+    withConstructor = false,
+  }: {
+    withConstructor?: boolean;
+  } = {}) {
+    return TypeInfo.fromExt<{
+      type: typeof TypeId.EXT;
+      options: {
+        props: T;
+      };
+    }>(nameInfo, {
+      withConstructor,
+    });
   },
   struct<T extends { [key: string]: TypeInfo }>(nameInfo: {
     typeId?: number;
