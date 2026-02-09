@@ -183,11 +183,7 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_murmurhash3", () => {
-<<<<<<< HEAD
     const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
-=======
-  const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
->>>>>>> b734daa8 (feat(JavaScript): support ForyField (#3314))
     const reader = new BinaryReader({});
     reader.reset(content);
     let dataview = x64hash128(new Uint8Array([1, 2, 8]), 47);
@@ -902,11 +898,7 @@ describe("bool", () => {
       f1: Type.string()
     })
     class OneStringFieldStruct {
-<<<<<<< HEAD
       @ForyField({ nullable: true })
-=======
-      @ForyField({nullable: true})
->>>>>>> b734daa8 (feat(JavaScript): support ForyField (#3314))
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
@@ -929,11 +921,7 @@ describe("bool", () => {
       f1: Type.string()
     })
     class OneStringFieldStruct {
-<<<<<<< HEAD
       @ForyField({ nullable: true })
-=======
-      @ForyField({nullable: true})
->>>>>>> b734daa8 (feat(JavaScript): support ForyField (#3314))
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
