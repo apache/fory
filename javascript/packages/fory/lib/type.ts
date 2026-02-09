@@ -181,6 +181,19 @@ export const TypeId = {
       TypeId.TYPED_UNION,
     ].includes(id as any);
   },
+  isCompressedType(typeId: number) {
+    switch (typeId) {
+      case TypeId.VARINT32:
+      case TypeId.VAR_UINT32:
+      case TypeId.VARINT64:
+      case TypeId.VAR_UINT64:
+      case TypeId.TAGGED_INT64:
+      case TypeId.TAGGED_UINT64:
+        return true;
+      default:
+        return false;
+    }
+  },
 } as const;
 
 export enum ConfigFlags {

@@ -22,10 +22,12 @@ package org.apache.fory.xlang;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import org.apache.fory.Fory;
+import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.Language;
+import org.apache.fory.memory.MemoryBuffer;
+import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -244,7 +246,69 @@ public class JavaScriptXlangTest extends XlangTestBase {
   @Override
   @Test(dataProvider = "enableCodegen")
   public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
-    super.testNullableFieldCompatibleNull(enableCodegen);
+    // JavaScript properly supports Optional and sends actual null values,
+    // unlike Rust which sends default values. Override with JavaScript-specific expectations.
+    String caseName = "test_nullable_field_compatible_null";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
+            .withMetaCompressor(new NoOpMetaCompressor())
+            .build();
+    fory.register(NullableComprehensiveCompatible.class, 402);
+
+    NullableComprehensiveCompatible obj = new NullableComprehensiveCompatible();
+    // Base non-nullable primitive fields - must have values
+    obj.byteField = 1;
+    obj.shortField = 2;
+    obj.intField = 42;
+    obj.longField = 123456789L;
+    obj.floatField = 1.5f;
+    obj.doubleField = 2.5;
+    obj.boolField = true;
+
+    // Base non-nullable boxed fields - must have values
+    obj.boxedInt = 10;
+    obj.boxedLong = 20L;
+    obj.boxedFloat = 1.1f;
+    obj.boxedDouble = 2.2;
+    obj.boxedBool = true;
+
+    // Base non-nullable reference fields - must have values
+    obj.stringField = "hello";
+    obj.listField = Arrays.asList("a", "b", "c");
+    obj.setField = new HashSet<>(Arrays.asList("x", "y"));
+    obj.mapField = new HashMap<>();
+    obj.mapField.put("key1", "value1");
+    obj.mapField.put("key2", "value2");
+
+    // Nullable group 1 - all null
+    obj.nullableInt1 = null;
+    obj.nullableLong1 = null;
+    obj.nullableFloat1 = null;
+    obj.nullableDouble1 = null;
+    obj.nullableBool1 = null;
+
+    // Nullable group 2 - all null
+    obj.nullableString2 = null;
+    obj.nullableList2 = null;
+    obj.nullableSet2 = null;
+    obj.nullableMap2 = null;
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(1024);
+    fory.serialize(buffer, obj);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    NullableComprehensiveCompatible result =
+        (NullableComprehensiveCompatible) fory.deserialize(buffer2);
+
+    // JavaScript properly supports Optional and sends actual null values
+    // (unlike Rust which sends default values)
+    Assert.assertEquals(result, obj);
   }
 
   @Test(dataProvider = "enableCodegen")
