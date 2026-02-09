@@ -16,7 +16,6 @@
 // under the License.
 use crate::float16::float16;
 
-use crate::float16::float16;
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;

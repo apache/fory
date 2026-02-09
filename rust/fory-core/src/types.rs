@@ -340,9 +340,7 @@ pub static PRIMITIVE_TYPES: [u32; 24] = [
     TypeId::ISIZE as u32,
 ];
 
-<<<<<<< HEAD
 pub static PRIMITIVE_ARRAY_TYPES: [u32; 19] = [
->>>>>>> 54812157 (fix: Correct TypeId return types and array size for float16 support)
     TypeId::BOOL_ARRAY as u32,
     TypeId::BINARY as u32,
     TypeId::INT8_ARRAY as u32,
@@ -362,6 +360,7 @@ pub static PRIMITIVE_ARRAY_TYPES: [u32; 19] = [
     TypeId::U128_ARRAY as u32,
     TypeId::INT128_ARRAY as u32,
     TypeId::USIZE_ARRAY as u32,
+    TypeId::ISIZE_ARRAY as u32,
 ];
 pub static BASIC_TYPE_NAMES: [&str; 19] = [
     "bool",
