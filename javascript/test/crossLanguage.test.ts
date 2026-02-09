@@ -1287,9 +1287,8 @@ describe("bool", () => {
 
 
   test("test_nullable_field_schema_consistent_null", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
     fory.registerSerializer(buildClassConsistent());
 
