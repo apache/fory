@@ -658,6 +658,9 @@ public class CollectionSerializers {
       } else {
         elemClass = object.iterator().next().getClass();
       }
+      if (!elemClass.isEnum()) {
+        elemClass = elemClass.getEnclosingClass();
+      }
       fory.getClassResolver().writeClassAndUpdateCache(buffer, elemClass);
       Serializer serializer = fory.getClassResolver().getSerializer(elemClass);
       buffer.writeVarUint32Small7(object.size());
