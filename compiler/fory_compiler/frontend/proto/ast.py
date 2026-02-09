@@ -92,6 +92,31 @@ class ProtoMessage:
 
 
 @dataclass
+class ProtoRpcMethod:
+    """An RPC method declaration."""
+
+    name: str
+    request_type: str
+    response_type: str
+    client_streaming: bool = False
+    server_streaming: bool = False
+    options: Dict[str, object] = field(default_factory=dict)
+    line: int = 0
+    column: int = 0
+
+
+@dataclass
+class ProtoService:
+    """A ProtoBuffers service declaration."""
+
+    name: str
+    methods: List["ProtoRpcMethod"] = field(default_factory=list)
+    options: Dict[str, object] = field(default_factory=dict)
+    line: int = 0
+    column: int = 0
+
+
+@dataclass
 class ProtoSchema:
     """Represents a proto file."""
 
@@ -99,6 +124,7 @@ class ProtoSchema:
     package: Optional[str]
     imports: List[str] = field(default_factory=list)
     enums: List[ProtoEnum] = field(default_factory=list)
+    services: List[ProtoService] = field(default_factory=list)
     messages: List[ProtoMessage] = field(default_factory=list)
     options: Dict[str, object] = field(default_factory=dict)
     source_file: Optional[str] = None

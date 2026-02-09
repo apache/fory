@@ -122,7 +122,7 @@ class Message:
     headers: dict[str, str]
     payload: bytes
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 fory.register(Message, type_id=100)  # Same ID as C++
 
 with open("message.bin", "rb") as f:
@@ -171,7 +171,7 @@ print(f"Timestamp: {msg.timestamp}")
 
 ## Field Order Requirements
 
-**Critical:** Field will be sorted by their snake_cased field name, converted name must be considten across langauges
+**Critical:** Fields are sorted by snake_case field name. The converted names must match across languages.
 
 ### C++
 

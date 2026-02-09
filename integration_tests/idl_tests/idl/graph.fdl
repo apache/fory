@@ -20,8 +20,8 @@ package graph;
 message Node {
     string id = 1;
 
-    repeated ref Edge out_edges = 2;
-    repeated ref Edge in_edges = 3;
+    list<ref Edge> out_edges = 2;
+    list<ref Edge> in_edges = 3;
 }
 
 message Edge {
@@ -33,6 +33,6 @@ message Edge {
 }
 
 message Graph {
-    repeated ref Node nodes = 1;
-    repeated ref Edge edges = 2;
+    list<ref Node> nodes = 1;
+    list<ref Edge> edges = 2;
 }

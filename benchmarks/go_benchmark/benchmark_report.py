@@ -208,21 +208,34 @@ def generate_plots(results, output_dir):
             # Add speedup annotations
             if "fory" in data:
                 fory_val = 1e9 / data["fory"]
+                speedup_lines = []
                 for s in available_serializers:
                     if s != "fory" and s in data:
                         other_val = 1e9 / data[s]
                         speedup = fory_val / other_val
                         if speedup > 1:
-                            ax.text(
-                                0.5,
-                                0.95,
-                                f"Fory {speedup:.1f}x faster",
-                                transform=ax.transAxes,
-                                ha="center",
-                                fontsize=10,
-                                color="green",
-                                fontweight="bold",
+                            speedup_lines.append(
+                                f"Fory {speedup:.1f}x faster than {s.title()}"
                             )
+
+                if speedup_lines:
+                    ax.text(
+                        0.98,
+                        0.98,
+                        "\n".join(speedup_lines),
+                        transform=ax.transAxes,
+                        ha="right",
+                        va="top",
+                        fontsize=9,
+                        color="green",
+                        fontweight="bold",
+                        bbox=dict(
+                            boxstyle="round,pad=0.25",
+                            facecolor="white",
+                            edgecolor="none",
+                            alpha=0.85,
+                        ),
+                    )
 
         plt.tight_layout()
         plt.savefig(

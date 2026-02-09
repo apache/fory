@@ -187,6 +187,48 @@ def test_generated_code_integer_encoding_variants_equivalent():
     assert "pyfory.tagged_uint64" in python_output
 
 
+def test_generated_code_list_modifier_aliases_equivalent():
+    repeated = dedent(
+        """
+        package gen;
+
+        message Item {
+            string name = 1;
+        }
+
+        message Container {
+            repeated string tags = 1;
+            optional repeated string labels = 2;
+            repeated optional string aliases = 3;
+            ref repeated Item items = 4;
+            repeated ref Item children = 5;
+        }
+        """
+    )
+    list_syntax = dedent(
+        """
+        package gen;
+
+        message Item {
+            string name = 1;
+        }
+
+        message Container {
+            list<string> tags = 1;
+            optional list<string> labels = 2;
+            list<optional string> aliases = 3;
+            ref list<Item> items = 4;
+            list<ref Item> children = 5;
+        }
+        """
+    )
+    schemas = {
+        "repeated": parse_fdl(repeated),
+        "list": parse_fdl(list_syntax),
+    }
+    assert_all_languages_equal(schemas)
+
+
 def test_generated_code_primitive_arrays_equivalent():
     fdl = dedent(
         """

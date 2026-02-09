@@ -130,15 +130,25 @@ Strongly-typed serialization methods:
 ```go
 type User_ForyGenSerializer struct{}
 
-func (User_ForyGenSerializer) WriteTyped(f *fory.Fory, buf *fory.ByteBuffer, v *User) error {
+func NewSerializerFor_User() fory.Serializer {
+    return &User_ForyGenSerializer{}
+}
+
+func (User_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *User) error {
+    buf := ctx.Buffer()
     buf.WriteInt64(v.ID)
-    fory.WriteString(buf, v.Name)
+    ctx.WriteString(v.Name)
     return nil
 }
 
-func (User_ForyGenSerializer) ReadTyped(f *fory.Fory, buf *fory.ByteBuffer, v *User) error {
-    v.ID = buf.ReadInt64()
-    v.Name = fory.ReadString(buf)
+func (User_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *User) error {
+    err := ctx.Err()
+    buf := ctx.Buffer()
+    v.ID = buf.ReadInt64(err)
+    v.Name = ctx.ReadString()
+    if ctx.HasError() {
+        return ctx.TakeError()
+    }
     return nil
 }
 ```
@@ -149,7 +159,7 @@ Serializers are registered in `init()`:
 
 ```go
 func init() {
-    fory.RegisterGenSerializer(User{}, User_ForyGenSerializer{})
+    fory.RegisterSerializerFactory((*User)(nil), NewSerializerFor_User)
 }
 ```
 
