@@ -119,12 +119,12 @@ impl Serializer for float16 {
         std::mem::size_of::<float16>()
     }
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::FLOAT16 as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::FLOAT16)
     }
     #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::FLOAT16 as u32)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::FLOAT16)
     }
     #[inline(always)]
     fn fory_static_type_id() -> TypeId {
