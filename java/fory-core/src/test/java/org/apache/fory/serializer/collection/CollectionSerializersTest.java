@@ -343,6 +343,35 @@ public class CollectionSerializersTest extends ForyTestBase {
     copyCheck(fory, EnumSet.of(TestEnum.A, TestEnum.B));
   }
 
+  enum TestEnumWithMethods {
+    A {
+      @Override
+      public void foo() {
+        System.out.println("A");
+      }
+    },
+    B,
+    C {
+      @Override
+      public void foo() {}
+    },
+    D;
+
+    public void foo() {
+      System.out.println("default");
+    }
+  }
+
+  @Test
+  public void tesEnumSetSerializerWithMethods() {
+    serDe(getJavaFory(), EnumSet.noneOf(TestEnumWithMethods.class));
+    serDe(getJavaFory(), EnumSet.of(TestEnumWithMethods.A));
+    serDe(getJavaFory(), EnumSet.of(TestEnumWithMethods.B));
+    serDe(getJavaFory(), EnumSet.of(TestEnumWithMethods.A, TestEnumWithMethods.B));
+    serDe(getJavaFory(), EnumSet.of(TestEnumWithMethods.A, TestEnumWithMethods.C));
+    serDe(getJavaFory(), EnumSet.allOf(TestEnumWithMethods.class));
+  }
+
   @Test
   public void tesBitSetSerializer() {
     serDe(getJavaFory(), BitSet.valueOf(LongStream.range(0, 2).toArray()));
