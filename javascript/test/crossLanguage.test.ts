@@ -761,35 +761,29 @@ describe("bool", () => {
   });
 
   test("test_polymorphic_list", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       compatible: true
     });
 
     // Define Animal interface implementations
     @Type.struct(302, {
-      age: Type.int32(),
+      age: Type.varInt32(),
       name: Type.string()
     })
     class Dog {
       age: number = 0;
+      @ForyField({ nullable: true })
       name: string | null = null;
-
-      getAge() { return this.age; }
-      speak() { return "Woof"; }
     }
     fory.registerSerializer(Dog);
 
     @Type.struct(303, {
-      age: Type.int32(),
-      lives: Type.int32()
+      age: Type.varInt32(),
+      lives: Type.varInt32()
     })
     class Cat {
       age: number = 0;
       lives: number = 0;
-
-      getAge() { return this.age; }
-      speak() { return "Meow"; }
     }
     fory.registerSerializer(Cat);
 
@@ -819,6 +813,7 @@ describe("bool", () => {
     // Serialize each deserialized item back
     for (const item of deserializedData) {
       const serializedData = fory.serialize(item);
+      const s = fory.deserialize(serializedData)
       writer.buffer(serializedData);
     }
 

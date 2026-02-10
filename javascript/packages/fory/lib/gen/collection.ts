@@ -130,12 +130,13 @@ class CollectionAnySerializer {
           } else {
             const serializer = this.fory.typeResolver.getSerializerByData(item);
             this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
-            serializer!.write(item);
+            serializer!.writeNoRef(item);
           }
         }
       } else {
         for (const item of value) {
-          serializer!.write(item);
+          const serializer = this.fory.typeResolver.getSerializerByData(item);
+          serializer!.writeNoRef(item);
         }
       }
     }
