@@ -54,24 +54,24 @@ describe('array', () => {
       a6: Type.float64Array()
     });
 
-    const fory = new Fory({ refTracking: true }); const serializer = fory.registerSerializer(typeinfo).serializer;
+    const fory = new Fory({ refTracking: true }); 
+    const serializer = fory.registerSerializer(typeinfo).serializer;
     const input = fory.serialize({
       a: [true, false],
-      a2: [1, 2, 3],
-      a3: [3, 5, 76],
-      a4: [634, 564, 76],
-      a6: [234243.555, 55654.6786],
+      a2: new Int16Array([1, 2, 3]),
+      a3: new Int32Array([3, 5, 76]),
+      a4: new BigInt64Array([634n, 564n, 76n]),
+      a6: new Float64Array([234243.555, 55654.679]),
     }, serializer);
     const result = fory.deserialize(
       input
     );
-    result.a4 = result.a4.map(x => Number(x));
     expect(result).toEqual({
       a: [true, false],
-      a2: [1, 2, 3],
-      a3: [3, 5, 76],
-      a4: [634, 564, 76],
-      a6: [234243.555, 55654.6786],
+      a2: new Int16Array([1, 2, 3]),
+      a3: new Int32Array([3, 5, 76]),
+      a4: new BigInt64Array([634n, 564n, 76n]),
+      a6: new Float64Array([234243.555, 55654.679]),
     })
   });
 
@@ -85,7 +85,7 @@ describe('array', () => {
 
     const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
     const input = fory.serialize({
-      a5: [2.43, 654.4, 55],
+      a5: new Float32Array([2.43, 654.4, 55]),
     }, serialize);
     const result = fory.deserialize(
       input

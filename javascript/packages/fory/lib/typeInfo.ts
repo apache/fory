@@ -115,7 +115,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     TypeInfo.fory = null;
   }
 
-  private constructor(private _typeId: number, userTypeId = -1) {
+  public constructor(private _typeId: number, userTypeId = -1) {
     super(function (target: any, key?: string | { name?: string }) {
       if (key === undefined) {
         initMeta(target, that as unknown as StructTypeInfo);
@@ -582,7 +582,11 @@ export type HintResult<T> = T extends never ? any : T extends {
   : T extends {
     type: typeof TypeId.DURATION;
   }
-  ? Date
+  ? number
+  : T extends {
+    type: typeof TypeId.DATE;
+  }
+  ? (Date | number)
   : T extends {
     type: typeof TypeId.TIMESTAMP;
   }
@@ -788,6 +792,11 @@ export const Type = {
       (TypeId.DURATION),
     );
   },
+  date() {
+    return TypeInfo.fromNonParam<typeof TypeId.DATE>(
+      (TypeId.DATE),
+    );
+  },
   timestamp() {
     return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(
       (TypeId.TIMESTAMP),
@@ -825,13 +834,13 @@ export const Type = {
   },
   uint8Array() {
     return TypeInfo.fromNonParam<typeof TypeId.UINT8_ARRAY>(
-      (TypeId.INT8_ARRAY),
+      (TypeId.UINT8_ARRAY),
 
     );
   },
   uint16Array() {
     return TypeInfo.fromNonParam<typeof TypeId.UINT16_ARRAY>(
-      (TypeId.INT16_ARRAY),
+      (TypeId.UINT16_ARRAY),
 
     );
   },
@@ -843,7 +852,7 @@ export const Type = {
   },
   uint64Array() {
     return TypeInfo.fromNonParam<typeof TypeId.UINT64_ARRAY>(
-      (TypeId.INT64_ARRAY),
+      (TypeId.UINT64_ARRAY),
 
     );
   },
