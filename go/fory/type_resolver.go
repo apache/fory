@@ -1714,13 +1714,13 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			// []byte uses byteSliceSerializer
 			return byteSliceSerializer{}, nil
 		case reflect.Uint16:
-			// Check for fory.BFloat16 (aliased to uint16)
-			if elem == bfloat16Type {
-				return bfloat16SliceSerializer{}, nil
-			}
 			// Check for fory.Float16 (aliased to uint16)
 			if elem == float16Type {
 				return float16SliceSerializer{}, nil
+			}
+			// Check for fory.BFloat16 (aliased to uint16)
+			if elem == bfloat16Type {
+				return bfloat16SliceSerializer{}, nil
 			}
 			return uint16SliceSerializer{}, nil
 		case reflect.Uint32:
