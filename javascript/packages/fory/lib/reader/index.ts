@@ -104,6 +104,58 @@ export class BinaryReader {
     return this.varInt64();
   }
 
+  /**
+   * Read signed fory Tagged(Small Long as Int) encoded long.
+   * If the first bit is 0, it's a 4-byte int shifted left by 1 bit.
+   * If the first bit is 1, it's a 9-byte format with 0b1 flag + 8-byte long.
+   */
+  readTaggedInt64(): bigint {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx < 4) {
+      throw new Error("Insufficient bytes for tagged int64");
+    }
+
+    const i = this.dataView.getInt32(readIdx, true);
+    if ((i & 0b1) !== 0b1) {
+      // Small long encoded as int
+      this.cursor = readIdx + 4;
+      return BigInt(i >> 1);
+    } else {
+      // Big long encoded as 8 bytes
+      if (this.byteLength - readIdx < 9) {
+        throw new Error("Insufficient bytes for big tagged int64");
+      }
+      this.cursor = readIdx + 1; // Skip the flag byte
+      return this.int64();
+    }
+  }
+
+  /**
+   * Read unsigned fory Tagged(Small Long as Int) encoded long.
+   * If the first bit is 0, it's a 4-byte uint shifted left by 1 bit.
+   * If the first bit is 1, it's a 9-byte format with 0b1 flag + 8-byte ulong.
+   */
+  readTaggedUInt64(): bigint {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx < 4) {
+      throw new Error("Insufficient bytes for tagged uint64");
+    }
+
+    const i = this.dataView.getUint32(readIdx, true);
+    if ((i & 0b1) !== 0b1) {
+      // Small ulong encoded as uint
+      this.cursor = readIdx + 4;
+      return BigInt(i >>> 1); // unsigned right shift
+    } else {
+      // Big ulong encoded as 8 bytes
+      if (this.byteLength - readIdx < 9) {
+        throw new Error("Insufficient bytes for big tagged uint64");
+      }
+      this.cursor = readIdx + 1; // Skip the flag byte
+      return this.uint64();
+    }
+  }
+
   float32() {
     const result = this.dataView.getFloat32(this.cursor, true);
     this.cursor += 4;

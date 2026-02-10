@@ -51,6 +51,14 @@ export class BinaryReaderBuilder {
     return `${this.holder}.varInt32()`;
   }
 
+  readTaggedInt64() {
+    return `${this.holder}.readTaggedInt64()`;
+  }
+
+  readTaggedUInt64() {
+    return `${this.holder}.readTaggedUInt64()`;
+  }
+
   varInt64() {
     return `${this.holder}.varInt64()`;
   }
@@ -203,6 +211,14 @@ class BinaryWriterBuilder {
 
   varUInt64(v: number | string) {
     return `${this.holder}.varUInt64(${v})`;
+  }
+
+  writeTaggedInt64(v: number | string) {
+    return `${this.holder}.writeTaggedInt64(${v})`;
+  }
+
+  writeTaggedUInt64(v: number | string) {
+    return `${this.holder}.writeTaggedUInt64(${v})`;
   }
 
   varInt64(v: number | string) {

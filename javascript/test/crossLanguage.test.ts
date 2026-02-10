@@ -1483,23 +1483,21 @@ describe("bool", () => {
   });
 
   test("test_unsigned_schema_consistent_simple", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
 
     @Type.struct(1, {
-      u64Tagged: Type.int64(),
-      u64TaggedNullable: Type.int64()
+      u64Tagged: Type.taggedUInt64(),
+      u64TaggedNullable: Type.taggedUInt64()
     })
-    class UnsignedStruct {
+    class UnsignedSchemaConsistentSimple {
       u64Tagged: bigint = 0n;
+
+      @ForyField({nullable: true})
       u64TaggedNullable: bigint | null = null;
     }
-    fory.registerSerializer(UnsignedStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    fory.registerSerializer(UnsignedSchemaConsistentSimple);
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1512,27 +1510,120 @@ describe("bool", () => {
   });
 
   test("test_unsigned_schema_consistent", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
 
     @Type.struct(501, {
       u8Field: Type.uint8(),
       u16Field: Type.uint16(),
-      u32Field: Type.uint32(),
-      u64Field: Type.uint64()
+      u32VarField: Type.varUInt32(),
+      u32FixedField: Type.uint32(),
+      u64VarField: Type.varUInt64(),
+      u64FixedField: Type.uint64(),
+      u64TaggedField: Type.taggedUInt64(),
     })
-    class UnsignedStruct {
+    class UnsignedSchemaConsistent {
       u8Field: number = 0;
       u16Field: number = 0;
-      u32Field: number = 0;
-      u64Field: bigint = 0n;
-    }
-    fory.registerSerializer(UnsignedStruct);
+      u32VarField: number = 0;
+      u32FixedField: bigint = 0n;
+      u64VarField: bigint = 0n;
+      u64FixedField: bigint = 0n;
+      u64TaggedField: bigint = 0n;
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
+      @ForyField({nullable: true})
+      @Type.uint8()
+      u8NullableField: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.uint16()
+      u16NullableField: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.varUInt32()
+      u32VarNullableField: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.uint32()
+      u32FixedNullableField: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.varUInt64()
+      u64VarNullableField: bigint = 0n;
+
+      @ForyField({nullable: true})
+      @Type.uint64()
+      u64FixedNullableField: bigint = 0n;
+
+      @ForyField({nullable: true})
+      @Type.taggedUInt64()
+      u64TaggedNullableField: bigint = 0n;
+    }
+    fory.registerSerializer(UnsignedSchemaConsistent);
+
+    // Deserialize struct from Java
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
+
+    // Serialize the deserialized struct back
+    const serializedBackData = fory.serialize(deserializedStruct);
+    writeToFile(serializedBackData as Buffer);
+  });
+
+  test("test_unsigned_schema_compatible", () => {
+    const fory = new Fory({
+      mode: Mode.Compatible
+    });
+
+    @Type.struct(502, {
+      u8Field1: Type.uint8(),
+      u16Field1: Type.uint16(),
+      u32VarField1: Type.varUInt32(),
+      u32FixedField1: Type.uint32(),
+      u64VarField1: Type.varUInt64(),
+      u64FixedField1: Type.uint64(),
+      u64TaggedField1: Type.taggedUInt64(),
+    })
+    class UnsignedSchemaCompatible {
+      u8Field1: number = 0;
+      u16Field1: number = 0;
+      u32VarField1: number = 0;
+      u32FixedField1: bigint = 0n;
+      u64VarField1: bigint = 0n;
+      u64FixedField1: bigint = 0n;
+      u64TaggedField1: bigint = 0n;
+
+      @ForyField({nullable: true})
+      @Type.uint8()
+      u8Field2: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.uint16()
+      u16Field2: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.varUInt32()
+      u32VarField2: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.uint32()
+      u32FixedField2: number = 0;
+
+      @ForyField({nullable: true})
+      @Type.varUInt64()
+      u64VarField2: bigint = 0n;
+
+      @ForyField({nullable: true})
+      @Type.uint64()
+      u64FixedField2: bigint = 0n;
+
+      @ForyField({nullable: true})
+      @Type.taggedUInt64()
+      u64TaggedField2: bigint = 0n;
+    }
+    fory.registerSerializer(UnsignedSchemaCompatible);
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1542,38 +1633,5 @@ describe("bool", () => {
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
     writeToFile(serializedData as Buffer);
-  });
-
-  test("test_unsigned_schema_compatible", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory({
-      mode: Mode.Compatible
-    });
-
-    @Type.struct(502, {
-      u8Field: Type.uint8(),
-      u16Field: Type.uint16(),
-      u32Field: Type.uint32(),
-      u64Field: Type.uint64()
-    })
-    class UnsignedStruct {
-      u8Field: number = 0;
-      u16Field: number = 0;
-      u32Field: number = 0;
-      u64Field: bigint = 0n;
-    }
-    fory.registerSerializer(UnsignedStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
-    // Deserialize struct from Java
-    let cursor = 0;
-    const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
-
-    // Serialize the deserialized struct back
-    const serializedData = fory.serialize(deserializedStruct);
-    // writeToFile(serializedData as Buffer);
   });
 });
