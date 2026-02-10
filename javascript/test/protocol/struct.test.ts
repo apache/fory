@@ -69,7 +69,7 @@ describe('protocol', () => {
     });
 
     test('should enforce nullable flag in schema-consistent mode', () => {
-        const fory = new Fory({ mode: 'SCHEMA_CONSISTENT' as any });
+        const fory = new Fory({ compatible: false });
 
         const schema = Type.struct(
             { typeName: 'example.schemaConsistentNullable' },

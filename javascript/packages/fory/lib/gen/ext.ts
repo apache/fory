@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { TypeId, Mode } from "../type";
+import { TypeId } from "../type";
 import { Scope } from "./scope";
 import { CodecBuilder } from "./builder";
 import { StructTypeInfo, TypeInfo } from "../typeInfo";
@@ -149,7 +149,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_EXT:
-        if (this.builder.fory.config.mode !== Mode.Compatible) {
+        if (!this.builder.fory.isCompatible()) {
           const typeInfo = this.typeInfo;
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
           const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
