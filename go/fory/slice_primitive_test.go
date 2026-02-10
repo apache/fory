@@ -19,7 +19,6 @@ package fory
 
 import (
 	"math"
-	"strconv"
 	"testing"
 
 	"github.com/apache/fory/go/fory/float16"
@@ -72,10 +71,7 @@ func TestIntSlice(t *testing.T) {
 	f := NewFory()
 
 	t.Run("int_slice_large_numbers", func(t *testing.T) {
-		slice := []int{1, -2, 3, -4, 2147483647, -2147483648} // Example with large int32 values
-		if strconv.IntSize == 64 {
-			slice = []int{1, -2, 3, -4, math.MaxInt64, math.MinInt64} // For int64
-		}
+		slice := []int{1, -2, 3, -4, math.MaxInt, math.MinInt}
 		data, err := f.Serialize(slice)
 		assert.NoError(t, err)
 
@@ -113,10 +109,7 @@ func TestUintSlice(t *testing.T) {
 	f := NewFory()
 
 	t.Run("uint_slice_large_numbers", func(t *testing.T) {
-		slice := []uint{1, 2, 3, 4, 4294967295} // Example with large uint32 values
-		if strconv.IntSize == 64 {
-			slice = []uint{1, 2, 3, 4, math.MaxUint64} // For uint64
-		}
+		slice := []uint{1, 2, 3, 4, math.MaxUint}
 		data, err := f.Serialize(slice)
 		assert.NoError(t, err)
 
