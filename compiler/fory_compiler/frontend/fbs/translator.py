@@ -28,6 +28,8 @@ from fory_compiler.frontend.fbs.ast import (
     FbsTypeRef,
     FbsVectorType,
     FbsUnion,
+    FbsService,
+    FbsRpcMethod,
 )
 from fory_compiler.ir.ast import (
     Enum,
@@ -39,6 +41,8 @@ from fory_compiler.ir.ast import (
     NamedType,
     PrimitiveType,
     Schema,
+    Service,
+    RpcMethod,
     SourceLocation,
     Union,
 )
@@ -82,6 +86,7 @@ class FbsTranslator:
             enums=[self._translate_enum(e) for e in self.schema.enums],
             unions=[self._translate_union(u) for u in self.schema.unions],
             messages=self._translate_messages(),
+            services=[self._translate_service(s) for s in self.schema.services],
             options={},
             source_file=self.schema.source_file,
             source_format="fbs",
@@ -278,3 +283,49 @@ class FbsTranslator:
                 fbs_type.name, location=self._location(fbs_type.line, fbs_type.column)
             )
         raise ValueError("Unknown FlatBuffers type")
+
+    def _translate_service(self, fbs_service: FbsService) -> Service:
+        return Service(
+            name=fbs_service.name,
+            methods=[self._translate_rpc_method(m) for m in fbs_service.methods],
+            options=dict(fbs_service.attributes),
+            line=fbs_service.line,
+            column=fbs_service.column,
+            location=self._location(fbs_service.line, fbs_service.column),
+        )
+
+    def _translate_rpc_method(self, fbs_method: FbsRpcMethod) -> RpcMethod:
+        # Map FBS 'streaming' attribute to Fory's client_streaming/server_streaming flags.
+        # Expected 'streaming' values: "client", "server", "bidi".
+        # Default is unary (no streaming).
+
+        attributes = dict(fbs_method.attributes)
+        client_streaming = False
+        server_streaming = False
+
+        # Check for streaming attributes if any (convention)
+        if attributes.get("streaming") == "client":
+            client_streaming = True
+        elif attributes.get("streaming") == "server":
+            server_streaming = True
+        elif attributes.get("streaming") == "bidi":
+            client_streaming = True
+            server_streaming = True
+
+        return RpcMethod(
+            name=fbs_method.name,
+            request_type=NamedType(
+                name=fbs_method.request_type,
+                location=self._location(fbs_method.line, fbs_method.column),
+            ),
+            response_type=NamedType(
+                name=fbs_method.response_type,
+                location=self._location(fbs_method.line, fbs_method.column),
+            ),
+            client_streaming=client_streaming,
+            server_streaming=server_streaming,
+            options=attributes,
+            line=fbs_method.line,
+            column=fbs_method.column,
+            location=self._location(fbs_method.line, fbs_method.column),
+        )

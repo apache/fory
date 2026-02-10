@@ -94,6 +94,15 @@ export default class TypeResolver {
     registerSerializer(Type.varUInt64());
     registerSerializer(Type.varInt64());
     registerSerializer(Type.int64());
+    registerSerializer(Type.uint8());
+    registerSerializer(Type.uint16());
+    registerSerializer(Type.uint32());
+    registerSerializer(Type.uint64());
+    registerSerializer(Type.varInt32());
+    registerSerializer(Type.varUInt32());
+    registerSerializer(Type.varUInt64());
+    registerSerializer(Type.varInt64());
+    registerSerializer(Type.taggedUInt64());
     registerSerializer(Type.sliInt64());
     registerSerializer(Type.float16());
     registerSerializer(Type.float32());
@@ -246,6 +255,9 @@ export default class TypeResolver {
   }
 
   getSerializerByData(v: any) {
+    if (v === null || v === undefined) {
+      return null;
+    }
     // internal types
     if (typeof v === "number") {
       if (Number.isInteger(v)) {

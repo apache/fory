@@ -17,7 +17,10 @@
  * under the License.
  */
 
+import Fory from "./fory";
+import { BinaryReader } from "./reader";
 import { StructTypeInfo } from "./typeInfo";
+import { BinaryWriter } from "./writer";
 
 export const TypeId = {
   // Unknown/polymorphic type marker.
@@ -178,6 +181,19 @@ export const TypeId = {
       TypeId.TYPED_UNION,
     ].includes(id as any);
   },
+  isCompressedType(typeId: number) {
+    switch (typeId) {
+      case TypeId.VARINT32:
+      case TypeId.VAR_UINT32:
+      case TypeId.VARINT64:
+      case TypeId.VAR_UINT64:
+      case TypeId.TAGGED_INT64:
+      case TypeId.TAGGED_UINT64:
+        return true;
+      default:
+        return false;
+    }
+  },
 } as const;
 
 export enum ConfigFlags {
@@ -185,6 +201,11 @@ export enum ConfigFlags {
   isCrossLanguageFlag = 1 << 1,
   isOutOfBandFlag = 1 << 2,
 }
+
+export type CustomSerializer<T> = {
+  read: (result: T, reader: BinaryReader, fory: Fory) => void;
+  write: (v: T, writer: BinaryWriter, fory: Fory) => void;
+};
 
 // read, write
 export type Serializer<T = any> = {

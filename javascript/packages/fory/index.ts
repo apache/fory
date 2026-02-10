@@ -22,6 +22,7 @@ import {
   TypeInfo,
   ArrayTypeInfo,
   Type,
+  ForyField,
 } from "./lib/typeInfo";
 import { Serializer, Mode } from "./lib/type";
 import Fory from "./lib/fory";
@@ -36,6 +37,7 @@ export {
   Type,
   Mode,
   BinaryWriter,
+  ForyField,
   BinaryReader,
 };
 

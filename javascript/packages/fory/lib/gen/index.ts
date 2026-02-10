@@ -35,6 +35,7 @@ import "./struct";
 import "./typedArray";
 import "./enum";
 import "./any";
+import "./ext";
 import Fory from "../fory";
 
 export class Gen {

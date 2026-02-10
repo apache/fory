@@ -27,6 +27,8 @@ from fory_compiler.frontend.proto.ast import (
     ProtoField,
     ProtoOneof,
     ProtoType,
+    ProtoService,
+    ProtoRpcMethod,
 )
 from fory_compiler.frontend.proto.lexer import Token, TokenType
 
@@ -92,6 +94,7 @@ class Parser:
         imports: List[str] = []
         enums: List[ProtoEnum] = []
         messages: List[ProtoMessage] = []
+        services: List[ProtoService] = []
         options = {}
 
         while not self.at_end():
@@ -116,7 +119,7 @@ class Parser:
             elif self.check(TokenType.ENUM):
                 enums.append(self.parse_enum())
             elif self.check(TokenType.SERVICE):
-                self.parse_service()
+                services.append(self.parse_service())
             elif self.check(TokenType.SEMI):
                 self.advance()
             else:
@@ -133,6 +136,7 @@ class Parser:
             imports=imports,
             enums=enums,
             messages=messages,
+            services=services,
             options=options,
             source_file=self.filename,
         )
@@ -392,20 +396,90 @@ class Parser:
             self.advance()
         self.consume(TokenType.SEMI, "Expected ';' after extensions")
 
-    def parse_service(self) -> None:
+    def parse_service(self) -> ProtoService:
+        start = self.current()
         self.consume(TokenType.SERVICE, "Expected 'service'")
-        self.consume(TokenType.IDENT, "Expected service name")
+        name = self.consume(TokenType.IDENT, "Expected service name").value
         self.consume(TokenType.LBRACE, "Expected '{' after service name")
-        depth = 1
-        while depth > 0:
-            if self.at_end():
-                raise self.error("Unterminated service block")
-            if self.match(TokenType.LBRACE):
-                depth += 1
-            elif self.match(TokenType.RBRACE):
-                depth -= 1
-            else:
+
+        methods: List[ProtoRpcMethod] = []
+        options = {}
+
+        while not self.check(TokenType.RBRACE):
+            if self.check(TokenType.OPTION):
+                opt_name, opt_value = self.parse_option_statement()
+                options[opt_name] = opt_value
+            elif self.check(TokenType.RPC):
+                methods.append(self.parse_rpc_method())
+            elif self.check(TokenType.SEMI):
                 self.advance()
+            else:
+                raise self.error("Expected 'rpc' or 'option' inside service")
+
+        self.consume(TokenType.RBRACE, "Expected '}' after service")
+        if self.check(TokenType.SEMI):
+            self.advance()
+
+        return ProtoService(
+            name=name,
+            methods=methods,
+            options=options,
+            line=start.line,
+            column=start.column,
+        )
+
+    def parse_rpc_method(self) -> ProtoRpcMethod:
+        start = self.current()
+        self.consume(TokenType.RPC, "Expected 'rpc'")
+        name = self.consume(TokenType.IDENT, "Expected method name").value
+
+        # Request
+        self.consume(TokenType.LPAREN, "Expected '(' before request type")
+        client_streaming = False
+        if self.match(TokenType.STREAM):
+            client_streaming = True
+
+        req_type = self.parse_full_ident()
+        self.consume(TokenType.RPAREN, "Expected ')' after request type")
+
+        self.consume(TokenType.RETURNS, "Expected 'returns'")
+
+        # Response
+        self.consume(TokenType.LPAREN, "Expected '(' before response type")
+        server_streaming = False
+        if self.match(TokenType.STREAM):
+            server_streaming = True
+
+        res_type = self.parse_full_ident()
+        self.consume(TokenType.RPAREN, "Expected ')' after response type")
+
+        options = {}
+        if self.check(TokenType.LBRACE):
+            self.consume(TokenType.LBRACE, "Expected '{'")
+            while not self.check(TokenType.RBRACE):
+                if self.check(TokenType.OPTION):
+                    opt_name, opt_value = self.parse_option_statement()
+                    options[opt_name] = opt_value
+                elif self.check(TokenType.SEMI):
+                    self.advance()
+                else:
+                    raise self.error("Expected 'option' in method body")
+            self.consume(TokenType.RBRACE, "Expected '}'")
+            if self.check(TokenType.SEMI):
+                self.advance()
+        else:
+            self.consume(TokenType.SEMI, "Expected ';' or '{' after method signature")
+
+        return ProtoRpcMethod(
+            name=name,
+            request_type=req_type,
+            response_type=res_type,
+            client_streaming=client_streaming,
+            server_streaming=server_streaming,
+            options=options,
+            line=start.line,
+            column=start.column,
+        )
 
     def parse_option_name(self) -> str:
         if self.match(TokenType.LPAREN):
