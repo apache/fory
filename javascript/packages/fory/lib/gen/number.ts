@@ -77,8 +77,8 @@ CodegenRegistry.register(TypeId.VARINT32,
 
 CodegenRegistry.register(TypeId.INT64,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.sliInt64(accessor),
-    builder => builder.reader.sliInt64()
+    (builder, accessor) => builder.writer.int64(accessor),
+    builder => builder.reader.int64()
   )
 );
 
@@ -98,7 +98,7 @@ CodegenRegistry.register(TypeId.TAGGED_UINT64,
 
 CodegenRegistry.register(TypeId.FLOAT16,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.float32(accessor),
+    (builder, accessor) => builder.writer.float16(accessor),
     builder => builder.reader.float16()
   )
 );
