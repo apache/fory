@@ -26,9 +26,6 @@ import (
 // It is stored as a uint16.
 type BFloat16 uint16
 
-// BFloat16Array is a slice of BFloat16 values.
-type BFloat16Array []BFloat16
-
 // BFloat16FromBits returns the BFloat16 corresponding to the given bit pattern.
 func BFloat16FromBits(b uint16) BFloat16 {
 	return BFloat16(b)
