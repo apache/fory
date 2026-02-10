@@ -20,9 +20,9 @@
 import Fory, {
   BinaryReader,
   BinaryWriter,
-  Mode,
   ForyField,
   Type,
+  Dynamic,
 } from "../packages/fory/index";
 import { describe, expect, test } from "@jest/globals";
 import * as fs from "node:fs";
@@ -192,7 +192,7 @@ describe("bool", () => {
   });
   test("test_string_serializer", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
     // Deserialize strings from Java
     const deserializedStrings = [];
@@ -213,7 +213,7 @@ describe("bool", () => {
   });
   test("test_cross_language_serializer", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define and register Color enum
@@ -245,7 +245,7 @@ describe("bool", () => {
   });
   test("test_simple_struct", () => {
     const fory = new Fory({
-      mode: Mode.Compatible,
+      compatible: true,
       hooks: {
         afterCodeGenerated: (code) => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
@@ -310,7 +310,7 @@ describe("bool", () => {
   test("test_named_simple_struct", () => {
     // Same as test_simple_struct but with named registration
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define Color enum
@@ -365,7 +365,7 @@ describe("bool", () => {
 
   test("test_list", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(102, {
@@ -398,7 +398,7 @@ describe("bool", () => {
 
   test("test_map", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(102, {
@@ -432,7 +432,7 @@ describe("bool", () => {
 
   test("test_integer", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(101, {
@@ -476,7 +476,7 @@ describe("bool", () => {
 
   test("test_item", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(102, {
@@ -511,7 +511,7 @@ describe("bool", () => {
 
   test("test_color", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define and register Color enum
@@ -548,7 +548,7 @@ describe("bool", () => {
   });
   test("test_struct_with_list", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(201, {
@@ -585,7 +585,7 @@ describe("bool", () => {
 
   test("test_struct_with_map", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(202, {
@@ -623,7 +623,7 @@ describe("bool", () => {
   test("test_skip_id_custom", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define empty wrapper for deserialization
@@ -647,7 +647,7 @@ describe("bool", () => {
   test("test_skip_name_custom", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define empty wrapper for deserialization
@@ -670,7 +670,7 @@ describe("bool", () => {
 
   test("test_consistent_named", () => {
     const fory = new Fory({
-      mode: Mode.SchemaConsistent,
+      compatible: false,
     });
 
     // Define and register Color enum
@@ -731,7 +731,7 @@ describe("bool", () => {
 
   test("test_struct_version_check", () => {
     const fory = new Fory({
-      mode: Mode.SchemaConsistent,
+      compatible: false,
     });
 
     @Type.struct(201, {
@@ -763,7 +763,7 @@ describe("bool", () => {
   test("test_polymorphic_list", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define Animal interface implementations
@@ -828,7 +828,7 @@ describe("bool", () => {
   test("test_polymorphic_map", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define Animal interface implementations
@@ -891,7 +891,7 @@ describe("bool", () => {
   });
   test("test_one_string_field_schema", () => {
     const fory = new Fory({
-      mode: Mode.SchemaConsistent
+      compatible: false
     });
 
     @Type.struct(200, {
@@ -914,7 +914,7 @@ describe("bool", () => {
   });
   test("test_one_string_field_compatible", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(200, {
@@ -941,7 +941,7 @@ describe("bool", () => {
 
   test("test_two_string_field_compatible", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(201, {
@@ -967,7 +967,7 @@ describe("bool", () => {
   test("test_schema_evolution_compatible", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     @Type.struct(200)
@@ -988,7 +988,7 @@ describe("bool", () => {
   });
   test("test_one_enum_field_schema", () => {
     const fory = new Fory({
-      mode: Mode.SchemaConsistent
+      compatible: false
     });
 
     // Define and register TestEnum
@@ -1022,7 +1022,7 @@ describe("bool", () => {
 
   test("test_one_enum_field_compatible", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define and register TestEnum
@@ -1053,7 +1053,7 @@ describe("bool", () => {
 
   test("test_two_enum_field_compatible", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Define and register TestEnum
@@ -1087,7 +1087,7 @@ describe("bool", () => {
   test("test_enum_schema_evolution_compatible", () => {
     if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     // Register TestEnum
@@ -1270,7 +1270,7 @@ describe("bool", () => {
 
   test("test_nullable_field_schema_consistent_not_null", () => {
     const fory = new Fory({
-      mode: Mode.SchemaConsistent
+      compatible: false
     });
 
     fory.registerSerializer(buildClassConsistent(401));
@@ -1288,7 +1288,7 @@ describe("bool", () => {
 
   test("test_nullable_field_schema_consistent_null", () => {
     const fory = new Fory({
-      mode: Mode.SchemaConsistent
+      compatible: false
     });
     fory.registerSerializer(buildClassConsistent());
 
@@ -1308,7 +1308,7 @@ describe("bool", () => {
 
   test("test_nullable_field_compatible_not_null", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     fory.registerSerializer(buildClass());
@@ -1325,7 +1325,7 @@ describe("bool", () => {
 
   test("test_nullable_field_compatible_null", () => {
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true
     });
 
     fory.registerSerializer(buildClass());
@@ -1347,13 +1347,13 @@ describe("bool", () => {
   });
 
   test("test_ref_schema_consistent", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: false,
+      refTracking: true,
     });
 
     @Type.struct(501, {
-      id: Type.int32(),
+      id: Type.varInt32(),
       name: Type.string()
     })
     class RefInner {
@@ -1367,13 +1367,13 @@ describe("bool", () => {
       inner2: Type.struct(501)
     })
     class RefOuter {
+      @ForyField({ trackingRef: true, nullable: true, dynamic: Dynamic.FALSE })
       inner1: RefInner | null = null;
+
+      @ForyField({ trackingRef: true, nullable: true, dynamic: Dynamic.FALSE })
       inner2: RefInner | null = null;
     }
     fory.registerSerializer(RefOuter);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize outer struct from Java
     let cursor = 0;
@@ -1386,13 +1386,13 @@ describe("bool", () => {
   });
 
   test("test_ref_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true,
+      refTracking: true,
     });
 
     @Type.struct(503, {
-      id: Type.int32(),
+      id: Type.varInt32(),
       name: Type.string()
     })
     class RefInner {
@@ -1406,13 +1406,13 @@ describe("bool", () => {
       inner2: Type.struct(503)
     })
     class RefOuter {
+      @ForyField({ trackingRef: true, nullable: true })
       inner1: RefInner | null = null;
+      @ForyField({ trackingRef: true, nullable: true })
       inner2: RefInner | null = null;
     }
     fory.registerSerializer(RefOuter);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize outer struct from Java
     let cursor = 0;
@@ -1425,9 +1425,9 @@ describe("bool", () => {
   });
 
   test("test_circular_ref_schema_consistent", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: false,
+      refTracking: true,
     });
 
     @Type.struct(601, {
@@ -1436,6 +1436,7 @@ describe("bool", () => {
     })
     class CircularRefStruct {
       name: string = "";
+      @ForyField({ nullable: true, trackingRef: true })
       selfRef: CircularRefStruct | null = null;
     }
     fory.registerSerializer(CircularRefStruct);
@@ -1454,9 +1455,9 @@ describe("bool", () => {
   });
 
   test("test_circular_ref_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: true,
+      refTracking: true,
     });
 
     @Type.struct(602, {
@@ -1465,12 +1466,10 @@ describe("bool", () => {
     })
     class CircularRefStruct {
       name: string = "";
+      @ForyField({ nullable: true, trackingRef: true })
       selfRef: CircularRefStruct | null = null;
     }
     fory.registerSerializer(CircularRefStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize circular struct from Java
     let cursor = 0;
@@ -1483,23 +1482,21 @@ describe("bool", () => {
   });
 
   test("test_unsigned_schema_consistent_simple", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: false
     });
 
     @Type.struct(1, {
-      u64Tagged: Type.int64(),
-      u64TaggedNullable: Type.int64()
+      u64Tagged: Type.taggedUInt64(),
+      u64TaggedNullable: Type.taggedUInt64()
     })
-    class UnsignedStruct {
+    class UnsignedSchemaConsistentSimple {
       u64Tagged: bigint = 0n;
+
+      @ForyField({ nullable: true })
       u64TaggedNullable: bigint | null = null;
     }
-    fory.registerSerializer(UnsignedStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    fory.registerSerializer(UnsignedSchemaConsistentSimple);
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1512,27 +1509,120 @@ describe("bool", () => {
   });
 
   test("test_unsigned_schema_consistent", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      compatible: false
     });
 
     @Type.struct(501, {
       u8Field: Type.uint8(),
       u16Field: Type.uint16(),
-      u32Field: Type.uint32(),
-      u64Field: Type.uint64()
+      u32VarField: Type.varUInt32(),
+      u32FixedField: Type.uint32(),
+      u64VarField: Type.varUInt64(),
+      u64FixedField: Type.uint64(),
+      u64TaggedField: Type.taggedUInt64(),
     })
-    class UnsignedStruct {
+    class UnsignedSchemaConsistent {
       u8Field: number = 0;
       u16Field: number = 0;
-      u32Field: number = 0;
-      u64Field: bigint = 0n;
-    }
-    fory.registerSerializer(UnsignedStruct);
+      u32VarField: number = 0;
+      u32FixedField: bigint = 0n;
+      u64VarField: bigint = 0n;
+      u64FixedField: bigint = 0n;
+      u64TaggedField: bigint = 0n;
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
+      @ForyField({ nullable: true })
+      @Type.uint8()
+      u8NullableField: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.uint16()
+      u16NullableField: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.varUInt32()
+      u32VarNullableField: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.uint32()
+      u32FixedNullableField: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.varUInt64()
+      u64VarNullableField: bigint = 0n;
+
+      @ForyField({ nullable: true })
+      @Type.uint64()
+      u64FixedNullableField: bigint = 0n;
+
+      @ForyField({ nullable: true })
+      @Type.taggedUInt64()
+      u64TaggedNullableField: bigint = 0n;
+    }
+    fory.registerSerializer(UnsignedSchemaConsistent);
+
+    // Deserialize struct from Java
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
+
+    // Serialize the deserialized struct back
+    const serializedBackData = fory.serialize(deserializedStruct);
+    writeToFile(serializedBackData as Buffer);
+  });
+
+  test("test_unsigned_schema_compatible", () => {
+    const fory = new Fory({
+      compatible: true
+    });
+
+    @Type.struct(502, {
+      u8Field1: Type.uint8(),
+      u16Field1: Type.uint16(),
+      u32VarField1: Type.varUInt32(),
+      u32FixedField1: Type.uint32(),
+      u64VarField1: Type.varUInt64(),
+      u64FixedField1: Type.uint64(),
+      u64TaggedField1: Type.taggedUInt64(),
+    })
+    class UnsignedSchemaCompatible {
+      u8Field1: number = 0;
+      u16Field1: number = 0;
+      u32VarField1: number = 0;
+      u32FixedField1: bigint = 0n;
+      u64VarField1: bigint = 0n;
+      u64FixedField1: bigint = 0n;
+      u64TaggedField1: bigint = 0n;
+
+      @ForyField({ nullable: true })
+      @Type.uint8()
+      u8Field2: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.uint16()
+      u16Field2: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.varUInt32()
+      u32VarField2: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.uint32()
+      u32FixedField2: number = 0;
+
+      @ForyField({ nullable: true })
+      @Type.varUInt64()
+      u64VarField2: bigint = 0n;
+
+      @ForyField({ nullable: true })
+      @Type.uint64()
+      u64FixedField2: bigint = 0n;
+
+      @ForyField({ nullable: true })
+      @Type.taggedUInt64()
+      u64TaggedField2: bigint = 0n;
+    }
+    fory.registerSerializer(UnsignedSchemaCompatible);
 
     // Deserialize struct from Java
     let cursor = 0;
@@ -1542,38 +1632,5 @@ describe("bool", () => {
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
     writeToFile(serializedData as Buffer);
-  });
-
-  test("test_unsigned_schema_compatible", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory({
-      mode: Mode.Compatible
-    });
-
-    @Type.struct(502, {
-      u8Field: Type.uint8(),
-      u16Field: Type.uint16(),
-      u32Field: Type.uint32(),
-      u64Field: Type.uint64()
-    })
-    class UnsignedStruct {
-      u8Field: number = 0;
-      u16Field: number = 0;
-      u32Field: number = 0;
-      u64Field: bigint = 0n;
-    }
-    fory.registerSerializer(UnsignedStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
-
-    // Deserialize struct from Java
-    let cursor = 0;
-    const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
-
-    // Serialize the deserialized struct back
-    const serializedData = fory.serialize(deserializedStruct);
-    // writeToFile(serializedData as Buffer);
   });
 });

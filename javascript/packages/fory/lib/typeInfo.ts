@@ -26,6 +26,7 @@ export const ForyField = (fieldInfo: {
   nullable?: boolean,
   trackingRef?: boolean,
   id?: number,
+  dynamic?: Dynamic,
 }) => {
   return (target: any, key: string | {name?: string}) => {
     const creator = target.constructor;
@@ -104,7 +105,6 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   // Stored as unsigned 32-bit; -1 (0xffffffff) means "unset".
   userTypeId = -1;
   options?: any;
-  dynamic: "TRUE" | "FALSE" | "AUTO" = "AUTO";
   static fory: WeakRef<Fory> | null = null;
 
   static attach(fory: Fory) {
@@ -145,10 +145,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (!fory) {
       throw new Error("fory is not attached")
     }
-    if (internalTypeId === TypeId.NAMED_STRUCT && fory.config.mode === Mode.Compatible) {
+    if (internalTypeId === TypeId.NAMED_STRUCT && fory.isCompatible()) {
       return TypeId.NAMED_COMPATIBLE_STRUCT;
     }
-    if (internalTypeId === TypeId.STRUCT && fory.config.mode === Mode.Compatible) {
+    if (internalTypeId === TypeId.STRUCT && fory.isCompatible()) {
       return TypeId.COMPATIBLE_STRUCT;
     }
     return this._typeId;
@@ -158,8 +158,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     return this.computeTypeId(TypeInfo.fory?.deref());
   }
 
-  isMonomorphic() {
-    switch (this.dynamic) {
+  isMonomorphic(dynamic: Dynamic = Dynamic.AUTO) {
+    switch (dynamic) {
       case "TRUE":
         return false;
       case "FALSE":
@@ -367,7 +367,13 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   }
 }
 
-type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean, id?: number}
+export enum Dynamic {
+  TRUE = "TRUE",
+  FALSE = "FALSE",
+  AUTO = "AUTO"
+}
+
+type StructFieldInfo = {nullable?: boolean, trackingRef?: boolean, id?: number, dynamic?: Dynamic}
 export interface StructTypeInfo extends TypeInfo {
   options: {
     props?: { [key: string]: TypeInfo };

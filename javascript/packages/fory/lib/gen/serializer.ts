@@ -21,7 +21,7 @@ import { CodecBuilder } from "./builder";
 import { RefFlags, TypeId } from "../type";
 import { Scope } from "./scope";
 import { TypeInfo } from "../typeInfo";
-import { refTrackingAbleTypeId } from "../meta/TypeMeta";
+import { refTrackingUnableTypeId } from "../meta/TypeMeta";
 import { BinaryWriter } from "../writer";
 
 export const makeHead = (flag: RefFlags, typeId: number) => {
@@ -35,7 +35,7 @@ export const makeHead = (flag: RefFlags, typeId: number) => {
 export interface SerializerGenerator {
   writeRef(accessor: string): string;
   writeNoRef(accessor: string): string;
-  writeRefOrNull(assignStmt: (v: string) => string, accessor: string): string;
+  writeRefOrNull(accessor: string, assignStmt: (v: string) => string): string;
   writeTypeInfo(accessor: string): string;
   write(accessor: string): string;
   writeEmbed(): any;
@@ -44,7 +44,8 @@ export interface SerializerGenerator {
   getFixedSize(): number;
   needToWriteRef(): boolean;
 
-  readRef(assignStmt: (v: string) => string, withoutTypeInfo?: boolean): string;
+  readRef(assignStmt: (v: string) => string): string;
+  readRefWithoutTypeInfo(assignStmt: (v: string) => string): string;
   readNoRef(assignStmt: (v: string) => string, refState: string): string;
   readTypeInfo(): string;
   read(assignStmt: (v: string) => string, refState: string): string;
@@ -72,7 +73,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   abstract getFixedSize(): number;
 
   needToWriteRef(): boolean {
-    if (refTrackingAbleTypeId(this.typeInfo.typeId)) {
+    if (refTrackingUnableTypeId(this.typeInfo.typeId)) {
       return false;
     }
     return this.builder.fory.config.refTracking === true;
@@ -106,7 +107,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     const noneedWrite = this.scope.uniqueName("noneedWrite");
     return `
       let ${noneedWrite} = false;
-      ${this.writeRefOrNull(expr => `${noneedWrite} = ${expr}`, accessor)}
+      ${this.writeRefOrNull(accessor, expr => `${noneedWrite} = ${expr}`)}
       if (!${noneedWrite}) {
         ${this.writeNoRef(accessor)}
       }
@@ -120,7 +121,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     `;
   }
 
-  writeRefOrNull(assignStmt: (expr: string) => string, accessor: string) {
+  writeRefOrNull(accessor: string, assignStmt: (expr: string) => string) {
     let refFlagStmt = "";
     if (this.needToWriteRef()) {
       const existsId = this.scope.uniqueName("existsId");
@@ -197,14 +198,33 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     `;
   }
 
-  readRef(assignStmt: (v: string) => string, withoutTypeInfo = false): string {
+  readRefWithoutTypeInfo(assignStmt: (v: string) => string): string {
     const refFlag = this.scope.uniqueName("refFlag");
     return `
         const ${refFlag} = ${this.builder.reader.int8()};
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                ${!withoutTypeInfo ? this.readNoRef(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`) : this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                ${this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                break;
+            case ${RefFlags.RefFlag}:
+                ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()))}
+                break;
+            case ${RefFlags.NullFlag}:
+                ${assignStmt("null")}
+                break;
+        }
+    `;
+  }
+
+  readRef(assignStmt: (v: string) => string): string {
+    const refFlag = this.scope.uniqueName("refFlag");
+    return `
+        const ${refFlag} = ${this.builder.reader.int8()};
+        switch (${refFlag}) {
+            case ${RefFlags.NotNullValueFlag}:
+            case ${RefFlags.RefValueFlag}:
+                ${this.readNoRef(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
                 ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()))}
@@ -258,7 +278,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         ${this.writeNoRef("v")}
       };
       const writeRefOrNull = (v) => {
-        ${this.writeRefOrNull(expr => `return ${expr};`, "v")}
+        ${this.writeRefOrNull("v", expr => `return ${expr};`)}
       };
       const writeTypeInfo = (v) => {
         ${this.writeTypeInfo("v")}
@@ -268,6 +288,9 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       };
       const readRef = () => {
         ${this.readRef(assignStmt => `return ${assignStmt}`)}
+      };
+      const readRefWithoutTypeInfo = () => {
+        ${this.readRefWithoutTypeInfo(assignStmt => `return ${assignStmt}`)}
       };
       const readNoRef = (fromRef) => {
         ${this.readNoRef(assignStmt => `return ${assignStmt}`, "fromRef")}
@@ -295,6 +318,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
               read,
               readRef,
+              readRefWithoutTypeInfo,
               readNoRef,
               readTypeInfo,
             };

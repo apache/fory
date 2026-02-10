@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { TypeId, Mode, RefFlags } from "../type";
+import { TypeId, RefFlags } from "../type";
 import { Scope } from "./scope";
 import { CodecBuilder } from "./builder";
 import { StructTypeInfo, TypeInfo } from "../typeInfo";
@@ -75,16 +75,17 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   readField(fieldName: string, fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator, needToWriteRef: boolean) {
     const { nullable = false } = this.typeInfo.options.fieldInfo?.[fieldName] || {};
     let { trackingRef } = this.typeInfo.options.fieldInfo?.[fieldName] || {};
+    const { dynamic } = this.typeInfo.options.fieldInfo?.[fieldName] || {};
     if (typeof trackingRef !== "boolean") {
       trackingRef = needToWriteRef;
     }
     const refMode = toRefMode(trackingRef, nullable);
     let stmt = "";
     // polymorphic type
-    if (fieldTypeInfo.isMonomorphic()) {
+    if (fieldTypeInfo.isMonomorphic(dynamic)) {
       if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
         stmt = `
-            ${embedGenerator.readRef(assignStmt, true)}
+          ${embedGenerator.readRefWithoutTypeInfo(assignStmt)}
         `;
       } else {
         stmt = embedGenerator.read(assignStmt, "false");
@@ -102,18 +103,19 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   writeField(fieldName: string, fieldTypeInfo: TypeInfo, fieldAccessor: string, embedGenerator: SerializerGenerator, needToWriteRef: boolean) {
     const { nullable = false } = this.typeInfo.options.fieldInfo?.[fieldName] || {};
     let { trackingRef } = this.typeInfo.options.fieldInfo?.[fieldName] || {};
+    const { dynamic } = this.typeInfo.options.fieldInfo?.[fieldName] || {};
     if (typeof trackingRef !== "boolean") {
       trackingRef = needToWriteRef;
     }
     const refMode = toRefMode(trackingRef, nullable);
     let stmt = "";
     // polymorphic type
-    if (fieldTypeInfo.isMonomorphic()) {
+    if (fieldTypeInfo.isMonomorphic(dynamic)) {
       if (refMode == RefMode.TRACKING) {
         const noneedWrite = this.scope.uniqueName("noneedWrite");
         stmt = `
             let ${noneedWrite} = false;
-            ${embedGenerator.writeRefOrNull(expr => `${noneedWrite} = ${expr}`, fieldAccessor)}
+            ${embedGenerator.writeRefOrNull(fieldAccessor, expr => `${noneedWrite} = ${expr}`)}
             if (!${noneedWrite}) {
               ${embedGenerator.write(fieldAccessor)}
             }
@@ -308,13 +310,16 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   writeEmbed() {
     return new Proxy({}, {
       get: (target, prop: string) => {
-        return (accessor: string) => {
+        return (accessor: string, ...args: any) => {
           const name = this.scope.declare(
             "tag_ser",
             TypeId.isNamedType(this.typeInfo.typeId)
               ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
               : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
           );
+          if (prop === "writeRefOrNull") {
+            return args[0](`${name}.${prop}(${accessor})`);
+          }
           return `${name}.${prop}(${accessor})`;
         };
       },
@@ -337,7 +342,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         }
         break;
       case TypeId.NAMED_STRUCT:
-        if (this.builder.fory.config.mode !== Mode.Compatible) {
+        if (!this.builder.fory.isCompatible()) {
           const typeInfo = this.typeInfo.castToStruct();
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
           const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));

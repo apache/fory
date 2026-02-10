@@ -1718,6 +1718,10 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			if elem == bfloat16Type {
 				return bfloat16SliceSerializer{}, nil
 			}
+			// Check for fory.Float16 (aliased to uint16)
+			if elem == float16Type {
+				return float16SliceSerializer{}, nil
+			}
 			return uint16SliceSerializer{}, nil
 		case reflect.Uint32:
 			return uint32SliceSerializer{}, nil
@@ -1766,8 +1770,7 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			return int32ArraySerializer{arrayType: type_}, nil
 		case reflect.Uint16:
 			// Check for fory.Float16 (aliased to uint16)
-			// Check name first to avoid slow PkgPath call
-			if elem.Name() == "Float16" && (elem.PkgPath() == "github.com/apache/fory/go/fory/float16" || strings.HasSuffix(elem.PkgPath(), "/float16")) {
+			if elem == float16Type {
 				return float16ArraySerializer{arrayType: type_}, nil
 			}
 			// Check for fory.BFloat16 (aliased to uint16)

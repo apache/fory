@@ -224,6 +224,7 @@ export type Serializer<T = any> = {
 
   read: (fromRef: boolean) => T;
   readRef: () => T;
+  readRefWithoutTypeInfo: () => T;
   readNoRef: (fromRef: boolean) => T;
   readTypeInfo: () => void;
 };
@@ -265,7 +266,7 @@ export interface Config {
   hooks: {
     afterCodeGenerated?: (code: string) => string;
   };
-  mode: Mode;
+  compatible?: boolean;
 }
 
 export interface WithForyClsInfo {
