@@ -30,7 +30,7 @@
 
     <groupId>org.apache.fory</groupId>
     <artifactId>fory-kotlin</artifactId>
-    <version>0.15.0-SNAPSHOT</version>
+    <version>0.16.0-SNAPSHOT</version>
     <modelVersion>4.0.0</modelVersion>
 
     <properties>

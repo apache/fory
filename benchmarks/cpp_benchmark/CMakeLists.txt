@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(fory_cpp_benchmark
-    VERSION 0.15.0
+    VERSION 0.16.0
     DESCRIPTION "C++ Benchmark comparing Fory and Protobuf serialization"
     LANGUAGES CXX
 )
