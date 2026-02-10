@@ -147,6 +147,63 @@ export class BinaryWriter {
     }
   }
 
+  /**
+   * Write signed long using fory Tagged(Small long as int) encoding.
+   * If long is in [0xc0000000, 0x3fffffff], encode as 4 bytes int: | little-endian: ((int) value) << 1 |
+   * Otherwise write as 9 bytes: | 0b1 | little-endian 8bytes long |
+   */
+  writeTaggedInt64(value: bigint | number): number {
+    if (typeof value !== 'bigint') {
+      value = BigInt(value);
+    }
+    
+    const halfMaxInt32 = 0x3fffffffn; // 0x3fffffff
+    const halfMinInt32 = -0x40000000n; // 0xc0000000 as signed
+    
+    if (value >= halfMinInt32 && value <= halfMaxInt32) {
+      // Small long encoded as int
+      const v = Number(value) << 1; // bit 0 unset, means int
+      this.dataView.setInt32(this.cursor, v, true);
+      this.cursor += 4;
+      return 4;
+    } else {
+      // Big long encoded as 8 bytes
+      const BIG_LONG_FLAG = 0b1; // bit 0 set, means big long
+      this.dataView.setUint8(this.cursor, BIG_LONG_FLAG);
+      this.dataView.setBigInt64(this.cursor + 1, value, true);
+      this.cursor += 9;
+      return 9;
+    }
+  }
+
+  /**
+   * Write unsigned long using fory Tagged(Small long as int) encoding.
+   * If long is in [0, 0x7fffffff], encode as 4 bytes int: | little-endian: ((int) value) << 1 |
+   * Otherwise write as 9 bytes: | 0b1 | little-endian 8bytes long |
+   */
+  writeTaggedUInt64(value: bigint | number): number {
+    if (typeof value !== 'bigint') {
+      value = BigInt(value);
+    }
+    
+    const maxUInt32 = 0x7fffffffn; // 0x7fffffff
+    
+    if (value >= 0n && value <= maxUInt32) {
+      // Small ulong encoded as uint
+      const v = Number(value) << 1; // bit 0 unset, means int
+      this.dataView.setUint32(this.cursor, v, true);
+      this.cursor += 4;
+      return 4;
+    } else {
+      // Big ulong encoded as 8 bytes
+      const BIG_LONG_FLAG = 0b1; // bit 0 set, means big long
+      this.dataView.setUint8(this.cursor, BIG_LONG_FLAG);
+      this.dataView.setBigUint64(this.cursor + 1, value, true);
+      this.cursor += 9;
+      return 9;
+    }
+  }
+
   float32(v: number) {
     this.dataView.setFloat32(this.cursor, v, true);
     this.cursor += 4;

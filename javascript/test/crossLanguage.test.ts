@@ -1483,23 +1483,21 @@ describe("bool", () => {
   });
 
   test("test_unsigned_schema_consistent_simple", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
-      mode: Mode.Compatible
+      mode: Mode.SchemaConsistent
     });
 
     @Type.struct(1, {
-      u64Tagged: Type.int64(),
-      u64TaggedNullable: Type.int64()
+      u64Tagged: Type.taggedUInt64(),
+      u64TaggedNullable: Type.taggedUInt64()
     })
-    class UnsignedStruct {
+    class UnsignedSchemaConsistentSimple {
       u64Tagged: bigint = 0n;
+
+      @ForyField({nullable: true})
       u64TaggedNullable: bigint | null = null;
     }
-    fory.registerSerializer(UnsignedStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    fory.registerSerializer(UnsignedSchemaConsistentSimple);
 
     // Deserialize struct from Java
     let cursor = 0;
