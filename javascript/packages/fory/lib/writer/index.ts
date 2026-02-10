@@ -125,7 +125,11 @@ export class BinaryWriter {
   }
 
   int64(v: bigint) {
-    this.dataView.setBigInt64(this.cursor, v, true);
+    if (typeof v !== "bigint") {
+      this.dataView.setBigInt64(this.cursor, BigInt(v), true);
+    } else {
+      this.dataView.setBigInt64(this.cursor, v, true);
+    }
     this.cursor += 8;
   }
 
