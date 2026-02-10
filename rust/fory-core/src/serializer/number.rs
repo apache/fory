@@ -17,7 +17,6 @@
 
 use crate::float16::float16;
 
-
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::resolver::context::ReadContext;

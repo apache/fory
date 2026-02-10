@@ -49,7 +49,7 @@ const SIGN_MASK: u16 = 0x8000;
 const EXP_MASK: u16 = 0x7C00;
 const MANTISSA_MASK: u16 = 0x03FF;
 const EXP_SHIFT: u32 = 10;
-const EXP_BIAS: i32 = 15;
+// const EXP_BIAS: i32 = 15;  // Reserved for future use
 const MAX_EXP: i32 = 31;
 
 // Special bit patterns
@@ -350,30 +350,35 @@ impl float16 {
 
     /// Add two `float16` values (via f32).
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn add(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() + rhs.to_f32())
     }
 
     /// Subtract two `float16` values (via f32).
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn sub(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() - rhs.to_f32())
     }
 
     /// Multiply two `float16` values (via f32).
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn mul(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() * rhs.to_f32())
     }
 
     /// Divide two `float16` values (via f32).
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn div(self, rhs: Self) -> Self {
         Self::from_f32(self.to_f32() / rhs.to_f32())
     }
 
     /// Negate this `float16` value.
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn neg(self) -> Self {
         Self(self.0 ^ SIGN_MASK)
     }
