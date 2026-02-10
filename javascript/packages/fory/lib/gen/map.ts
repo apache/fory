@@ -37,25 +37,23 @@ const MapFlags = {
   DECL_ELEMENT_TYPE: 0b100,
 };
 
-class MapHeadUtil {
-  private static IS_NULL = 0b10;
-  private static TRACKING_REF = 0b01;
-  static elementInfo(typeId: number, isNull: 0 | 1, trackRef: 0 | 1) {
-    return (typeId << 16) | (isNull << 1) | trackRef;
+class ElementInfo {
+  constructor(public serializer: Serializer | null, public isNull: boolean, public trackRef: boolean) {
   }
 
-  static isNull(info: number) {
-    return info & this.IS_NULL;
-  }
-
-  static trackingRef(info: number) {
-    return info & this.TRACKING_REF;
+  equalTo(other: ElementInfo | null) {
+    if (other === null) {
+      return false;
+    }
+    return this.serializer === other.serializer
+      && this.isNull === other.isNull
+      && this.trackRef === other.trackRef;
   }
 }
 
 class MapChunkWriter {
-  private preKeyInfo = 0;
-  private preValueInfo = 0;
+  private preKeyInfo: ElementInfo | null = null;
+  private preValueInfo: ElementInfo | null = null;
 
   private chunkSize = 0;
   private chunkOffset = 0;
@@ -65,22 +63,22 @@ class MapChunkWriter {
 
   }
 
-  private getHead(keyInfo: number, valueInfo: number) {
+  private getHead(keyInfo: ElementInfo, valueInfo: ElementInfo) {
     let flag = 0;
-    if (MapHeadUtil.isNull(valueInfo)) {
+    if (valueInfo.isNull) {
       flag |= MapFlags.HAS_NULL;
     }
-    if (MapHeadUtil.trackingRef(valueInfo)) {
+    if (valueInfo.trackRef) {
       flag |= MapFlags.TRACKING_REF;
     }
     if (this.valueSerializer) {
       flag |= MapFlags.DECL_ELEMENT_TYPE;
     }
     flag <<= 3;
-    if (MapHeadUtil.isNull(keyInfo)) {
+    if (keyInfo.isNull) {
       flag |= MapFlags.HAS_NULL;
     }
-    if (MapHeadUtil.trackingRef(keyInfo)) {
+    if (keyInfo.trackRef) {
       flag |= MapFlags.TRACKING_REF;
     }
     if (this.keySerializer) {
@@ -89,7 +87,7 @@ class MapChunkWriter {
     return flag;
   }
 
-  private writeHead(keyInfo: number, valueInfo: number, withOutSize = false) {
+  private writeHead(keyInfo: ElementInfo, valueInfo: ElementInfo, withOutSize = false) {
     // KV header
     const header = this.getHead(keyInfo, valueInfo);
     // chunkSize default 0 | KV header
@@ -102,12 +100,6 @@ class MapChunkWriter {
     } else {
       this.chunkOffset = 0;
     }
-    if (this.keySerializer) {
-      this.keySerializer.writeTypeInfo(null);
-    }
-    if (this.valueSerializer) {
-      this.valueSerializer.writeTypeInfo(null);
-    }
     return header;
   }
 
@@ -115,8 +107,8 @@ class MapChunkWriter {
     return this.chunkSize === 0 || this.chunkSize === 1;
   }
 
-  next(keyInfo: number, valueInfo: number) {
-    if (keyInfo & MapFlags.HAS_NULL || valueInfo & MapFlags.HAS_NULL) {
+  next(keyInfo: ElementInfo, valueInfo: ElementInfo) {
+    if (keyInfo.isNull || valueInfo.isNull) {
       this.endChunk();
       this.header = this.writeHead(keyInfo, valueInfo, true);
       this.preKeyInfo = keyInfo;
@@ -126,8 +118,8 @@ class MapChunkWriter {
     // max size of chunk is 255
     if (this.chunkSize == 255
       || this.chunkOffset == 0
-      || this.preKeyInfo !== keyInfo
-      || this.preValueInfo !== valueInfo
+      || keyInfo.equalTo(this.preKeyInfo)
+      || valueInfo.equalTo(this.preValueInfo)
     ) {
       // new chunk
       this.endChunk();
@@ -149,16 +141,8 @@ class MapChunkWriter {
 }
 
 class MapAnySerializer {
-  private keySerializer: Serializer | null = null;
-  private valueSerializer: Serializer | null = null;
+  constructor(private fory: Fory, private keySerializer: Serializer | null, private valueSerializer: Serializer | null) {
 
-  constructor(private fory: Fory, keySerializerId: null | number, valueSerializerId: null | number) {
-    if (keySerializerId !== null) {
-      fory.typeResolver.getSerializerById(keySerializerId);
-    }
-    if (valueSerializerId !== null) {
-      fory.typeResolver.getSerializerById(valueSerializerId);
-    }
   }
 
   private writeFlag(header: number, v: any) {
@@ -187,8 +171,8 @@ class MapAnySerializer {
       const valueSerializer = this.valueSerializer !== null ? this.valueSerializer : this.fory.typeResolver.getSerializerByData(v);
 
       const header = mapChunkWriter.next(
-        MapHeadUtil.elementInfo(keySerializer?.getTypeId() ?? 0, k == null ? 1 : 0, keySerializer?.needToWriteRef() ? 1 : 0),
-        MapHeadUtil.elementInfo(valueSerializer?.getTypeId() ?? 0, v == null ? 1 : 0, valueSerializer?.needToWriteRef() ? 1 : 0)
+        new ElementInfo(keySerializer || null, k == null, keySerializer?.needToWriteRef() || false),
+        new ElementInfo(valueSerializer || null, v == null, valueSerializer?.needToWriteRef() || false)
       );
       const keyHeader = header & 0b111;
       const valueHeader = (header >> 3);
@@ -396,8 +380,16 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
     if (!this.isAny()) {
       return this.writeSpecificType(accessor);
     }
-    return `new (${anySerializer})(${this.builder.getForyName()}, ${this.typeInfo.options.key.typeId !== TypeId.UNKNOWN ? this.typeInfo.options.key.typeId : null
-      }, ${this.typeInfo.options.value.typeId !== TypeId.UNKNOWN ? this.typeInfo.options.value.typeId : null
+    const innerSerializer = (innerTypeInfo: TypeInfo) => {
+      return this.scope.declare(
+        "map_inner_ser",
+        TypeId.isNamedType(innerTypeInfo.typeId)
+          ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(innerTypeInfo.named!))
+          : this.builder.typeResolver.getSerializerById(innerTypeInfo.typeId, innerTypeInfo.userTypeId)
+      );
+    };
+    return `new (${anySerializer})(${this.builder.getForyName()}, ${this.typeInfo.options.key.typeId !== TypeId.UNKNOWN ? innerSerializer(this.typeInfo.options.key) : null
+      }, ${this.typeInfo.options.value.typeId !== TypeId.UNKNOWN ? innerSerializer(this.typeInfo.options.value) : null
       }).write(${accessor})`;
   }
 
@@ -486,8 +478,16 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
     if (!this.isAny()) {
       return this.readSpecificType(accessor, refState);
     }
-    return accessor(`new (${anySerializer})(${this.builder.getForyName()}, ${this.typeInfo.options.key.typeId !== TypeId.UNKNOWN ? (this.typeInfo.options.key.typeId) : null
-      }, ${this.typeInfo.options.value.typeId !== TypeId.UNKNOWN ? (this.typeInfo.options.value.typeId) : null
+    const innerSerializer = (innerTypeInfo: TypeInfo) => {
+      return this.scope.declare(
+        "map_inner_ser",
+        TypeId.isNamedType(innerTypeInfo.typeId)
+          ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(innerTypeInfo.named!))
+          : this.builder.typeResolver.getSerializerById(innerTypeInfo.typeId, innerTypeInfo.userTypeId)
+      );
+    };
+    return accessor(`new (${anySerializer})(${this.builder.getForyName()}, ${this.typeInfo.options.key.typeId !== TypeId.UNKNOWN ? innerSerializer(this.typeInfo.options.key) : null
+      }, ${this.typeInfo.options.value.typeId !== TypeId.UNKNOWN ? innerSerializer(this.typeInfo.options.value) : null
       }).read(${refState})`);
   }
 
