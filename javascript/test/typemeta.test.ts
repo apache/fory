@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type, Mode } from '../packages/fory/index';
+import Fory, { Type } from '../packages/fory/index';
 import {describe, expect, test} from '@jest/globals';
 import * as beautify from 'js-beautify';
 
@@ -26,7 +26,7 @@ describe('typemeta', () => {
   test('should evaluation scheme work', () => {
     
     const fory = new Fory({
-        mode: Mode.Compatible
+        compatible: true
     });    
 
     @Type.struct("example.foo")
@@ -59,7 +59,7 @@ describe('typemeta', () => {
     }
 
     const fory2 = new Fory({
-        mode: Mode.Compatible,
+        compatible: true,
         hooks: {
             afterCodeGenerated: (code: string) => {
                 return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });

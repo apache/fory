@@ -21,7 +21,7 @@ import TypeResolver from "./typeResolver";
 import { BinaryWriter } from "./writer";
 import { BinaryReader } from "./reader";
 import { ReferenceResolver } from "./referenceResolver";
-import { ConfigFlags, Serializer, Config, Mode, ForyTypeInfoSymbol, WithForyClsInfo, TypeId, CustomSerializer } from "./type";
+import { ConfigFlags, Serializer, Config, ForyTypeInfoSymbol, WithForyClsInfo, TypeId, CustomSerializer } from "./type";
 import { OwnershipError } from "./error";
 import { InputType, ResultType, StructTypeInfo, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
@@ -58,12 +58,12 @@ export default class {
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
       hooks: config?.hooks || {},
-      mode: config?.mode || Mode.SchemaConsistent,
+      compatible: Boolean(config?.compatible),
     };
   }
 
   isCompatible() {
-    return this.config.mode === Mode.Compatible;
+    return this.config.compatible === true;
   }
 
   registerSerializer<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
@@ -132,6 +132,7 @@ export default class {
       readNoRef: serializer.readNoRef,
       readRef: serializer.readRef,
       readTypeInfo: serializer.readTypeInfo,
+      readRefWithoutTypeInfo: serializer.readRefWithoutTypeInfo,
     } as any)!;
     TypeInfo.detach();
     return result;

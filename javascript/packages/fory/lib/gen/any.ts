@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { Mode, Serializer, TypeId } from "../type";
+import { Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 import { TypeMeta } from "../meta/TypeMeta";
@@ -59,7 +59,7 @@ export class AnyHelper {
       case TypeId.NAMED_EXT:
       case TypeId.NAMED_UNION:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
-        if (fory.config.mode === Mode.Compatible || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
+        if (fory.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
           const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();

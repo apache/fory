@@ -64,6 +64,9 @@ const uninitSerialize = {
   readRef: () => {
     throw new Error("uninitSerialize");
   },
+  readRefWithoutTypeInfo: () => {
+    throw new Error("uninitSerialize");
+  },
   readNoRef: (fromRef: boolean) => {
     void fromRef;
     throw new Error("uninitSerialize");
