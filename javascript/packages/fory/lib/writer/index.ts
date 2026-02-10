@@ -153,13 +153,13 @@ export class BinaryWriter {
    * Otherwise write as 9 bytes: | 0b1 | little-endian 8bytes long |
    */
   writeTaggedInt64(value: bigint | number): number {
-    if (typeof value !== 'bigint') {
+    if (typeof value !== "bigint") {
       value = BigInt(value);
     }
-    
+
     const halfMaxInt32 = 0x3fffffffn; // 0x3fffffff
     const halfMinInt32 = -0x40000000n; // 0xc0000000 as signed
-    
+
     if (value >= halfMinInt32 && value <= halfMaxInt32) {
       // Small long encoded as int
       const v = Number(value) << 1; // bit 0 unset, means int
@@ -182,12 +182,12 @@ export class BinaryWriter {
    * Otherwise write as 9 bytes: | 0b1 | little-endian 8bytes long |
    */
   writeTaggedUInt64(value: bigint | number): number {
-    if (typeof value !== 'bigint') {
+    if (typeof value !== "bigint") {
       value = BigInt(value);
     }
-    
+
     const maxUInt32 = 0x7fffffffn; // 0x7fffffff
-    
+
     if (value >= 0n && value <= maxUInt32) {
       // Small ulong encoded as uint
       const v = Number(value) << 1; // bit 0 unset, means int

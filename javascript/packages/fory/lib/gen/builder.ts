@@ -47,7 +47,6 @@ export class BinaryReaderBuilder {
     return `${this.holder}.setCursor(${v})`;
   }
 
-
   varInt32() {
     return `${this.holder}.varInt32()`;
   }
@@ -217,12 +216,15 @@ class BinaryWriterBuilder {
   varUInt64(v: number | string) {
     return `${this.holder}.varUInt64(${v})`;
   }
+
   writeTaggedInt64(v: number | string) {
     return `${this.holder}.writeTaggedInt64(${v})`;
   }
+
   writeTaggedUInt64(v: number | string) {
     return `${this.holder}.writeTaggedUInt64(${v})`;
   }
+
   varInt64(v: number | string) {
     return `${this.holder}.varInt64(${v})`;
   }

@@ -114,7 +114,7 @@ export class BinaryReader {
     if (this.byteLength - readIdx < 4) {
       throw new Error("Insufficient bytes for tagged int64");
     }
-    
+
     const i = this.dataView.getInt32(readIdx, true);
     if ((i & 0b1) !== 0b1) {
       // Small long encoded as int
@@ -140,7 +140,7 @@ export class BinaryReader {
     if (this.byteLength - readIdx < 4) {
       throw new Error("Insufficient bytes for tagged uint64");
     }
-    
+
     const i = this.dataView.getUint32(readIdx, true);
     if ((i & 0b1) !== 0b1) {
       // Small ulong encoded as uint
