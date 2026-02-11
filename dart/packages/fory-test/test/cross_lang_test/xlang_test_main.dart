@@ -751,8 +751,8 @@ void _runEnumSchemaEvolutionCompatibleReverse() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(compatible: true);
-  fory.register(_testEnumSpec, 210);
-  fory.register(_twoEnumFieldStructEvolutionSpec, 211);
+  fory.register(_testEnumSpec, typeId: 210);
+  fory.register(_twoEnumFieldStructEvolutionSpec, typeId: 211);
   final _TwoEnumFieldStructEvolution obj =
       fory.deserialize(data) as _TwoEnumFieldStructEvolution;
   if (obj.f1 != _TestEnum.VALUE_C) {
@@ -765,7 +765,7 @@ void _runNullableFieldCompatibleNull() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(compatible: true);
-  fory.register(_nullableComprehensiveCompatibleSpec, 402);
+  fory.register(_nullableComprehensiveCompatibleSpec, typeId: 402);
   final _NullableComprehensiveCompatible obj =
       fory.deserialize(data) as _NullableComprehensiveCompatible;
   _writeFile(dataFile, fory.serialize(obj));
@@ -774,9 +774,9 @@ void _runNullableFieldCompatibleNull() {
 void _runCollectionElementRefOverride() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
-  final Fory fory = Fory(refTracking: true);
-  fory.register(_refOverrideElementSpec, 701);
-  fory.register(_refOverrideContainerSpec, 702);
+  final Fory fory = Fory(ref: true);
+  fory.register(_refOverrideElementSpec, typeId: 701);
+  fory.register(_refOverrideContainerSpec, typeId: 702);
 
   final _RefOverrideContainer obj =
       fory.deserialize(data) as _RefOverrideContainer;

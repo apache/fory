@@ -49,9 +49,9 @@ void main() {
 
     test('struct hash cross-language match', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject1, "test.ComplexObject1");
+      fory.register($ComplexObject1, typename: "test.ComplexObject1");
       var hashPair = fory.structHashPairForTest(ComplexObject1);
       ByteData byteData = ByteData(4);
       byteData.setUint32(0, hashPair.fromForyHash, Endian.little);

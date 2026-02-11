@@ -43,7 +43,7 @@ abstract base class PrimitiveSerializerCache extends SerializerCache {
   ) {
     // Currently, there are only two types of Ser for primitive types: one that write a reference
     // and one that does not, so only these two are cached here.
-    bool writeRef = conf.refTracking && !conf.basicTypesRefIgnored;
+    bool writeRef = conf.ref && !conf.basicTypesRefIgnored;
     return getSerWithRef(writeRef);
   }
 

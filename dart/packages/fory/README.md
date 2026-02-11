@@ -56,8 +56,8 @@ This generates the necessary code in `example.g.dart` and creates the `_$SomeCla
 ### Serializing and Deserializing
 
 ```dart
-Fory fory = Fory.builder().refTracking(true).build();
-fory.register($SomeClass, "example.SomeClass");
+Fory fory = Fory(ref: true);
+fory.register($SomeClass, typename: "example.SomeClass");
 SomeClass obj = SomeClass(1, 'SomeClass', {'a': 1.0});
 
 // Serialize
@@ -84,7 +84,7 @@ enum EnumFoo {
 Registration is similar to classes:
 
 ```dart
-fory.register($EnumFoo, "example.EnumFoo");
+fory.register($EnumFoo, typename: "example.EnumFoo");
 ```
 
 ## Type Support

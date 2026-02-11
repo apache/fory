@@ -57,9 +57,9 @@ void main() {
   group('Serializer registration', () {
     test('registers serializer & round-trips ComplexObject1', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject1, "test.ComplexObject1");
+      fory.register($ComplexObject1, typename: "test.ComplexObject1");
       fory.registerSerializer(ComplexObject1, const ComplexObject1Serializer());
 
       ComplexObject1 obj = ComplexObject1();

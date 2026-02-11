@@ -28,7 +28,7 @@ abstract base class TimeSerializerCache extends SerializerCache {
   Serializer getSerializer(ForyConfig conf, [Type? type]) {
     // Currently, there are only two types of Serialization for primitive types:
     // with ref and without ref. So only these two are cached here.
-    bool writeRef = conf.refTracking && !conf.timeRefIgnored;
+    bool writeRef = conf.ref && !conf.timeRefIgnored;
     return getSerWithRef(writeRef);
   }
 

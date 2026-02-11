@@ -46,7 +46,7 @@ final class ClassSerializerCache extends SerializerCache {
       spec.noArgConstruct,
       typeWraps,
       conf.compatible,
-      conf.refTracking,
+      conf.ref,
     );
   }
 }

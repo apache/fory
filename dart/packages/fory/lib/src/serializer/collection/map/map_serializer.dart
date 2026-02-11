@@ -172,14 +172,18 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     Serializer keySer;
     Serializer valueSer;
 
-    if (keyWrap != null && keyWrap.serializationCertain && keyWrap.ser != null) {
+    if (keyWrap != null &&
+        keyWrap.serializationCertain &&
+        keyWrap.ser != null) {
       chunkHeader |= _keyDeclType;
       keySer = keyWrap.ser!;
     } else {
       final typeInfo = pack.typeResolver.writeTypeInfo(chunkWriter, key0, pack);
       keySer = typeInfo.ser;
     }
-    if (valueWrap != null && valueWrap.serializationCertain && valueWrap.ser != null) {
+    if (valueWrap != null &&
+        valueWrap.serializationCertain &&
+        valueWrap.ser != null) {
       chunkHeader |= _valueDeclType;
       valueSer = valueWrap.ser!;
     } else {
@@ -277,7 +281,9 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     SerializerPack pack,
   ) {
     Serializer? valueSer = valueWrap?.ser;
-    if (valueWrap != null && valueWrap.serializationCertain && valueSer != null) {
+    if (valueWrap != null &&
+        valueWrap.serializationCertain &&
+        valueSer != null) {
       bool trackingRef = valueSer.writeRef;
       bw.writeUint8(trackingRef
           ? _nullKeyValueDeclTypeTrackingRef

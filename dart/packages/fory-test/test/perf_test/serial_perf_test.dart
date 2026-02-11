@@ -61,28 +61,28 @@ void main() {
   group('Serialization & Deserialization Performance', () {
     test('Serialize simple struct', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
+      fory.register($ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
       _testPerfSer(fory, o, 1000000, 'Serialize simple struct');
     });
 
     test('Deserialize simple struct', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
+      fory.register($ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
       _testPerfDeser(fory, o, 1000000, 'Deserialize simple struct');
     });
 
     test('Serialize medium complex struct', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
-      fory.register($ComplexObject1, "test.ComplexObject1");
+      fory.register($ComplexObject2, typename: "test.ComplexObject2");
+      fory.register($ComplexObject1, typename: "test.ComplexObject1");
       ComplexObject2 obj2 = ComplexObject2(true, {Int8(-1): Int32(2)});
       ComplexObject1 obj = ComplexObject1();
       obj.f1 = obj2;
@@ -102,10 +102,10 @@ void main() {
 
     test('Deserialize medium complex struct', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
-      fory.register($ComplexObject1, "test.ComplexObject1");
+      fory.register($ComplexObject2, typename: "test.ComplexObject2");
+      fory.register($ComplexObject1, typename: "test.ComplexObject1");
       ComplexObject2 obj2 = ComplexObject2(true, {Int8(-1): Int32(2)});
       ComplexObject1 obj = ComplexObject1();
       obj.f1 = obj2;
@@ -125,10 +125,10 @@ void main() {
 
     // test('test json serialize medium complex struct perf', () {
     //   Fory fory = Fory(
-    //     refTracking: true,
+    //     ref: true,
     //   );
-    //   fory.register($ComplexObject2, "test.ComplexObject2");
-    //   fory.register($ComplexObject1, "test.ComplexObject1");
+    //   fory.register($ComplexObject2, typename: "test.ComplexObject2");
+    //   fory.register($ComplexObject1, typename: "test.ComplexObject1");
     //   ComplexObject2 obj2 = ComplexObject2(true,{Int8(-1):Int32(2)});
     //   ComplexObject1 obj = ComplexObject1();
     //   obj.f1 = obj2;
@@ -148,10 +148,10 @@ void main() {
     //
     // test('test json deserialize medium complex struct perf', () {
     //   Fory fory = Fory(
-    //     refTracking: true,
+    //     ref: true,
     //   );
-    //   fory.register($ComplexObject2, "test.ComplexObject2");
-    //   fory.register($ComplexObject1, "test.ComplexObject1");
+    //   fory.register($ComplexObject2, typename: "test.ComplexObject2");
+    //   fory.register($ComplexObject1, typename: "test.ComplexObject1");
     //   ComplexObject2 obj2 = ComplexObject2(true,{Int8(-1):Int32(2)});
     //   ComplexObject1 obj = ComplexObject1();
     //   obj.f1 = obj2;

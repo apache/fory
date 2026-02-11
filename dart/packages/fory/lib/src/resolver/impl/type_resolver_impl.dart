@@ -123,28 +123,47 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   @override
-  void registerType(CustomTypeSpec spec, [Object? tagOrTypeId]) {
-    if (tagOrTypeId == null) {
-      String typeName = spec.dartType.toString();
-      _regWithNamespace(spec, typeName, typeName);
+  void registerType(
+    CustomTypeSpec spec, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    if (typeId != null) {
+      if (namespace != null || typename != null) {
+        throw RegistrationArgumentException(
+            'typeId cannot be used with namespace/typename');
+      }
+      _regWithTypeId(spec, typeId);
       return;
     }
-    if (tagOrTypeId is int) {
-      _regWithTypeId(spec, tagOrTypeId);
+
+    if (typename == null && namespace != null) {
+      throw RegistrationArgumentException(
+          'namespace cannot be set when typename is null');
+    }
+
+    if (typename == null) {
+      final String defaultName = spec.dartType.toString();
+      _regWithNamespace(spec, defaultName, defaultName);
       return;
     }
-    if (tagOrTypeId is! String) {
-      throw RegistrationArgumentException(tagOrTypeId);
+
+    if (namespace != null) {
+      final String fullName =
+          namespace.isEmpty ? typename : '$namespace.$typename';
+      _regWithNamespace(spec, fullName, typename, namespace);
+      return;
     }
-    String tag = tagOrTypeId;
-    int idx = tag.lastIndexOf('.');
-    if (idx == -1) {
-      _regWithNamespace(spec, tag, tag);
-    } else {
-      String ns = tag.substring(0, idx);
-      String tn = tag.substring(idx + 1);
-      _regWithNamespace(spec, tag, tn, ns);
+
+    final int separator = typename.lastIndexOf('.');
+    if (separator == -1) {
+      _regWithNamespace(spec, typename, typename);
+      return;
     }
+    final String inferredNamespace = typename.substring(0, separator);
+    final String simpleName = typename.substring(separator + 1);
+    _regWithNamespace(spec, typename, simpleName, inferredNamespace);
   }
 
   @override

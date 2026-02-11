@@ -54,7 +54,7 @@ class SerializationCoordinator {
       typeResolver.getRegisteredTag,
       this,
       typeResolver,
-      SerializationRefResolver.getOne(conf.refTracking),
+      SerializationRefResolver.getOne(conf.ref),
       SerializationRefResolver.noRefResolver,
       MetaStringWritingResolver.newInst,
       Stack<TypeSpecWrap>(),

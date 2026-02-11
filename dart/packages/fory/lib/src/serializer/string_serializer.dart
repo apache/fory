@@ -49,7 +49,7 @@ final class _StringSerializerCache extends SerializerCache {
   ) {
     // Currently, there are only two types of Ser for primitive types:
     // one that writes a reference and one that does not, so only these two are cached here.
-    bool writeRef = conf.refTracking && !conf.stringRefIgnored;
+    bool writeRef = conf.ref && !conf.stringRefIgnored;
     return getSerWithRef(writeRef);
   }
 

@@ -35,7 +35,12 @@ abstract base class TypeResolver {
     return TypeResolverImpl(conf);
   }
 
-  void registerType(CustomTypeSpec spec, [Object? tagOrTypeId]);
+  void registerType(
+    CustomTypeSpec spec, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  });
 
   void registerSerializer(Type type, Serializer ser);
 

@@ -19,14 +19,14 @@
 
 final class ForyConfig {
   final bool compatible;
-  final bool refTracking;
+  final bool ref;
   final bool basicTypesRefIgnored;
   final bool timeRefIgnored;
   final bool stringRefIgnored;
 
   const ForyConfig({
     this.compatible = false,
-    this.refTracking = false,
+    this.ref = false,
     this.basicTypesRefIgnored = true,
     this.timeRefIgnored = true,
     this.stringRefIgnored = false,

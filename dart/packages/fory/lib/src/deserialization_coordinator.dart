@@ -59,7 +59,7 @@ class DeserializationCoordinator {
       typeResolver.getRegisteredTag,
       header,
       this,
-      DeserializationRefResolver.getOne(conf.refTracking),
+      DeserializationRefResolver.getOne(conf.ref),
       typeResolver,
       Stack<TypeSpecWrap>(),
     );

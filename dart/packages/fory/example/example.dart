@@ -33,8 +33,8 @@ class Person with _$PersonFory {
 }
 
 void main() {
-  Fory fory = Fory.builder().refTracking(true).build();
-  fory.register($Person, "example.Person");
+  Fory fory = Fory(ref: true);
+  fory.register($Person, typename: "example.Person");
   Person obj = Person('Leo', 'Leo', 21, LocalDate(2004, 1, 1));
 
   // Serialize

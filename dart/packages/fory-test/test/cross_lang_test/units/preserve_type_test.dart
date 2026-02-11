@@ -39,7 +39,7 @@ void main() {
   group('Type preservation', () {
     test('primitives preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       Object? obj0 = _roundTrip(fory, true);
       check(obj0).isNotNull().isA<bool>();
@@ -72,7 +72,7 @@ void main() {
 
     test('strings and codeUnits preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       Object? obj1 = _roundTrip(fory, "str");
       check(obj1).isNotNull().isA<String>();
@@ -89,7 +89,7 @@ void main() {
 
     test('BoolList preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       Object? obj1 =
           _roundTrip(fory, BoolList.of([true, false, true, true, false, true]));
@@ -101,7 +101,7 @@ void main() {
 
     test('typed arrays preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       Int32List int32List = Int32List.fromList([1, 2]);
       Object? obj4 = _roundTrip(fory, int32List);
@@ -130,7 +130,7 @@ void main() {
 
     test('Lists preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       List<String> strList = ["str", "str"];
       Object? obj1 = _roundTrip(fory, strList);
@@ -156,7 +156,7 @@ void main() {
 
     test('Maps preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       Map<String, Int16> strMap = {"key": Int16(1), "key2": Int16(2)};
       Object? obj1 = _roundTrip(fory, strMap);
@@ -167,7 +167,7 @@ void main() {
 
     test('TimeObj preserved', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       TimeObj timeObj = TimeObj(
         LocalDate.epoch,
@@ -180,7 +180,7 @@ void main() {
         TimeStamp(-1714490301000000),
       );
 
-      fory.register($TimeObj, "test.TimeObj");
+      fory.register($TimeObj, typename: "test.TimeObj");
       Object? obj1 = _roundTrip(fory, timeObj);
       check(obj1).isNotNull().isA<TimeObj>();
       TimeObj timeObj1 = obj1 as TimeObj;

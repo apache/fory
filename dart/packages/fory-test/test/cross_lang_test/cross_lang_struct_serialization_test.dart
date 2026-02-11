@@ -37,9 +37,9 @@ void main() {
   group('Cross-language struct serialization', () {
     test('round-trips SimpleStruct1', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($SimpleStruct1, "SimpleStruct1");
+      fory.register($SimpleStruct1, typename: "SimpleStruct1");
       SimpleStruct1 obj = SimpleStruct1();
       obj.a = Int32.maxValue;
       Uint8List lis = fory.serialize(obj);
@@ -49,9 +49,9 @@ void main() {
 
     test('round-trips ComplexObject2', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
+      fory.register($ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
       CrossLangUtil.structRoundBack(fory, o, "test_serialize_simple_struct");
     },
@@ -60,10 +60,10 @@ void main() {
 
     test('round-trips ComplexObject1 with nested data', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
-      fory.register($ComplexObject1, "test.ComplexObject1");
+      fory.register($ComplexObject2, typename: "test.ComplexObject2");
+      fory.register($ComplexObject1, typename: "test.ComplexObject1");
       ComplexObject2 obj2 = ComplexObject2(true, {Int8(-1): Int32(2)});
       ComplexObject1 obj = ComplexObject1();
       obj.f1 = obj2;
@@ -85,7 +85,7 @@ void main() {
 
     test('preserves cross-language references', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       List<Object> list = [];
       Map<Object, Object> map = {};
@@ -117,9 +117,9 @@ void main() {
 
     test('round-trips ComplexObject3 with nested collections', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject3, "test.ComplexObject3");
+      fory.register($ComplexObject3, typename: "test.ComplexObject3");
       ComplexObject3 obj = ComplexObject3();
 
       Map<int, Float32> map1 = {

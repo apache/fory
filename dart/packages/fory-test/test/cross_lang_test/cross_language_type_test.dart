@@ -82,23 +82,23 @@ void _testCollectionType(Fory fory1, Fory fory2) {
   check((obj as Set).equals(set)).isTrue();
 }
 
-void _testArrayCollection(bool refTracking) {
+void _testArrayCollection(bool ref) {
   Fory fory1 = Fory(
-    refTracking: refTracking,
+    ref: ref,
   );
   Fory fory2 = Fory(
-    refTracking: refTracking,
+    ref: ref,
   );
   _testTypedDataArray(fory1, fory2);
   _testCollectionType(fory1, fory2);
 }
 
-void _basicTypeTest(bool refTracking) {
+void _basicTypeTest(bool ref) {
   Fory fory1 = Fory(
-    refTracking: refTracking,
+    ref: ref,
   );
   Fory fory2 = Fory(
-    refTracking: refTracking,
+    ref: ref,
   );
   check('str').equals(serDe(fory1, fory2, 'str'));
   // with non-latin char
@@ -127,7 +127,7 @@ void main() {
   group('Cross-language data type serialization', () {
     test('serializes various datatypes via ByteWriter', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       ByteWriter bw = ByteWriter();
       fory.serializeTo(true, bw);
@@ -232,12 +232,12 @@ void main() {
         skip:
             'Cross-language serialization with Python needs protocol alignment');
 
-    test('round-trips basic types with/without refTracking', () {
+    test('round-trips basic types with/without ref', () {
       _basicTypeTest(true);
       _basicTypeTest(false);
     });
 
-    test('round-trips arrays & collections with/without refTracking', () {
+    test('round-trips arrays & collections with/without ref', () {
       _testArrayCollection(true);
       _testArrayCollection(false);
     });
