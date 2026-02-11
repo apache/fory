@@ -19,36 +19,6 @@
 
 import 'package:fory/src/codegen/exception/constraint_violation_exception.dart';
 
-abstract class FieldException extends ForyConstraintViolation {
-  final String _libPath;
-  final String _className;
-  final List<String> _invalidFields;
-
-  FieldException(
-      this._libPath, this._className, this._invalidFields, super._constraint,
-      [super.where]);
-
-  @override
-  void giveExceptionMessage(StringBuffer buf) {
-    super.giveExceptionMessage(buf);
-    buf.write('related class: ');
-    buf.write(_libPath);
-    buf.write('@');
-    buf.write(_className);
-    buf.write('\n');
-    buf.write('invalidFields: ');
-    buf.writeAll(_invalidFields, ', ');
-    buf.write('\n');
-  }
-
-  @override
-  String toString() {
-    StringBuffer buf = StringBuffer();
-    giveExceptionMessage(buf);
-    return buf.toString();
-  }
-}
-
 enum FieldAccessErrorType {
   noWayToAssign(
       "This field needs to be assigned a value because it's includedFromFory, but it's not a constructor parameter and can't be assigned via a setter."),
