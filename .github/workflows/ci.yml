@@ -679,6 +679,45 @@ jobs:
       - name: Run Go IDL Tests
         run: ./integration_tests/idl_tests/run_go_tests.sh
 
+  dart_xlang:
+    name: Dart Xlang Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Dart SDK
+        run: |
+          DART_VERSION=3.6.1
+          wget -q https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-x64-release.zip
+          unzip -q dartsdk-linux-x64-release.zip
+          echo "$PWD/dart-sdk/bin" >> $GITHUB_PATH
+      - name: Display Dart version
+        run: dart --version
+      - name: Get Dart dependencies
+        run: |
+          cd dart
+          dart pub get
+      - name: Run Dart Xlang Test
+        env:
+          FORY_DART_JAVA_CI: "1"
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests
+          cd fory-core
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.DartXlangTest
+
   dart:
     name: Dart CI
     runs-on: ubuntu-latest
@@ -701,7 +740,7 @@ jobs:
       - name: Generate code
         run: |
           cd dart/packages/fory-test
-          dart run build_runner build
+          dart run build_runner build --delete-conflicting-outputs
       - name: Run tests
         run: |
           cd dart/packages/fory-test

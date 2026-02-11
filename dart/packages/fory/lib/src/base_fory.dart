@@ -23,10 +23,12 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/serializer/serializer.dart' show Serializer;
 
-abstract class BaseFory{
-  void register(CustomTypeSpec spec, [String? tag]);
+abstract class BaseFory {
+  void register(CustomTypeSpec spec, [Object? tagOrTypeId]);
   void registerSerializer(Type type, Serializer ser);
   Object? fromFory(Uint8List bytes, [ByteReader? br]);
-  Uint8List toFory(Object? obj,);
+  Uint8List toFory(
+    Object? obj,
+  );
   void toForyWithWriter(Object? obj, ByteWriter writer);
 }

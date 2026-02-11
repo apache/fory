@@ -19,7 +19,7 @@
 
 import 'package:fory/src/config/fory_config.dart';
 
-class ForyConfigManager{
+class ForyConfigManager {
   // singleton
   static final ForyConfigManager _instance = ForyConfigManager._();
   static ForyConfigManager get inst => _instance;
@@ -29,6 +29,7 @@ class ForyConfigManager{
   int get nextConfigId => configId++;
 
   ForyConfig createConfig({
+    bool compatible = false,
     bool refTracking = true,
     bool basicTypesRefIgnored = true,
     bool timeRefIgnored = true,
@@ -36,6 +37,7 @@ class ForyConfigManager{
   }) {
     return ForyConfig.onlyForManager(
       nextConfigId,
+      compatible: compatible,
       refTracking: refTracking,
       basicTypesRefIgnored: basicTypesRefIgnored,
       timeRefIgnored: timeRefIgnored,
