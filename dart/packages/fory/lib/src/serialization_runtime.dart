@@ -150,8 +150,10 @@ class SerializationRuntime {
   }
 
   void writeWithSerializer(ByteWriter bw, Serializer serializer, Object? obj,
-      SerializationContext pack) {
-    if (serializer.writeRef) {
+      SerializationContext pack,
+      {bool? trackingRefOverride}) {
+    bool trackingRef = trackingRefOverride ?? serializer.writeRef;
+    if (trackingRef) {
       SerializationRefMeta serializerWithRef = pack.refResolver.getRefId(obj);
       bw.writeInt8(serializerWithRef.refFlag.id);
       if (serializerWithRef.refId != null) {

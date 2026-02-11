@@ -38,6 +38,9 @@ final class ByteReaderImpl extends ByteReader {
   final int _length;
 
   @override
+  int get remaining => _length - _offset;
+
+  @override
   void skip(int length) {
     assert(length > 0);
     _offset += length;

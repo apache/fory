@@ -41,6 +41,7 @@ import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/meta/specs/class_spec.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
+import 'package:fory/src/meta/specs/field_sorter.dart';
 import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
@@ -296,7 +297,17 @@ final class TypeResolverImpl extends TypeResolver {
     for (int i = 0; i < typeWraps.length; ++i) {
       wrap = typeWraps[i];
       if (wrap.serializationCertain) {
-        wrap.serializer = _ctx.type2TypeInfo[wrap.type]!.serializer;
+        final TypeInfo? typeInfo = _ctx.type2TypeInfo[wrap.type];
+        if (typeInfo != null && typeInfo.objType == wrap.objType) {
+          wrap.serializer = typeInfo.serializer;
+        } else {
+          TypeInfo? objTypeInfo;
+          if (wrap.objType.id >= 0 &&
+              wrap.objType.id < _ctx.objTypeId2TypeInfo.length) {
+            objTypeInfo = _ctx.objTypeId2TypeInfo[wrap.objType.id];
+          }
+          wrap.serializer = objTypeInfo?.serializer ?? typeInfo?.serializer;
+        }
       } else if (wrap.objType == ObjType.LIST) {
         wrap.serializer = _ctx.abstractListSerializer;
       } else if (wrap.objType == ObjType.SET) {
@@ -322,7 +333,10 @@ final class TypeResolverImpl extends TypeResolver {
   @override
   TypeInfo readTypeInfo(ByteReader br) {
     int xtypeId = br.readUint8();
-    ObjType xtype = ObjType.fromId(xtypeId)!;
+    ObjType? xtype = ObjType.fromId(xtypeId);
+    if (xtype == null) {
+      throw UnregisteredTypeException('xtypeId=$xtypeId');
+    }
     switch (xtype) {
       case ObjType.ENUM:
       case ObjType.STRUCT:
@@ -580,7 +594,7 @@ final class TypeResolverImpl extends TypeResolver {
         fields.add(field);
       }
     }
-    return fields;
+    return FieldSorter.sort(fields);
   }
 
   Uint8List _buildTypeDefBody(TypeInfo typeInfo, List<FieldSpec> fields) {
@@ -643,6 +657,9 @@ final class TypeResolverImpl extends TypeResolver {
     final int encodingFlag = _fieldNameEncodingFlag(meta.encoding);
     int size = encodedName.length - 1;
     int header = encodingFlag << 6;
+    if (field.trackingRef) {
+      header |= 1;
+    }
     if (field.typeSpec.nullable) {
       header |= 2;
     }
@@ -703,15 +720,29 @@ final class TypeResolverImpl extends TypeResolver {
     switch (typeSpec.objType) {
       case ObjType.NAMED_ENUM:
         return ObjType.ENUM.id;
-      case ObjType.NAMED_STRUCT:
-        return ObjType.STRUCT.id;
-      case ObjType.NAMED_COMPATIBLE_STRUCT:
-        return ObjType.COMPATIBLE_STRUCT.id;
       case ObjType.NAMED_EXT:
         return ObjType.EXT.id;
       case ObjType.TYPED_UNION:
       case ObjType.NAMED_UNION:
         return ObjType.UNION.id;
+      case ObjType.STRUCT:
+      case ObjType.COMPATIBLE_STRUCT:
+      case ObjType.NAMED_STRUCT:
+      case ObjType.NAMED_COMPATIBLE_STRUCT:
+        final TypeInfo? typeInfo = _ctx.type2TypeInfo[typeSpec.type];
+        if (typeInfo != null && typeInfo.objType.isStructType()) {
+          return typeInfo.objType.id;
+        }
+        if (_ctx.conf.compatible) {
+          return typeSpec.objType == ObjType.NAMED_STRUCT ||
+                  typeSpec.objType == ObjType.NAMED_COMPATIBLE_STRUCT
+              ? ObjType.NAMED_COMPATIBLE_STRUCT.id
+              : ObjType.COMPATIBLE_STRUCT.id;
+        }
+        return typeSpec.objType == ObjType.NAMED_STRUCT ||
+                typeSpec.objType == ObjType.NAMED_COMPATIBLE_STRUCT
+            ? ObjType.NAMED_STRUCT.id
+            : ObjType.STRUCT.id;
       default:
         return typeSpec.objType.id;
     }

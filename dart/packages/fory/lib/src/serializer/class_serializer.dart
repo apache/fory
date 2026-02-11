@@ -27,6 +27,7 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/meta/specs/class_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
+import 'package:fory/src/meta/specs/field_sorter.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/serializer/custom_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -54,10 +55,10 @@ final class ClassSerializerCache extends SerializerCache {
 final class ClassSerializer extends CustomSerializer<Object> {
   static const ClassSerializerCache cache = ClassSerializerCache();
 
-  final List<FieldSpec> _fields;
+  late final List<FieldSpec> _fields;
   final HasArgsCons? _construct;
   final NoArgsCons? _noArgConstruct;
-  final List<TypeSpecWrap> _fieldTypeWraps;
+  late final List<TypeSpecWrap> _fieldTypeWraps;
   final bool _compatible;
 
   late final int _fromForyHash;
@@ -67,16 +68,22 @@ final class ClassSerializer extends CustomSerializer<Object> {
   bool _fieldSerializersComputed = false;
 
   ClassSerializer(
-    this._fields,
+    List<FieldSpec> fields,
     this._construct,
     this._noArgConstruct,
-    this._fieldTypeWraps,
+    List<TypeSpecWrap> fieldTypeWraps,
     this._compatible,
     bool refWrite,
   ) : super(
           ObjType.NAMED_STRUCT,
           refWrite,
-        );
+        ) {
+    assert(fields.length == fieldTypeWraps.length);
+    final List<int> sortedIndices = FieldSorter.sortedIndices(fields);
+    _fields = FieldSorter.reorderByIndices<FieldSpec>(fields, sortedIndices);
+    _fieldTypeWraps = FieldSorter.reorderByIndices<TypeSpecWrap>(
+        fieldTypeWraps, sortedIndices);
+  }
 
   StructHashPair getHashPairForTest(StructHashResolver structHashResolver,
       String Function(Type type) getTagByDartType) {
@@ -123,11 +130,17 @@ final class ClassSerializer extends CustomSerializer<Object> {
       late Object? fieldValue;
       Serializer? serializer = _fieldTypeWraps[i].serializer;
       if (serializer == null) {
-        fieldValue =
-            pack.deserializationCoordinator.readDynamicWithRef(br, pack);
-      } else if (typeWrap.nullable) {
-        fieldValue = pack.deserializationCoordinator
-            .readWithSerializer(br, serializer, pack);
+        if (fieldSpec.trackingRef || typeWrap.nullable) {
+          fieldValue =
+              pack.deserializationCoordinator.readDynamicWithRef(br, pack);
+        } else {
+          fieldValue =
+              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+        }
+      } else if (fieldSpec.trackingRef || typeWrap.nullable) {
+        fieldValue = pack.deserializationCoordinator.readWithSerializer(
+            br, serializer, pack,
+            trackingRefOverride: fieldSpec.trackingRef);
       } else {
         fieldValue = serializer.read(br, -1, pack);
       }
@@ -167,10 +180,17 @@ final class ClassSerializer extends CustomSerializer<Object> {
       Object? fieldValue = fieldSpec.getter!(v);
       Serializer? serializer = typeWrap.serializer;
       if (serializer == null) {
-        pack.serializationCoordinator.writeDynamicWithRef(bw, fieldValue, pack);
-      } else if (typeWrap.nullable) {
-        pack.serializationCoordinator
-            .writeWithSerializer(bw, serializer, fieldValue, pack);
+        if (fieldSpec.trackingRef || typeWrap.nullable) {
+          pack.serializationCoordinator
+              .writeDynamicWithRef(bw, fieldValue, pack);
+        } else {
+          pack.serializationCoordinator
+              .writeDynamicWithoutRef(bw, fieldValue as Object, pack);
+        }
+      } else if (fieldSpec.trackingRef || typeWrap.nullable) {
+        pack.serializationCoordinator.writeWithSerializer(
+            bw, serializer, fieldValue, pack,
+            trackingRefOverride: fieldSpec.trackingRef);
       } else {
         serializer.write(bw, fieldValue!, pack);
       }
@@ -193,10 +213,17 @@ final class ClassSerializer extends CustomSerializer<Object> {
       }
       Serializer? serializer = typeWrap.serializer;
       if (serializer == null) {
-        args[i] = pack.deserializationCoordinator.readDynamicWithRef(br, pack);
-      } else if (typeWrap.nullable) {
-        args[i] = pack.deserializationCoordinator
-            .readWithSerializer(br, serializer, pack);
+        if (fieldSpec.trackingRef || typeWrap.nullable) {
+          args[i] =
+              pack.deserializationCoordinator.readDynamicWithRef(br, pack);
+        } else {
+          args[i] =
+              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+        }
+      } else if (fieldSpec.trackingRef || typeWrap.nullable) {
+        args[i] = pack.deserializationCoordinator.readWithSerializer(
+            br, serializer, pack,
+            trackingRefOverride: fieldSpec.trackingRef);
       } else {
         args[i] = serializer.read(br, -1, pack);
       }

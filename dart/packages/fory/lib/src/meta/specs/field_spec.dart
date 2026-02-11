@@ -29,25 +29,21 @@ class FieldSpec {
   final TypeSpec typeSpec;
   final Getter? getter;
   final Setter? setter;
+  final bool trackingRef;
 
   final bool includeFromFory;
   final bool includeToFory;
 
-  const FieldSpec(
-    this.name,
-    this.typeSpec,
-    this.includeFromFory,
-    this.includeToFory,
-    this.getter,
-    this.setter,
-  );
+  const FieldSpec(this.name, this.typeSpec, this.includeFromFory,
+      this.includeToFory, this.getter, this.setter,
+      {this.trackingRef = false});
 
   /// Regarding the == comparison of Function, besides static methods which can be directly compared using ==,
   /// it is difficult to compare whether the functions are the same. So for testing purposes, we use a simplified
   /// comparison by checking for null.
   @override
-  int get hashCode => Object.hash(
-      name, typeSpec, includeFromFory, includeToFory, getter, setter);
+  int get hashCode => Object.hash(name, typeSpec, includeFromFory,
+      includeToFory, getter, setter, trackingRef);
 
   @override
   bool operator ==(Object other) {
@@ -58,6 +54,7 @@ class FieldSpec {
             typeSpec == other.typeSpec &&
             includeFromFory == other.includeFromFory &&
             includeToFory == other.includeToFory &&
+            trackingRef == other.trackingRef &&
             (identical(getter, other.getter) ||
                 (getter == null) == (other.getter == null)) &&
             (identical(setter, other.setter) ||

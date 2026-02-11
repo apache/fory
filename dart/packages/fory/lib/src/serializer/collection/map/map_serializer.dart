@@ -343,8 +343,9 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.serializationCoordinator
-          .writeWithSerializer(bw, serializer, value, pack);
+      pack.serializationCoordinator.writeWithSerializer(
+          bw, serializer, value, pack,
+          trackingRefOverride: true);
     } else {
       serializer.write(bw, value, pack);
     }
@@ -364,7 +365,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     Object? value;
     if (trackRef) {
       value = pack.deserializationCoordinator
-          .readWithSerializer(br, serializer, pack);
+          .readWithSerializer(br, serializer, pack, trackingRefOverride: true);
     } else {
       value = serializer.read(br, -1, pack);
     }

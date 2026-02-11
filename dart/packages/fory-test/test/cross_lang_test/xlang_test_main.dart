@@ -37,10 +37,22 @@ void _writeFile(String path, Uint8List data) {
   File(path).writeAsBytesSync(data, flush: true);
 }
 
-void _passthrough() {
+void _copyRaw() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   _writeFile(dataFile, data);
+}
+
+void _roundTripFory(Fory fory) {
+  final String dataFile = _getDataFile();
+  final Uint8List data = _readFile(dataFile);
+  final ByteReader reader = ByteReader.forBytes(data);
+  final ByteWriter writer = ByteWriter();
+  while (reader.remaining > 0) {
+    final Object? obj = fory.deserialize(data, reader);
+    fory.serializeTo(obj, writer);
+  }
+  _writeFile(dataFile, writer.takeBytes());
 }
 
 enum _TestEnum {
@@ -747,6 +759,942 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
   () => _NullableComprehensiveCompatible(),
 );
 
+enum _Color {
+  Green,
+  Red,
+  Blue,
+  White,
+}
+
+const EnumSpec _colorSpec = EnumSpec(
+  _Color,
+  _Color.values,
+);
+
+class _Item {
+  String name = '';
+}
+
+final ClassSpec _itemSpec = ClassSpec(
+  _Item,
+  false,
+  true,
+  [
+    FieldSpec(
+      'name',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item).name,
+      (Object inst, dynamic v) => (inst as _Item).name = v as String,
+    ),
+  ],
+  null,
+  () => _Item(),
+);
+
+class _SimpleStruct {
+  Map<Int32, double> f1 = <Int32, double>{};
+  Int32 f2 = Int32(0);
+  _Item f3 = _Item();
+  String f4 = '';
+  _Color f5 = _Color.Green;
+  List<String> f6 = <String>[];
+  Int32 f7 = Int32(0);
+  Int32 f8 = Int32(0);
+  Int32 last = Int32(0);
+}
+
+Map<Int32, double> _asInt32DoubleMap(Object? value) {
+  if (value == null) {
+    return <Int32, double>{};
+  }
+  return (value as Map).map(
+    (Object? k, Object? v) => MapEntry(k as Int32, v as double),
+  );
+}
+
+final ClassSpec _simpleStructSpec = ClassSpec(
+  _SimpleStruct,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(
+        Map,
+        ObjType.MAP,
+        false,
+        false,
+        null,
+        [
+          TypeSpec(Int32, ObjType.VAR_INT32, true, true, null, []),
+          TypeSpec(double, ObjType.FLOAT64, true, true, null, []),
+        ],
+      ),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f1,
+      (Object inst, dynamic v) =>
+          (inst as _SimpleStruct).f1 = _asInt32DoubleMap(v),
+    ),
+    FieldSpec(
+      'f2',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f2,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).f2 = v as Int32,
+    ),
+    FieldSpec(
+      'f3',
+      const TypeSpec(_Item, ObjType.STRUCT, false, false, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f3,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).f3 = v as _Item,
+    ),
+    FieldSpec(
+      'f4',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f4,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).f4 = v as String,
+    ),
+    FieldSpec(
+      'f5',
+      const TypeSpec(_Color, ObjType.ENUM, false, true, _colorSpec, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f5,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).f5 = v as _Color,
+    ),
+    FieldSpec(
+      'f6',
+      const TypeSpec(
+        List,
+        ObjType.LIST,
+        false,
+        false,
+        null,
+        [
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+        ],
+      ),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f6,
+      (Object inst, dynamic v) =>
+          (inst as _SimpleStruct).f6 = (v as List).cast<String>(),
+    ),
+    FieldSpec(
+      'f7',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f7,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).f7 = v as Int32,
+    ),
+    FieldSpec(
+      'f8',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).f8,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).f8 = v as Int32,
+    ),
+    FieldSpec(
+      'last',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _SimpleStruct).last,
+      (Object inst, dynamic v) => (inst as _SimpleStruct).last = v as Int32,
+    ),
+  ],
+  null,
+  () => _SimpleStruct(),
+);
+
+class _Item1 {
+  Int32 f1 = Int32(0);
+  Int32 f2 = Int32(0);
+  Int32 f3 = Int32(0);
+  Int32 f4 = Int32(0);
+  Int32 f5 = Int32(0);
+  Int32 f6 = Int32(0);
+}
+
+final ClassSpec _item1Spec = ClassSpec(
+  _Item1,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item1).f1,
+      (Object inst, dynamic v) => (inst as _Item1).f1 = v as Int32,
+    ),
+    FieldSpec(
+      'f2',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item1).f2,
+      (Object inst, dynamic v) => (inst as _Item1).f2 = v as Int32,
+    ),
+    FieldSpec(
+      'f3',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item1).f3,
+      (Object inst, dynamic v) => (inst as _Item1).f3 = v as Int32,
+    ),
+    FieldSpec(
+      'f4',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item1).f4,
+      (Object inst, dynamic v) => (inst as _Item1).f4 = v as Int32,
+    ),
+    FieldSpec(
+      'f5',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item1).f5,
+      (Object inst, dynamic v) => (inst as _Item1).f5 = v as Int32,
+    ),
+    FieldSpec(
+      'f6',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _Item1).f6,
+      (Object inst, dynamic v) => (inst as _Item1).f6 = v as Int32,
+    ),
+  ],
+  null,
+  () => _Item1(),
+);
+
+class _StructWithList {
+  List<String?> items = <String?>[];
+}
+
+final ClassSpec _structWithListSpec = ClassSpec(
+  _StructWithList,
+  false,
+  true,
+  [
+    FieldSpec(
+      'items',
+      const TypeSpec(
+        List,
+        ObjType.LIST,
+        false,
+        false,
+        null,
+        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+      ),
+      true,
+      true,
+      (Object inst) => (inst as _StructWithList).items,
+      (Object inst, dynamic v) =>
+          (inst as _StructWithList).items = (v as List).cast<String?>(),
+    ),
+  ],
+  null,
+  () => _StructWithList(),
+);
+
+class _StructWithMap {
+  Map<String?, String?> data = <String?, String?>{};
+}
+
+Map<String?, String?> _asNullableStringMap(Object? value) {
+  if (value == null) {
+    return <String?, String?>{};
+  }
+  return (value as Map).map(
+    (Object? k, Object? v) => MapEntry(k as String?, v as String?),
+  );
+}
+
+final ClassSpec _structWithMapSpec = ClassSpec(
+  _StructWithMap,
+  false,
+  true,
+  [
+    FieldSpec(
+      'data',
+      const TypeSpec(
+        Map,
+        ObjType.MAP,
+        false,
+        false,
+        null,
+        [
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+        ],
+      ),
+      true,
+      true,
+      (Object inst) => (inst as _StructWithMap).data,
+      (Object inst, dynamic v) =>
+          (inst as _StructWithMap).data = _asNullableStringMap(v),
+    ),
+  ],
+  null,
+  () => _StructWithMap(),
+);
+
+class _VersionCheckStruct {
+  Int32 f1 = Int32(0);
+  String f2 = '';
+  double f3 = 0.0;
+}
+
+final ClassSpec _versionCheckStructSpec = ClassSpec(
+  _VersionCheckStruct,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _VersionCheckStruct).f1,
+      (Object inst, dynamic v) => (inst as _VersionCheckStruct).f1 = v as Int32,
+    ),
+    FieldSpec(
+      'f2',
+      const TypeSpec(String, ObjType.STRING, true, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _VersionCheckStruct).f2,
+      (Object inst, dynamic v) =>
+          (inst as _VersionCheckStruct).f2 = (v as String?) ?? '',
+    ),
+    FieldSpec(
+      'f3',
+      const TypeSpec(double, ObjType.FLOAT64, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _VersionCheckStruct).f3,
+      (Object inst, dynamic v) =>
+          (inst as _VersionCheckStruct).f3 = v as double,
+    ),
+  ],
+  null,
+  () => _VersionCheckStruct(),
+);
+
+class _OneStringFieldStruct {
+  String f1 = '';
+}
+
+final ClassSpec _oneStringFieldStructSpec = ClassSpec(
+  _OneStringFieldStruct,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(String, ObjType.STRING, true, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _OneStringFieldStruct).f1,
+      (Object inst, dynamic v) =>
+          (inst as _OneStringFieldStruct).f1 = (v as String?) ?? '',
+    ),
+  ],
+  null,
+  () => _OneStringFieldStruct(),
+);
+
+class _TwoStringFieldStruct {
+  String f1 = '';
+  String f2 = '';
+}
+
+final ClassSpec _twoStringFieldStructSpec = ClassSpec(
+  _TwoStringFieldStruct,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _TwoStringFieldStruct).f1,
+      (Object inst, dynamic v) =>
+          (inst as _TwoStringFieldStruct).f1 = v as String,
+    ),
+    FieldSpec(
+      'f2',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _TwoStringFieldStruct).f2,
+      (Object inst, dynamic v) =>
+          (inst as _TwoStringFieldStruct).f2 = v as String,
+    ),
+  ],
+  null,
+  () => _TwoStringFieldStruct(),
+);
+
+class _OneEnumFieldStruct {
+  _TestEnum f1 = _TestEnum.VALUE_A;
+}
+
+final ClassSpec _oneEnumFieldStructSpec = ClassSpec(
+  _OneEnumFieldStruct,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(_TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      true,
+      true,
+      (Object inst) => (inst as _OneEnumFieldStruct).f1,
+      (Object inst, dynamic v) =>
+          (inst as _OneEnumFieldStruct).f1 = v as _TestEnum,
+    ),
+  ],
+  null,
+  () => _OneEnumFieldStruct(),
+);
+
+class _TwoEnumFieldStruct {
+  _TestEnum f1 = _TestEnum.VALUE_A;
+  _TestEnum f2 = _TestEnum.VALUE_A;
+}
+
+final ClassSpec _twoEnumFieldStructSpec = ClassSpec(
+  _TwoEnumFieldStruct,
+  false,
+  true,
+  [
+    FieldSpec(
+      'f1',
+      const TypeSpec(_TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      true,
+      true,
+      (Object inst) => (inst as _TwoEnumFieldStruct).f1,
+      (Object inst, dynamic v) =>
+          (inst as _TwoEnumFieldStruct).f1 = v as _TestEnum,
+    ),
+    FieldSpec(
+      'f2',
+      const TypeSpec(_TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      true,
+      true,
+      (Object inst) => (inst as _TwoEnumFieldStruct).f2,
+      (Object inst, dynamic v) =>
+          (inst as _TwoEnumFieldStruct).f2 = v as _TestEnum,
+    ),
+  ],
+  null,
+  () => _TwoEnumFieldStruct(),
+);
+
+class _NullableComprehensiveSchemaConsistent {
+  Int8 byteField = Int8(0);
+  Int16 shortField = Int16(0);
+  Int32 intField = Int32(0);
+  int longField = 0;
+  Float32 floatField = Float32(0);
+  double doubleField = 0.0;
+  bool boolField = false;
+  String stringField = '';
+  List<String> listField = <String>[];
+  Set<String> setField = <String>{};
+  Map<String, String> mapField = <String, String>{};
+  Int32? nullableInt;
+  int? nullableLong;
+  Float32? nullableFloat;
+  double? nullableDouble;
+  bool? nullableBool;
+  String? nullableString;
+  List<String>? nullableList;
+  Set<String>? nullableSet;
+  Map<String, String>? nullableMap;
+}
+
+final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
+  _NullableComprehensiveSchemaConsistent,
+  false,
+  true,
+  [
+    FieldSpec(
+      'byte_field',
+      const TypeSpec(Int8, ObjType.INT8, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).byteField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).byteField =
+              v as Int8,
+    ),
+    FieldSpec(
+      'short_field',
+      const TypeSpec(Int16, ObjType.INT16, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).shortField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).shortField =
+              v as Int16,
+    ),
+    FieldSpec(
+      'int_field',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).intField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).intField =
+              v as Int32,
+    ),
+    FieldSpec(
+      'long_field',
+      const TypeSpec(int, ObjType.VAR_INT64, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).longField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).longField = v as int,
+    ),
+    FieldSpec(
+      'float_field',
+      const TypeSpec(Float32, ObjType.FLOAT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).floatField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).floatField =
+              v as Float32,
+    ),
+    FieldSpec(
+      'double_field',
+      const TypeSpec(double, ObjType.FLOAT64, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).doubleField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).doubleField =
+              v as double,
+    ),
+    FieldSpec(
+      'bool_field',
+      const TypeSpec(bool, ObjType.BOOL, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).boolField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).boolField =
+              v as bool,
+    ),
+    FieldSpec(
+      'string_field',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).stringField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).stringField =
+              v as String,
+    ),
+    FieldSpec(
+      'list_field',
+      const TypeSpec(
+        List,
+        ObjType.LIST,
+        false,
+        false,
+        null,
+        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+      ),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).listField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).listField =
+              (v as List).cast<String>(),
+    ),
+    FieldSpec(
+      'set_field',
+      const TypeSpec(
+        Set,
+        ObjType.SET,
+        false,
+        false,
+        null,
+        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+      ),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).setField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).setField =
+              (v as Set).cast<String>(),
+    ),
+    FieldSpec(
+      'map_field',
+      const TypeSpec(
+        Map,
+        ObjType.MAP,
+        false,
+        false,
+        null,
+        [
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+        ],
+      ),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).mapField,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).mapField =
+              _asStringMap(v),
+    ),
+    FieldSpec(
+      'nullable_int',
+      const TypeSpec(Int32, ObjType.VAR_INT32, true, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableInt,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableInt =
+              v as Int32?,
+    ),
+    FieldSpec(
+      'nullable_long',
+      const TypeSpec(int, ObjType.VAR_INT64, true, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableLong,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableLong =
+              v as int?,
+    ),
+    FieldSpec(
+      'nullable_float',
+      const TypeSpec(Float32, ObjType.FLOAT32, true, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableFloat,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableFloat =
+              v as Float32?,
+    ),
+    FieldSpec(
+      'nullable_double',
+      const TypeSpec(double, ObjType.FLOAT64, true, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableDouble,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableDouble =
+              v as double?,
+    ),
+    FieldSpec(
+      'nullable_bool',
+      const TypeSpec(bool, ObjType.BOOL, true, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableBool,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableBool =
+              v as bool?,
+    ),
+    FieldSpec(
+      'nullable_string',
+      const TypeSpec(String, ObjType.STRING, true, true, null, []),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableString,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableString =
+              v as String?,
+    ),
+    FieldSpec(
+      'nullable_list',
+      const TypeSpec(
+        List,
+        ObjType.LIST,
+        true,
+        false,
+        null,
+        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+      ),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableList,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableList =
+              v == null ? null : (v as List).cast<String>(),
+    ),
+    FieldSpec(
+      'nullable_set',
+      const TypeSpec(
+        Set,
+        ObjType.SET,
+        true,
+        false,
+        null,
+        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+      ),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableSet,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableSet =
+              v == null ? null : (v as Set).cast<String>(),
+    ),
+    FieldSpec(
+      'nullable_map',
+      const TypeSpec(
+        Map,
+        ObjType.MAP,
+        true,
+        false,
+        null,
+        [
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          TypeSpec(String, ObjType.STRING, true, true, null, []),
+        ],
+      ),
+      true,
+      true,
+      (Object inst) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableMap,
+      (Object inst, dynamic v) =>
+          (inst as _NullableComprehensiveSchemaConsistent).nullableMap =
+              v == null ? null : _asStringMap(v),
+    ),
+  ],
+  null,
+  () => _NullableComprehensiveSchemaConsistent(),
+);
+
+class _RefInnerSchemaConsistent {
+  Int32 id = Int32(0);
+  String name = '';
+}
+
+class _RefOuterSchemaConsistent {
+  _RefInnerSchemaConsistent? inner1;
+  _RefInnerSchemaConsistent? inner2;
+}
+
+final ClassSpec _refInnerSchemaConsistentSpec = ClassSpec(
+  _RefInnerSchemaConsistent,
+  false,
+  true,
+  [
+    FieldSpec(
+      'id',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _RefInnerSchemaConsistent).id,
+      (Object inst, dynamic v) =>
+          (inst as _RefInnerSchemaConsistent).id = v as Int32,
+    ),
+    FieldSpec(
+      'name',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _RefInnerSchemaConsistent).name,
+      (Object inst, dynamic v) =>
+          (inst as _RefInnerSchemaConsistent).name = v as String,
+    ),
+  ],
+  null,
+  () => _RefInnerSchemaConsistent(),
+);
+
+final ClassSpec _refOuterSchemaConsistentSpec = ClassSpec(
+  _RefOuterSchemaConsistent,
+  false,
+  true,
+  [
+    FieldSpec(
+      'inner1',
+      const TypeSpec(
+        _RefInnerSchemaConsistent,
+        ObjType.STRUCT,
+        true,
+        true,
+        null,
+        [],
+      ),
+      true,
+      true,
+      (Object inst) => (inst as _RefOuterSchemaConsistent).inner1,
+      (Object inst, dynamic v) => (inst as _RefOuterSchemaConsistent).inner1 =
+          v as _RefInnerSchemaConsistent?,
+      trackingRef: true,
+    ),
+    FieldSpec(
+      'inner2',
+      const TypeSpec(
+        _RefInnerSchemaConsistent,
+        ObjType.STRUCT,
+        true,
+        true,
+        null,
+        [],
+      ),
+      true,
+      true,
+      (Object inst) => (inst as _RefOuterSchemaConsistent).inner2,
+      (Object inst, dynamic v) => (inst as _RefOuterSchemaConsistent).inner2 =
+          v as _RefInnerSchemaConsistent?,
+      trackingRef: true,
+    ),
+  ],
+  null,
+  () => _RefOuterSchemaConsistent(),
+);
+
+class _RefInnerCompatible {
+  Int32 id = Int32(0);
+  String name = '';
+}
+
+class _RefOuterCompatible {
+  _RefInnerCompatible? inner1;
+  _RefInnerCompatible? inner2;
+}
+
+final ClassSpec _refInnerCompatibleSpec = ClassSpec(
+  _RefInnerCompatible,
+  false,
+  true,
+  [
+    FieldSpec(
+      'id',
+      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _RefInnerCompatible).id,
+      (Object inst, dynamic v) => (inst as _RefInnerCompatible).id = v as Int32,
+    ),
+    FieldSpec(
+      'name',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _RefInnerCompatible).name,
+      (Object inst, dynamic v) =>
+          (inst as _RefInnerCompatible).name = v as String,
+    ),
+  ],
+  null,
+  () => _RefInnerCompatible(),
+);
+
+final ClassSpec _refOuterCompatibleSpec = ClassSpec(
+  _RefOuterCompatible,
+  false,
+  true,
+  [
+    FieldSpec(
+      'inner1',
+      const TypeSpec(
+          _RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _RefOuterCompatible).inner1,
+      (Object inst, dynamic v) =>
+          (inst as _RefOuterCompatible).inner1 = v as _RefInnerCompatible?,
+      trackingRef: true,
+    ),
+    FieldSpec(
+      'inner2',
+      const TypeSpec(
+          _RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _RefOuterCompatible).inner2,
+      (Object inst, dynamic v) =>
+          (inst as _RefOuterCompatible).inner2 = v as _RefInnerCompatible?,
+      trackingRef: true,
+    ),
+  ],
+  null,
+  () => _RefOuterCompatible(),
+);
+
+class _CircularRefStruct {
+  String name = '';
+  _CircularRefStruct? selfRef;
+}
+
+final ClassSpec _circularRefStructSpec = ClassSpec(
+  _CircularRefStruct,
+  false,
+  false,
+  [
+    FieldSpec(
+      'name',
+      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _CircularRefStruct).name,
+      (Object inst, dynamic v) =>
+          (inst as _CircularRefStruct).name = v as String,
+    ),
+    FieldSpec(
+      'self_ref',
+      const TypeSpec(_CircularRefStruct, ObjType.STRUCT, true, true, null, []),
+      true,
+      true,
+      (Object inst) => (inst as _CircularRefStruct).selfRef,
+      (Object inst, dynamic v) =>
+          (inst as _CircularRefStruct).selfRef = v as _CircularRefStruct?,
+      trackingRef: true,
+    ),
+  ],
+  null,
+  () => _CircularRefStruct(),
+);
+
 void _runEnumSchemaEvolutionCompatibleReverse() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
@@ -793,6 +1741,177 @@ void _runCollectionElementRefOverride() {
   _writeFile(dataFile, fory.serialize(out));
 }
 
+void _registerSimpleById(Fory fory) {
+  fory.register(_colorSpec, typeId: 101);
+  fory.register(_itemSpec, typeId: 102);
+  fory.register(_simpleStructSpec, typeId: 103);
+}
+
+void _registerSimpleByName(Fory fory) {
+  fory.register(_colorSpec, namespace: 'demo', typename: 'color');
+  fory.register(_itemSpec, namespace: 'demo', typename: 'item');
+  fory.register(_simpleStructSpec,
+      namespace: 'demo', typename: 'simple_struct');
+}
+
+void _runRoundTripCase(String caseName) {
+  switch (caseName) {
+    case 'test_buffer':
+    case 'test_buffer_var':
+    case 'test_murmurhash3':
+    case 'test_union_xlang':
+    case 'test_skip_id_custom':
+    case 'test_skip_name_custom':
+    case 'test_consistent_named':
+    case 'test_polymorphic_list':
+    case 'test_polymorphic_map':
+    case 'test_schema_evolution_compatible_reverse':
+    case 'test_unsigned_schema_consistent_simple':
+    case 'test_unsigned_schema_consistent':
+    case 'test_unsigned_schema_compatible':
+      _copyRaw();
+      return;
+    case 'test_string_serializer':
+      _roundTripFory(Fory(compatible: true));
+      return;
+    case 'test_cross_language_serializer':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_colorSpec, typeId: 101);
+      _roundTripFory(fory);
+      return;
+    case 'test_simple_struct':
+      final Fory fory = Fory(compatible: true);
+      _registerSimpleById(fory);
+      _roundTripFory(fory);
+      return;
+    case 'test_named_simple_struct':
+      final Fory fory = Fory(compatible: true);
+      _registerSimpleByName(fory);
+      _roundTripFory(fory);
+      return;
+    case 'test_list':
+    case 'test_map':
+    case 'test_item':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_itemSpec, typeId: 102);
+      _roundTripFory(fory);
+      return;
+    case 'test_integer':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_item1Spec, typeId: 101);
+      _roundTripFory(fory);
+      return;
+    case 'test_color':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_colorSpec, typeId: 101);
+      _roundTripFory(fory);
+      return;
+    case 'test_struct_with_list':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_structWithListSpec, typeId: 201);
+      _roundTripFory(fory);
+      return;
+    case 'test_struct_with_map':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_structWithMapSpec, typeId: 202);
+      _roundTripFory(fory);
+      return;
+    case 'test_struct_version_check':
+      final Fory fory = Fory();
+      fory.register(_versionCheckStructSpec, typeId: 201);
+      _roundTripFory(fory);
+      return;
+    case 'test_one_string_field_schema':
+      final Fory fory = Fory();
+      fory.register(_oneStringFieldStructSpec, typeId: 200);
+      _roundTripFory(fory);
+      return;
+    case 'test_one_string_field_compatible':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_oneStringFieldStructSpec, typeId: 200);
+      _roundTripFory(fory);
+      return;
+    case 'test_two_string_field_compatible':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_twoStringFieldStructSpec, typeId: 201);
+      _roundTripFory(fory);
+      return;
+    case 'test_schema_evolution_compatible':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_twoStringFieldStructSpec, typeId: 200);
+      _roundTripFory(fory);
+      return;
+    case 'test_one_enum_field_schema':
+      final Fory fory = Fory();
+      fory.register(_testEnumSpec, typeId: 210);
+      fory.register(_oneEnumFieldStructSpec, typeId: 211);
+      _roundTripFory(fory);
+      return;
+    case 'test_one_enum_field_compatible':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_testEnumSpec, typeId: 210);
+      fory.register(_oneEnumFieldStructSpec, typeId: 211);
+      _roundTripFory(fory);
+      return;
+    case 'test_two_enum_field_compatible':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_testEnumSpec, typeId: 210);
+      fory.register(_twoEnumFieldStructSpec, typeId: 212);
+      _roundTripFory(fory);
+      return;
+    case 'test_enum_schema_evolution_compatible':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_testEnumSpec, typeId: 210);
+      fory.register(_twoEnumFieldStructSpec, typeId: 211);
+      _roundTripFory(fory);
+      return;
+    case 'test_nullable_field_schema_consistent_not_null':
+    case 'test_nullable_field_schema_consistent_null':
+      final Fory fory = Fory();
+      fory.register(_nullableComprehensiveSchemaConsistentSpec, typeId: 401);
+      _roundTripFory(fory);
+      return;
+    case 'test_nullable_field_compatible_not_null':
+      final Fory fory = Fory(compatible: true);
+      fory.register(_nullableComprehensiveCompatibleSpec, typeId: 402);
+      _roundTripFory(fory);
+      return;
+    case 'test_nullable_field_compatible_null':
+      _runNullableFieldCompatibleNull();
+      return;
+    case 'test_ref_schema_consistent':
+      final Fory fory = Fory(ref: true);
+      fory.register(_refInnerSchemaConsistentSpec, typeId: 501);
+      fory.register(_refOuterSchemaConsistentSpec, typeId: 502);
+      _roundTripFory(fory);
+      return;
+    case 'test_ref_compatible':
+      final Fory fory = Fory(compatible: true, ref: true);
+      fory.register(_refInnerCompatibleSpec, typeId: 503);
+      fory.register(_refOuterCompatibleSpec, typeId: 504);
+      _roundTripFory(fory);
+      return;
+    case 'test_collection_element_ref_override':
+      _runCollectionElementRefOverride();
+      return;
+    case 'test_circular_ref_schema_consistent':
+      final Fory fory = Fory(ref: true);
+      fory.register(_circularRefStructSpec, typeId: 601);
+      _roundTripFory(fory);
+      return;
+    case 'test_circular_ref_compatible':
+      final Fory fory = Fory(compatible: true, ref: true);
+      fory.register(_circularRefStructSpec, typeId: 602);
+      _roundTripFory(fory);
+      return;
+    case 'test_enum_schema_evolution_compatible_reverse':
+      _runEnumSchemaEvolutionCompatibleReverse();
+      return;
+    default:
+      throw UnsupportedError('Unknown test case: $caseName');
+  }
+}
+
 void main(List<String> args) {
   if (args.isEmpty) {
     stderr.writeln('Usage: dart run xlang_test_main.dart <case_name>');
@@ -801,67 +1920,7 @@ void main(List<String> args) {
   final String caseName = args[0];
 
   try {
-    switch (caseName) {
-      case 'test_buffer':
-      case 'test_buffer_var':
-      case 'test_murmurhash3':
-      case 'test_string_serializer':
-      case 'test_cross_language_serializer':
-      case 'test_simple_struct':
-      case 'test_named_simple_struct':
-      case 'test_list':
-      case 'test_map':
-      case 'test_integer':
-      case 'test_item':
-      case 'test_color':
-      case 'test_union_xlang':
-      case 'test_struct_with_list':
-      case 'test_struct_with_map':
-      case 'test_skip_id_custom':
-      case 'test_skip_name_custom':
-      case 'test_consistent_named':
-      case 'test_struct_version_check':
-      case 'test_polymorphic_list':
-      case 'test_polymorphic_map':
-      case 'test_one_string_field_schema':
-      case 'test_one_string_field_compatible':
-      case 'test_two_string_field_compatible':
-      case 'test_schema_evolution_compatible':
-      case 'test_schema_evolution_compatible_reverse':
-      case 'test_one_enum_field_schema':
-      case 'test_one_enum_field_compatible':
-      case 'test_two_enum_field_compatible':
-      case 'test_enum_schema_evolution_compatible':
-        _passthrough();
-        break;
-      case 'test_enum_schema_evolution_compatible_reverse':
-        _runEnumSchemaEvolutionCompatibleReverse();
-        break;
-      case 'test_nullable_field_schema_consistent_not_null':
-      case 'test_nullable_field_schema_consistent_null':
-      case 'test_nullable_field_compatible_not_null':
-        _passthrough();
-        break;
-      case 'test_nullable_field_compatible_null':
-        _runNullableFieldCompatibleNull();
-        break;
-      case 'test_ref_schema_consistent':
-      case 'test_ref_compatible':
-        _passthrough();
-        break;
-      case 'test_collection_element_ref_override':
-        _runCollectionElementRefOverride();
-        break;
-      case 'test_circular_ref_schema_consistent':
-      case 'test_circular_ref_compatible':
-      case 'test_unsigned_schema_consistent_simple':
-      case 'test_unsigned_schema_consistent':
-      case 'test_unsigned_schema_compatible':
-        _passthrough();
-        break;
-      default:
-        throw UnsupportedError('Unknown test case: $caseName');
-    }
+    _runRoundTripCase(caseName);
   } catch (e, st) {
     stderr.writeln('Dart xlang case failed: $caseName');
     stderr.writeln(e);

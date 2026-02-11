@@ -90,8 +90,10 @@ class DeserializationRuntime {
   }
 
   Object? readWithSerializer(
-      ByteReader br, Serializer serializer, DeserializationContext pack) {
-    if (serializer.writeRef) {
+      ByteReader br, Serializer serializer, DeserializationContext pack,
+      {bool? trackingRefOverride}) {
+    bool trackingRef = trackingRefOverride ?? serializer.writeRef;
+    if (trackingRef) {
       DeserializationRefResolver refResolver = pack.refResolver;
       int refFlag = br.readInt8();
       //assert(RefFlag.checkAllow(refFlag));
