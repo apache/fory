@@ -25,7 +25,7 @@ import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
-import 'package:fory/src/meta/specs/class_spec.dart';
+import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/meta/specs/field_sorter.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
@@ -39,7 +39,7 @@ final class ClassSerializerCache extends SerializerCache {
 
   @override
   ClassSerializer getSerializerWithSpec(
-      ForyConfig conf, covariant ClassSpec spec, Type dartType) {
+      ForyConfig conf, covariant TypeSpec spec, Type dartType) {
     List<TypeSpecWrap> typeWraps = TypeSpecWrap.ofList(spec.fields);
     return ClassSerializer(
       spec.fields,

@@ -27,15 +27,15 @@ import 'package:test/test.dart';
 
 void main() {
   group('Struct codegen for ComplexObject2', () {
-    test('generates ClassSpec for ComplexObject2', () async {
-      ClassSpec spec = ClassSpec(
+    test('generates TypeSpec for ComplexObject2', () async {
+      TypeSpec spec = TypeSpec(
         ComplexObject2,
         true,
         false,
         [
           FieldSpec(
             'f1',
-            TypeSpec(
+            FieldTypeSpec(
               Object,
               ObjType.UNKNOWN,
               false,
@@ -50,14 +50,14 @@ void main() {
           ),
           FieldSpec(
             'f2',
-            TypeSpec(
+            FieldTypeSpec(
               Map,
               ObjType.MAP,
               false,
               false,
               null,
               const [
-                TypeSpec(
+                FieldTypeSpec(
                   Int8,
                   ObjType.INT8,
                   false,
@@ -65,7 +65,7 @@ void main() {
                   null,
                   [],
                 ),
-                TypeSpec(
+                FieldTypeSpec(
                   Int32,
                   ObjType.INT32,
                   false,

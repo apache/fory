@@ -25,7 +25,7 @@ import 'package:fory/src/deserialization_dispatcher.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/meta/specs/class_spec.dart';
+import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/meta/specs/enum_spec.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -94,7 +94,7 @@ final class Fory {
 
   @inline
   void registerStruct(
-    ClassSpec spec, {
+    TypeSpec spec, {
     int? typeId,
     String? namespace,
     String? typename,

@@ -38,11 +38,11 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
-import 'package:fory/src/meta/specs/class_spec.dart';
+import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/meta/specs/field_sorter.dart';
-import 'package:fory/src/meta/specs/type_spec.dart';
+import 'package:fory/src/meta/specs/field_type_spec.dart';
 import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
 import 'package:fory/src/resolver/tag_string_resolver.dart';
@@ -277,7 +277,7 @@ final class TypeResolverImpl extends TypeResolver {
     }
     // Indicates ClassSerializer
     return ClassSerializer.cache
-        .getSerializerWithSpec(_ctx.conf, spec as ClassSpec, spec.dartType);
+        .getSerializerWithSpec(_ctx.conf, spec as TypeSpec, spec.dartType);
   }
 
   /// This type must be a user-defined class or enum
@@ -574,7 +574,7 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   List<FieldSpec> _fieldsForTypeDef(CustomTypeSpec spec) {
-    if (spec is! ClassSpec) {
+    if (spec is! TypeSpec) {
       return const <FieldSpec>[];
     }
     final List<FieldSpec> fields = <FieldSpec>[];
@@ -667,27 +667,27 @@ final class TypeResolverImpl extends TypeResolver {
     writer.writeBytes(encodedName);
   }
 
-  void _writeNestedTypeInfo(ByteWriter writer, TypeSpec typeSpec) {
+  void _writeNestedTypeInfo(ByteWriter writer, FieldTypeSpec typeSpec) {
     final int typeId = _fieldTypeId(typeSpec);
     switch (ObjType.fromId(typeId)) {
       case ObjType.LIST:
       case ObjType.SET:
-        final TypeSpec elem = typeSpec.genericsArgs.isNotEmpty
+        final FieldTypeSpec elem = typeSpec.genericsArgs.isNotEmpty
             ? typeSpec.genericsArgs[0]
-            : const TypeSpec(
-                Object, ObjType.UNKNOWN, true, false, null, <TypeSpec>[]);
+            : const FieldTypeSpec(
+                Object, ObjType.UNKNOWN, true, false, null, <FieldTypeSpec>[]);
         _writeNestedFieldTypeHeader(writer, elem);
         _writeNestedTypeInfo(writer, elem);
         break;
       case ObjType.MAP:
-        final TypeSpec key = typeSpec.genericsArgs.isNotEmpty
+        final FieldTypeSpec key = typeSpec.genericsArgs.isNotEmpty
             ? typeSpec.genericsArgs[0]
-            : const TypeSpec(
-                Object, ObjType.UNKNOWN, true, false, null, <TypeSpec>[]);
-        final TypeSpec value = typeSpec.genericsArgs.length > 1
+            : const FieldTypeSpec(
+                Object, ObjType.UNKNOWN, true, false, null, <FieldTypeSpec>[]);
+        final FieldTypeSpec value = typeSpec.genericsArgs.length > 1
             ? typeSpec.genericsArgs[1]
-            : const TypeSpec(
-                Object, ObjType.UNKNOWN, true, false, null, <TypeSpec>[]);
+            : const FieldTypeSpec(
+                Object, ObjType.UNKNOWN, true, false, null, <FieldTypeSpec>[]);
         _writeNestedFieldTypeHeader(writer, key);
         _writeNestedTypeInfo(writer, key);
         _writeNestedFieldTypeHeader(writer, value);
@@ -698,7 +698,7 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
-  void _writeNestedFieldTypeHeader(ByteWriter writer, TypeSpec typeSpec) {
+  void _writeNestedFieldTypeHeader(ByteWriter writer, FieldTypeSpec typeSpec) {
     int header = _fieldTypeId(typeSpec) << 2;
     if (typeSpec.nullable) {
       header |= 2;
@@ -706,7 +706,7 @@ final class TypeResolverImpl extends TypeResolver {
     writer.writeVarUint32Small7(header);
   }
 
-  int _fieldTypeId(TypeSpec typeSpec) {
+  int _fieldTypeId(FieldTypeSpec typeSpec) {
     switch (typeSpec.objType) {
       case ObjType.NAMED_ENUM:
         return ObjType.ENUM.id;

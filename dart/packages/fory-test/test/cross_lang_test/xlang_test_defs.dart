@@ -35,14 +35,14 @@ class TwoEnumFieldStructEvolution {
   TestEnum f2 = TestEnum.VALUE_A;
 }
 
-final ClassSpec _twoEnumFieldStructEvolutionSpec = ClassSpec(
+final TypeSpec _twoEnumFieldStructEvolutionSpec = TypeSpec(
   TwoEnumFieldStructEvolution,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(
+      const FieldTypeSpec(
         TestEnum,
         ObjType.ENUM,
         false,
@@ -58,7 +58,7 @@ final ClassSpec _twoEnumFieldStructEvolutionSpec = ClassSpec(
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(
+      const FieldTypeSpec(
         TestEnum,
         ObjType.ENUM,
         false,
@@ -87,14 +87,14 @@ class RefOverrideContainer {
   Map<String, RefOverrideElement> mapField = <String, RefOverrideElement>{};
 }
 
-final ClassSpec _refOverrideElementSpec = ClassSpec(
+final TypeSpec _refOverrideElementSpec = TypeSpec(
   RefOverrideElement,
   false,
   true,
   [
     FieldSpec(
       'id',
-      const TypeSpec(
+      const FieldTypeSpec(
         Int32,
         ObjType.VAR_INT32,
         false,
@@ -109,7 +109,7 @@ final ClassSpec _refOverrideElementSpec = ClassSpec(
     ),
     FieldSpec(
       'name',
-      const TypeSpec(
+      const FieldTypeSpec(
         String,
         ObjType.STRING,
         false,
@@ -128,21 +128,21 @@ final ClassSpec _refOverrideElementSpec = ClassSpec(
   () => RefOverrideElement(),
 );
 
-final ClassSpec _refOverrideContainerSpec = ClassSpec(
+final TypeSpec _refOverrideContainerSpec = TypeSpec(
   RefOverrideContainer,
   false,
   true,
   [
     FieldSpec(
       'list_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         false,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             RefOverrideElement,
             ObjType.STRUCT,
             false,
@@ -160,14 +160,14 @@ final ClassSpec _refOverrideContainerSpec = ClassSpec(
     ),
     FieldSpec(
       'map_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         false,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -175,7 +175,7 @@ final ClassSpec _refOverrideContainerSpec = ClassSpec(
             null,
             [],
           ),
-          TypeSpec(
+          FieldTypeSpec(
             RefOverrideElement,
             ObjType.STRUCT,
             false,
@@ -240,14 +240,14 @@ Map<String, String> _asStringMap(Object? value) {
   );
 }
 
-final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
+final TypeSpec _nullableComprehensiveCompatibleSpec = TypeSpec(
   NullableComprehensiveCompatible,
   false,
   true,
   [
     FieldSpec(
       'boxed_double',
-      const TypeSpec(
+      const FieldTypeSpec(
         double,
         ObjType.FLOAT64,
         false,
@@ -263,7 +263,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'double_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         double,
         ObjType.FLOAT64,
         false,
@@ -279,7 +279,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'boxed_float',
-      const TypeSpec(
+      const FieldTypeSpec(
         Float32,
         ObjType.FLOAT32,
         false,
@@ -295,7 +295,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'float_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Float32,
         ObjType.FLOAT32,
         false,
@@ -311,7 +311,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'short_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Int16,
         ObjType.INT16,
         false,
@@ -327,7 +327,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'byte_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Int8,
         ObjType.INT8,
         false,
@@ -343,7 +343,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'bool_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         bool,
         ObjType.BOOL,
         false,
@@ -359,7 +359,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'boxed_bool',
-      const TypeSpec(
+      const FieldTypeSpec(
         bool,
         ObjType.BOOL,
         false,
@@ -375,7 +375,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'boxed_long',
-      const TypeSpec(
+      const FieldTypeSpec(
         int,
         ObjType.VAR_INT64,
         false,
@@ -391,7 +391,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'long_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         int,
         ObjType.VAR_INT64,
         false,
@@ -407,7 +407,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'boxed_int',
-      const TypeSpec(
+      const FieldTypeSpec(
         Int32,
         ObjType.VAR_INT32,
         false,
@@ -423,7 +423,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'int_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Int32,
         ObjType.VAR_INT32,
         false,
@@ -439,7 +439,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_double1',
-      const TypeSpec(
+      const FieldTypeSpec(
         double,
         ObjType.FLOAT64,
         true,
@@ -456,7 +456,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_float1',
-      const TypeSpec(
+      const FieldTypeSpec(
         Float32,
         ObjType.FLOAT32,
         true,
@@ -472,7 +472,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_bool1',
-      const TypeSpec(
+      const FieldTypeSpec(
         bool,
         ObjType.BOOL,
         true,
@@ -488,7 +488,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_long1',
-      const TypeSpec(
+      const FieldTypeSpec(
         int,
         ObjType.VAR_INT64,
         true,
@@ -504,7 +504,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_int1',
-      const TypeSpec(
+      const FieldTypeSpec(
         Int32,
         ObjType.VAR_INT32,
         true,
@@ -520,7 +520,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_string2',
-      const TypeSpec(
+      const FieldTypeSpec(
         String,
         ObjType.STRING,
         true,
@@ -537,7 +537,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'string_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         String,
         ObjType.STRING,
         false,
@@ -553,14 +553,14 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'list_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         false,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -578,14 +578,14 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_list2',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         true,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -603,14 +603,14 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_set2',
-      const TypeSpec(
+      const FieldTypeSpec(
         Set,
         ObjType.SET,
         true,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -628,14 +628,14 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'set_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Set,
         ObjType.SET,
         false,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -653,14 +653,14 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'map_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         false,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -668,7 +668,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
             null,
             [],
           ),
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -686,14 +686,14 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_map2',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         true,
         false,
         null,
         [
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -701,7 +701,7 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
             null,
             [],
           ),
-          TypeSpec(
+          FieldTypeSpec(
             String,
             ObjType.STRING,
             true,
@@ -738,14 +738,14 @@ class Item {
   String name = '';
 }
 
-final ClassSpec _itemSpec = ClassSpec(
+final TypeSpec _itemSpec = TypeSpec(
   Item,
   false,
   true,
   [
     FieldSpec(
       'name',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item).name,
@@ -777,22 +777,22 @@ Map<Int32, double> _asInt32DoubleMap(Object? value) {
   );
 }
 
-final ClassSpec _simpleStructSpec = ClassSpec(
+final TypeSpec _simpleStructSpec = TypeSpec(
   SimpleStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         false,
         false,
         null,
         [
-          TypeSpec(Int32, ObjType.VAR_INT32, true, true, null, []),
-          TypeSpec(double, ObjType.FLOAT64, true, true, null, []),
+          FieldTypeSpec(Int32, ObjType.VAR_INT32, true, true, null, []),
+          FieldTypeSpec(double, ObjType.FLOAT64, true, true, null, []),
         ],
       ),
       true,
@@ -803,7 +803,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).f2,
@@ -811,7 +811,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f3',
-      const TypeSpec(Item, ObjType.STRUCT, false, false, null, []),
+      const FieldTypeSpec(Item, ObjType.STRUCT, false, false, null, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).f3,
@@ -819,7 +819,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f4',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).f4,
@@ -827,7 +827,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f5',
-      const TypeSpec(Color, ObjType.ENUM, false, true, _colorSpec, []),
+      const FieldTypeSpec(Color, ObjType.ENUM, false, true, _colorSpec, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).f5,
@@ -835,14 +835,14 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f6',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         false,
         false,
         null,
         [
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
         ],
       ),
       true,
@@ -853,7 +853,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f7',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).f7,
@@ -861,7 +861,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f8',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).f8,
@@ -869,7 +869,7 @@ final ClassSpec _simpleStructSpec = ClassSpec(
     ),
     FieldSpec(
       'last',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as SimpleStruct).last,
@@ -889,14 +889,14 @@ class Item1 {
   Int32 f6 = Int32(0);
 }
 
-final ClassSpec _item1Spec = ClassSpec(
+final TypeSpec _item1Spec = TypeSpec(
   Item1,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item1).f1,
@@ -904,7 +904,7 @@ final ClassSpec _item1Spec = ClassSpec(
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item1).f2,
@@ -912,7 +912,7 @@ final ClassSpec _item1Spec = ClassSpec(
     ),
     FieldSpec(
       'f3',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item1).f3,
@@ -920,7 +920,7 @@ final ClassSpec _item1Spec = ClassSpec(
     ),
     FieldSpec(
       'f4',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item1).f4,
@@ -928,7 +928,7 @@ final ClassSpec _item1Spec = ClassSpec(
     ),
     FieldSpec(
       'f5',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item1).f5,
@@ -936,7 +936,7 @@ final ClassSpec _item1Spec = ClassSpec(
     ),
     FieldSpec(
       'f6',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as Item1).f6,
@@ -951,20 +951,20 @@ class StructWithList {
   List<String?> items = <String?>[];
 }
 
-final ClassSpec _structWithListSpec = ClassSpec(
+final TypeSpec _structWithListSpec = TypeSpec(
   StructWithList,
   false,
   true,
   [
     FieldSpec(
       'items',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         false,
         false,
         null,
-        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+        [FieldTypeSpec(String, ObjType.STRING, true, true, null, [])],
       ),
       true,
       true,
@@ -990,22 +990,22 @@ Map<String?, String?> _asNullableStringMap(Object? value) {
   );
 }
 
-final ClassSpec _structWithMapSpec = ClassSpec(
+final TypeSpec _structWithMapSpec = TypeSpec(
   StructWithMap,
   false,
   true,
   [
     FieldSpec(
       'data',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         false,
         false,
         null,
         [
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
         ],
       ),
       true,
@@ -1025,14 +1025,14 @@ class VersionCheckStruct {
   double f3 = 0.0;
 }
 
-final ClassSpec _versionCheckStructSpec = ClassSpec(
+final TypeSpec _versionCheckStructSpec = TypeSpec(
   VersionCheckStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as VersionCheckStruct).f1,
@@ -1040,7 +1040,7 @@ final ClassSpec _versionCheckStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(String, ObjType.STRING, true, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
       true,
       true,
       (Object inst) => (inst as VersionCheckStruct).f2,
@@ -1049,7 +1049,7 @@ final ClassSpec _versionCheckStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f3',
-      const TypeSpec(double, ObjType.FLOAT64, false, true, null, []),
+      const FieldTypeSpec(double, ObjType.FLOAT64, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as VersionCheckStruct).f3,
@@ -1064,14 +1064,14 @@ class OneStringFieldStruct {
   String f1 = '';
 }
 
-final ClassSpec _oneStringFieldStructSpec = ClassSpec(
+final TypeSpec _oneStringFieldStructSpec = TypeSpec(
   OneStringFieldStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(String, ObjType.STRING, true, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
       true,
       true,
       (Object inst) => (inst as OneStringFieldStruct).f1,
@@ -1088,14 +1088,14 @@ class TwoStringFieldStruct {
   String f2 = '';
 }
 
-final ClassSpec _twoStringFieldStructSpec = ClassSpec(
+final TypeSpec _twoStringFieldStructSpec = TypeSpec(
   TwoStringFieldStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as TwoStringFieldStruct).f1,
@@ -1104,7 +1104,7 @@ final ClassSpec _twoStringFieldStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as TwoStringFieldStruct).f2,
@@ -1120,14 +1120,15 @@ class OneEnumFieldStruct {
   TestEnum f1 = TestEnum.VALUE_A;
 }
 
-final ClassSpec _oneEnumFieldStructSpec = ClassSpec(
+final TypeSpec _oneEnumFieldStructSpec = TypeSpec(
   OneEnumFieldStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      const FieldTypeSpec(
+          TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
       true,
       true,
       (Object inst) => (inst as OneEnumFieldStruct).f1,
@@ -1144,14 +1145,15 @@ class TwoEnumFieldStruct {
   TestEnum f2 = TestEnum.VALUE_A;
 }
 
-final ClassSpec _twoEnumFieldStructSpec = ClassSpec(
+final TypeSpec _twoEnumFieldStructSpec = TypeSpec(
   TwoEnumFieldStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      const FieldTypeSpec(
+          TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
       true,
       true,
       (Object inst) => (inst as TwoEnumFieldStruct).f1,
@@ -1160,7 +1162,8 @@ final ClassSpec _twoEnumFieldStructSpec = ClassSpec(
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      const FieldTypeSpec(
+          TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
       true,
       true,
       (Object inst) => (inst as TwoEnumFieldStruct).f2,
@@ -1195,14 +1198,14 @@ class NullableComprehensiveSchemaConsistent {
   Map<String, String>? nullableMap;
 }
 
-final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
+final TypeSpec _nullableComprehensiveSchemaConsistentSpec = TypeSpec(
   NullableComprehensiveSchemaConsistent,
   false,
   true,
   [
     FieldSpec(
       'byte_field',
-      const TypeSpec(Int8, ObjType.INT8, false, true, null, []),
+      const FieldTypeSpec(Int8, ObjType.INT8, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1212,7 +1215,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'short_field',
-      const TypeSpec(Int16, ObjType.INT16, false, true, null, []),
+      const FieldTypeSpec(Int16, ObjType.INT16, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1223,7 +1226,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'int_field',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as NullableComprehensiveSchemaConsistent).intField,
@@ -1232,7 +1235,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'long_field',
-      const TypeSpec(int, ObjType.VAR_INT64, false, true, null, []),
+      const FieldTypeSpec(int, ObjType.VAR_INT64, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1242,7 +1245,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'float_field',
-      const TypeSpec(Float32, ObjType.FLOAT32, false, true, null, []),
+      const FieldTypeSpec(Float32, ObjType.FLOAT32, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1253,7 +1256,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'double_field',
-      const TypeSpec(double, ObjType.FLOAT64, false, true, null, []),
+      const FieldTypeSpec(double, ObjType.FLOAT64, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1264,7 +1267,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'bool_field',
-      const TypeSpec(bool, ObjType.BOOL, false, true, null, []),
+      const FieldTypeSpec(bool, ObjType.BOOL, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1274,7 +1277,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'string_field',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1285,13 +1288,13 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'list_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         false,
         false,
         null,
-        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+        [FieldTypeSpec(String, ObjType.STRING, true, true, null, [])],
       ),
       true,
       true,
@@ -1303,13 +1306,13 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'set_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Set,
         ObjType.SET,
         false,
         false,
         null,
-        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+        [FieldTypeSpec(String, ObjType.STRING, true, true, null, [])],
       ),
       true,
       true,
@@ -1320,15 +1323,15 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'map_field',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         false,
         false,
         null,
         [
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
         ],
       ),
       true,
@@ -1340,7 +1343,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_int',
-      const TypeSpec(Int32, ObjType.VAR_INT32, true, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, true, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1351,7 +1354,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_long',
-      const TypeSpec(int, ObjType.VAR_INT64, true, true, null, []),
+      const FieldTypeSpec(int, ObjType.VAR_INT64, true, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1362,7 +1365,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_float',
-      const TypeSpec(Float32, ObjType.FLOAT32, true, true, null, []),
+      const FieldTypeSpec(Float32, ObjType.FLOAT32, true, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1373,7 +1376,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_double',
-      const TypeSpec(double, ObjType.FLOAT64, true, true, null, []),
+      const FieldTypeSpec(double, ObjType.FLOAT64, true, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1384,7 +1387,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_bool',
-      const TypeSpec(bool, ObjType.BOOL, true, true, null, []),
+      const FieldTypeSpec(bool, ObjType.BOOL, true, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1395,7 +1398,7 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_string',
-      const TypeSpec(String, ObjType.STRING, true, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
       true,
       true,
       (Object inst) =>
@@ -1406,13 +1409,13 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_list',
-      const TypeSpec(
+      const FieldTypeSpec(
         List,
         ObjType.LIST,
         true,
         false,
         null,
-        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+        [FieldTypeSpec(String, ObjType.STRING, true, true, null, [])],
       ),
       true,
       true,
@@ -1424,13 +1427,13 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_set',
-      const TypeSpec(
+      const FieldTypeSpec(
         Set,
         ObjType.SET,
         true,
         false,
         null,
-        [TypeSpec(String, ObjType.STRING, true, true, null, [])],
+        [FieldTypeSpec(String, ObjType.STRING, true, true, null, [])],
       ),
       true,
       true,
@@ -1442,15 +1445,15 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'nullable_map',
-      const TypeSpec(
+      const FieldTypeSpec(
         Map,
         ObjType.MAP,
         true,
         false,
         null,
         [
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
-          TypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
+          FieldTypeSpec(String, ObjType.STRING, true, true, null, []),
         ],
       ),
       true,
@@ -1476,14 +1479,14 @@ class RefOuterSchemaConsistent {
   RefInnerSchemaConsistent? inner2;
 }
 
-final ClassSpec _refInnerSchemaConsistentSpec = ClassSpec(
+final TypeSpec _refInnerSchemaConsistentSpec = TypeSpec(
   RefInnerSchemaConsistent,
   false,
   true,
   [
     FieldSpec(
       'id',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as RefInnerSchemaConsistent).id,
@@ -1492,7 +1495,7 @@ final ClassSpec _refInnerSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'name',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as RefInnerSchemaConsistent).name,
@@ -1504,14 +1507,14 @@ final ClassSpec _refInnerSchemaConsistentSpec = ClassSpec(
   () => RefInnerSchemaConsistent(),
 );
 
-final ClassSpec _refOuterSchemaConsistentSpec = ClassSpec(
+final TypeSpec _refOuterSchemaConsistentSpec = TypeSpec(
   RefOuterSchemaConsistent,
   false,
   true,
   [
     FieldSpec(
       'inner1',
-      const TypeSpec(
+      const FieldTypeSpec(
         RefInnerSchemaConsistent,
         ObjType.STRUCT,
         true,
@@ -1528,7 +1531,7 @@ final ClassSpec _refOuterSchemaConsistentSpec = ClassSpec(
     ),
     FieldSpec(
       'inner2',
-      const TypeSpec(
+      const FieldTypeSpec(
         RefInnerSchemaConsistent,
         ObjType.STRUCT,
         true,
@@ -1558,14 +1561,14 @@ class RefOuterCompatible {
   RefInnerCompatible? inner2;
 }
 
-final ClassSpec _refInnerCompatibleSpec = ClassSpec(
+final TypeSpec _refInnerCompatibleSpec = TypeSpec(
   RefInnerCompatible,
   false,
   true,
   [
     FieldSpec(
       'id',
-      const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
+      const FieldTypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as RefInnerCompatible).id,
@@ -1573,7 +1576,7 @@ final ClassSpec _refInnerCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'name',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as RefInnerCompatible).name,
@@ -1585,14 +1588,15 @@ final ClassSpec _refInnerCompatibleSpec = ClassSpec(
   () => RefInnerCompatible(),
 );
 
-final ClassSpec _refOuterCompatibleSpec = ClassSpec(
+final TypeSpec _refOuterCompatibleSpec = TypeSpec(
   RefOuterCompatible,
   false,
   true,
   [
     FieldSpec(
       'inner1',
-      const TypeSpec(RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
+      const FieldTypeSpec(
+          RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
       true,
       true,
       (Object inst) => (inst as RefOuterCompatible).inner1,
@@ -1602,7 +1606,8 @@ final ClassSpec _refOuterCompatibleSpec = ClassSpec(
     ),
     FieldSpec(
       'inner2',
-      const TypeSpec(RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
+      const FieldTypeSpec(
+          RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
       true,
       true,
       (Object inst) => (inst as RefOuterCompatible).inner2,
@@ -1620,14 +1625,14 @@ class CircularRefStruct {
   CircularRefStruct? selfRef;
 }
 
-final ClassSpec _circularRefStructSpec = ClassSpec(
+final TypeSpec _circularRefStructSpec = TypeSpec(
   CircularRefStruct,
   false,
   false,
   [
     FieldSpec(
       'name',
-      const TypeSpec(String, ObjType.STRING, false, true, null, []),
+      const FieldTypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
       (Object inst) => (inst as CircularRefStruct).name,
@@ -1636,7 +1641,8 @@ final ClassSpec _circularRefStructSpec = ClassSpec(
     ),
     FieldSpec(
       'self_ref',
-      const TypeSpec(CircularRefStruct, ObjType.STRUCT, true, true, null, []),
+      const FieldTypeSpec(
+          CircularRefStruct, ObjType.STRUCT, true, true, null, []),
       true,
       true,
       (Object inst) => (inst as CircularRefStruct).selfRef,
@@ -1649,7 +1655,7 @@ final ClassSpec _circularRefStructSpec = ClassSpec(
   () => CircularRefStruct(),
 );
 
-final Map<Type, ClassSpec> _structSpecByType = <Type, ClassSpec>{
+final Map<Type, TypeSpec> _structSpecByType = <Type, TypeSpec>{
   TwoEnumFieldStructEvolution: _twoEnumFieldStructEvolutionSpec,
   RefOverrideElement: _refOverrideElementSpec,
   RefOverrideContainer: _refOverrideContainerSpec,
@@ -1685,7 +1691,7 @@ void _registerStructType(
   String? namespace,
   String? typename,
 }) {
-  final ClassSpec? spec = _structSpecByType[type];
+  final TypeSpec? spec = _structSpecByType[type];
   if (spec == null) {
     throw StateError('No struct spec registered for $type');
   }

@@ -18,7 +18,7 @@
  */
 
 import 'package:meta/meta.dart';
-import 'package:fory/src/meta/specs/type_spec.dart';
+import 'package:fory/src/meta/specs/field_type_spec.dart';
 
 typedef Getter = Object? Function(Object inst);
 typedef Setter = void Function(Object inst, dynamic value);
@@ -26,7 +26,7 @@ typedef Setter = void Function(Object inst, dynamic value);
 @immutable
 class FieldSpec {
   final String name;
-  final TypeSpec typeSpec;
+  final FieldTypeSpec typeSpec;
   final Getter? getter;
   final Setter? setter;
   final bool trackingRef;

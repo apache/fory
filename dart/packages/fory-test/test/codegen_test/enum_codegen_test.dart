@@ -29,10 +29,10 @@ void main() {
   group('Simple Enum Code Generation', () {
     test('test enum spec generation', () async {
       EnumSpec enumSpec = EnumSpec(EnumFoo, [EnumFoo.A, EnumFoo.B]);
-      EnumSpec enumSubClassSpec =
+      EnumSpec enumSubTypeSpec =
           EnumSpec(EnumSubClass, [EnumSubClass.A, EnumSubClass.B]);
       check($EnumFoo).equals(enumSpec);
-      check($EnumSubClass).equals(enumSubClassSpec);
+      check($EnumSubClass).equals(enumSubTypeSpec);
     });
   });
 }
