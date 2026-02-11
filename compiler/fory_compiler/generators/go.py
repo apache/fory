@@ -190,6 +190,7 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.VAR_UINT64: "uint64",
         PrimitiveKind.TAGGED_UINT64: "uint64",
         PrimitiveKind.FLOAT16: "float16.Float16",
+        PrimitiveKind.BFLOAT16: "bfloat16.BFloat16",
         PrimitiveKind.FLOAT32: "float32",
         PrimitiveKind.FLOAT64: "float64",
         PrimitiveKind.STRING: "string",
@@ -1090,6 +1091,8 @@ class GoGenerator(BaseGenerator):
                 imports.add('"time"')
             elif field_type.kind == PrimitiveKind.FLOAT16:
                 imports.add('float16 "github.com/apache/fory/go/fory/float16"')
+            elif field_type.kind == PrimitiveKind.BFLOAT16:
+                imports.add('bfloat16 "github.com/apache/fory/go/fory/bfloat16"')
 
         elif isinstance(field_type, ListType):
             self.collect_imports(field_type.element_type, imports)

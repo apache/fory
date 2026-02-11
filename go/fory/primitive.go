@@ -663,3 +663,56 @@ func (s float16Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 func (s float16Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }
+
+// ============================================================================
+// bfloat16Serializer - optimized bfloat16 serialization
+// ============================================================================
+
+// bfloat16Serializer handles bfloat16 type
+type bfloat16Serializer struct{}
+
+var globalBFloat16Serializer = bfloat16Serializer{}
+
+func (s bfloat16Serializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	// Value is effectively uint16 (alias)
+	ctx.buffer.WriteUint16(uint16(value.Uint()))
+}
+
+func (s bfloat16Serializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	if refMode != RefModeNone {
+		ctx.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeType {
+		ctx.buffer.WriteUint8(uint8(BFLOAT16))
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s bfloat16Serializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	err := ctx.Err()
+	bits := ctx.buffer.ReadUint16(err)
+	if ctx.HasError() {
+		return
+	}
+	value.SetUint(uint64(bits))
+}
+
+func (s bfloat16Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	err := ctx.Err()
+	if refMode != RefModeNone {
+		if ctx.buffer.ReadInt8(err) == NullFlag {
+			return
+		}
+	}
+	if readType {
+		_ = ctx.buffer.ReadUint8(err)
+	}
+	if ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s bfloat16Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
