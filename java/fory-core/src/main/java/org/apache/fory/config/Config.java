@@ -21,9 +21,6 @@ package org.apache.fory.config;
 
 import java.io.Serializable;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.Fory;
 import org.apache.fory.meta.MetaCompressor;
 import org.apache.fory.serializer.Serializer;
@@ -60,7 +57,6 @@ public class Config implements Serializable {
   private final boolean asyncCompilationEnabled;
   private final boolean deserializeUnknownClass;
   private final boolean scalaOptimizationEnabled;
-  private transient int configHash;
   private final UnknownEnumValueStrategy unknownEnumValueStrategy;
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
@@ -362,18 +358,6 @@ public class Config implements Serializable {
         asyncCompilationEnabled,
         deserializeUnknownClass,
         scalaOptimizationEnabled);
-  }
-
-  private static final AtomicInteger counter = new AtomicInteger(0);
-  // Different config instance with equality will be hold only one instance, no memory
-  // leak will happen.
-  private static final ConcurrentMap<Config, Integer> configIdMap = new ConcurrentHashMap<>();
-
-  public int getConfigHash() {
-    if (configHash == 0) {
-      configHash = configIdMap.computeIfAbsent(this, k -> counter.incrementAndGet());
-    }
-    return configHash;
   }
 
   /** Returns max depth for deserialization, when depth exceeds, an exception will be thrown. */
