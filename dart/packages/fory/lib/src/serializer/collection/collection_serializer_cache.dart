@@ -28,8 +28,8 @@ abstract base class CollectionSerializerCache extends SerializerCache {
   Serializer getSerializer(
     ForyConfig conf,
   ) {
-    return getSerWithRef(conf.ref);
+    return getSerializerWithRef(conf.ref);
   }
 
-  Serializer getSerWithRef(bool writeRef);
+  Serializer getSerializerWithRef(bool writeRef);
 }

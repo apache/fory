@@ -31,5 +31,5 @@ enum RefFlag {
   //   return id >= NULL.id && id <= TRACK_FIRST.id;
   // }
 
-  bool get noNeedToSer => (this == NULL || this == TRACKED_ALREADY);
+  bool get noNeedToSerialize => (this == NULL || this == TRACKED_ALREADY);
 }

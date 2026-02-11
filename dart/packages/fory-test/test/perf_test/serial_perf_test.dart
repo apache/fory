@@ -26,7 +26,7 @@ import 'package:fory/fory.dart';
 import 'package:fory_test/entity/complex_obj_1.dart';
 import 'package:fory_test/entity/complex_obj_2.dart';
 
-void _testPerfSer(Fory fory, Object? obj, int times, String testName) {
+void _testPerfSerialize(Fory fory, Object? obj, int times, String testName) {
   //warm up
   for (int i = 0; i < 10000; i++) {
     fory.serialize(obj);
@@ -41,7 +41,7 @@ void _testPerfSer(Fory fory, Object? obj, int times, String testName) {
       '$testName\nserialize simple struct test $times times: ${stopwatch.elapsedMilliseconds} ms');
 }
 
-void _testPerfDeser(Fory fory, Object? obj, int times, String testName) {
+void _testPerfDeserialize(Fory fory, Object? obj, int times, String testName) {
   Uint8List bytes = fory.serialize(obj);
   // warm up
   for (int i = 0; i < 10000; i++) {
@@ -65,7 +65,7 @@ void main() {
       );
       fory.register($ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
-      _testPerfSer(fory, o, 1000000, 'Serialize simple struct');
+      _testPerfSerialize(fory, o, 1000000, 'Serialize simple struct');
     });
 
     test('Deserialize simple struct', () {
@@ -74,7 +74,7 @@ void main() {
       );
       fory.register($ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
-      _testPerfDeser(fory, o, 1000000, 'Deserialize simple struct');
+      _testPerfDeserialize(fory, o, 1000000, 'Deserialize simple struct');
     });
 
     test('Serialize medium complex struct', () {
@@ -97,7 +97,7 @@ void main() {
       obj.f10 = 1 / 3.0;
       obj.f11 = Int16List.fromList([1, 2]);
       obj.f12 = [Int16(-1), Int16(4)];
-      _testPerfSer(fory, obj, 1000000, 'Serialize medium complex struct');
+      _testPerfSerialize(fory, obj, 1000000, 'Serialize medium complex struct');
     });
 
     test('Deserialize medium complex struct', () {
@@ -120,7 +120,8 @@ void main() {
       obj.f10 = 1 / 3.0;
       obj.f11 = Int16List.fromList([1, 2]);
       obj.f12 = [Int16(-1), Int16(4)];
-      _testPerfDeser(fory, obj, 1000000, 'Deserialize medium complex struct');
+      _testPerfDeserialize(
+          fory, obj, 1000000, 'Deserialize medium complex struct');
     });
 
     // test('test json serialize medium complex struct perf', () {
@@ -143,7 +144,7 @@ void main() {
     //   obj.f10 = 1 / 3.0;
     //   obj.f11 = Int16List.fromList([1, 2]);
     //   obj.f12 = [Int16(-1),Int16(4)];
-    //   _testPerfSer(fory, obj, 1000000, 'test deserialize medium complex struct perf');
+    //   _testPerfSerialize(fory, obj, 1000000, 'test deserialize medium complex struct perf');
     // });
     //
     // test('test json deserialize medium complex struct perf', () {
@@ -166,7 +167,7 @@ void main() {
     //   obj.f10 = 1 / 3.0;
     //   obj.f11 = Int16List.fromList([1, 2]);
     //   obj.f12 = [Int16(-1),Int16(4)];
-    //   _testPerfDeser(fory, obj, 1000000, 'test serialize medium complex struct perf');
+    //   _testPerfDeserialize(fory, obj, 1000000, 'test serialize medium complex struct perf');
     // });
   });
 }

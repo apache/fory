@@ -17,6 +17,6 @@
  * under the License.
  */
 
-class DeserFlags {
+class DeserializationFlags {
   static const int notSupportXLangFlag = 0;
 }

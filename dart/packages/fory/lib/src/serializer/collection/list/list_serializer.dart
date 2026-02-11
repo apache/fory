@@ -19,7 +19,7 @@
 
 import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/collection/iterable_serializer.dart';
@@ -31,7 +31,7 @@ abstract base class ListSerializer extends IterableSerializer {
   List newList(int size, bool nullable);
 
   @override
-  List read(ByteReader br, int refId, DeserializerPack pack) {
+  List read(ByteReader br, int refId, DeserializationContext pack) {
     int num = br.readVarUint32Small7();
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
     List list = newList(
@@ -53,22 +53,22 @@ abstract base class ListSerializer extends IterableSerializer {
 
     if ((flags & IterableSerializer.isSameTypeFlag) ==
         IterableSerializer.isSameTypeFlag) {
-      Serializer? ser;
+      Serializer? serializer;
       bool isDeclElemType =
           (flags & IterableSerializer.isDeclElementTypeFlag) ==
               IterableSerializer.isDeclElementTypeFlag;
       if (isDeclElemType) {
-        ser = elemWrap?.ser;
+        serializer = elemWrap?.serializer;
       }
-      if (ser == null) {
-        ser = pack.typeResolver.readTypeInfo(br).ser;
+      if (serializer == null) {
+        serializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
 
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          list[i] =
-              pack.deserializationCoordinator.readWithSerializer(br, ser, pack);
+          list[i] = pack.deserializationCoordinator
+              .readWithSerializer(br, serializer, pack);
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
           IterableSerializer.hasNullFlag) {
@@ -76,12 +76,12 @@ abstract base class ListSerializer extends IterableSerializer {
           if (br.readInt8() == RefFlag.NULL.id) {
             list[i] = null;
           } else {
-            list[i] = ser.read(br, -1, pack);
+            list[i] = serializer.read(br, -1, pack);
           }
         }
       } else {
         for (int i = 0; i < num; ++i) {
-          list[i] = ser.read(br, -1, pack);
+          list[i] = serializer.read(br, -1, pack);
         }
       }
     } else {

@@ -24,19 +24,19 @@ import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
 final class _SplayTreeMapSerializerCache extends CollectionSerializerCache {
-  static SplayTreeMapSerializer? _serRef;
-  static SplayTreeMapSerializer? _serNoRef;
+  static SplayTreeMapSerializer? _serializerWithRef;
+  static SplayTreeMapSerializer? _serializerWithoutRef;
 
   const _SplayTreeMapSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef) {
+  Serializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _serRef ??= SplayTreeMapSerializer._(true);
-      return _serRef!;
+      _serializerWithRef ??= SplayTreeMapSerializer._(true);
+      return _serializerWithRef!;
     } else {
-      _serNoRef ??= SplayTreeMapSerializer._(false);
-      return _serNoRef!;
+      _serializerWithoutRef ??= SplayTreeMapSerializer._(false);
+      return _serializerWithoutRef!;
     }
   }
 }

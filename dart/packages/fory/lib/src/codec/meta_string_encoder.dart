@@ -19,7 +19,7 @@
 
 import 'package:meta/meta.dart';
 
-import 'package:fory/src/codec/entity/str_stat.dart';
+import 'package:fory/src/codec/entity/string_statistics.dart';
 import 'package:fory/src/codec/meta_string_codecs.dart';
 import 'package:fory/src/codec/meta_string_encoding.dart';
 import 'package:fory/src/meta/meta_string.dart';
@@ -32,7 +32,7 @@ abstract base class MetaStringEncoder extends MetaStringCodecs {
   MetaString encodeByAllowedEncodings(
       String input, List<MetaStringEncoding> encodings);
 
-  StrStat _computeStrStat(String input) {
+  StringStatistics _computeStringStatistics(String input) {
     bool canLUDS = true;
     bool canLS = true;
     int digitCount = 0;
@@ -46,7 +46,7 @@ abstract base class MetaStringEncoder extends MetaStringCodecs {
       if (CharUtil.digit(c)) ++digitCount;
       if (CharUtil.upper(c)) ++upperCount;
     }
-    return StrStat(
+    return StringStatistics(
       digitCount,
       upperCount,
       canLUDS,
@@ -65,7 +65,7 @@ abstract base class MetaStringEncoder extends MetaStringCodecs {
     if (input.isEmpty && flags[MetaStringEncoding.ls.index]) {
       return MetaStringEncoding.ls;
     }
-    StrStat stat = _computeStrStat(input);
+    StringStatistics stat = _computeStringStatistics(input);
     if (stat.canLS && flags[MetaStringEncoding.ls.index]) {
       return MetaStringEncoding.ls;
     }

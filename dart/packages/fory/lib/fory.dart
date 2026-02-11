@@ -45,8 +45,8 @@ export 'src/const/types.dart';
 export 'src/fory_type_provider.dart';
 
 // Serialization internals for custom serializer implementations.
-export 'src/serializer_pack.dart';
-export 'src/deserializer_pack.dart';
+export 'src/serialization_context.dart';
+export 'src/deserialization_context.dart';
 
 // External packages
 export 'package:decimal/decimal.dart';

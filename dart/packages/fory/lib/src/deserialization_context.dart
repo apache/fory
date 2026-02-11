@@ -17,30 +17,31 @@
  * under the License.
  */
 
-import 'package:fory/src/collection/stack.dart';
-import 'package:fory/src/serialization_coordinator.dart';
+import 'package:fory/src/deserialization_runtime.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
-import 'package:fory/src/resolver/meta_string_writing_resolver.dart';
-import 'package:fory/src/resolver/serialization_ref_resolver.dart';
+import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
-import 'package:fory/src/pack.dart';
+import 'package:fory/src/serializer/fory_header_serializer.dart';
+import 'package:fory/src/runtime_context.dart';
+import 'package:fory/src/collection/stack.dart';
 
-final class SerializerPack extends Pack {
-  final SerializationCoordinator serializationCoordinator;
+final class DeserializationContext extends Pack {
+  final HeaderBrief header;
+
+  final DeserializationRuntime deserializationCoordinator;
+
+  final DeserializationRefResolver refResolver;
   final TypeResolver typeResolver;
-  final SerializationRefResolver refResolver;
-  final SerializationRefResolver noRefResolver;
-  final MetaStringWritingResolver msWritingResolver;
+
   final Stack<TypeSpecWrap> typeWrapStack;
 
-  const SerializerPack(
+  const DeserializationContext(
     super.structHashResolver,
     super.getTagByDartType,
-    this.serializationCoordinator,
-    this.typeResolver,
+    this.header,
+    this.deserializationCoordinator,
     this.refResolver,
-    this.noRefResolver,
-    this.msWritingResolver,
+    this.typeResolver,
     this.typeWrapStack,
   );
 }

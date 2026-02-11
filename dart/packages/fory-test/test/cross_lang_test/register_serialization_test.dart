@@ -33,7 +33,7 @@ final class ComplexObject1Serializer extends Serializer<ComplexObject1> {
   const ComplexObject1Serializer() : super(ObjType.NAMED_STRUCT, true);
 
   @override
-  ComplexObject1 read(ByteReader br, int refId, DeserializerPack pack) {
+  ComplexObject1 read(ByteReader br, int refId, DeserializationContext pack) {
     ComplexObject1 obj = ComplexObject1();
     pack.refResolver.setRefTheLatestId(obj);
     obj.f1 = pack.deserializationCoordinator.readDynamicWithRef(br, pack)!;
@@ -46,7 +46,7 @@ final class ComplexObject1Serializer extends Serializer<ComplexObject1> {
   }
 
   @override
-  void write(ByteWriter bw, ComplexObject1 v, SerializerPack pack) {
+  void write(ByteWriter bw, ComplexObject1 v, SerializationContext pack) {
     pack.serializationCoordinator.writeDynamicWithRef(bw, v.f1, pack);
     pack.serializationCoordinator.writeDynamicWithRef(bw, v.f2, pack);
     pack.serializationCoordinator.writeDynamicWithRef(bw, v.f3, pack);

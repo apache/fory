@@ -26,7 +26,7 @@ import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
 abstract base class TypeResolver {
   const TypeResolver(ForyConfig conf);
@@ -42,7 +42,7 @@ abstract base class TypeResolver {
     String? typename,
   });
 
-  void registerSerializer(Type type, Serializer ser);
+  void registerSerializer(Type type, Serializer serializer);
 
   void bindSerializers(List<TypeSpecWrap> typeWraps);
 
@@ -54,7 +54,7 @@ abstract base class TypeResolver {
 
   String getRegisteredTag(Type type);
 
-  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializerPack pack);
+  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializationContext pack);
 
   /*-----For test only------------------------------------------------*/
   StructHashPair getHashPairForTest(

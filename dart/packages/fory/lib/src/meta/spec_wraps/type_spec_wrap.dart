@@ -28,7 +28,7 @@ class TypeSpecWrap {
   final bool serializationCertain;
   final bool nullable;
   final List<TypeSpecWrap> genericsArgs;
-  Serializer? ser;
+  Serializer? serializer;
 
   TypeSpecWrap._(
     this.type,
@@ -36,7 +36,7 @@ class TypeSpecWrap {
     this.serializationCertain,
     this.nullable,
     this.genericsArgs,
-    this.ser,
+    this.serializer,
   );
 
   factory TypeSpecWrap.of(TypeSpec typeSpec) {

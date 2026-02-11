@@ -21,7 +21,7 @@ import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/serializer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
 abstract base class IterableSerializer extends Serializer<Iterable> {
   static const int trackingRefFlag = 0x01;
@@ -39,26 +39,26 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
   const IterableSerializer(super.objType, super.writeRef);
 
   @override
-  void write(ByteWriter bw, Iterable v, SerializerPack pack) {
+  void write(ByteWriter bw, Iterable v, SerializationContext pack) {
     final int len = v.length;
     bw.writeVarUint32Small7(len);
     if (len == 0) {
       return;
     }
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
-    final ({int flags, Serializer? ser}) header =
+    final ({int flags, Serializer? serializer}) header =
         _writeElementsHeader(bw, v, elemWrap, pack);
     if (elemWrap != null && elemWrap.hasGenericsParam) {
       pack.typeWrapStack.push(elemWrap);
     }
 
     int flags = header.flags;
-    Serializer? ser = header.ser;
-    if ((flags & isSameTypeFlag) == isSameTypeFlag && ser != null) {
+    Serializer? serializer = header.serializer;
+    if ((flags & isSameTypeFlag) == isSameTypeFlag && serializer != null) {
       if ((flags & trackingRefFlag) == trackingRefFlag) {
         for (Object? elem in v) {
           pack.serializationCoordinator
-              .writeWithSerializer(bw, ser, elem, pack);
+              .writeWithSerializer(bw, serializer, elem, pack);
         }
       } else {
         if ((flags & hasNullFlag) == hasNullFlag) {
@@ -67,12 +67,12 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
               bw.writeInt8(RefFlag.NULL.id);
             } else {
               bw.writeInt8(RefFlag.UNTRACKED_NOT_NULL.id);
-              ser.write(bw, elem, pack);
+              serializer.write(bw, elem, pack);
             }
           }
         } else {
           for (Object? elem in v) {
-            ser.write(bw, elem as Object, pack);
+            serializer.write(bw, elem as Object, pack);
           }
         }
       }
@@ -106,21 +106,22 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     }
   }
 
-  ({int flags, Serializer? ser}) _writeElementsHeader(ByteWriter bw,
-      Iterable value, TypeSpecWrap? elemWrap, SerializerPack pack) {
+  ({int flags, Serializer? serializer}) _writeElementsHeader(ByteWriter bw,
+      Iterable value, TypeSpecWrap? elemWrap, SerializationContext pack) {
     if (elemWrap != null) {
-      if (elemWrap.serializationCertain && elemWrap.ser != null) {
-        Serializer ser = elemWrap.ser!;
-        if (ser.writeRef) {
+      if (elemWrap.serializationCertain && elemWrap.serializer != null) {
+        Serializer serializer = elemWrap.serializer!;
+        if (serializer.writeRef) {
           bw.writeUint8(declSameTypeTrackingRef);
-          return (flags: declSameTypeTrackingRef, ser: ser);
+          return (flags: declSameTypeTrackingRef, serializer: serializer);
         }
         int flags =
             _containsNull(value) ? declSameTypeHasNull : declSameTypeNotHasNull;
         bw.writeUint8(flags);
-        return (flags: flags, ser: ser);
+        return (flags: flags, serializer: serializer);
       }
-      bool trackingRef = elemWrap.ser?.writeRef ?? _isRefTrackingEnabled(pack);
+      bool trackingRef =
+          elemWrap.serializer?.writeRef ?? _isRefTrackingEnabled(pack);
       if (trackingRef) {
         return _writeTypeHeader(bw, value, elemWrap, pack);
       }
@@ -133,8 +134,8 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     return _writeTypeNullabilityHeader(bw, value, null, pack);
   }
 
-  ({int flags, Serializer? ser}) _writeTypeHeader(ByteWriter bw, Iterable value,
-      TypeSpecWrap? declareWrap, SerializerPack pack) {
+  ({int flags, Serializer? serializer}) _writeTypeHeader(ByteWriter bw,
+      Iterable value, TypeSpecWrap? declareWrap, SerializationContext pack) {
     bool hasDifferentClass = false;
     Object? firstNonNull;
     Type? elemType;
@@ -152,25 +153,28 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     }
     if (hasDifferentClass || firstNonNull == null) {
       bw.writeUint8(trackingRefFlag);
-      return (flags: trackingRefFlag, ser: null);
+      return (flags: trackingRefFlag, serializer: null);
     }
 
     int flags = trackingRefFlag | isSameTypeFlag;
-    Serializer? declaredSer = declareWrap?.ser;
+    Serializer? declaredSerializer = declareWrap?.serializer;
     if (declareWrap != null &&
-        declaredSer != null &&
+        declaredSerializer != null &&
         elemType == declareWrap.type) {
       flags |= isDeclElementTypeFlag;
       bw.writeUint8(flags);
-      return (flags: flags, ser: declaredSer);
+      return (flags: flags, serializer: declaredSerializer);
     }
     bw.writeUint8(flags);
     final typeInfo = pack.typeResolver.writeTypeInfo(bw, firstNonNull, pack);
-    return (flags: flags, ser: typeInfo.ser);
+    return (flags: flags, serializer: typeInfo.serializer);
   }
 
-  ({int flags, Serializer? ser}) _writeTypeNullabilityHeader(ByteWriter bw,
-      Iterable value, TypeSpecWrap? declareWrap, SerializerPack pack) {
+  ({int flags, Serializer? serializer}) _writeTypeNullabilityHeader(
+      ByteWriter bw,
+      Iterable value,
+      TypeSpecWrap? declareWrap,
+      SerializationContext pack) {
     int flags = 0;
     bool hasDifferentClass = false;
     Object? firstNonNull;
@@ -189,24 +193,24 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     }
     if (hasDifferentClass || firstNonNull == null) {
       bw.writeUint8(flags);
-      return (flags: flags, ser: null);
+      return (flags: flags, serializer: null);
     }
 
     flags |= isSameTypeFlag;
-    Serializer? declaredSer = declareWrap?.ser;
+    Serializer? declaredSerializer = declareWrap?.serializer;
     if (declareWrap != null &&
-        declaredSer != null &&
+        declaredSerializer != null &&
         elemType == declareWrap.type) {
       flags |= isDeclElementTypeFlag;
       bw.writeUint8(flags);
-      return (flags: flags, ser: declaredSer);
+      return (flags: flags, serializer: declaredSerializer);
     }
     bw.writeUint8(flags);
     final typeInfo = pack.typeResolver.writeTypeInfo(bw, firstNonNull, pack);
-    return (flags: flags, ser: typeInfo.ser);
+    return (flags: flags, serializer: typeInfo.serializer);
   }
 
-  bool _isRefTrackingEnabled(SerializerPack pack) {
+  bool _isRefTrackingEnabled(SerializationContext pack) {
     return !identical(pack.refResolver, pack.noRefResolver);
   }
 

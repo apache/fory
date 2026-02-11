@@ -18,10 +18,10 @@
  */
 
 import 'dart:typed_data';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/math_checker.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -37,10 +37,10 @@ abstract base class ArraySerializerCache extends SerializerCache {
   Serializer getSerializer(
     ForyConfig conf,
   ) {
-    return getSerWithRef(conf.ref);
+    return getSerializerWithRef(conf.ref);
   }
 
-  Serializer getSerWithRef(bool writeRef);
+  Serializer getSerializerWithRef(bool writeRef);
 }
 
 abstract base class ArraySerializer<T> extends Serializer<List<T>> {
@@ -58,7 +58,7 @@ abstract base class NumericArraySerializer<T extends num>
   int get bytesPerNum;
 
   @override
-  TypedDataList<T> read(ByteReader br, int refId, DeserializerPack pack) {
+  TypedDataList<T> read(ByteReader br, int refId, DeserializationContext pack) {
     int numBytes = br.readVarUint32Small7();
     int length = numBytes ~/ bytesPerNum;
     if (isLittleEndian || bytesPerNum == 1) {
@@ -78,7 +78,8 @@ abstract base class NumericArraySerializer<T extends num>
   }
 
   @override
-  void write(ByteWriter bw, covariant TypedDataList<T> v, SerializerPack pack) {
+  void write(
+      ByteWriter bw, covariant TypedDataList<T> v, SerializationContext pack) {
     if (!MathChecker.validInt32(v.lengthInBytes)) {
       throw ArgumentError(
           'NumArray lengthInBytes is not valid int32: ${v.lengthInBytes}');

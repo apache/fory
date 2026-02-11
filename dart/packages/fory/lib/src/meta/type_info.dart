@@ -29,7 +29,7 @@ class TypeInfo {
   final MetaStringBytes? nsBytes;
   // Stored as unsigned 32-bit; -1 (0xffffffff) means "unset".
   final int userTypeId;
-  late Serializer ser;
+  late Serializer serializer;
 
   TypeInfo(
       this.dartType, this.objType, this.tag, this.typeNameBytes, this.nsBytes,
@@ -38,7 +38,7 @@ class TypeInfo {
   TypeInfo.fromInnerType(
     this.dartType,
     this.objType,
-    this.ser,
+    this.serializer,
   )   : tag = null,
         typeNameBytes = null,
         nsBytes = null,

@@ -24,19 +24,19 @@ import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
 final class _HashSetSerializerCache extends CollectionSerializerCache {
-  static HashSetSerializer? _serRef;
-  static HashSetSerializer? _serNoRef;
+  static HashSetSerializer? _serializerWithRef;
+  static HashSetSerializer? _serializerWithoutRef;
 
   const _HashSetSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef) {
+  Serializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _serRef ??= HashSetSerializer._(true);
-      return _serRef!;
+      _serializerWithRef ??= HashSetSerializer._(true);
+      return _serializerWithRef!;
     } else {
-      _serNoRef ??= HashSetSerializer._(false);
-      return _serNoRef!;
+      _serializerWithoutRef ??= HashSetSerializer._(false);
+      return _serializerWithoutRef!;
     }
   }
 }

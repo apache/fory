@@ -26,19 +26,19 @@ import 'package:fory/src/serializer/array_serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
 final class _Uint8ListSerializerCache extends ArraySerializerCache {
-  static Uint8ListSerializer? _noRefSer;
-  static Uint8ListSerializer? _writeRefSer;
+  static Uint8ListSerializer? _serializerWithoutReference;
+  static Uint8ListSerializer? _serializerWithReference;
 
   const _Uint8ListSerializerCache();
 
   @override
-  Uint8ListSerializer getSerWithRef(bool writeRef) {
+  Uint8ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Uint8ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Uint8ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Uint8ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Uint8ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
@@ -60,19 +60,19 @@ final class Uint8ListSerializer extends NumericArraySerializer<int> {
 }
 
 final class _Int8ListSerializerCache extends ArraySerializerCache {
-  static Int8ListSerializer? _noRefSer;
-  static Int8ListSerializer? _writeRefSer;
+  static Int8ListSerializer? _serializerWithoutReference;
+  static Int8ListSerializer? _serializerWithReference;
 
   const _Int8ListSerializerCache();
 
   @override
-  Int8ListSerializer getSerWithRef(bool writeRef) {
+  Int8ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Int8ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Int8ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Int8ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Int8ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
@@ -93,19 +93,19 @@ final class Int8ListSerializer extends NumericArraySerializer<int> {
 }
 
 final class _Int16ListSerializerCache extends ArraySerializerCache {
-  static Int16ListSerializer? _noRefSer;
-  static Int16ListSerializer? _writeRefSer;
+  static Int16ListSerializer? _serializerWithoutReference;
+  static Int16ListSerializer? _serializerWithReference;
 
   const _Int16ListSerializerCache();
 
   @override
-  Int16ListSerializer getSerWithRef(bool writeRef) {
+  Int16ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Int16ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Int16ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Int16ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Int16ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
@@ -143,19 +143,19 @@ final class Int16ListSerializer extends NumericArraySerializer<int> {
 }
 
 final class _Int32ListSerializerCache extends ArraySerializerCache {
-  static Int32ListSerializer? _noRefSer;
-  static Int32ListSerializer? _writeRefSer;
+  static Int32ListSerializer? _serializerWithoutReference;
+  static Int32ListSerializer? _serializerWithReference;
 
   const _Int32ListSerializerCache();
 
   @override
-  Int32ListSerializer getSerWithRef(bool writeRef) {
+  Int32ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Int32ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Int32ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Int32ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Int32ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
@@ -193,37 +193,37 @@ final class Int32ListSerializer extends NumericArraySerializer<int> {
 }
 
 final class _Float32ListSerializerCache extends ArraySerializerCache {
-  static Float32ListSerializer? _noRefSer;
-  static Float32ListSerializer? _writeRefSer;
+  static Float32ListSerializer? _serializerWithoutReference;
+  static Float32ListSerializer? _serializerWithReference;
 
   const _Float32ListSerializerCache();
 
   @override
-  Float32ListSerializer getSerWithRef(bool writeRef) {
+  Float32ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Float32ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Float32ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Float32ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Float32ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
 
 final class _Int64ListSerializerCache extends ArraySerializerCache {
-  static Int64ListSerializer? _noRefSer;
-  static Int64ListSerializer? _writeRefSer;
+  static Int64ListSerializer? _serializerWithoutReference;
+  static Int64ListSerializer? _serializerWithReference;
 
   const _Int64ListSerializerCache();
 
   @override
-  Int64ListSerializer getSerWithRef(bool writeRef) {
+  Int64ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Int64ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Int64ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Int64ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Int64ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
@@ -294,19 +294,19 @@ final class Float32ListSerializer extends NumericArraySerializer<double> {
 }
 
 final class _Float64ListSerializerCache extends ArraySerializerCache {
-  static Float64ListSerializer? _noRefSer;
-  static Float64ListSerializer? _writeRefSer;
+  static Float64ListSerializer? _serializerWithoutReference;
+  static Float64ListSerializer? _serializerWithReference;
 
   const _Float64ListSerializerCache();
 
   @override
-  Float64ListSerializer getSerWithRef(bool writeRef) {
+  Float64ListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= Float64ListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= Float64ListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= Float64ListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= Float64ListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }

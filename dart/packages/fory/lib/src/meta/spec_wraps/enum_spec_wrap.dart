@@ -22,7 +22,7 @@ import 'package:fory/src/serializer/serializer.dart';
 
 final class EnumSpecWrap {
   final List<Object> values;
-  late final Serializer ser;
+  late final Serializer serializer;
 
   EnumSpecWrap._(
     this.values,

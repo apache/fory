@@ -17,16 +17,11 @@
  * under the License.
  */
 
-import 'package:fory/src/resolver/struct_hash_resolver.dart';
+import 'package:fory/src/meta/meta_string.dart';
+import 'package:fory/src/resolver/impl/tag_string_resolver_impl.dart';
 
-typedef GetTagByType = String Function(Type type);
-
-abstract base class Pack {
-  final StructHashResolver structHashResolver;
-  final GetTagByType getTagByDartType;
-
-  const Pack(
-    this.structHashResolver,
-    this.getTagByDartType,
-  );
+abstract class TagStringResolver {
+  static TagStringResolver get newInst => TagStringResolverImpl();
+  MetaString encodeTypeName(String tag);
+  MetaString encodeNs(String ns);
 }

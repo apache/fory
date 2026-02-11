@@ -20,13 +20,13 @@
 import 'dart:typed_data';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/string_util.dart';
 
 enum _StrCode {
@@ -38,8 +38,8 @@ enum _StrCode {
 }
 
 final class _StringSerializerCache extends SerializerCache {
-  static StringSerializer? serRef;
-  static StringSerializer? serNoRef;
+  static StringSerializer? serializerWithRef;
+  static StringSerializer? serializerWithoutRef;
 
   const _StringSerializerCache();
 
@@ -47,19 +47,19 @@ final class _StringSerializerCache extends SerializerCache {
   Serializer getSerializer(
     ForyConfig conf,
   ) {
-    // Currently, there are only two types of Ser for primitive types:
+    // Currently, there are only two types of serializer for primitive types:
     // one that writes a reference and one that does not, so only these two are cached here.
     bool writeRef = conf.ref && !conf.stringRefIgnored;
-    return getSerWithRef(writeRef);
+    return getSerializerWithRef(writeRef);
   }
 
-  Serializer getSerWithRef(bool writeRef) {
+  Serializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      serRef ??= StringSerializer(true);
-      return serRef!;
+      serializerWithRef ??= StringSerializer(true);
+      return serializerWithRef!;
     } else {
-      serNoRef ??= StringSerializer(false);
-      return serNoRef!;
+      serializerWithoutRef ??= StringSerializer(false);
+      return serializerWithoutRef!;
     }
   }
 }
@@ -70,7 +70,7 @@ final class StringSerializer extends Serializer<String> {
   StringSerializer(bool writeRef) : super(ObjType.STRING, writeRef);
 
   @override
-  String read(ByteReader br, int refId, DeserializerPack pack) {
+  String read(ByteReader br, int refId, DeserializationContext pack) {
     int header = br.readVarUint36Small();
     int coder = header & 3;
     int byteNum = header >>> 2;
@@ -83,7 +83,7 @@ final class StringSerializer extends Serializer<String> {
   }
 
   @override
-  void write(ByteWriter bw, String v, SerializerPack pack) {
+  void write(ByteWriter bw, String v, SerializationContext pack) {
     if (StringUtil.hasNonLatin(v)) {
       _writeUtf16(bw, v);
       return;

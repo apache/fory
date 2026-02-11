@@ -22,9 +22,9 @@ import 'package:fory/src/codec/encoders.dart';
 import 'package:fory/src/codec/meta_string_encoder.dart';
 import 'package:fory/src/codec/meta_string_encoding.dart';
 import 'package:fory/src/meta/meta_string.dart';
-import 'package:fory/src/resolver/tag_str_encode_resolver.dart';
+import 'package:fory/src/resolver/tag_string_resolver.dart';
 
-final class TagStringEncodeResolverImpl extends TagStringEncodeResolver {
+final class TagStringResolverImpl extends TagStringResolver {
   final MetaStringEncoder _tnEncoder = Encoders.typeNameEncoder;
   final MetaStringEncoder _nsEncoder = Encoders.packageEncoder;
 

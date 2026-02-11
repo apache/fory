@@ -17,13 +17,13 @@
  * under the License.
  */
 
-final class StrStat {
+final class StringStatistics {
   final int digitCount;
   final int upperCount;
   final bool canLUDS; // LowerUpperDigitSpecial
   final bool canLS; // LowerSpecial
 
-  const StrStat(
+  const StringStatistics(
     this.digitCount,
     this.upperCount,
     this.canLUDS,

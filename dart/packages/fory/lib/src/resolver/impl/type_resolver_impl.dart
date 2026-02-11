@@ -44,13 +44,13 @@ import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
-import 'package:fory/src/resolver/tag_str_encode_resolver.dart';
+import 'package:fory/src/resolver/tag_string_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/class_serializer.dart';
 import 'package:fory/src/serializer/enum_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/murmur3hash.dart';
 import 'package:fory/src/util/string_util.dart';
 
@@ -92,7 +92,7 @@ final class TypeResolverImpl extends TypeResolver {
   static const DartTypeResolver dartTypeResolver = DartTypeResolver.I;
   final ForyContext _ctx;
   final MetaStringResolver _msResolver;
-  final TagStringEncodeResolver _tstrEncoder;
+  final TagStringResolver _tstrEncoder;
   final Map<LongLongKey, TypeInfo> _tagHash2Info;
   final MetaStringEncoder _packageNameEncoder;
   final MetaStringEncoder _typeNameEncoder;
@@ -117,7 +117,7 @@ final class TypeResolverImpl extends TypeResolver {
         _readTypeInfos = <TypeInfo>[],
         _typeToEncodedTypeDef = HashMap<Type, Uint8List>(),
         _msResolver = MetaStringResolver.newInst,
-        _tstrEncoder = TagStringEncodeResolver.newInst,
+        _tstrEncoder = TagStringResolver.newInst,
         _ctx = ForyContext(conf) {
     _ctx.initForDefaultTypes();
   }
@@ -167,12 +167,12 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   @override
-  void registerSerializer(Type type, Serializer ser) {
+  void registerSerializer(Type type, Serializer serializer) {
     TypeInfo? typeInfo = _ctx.type2TypeInfo[type];
     if (typeInfo == null) {
       throw UnregisteredTypeException(type);
     }
-    typeInfo.ser = ser;
+    typeInfo.serializer = serializer;
   }
 
   void _regWithNamespace(CustomTypeSpec spec, String tag, String tn,
@@ -191,7 +191,7 @@ final class TypeResolverImpl extends TypeResolver {
       tnMsb,
       nsMsb,
     );
-    typeInfo.ser = _getSerFor(spec);
+    typeInfo.serializer = _getSerializerFor(spec);
     _ctx.registerType(typeInfo);
     _type2Spec[typeInfo.dartType] = spec;
   }
@@ -208,7 +208,7 @@ final class TypeResolverImpl extends TypeResolver {
       null,
       userTypeId: normalizedTypeId,
     );
-    typeInfo.ser = _getSerFor(spec);
+    typeInfo.serializer = _getSerializerFor(spec);
     _ctx.registerType(typeInfo);
     _type2Spec[typeInfo.dartType] = spec;
     if (resolvedObjType == ObjType.STRUCT) {
@@ -261,20 +261,20 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
-  /// The ClassSer generated here will not analyze the corresponding ser for each TypeArg.
+  /// The ClassSerializer generated here will not analyze the corresponding serializer for each TypeArg.
   /// There are two considerations for this:
   /// First, it intends to delay the specific analysis until the first parsing of this Class,
   /// to prevent too many tasks from being executed at the beginning.
-  /// Second, if the Ser corresponding to the arg is parsed here,
+  /// Second, if the serializer corresponding to the arg is parsed here,
   /// many Enums may still be registered later, and they cannot be recognized here,
   /// resulting in an error that they are not registered even though they are.
-  Serializer _getSerFor(CustomTypeSpec spec) {
+  Serializer _getSerializerFor(CustomTypeSpec spec) {
     if (spec.objType == ObjType.NAMED_ENUM || spec.objType == ObjType.ENUM) {
-      Serializer ser = EnumSerializer.cache
+      Serializer serializer = EnumSerializer.cache
           .getSerializerWithSpec(_ctx.conf, spec, spec.dartType);
-      return ser;
+      return serializer;
     }
-    // Indicates ClassSer
+    // Indicates ClassSerializer
     return ClassSerializer.cache
         .getSerializerWithSpec(_ctx.conf, spec as ClassSpec, spec.dartType);
   }
@@ -296,15 +296,15 @@ final class TypeResolverImpl extends TypeResolver {
     for (int i = 0; i < typeWraps.length; ++i) {
       wrap = typeWraps[i];
       if (wrap.serializationCertain) {
-        wrap.ser = _ctx.type2TypeInfo[wrap.type]!.ser;
+        wrap.serializer = _ctx.type2TypeInfo[wrap.type]!.serializer;
       } else if (wrap.objType == ObjType.LIST) {
-        wrap.ser = _ctx.abstractListSer;
+        wrap.serializer = _ctx.abstractListSerializer;
       } else if (wrap.objType == ObjType.SET) {
-        wrap.ser = _ctx.abstractSetSer;
+        wrap.serializer = _ctx.abstractSetSerializer;
       } else if (wrap.objType == ObjType.MAP) {
-        wrap.ser = _ctx.abstractMapSer;
+        wrap.serializer = _ctx.abstractMapSerializer;
       }
-      // At this point, ser is not set, ser is still null
+      // At this point, serializer is not set, serializer is still null
       bindSerializers(wrap.genericsArgs);
     }
   }
@@ -395,7 +395,7 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   @override
-  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializerPack pack) {
+  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializationContext pack) {
     Type dartType = dartTypeResolver.getForyType(obj);
     TypeInfo? typeInfo = _ctx.type2TypeInfo[dartType];
     if (typeInfo == null) {
@@ -797,8 +797,8 @@ final class TypeResolverImpl extends TypeResolver {
     if (typeInfo == null) {
       throw UnregisteredTypeException(type);
     }
-    ClassSerializer ser = typeInfo.ser as ClassSerializer;
-    StructHashPair pair = ser.getHashPairForTest(
+    ClassSerializer serializer = typeInfo.serializer as ClassSerializer;
+    StructHashPair pair = serializer.getHashPairForTest(
       StructHashResolver.inst,
       getRegisteredTag,
     );

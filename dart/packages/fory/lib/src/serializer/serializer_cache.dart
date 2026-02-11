@@ -25,11 +25,12 @@ abstract base class SerializerCache {
   const SerializerCache();
 
   Serializer getSerializer(ForyConfig conf) {
-    throw UnimplementedError('SerCache does not support getSer');
+    throw UnimplementedError('SerializerCache does not support getSer');
   }
 
   Serializer getSerializerWithSpec(
       ForyConfig conf, CustomTypeSpec spec, Type dartType) {
-    throw UnimplementedError('SerCache does not support getEnumSerWithSpec');
+    throw UnimplementedError(
+        'SerializerCache does not support getEnumSerializerWithSpec');
   }
 }
