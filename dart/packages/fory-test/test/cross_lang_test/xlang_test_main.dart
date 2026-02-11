@@ -1699,8 +1699,8 @@ void _runEnumSchemaEvolutionCompatibleReverse() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(compatible: true);
-  fory.register(_testEnumSpec, typeId: 210);
-  fory.register(_twoEnumFieldStructEvolutionSpec, typeId: 211);
+  fory.registerEnum(_testEnumSpec, typeId: 210);
+  fory.registerStruct(_twoEnumFieldStructEvolutionSpec, typeId: 211);
   final _TwoEnumFieldStructEvolution obj =
       fory.deserialize(data) as _TwoEnumFieldStructEvolution;
   if (obj.f1 != _TestEnum.VALUE_C) {
@@ -1713,7 +1713,7 @@ void _runNullableFieldCompatibleNull() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(compatible: true);
-  fory.register(_nullableComprehensiveCompatibleSpec, typeId: 402);
+  fory.registerStruct(_nullableComprehensiveCompatibleSpec, typeId: 402);
   final _NullableComprehensiveCompatible obj =
       fory.deserialize(data) as _NullableComprehensiveCompatible;
   _writeFile(dataFile, fory.serialize(obj));
@@ -1723,8 +1723,8 @@ void _runCollectionElementRefOverride() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(ref: true);
-  fory.register(_refOverrideElementSpec, typeId: 701);
-  fory.register(_refOverrideContainerSpec, typeId: 702);
+  fory.registerStruct(_refOverrideElementSpec, typeId: 701);
+  fory.registerStruct(_refOverrideContainerSpec, typeId: 702);
 
   final _RefOverrideContainer obj =
       fory.deserialize(data) as _RefOverrideContainer;
@@ -1742,15 +1742,15 @@ void _runCollectionElementRefOverride() {
 }
 
 void _registerSimpleById(Fory fory) {
-  fory.register(_colorSpec, typeId: 101);
-  fory.register(_itemSpec, typeId: 102);
-  fory.register(_simpleStructSpec, typeId: 103);
+  fory.registerEnum(_colorSpec, typeId: 101);
+  fory.registerStruct(_itemSpec, typeId: 102);
+  fory.registerStruct(_simpleStructSpec, typeId: 103);
 }
 
 void _registerSimpleByName(Fory fory) {
-  fory.register(_colorSpec, namespace: 'demo', typename: 'color');
-  fory.register(_itemSpec, namespace: 'demo', typename: 'item');
-  fory.register(_simpleStructSpec,
+  fory.registerEnum(_colorSpec, namespace: 'demo', typename: 'color');
+  fory.registerStruct(_itemSpec, namespace: 'demo', typename: 'item');
+  fory.registerStruct(_simpleStructSpec,
       namespace: 'demo', typename: 'simple_struct');
 }
 
@@ -1776,7 +1776,7 @@ void _runRoundTripCase(String caseName) {
       return;
     case 'test_cross_language_serializer':
       final Fory fory = Fory(compatible: true);
-      fory.register(_colorSpec, typeId: 101);
+      fory.registerEnum(_colorSpec, typeId: 101);
       _roundTripFory(fory);
       return;
     case 'test_simple_struct':
@@ -1793,87 +1793,88 @@ void _runRoundTripCase(String caseName) {
     case 'test_map':
     case 'test_item':
       final Fory fory = Fory(compatible: true);
-      fory.register(_itemSpec, typeId: 102);
+      fory.registerStruct(_itemSpec, typeId: 102);
       _roundTripFory(fory);
       return;
     case 'test_integer':
       final Fory fory = Fory(compatible: true);
-      fory.register(_item1Spec, typeId: 101);
+      fory.registerStruct(_item1Spec, typeId: 101);
       _roundTripFory(fory);
       return;
     case 'test_color':
       final Fory fory = Fory(compatible: true);
-      fory.register(_colorSpec, typeId: 101);
+      fory.registerEnum(_colorSpec, typeId: 101);
       _roundTripFory(fory);
       return;
     case 'test_struct_with_list':
       final Fory fory = Fory(compatible: true);
-      fory.register(_structWithListSpec, typeId: 201);
+      fory.registerStruct(_structWithListSpec, typeId: 201);
       _roundTripFory(fory);
       return;
     case 'test_struct_with_map':
       final Fory fory = Fory(compatible: true);
-      fory.register(_structWithMapSpec, typeId: 202);
+      fory.registerStruct(_structWithMapSpec, typeId: 202);
       _roundTripFory(fory);
       return;
     case 'test_struct_version_check':
       final Fory fory = Fory();
-      fory.register(_versionCheckStructSpec, typeId: 201);
+      fory.registerStruct(_versionCheckStructSpec, typeId: 201);
       _roundTripFory(fory);
       return;
     case 'test_one_string_field_schema':
       final Fory fory = Fory();
-      fory.register(_oneStringFieldStructSpec, typeId: 200);
+      fory.registerStruct(_oneStringFieldStructSpec, typeId: 200);
       _roundTripFory(fory);
       return;
     case 'test_one_string_field_compatible':
       final Fory fory = Fory(compatible: true);
-      fory.register(_oneStringFieldStructSpec, typeId: 200);
+      fory.registerStruct(_oneStringFieldStructSpec, typeId: 200);
       _roundTripFory(fory);
       return;
     case 'test_two_string_field_compatible':
       final Fory fory = Fory(compatible: true);
-      fory.register(_twoStringFieldStructSpec, typeId: 201);
+      fory.registerStruct(_twoStringFieldStructSpec, typeId: 201);
       _roundTripFory(fory);
       return;
     case 'test_schema_evolution_compatible':
       final Fory fory = Fory(compatible: true);
-      fory.register(_twoStringFieldStructSpec, typeId: 200);
+      fory.registerStruct(_twoStringFieldStructSpec, typeId: 200);
       _roundTripFory(fory);
       return;
     case 'test_one_enum_field_schema':
       final Fory fory = Fory();
-      fory.register(_testEnumSpec, typeId: 210);
-      fory.register(_oneEnumFieldStructSpec, typeId: 211);
+      fory.registerEnum(_testEnumSpec, typeId: 210);
+      fory.registerStruct(_oneEnumFieldStructSpec, typeId: 211);
       _roundTripFory(fory);
       return;
     case 'test_one_enum_field_compatible':
       final Fory fory = Fory(compatible: true);
-      fory.register(_testEnumSpec, typeId: 210);
-      fory.register(_oneEnumFieldStructSpec, typeId: 211);
+      fory.registerEnum(_testEnumSpec, typeId: 210);
+      fory.registerStruct(_oneEnumFieldStructSpec, typeId: 211);
       _roundTripFory(fory);
       return;
     case 'test_two_enum_field_compatible':
       final Fory fory = Fory(compatible: true);
-      fory.register(_testEnumSpec, typeId: 210);
-      fory.register(_twoEnumFieldStructSpec, typeId: 212);
+      fory.registerEnum(_testEnumSpec, typeId: 210);
+      fory.registerStruct(_twoEnumFieldStructSpec, typeId: 212);
       _roundTripFory(fory);
       return;
     case 'test_enum_schema_evolution_compatible':
       final Fory fory = Fory(compatible: true);
-      fory.register(_testEnumSpec, typeId: 210);
-      fory.register(_twoEnumFieldStructSpec, typeId: 211);
+      fory.registerEnum(_testEnumSpec, typeId: 210);
+      fory.registerStruct(_twoEnumFieldStructSpec, typeId: 211);
       _roundTripFory(fory);
       return;
     case 'test_nullable_field_schema_consistent_not_null':
     case 'test_nullable_field_schema_consistent_null':
       final Fory fory = Fory();
-      fory.register(_nullableComprehensiveSchemaConsistentSpec, typeId: 401);
+      fory.registerStruct(_nullableComprehensiveSchemaConsistentSpec,
+          typeId: 401);
       _roundTripFory(fory);
       return;
     case 'test_nullable_field_compatible_not_null':
       final Fory fory = Fory(compatible: true);
-      fory.register(_nullableComprehensiveCompatibleSpec, typeId: 402);
+      fory.registerStruct(_nullableComprehensiveCompatibleSpec, typeId: 402);
       _roundTripFory(fory);
       return;
     case 'test_nullable_field_compatible_null':
@@ -1881,14 +1882,14 @@ void _runRoundTripCase(String caseName) {
       return;
     case 'test_ref_schema_consistent':
       final Fory fory = Fory(ref: true);
-      fory.register(_refInnerSchemaConsistentSpec, typeId: 501);
-      fory.register(_refOuterSchemaConsistentSpec, typeId: 502);
+      fory.registerStruct(_refInnerSchemaConsistentSpec, typeId: 501);
+      fory.registerStruct(_refOuterSchemaConsistentSpec, typeId: 502);
       _roundTripFory(fory);
       return;
     case 'test_ref_compatible':
       final Fory fory = Fory(compatible: true, ref: true);
-      fory.register(_refInnerCompatibleSpec, typeId: 503);
-      fory.register(_refOuterCompatibleSpec, typeId: 504);
+      fory.registerStruct(_refInnerCompatibleSpec, typeId: 503);
+      fory.registerStruct(_refOuterCompatibleSpec, typeId: 504);
       _roundTripFory(fory);
       return;
     case 'test_collection_element_ref_override':
@@ -1896,12 +1897,12 @@ void _runRoundTripCase(String caseName) {
       return;
     case 'test_circular_ref_schema_consistent':
       final Fory fory = Fory(ref: true);
-      fory.register(_circularRefStructSpec, typeId: 601);
+      fory.registerStruct(_circularRefStructSpec, typeId: 601);
       _roundTripFory(fory);
       return;
     case 'test_circular_ref_compatible':
       final Fory fory = Fory(compatible: true, ref: true);
-      fory.register(_circularRefStructSpec, typeId: 602);
+      fory.registerStruct(_circularRefStructSpec, typeId: 602);
       _roundTripFory(fory);
       return;
     case 'test_enum_schema_evolution_compatible_reverse':

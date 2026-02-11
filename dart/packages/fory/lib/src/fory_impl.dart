@@ -20,6 +20,7 @@
 import 'dart:typed_data';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/config/fory_config.dart';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_runtime.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
@@ -91,7 +92,7 @@ final class Fory {
   }
 
   @inline
-  void registerClass(
+  void registerStruct(
     ClassSpec spec, {
     int? typeId,
     String? namespace,
@@ -112,6 +113,31 @@ final class Fory {
     String? namespace,
     String? typename,
   }) {
+    register(
+      spec,
+      typeId: typeId,
+      namespace: namespace,
+      typename: typename,
+    );
+  }
+
+  @inline
+  void registerUnion(
+    CustomTypeSpec spec, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final ObjType objType = spec.objType;
+    if (objType != ObjType.UNION &&
+        objType != ObjType.TYPED_UNION &&
+        objType != ObjType.NAMED_UNION) {
+      throw ArgumentError.value(
+        objType,
+        'spec.objType',
+        'registerUnion only accepts union specs',
+      );
+    }
     register(
       spec,
       typeId: typeId,
