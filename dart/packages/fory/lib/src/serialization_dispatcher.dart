@@ -37,11 +37,11 @@ import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/float32.dart';
 
-class SerializationRuntime {
-  static final SerializationRuntime _instance =
-      SerializationRuntime._internal();
-  static SerializationRuntime get I => _instance;
-  SerializationRuntime._internal();
+class SerializationDispatcher {
+  static final SerializationDispatcher _instance =
+      SerializationDispatcher._internal();
+  static SerializationDispatcher get I => _instance;
+  SerializationDispatcher._internal();
 
   static final ForyHeaderSerializer _foryHeaderSerializer =
       ForyHeaderSerializer.I;

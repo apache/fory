@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/deserialization_runtime.dart';
+import 'package:fory/src/deserialization_dispatcher.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -28,7 +28,7 @@ import 'package:fory/src/collection/stack.dart';
 final class DeserializationContext extends Pack {
   final HeaderBrief header;
 
-  final DeserializationRuntime deserializationCoordinator;
+  final DeserializationDispatcher deserializationDispatcher;
 
   final DeserializationRefResolver refResolver;
   final TypeResolver typeResolver;
@@ -39,7 +39,7 @@ final class DeserializationContext extends Pack {
     super.structHashResolver,
     super.getTagByDartType,
     this.header,
-    this.deserializationCoordinator,
+    this.deserializationDispatcher,
     this.refResolver,
     this.typeResolver,
     this.typeWrapStack,

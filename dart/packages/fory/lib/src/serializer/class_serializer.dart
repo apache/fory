@@ -136,13 +136,13 @@ final class ClassSerializer extends CustomSerializer<Object> {
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           fieldValue =
-              pack.deserializationCoordinator.readDynamicWithRef(br, pack);
+              pack.deserializationDispatcher.readDynamicWithRef(br, pack);
         } else {
           fieldValue =
-              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+              pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
         }
       } else if (fieldSpec.trackingRef || typeWrap.nullable) {
-        fieldValue = pack.deserializationCoordinator.readWithSerializer(
+        fieldValue = pack.deserializationDispatcher.readWithSerializer(
             br, serializer, pack,
             trackingRefOverride: fieldSpec.trackingRef);
       } else {
@@ -185,14 +185,14 @@ final class ClassSerializer extends CustomSerializer<Object> {
       Serializer? serializer = typeWrap.serializer;
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
-          pack.serializationCoordinator
+          pack.serializationDispatcher
               .writeDynamicWithRef(bw, fieldValue, pack);
         } else {
-          pack.serializationCoordinator
+          pack.serializationDispatcher
               .writeDynamicWithoutRef(bw, fieldValue as Object, pack);
         }
       } else if (fieldSpec.trackingRef || typeWrap.nullable) {
-        pack.serializationCoordinator.writeWithSerializer(
+        pack.serializationDispatcher.writeWithSerializer(
             bw, serializer, fieldValue, pack,
             trackingRefOverride: fieldSpec.trackingRef);
       } else {
@@ -218,14 +218,13 @@ final class ClassSerializer extends CustomSerializer<Object> {
       Serializer? serializer = typeWrap.serializer;
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
-          args[i] =
-              pack.deserializationCoordinator.readDynamicWithRef(br, pack);
+          args[i] = pack.deserializationDispatcher.readDynamicWithRef(br, pack);
         } else {
           args[i] =
-              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+              pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
         }
       } else if (fieldSpec.trackingRef || typeWrap.nullable) {
-        args[i] = pack.deserializationCoordinator.readWithSerializer(
+        args[i] = pack.deserializationDispatcher.readWithSerializer(
             br, serializer, pack,
             trackingRefOverride: fieldSpec.trackingRef);
       } else {

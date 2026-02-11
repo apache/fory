@@ -343,7 +343,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.serializationCoordinator.writeWithSerializer(
+      pack.serializationDispatcher.writeWithSerializer(
           bw, serializer, value, pack,
           trackingRefOverride: true);
     } else {
@@ -364,7 +364,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     bool pushed = _pushWrapForRead(wrap, pack);
     Object? value;
     if (trackRef) {
-      value = pack.deserializationCoordinator
+      value = pack.deserializationDispatcher
           .readWithSerializer(br, serializer, pack, trackingRefOverride: true);
     } else {
       value = serializer.read(br, -1, pack);
@@ -384,9 +384,9 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.serializationCoordinator.writeDynamicWithRef(bw, value, pack);
+      pack.serializationDispatcher.writeDynamicWithRef(bw, value, pack);
     } else {
-      pack.serializationCoordinator.writeDynamicWithoutRef(bw, value, pack);
+      pack.serializationDispatcher.writeDynamicWithoutRef(bw, value, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
@@ -402,10 +402,10 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     bool pushed = _pushWrapForRead(wrap, pack);
     Object value;
     if (trackRef) {
-      value = pack.deserializationCoordinator.readDynamicWithRef(br, pack)
-          as Object;
+      value =
+          pack.deserializationDispatcher.readDynamicWithRef(br, pack) as Object;
     } else {
-      value = pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+      value = pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();

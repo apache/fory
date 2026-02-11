@@ -18,7 +18,7 @@
  */
 
 import 'package:fory/src/collection/stack.dart';
-import 'package:fory/src/serialization_runtime.dart';
+import 'package:fory/src/serialization_dispatcher.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/meta_string_writing_resolver.dart';
 import 'package:fory/src/resolver/serialization_ref_resolver.dart';
@@ -26,7 +26,7 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/runtime_context.dart';
 
 final class SerializationContext extends Pack {
-  final SerializationRuntime serializationCoordinator;
+  final SerializationDispatcher serializationDispatcher;
   final TypeResolver typeResolver;
   final SerializationRefResolver refResolver;
   final SerializationRefResolver noRefResolver;
@@ -36,7 +36,7 @@ final class SerializationContext extends Pack {
   const SerializationContext(
     super.structHashResolver,
     super.getTagByDartType,
-    this.serializationCoordinator,
+    this.serializationDispatcher,
     this.typeResolver,
     this.refResolver,
     this.noRefResolver,

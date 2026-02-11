@@ -61,11 +61,11 @@ void _runEnumSchemaEvolutionCompatibleReverse() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(compatible: true);
-  _registerEnumType(fory, _TestEnum, typeId: 210);
-  _registerStructType(fory, _TwoEnumFieldStructEvolution, typeId: 211);
-  final _TwoEnumFieldStructEvolution obj =
-      fory.deserialize(data) as _TwoEnumFieldStructEvolution;
-  if (obj.f1 != _TestEnum.VALUE_C) {
+  _registerEnumType(fory, TestEnum, typeId: 210);
+  _registerStructType(fory, TwoEnumFieldStructEvolution, typeId: 211);
+  final TwoEnumFieldStructEvolution obj =
+      fory.deserialize(data) as TwoEnumFieldStructEvolution;
+  if (obj.f1 != TestEnum.VALUE_C) {
     throw StateError('Expected f1=VALUE_C, got ${obj.f1}');
   }
   _writeFile(dataFile, fory.serialize(obj));
@@ -75,9 +75,9 @@ void _runNullableFieldCompatibleNull() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(compatible: true);
-  _registerStructType(fory, _NullableComprehensiveCompatible, typeId: 402);
-  final _NullableComprehensiveCompatible obj =
-      fory.deserialize(data) as _NullableComprehensiveCompatible;
+  _registerStructType(fory, NullableComprehensiveCompatible, typeId: 402);
+  final NullableComprehensiveCompatible obj =
+      fory.deserialize(data) as NullableComprehensiveCompatible;
   _writeFile(dataFile, fory.serialize(obj));
 }
 
@@ -85,18 +85,18 @@ void _runCollectionElementRefOverride() {
   final String dataFile = _getDataFile();
   final Uint8List data = _readFile(dataFile);
   final Fory fory = Fory(ref: true);
-  _registerStructType(fory, _RefOverrideElement, typeId: 701);
-  _registerStructType(fory, _RefOverrideContainer, typeId: 702);
+  _registerStructType(fory, RefOverrideElement, typeId: 701);
+  _registerStructType(fory, RefOverrideContainer, typeId: 702);
 
-  final _RefOverrideContainer obj =
-      fory.deserialize(data) as _RefOverrideContainer;
+  final RefOverrideContainer obj =
+      fory.deserialize(data) as RefOverrideContainer;
   if (obj.listField.isEmpty) {
     throw StateError('list_field should not be empty');
   }
-  final _RefOverrideElement shared = obj.listField.first;
-  final _RefOverrideContainer out = _RefOverrideContainer();
-  out.listField = <_RefOverrideElement>[shared, shared];
-  out.mapField = <String, _RefOverrideElement>{
+  final RefOverrideElement shared = obj.listField.first;
+  final RefOverrideContainer out = RefOverrideContainer();
+  out.listField = <RefOverrideElement>[shared, shared];
+  out.mapField = <String, RefOverrideElement>{
     'k1': shared,
     'k2': shared,
   };
@@ -104,15 +104,15 @@ void _runCollectionElementRefOverride() {
 }
 
 void _registerSimpleById(Fory fory) {
-  _registerEnumType(fory, _Color, typeId: 101);
-  _registerStructType(fory, _Item, typeId: 102);
-  _registerStructType(fory, _SimpleStruct, typeId: 103);
+  _registerEnumType(fory, Color, typeId: 101);
+  _registerStructType(fory, Item, typeId: 102);
+  _registerStructType(fory, SimpleStruct, typeId: 103);
 }
 
 void _registerSimpleByName(Fory fory) {
-  _registerEnumType(fory, _Color, namespace: 'demo', typename: 'color');
-  _registerStructType(fory, _Item, namespace: 'demo', typename: 'item');
-  _registerStructType(fory, _SimpleStruct,
+  _registerEnumType(fory, Color, namespace: 'demo', typename: 'color');
+  _registerStructType(fory, Item, namespace: 'demo', typename: 'item');
+  _registerStructType(fory, SimpleStruct,
       namespace: 'demo', typename: 'simple_struct');
 }
 
@@ -138,7 +138,7 @@ void _runRoundTripCase(String caseName) {
       return;
     case 'test_cross_language_serializer':
       final Fory fory = Fory(compatible: true);
-      _registerEnumType(fory, _Color, typeId: 101);
+      _registerEnumType(fory, Color, typeId: 101);
       _roundTripFory(fory);
       return;
     case 'test_simple_struct':
@@ -155,88 +155,88 @@ void _runRoundTripCase(String caseName) {
     case 'test_map':
     case 'test_item':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _Item, typeId: 102);
+      _registerStructType(fory, Item, typeId: 102);
       _roundTripFory(fory);
       return;
     case 'test_integer':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _Item1, typeId: 101);
+      _registerStructType(fory, Item1, typeId: 101);
       _roundTripFory(fory);
       return;
     case 'test_color':
       final Fory fory = Fory(compatible: true);
-      _registerEnumType(fory, _Color, typeId: 101);
+      _registerEnumType(fory, Color, typeId: 101);
       _roundTripFory(fory);
       return;
     case 'test_struct_with_list':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _StructWithList, typeId: 201);
+      _registerStructType(fory, StructWithList, typeId: 201);
       _roundTripFory(fory);
       return;
     case 'test_struct_with_map':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _StructWithMap, typeId: 202);
+      _registerStructType(fory, StructWithMap, typeId: 202);
       _roundTripFory(fory);
       return;
     case 'test_struct_version_check':
       final Fory fory = Fory();
-      _registerStructType(fory, _VersionCheckStruct, typeId: 201);
+      _registerStructType(fory, VersionCheckStruct, typeId: 201);
       _roundTripFory(fory);
       return;
     case 'test_one_string_field_schema':
       final Fory fory = Fory();
-      _registerStructType(fory, _OneStringFieldStruct, typeId: 200);
+      _registerStructType(fory, OneStringFieldStruct, typeId: 200);
       _roundTripFory(fory);
       return;
     case 'test_one_string_field_compatible':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _OneStringFieldStruct, typeId: 200);
+      _registerStructType(fory, OneStringFieldStruct, typeId: 200);
       _roundTripFory(fory);
       return;
     case 'test_two_string_field_compatible':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _TwoStringFieldStruct, typeId: 201);
+      _registerStructType(fory, TwoStringFieldStruct, typeId: 201);
       _roundTripFory(fory);
       return;
     case 'test_schema_evolution_compatible':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _TwoStringFieldStruct, typeId: 200);
+      _registerStructType(fory, TwoStringFieldStruct, typeId: 200);
       _roundTripFory(fory);
       return;
     case 'test_one_enum_field_schema':
       final Fory fory = Fory();
-      _registerEnumType(fory, _TestEnum, typeId: 210);
-      _registerStructType(fory, _OneEnumFieldStruct, typeId: 211);
+      _registerEnumType(fory, TestEnum, typeId: 210);
+      _registerStructType(fory, OneEnumFieldStruct, typeId: 211);
       _roundTripFory(fory);
       return;
     case 'test_one_enum_field_compatible':
       final Fory fory = Fory(compatible: true);
-      _registerEnumType(fory, _TestEnum, typeId: 210);
-      _registerStructType(fory, _OneEnumFieldStruct, typeId: 211);
+      _registerEnumType(fory, TestEnum, typeId: 210);
+      _registerStructType(fory, OneEnumFieldStruct, typeId: 211);
       _roundTripFory(fory);
       return;
     case 'test_two_enum_field_compatible':
       final Fory fory = Fory(compatible: true);
-      _registerEnumType(fory, _TestEnum, typeId: 210);
-      _registerStructType(fory, _TwoEnumFieldStruct, typeId: 212);
+      _registerEnumType(fory, TestEnum, typeId: 210);
+      _registerStructType(fory, TwoEnumFieldStruct, typeId: 212);
       _roundTripFory(fory);
       return;
     case 'test_enum_schema_evolution_compatible':
       final Fory fory = Fory(compatible: true);
-      _registerEnumType(fory, _TestEnum, typeId: 210);
-      _registerStructType(fory, _TwoEnumFieldStruct, typeId: 211);
+      _registerEnumType(fory, TestEnum, typeId: 210);
+      _registerStructType(fory, TwoEnumFieldStruct, typeId: 211);
       _roundTripFory(fory);
       return;
     case 'test_nullable_field_schema_consistent_not_null':
     case 'test_nullable_field_schema_consistent_null':
       final Fory fory = Fory();
-      _registerStructType(fory, _NullableComprehensiveSchemaConsistent,
+      _registerStructType(fory, NullableComprehensiveSchemaConsistent,
           typeId: 401);
       _roundTripFory(fory);
       return;
     case 'test_nullable_field_compatible_not_null':
       final Fory fory = Fory(compatible: true);
-      _registerStructType(fory, _NullableComprehensiveCompatible, typeId: 402);
+      _registerStructType(fory, NullableComprehensiveCompatible, typeId: 402);
       _roundTripFory(fory);
       return;
     case 'test_nullable_field_compatible_null':
@@ -244,14 +244,14 @@ void _runRoundTripCase(String caseName) {
       return;
     case 'test_ref_schema_consistent':
       final Fory fory = Fory(ref: true);
-      _registerStructType(fory, _RefInnerSchemaConsistent, typeId: 501);
-      _registerStructType(fory, _RefOuterSchemaConsistent, typeId: 502);
+      _registerStructType(fory, RefInnerSchemaConsistent, typeId: 501);
+      _registerStructType(fory, RefOuterSchemaConsistent, typeId: 502);
       _roundTripFory(fory);
       return;
     case 'test_ref_compatible':
       final Fory fory = Fory(compatible: true, ref: true);
-      _registerStructType(fory, _RefInnerCompatible, typeId: 503);
-      _registerStructType(fory, _RefOuterCompatible, typeId: 504);
+      _registerStructType(fory, RefInnerCompatible, typeId: 503);
+      _registerStructType(fory, RefOuterCompatible, typeId: 504);
       _roundTripFory(fory);
       return;
     case 'test_collection_element_ref_override':
@@ -259,12 +259,12 @@ void _runRoundTripCase(String caseName) {
       return;
     case 'test_circular_ref_schema_consistent':
       final Fory fory = Fory(ref: true);
-      _registerStructType(fory, _CircularRefStruct, typeId: 601);
+      _registerStructType(fory, CircularRefStruct, typeId: 601);
       _roundTripFory(fory);
       return;
     case 'test_circular_ref_compatible':
       final Fory fory = Fory(compatible: true, ref: true);
-      _registerStructType(fory, _CircularRefStruct, typeId: 602);
+      _registerStructType(fory, CircularRefStruct, typeId: 602);
       _roundTripFory(fory);
       return;
     case 'test_enum_schema_evolution_compatible_reverse':

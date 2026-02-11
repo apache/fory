@@ -21,7 +21,7 @@ import 'dart:typed_data';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserialization_runtime.dart';
+import 'package:fory/src/deserialization_dispatcher.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
@@ -29,12 +29,13 @@ import 'package:fory/src/meta/specs/class_spec.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/meta/specs/enum_spec.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
-import 'package:fory/src/serialization_runtime.dart';
+import 'package:fory/src/serialization_dispatcher.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
 final class Fory {
-  static final DeserializationRuntime _deserializer = DeserializationRuntime.I;
-  static final SerializationRuntime _serializer = SerializationRuntime.I;
+  static final DeserializationDispatcher _deserializer =
+      DeserializationDispatcher.I;
+  static final SerializationDispatcher _serializer = SerializationDispatcher.I;
 
   final ForyConfig _config;
   late final TypeResolver _typeResolver;

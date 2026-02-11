@@ -19,31 +19,31 @@
 
 part of 'xlang_test_main.dart';
 
-enum _TestEnum {
+enum TestEnum {
   VALUE_A,
   VALUE_B,
   VALUE_C,
 }
 
 const EnumSpec _testEnumSpec = EnumSpec(
-  _TestEnum,
-  _TestEnum.values,
+  TestEnum,
+  TestEnum.values,
 );
 
-class _TwoEnumFieldStructEvolution {
-  _TestEnum f1 = _TestEnum.VALUE_A;
-  _TestEnum f2 = _TestEnum.VALUE_A;
+class TwoEnumFieldStructEvolution {
+  TestEnum f1 = TestEnum.VALUE_A;
+  TestEnum f2 = TestEnum.VALUE_A;
 }
 
 final ClassSpec _twoEnumFieldStructEvolutionSpec = ClassSpec(
-  _TwoEnumFieldStructEvolution,
+  TwoEnumFieldStructEvolution,
   false,
   true,
   [
     FieldSpec(
       'f1',
       const TypeSpec(
-        _TestEnum,
+        TestEnum,
         ObjType.ENUM,
         false,
         true,
@@ -52,14 +52,14 @@ final ClassSpec _twoEnumFieldStructEvolutionSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _TwoEnumFieldStructEvolution).f1,
+      (Object inst) => (inst as TwoEnumFieldStructEvolution).f1,
       (Object inst, dynamic v) =>
-          (inst as _TwoEnumFieldStructEvolution).f1 = v as _TestEnum,
+          (inst as TwoEnumFieldStructEvolution).f1 = v as TestEnum,
     ),
     FieldSpec(
       'f2',
       const TypeSpec(
-        _TestEnum,
+        TestEnum,
         ObjType.ENUM,
         false,
         true,
@@ -68,27 +68,27 @@ final ClassSpec _twoEnumFieldStructEvolutionSpec = ClassSpec(
       ),
       false,
       true,
-      (Object inst) => (inst as _TwoEnumFieldStructEvolution).f2,
+      (Object inst) => (inst as TwoEnumFieldStructEvolution).f2,
       (Object inst, dynamic v) =>
-          (inst as _TwoEnumFieldStructEvolution).f2 = v as _TestEnum,
+          (inst as TwoEnumFieldStructEvolution).f2 = v as TestEnum,
     ),
   ],
   null,
-  () => _TwoEnumFieldStructEvolution(),
+  () => TwoEnumFieldStructEvolution(),
 );
 
-class _RefOverrideElement {
+class RefOverrideElement {
   Int32 id = Int32(0);
   String name = '';
 }
 
-class _RefOverrideContainer {
-  List<_RefOverrideElement> listField = <_RefOverrideElement>[];
-  Map<String, _RefOverrideElement> mapField = <String, _RefOverrideElement>{};
+class RefOverrideContainer {
+  List<RefOverrideElement> listField = <RefOverrideElement>[];
+  Map<String, RefOverrideElement> mapField = <String, RefOverrideElement>{};
 }
 
 final ClassSpec _refOverrideElementSpec = ClassSpec(
-  _RefOverrideElement,
+  RefOverrideElement,
   false,
   true,
   [
@@ -104,8 +104,8 @@ final ClassSpec _refOverrideElementSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _RefOverrideElement).id,
-      (Object inst, dynamic v) => (inst as _RefOverrideElement).id = v as Int32,
+      (Object inst) => (inst as RefOverrideElement).id,
+      (Object inst, dynamic v) => (inst as RefOverrideElement).id = v as Int32,
     ),
     FieldSpec(
       'name',
@@ -119,17 +119,17 @@ final ClassSpec _refOverrideElementSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _RefOverrideElement).name,
+      (Object inst) => (inst as RefOverrideElement).name,
       (Object inst, dynamic v) =>
-          (inst as _RefOverrideElement).name = v as String,
+          (inst as RefOverrideElement).name = v as String,
     ),
   ],
   null,
-  () => _RefOverrideElement(),
+  () => RefOverrideElement(),
 );
 
 final ClassSpec _refOverrideContainerSpec = ClassSpec(
-  _RefOverrideContainer,
+  RefOverrideContainer,
   false,
   true,
   [
@@ -143,7 +143,7 @@ final ClassSpec _refOverrideContainerSpec = ClassSpec(
         null,
         [
           TypeSpec(
-            _RefOverrideElement,
+            RefOverrideElement,
             ObjType.STRUCT,
             false,
             true,
@@ -154,9 +154,9 @@ final ClassSpec _refOverrideContainerSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _RefOverrideContainer).listField,
-      (Object inst, dynamic v) => (inst as _RefOverrideContainer).listField =
-          (v as List).cast<_RefOverrideElement>(),
+      (Object inst) => (inst as RefOverrideContainer).listField,
+      (Object inst, dynamic v) => (inst as RefOverrideContainer).listField =
+          (v as List).cast<RefOverrideElement>(),
     ),
     FieldSpec(
       'map_field',
@@ -176,7 +176,7 @@ final ClassSpec _refOverrideContainerSpec = ClassSpec(
             [],
           ),
           TypeSpec(
-            _RefOverrideElement,
+            RefOverrideElement,
             ObjType.STRUCT,
             false,
             true,
@@ -187,21 +187,21 @@ final ClassSpec _refOverrideContainerSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _RefOverrideContainer).mapField,
+      (Object inst) => (inst as RefOverrideContainer).mapField,
       (Object inst, dynamic v) =>
-          (inst as _RefOverrideContainer).mapField = (v as Map).map(
+          (inst as RefOverrideContainer).mapField = (v as Map).map(
         (Object? k, Object? value) => MapEntry(
           k as String,
-          value as _RefOverrideElement,
+          value as RefOverrideElement,
         ),
       ),
     ),
   ],
   null,
-  () => _RefOverrideContainer(),
+  () => RefOverrideContainer(),
 );
 
-class _NullableComprehensiveCompatible {
+class NullableComprehensiveCompatible {
   double boxedDouble = 0.0;
   double doubleField = 0.0;
   Float32 boxedFloat = Float32(0);
@@ -241,7 +241,7 @@ Map<String, String> _asStringMap(Object? value) {
 }
 
 final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
-  _NullableComprehensiveCompatible,
+  NullableComprehensiveCompatible,
   false,
   true,
   [
@@ -257,9 +257,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).boxedDouble,
+      (Object inst) => (inst as NullableComprehensiveCompatible).boxedDouble,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).boxedDouble = v as double,
+          (inst as NullableComprehensiveCompatible).boxedDouble = v as double,
     ),
     FieldSpec(
       'double_field',
@@ -273,9 +273,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).doubleField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).doubleField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).doubleField = v as double,
+          (inst as NullableComprehensiveCompatible).doubleField = v as double,
     ),
     FieldSpec(
       'boxed_float',
@@ -289,9 +289,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).boxedFloat,
+      (Object inst) => (inst as NullableComprehensiveCompatible).boxedFloat,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).boxedFloat = v as Float32,
+          (inst as NullableComprehensiveCompatible).boxedFloat = v as Float32,
     ),
     FieldSpec(
       'float_field',
@@ -305,9 +305,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).floatField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).floatField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).floatField = v as Float32,
+          (inst as NullableComprehensiveCompatible).floatField = v as Float32,
     ),
     FieldSpec(
       'short_field',
@@ -321,9 +321,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).shortField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).shortField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).shortField = v as Int16,
+          (inst as NullableComprehensiveCompatible).shortField = v as Int16,
     ),
     FieldSpec(
       'byte_field',
@@ -337,9 +337,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).byteField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).byteField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).byteField = v as Int8,
+          (inst as NullableComprehensiveCompatible).byteField = v as Int8,
     ),
     FieldSpec(
       'bool_field',
@@ -353,9 +353,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).boolField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).boolField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).boolField = v as bool,
+          (inst as NullableComprehensiveCompatible).boolField = v as bool,
     ),
     FieldSpec(
       'boxed_bool',
@@ -369,9 +369,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).boxedBool,
+      (Object inst) => (inst as NullableComprehensiveCompatible).boxedBool,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).boxedBool = v as bool,
+          (inst as NullableComprehensiveCompatible).boxedBool = v as bool,
     ),
     FieldSpec(
       'boxed_long',
@@ -385,9 +385,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).boxedLong,
+      (Object inst) => (inst as NullableComprehensiveCompatible).boxedLong,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).boxedLong = v as int,
+          (inst as NullableComprehensiveCompatible).boxedLong = v as int,
     ),
     FieldSpec(
       'long_field',
@@ -401,9 +401,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).longField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).longField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).longField = v as int,
+          (inst as NullableComprehensiveCompatible).longField = v as int,
     ),
     FieldSpec(
       'boxed_int',
@@ -417,9 +417,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).boxedInt,
+      (Object inst) => (inst as NullableComprehensiveCompatible).boxedInt,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).boxedInt = v as Int32,
+          (inst as NullableComprehensiveCompatible).boxedInt = v as Int32,
     ),
     FieldSpec(
       'int_field',
@@ -433,9 +433,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).intField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).intField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).intField = v as Int32,
+          (inst as NullableComprehensiveCompatible).intField = v as Int32,
     ),
     FieldSpec(
       'nullable_double1',
@@ -450,8 +450,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveCompatible).nullableDouble1,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+          (inst as NullableComprehensiveCompatible).nullableDouble1,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableDouble1 = (v as double?) ?? 0.0,
     ),
     FieldSpec(
@@ -466,9 +466,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) =>
-          (inst as _NullableComprehensiveCompatible).nullableFloat1,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableFloat1,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableFloat1 = (v as Float32?) ?? Float32(0),
     ),
     FieldSpec(
@@ -483,8 +482,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).nullableBool1,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableBool1,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableBool1 = (v as bool?) ?? false,
     ),
     FieldSpec(
@@ -499,8 +498,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).nullableLong1,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableLong1,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableLong1 = (v as int?) ?? 0,
     ),
     FieldSpec(
@@ -515,8 +514,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).nullableInt1,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableInt1,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableInt1 = (v as Int32?) ?? Int32(0),
     ),
     FieldSpec(
@@ -532,8 +531,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveCompatible).nullableString2,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+          (inst as NullableComprehensiveCompatible).nullableString2,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableString2 = (v as String?) ?? '',
     ),
     FieldSpec(
@@ -548,9 +547,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).stringField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).stringField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).stringField = v as String,
+          (inst as NullableComprehensiveCompatible).stringField = v as String,
     ),
     FieldSpec(
       'list_field',
@@ -573,8 +572,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).listField,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).listField,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .listField = (v as List).cast<String>(),
     ),
     FieldSpec(
@@ -598,8 +597,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).nullableList2,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableList2,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableList2 = v == null ? <String>[] : (v as List).cast<String>(),
     ),
     FieldSpec(
@@ -623,8 +622,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).nullableSet2,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableSet2,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableSet2 = v == null ? <String>{} : (v as Set).cast<String>(),
     ),
     FieldSpec(
@@ -648,8 +647,8 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).setField,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).setField,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .setField = (v as Set).cast<String>(),
     ),
     FieldSpec(
@@ -681,9 +680,9 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).mapField,
+      (Object inst) => (inst as NullableComprehensiveCompatible).mapField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveCompatible).mapField = _asStringMap(v),
+          (inst as NullableComprehensiveCompatible).mapField = _asStringMap(v),
     ),
     FieldSpec(
       'nullable_map2',
@@ -714,16 +713,16 @@ final ClassSpec _nullableComprehensiveCompatibleSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _NullableComprehensiveCompatible).nullableMap2,
-      (Object inst, dynamic v) => (inst as _NullableComprehensiveCompatible)
+      (Object inst) => (inst as NullableComprehensiveCompatible).nullableMap2,
+      (Object inst, dynamic v) => (inst as NullableComprehensiveCompatible)
           .nullableMap2 = _asStringMap(v),
     ),
   ],
   null,
-  () => _NullableComprehensiveCompatible(),
+  () => NullableComprehensiveCompatible(),
 );
 
-enum _Color {
+enum Color {
   Green,
   Red,
   Blue,
@@ -731,16 +730,16 @@ enum _Color {
 }
 
 const EnumSpec _colorSpec = EnumSpec(
-  _Color,
-  _Color.values,
+  Color,
+  Color.values,
 );
 
-class _Item {
+class Item {
   String name = '';
 }
 
 final ClassSpec _itemSpec = ClassSpec(
-  _Item,
+  Item,
   false,
   true,
   [
@@ -749,20 +748,20 @@ final ClassSpec _itemSpec = ClassSpec(
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item).name,
-      (Object inst, dynamic v) => (inst as _Item).name = v as String,
+      (Object inst) => (inst as Item).name,
+      (Object inst, dynamic v) => (inst as Item).name = v as String,
     ),
   ],
   null,
-  () => _Item(),
+  () => Item(),
 );
 
-class _SimpleStruct {
+class SimpleStruct {
   Map<Int32, double> f1 = <Int32, double>{};
   Int32 f2 = Int32(0);
-  _Item f3 = _Item();
+  Item f3 = Item();
   String f4 = '';
-  _Color f5 = _Color.Green;
+  Color f5 = Color.Green;
   List<String> f6 = <String>[];
   Int32 f7 = Int32(0);
   Int32 f8 = Int32(0);
@@ -779,7 +778,7 @@ Map<Int32, double> _asInt32DoubleMap(Object? value) {
 }
 
 final ClassSpec _simpleStructSpec = ClassSpec(
-  _SimpleStruct,
+  SimpleStruct,
   false,
   true,
   [
@@ -798,41 +797,41 @@ final ClassSpec _simpleStructSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f1,
+      (Object inst) => (inst as SimpleStruct).f1,
       (Object inst, dynamic v) =>
-          (inst as _SimpleStruct).f1 = _asInt32DoubleMap(v),
+          (inst as SimpleStruct).f1 = _asInt32DoubleMap(v),
     ),
     FieldSpec(
       'f2',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f2,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).f2 = v as Int32,
+      (Object inst) => (inst as SimpleStruct).f2,
+      (Object inst, dynamic v) => (inst as SimpleStruct).f2 = v as Int32,
     ),
     FieldSpec(
       'f3',
-      const TypeSpec(_Item, ObjType.STRUCT, false, false, null, []),
+      const TypeSpec(Item, ObjType.STRUCT, false, false, null, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f3,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).f3 = v as _Item,
+      (Object inst) => (inst as SimpleStruct).f3,
+      (Object inst, dynamic v) => (inst as SimpleStruct).f3 = v as Item,
     ),
     FieldSpec(
       'f4',
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f4,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).f4 = v as String,
+      (Object inst) => (inst as SimpleStruct).f4,
+      (Object inst, dynamic v) => (inst as SimpleStruct).f4 = v as String,
     ),
     FieldSpec(
       'f5',
-      const TypeSpec(_Color, ObjType.ENUM, false, true, _colorSpec, []),
+      const TypeSpec(Color, ObjType.ENUM, false, true, _colorSpec, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f5,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).f5 = v as _Color,
+      (Object inst) => (inst as SimpleStruct).f5,
+      (Object inst, dynamic v) => (inst as SimpleStruct).f5 = v as Color,
     ),
     FieldSpec(
       'f6',
@@ -848,40 +847,40 @@ final ClassSpec _simpleStructSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f6,
+      (Object inst) => (inst as SimpleStruct).f6,
       (Object inst, dynamic v) =>
-          (inst as _SimpleStruct).f6 = (v as List).cast<String>(),
+          (inst as SimpleStruct).f6 = (v as List).cast<String>(),
     ),
     FieldSpec(
       'f7',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f7,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).f7 = v as Int32,
+      (Object inst) => (inst as SimpleStruct).f7,
+      (Object inst, dynamic v) => (inst as SimpleStruct).f7 = v as Int32,
     ),
     FieldSpec(
       'f8',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).f8,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).f8 = v as Int32,
+      (Object inst) => (inst as SimpleStruct).f8,
+      (Object inst, dynamic v) => (inst as SimpleStruct).f8 = v as Int32,
     ),
     FieldSpec(
       'last',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _SimpleStruct).last,
-      (Object inst, dynamic v) => (inst as _SimpleStruct).last = v as Int32,
+      (Object inst) => (inst as SimpleStruct).last,
+      (Object inst, dynamic v) => (inst as SimpleStruct).last = v as Int32,
     ),
   ],
   null,
-  () => _SimpleStruct(),
+  () => SimpleStruct(),
 );
 
-class _Item1 {
+class Item1 {
   Int32 f1 = Int32(0);
   Int32 f2 = Int32(0);
   Int32 f3 = Int32(0);
@@ -891,7 +890,7 @@ class _Item1 {
 }
 
 final ClassSpec _item1Spec = ClassSpec(
-  _Item1,
+  Item1,
   false,
   true,
   [
@@ -900,60 +899,60 @@ final ClassSpec _item1Spec = ClassSpec(
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item1).f1,
-      (Object inst, dynamic v) => (inst as _Item1).f1 = v as Int32,
+      (Object inst) => (inst as Item1).f1,
+      (Object inst, dynamic v) => (inst as Item1).f1 = v as Int32,
     ),
     FieldSpec(
       'f2',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item1).f2,
-      (Object inst, dynamic v) => (inst as _Item1).f2 = v as Int32,
+      (Object inst) => (inst as Item1).f2,
+      (Object inst, dynamic v) => (inst as Item1).f2 = v as Int32,
     ),
     FieldSpec(
       'f3',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item1).f3,
-      (Object inst, dynamic v) => (inst as _Item1).f3 = v as Int32,
+      (Object inst) => (inst as Item1).f3,
+      (Object inst, dynamic v) => (inst as Item1).f3 = v as Int32,
     ),
     FieldSpec(
       'f4',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item1).f4,
-      (Object inst, dynamic v) => (inst as _Item1).f4 = v as Int32,
+      (Object inst) => (inst as Item1).f4,
+      (Object inst, dynamic v) => (inst as Item1).f4 = v as Int32,
     ),
     FieldSpec(
       'f5',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item1).f5,
-      (Object inst, dynamic v) => (inst as _Item1).f5 = v as Int32,
+      (Object inst) => (inst as Item1).f5,
+      (Object inst, dynamic v) => (inst as Item1).f5 = v as Int32,
     ),
     FieldSpec(
       'f6',
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _Item1).f6,
-      (Object inst, dynamic v) => (inst as _Item1).f6 = v as Int32,
+      (Object inst) => (inst as Item1).f6,
+      (Object inst, dynamic v) => (inst as Item1).f6 = v as Int32,
     ),
   ],
   null,
-  () => _Item1(),
+  () => Item1(),
 );
 
-class _StructWithList {
+class StructWithList {
   List<String?> items = <String?>[];
 }
 
 final ClassSpec _structWithListSpec = ClassSpec(
-  _StructWithList,
+  StructWithList,
   false,
   true,
   [
@@ -969,16 +968,16 @@ final ClassSpec _structWithListSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _StructWithList).items,
+      (Object inst) => (inst as StructWithList).items,
       (Object inst, dynamic v) =>
-          (inst as _StructWithList).items = (v as List).cast<String?>(),
+          (inst as StructWithList).items = (v as List).cast<String?>(),
     ),
   ],
   null,
-  () => _StructWithList(),
+  () => StructWithList(),
 );
 
-class _StructWithMap {
+class StructWithMap {
   Map<String?, String?> data = <String?, String?>{};
 }
 
@@ -992,7 +991,7 @@ Map<String?, String?> _asNullableStringMap(Object? value) {
 }
 
 final ClassSpec _structWithMapSpec = ClassSpec(
-  _StructWithMap,
+  StructWithMap,
   false,
   true,
   [
@@ -1011,23 +1010,23 @@ final ClassSpec _structWithMapSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _StructWithMap).data,
+      (Object inst) => (inst as StructWithMap).data,
       (Object inst, dynamic v) =>
-          (inst as _StructWithMap).data = _asNullableStringMap(v),
+          (inst as StructWithMap).data = _asNullableStringMap(v),
     ),
   ],
   null,
-  () => _StructWithMap(),
+  () => StructWithMap(),
 );
 
-class _VersionCheckStruct {
+class VersionCheckStruct {
   Int32 f1 = Int32(0);
   String f2 = '';
   double f3 = 0.0;
 }
 
 final ClassSpec _versionCheckStructSpec = ClassSpec(
-  _VersionCheckStruct,
+  VersionCheckStruct,
   false,
   true,
   [
@@ -1036,38 +1035,37 @@ final ClassSpec _versionCheckStructSpec = ClassSpec(
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _VersionCheckStruct).f1,
-      (Object inst, dynamic v) => (inst as _VersionCheckStruct).f1 = v as Int32,
+      (Object inst) => (inst as VersionCheckStruct).f1,
+      (Object inst, dynamic v) => (inst as VersionCheckStruct).f1 = v as Int32,
     ),
     FieldSpec(
       'f2',
       const TypeSpec(String, ObjType.STRING, true, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _VersionCheckStruct).f2,
+      (Object inst) => (inst as VersionCheckStruct).f2,
       (Object inst, dynamic v) =>
-          (inst as _VersionCheckStruct).f2 = (v as String?) ?? '',
+          (inst as VersionCheckStruct).f2 = (v as String?) ?? '',
     ),
     FieldSpec(
       'f3',
       const TypeSpec(double, ObjType.FLOAT64, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _VersionCheckStruct).f3,
-      (Object inst, dynamic v) =>
-          (inst as _VersionCheckStruct).f3 = v as double,
+      (Object inst) => (inst as VersionCheckStruct).f3,
+      (Object inst, dynamic v) => (inst as VersionCheckStruct).f3 = v as double,
     ),
   ],
   null,
-  () => _VersionCheckStruct(),
+  () => VersionCheckStruct(),
 );
 
-class _OneStringFieldStruct {
+class OneStringFieldStruct {
   String f1 = '';
 }
 
 final ClassSpec _oneStringFieldStructSpec = ClassSpec(
-  _OneStringFieldStruct,
+  OneStringFieldStruct,
   false,
   true,
   [
@@ -1076,22 +1074,22 @@ final ClassSpec _oneStringFieldStructSpec = ClassSpec(
       const TypeSpec(String, ObjType.STRING, true, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _OneStringFieldStruct).f1,
+      (Object inst) => (inst as OneStringFieldStruct).f1,
       (Object inst, dynamic v) =>
-          (inst as _OneStringFieldStruct).f1 = (v as String?) ?? '',
+          (inst as OneStringFieldStruct).f1 = (v as String?) ?? '',
     ),
   ],
   null,
-  () => _OneStringFieldStruct(),
+  () => OneStringFieldStruct(),
 );
 
-class _TwoStringFieldStruct {
+class TwoStringFieldStruct {
   String f1 = '';
   String f2 = '';
 }
 
 final ClassSpec _twoStringFieldStructSpec = ClassSpec(
-  _TwoStringFieldStruct,
+  TwoStringFieldStruct,
   false,
   true,
   [
@@ -1100,81 +1098,81 @@ final ClassSpec _twoStringFieldStructSpec = ClassSpec(
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _TwoStringFieldStruct).f1,
+      (Object inst) => (inst as TwoStringFieldStruct).f1,
       (Object inst, dynamic v) =>
-          (inst as _TwoStringFieldStruct).f1 = v as String,
+          (inst as TwoStringFieldStruct).f1 = v as String,
     ),
     FieldSpec(
       'f2',
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _TwoStringFieldStruct).f2,
+      (Object inst) => (inst as TwoStringFieldStruct).f2,
       (Object inst, dynamic v) =>
-          (inst as _TwoStringFieldStruct).f2 = v as String,
+          (inst as TwoStringFieldStruct).f2 = v as String,
     ),
   ],
   null,
-  () => _TwoStringFieldStruct(),
+  () => TwoStringFieldStruct(),
 );
 
-class _OneEnumFieldStruct {
-  _TestEnum f1 = _TestEnum.VALUE_A;
+class OneEnumFieldStruct {
+  TestEnum f1 = TestEnum.VALUE_A;
 }
 
 final ClassSpec _oneEnumFieldStructSpec = ClassSpec(
-  _OneEnumFieldStruct,
+  OneEnumFieldStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(_TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      const TypeSpec(TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
       true,
       true,
-      (Object inst) => (inst as _OneEnumFieldStruct).f1,
+      (Object inst) => (inst as OneEnumFieldStruct).f1,
       (Object inst, dynamic v) =>
-          (inst as _OneEnumFieldStruct).f1 = v as _TestEnum,
+          (inst as OneEnumFieldStruct).f1 = v as TestEnum,
     ),
   ],
   null,
-  () => _OneEnumFieldStruct(),
+  () => OneEnumFieldStruct(),
 );
 
-class _TwoEnumFieldStruct {
-  _TestEnum f1 = _TestEnum.VALUE_A;
-  _TestEnum f2 = _TestEnum.VALUE_A;
+class TwoEnumFieldStruct {
+  TestEnum f1 = TestEnum.VALUE_A;
+  TestEnum f2 = TestEnum.VALUE_A;
 }
 
 final ClassSpec _twoEnumFieldStructSpec = ClassSpec(
-  _TwoEnumFieldStruct,
+  TwoEnumFieldStruct,
   false,
   true,
   [
     FieldSpec(
       'f1',
-      const TypeSpec(_TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      const TypeSpec(TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
       true,
       true,
-      (Object inst) => (inst as _TwoEnumFieldStruct).f1,
+      (Object inst) => (inst as TwoEnumFieldStruct).f1,
       (Object inst, dynamic v) =>
-          (inst as _TwoEnumFieldStruct).f1 = v as _TestEnum,
+          (inst as TwoEnumFieldStruct).f1 = v as TestEnum,
     ),
     FieldSpec(
       'f2',
-      const TypeSpec(_TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
+      const TypeSpec(TestEnum, ObjType.ENUM, false, true, _testEnumSpec, []),
       true,
       true,
-      (Object inst) => (inst as _TwoEnumFieldStruct).f2,
+      (Object inst) => (inst as TwoEnumFieldStruct).f2,
       (Object inst, dynamic v) =>
-          (inst as _TwoEnumFieldStruct).f2 = v as _TestEnum,
+          (inst as TwoEnumFieldStruct).f2 = v as TestEnum,
     ),
   ],
   null,
-  () => _TwoEnumFieldStruct(),
+  () => TwoEnumFieldStruct(),
 );
 
-class _NullableComprehensiveSchemaConsistent {
+class NullableComprehensiveSchemaConsistent {
   Int8 byteField = Int8(0);
   Int16 shortField = Int16(0);
   Int32 intField = Int32(0);
@@ -1198,7 +1196,7 @@ class _NullableComprehensiveSchemaConsistent {
 }
 
 final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
-  _NullableComprehensiveSchemaConsistent,
+  NullableComprehensiveSchemaConsistent,
   false,
   true,
   [
@@ -1208,10 +1206,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).byteField,
+          (inst as NullableComprehensiveSchemaConsistent).byteField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).byteField =
-              v as Int8,
+          (inst as NullableComprehensiveSchemaConsistent).byteField = v as Int8,
     ),
     FieldSpec(
       'short_field',
@@ -1219,9 +1216,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).shortField,
+          (inst as NullableComprehensiveSchemaConsistent).shortField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).shortField =
+          (inst as NullableComprehensiveSchemaConsistent).shortField =
               v as Int16,
     ),
     FieldSpec(
@@ -1229,11 +1226,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).intField,
+      (Object inst) => (inst as NullableComprehensiveSchemaConsistent).intField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).intField =
-              v as Int32,
+          (inst as NullableComprehensiveSchemaConsistent).intField = v as Int32,
     ),
     FieldSpec(
       'long_field',
@@ -1241,9 +1236,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).longField,
+          (inst as NullableComprehensiveSchemaConsistent).longField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).longField = v as int,
+          (inst as NullableComprehensiveSchemaConsistent).longField = v as int,
     ),
     FieldSpec(
       'float_field',
@@ -1251,9 +1246,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).floatField,
+          (inst as NullableComprehensiveSchemaConsistent).floatField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).floatField =
+          (inst as NullableComprehensiveSchemaConsistent).floatField =
               v as Float32,
     ),
     FieldSpec(
@@ -1262,9 +1257,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).doubleField,
+          (inst as NullableComprehensiveSchemaConsistent).doubleField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).doubleField =
+          (inst as NullableComprehensiveSchemaConsistent).doubleField =
               v as double,
     ),
     FieldSpec(
@@ -1273,10 +1268,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).boolField,
+          (inst as NullableComprehensiveSchemaConsistent).boolField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).boolField =
-              v as bool,
+          (inst as NullableComprehensiveSchemaConsistent).boolField = v as bool,
     ),
     FieldSpec(
       'string_field',
@@ -1284,9 +1278,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).stringField,
+          (inst as NullableComprehensiveSchemaConsistent).stringField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).stringField =
+          (inst as NullableComprehensiveSchemaConsistent).stringField =
               v as String,
     ),
     FieldSpec(
@@ -1302,9 +1296,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).listField,
+          (inst as NullableComprehensiveSchemaConsistent).listField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).listField =
+          (inst as NullableComprehensiveSchemaConsistent).listField =
               (v as List).cast<String>(),
     ),
     FieldSpec(
@@ -1319,10 +1313,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).setField,
+      (Object inst) => (inst as NullableComprehensiveSchemaConsistent).setField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).setField =
+          (inst as NullableComprehensiveSchemaConsistent).setField =
               (v as Set).cast<String>(),
     ),
     FieldSpec(
@@ -1340,10 +1333,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).mapField,
+      (Object inst) => (inst as NullableComprehensiveSchemaConsistent).mapField,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).mapField =
+          (inst as NullableComprehensiveSchemaConsistent).mapField =
               _asStringMap(v),
     ),
     FieldSpec(
@@ -1352,9 +1344,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableInt,
+          (inst as NullableComprehensiveSchemaConsistent).nullableInt,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableInt =
+          (inst as NullableComprehensiveSchemaConsistent).nullableInt =
               v as Int32?,
     ),
     FieldSpec(
@@ -1363,9 +1355,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableLong,
+          (inst as NullableComprehensiveSchemaConsistent).nullableLong,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableLong =
+          (inst as NullableComprehensiveSchemaConsistent).nullableLong =
               v as int?,
     ),
     FieldSpec(
@@ -1374,9 +1366,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableFloat,
+          (inst as NullableComprehensiveSchemaConsistent).nullableFloat,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableFloat =
+          (inst as NullableComprehensiveSchemaConsistent).nullableFloat =
               v as Float32?,
     ),
     FieldSpec(
@@ -1385,9 +1377,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableDouble,
+          (inst as NullableComprehensiveSchemaConsistent).nullableDouble,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableDouble =
+          (inst as NullableComprehensiveSchemaConsistent).nullableDouble =
               v as double?,
     ),
     FieldSpec(
@@ -1396,9 +1388,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableBool,
+          (inst as NullableComprehensiveSchemaConsistent).nullableBool,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableBool =
+          (inst as NullableComprehensiveSchemaConsistent).nullableBool =
               v as bool?,
     ),
     FieldSpec(
@@ -1407,9 +1399,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableString,
+          (inst as NullableComprehensiveSchemaConsistent).nullableString,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableString =
+          (inst as NullableComprehensiveSchemaConsistent).nullableString =
               v as String?,
     ),
     FieldSpec(
@@ -1425,9 +1417,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableList,
+          (inst as NullableComprehensiveSchemaConsistent).nullableList,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableList =
+          (inst as NullableComprehensiveSchemaConsistent).nullableList =
               v == null ? null : (v as List).cast<String>(),
     ),
     FieldSpec(
@@ -1443,9 +1435,9 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableSet,
+          (inst as NullableComprehensiveSchemaConsistent).nullableSet,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableSet =
+          (inst as NullableComprehensiveSchemaConsistent).nullableSet =
               v == null ? null : (v as Set).cast<String>(),
     ),
     FieldSpec(
@@ -1464,28 +1456,28 @@ final ClassSpec _nullableComprehensiveSchemaConsistentSpec = ClassSpec(
       true,
       true,
       (Object inst) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableMap,
+          (inst as NullableComprehensiveSchemaConsistent).nullableMap,
       (Object inst, dynamic v) =>
-          (inst as _NullableComprehensiveSchemaConsistent).nullableMap =
+          (inst as NullableComprehensiveSchemaConsistent).nullableMap =
               v == null ? null : _asStringMap(v),
     ),
   ],
   null,
-  () => _NullableComprehensiveSchemaConsistent(),
+  () => NullableComprehensiveSchemaConsistent(),
 );
 
-class _RefInnerSchemaConsistent {
+class RefInnerSchemaConsistent {
   Int32 id = Int32(0);
   String name = '';
 }
 
-class _RefOuterSchemaConsistent {
-  _RefInnerSchemaConsistent? inner1;
-  _RefInnerSchemaConsistent? inner2;
+class RefOuterSchemaConsistent {
+  RefInnerSchemaConsistent? inner1;
+  RefInnerSchemaConsistent? inner2;
 }
 
 final ClassSpec _refInnerSchemaConsistentSpec = ClassSpec(
-  _RefInnerSchemaConsistent,
+  RefInnerSchemaConsistent,
   false,
   true,
   [
@@ -1494,33 +1486,33 @@ final ClassSpec _refInnerSchemaConsistentSpec = ClassSpec(
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _RefInnerSchemaConsistent).id,
+      (Object inst) => (inst as RefInnerSchemaConsistent).id,
       (Object inst, dynamic v) =>
-          (inst as _RefInnerSchemaConsistent).id = v as Int32,
+          (inst as RefInnerSchemaConsistent).id = v as Int32,
     ),
     FieldSpec(
       'name',
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _RefInnerSchemaConsistent).name,
+      (Object inst) => (inst as RefInnerSchemaConsistent).name,
       (Object inst, dynamic v) =>
-          (inst as _RefInnerSchemaConsistent).name = v as String,
+          (inst as RefInnerSchemaConsistent).name = v as String,
     ),
   ],
   null,
-  () => _RefInnerSchemaConsistent(),
+  () => RefInnerSchemaConsistent(),
 );
 
 final ClassSpec _refOuterSchemaConsistentSpec = ClassSpec(
-  _RefOuterSchemaConsistent,
+  RefOuterSchemaConsistent,
   false,
   true,
   [
     FieldSpec(
       'inner1',
       const TypeSpec(
-        _RefInnerSchemaConsistent,
+        RefInnerSchemaConsistent,
         ObjType.STRUCT,
         true,
         true,
@@ -1529,15 +1521,15 @@ final ClassSpec _refOuterSchemaConsistentSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _RefOuterSchemaConsistent).inner1,
-      (Object inst, dynamic v) => (inst as _RefOuterSchemaConsistent).inner1 =
-          v as _RefInnerSchemaConsistent?,
+      (Object inst) => (inst as RefOuterSchemaConsistent).inner1,
+      (Object inst, dynamic v) => (inst as RefOuterSchemaConsistent).inner1 =
+          v as RefInnerSchemaConsistent?,
       trackingRef: true,
     ),
     FieldSpec(
       'inner2',
       const TypeSpec(
-        _RefInnerSchemaConsistent,
+        RefInnerSchemaConsistent,
         ObjType.STRUCT,
         true,
         true,
@@ -1546,28 +1538,28 @@ final ClassSpec _refOuterSchemaConsistentSpec = ClassSpec(
       ),
       true,
       true,
-      (Object inst) => (inst as _RefOuterSchemaConsistent).inner2,
-      (Object inst, dynamic v) => (inst as _RefOuterSchemaConsistent).inner2 =
-          v as _RefInnerSchemaConsistent?,
+      (Object inst) => (inst as RefOuterSchemaConsistent).inner2,
+      (Object inst, dynamic v) => (inst as RefOuterSchemaConsistent).inner2 =
+          v as RefInnerSchemaConsistent?,
       trackingRef: true,
     ),
   ],
   null,
-  () => _RefOuterSchemaConsistent(),
+  () => RefOuterSchemaConsistent(),
 );
 
-class _RefInnerCompatible {
+class RefInnerCompatible {
   Int32 id = Int32(0);
   String name = '';
 }
 
-class _RefOuterCompatible {
-  _RefInnerCompatible? inner1;
-  _RefInnerCompatible? inner2;
+class RefOuterCompatible {
+  RefInnerCompatible? inner1;
+  RefInnerCompatible? inner2;
 }
 
 final ClassSpec _refInnerCompatibleSpec = ClassSpec(
-  _RefInnerCompatible,
+  RefInnerCompatible,
   false,
   true,
   [
@@ -1576,62 +1568,60 @@ final ClassSpec _refInnerCompatibleSpec = ClassSpec(
       const TypeSpec(Int32, ObjType.VAR_INT32, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _RefInnerCompatible).id,
-      (Object inst, dynamic v) => (inst as _RefInnerCompatible).id = v as Int32,
+      (Object inst) => (inst as RefInnerCompatible).id,
+      (Object inst, dynamic v) => (inst as RefInnerCompatible).id = v as Int32,
     ),
     FieldSpec(
       'name',
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _RefInnerCompatible).name,
+      (Object inst) => (inst as RefInnerCompatible).name,
       (Object inst, dynamic v) =>
-          (inst as _RefInnerCompatible).name = v as String,
+          (inst as RefInnerCompatible).name = v as String,
     ),
   ],
   null,
-  () => _RefInnerCompatible(),
+  () => RefInnerCompatible(),
 );
 
 final ClassSpec _refOuterCompatibleSpec = ClassSpec(
-  _RefOuterCompatible,
+  RefOuterCompatible,
   false,
   true,
   [
     FieldSpec(
       'inner1',
-      const TypeSpec(
-          _RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
+      const TypeSpec(RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
       true,
       true,
-      (Object inst) => (inst as _RefOuterCompatible).inner1,
+      (Object inst) => (inst as RefOuterCompatible).inner1,
       (Object inst, dynamic v) =>
-          (inst as _RefOuterCompatible).inner1 = v as _RefInnerCompatible?,
+          (inst as RefOuterCompatible).inner1 = v as RefInnerCompatible?,
       trackingRef: true,
     ),
     FieldSpec(
       'inner2',
-      const TypeSpec(
-          _RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
+      const TypeSpec(RefInnerCompatible, ObjType.STRUCT, true, false, null, []),
       true,
       true,
-      (Object inst) => (inst as _RefOuterCompatible).inner2,
+      (Object inst) => (inst as RefOuterCompatible).inner2,
       (Object inst, dynamic v) =>
-          (inst as _RefOuterCompatible).inner2 = v as _RefInnerCompatible?,
+          (inst as RefOuterCompatible).inner2 = v as RefInnerCompatible?,
       trackingRef: true,
     ),
   ],
   null,
-  () => _RefOuterCompatible(),
+  () => RefOuterCompatible(),
 );
 
-class _CircularRefStruct {
+class CircularRefStruct {
   String name = '';
-  _CircularRefStruct? selfRef;
+  CircularRefStruct? selfRef;
 }
 
 final ClassSpec _circularRefStructSpec = ClassSpec(
-  _CircularRefStruct,
+  CircularRefStruct,
   false,
   false,
   [
@@ -1640,52 +1630,52 @@ final ClassSpec _circularRefStructSpec = ClassSpec(
       const TypeSpec(String, ObjType.STRING, false, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _CircularRefStruct).name,
+      (Object inst) => (inst as CircularRefStruct).name,
       (Object inst, dynamic v) =>
-          (inst as _CircularRefStruct).name = v as String,
+          (inst as CircularRefStruct).name = v as String,
     ),
     FieldSpec(
       'self_ref',
-      const TypeSpec(_CircularRefStruct, ObjType.STRUCT, true, true, null, []),
+      const TypeSpec(CircularRefStruct, ObjType.STRUCT, true, true, null, []),
       true,
       true,
-      (Object inst) => (inst as _CircularRefStruct).selfRef,
+      (Object inst) => (inst as CircularRefStruct).selfRef,
       (Object inst, dynamic v) =>
-          (inst as _CircularRefStruct).selfRef = v as _CircularRefStruct?,
+          (inst as CircularRefStruct).selfRef = v as CircularRefStruct?,
       trackingRef: true,
     ),
   ],
   null,
-  () => _CircularRefStruct(),
+  () => CircularRefStruct(),
 );
 
 final Map<Type, ClassSpec> _structSpecByType = <Type, ClassSpec>{
-  _TwoEnumFieldStructEvolution: _twoEnumFieldStructEvolutionSpec,
-  _RefOverrideElement: _refOverrideElementSpec,
-  _RefOverrideContainer: _refOverrideContainerSpec,
-  _NullableComprehensiveCompatible: _nullableComprehensiveCompatibleSpec,
-  _Item: _itemSpec,
-  _SimpleStruct: _simpleStructSpec,
-  _Item1: _item1Spec,
-  _StructWithList: _structWithListSpec,
-  _StructWithMap: _structWithMapSpec,
-  _VersionCheckStruct: _versionCheckStructSpec,
-  _OneStringFieldStruct: _oneStringFieldStructSpec,
-  _TwoStringFieldStruct: _twoStringFieldStructSpec,
-  _OneEnumFieldStruct: _oneEnumFieldStructSpec,
-  _TwoEnumFieldStruct: _twoEnumFieldStructSpec,
-  _NullableComprehensiveSchemaConsistent:
+  TwoEnumFieldStructEvolution: _twoEnumFieldStructEvolutionSpec,
+  RefOverrideElement: _refOverrideElementSpec,
+  RefOverrideContainer: _refOverrideContainerSpec,
+  NullableComprehensiveCompatible: _nullableComprehensiveCompatibleSpec,
+  Item: _itemSpec,
+  SimpleStruct: _simpleStructSpec,
+  Item1: _item1Spec,
+  StructWithList: _structWithListSpec,
+  StructWithMap: _structWithMapSpec,
+  VersionCheckStruct: _versionCheckStructSpec,
+  OneStringFieldStruct: _oneStringFieldStructSpec,
+  TwoStringFieldStruct: _twoStringFieldStructSpec,
+  OneEnumFieldStruct: _oneEnumFieldStructSpec,
+  TwoEnumFieldStruct: _twoEnumFieldStructSpec,
+  NullableComprehensiveSchemaConsistent:
       _nullableComprehensiveSchemaConsistentSpec,
-  _RefInnerSchemaConsistent: _refInnerSchemaConsistentSpec,
-  _RefOuterSchemaConsistent: _refOuterSchemaConsistentSpec,
-  _RefInnerCompatible: _refInnerCompatibleSpec,
-  _RefOuterCompatible: _refOuterCompatibleSpec,
-  _CircularRefStruct: _circularRefStructSpec,
+  RefInnerSchemaConsistent: _refInnerSchemaConsistentSpec,
+  RefOuterSchemaConsistent: _refOuterSchemaConsistentSpec,
+  RefInnerCompatible: _refInnerCompatibleSpec,
+  RefOuterCompatible: _refOuterCompatibleSpec,
+  CircularRefStruct: _circularRefStructSpec,
 };
 
 final Map<Type, EnumSpec> _enumSpecByType = <Type, EnumSpec>{
-  _TestEnum: _testEnumSpec,
-  _Color: _colorSpec,
+  TestEnum: _testEnumSpec,
+  Color: _colorSpec,
 };
 
 void _registerStructType(
