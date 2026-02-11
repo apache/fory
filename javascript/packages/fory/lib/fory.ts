@@ -169,6 +169,7 @@ export default class {
     }
     this.referenceResolver.reset();
     this.metaStringResolver.reset();
+    this.typeMetaResolver.reset();
     let bitmap = 0;
     if (data === null) {
       bitmap |= ConfigFlags.isNullFlag;
