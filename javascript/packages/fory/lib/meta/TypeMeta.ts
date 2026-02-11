@@ -131,6 +131,10 @@ class FieldInfo {
     return this.typeId;
   }
 
+  getUserTypeId() {
+    return this.userTypeId;
+  }
+
   hasFieldId() {
     return typeof this.fieldId === "number";
   }
@@ -332,13 +336,14 @@ export class TypeMeta {
     const encodingFlags = (header >>> 6) & 0b11;
     let size = (header >>> 2) & 0b1111;
     const bigSize = size === FIELD_NAME_SIZE_THRESHOLD;
-
+    const nullable = (header & 0b10) > 0;
+    const trackingRef = (header & 0b1) > 0;
     if (bigSize) {
       size += reader.readVarUint32Small7();
     }
 
     // Read type ID
-    const { typeId, userTypeId, trackingRef, nullable, options, fieldId } = this.readTypeId(reader);
+    const { typeId, userTypeId, options, fieldId } = this.readTypeId(reader);
 
     let fieldName: string;
     if (encodingFlags === 3) {
@@ -751,7 +756,7 @@ export class TypeMeta {
     listFields.sort(typeIdThenNameSorter);
     setFields.sort(typeIdThenNameSorter);
     mapFields.sort(typeIdThenNameSorter);
-    otherFields.sort(typeIdThenNameSorter);
+    otherFields.sort(nameSorter);
 
     return [
       primitiveFields,

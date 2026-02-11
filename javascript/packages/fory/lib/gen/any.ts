@@ -37,7 +37,7 @@ export class AnyHelper {
 
     function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
       if (!serializer) {
-        throw new Error(`can't find implements of typeId: ${typeId}`);
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
       }
       const hash = serializer.getHash();
       if (hash !== typeMeta.getHash()) {

@@ -218,6 +218,12 @@ export class BinaryWriter {
     this.cursor += 8;
   }
 
+  arrayBuffer(v: ArrayBuffer, byteOffset: number, byteLength: number) {
+    this.reserve(byteLength);
+    this.platformBuffer.set(new Uint8Array(v, byteOffset, byteLength), this.cursor);
+    this.cursor += byteLength;
+  }
+
   buffer(v: ArrayLike<number>) {
     this.reserve(v.length);
     this.platformBuffer.set(v, this.cursor);

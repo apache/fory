@@ -79,8 +79,8 @@ export class BinaryReaderBuilder {
     return `${this.holder}.buffer(${len})`;
   }
 
-  bufferRef() {
-    return `${this.holder}.bufferRef()`;
+  bufferRef(len: string | number) {
+    return `${this.holder}.bufferRef(${len})`;
   }
 
   uint8() {
@@ -175,6 +175,10 @@ class BinaryWriterBuilder {
 
   reserve(v: number | string) {
     return `${this.holder}.reserve(${v})`;
+  }
+
+  arrayBuffer(buffer: number | string, byteOffset: number | string, byteLength: number | string) {
+    return `${this.holder}.arrayBuffer(${buffer}, ${byteOffset}, ${byteLength})`;
   }
 
   uint16(v: number | string) {
