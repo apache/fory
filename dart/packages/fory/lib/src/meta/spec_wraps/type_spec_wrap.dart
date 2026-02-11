@@ -22,10 +22,10 @@ import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-class TypeSpecWrap{
+class TypeSpecWrap {
   final Type type;
   final ObjType objType;
-  final bool certainForSer;
+  final bool serializationCertain;
   final bool nullable;
   final List<TypeSpecWrap> genericsArgs;
   Serializer? ser;
@@ -33,36 +33,32 @@ class TypeSpecWrap{
   TypeSpecWrap._(
     this.type,
     this.objType,
-    this.certainForSer,
+    this.serializationCertain,
     this.nullable,
     this.genericsArgs,
     this.ser,
   );
 
-  factory TypeSpecWrap.of(
-    TypeSpec typeSpec
-  ){
+  factory TypeSpecWrap.of(TypeSpec typeSpec) {
     List<TypeSpecWrap> genericsWraps = [];
     var genericsArgs = typeSpec.genericsArgs;
-    for (int i = 0; i< genericsArgs.length; ++i) {
+    for (int i = 0; i < genericsArgs.length; ++i) {
       TypeSpecWrap argWrap = TypeSpecWrap.of(typeSpec.genericsArgs[i]);
       genericsWraps.add(argWrap);
     }
     return TypeSpecWrap._(
       typeSpec.type,
       typeSpec.objType,
-      typeSpec.certainForSer,
+      typeSpec.serializationCertain,
       typeSpec.nullable,
       genericsWraps,
       null,
     );
   }
 
-  static List<TypeSpecWrap> ofList(
-    List<FieldSpec> fieldSpecs
-  ){
+  static List<TypeSpecWrap> ofList(List<FieldSpec> fieldSpecs) {
     List<TypeSpecWrap> typeSpecWraps = [];
-    for (int i = 0; i< fieldSpecs.length; ++i) {
+    for (int i = 0; i < fieldSpecs.length; ++i) {
       TypeSpecWrap typeSpecWrap = TypeSpecWrap.of(fieldSpecs[i].typeSpec);
       typeSpecWraps.add(typeSpecWrap);
     }

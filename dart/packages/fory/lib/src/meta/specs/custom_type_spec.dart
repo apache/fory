@@ -19,7 +19,7 @@
 
 import 'package:fory/src/const/types.dart';
 
-abstract class CustomTypeSpec{
+abstract class CustomTypeSpec {
   final Type dartType;
   final ObjType objType;
   const CustomTypeSpec(this.dartType, this.objType);

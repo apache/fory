@@ -17,18 +17,22 @@
  * under the License.
  */
 
-import 'package:meta/meta.dart';
+import 'package:fory/src/const/types.dart';
+import 'package:analyzer/dart/element/type.dart';
 
-@immutable
-class LibImportPack{
-  final String? dartCorePrefix;
-  final Map<int,String> _libIdToPrefix;
+typedef TypeAnalysisDecision = ({InterfaceType type, bool forceNullable});
 
-  const LibImportPack(this._libIdToPrefix, this.dartCorePrefix);
+class ObjectTypeAnalysis {
+  static const namedEnumType = ObjectTypeAnalysis(
+    ObjType.NAMED_ENUM,
+    true,
+  );
+  static const namedStructType =
+      ObjectTypeAnalysis(ObjType.NAMED_STRUCT, false);
+  static const unknownStructType = ObjectTypeAnalysis(ObjType.UNKNOWN, false);
 
-  String? getPrefixByLibId(int libId){
-    return _libIdToPrefix[libId];
-  }
+  final ObjType objType; // null means unsupported
+  final bool serializationCertain;
 
-  bool get noPrefix =>_libIdToPrefix.isEmpty;
+  const ObjectTypeAnalysis(this.objType, this.serializationCertain);
 }

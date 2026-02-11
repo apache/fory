@@ -39,7 +39,7 @@ final class Int16 extends FixedNum {
   static int _convert(num value) {
     if (value is int) {
       // Apply 16-bit signed integer overflow behavior
-      int result = value & 0xFFFF;  // Keep only the lowest 16 bits
+      int result = value & 0xFFFF; // Keep only the lowest 16 bits
       // Convert to signed by checking the sign bit
       return (result & 0x8000) != 0 ? result - 65536 : result;
     } else {

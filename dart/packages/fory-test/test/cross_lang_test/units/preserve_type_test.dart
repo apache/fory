@@ -30,12 +30,12 @@ import 'package:fory_test/extensions/map_ext.dart';
 import 'package:test/test.dart';
 
 Object? _roundTrip(Fory fory, Object? obj) {
-  Uint8List bytes = fory.toFory(obj);
-  Object? obj2 = fory.fromFory(bytes);
+  Uint8List bytes = fory.serialize(obj);
+  Object? obj2 = fory.deserialize(bytes);
   return obj2;
 }
 
-void main(){
+void main() {
   group('Type preservation', () {
     test('primitives preserved', () {
       Fory fory = Fory(
@@ -91,7 +91,8 @@ void main(){
       Fory fory = Fory(
         refTracking: true,
       );
-      Object? obj1 = _roundTrip(fory, BoolList.of([true, false, true, true, false, true]));
+      Object? obj1 =
+          _roundTrip(fory, BoolList.of([true, false, true, true, false, true]));
       check(obj1).isNotNull().isA<BoolList>();
       BoolList boolList = obj1 as BoolList;
       BoolList boolList1 = BoolList.of([true, false, true, true, false, true]);
@@ -143,7 +144,10 @@ void main(){
       List objList1 = obj2 as List;
       check(objList1.equals(objList)).isTrue();
 
-      List<List<int>> intList = [[1, 2], [1, 2]];
+      List<List<int>> intList = [
+        [1, 2],
+        [1, 2]
+      ];
       Object? obj3 = _roundTrip(fory, intList);
       check(obj3).isNotNull().isA<List>();
       List intList1 = obj3 as List;
@@ -182,7 +186,5 @@ void main(){
       TimeObj timeObj1 = obj1 as TimeObj;
       check(timeObj1).equals(timeObj);
     });
-
   });
 }
-

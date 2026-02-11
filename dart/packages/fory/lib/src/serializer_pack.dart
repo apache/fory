@@ -18,17 +18,16 @@
  */
 
 import 'package:fory/src/collection/stack.dart';
-import 'package:fory/src/serialize_coordinator.dart';
+import 'package:fory/src/serialization_coordinator.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/meta_string_writing_resolver.dart';
 import 'package:fory/src/resolver/serialization_ref_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/pack.dart';
 
-final class SerializerPack extends Pack{
-
-  final SerializeCoordinator forySer;
-  final XtypeResolver xtypeResolver;
+final class SerializerPack extends Pack {
+  final SerializationCoordinator serializationCoordinator;
+  final TypeResolver typeResolver;
   final SerializationRefResolver refResolver;
   final SerializationRefResolver noRefResolver;
   final MetaStringWritingResolver msWritingResolver;
@@ -37,8 +36,8 @@ final class SerializerPack extends Pack{
   const SerializerPack(
     super.structHashResolver,
     super.getTagByDartType,
-    this.forySer,
-    this.xtypeResolver,
+    this.serializationCoordinator,
+    this.typeResolver,
     this.refResolver,
     this.noRefResolver,
     this.msWritingResolver,

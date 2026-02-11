@@ -45,12 +45,12 @@ final class _BoolListSerializerCache extends ArraySerializerCache {
   }
 }
 
-final class BoolListSerializer extends ArraySerializer<bool>{
+final class BoolListSerializer extends ArraySerializer<bool> {
   static const SerializerCache cache = _BoolListSerializerCache();
   const BoolListSerializer(bool writeRef) : super(ObjType.BOOL_ARRAY, writeRef);
 
   @override
-  BoolList read(ByteReader br, int refId, DeserializerPack pack){
+  BoolList read(ByteReader br, int refId, DeserializerPack pack) {
     int num = br.readVarUint32Small7();
     BoolList list = BoolList(num);
     Uint8List bytes = br.readBytesView(num);

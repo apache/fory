@@ -28,7 +28,7 @@ import 'package:fory/src/serializer/time/time_serializer_cache.dart';
 import 'package:fory/src/serializer_pack.dart';
 import 'package:fory/src/util/math_checker.dart';
 
-final class _DateSerializerCache extends TimeSerializerCache{
+final class _DateSerializerCache extends TimeSerializerCache {
   static DateSerializer? serRef;
   static DateSerializer? serNoRef;
 
@@ -36,7 +36,7 @@ final class _DateSerializerCache extends TimeSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= DateSerializer._(true);
       return serRef!;
     } else {
@@ -46,9 +46,7 @@ final class _DateSerializerCache extends TimeSerializerCache{
   }
 }
 
-
 final class DateSerializer extends Serializer<LocalDate> {
-
   static const SerializerCache cache = _DateSerializerCache();
 
   DateSerializer._(bool writeRef) : super(ObjType.DATE, writeRef);
@@ -61,7 +59,7 @@ final class DateSerializer extends Serializer<LocalDate> {
   @override
   void write(ByteWriter bw, LocalDate v, SerializerPack pack) {
     int days = v.toEpochDay(utc: true);
-    if (!MathChecker.validInt32(days)){
+    if (!MathChecker.validInt32(days)) {
       throw ArgumentError('Date toEpochDay is not valid int32: $days');
     }
     bw.writeInt32(days);

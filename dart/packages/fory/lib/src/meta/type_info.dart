@@ -32,20 +32,15 @@ class TypeInfo {
   late Serializer ser;
 
   TypeInfo(
-    this.dartType,
-    this.objType,
-    this.tag,
-    this.typeNameBytes,
-    this.nsBytes,
-    {this.userTypeId = kInvalidUserTypeId}
-  );
+      this.dartType, this.objType, this.tag, this.typeNameBytes, this.nsBytes,
+      {this.userTypeId = kInvalidUserTypeId});
 
   TypeInfo.fromInnerType(
     this.dartType,
     this.objType,
     this.ser,
-  ) : tag = null,
-      typeNameBytes = null,
-      nsBytes = null,
-      userTypeId = kInvalidUserTypeId;
+  )   : tag = null,
+        typeNameBytes = null,
+        nsBytes = null,
+        userTypeId = kInvalidUserTypeId;
 }

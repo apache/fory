@@ -36,14 +36,15 @@ export 'src/meta/specs/enum_spec.dart';
 
 // Fory implementation
 export 'src/fory_impl.dart';
+export 'src/config/fory_config.dart';
 
 // Constants
 export 'src/const/types.dart';
 
 // User-related
-export 'src/furiable.dart';
+export 'src/fory_type_provider.dart';
 
-// Serialization Components
+// Serialization internals for custom serializer implementations.
 export 'src/serializer_pack.dart';
 export 'src/deserializer_pack.dart';
 

@@ -17,18 +17,18 @@
  * under the License.
  */
 
-import 'package:fory/src/const/types.dart';
-import 'package:analyzer/dart/element/type.dart';
+import 'package:meta/meta.dart';
 
-typedef TypeDecision = ({InterfaceType type, bool forceNullable});
+@immutable
+class LibraryImportPack {
+  final String? dartCorePrefix;
+  final Map<int, String> _libIdToPrefix;
 
-class ObjTypeWrapper{
-  static const namedEnum = ObjTypeWrapper(ObjType.NAMED_ENUM, true,);
-  static const namedStruct = ObjTypeWrapper(ObjType.NAMED_STRUCT, false);
-  static const unknownStruct = ObjTypeWrapper(ObjType.UNKNOWN, false);
+  const LibraryImportPack(this._libIdToPrefix, this.dartCorePrefix);
 
-  final ObjType objType; // null means unsupported
-  final bool certainForSer;
+  String? getPrefixByLibId(int libId) {
+    return _libIdToPrefix[libId];
+  }
 
-  const ObjTypeWrapper(this.objType, this.certainForSer);
+  bool get noPrefix => _libIdToPrefix.isEmpty;
 }

@@ -20,7 +20,7 @@
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
@@ -43,17 +43,17 @@ class UintAnnotationAnalyzer {
   /// Returns the appropriate ObjType if a uint annotation is found, null otherwise.
   UintAnnotationResult analyze(
     List<ElementAnnotation> metadata,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
   ) {
     assert(locationMark.ensureFieldLevel);
-    
+
     DartObject? uintAnno;
     String? annotationType;
-    
+
     for (ElementAnnotation annoElement in metadata) {
       final anno = annoElement.computeConstantValue()!;
       final annoClsElement = anno.type!.element as ClassElement;
-      
+
       if (AnalysisTypeIdentifier.isUint8Type(annoClsElement)) {
         if (uintAnno != null) {
           throw DuplicatedAnnotationException(
@@ -114,7 +114,8 @@ class UintAnnotationAnalyzer {
         // Check encoding parameter
         final encodingField = uintAnno.getField('encoding');
         if (encodingField != null && !encodingField.isNull) {
-          final encodingValue = encodingField.getField('_name')?.toStringValue();
+          final encodingValue =
+              encodingField.getField('_name')?.toStringValue();
           if (encodingValue == 'varint') {
             objType = ObjType.VAR_UINT32;
           } else {
@@ -128,7 +129,8 @@ class UintAnnotationAnalyzer {
         // Check encoding parameter
         final encodingField = uintAnno.getField('encoding');
         if (encodingField != null && !encodingField.isNull) {
-          final encodingValue = encodingField.getField('_name')?.toStringValue();
+          final encodingValue =
+              encodingField.getField('_name')?.toStringValue();
           if (encodingValue == 'varint') {
             objType = ObjType.VAR_UINT64;
           } else if (encodingValue == 'tagged') {

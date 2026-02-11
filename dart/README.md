@@ -56,17 +56,15 @@ This generates the necessary code in `example.g.dart` and creates the `_$SomeCla
 ### Serializing and Deserializing
 
 ```dart
-Fory fory = Fory(
-  refTracking: true,
-);
+Fory fory = Fory.builder().refTracking(true).build();
 fory.register($SomeClass, "example.SomeClass");
 SomeClass obj = SomeClass(1, 'SomeClass', {'a': 1.0});
 
 // Serialize
-Uint8List bytes = fory.toFory(obj);
+Uint8List bytes = fory.serialize(obj);
 
 // Deserialize
-obj = fory.fromFory(bytes) as SomeClass;
+obj = fory.deserialize(bytes) as SomeClass;
 ```
 
 ### Enum Serialization

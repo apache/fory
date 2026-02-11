@@ -42,7 +42,8 @@ void main() {
       byteData.setUint64(0, hashPair.$1, Endian.little);
       byteData.setUint64(8, hashPair.$2, Endian.little);
       File file = TestFileUtil.getWriteFile('test_murmurhash3.data', bytes);
-      bool exeRes = CrossLangUtil.executeWithPython('test_murmurhash3', file.path);
+      bool exeRes =
+          CrossLangUtil.executeWithPython('test_murmurhash3', file.path);
       check(exeRes).isTrue();
     }, skip: 'Cross-language test requires Python installation');
 
@@ -51,11 +52,13 @@ void main() {
         refTracking: true,
       );
       fory.register($ComplexObject1, "test.ComplexObject1");
-      var hashPair = fory.getStructHashPair(ComplexObject1);
+      var hashPair = fory.structHashPairForTest(ComplexObject1);
       ByteData byteData = ByteData(4);
       byteData.setUint32(0, hashPair.fromForyHash, Endian.little);
-      File file = TestFileUtil.getWriteFile('test_struct_hash', byteData.buffer.asUint8List());
-      bool exeRes = CrossLangUtil.executeWithPython('test_struct_hash', file.path);
+      File file = TestFileUtil.getWriteFile(
+          'test_struct_hash', byteData.buffer.asUint8List());
+      bool exeRes =
+          CrossLangUtil.executeWithPython('test_struct_hash', file.path);
       check(exeRes).isTrue();
     }, skip: 'Cross-language struct hash with Python needs protocol alignment');
   });

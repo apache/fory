@@ -88,7 +88,8 @@ class LocalDate implements Comparable<LocalDate> {
   factory LocalDate.parse(String dateString) {
     final parts = dateString.split('-');
     if (parts.length != 3 || parts[1].length != 2 || parts[2].length != 2) {
-      throw FormatException('Invalid date format. Expected yyyy-MM-dd', dateString);
+      throw FormatException(
+          'Invalid date format. Expected yyyy-MM-dd', dateString);
     }
 
     final year = int.parse(parts[0]);
@@ -107,9 +108,8 @@ class LocalDate implements Comparable<LocalDate> {
   ///
   /// If [utc] is true, the calculation uses UTC, otherwise local timezone.
   int toEpochDay({bool utc = false}) {
-    final DateTime dateTime = utc
-        ? DateTime.utc(year, month, day)
-        : DateTime(year, month, day);
+    final DateTime dateTime =
+        utc ? DateTime.utc(year, month, day) : DateTime(year, month, day);
 
     // Calculate days since epoch
     final epochMillis = dateTime.millisecondsSinceEpoch;
@@ -120,9 +120,8 @@ class LocalDate implements Comparable<LocalDate> {
   ///
   /// If [utc] is true, the calculation uses UTC, otherwise local timezone.
   int toEpochMillis({bool utc = false}) {
-    final dateTime = utc
-        ? DateTime.utc(year, month, day)
-        : DateTime(year, month, day);
+    final dateTime =
+        utc ? DateTime.utc(year, month, day) : DateTime(year, month, day);
     return dateTime.millisecondsSinceEpoch;
   }
 
@@ -141,7 +140,8 @@ class LocalDate implements Comparable<LocalDate> {
 
     final daysInMonth = getDaysInMonth(year, month);
     if (day < 1 || day > daysInMonth) {
-      throw ArgumentError('Day must be between 1 and $daysInMonth for month $month');
+      throw ArgumentError(
+          'Day must be between 1 and $daysInMonth for month $month');
     }
   }
 

@@ -28,14 +28,14 @@ import 'package:fory/src/serializer/custom_serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serializer_pack.dart';
 
-final class _EnumSerializerCache extends SerializerCache{
-
+final class _EnumSerializerCache extends SerializerCache {
   static final Map<Type, EnumSerializer> _cache = {};
 
   const _EnumSerializerCache();
 
   @override
-  EnumSerializer getSerializerWithSpec(ForyConfig conf, covariant EnumSpec spec, Type dartType){
+  EnumSerializer getSerializerWithSpec(
+      ForyConfig conf, covariant EnumSpec spec, Type dartType) {
     EnumSerializer? ser = _cache[dartType];
     if (ser != null) {
       return ser;
@@ -47,12 +47,12 @@ final class _EnumSerializerCache extends SerializerCache{
   }
 }
 
-final class EnumSerializer extends CustomSerializer<Enum>{
-
+final class EnumSerializer extends CustomSerializer<Enum> {
   static const SerializerCache cache = _EnumSerializerCache();
 
   final List<Enum> values;
-  EnumSerializer(bool writeRef, this.values): super(ObjType.NAMED_ENUM, writeRef);
+  EnumSerializer(bool writeRef, this.values)
+      : super(ObjType.NAMED_ENUM, writeRef);
 
   @override
   Enum read(ByteReader br, int refId, DeserializerPack pack) {

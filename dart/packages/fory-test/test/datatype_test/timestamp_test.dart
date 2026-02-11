@@ -34,7 +34,8 @@ void main() {
     test('now() near current time', () {
       final now = DateTime.now();
       final tsNow = TimeStamp.now();
-      final diff = (tsNow.microsecondsSinceEpoch - now.microsecondsSinceEpoch).abs();
+      final diff =
+          (tsNow.microsecondsSinceEpoch - now.microsecondsSinceEpoch).abs();
 
       // Should be created within a reasonable time window (50ms)
       check(diff).isLessThan(50000);
@@ -195,7 +196,8 @@ void main() {
 
       check(ts.format(pattern: 'yyyy-MM-dd')).equals('2025-03-19');
       check(ts.format(pattern: 'HH:mm:ss')).equals('16:38:21');
-      check(ts.format(pattern: 'yyyy-MM-dd HH:mm:ss')).equals('2025-03-19 16:38:21');
+      check(ts.format(pattern: 'yyyy-MM-dd HH:mm:ss'))
+          .equals('2025-03-19 16:38:21');
     });
   });
 

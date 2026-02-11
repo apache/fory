@@ -30,13 +30,16 @@ import 'package:fory/src/serializer/serializer_cache.dart';
 /// Whether the host machine is little-endian
 final bool isLittleEndian = Endian.host == Endian.little;
 
-abstract base class ArraySerializerCache extends SerializerCache{
+abstract base class ArraySerializerCache extends SerializerCache {
   const ArraySerializerCache();
 
   @override
-  Serializer getSerializer(ForyConfig conf,){
+  Serializer getSerializer(
+    ForyConfig conf,
+  ) {
     return getSerWithRef(conf.refTracking);
   }
+
   Serializer getSerWithRef(bool writeRef);
 }
 
@@ -44,7 +47,8 @@ abstract base class ArraySerializer<T> extends Serializer<List<T>> {
   const ArraySerializer(super.type, super.writeRef);
 }
 
-abstract base class NumericArraySerializer<T extends num> extends ArraySerializer<T> {
+abstract base class NumericArraySerializer<T extends num>
+    extends ArraySerializer<T> {
   const NumericArraySerializer(super.type, super.writeRef);
 
   /// Reads bytes and converts to a typed list.
@@ -69,13 +73,15 @@ abstract base class NumericArraySerializer<T extends num> extends ArraySerialize
   /// Read elements one by one on big-endian machines.
   /// Default implementation; subclasses should override for multi-byte types.
   TypedDataList<T> readToListBigEndian(int length, ByteReader br) {
-    throw UnsupportedError('readToListBigEndian not implemented for $runtimeType');
+    throw UnsupportedError(
+        'readToListBigEndian not implemented for $runtimeType');
   }
 
   @override
   void write(ByteWriter bw, covariant TypedDataList<T> v, SerializerPack pack) {
-    if (!MathChecker.validInt32(v.lengthInBytes)){
-      throw ArgumentError('NumArray lengthInBytes is not valid int32: ${v.lengthInBytes}');
+    if (!MathChecker.validInt32(v.lengthInBytes)) {
+      throw ArgumentError(
+          'NumArray lengthInBytes is not valid int32: ${v.lengthInBytes}');
     }
     bw.writeVarUint32(v.lengthInBytes);
     if (isLittleEndian || bytesPerNum == 1) {
@@ -90,6 +96,7 @@ abstract base class NumericArraySerializer<T extends num> extends ArraySerialize
   /// Write elements one by one on big-endian machines.
   /// Default implementation; subclasses should override for multi-byte types.
   void writeListBigEndian(ByteWriter bw, TypedDataList<T> v) {
-    throw UnsupportedError('writeListBigEndian not implemented for $runtimeType');
+    throw UnsupportedError(
+        'writeListBigEndian not implemented for $runtimeType');
   }
 }

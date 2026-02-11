@@ -17,7 +17,7 @@
  * under the License.
  */
 
-final class StrStat{
+final class StrStat {
   final int digitCount;
   final int upperCount;
   final bool canLUDS; // LowerUpperDigitSpecial

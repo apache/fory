@@ -754,11 +754,11 @@ void _runEnumSchemaEvolutionCompatibleReverse() {
   fory.register(_testEnumSpec, 210);
   fory.register(_twoEnumFieldStructEvolutionSpec, 211);
   final _TwoEnumFieldStructEvolution obj =
-      fory.fromFory(data) as _TwoEnumFieldStructEvolution;
+      fory.deserialize(data) as _TwoEnumFieldStructEvolution;
   if (obj.f1 != _TestEnum.VALUE_C) {
     throw StateError('Expected f1=VALUE_C, got ${obj.f1}');
   }
-  _writeFile(dataFile, fory.toFory(obj));
+  _writeFile(dataFile, fory.serialize(obj));
 }
 
 void _runNullableFieldCompatibleNull() {
@@ -767,8 +767,8 @@ void _runNullableFieldCompatibleNull() {
   final Fory fory = Fory(compatible: true);
   fory.register(_nullableComprehensiveCompatibleSpec, 402);
   final _NullableComprehensiveCompatible obj =
-      fory.fromFory(data) as _NullableComprehensiveCompatible;
-  _writeFile(dataFile, fory.toFory(obj));
+      fory.deserialize(data) as _NullableComprehensiveCompatible;
+  _writeFile(dataFile, fory.serialize(obj));
 }
 
 void _runCollectionElementRefOverride() {
@@ -779,7 +779,7 @@ void _runCollectionElementRefOverride() {
   fory.register(_refOverrideContainerSpec, 702);
 
   final _RefOverrideContainer obj =
-      fory.fromFory(data) as _RefOverrideContainer;
+      fory.deserialize(data) as _RefOverrideContainer;
   if (obj.listField.isEmpty) {
     throw StateError('list_field should not be empty');
   }
@@ -790,7 +790,7 @@ void _runCollectionElementRefOverride() {
     'k1': shared,
     'k2': shared,
   };
-  _writeFile(dataFile, fory.toFory(out));
+  _writeFile(dataFile, fory.serialize(out));
 }
 
 void main(List<String> args) {

@@ -128,7 +128,7 @@ final $NestedObject = ClassSpec(
   () => NestedObject(),
 );
 
-mixin _$NestedObjectFory implements Furiable {
+mixin _$NestedObjectFory implements ForyTypeProvider {
   @override
-  Type get $foryType => NestedObject;
+  Type get foryType => NestedObject;
 }

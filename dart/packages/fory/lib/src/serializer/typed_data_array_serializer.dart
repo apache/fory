@@ -26,7 +26,6 @@ import 'package:fory/src/serializer/array_serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
 final class _Uint8ListSerializerCache extends ArraySerializerCache {
-
   static Uint8ListSerializer? _noRefSer;
   static Uint8ListSerializer? _writeRefSer;
 
@@ -60,7 +59,7 @@ final class Uint8ListSerializer extends NumericArraySerializer<int> {
   int get bytesPerNum => 1;
 }
 
-final class _Int8ListSerializerCache extends ArraySerializerCache{
+final class _Int8ListSerializerCache extends ArraySerializerCache {
   static Int8ListSerializer? _noRefSer;
   static Int8ListSerializer? _writeRefSer;
 
@@ -93,7 +92,7 @@ final class Int8ListSerializer extends NumericArraySerializer<int> {
   int get bytesPerNum => 1;
 }
 
-final class _Int16ListSerializerCache extends ArraySerializerCache{
+final class _Int16ListSerializerCache extends ArraySerializerCache {
   static Int16ListSerializer? _noRefSer;
   static Int16ListSerializer? _writeRefSer;
 
@@ -113,7 +112,8 @@ final class _Int16ListSerializerCache extends ArraySerializerCache{
 
 final class Int16ListSerializer extends NumericArraySerializer<int> {
   static const SerializerCache cache = _Int16ListSerializerCache();
-  const Int16ListSerializer(bool writeRef) : super(ObjType.INT16_ARRAY, writeRef);
+  const Int16ListSerializer(bool writeRef)
+      : super(ObjType.INT16_ARRAY, writeRef);
 
   @override
   TypedDataList<int> readToList(Uint8List copiedMem, ByteReader br) {
@@ -142,7 +142,7 @@ final class Int16ListSerializer extends NumericArraySerializer<int> {
   int get bytesPerNum => 2;
 }
 
-final class _Int32ListSerializerCache extends ArraySerializerCache{
+final class _Int32ListSerializerCache extends ArraySerializerCache {
   static Int32ListSerializer? _noRefSer;
   static Int32ListSerializer? _writeRefSer;
 
@@ -162,7 +162,8 @@ final class _Int32ListSerializerCache extends ArraySerializerCache{
 
 final class Int32ListSerializer extends NumericArraySerializer<int> {
   static const SerializerCache cache = _Int32ListSerializerCache();
-  const Int32ListSerializer(bool writeRef) : super(ObjType.INT32_ARRAY, writeRef);
+  const Int32ListSerializer(bool writeRef)
+      : super(ObjType.INT32_ARRAY, writeRef);
 
   @override
   TypedDataList<int> readToList(Uint8List copiedMem, ByteReader br) {
@@ -191,7 +192,7 @@ final class Int32ListSerializer extends NumericArraySerializer<int> {
   int get bytesPerNum => 4;
 }
 
-final class _Float32ListSerializerCache extends ArraySerializerCache{
+final class _Float32ListSerializerCache extends ArraySerializerCache {
   static Float32ListSerializer? _noRefSer;
   static Float32ListSerializer? _writeRefSer;
 
@@ -209,7 +210,7 @@ final class _Float32ListSerializerCache extends ArraySerializerCache{
   }
 }
 
-final class _Int64ListSerializerCache extends ArraySerializerCache{
+final class _Int64ListSerializerCache extends ArraySerializerCache {
   static Int64ListSerializer? _noRefSer;
   static Int64ListSerializer? _writeRefSer;
 
@@ -229,7 +230,8 @@ final class _Int64ListSerializerCache extends ArraySerializerCache{
 
 final class Int64ListSerializer extends NumericArraySerializer<int> {
   static const SerializerCache cache = _Int64ListSerializerCache();
-  const Int64ListSerializer(bool writeRef) : super(ObjType.INT64_ARRAY, writeRef);
+  const Int64ListSerializer(bool writeRef)
+      : super(ObjType.INT64_ARRAY, writeRef);
 
   @override
   TypedDataList<int> readToList(Uint8List copiedMem, ByteReader br) {
@@ -261,7 +263,8 @@ final class Int64ListSerializer extends NumericArraySerializer<int> {
 final class Float32ListSerializer extends NumericArraySerializer<double> {
   static const SerializerCache cache = _Float32ListSerializerCache();
 
-  const Float32ListSerializer(bool writeRef) : super(ObjType.FLOAT32_ARRAY, writeRef);
+  const Float32ListSerializer(bool writeRef)
+      : super(ObjType.FLOAT32_ARRAY, writeRef);
 
   @override
   TypedDataList<double> readToList(Uint8List copiedMem, ByteReader br) {
@@ -290,7 +293,7 @@ final class Float32ListSerializer extends NumericArraySerializer<double> {
   int get bytesPerNum => 4;
 }
 
-final class _Float64ListSerializerCache extends ArraySerializerCache{
+final class _Float64ListSerializerCache extends ArraySerializerCache {
   static Float64ListSerializer? _noRefSer;
   static Float64ListSerializer? _writeRefSer;
 
@@ -310,7 +313,8 @@ final class _Float64ListSerializerCache extends ArraySerializerCache{
 
 final class Float64ListSerializer extends NumericArraySerializer<double> {
   static const SerializerCache cache = _Float64ListSerializerCache();
-  const Float64ListSerializer(bool writeRef) : super(ObjType.FLOAT64_ARRAY, writeRef);
+  const Float64ListSerializer(bool writeRef)
+      : super(ObjType.FLOAT64_ARRAY, writeRef);
 
   @override
   TypedDataList<double> readToList(Uint8List copiedMem, ByteReader br) {

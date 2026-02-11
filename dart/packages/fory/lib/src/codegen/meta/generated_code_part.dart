@@ -17,31 +17,17 @@
  * under the License.
  */
 
-import 'package:fory/src/config/fory_config.dart';
+import 'library_import_pack.dart';
 
-class ForyConfigManager {
-  // singleton
-  static final ForyConfigManager _instance = ForyConfigManager._();
-  static ForyConfigManager get inst => _instance;
-  ForyConfigManager._();
+abstract class GeneratedCodePart {
+  const GeneratedCodePart();
+  void writeCode(StringBuffer buf, [int indentLevel = 0]) {
+    throw UnimplementedError("writeCode() is not implemented");
+  }
 
-  int configId = 0;
-  int get nextConfigId => configId++;
-
-  ForyConfig createConfig({
-    bool compatible = false,
-    bool refTracking = true,
-    bool basicTypesRefIgnored = true,
-    bool timeRefIgnored = true,
-    // bool stringRefIgnored = true,
-  }) {
-    return ForyConfig.onlyForManager(
-      nextConfigId,
-      compatible: compatible,
-      refTracking: refTracking,
-      basicTypesRefIgnored: basicTypesRefIgnored,
-      timeRefIgnored: timeRefIgnored,
-      // stringRefIgnored: stringRefIgnored,
-    );
+  void writeCodeWithImports(StringBuffer buf, LibraryImportPack imports,
+      String? dartCorePrefixWithPoint,
+      [int indentLevel = 0]) {
+    throw UnimplementedError("genCodeForType() is not implemented");
   }
 }

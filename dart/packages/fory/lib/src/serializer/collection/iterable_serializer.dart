@@ -57,7 +57,8 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     if ((flags & isSameTypeFlag) == isSameTypeFlag && ser != null) {
       if ((flags & trackingRefFlag) == trackingRefFlag) {
         for (Object? elem in v) {
-          pack.forySer.xWriteRefWithSer(bw, ser, elem, pack);
+          pack.serializationCoordinator
+              .writeWithSerializer(bw, ser, elem, pack);
         }
       } else {
         if ((flags & hasNullFlag) == hasNullFlag) {
@@ -78,7 +79,7 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     } else {
       if ((flags & trackingRefFlag) == trackingRefFlag) {
         for (Object? elem in v) {
-          pack.forySer.xWriteRefNoSer(bw, elem, pack);
+          pack.serializationCoordinator.writeDynamicWithRef(bw, elem, pack);
         }
       } else {
         if ((flags & hasNullFlag) == hasNullFlag) {
@@ -87,12 +88,14 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
               bw.writeInt8(RefFlag.NULL.id);
             } else {
               bw.writeInt8(RefFlag.UNTRACKED_NOT_NULL.id);
-              pack.forySer.xWriteNonRefNoSer(bw, elem, pack);
+              pack.serializationCoordinator
+                  .writeDynamicWithoutRef(bw, elem, pack);
             }
           }
         } else {
           for (Object? elem in v) {
-            pack.forySer.xWriteNonRefNoSer(bw, elem as Object, pack);
+            pack.serializationCoordinator
+                .writeDynamicWithoutRef(bw, elem as Object, pack);
           }
         }
       }
@@ -106,7 +109,7 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
   ({int flags, Serializer? ser}) _writeElementsHeader(ByteWriter bw,
       Iterable value, TypeSpecWrap? elemWrap, SerializerPack pack) {
     if (elemWrap != null) {
-      if (elemWrap.certainForSer && elemWrap.ser != null) {
+      if (elemWrap.serializationCertain && elemWrap.ser != null) {
         Serializer ser = elemWrap.ser!;
         if (ser.writeRef) {
           bw.writeUint8(declSameTypeTrackingRef);
@@ -162,8 +165,7 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
       return (flags: flags, ser: declaredSer);
     }
     bw.writeUint8(flags);
-    final typeInfo =
-        pack.xtypeResolver.writeGetTypeInfo(bw, firstNonNull, pack);
+    final typeInfo = pack.typeResolver.writeTypeInfo(bw, firstNonNull, pack);
     return (flags: flags, ser: typeInfo.ser);
   }
 
@@ -200,8 +202,7 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
       return (flags: flags, ser: declaredSer);
     }
     bw.writeUint8(flags);
-    final typeInfo =
-        pack.xtypeResolver.writeGetTypeInfo(bw, firstNonNull, pack);
+    final typeInfo = pack.typeResolver.writeTypeInfo(bw, firstNonNull, pack);
     return (flags: flags, ser: typeInfo.ser);
   }
 

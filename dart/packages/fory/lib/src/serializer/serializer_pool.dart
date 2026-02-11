@@ -48,15 +48,14 @@ import 'package:fory/src/serializer/time/date_serializer.dart';
 import 'package:fory/src/serializer/time/timestamp_serializer.dart';
 import 'package:fory/src/serializer/typed_data_array_serializer.dart';
 
-class SerializerPool{
-
+class SerializerPool {
   static List<TypeInfo?> setSerForDefaultType(
-      Map<Type, TypeInfo> type2Ser,
-      ForyConfig conf,
-      ){
-
+    Map<Type, TypeInfo> type2Ser,
+    ForyConfig conf,
+  ) {
     Serializer linkedMapSer = LinkedHashMapSerializer.cache.getSerializer(conf);
-    Serializer linkedHashSetSer = LinkedHashSetSerializer.cache.getSerializer(conf);
+    Serializer linkedHashSetSer =
+        LinkedHashSetSerializer.cache.getSerializer(conf);
 
     type2Ser[int]!.ser = Int64Serializer.cache.getSerializer(conf);
     type2Ser[bool]!.ser = BoolSerializer.cache.getSerializer(conf);
@@ -77,20 +76,24 @@ class SerializerPool{
     type2Ser[Map]!.ser = linkedMapSer;
     type2Ser[LinkedHashMap]!.ser = linkedMapSer;
     type2Ser[HashMap]!.ser = HashMapSerializer.cache.getSerializer(conf);
-    type2Ser[SplayTreeMap]!.ser = SplayTreeMapSerializer.cache.getSerializer(conf);
+    type2Ser[SplayTreeMap]!.ser =
+        SplayTreeMapSerializer.cache.getSerializer(conf);
 
     type2Ser[Set]!.ser = linkedHashSetSer;
     type2Ser[LinkedHashSet]!.ser = linkedHashSetSer;
     type2Ser[HashSet]!.ser = HashSetSerializer.cache.getSerializer(conf);
-    type2Ser[SplayTreeSet]!.ser = SplayTreeSetSerializer.cache.getSerializer(conf);
+    type2Ser[SplayTreeSet]!.ser =
+        SplayTreeSetSerializer.cache.getSerializer(conf);
 
     type2Ser[Uint8List]!.ser = Uint8ListSerializer.cache.getSerializer(conf);
     type2Ser[Int8List]!.ser = Int8ListSerializer.cache.getSerializer(conf);
     type2Ser[Int16List]!.ser = Int16ListSerializer.cache.getSerializer(conf);
     type2Ser[Int32List]!.ser = Int32ListSerializer.cache.getSerializer(conf);
     type2Ser[Int64List]!.ser = Int64ListSerializer.cache.getSerializer(conf);
-    type2Ser[Float32List]!.ser = Float32ListSerializer.cache.getSerializer(conf);
-    type2Ser[Float64List]!.ser = Float64ListSerializer.cache.getSerializer(conf);
+    type2Ser[Float32List]!.ser =
+        Float32ListSerializer.cache.getSerializer(conf);
+    type2Ser[Float64List]!.ser =
+        Float64ListSerializer.cache.getSerializer(conf);
     type2Ser[BoolList]!.ser = BoolListSerializer.cache.getSerializer(conf);
 
     List<TypeInfo?> objTypeId2TypeInfo = List<TypeInfo?>.filled(
@@ -99,8 +102,8 @@ class SerializerPool{
     );
 
     List<DartTypeEnum> values = DartTypeEnum.values;
-    for (int i = 0; i< values.length; ++i){
-      if (!values[i].supported || !values[i].defForObjType){
+    for (int i = 0; i < values.length; ++i) {
+      if (!values[i].supported || !values[i].defForObjType) {
         continue;
       }
       objTypeId2TypeInfo[values[i].objType!.id] = type2Ser[values[i].dartType];

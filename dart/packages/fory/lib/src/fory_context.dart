@@ -63,7 +63,7 @@ class ForyContext {
     abstractMapSer = objTypeId2TypeInfo[ObjType.MAP.id]!.ser;
   }
 
-  void reg(TypeInfo typeInfo) {
+  void registerType(TypeInfo typeInfo) {
     TypeInfo? info = type2TypeInfo[typeInfo.dartType];
     // Check if the type is already registered
     if (info != null) {

@@ -22,15 +22,15 @@ import 'package:fory/src/serializer/collection/list/list_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
-final class _DefListSerializerCache extends CollectionSerializerCache{
+final class _DefListSerializerCache extends CollectionSerializerCache {
   static DefListSerializer? _serRef;
   static DefListSerializer? _serNoRef;
 
   const _DefListSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef){
-    if (writeRef){
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef) {
       _serRef ??= DefListSerializer._(true);
       return _serRef!;
     } else {
@@ -40,16 +40,16 @@ final class _DefListSerializerCache extends CollectionSerializerCache{
   }
 }
 
-final class DefListSerializer extends ListSerializer{
-
+final class DefListSerializer extends ListSerializer {
   static const SerializerCache cache = _DefListSerializerCache();
   static const Object obj = Object();
-  
+
   DefListSerializer._(super.writeRef);
 
   @override
   List newList(int size, bool nullable) {
-    return nullable ? List<Object?>.filled(size, null, growable: true) :
-        List<Object>.filled(size, obj, growable: true);
+    return nullable
+        ? List<Object?>.filled(size, null, growable: true)
+        : List<Object>.filled(size, obj, growable: true);
   }
 }

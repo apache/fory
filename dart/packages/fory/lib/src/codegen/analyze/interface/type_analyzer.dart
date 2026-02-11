@@ -17,26 +17,24 @@
  * under the License.
  */
 
-import 'package:fory/src/codegen/analyze/analysis_wrappers.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/type_analysis_models.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
+import 'package:fory/src/codegen/meta/impl/type_spec_generator.dart';
 import 'package:fory/src/const/types.dart';
 
-abstract class TypeAnalyzer{
-
-  TypeSpecGen getTypeImmutableAndTag(
-    TypeDecision typeDecision,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
+abstract class TypeAnalyzer {
+  TypeSpecGenerator resolveTypeSpec(
+    TypeAnalysisDecision typeDecision,
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
   );
 
-  /// Version of getTypeImmutableAndTag that supports annotation-based ObjType override.
+  /// Version of resolveTypeSpec that supports annotation-based ObjType override.
   /// Used when uint annotations are present on int fields.
-  TypeSpecGen getTypeImmutableAndTagWithOverride(
-    TypeDecision typeDecision,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
+  TypeSpecGenerator resolveTypeSpecWithOverride(
+    TypeAnalysisDecision typeDecision,
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
     ObjType objTypeOverride,
   );
-
 }

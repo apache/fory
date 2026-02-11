@@ -23,15 +23,15 @@ import 'package:fory/src/serializer/collection/map/map_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
-final class _SplayTreeMapSerializerCache extends CollectionSerializerCache{
+final class _SplayTreeMapSerializerCache extends CollectionSerializerCache {
   static SplayTreeMapSerializer? _serRef;
   static SplayTreeMapSerializer? _serNoRef;
 
   const _SplayTreeMapSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef){
-    if (writeRef){
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef) {
       _serRef ??= SplayTreeMapSerializer._(true);
       return _serRef!;
     } else {
@@ -41,8 +41,8 @@ final class _SplayTreeMapSerializerCache extends CollectionSerializerCache{
   }
 }
 
-final class SplayTreeMapSerializer extends MapSerializer<SplayTreeMap<Object?,Object?>> {
-
+final class SplayTreeMapSerializer
+    extends MapSerializer<SplayTreeMap<Object?, Object?>> {
   static const SerializerCache cache = _SplayTreeMapSerializerCache();
 
   SplayTreeMapSerializer._(super.writeRef);

@@ -29,7 +29,8 @@ import 'dart:io';
 ///
 class TestProcessUtil {
   /// Execute command-line command synchronously
-  static bool executeCommandSync(List<String> command, int timeoutSec, Map<String, String> env) {
+  static bool executeCommandSync(
+      List<String> command, int timeoutSec, Map<String, String> env) {
     try {
       print('Executing command synchronously: ${command.join(' ')}');
       // Execute using synchronous API

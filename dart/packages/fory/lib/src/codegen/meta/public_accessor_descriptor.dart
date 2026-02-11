@@ -17,20 +17,15 @@
  * under the License.
  */
 
-import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/util/string_util.dart';
+import 'package:meta/meta.dart';
 
-class FieldsSorter{
-  const FieldsSorter();
+/// During the Dart analyzer analysis phase, both setters and getters are analyzed as FieldElement.
+/// Here, AccessorField is used to represent them.
+@immutable
+class PublicAccessorDescriptor {
+  final String name;
+  final bool hasSetter;
+  final bool hasGetter;
 
-  void sortFieldsByName(List<FieldSpecImmutable> fields){
-    for (int i = 0; i < fields.length; ++i){
-      fields[i].transName ??= StringUtil.lowerCamelToLowerUnderscore(fields[i].name);
-    }
-    fields.sort(
-      (a, b) {
-        return a.transName!.compareTo(b.transName!);
-      },
-    );
-  }
+  const PublicAccessorDescriptor(this.name, this.hasSetter, this.hasGetter);
 }

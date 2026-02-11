@@ -21,8 +21,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 import 'package:fory/src/memory/byte_writer_impl.dart';
 
-abstract base class ByteWriter{
-
+abstract base class ByteWriter {
   @protected
   final Endian endian = Endian.little;
 

@@ -17,31 +17,31 @@
  * under the License.
  */
 
-import 'package:fory/src/deserialize_coordinator.dart';
+import 'package:fory/src/deserialization_coordinator.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/fory_header_serializer.dart';
 import 'package:fory/src/pack.dart';
 import 'package:fory/src/collection/stack.dart';
 
-final class DeserializerPack extends Pack{
-   final HeaderBrief header;
+final class DeserializerPack extends Pack {
+  final HeaderBrief header;
 
-   final DeserializeCoordinator foryDeser;
+  final DeserializationCoordinator deserializationCoordinator;
 
-   final DeserializationRefResolver refResolver;
-   final XtypeResolver xtypeResolver;
+  final DeserializationRefResolver refResolver;
+  final TypeResolver typeResolver;
 
-   final Stack<TypeSpecWrap> typeWrapStack;
-   
-   const DeserializerPack(
-      super.structHashResolver,
-      super.getTagByDartType,
-      this.header,
-      this.foryDeser,
-      this.refResolver,
-      this.xtypeResolver,
-      this.typeWrapStack,
-   );
+  final Stack<TypeSpecWrap> typeWrapStack;
+
+  const DeserializerPack(
+    super.structHashResolver,
+    super.getTagByDartType,
+    this.header,
+    this.deserializationCoordinator,
+    this.refResolver,
+    this.typeResolver,
+    this.typeWrapStack,
+  );
 }

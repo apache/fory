@@ -17,7 +17,7 @@
  * under the License.
  */
 
-enum RefFlag{
+enum RefFlag {
   NULL(-3),
   TRACKED_ALREADY(-2),
   UNTRACKED_NOT_NULL(-1),

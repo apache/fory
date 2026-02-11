@@ -46,7 +46,7 @@ import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
 import 'package:fory/src/resolver/tag_str_encode_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/class_serializer.dart';
 import 'package:fory/src/serializer/enum_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -57,7 +57,7 @@ import 'package:fory/src/util/string_util.dart';
 import '../../exception/deserialization_exception.dart'
     show UnsupportedTypeException;
 
-final class XtypeResolverImpl extends XtypeResolver {
+final class TypeResolverImpl extends TypeResolver {
   static const int _metaSizeMask = 0xff;
   static const int _hasFieldsMetaFlag = 1 << 8;
   static const int _compressMetaFlag = 1 << 9;
@@ -104,7 +104,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   final List<TypeInfo> _readTypeInfos;
   final Map<Type, Uint8List> _typeToEncodedTypeDef;
 
-  XtypeResolverImpl(
+  TypeResolverImpl(
     super.conf,
   )   : _tagHash2Info = HashMap<LongLongKey, TypeInfo>(),
         _packageNameEncoder = Encoders.packageEncoder,
@@ -123,7 +123,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   }
 
   @override
-  void reg(CustomTypeSpec spec, [Object? tagOrTypeId]) {
+  void registerType(CustomTypeSpec spec, [Object? tagOrTypeId]) {
     if (tagOrTypeId == null) {
       String typeName = spec.dartType.toString();
       _regWithNamespace(spec, typeName, typeName);
@@ -173,7 +173,7 @@ final class XtypeResolverImpl extends XtypeResolver {
       nsMsb,
     );
     typeInfo.ser = _getSerFor(spec);
-    _ctx.reg(typeInfo);
+    _ctx.registerType(typeInfo);
     _type2Spec[typeInfo.dartType] = spec;
   }
 
@@ -190,7 +190,7 @@ final class XtypeResolverImpl extends XtypeResolver {
       userTypeId: normalizedTypeId,
     );
     typeInfo.ser = _getSerFor(spec);
-    _ctx.reg(typeInfo);
+    _ctx.registerType(typeInfo);
     _type2Spec[typeInfo.dartType] = spec;
     if (resolvedObjType == ObjType.STRUCT) {
       _ctx.userTypeId2TypeInfo[
@@ -263,7 +263,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   /// This type must be a user-defined class or enum
   @override
   @inline
-  String getTagByCustomDartType(Type type) {
+  String getRegisteredTag(Type type) {
     String? tag = _ctx.type2TypeInfo[type]?.tag;
     if (tag == null) {
       throw UnregisteredTypeException(type);
@@ -272,11 +272,11 @@ final class XtypeResolverImpl extends XtypeResolver {
   }
 
   @override
-  void setSersForTypeWrap(List<TypeSpecWrap> typeWraps) {
+  void bindSerializers(List<TypeSpecWrap> typeWraps) {
     TypeSpecWrap wrap;
     for (int i = 0; i < typeWraps.length; ++i) {
       wrap = typeWraps[i];
-      if (wrap.certainForSer) {
+      if (wrap.serializationCertain) {
         wrap.ser = _ctx.type2TypeInfo[wrap.type]!.ser;
       } else if (wrap.objType == ObjType.LIST) {
         wrap.ser = _ctx.abstractListSer;
@@ -286,7 +286,7 @@ final class XtypeResolverImpl extends XtypeResolver {
         wrap.ser = _ctx.abstractMapSer;
       }
       // At this point, ser is not set, ser is still null
-      setSersForTypeWrap(wrap.genericsArgs);
+      bindSerializers(wrap.genericsArgs);
     }
   }
 
@@ -376,7 +376,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   }
 
   @override
-  TypeInfo writeGetTypeInfo(ByteWriter bw, Object obj, SerializerPack pack) {
+  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializerPack pack) {
     Type dartType = dartTypeResolver.getForyType(obj);
     TypeInfo? typeInfo = _ctx.type2TypeInfo[dartType];
     if (typeInfo == null) {
@@ -781,7 +781,7 @@ final class XtypeResolverImpl extends XtypeResolver {
     ClassSerializer ser = typeInfo.ser as ClassSerializer;
     StructHashPair pair = ser.getHashPairForTest(
       StructHashResolver.inst,
-      getTagByCustomDartType,
+      getRegisteredTag,
     );
     return pair;
   }

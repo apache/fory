@@ -34,12 +34,13 @@ import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serializer_pack.dart';
 
-abstract base class PrimitiveSerializerCache extends SerializerCache{
-
+abstract base class PrimitiveSerializerCache extends SerializerCache {
   const PrimitiveSerializerCache();
 
   @override
-  Serializer getSerializer(ForyConfig conf,){
+  Serializer getSerializer(
+    ForyConfig conf,
+  ) {
     // Currently, there are only two types of Ser for primitive types: one that write a reference
     // and one that does not, so only these two are cached here.
     bool writeRef = conf.refTracking && !conf.basicTypesRefIgnored;
@@ -49,8 +50,7 @@ abstract base class PrimitiveSerializerCache extends SerializerCache{
   Serializer getSerWithRef(bool writeRef);
 }
 
-
-final class _BoolSerializerCache extends PrimitiveSerializerCache{
+final class _BoolSerializerCache extends PrimitiveSerializerCache {
   static BoolSerializer? serRef;
   static BoolSerializer? serNoRef;
 
@@ -58,7 +58,7 @@ final class _BoolSerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= BoolSerializer._(true);
       return serRef!;
     } else {
@@ -68,10 +68,9 @@ final class _BoolSerializerCache extends PrimitiveSerializerCache{
   }
 }
 
-
 final class BoolSerializer extends Serializer<bool> {
   static const SerializerCache cache = _BoolSerializerCache();
-  BoolSerializer._(bool writeRef): super(ObjType.BOOL, writeRef);
+  BoolSerializer._(bool writeRef) : super(ObjType.BOOL, writeRef);
 
   @override
   bool read(ByteReader br, int refId, DeserializerPack pack) {
@@ -84,7 +83,7 @@ final class BoolSerializer extends Serializer<bool> {
   }
 }
 
-final class _Int8SerializerCache extends PrimitiveSerializerCache{
+final class _Int8SerializerCache extends PrimitiveSerializerCache {
   static Int8Serializer? serRef;
   static Int8Serializer? serNoRef;
 
@@ -92,7 +91,7 @@ final class _Int8SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= Int8Serializer._(true);
       return serRef!;
     } else {
@@ -103,15 +102,15 @@ final class _Int8SerializerCache extends PrimitiveSerializerCache{
 }
 
 // Dart does not have an int8 type. Users can specify converting a Dart int to int8 via annotations, so out-of-range errors may occur
-final class Int8Serializer extends Serializer<FixedNum>{
-
+final class Int8Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _Int8SerializerCache();
 
-  Int8Serializer._(bool writeRef): super(ObjType.INT8, writeRef);
+  Int8Serializer._(bool writeRef) : super(ObjType.INT8, writeRef);
 
   @override
   Int8 read(ByteReader br, int refId, DeserializerPack pack) {
-    return Int8(br.readInt8());// Use signed 8-bit integer, which is consistent with byte in ForyJava
+    return Int8(br
+        .readInt8()); // Use signed 8-bit integer, which is consistent with byte in ForyJava
   }
 
   @override
@@ -123,7 +122,7 @@ final class Int8Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _Int16SerializerCache extends PrimitiveSerializerCache{
+final class _Int16SerializerCache extends PrimitiveSerializerCache {
   static Int16Serializer? serRef;
   static Int16Serializer? serNoRef;
 
@@ -131,7 +130,7 @@ final class _Int16SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= Int16Serializer._(true);
       return serRef!;
     } else {
@@ -142,9 +141,9 @@ final class _Int16SerializerCache extends PrimitiveSerializerCache{
 }
 
 // Dart does not have int16. Users can specify converting Dart's int to int16 via annotation, so an out-of-range error may occur
-final class Int16Serializer extends Serializer<FixedNum>{
+final class Int16Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _Int16SerializerCache();
-  Int16Serializer._(bool writeRef): super(ObjType.INT16, writeRef);
+  Int16Serializer._(bool writeRef) : super(ObjType.INT16, writeRef);
 
   @override
   Int16 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -160,7 +159,7 @@ final class Int16Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _Int32SerializerCache extends PrimitiveSerializerCache{
+final class _Int32SerializerCache extends PrimitiveSerializerCache {
   static Int32Serializer? serRef;
   static Int32Serializer? serNoRef;
 
@@ -168,7 +167,7 @@ final class _Int32SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= Int32Serializer._(true);
       return serRef!;
     } else {
@@ -179,9 +178,9 @@ final class _Int32SerializerCache extends PrimitiveSerializerCache{
 }
 
 // Dart does not have int32, users specify converting dart int to int32 through annotations, so range errors may occur
-final class Int32Serializer extends Serializer<FixedNum>{
+final class Int32Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _Int32SerializerCache();
-  Int32Serializer._(bool writeRef): super(ObjType.INT32, writeRef);
+  Int32Serializer._(bool writeRef) : super(ObjType.INT32, writeRef);
 
   @override
   Int32 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -199,7 +198,7 @@ final class Int32Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _Int64SerializerCache extends PrimitiveSerializerCache{
+final class _Int64SerializerCache extends PrimitiveSerializerCache {
   static Int64Serializer? serRef;
   static Int64Serializer? serNoRef;
 
@@ -207,7 +206,7 @@ final class _Int64SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= Int64Serializer._(true);
       return serRef!;
     } else {
@@ -218,10 +217,9 @@ final class _Int64SerializerCache extends PrimitiveSerializerCache{
 }
 
 final class Int64Serializer extends Serializer<int> {
-
   static const SerializerCache cache = _Int64SerializerCache();
 
-  Int64Serializer._(bool writeRef): super(ObjType.INT64, writeRef);
+  Int64Serializer._(bool writeRef) : super(ObjType.INT64, writeRef);
 
   @override
   int read(ByteReader br, int refId, DeserializerPack pack) {
@@ -234,7 +232,7 @@ final class Int64Serializer extends Serializer<int> {
   }
 }
 
-final class _Float32SerializerCache extends PrimitiveSerializerCache{
+final class _Float32SerializerCache extends PrimitiveSerializerCache {
   static Float32Serializer? serRef;
   static Float32Serializer? serNoRef;
 
@@ -242,7 +240,7 @@ final class _Float32SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= Float32Serializer._(true);
       return serRef!;
     } else {
@@ -253,11 +251,10 @@ final class _Float32SerializerCache extends PrimitiveSerializerCache{
 }
 
 // Dart does not have float32; the user can specify converting Dart double to float32 through annotation, so precision errors may occur
-final class Float32Serializer extends Serializer<FixedNum>{
-
+final class Float32Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _Float32SerializerCache();
 
-  Float32Serializer._(bool writeRef): super(ObjType.FLOAT32, writeRef);
+  Float32Serializer._(bool writeRef) : super(ObjType.FLOAT32, writeRef);
 
   @override
   Float32 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -274,7 +271,7 @@ final class Float32Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _Float64SerializerCache extends PrimitiveSerializerCache{
+final class _Float64SerializerCache extends PrimitiveSerializerCache {
   static Float64Serializer? serRef;
   static Float64Serializer? serNoRef;
 
@@ -282,7 +279,7 @@ final class _Float64SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= Float64Serializer._(true);
       return serRef!;
     } else {
@@ -292,11 +289,10 @@ final class _Float64SerializerCache extends PrimitiveSerializerCache{
   }
 }
 
-final class Float64Serializer extends Serializer<double>{
-
+final class Float64Serializer extends Serializer<double> {
   static const SerializerCache cache = _Float64SerializerCache();
 
-  Float64Serializer._(bool writeRef): super(ObjType.FLOAT64, writeRef);
+  Float64Serializer._(bool writeRef) : super(ObjType.FLOAT64, writeRef);
 
   @override
   double read(ByteReader br, int refId, DeserializerPack pack) {
@@ -309,7 +305,7 @@ final class Float64Serializer extends Serializer<double>{
   }
 }
 
-final class _UInt8SerializerCache extends PrimitiveSerializerCache{
+final class _UInt8SerializerCache extends PrimitiveSerializerCache {
   static UInt8Serializer? serRef;
   static UInt8Serializer? serNoRef;
 
@@ -317,7 +313,7 @@ final class _UInt8SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= UInt8Serializer._(true);
       return serRef!;
     } else {
@@ -327,9 +323,9 @@ final class _UInt8SerializerCache extends PrimitiveSerializerCache{
   }
 }
 
-final class UInt8Serializer extends Serializer<FixedNum>{
+final class UInt8Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _UInt8SerializerCache();
-  UInt8Serializer._(bool writeRef): super(ObjType.UINT8, writeRef);
+  UInt8Serializer._(bool writeRef) : super(ObjType.UINT8, writeRef);
 
   @override
   UInt8 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -342,7 +338,7 @@ final class UInt8Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _UInt16SerializerCache extends PrimitiveSerializerCache{
+final class _UInt16SerializerCache extends PrimitiveSerializerCache {
   static UInt16Serializer? serRef;
   static UInt16Serializer? serNoRef;
 
@@ -350,7 +346,7 @@ final class _UInt16SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= UInt16Serializer._(true);
       return serRef!;
     } else {
@@ -360,9 +356,9 @@ final class _UInt16SerializerCache extends PrimitiveSerializerCache{
   }
 }
 
-final class UInt16Serializer extends Serializer<FixedNum>{
+final class UInt16Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _UInt16SerializerCache();
-  UInt16Serializer._(bool writeRef): super(ObjType.UINT16, writeRef);
+  UInt16Serializer._(bool writeRef) : super(ObjType.UINT16, writeRef);
 
   @override
   UInt16 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -375,7 +371,7 @@ final class UInt16Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _UInt32SerializerCache extends PrimitiveSerializerCache{
+final class _UInt32SerializerCache extends PrimitiveSerializerCache {
   static UInt32Serializer? serRef;
   static UInt32Serializer? serNoRef;
 
@@ -383,7 +379,7 @@ final class _UInt32SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= UInt32Serializer._(true);
       return serRef!;
     } else {
@@ -393,9 +389,9 @@ final class _UInt32SerializerCache extends PrimitiveSerializerCache{
   }
 }
 
-final class UInt32Serializer extends Serializer<FixedNum>{
+final class UInt32Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _UInt32SerializerCache();
-  UInt32Serializer._(bool writeRef): super(ObjType.UINT32, writeRef);
+  UInt32Serializer._(bool writeRef) : super(ObjType.UINT32, writeRef);
 
   @override
   UInt32 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -408,7 +404,7 @@ final class UInt32Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _VarUInt32SerializerCache extends PrimitiveSerializerCache{
+final class _VarUInt32SerializerCache extends PrimitiveSerializerCache {
   static VarUInt32Serializer? serRef;
   static VarUInt32Serializer? serNoRef;
 
@@ -416,7 +412,7 @@ final class _VarUInt32SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= VarUInt32Serializer._(true);
       return serRef!;
     } else {
@@ -426,9 +422,9 @@ final class _VarUInt32SerializerCache extends PrimitiveSerializerCache{
   }
 }
 
-final class VarUInt32Serializer extends Serializer<FixedNum>{
+final class VarUInt32Serializer extends Serializer<FixedNum> {
   static const SerializerCache cache = _VarUInt32SerializerCache();
-  VarUInt32Serializer._(bool writeRef): super(ObjType.VAR_UINT32, writeRef);
+  VarUInt32Serializer._(bool writeRef) : super(ObjType.VAR_UINT32, writeRef);
 
   @override
   UInt32 read(ByteReader br, int refId, DeserializerPack pack) {
@@ -441,7 +437,7 @@ final class VarUInt32Serializer extends Serializer<FixedNum>{
   }
 }
 
-final class _UInt64SerializerCache extends PrimitiveSerializerCache{
+final class _UInt64SerializerCache extends PrimitiveSerializerCache {
   static UInt64Serializer? serRef;
   static UInt64Serializer? serNoRef;
 
@@ -449,7 +445,7 @@ final class _UInt64SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= UInt64Serializer._(true);
       return serRef!;
     } else {
@@ -461,7 +457,7 @@ final class _UInt64SerializerCache extends PrimitiveSerializerCache{
 
 final class UInt64Serializer extends Serializer<int> {
   static const SerializerCache cache = _UInt64SerializerCache();
-  UInt64Serializer._(bool writeRef): super(ObjType.UINT64, writeRef);
+  UInt64Serializer._(bool writeRef) : super(ObjType.UINT64, writeRef);
 
   @override
   int read(ByteReader br, int refId, DeserializerPack pack) {
@@ -474,7 +470,7 @@ final class UInt64Serializer extends Serializer<int> {
   }
 }
 
-final class _VarUInt64SerializerCache extends PrimitiveSerializerCache{
+final class _VarUInt64SerializerCache extends PrimitiveSerializerCache {
   static VarUInt64Serializer? serRef;
   static VarUInt64Serializer? serNoRef;
 
@@ -482,7 +478,7 @@ final class _VarUInt64SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= VarUInt64Serializer._(true);
       return serRef!;
     } else {
@@ -494,7 +490,7 @@ final class _VarUInt64SerializerCache extends PrimitiveSerializerCache{
 
 final class VarUInt64Serializer extends Serializer<int> {
   static const SerializerCache cache = _VarUInt64SerializerCache();
-  VarUInt64Serializer._(bool writeRef): super(ObjType.VAR_UINT64, writeRef);
+  VarUInt64Serializer._(bool writeRef) : super(ObjType.VAR_UINT64, writeRef);
 
   @override
   int read(ByteReader br, int refId, DeserializerPack pack) {
@@ -507,7 +503,7 @@ final class VarUInt64Serializer extends Serializer<int> {
   }
 }
 
-final class _TaggedUInt64SerializerCache extends PrimitiveSerializerCache{
+final class _TaggedUInt64SerializerCache extends PrimitiveSerializerCache {
   static TaggedUInt64Serializer? serRef;
   static TaggedUInt64Serializer? serNoRef;
 
@@ -515,7 +511,7 @@ final class _TaggedUInt64SerializerCache extends PrimitiveSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= TaggedUInt64Serializer._(true);
       return serRef!;
     } else {
@@ -527,7 +523,8 @@ final class _TaggedUInt64SerializerCache extends PrimitiveSerializerCache{
 
 final class TaggedUInt64Serializer extends Serializer<int> {
   static const SerializerCache cache = _TaggedUInt64SerializerCache();
-  TaggedUInt64Serializer._(bool writeRef): super(ObjType.TAGGED_UINT64, writeRef);
+  TaggedUInt64Serializer._(bool writeRef)
+      : super(ObjType.TAGGED_UINT64, writeRef);
 
   @override
   int read(ByteReader br, int refId, DeserializerPack pack) {

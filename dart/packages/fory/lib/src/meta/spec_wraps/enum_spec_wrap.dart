@@ -20,7 +20,7 @@
 import 'package:fory/src/meta/specs/enum_spec.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-final class EnumSpecWrap{
+final class EnumSpecWrap {
   final List<Object> values;
   late final Serializer ser;
 
@@ -30,7 +30,7 @@ final class EnumSpecWrap{
 
   factory EnumSpecWrap.of(
     EnumSpec spec,
-  ){
+  ) {
     return EnumSpecWrap._(spec.values);
   }
 }

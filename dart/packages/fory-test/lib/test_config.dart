@@ -36,7 +36,8 @@ class TestConfig {
     }
     final config = loadYaml(configFile.readAsStringSync());
     return TestConfig(
-      pythonExecutable: (config['python'] ? ['executable'] as String?) ?? 'python',
+      pythonExecutable:
+          (config['python']?['executable'] as String?) ?? 'python',
     );
   }
 }

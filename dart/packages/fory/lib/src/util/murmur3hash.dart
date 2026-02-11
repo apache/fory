@@ -21,8 +21,7 @@ import 'dart:typed_data';
 import 'package:fory/src/memory/memory_util.dart';
 import 'package:fory/src/util/extension/int_extensions.dart';
 
-class Murmur3Hash{
-
+class Murmur3Hash {
   static const int defaultSeed = 47;
 
   static int fmix64(int k) {
@@ -34,7 +33,8 @@ class Murmur3Hash{
     return k;
   }
 
-  static (int h1, int h2) hash128x64(Uint8List bytes, int len, [int offset=0, int seed = defaultSeed]) {
+  static (int h1, int h2) hash128x64(Uint8List bytes, int len,
+      [int offset = 0, int seed = defaultSeed]) {
     int h1 = seed & 0x00000000FFFFFFFF;
     int h2 = seed & 0x00000000FFFFFFFF;
 

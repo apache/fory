@@ -23,15 +23,15 @@ import 'package:fory/src/serializer/collection/set/set_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
-final class _SplayTreeSetSerializerCache extends CollectionSerializerCache{
+final class _SplayTreeSetSerializerCache extends CollectionSerializerCache {
   static SplayTreeSetSerializer? _serRef;
   static SplayTreeSetSerializer? _serNoRef;
 
   const _SplayTreeSetSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef){
-    if (writeRef){
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef) {
       _serRef ??= SplayTreeSetSerializer._(true);
       return _serRef!;
     } else {
@@ -41,8 +41,7 @@ final class _SplayTreeSetSerializerCache extends CollectionSerializerCache{
   }
 }
 
-final class SplayTreeSetSerializer extends SetSerializer{
-
+final class SplayTreeSetSerializer extends SetSerializer {
   static const SerializerCache cache = _SplayTreeSetSerializerCache();
   static const Object obj = Object();
 

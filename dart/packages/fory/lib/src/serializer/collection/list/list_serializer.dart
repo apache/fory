@@ -61,13 +61,14 @@ abstract base class ListSerializer extends IterableSerializer {
         ser = elemWrap?.ser;
       }
       if (ser == null) {
-        ser = pack.xtypeResolver.readTypeInfo(br).ser;
+        ser = pack.typeResolver.readTypeInfo(br).ser;
       }
 
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          list[i] = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+          list[i] =
+              pack.deserializationCoordinator.readWithSerializer(br, ser, pack);
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
           IterableSerializer.hasNullFlag) {
@@ -87,7 +88,8 @@ abstract base class ListSerializer extends IterableSerializer {
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          list[i] = pack.foryDeser.xReadRefNoSer(br, pack);
+          list[i] =
+              pack.deserializationCoordinator.readDynamicWithRef(br, pack);
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
           IterableSerializer.hasNullFlag) {
@@ -95,12 +97,14 @@ abstract base class ListSerializer extends IterableSerializer {
           if (br.readInt8() == RefFlag.NULL.id) {
             list[i] = null;
           } else {
-            list[i] = pack.foryDeser.xReadNonRefNoSer(br, pack);
+            list[i] =
+                pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
           }
         }
       } else {
         for (int i = 0; i < num; ++i) {
-          list[i] = pack.foryDeser.xReadNonRefNoSer(br, pack);
+          list[i] =
+              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
         }
       }
     }

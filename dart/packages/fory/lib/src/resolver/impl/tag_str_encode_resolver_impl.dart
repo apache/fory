@@ -25,10 +25,9 @@ import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/resolver/tag_str_encode_resolver.dart';
 
 final class TagStringEncodeResolverImpl extends TagStringEncodeResolver {
-
   final MetaStringEncoder _tnEncoder = Encoders.typeNameEncoder;
   final MetaStringEncoder _nsEncoder = Encoders.packageEncoder;
-  
+
   static const List<MetaStringEncoding> _tagAllowedEncodings = [
     MetaStringEncoding.utf8,
     MetaStringEncoding.luds,
@@ -43,14 +42,13 @@ final class TagStringEncodeResolverImpl extends TagStringEncodeResolver {
     MetaStringEncoding.atls,
   ];
 
-
   final Map<String, MetaString> _tnMetaStringCache = HashMap();
   final Map<String, MetaString> _nsMetaStringCache = HashMap();
 
   @override
-  MetaString encodeTypeName(String tag){
+  MetaString encodeTypeName(String tag) {
     MetaString? metaString = _tnMetaStringCache[tag];
-    if(metaString != null){
+    if (metaString != null) {
       return metaString;
     }
     metaString = _tnEncoder.encodeByAllowedEncodings(tag, _tagAllowedEncodings);
@@ -61,7 +59,7 @@ final class TagStringEncodeResolverImpl extends TagStringEncodeResolver {
   @override
   MetaString encodeNs(String ns) {
     MetaString? metaString = _nsMetaStringCache[ns];
-    if(metaString != null){
+    if (metaString != null) {
       return metaString;
     }
     metaString = _nsEncoder.encodeByAllowedEncodings(ns, _nsAllowedEncodings);

@@ -18,19 +18,19 @@
  */
 
 // Currently not in use
-class Type3StringKey{
+class TypeStringKey {
   final String name;
   final String scheme; // It seems there are only two types: dart and package
   final String path;
-  
+
   int? _hashCode;
 
-  Type3StringKey(this.name, this.scheme, this.path);
+  TypeStringKey(this.name, this.scheme, this.path);
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Type3StringKey &&
+      other is TypeStringKey &&
           runtimeType == other.runtimeType &&
           name == other.name &&
           scheme == other.scheme &&
@@ -47,7 +47,8 @@ class Type3StringKey{
     int letter1 = scheme.isNotEmpty ? scheme.codeUnitAt(0) : 32;
     int letter2 = path.isNotEmpty ? path.codeUnitAt(0) : 32;
     int letter3 = path.isNotEmpty ? path.codeUnitAt(path.length ~/ 2) : 32;
-    int letter4 = path.isNotEmpty ? path.codeUnitAt((path.length ~/ 7) * 5) : 32;
+    int letter4 =
+        path.isNotEmpty ? path.codeUnitAt((path.length ~/ 7) * 5) : 32;
 
     int hash = 17;
     hash = hash * 31 + nameHash;

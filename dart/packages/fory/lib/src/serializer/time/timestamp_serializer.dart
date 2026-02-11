@@ -27,7 +27,7 @@ import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serializer/time/time_serializer_cache.dart';
 import 'package:fory/src/serializer_pack.dart';
 
-final class _TimestampSerializerCache extends TimeSerializerCache{
+final class _TimestampSerializerCache extends TimeSerializerCache {
   static TimestampSerializer? serRef;
   static TimestampSerializer? serNoRef;
 
@@ -35,7 +35,7 @@ final class _TimestampSerializerCache extends TimeSerializerCache{
 
   @override
   Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
+    if (writeRef) {
       serRef ??= TimestampSerializer._(true);
       return serRef!;
     } else {
@@ -46,7 +46,6 @@ final class _TimestampSerializerCache extends TimeSerializerCache{
 }
 
 final class TimestampSerializer extends Serializer<TimeStamp> {
-
   static const SerializerCache cache = _TimestampSerializerCache();
 
   TimestampSerializer._(bool writeRef) : super(ObjType.TIMESTAMP, writeRef);

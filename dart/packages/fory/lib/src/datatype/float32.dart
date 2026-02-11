@@ -17,7 +17,6 @@
  * under the License.
  */
 
-
 import 'dart:typed_data';
 
 import 'float16.dart' show Float16;
@@ -112,10 +111,12 @@ final class Float32 extends FixedNum {
   Float16 toFloat16() => Float16(_value);
 
   // String formatting
-  String toStringAsFixed(int fractionDigits) => _value.toStringAsFixed(fractionDigits);
+  String toStringAsFixed(int fractionDigits) =>
+      _value.toStringAsFixed(fractionDigits);
   String toStringAsExponential([int? fractionDigits]) =>
       _value.toStringAsExponential(fractionDigits);
-  String toStringAsPrecision(int precision) => _value.toStringAsPrecision(precision);
+  String toStringAsPrecision(int precision) =>
+      _value.toStringAsPrecision(precision);
 
   @override
   String toString() => _value.toString();

@@ -25,7 +25,6 @@ import 'package:fory/src/serializer_pack.dart';
 
 /// Planned to only handle non-null type serializers. Null values should be handled externally.
 abstract base class Serializer<T> {
-
   final ObjType objType;
   // final bool forceNoRefWrite; // Not controlled by Fory's Config; indicates no reference writing for this type
   final bool writeRef; // Indicates whether to write references

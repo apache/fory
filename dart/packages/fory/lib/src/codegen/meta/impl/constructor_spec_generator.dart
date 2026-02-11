@@ -19,50 +19,73 @@
 
 import 'package:fory/src/codegen/config/codegen_style.dart';
 import 'package:fory/src/codegen/entity/constructor_params.dart';
-import 'package:fory/src/codegen/meta/gen_export.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
 import 'package:fory/src/codegen/meta/impl/constructor_info.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/impl/fields_spec_gen.dart';
-import 'package:fory/src/codegen/meta/lib_import_pack.dart';
+import 'package:fory/src/codegen/meta/impl/fields_spec_generator.dart';
+import 'package:fory/src/codegen/meta/library_import_pack.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 import 'package:meta/meta.dart';
 
 @immutable
-class ConstructorSpecGen extends GenExport{
-
+class ConstructorSpecGenerator extends GeneratedCodePart {
   final String className;
-  final LibImportPack imports;
+  final LibraryImportPack imports;
   final ConstructorInfo consInfo;
-  final FieldsSpecGen fieldsSpecGen;
+  final FieldsSpecGenerator fieldsSpecGen;
 
-  const ConstructorSpecGen(this.className, this.imports,this.consInfo, this.fieldsSpecGen);
+  const ConstructorSpecGenerator(
+      this.className, this.imports, this.consInfo, this.fieldsSpecGen);
 
   @override
-  void genCodeReqImportsInfo(StringBuffer buf, LibImportPack imports, String? dartCorePrefixWithPoint,[int indentLevel = 0]) {
+  void writeCodeWithImports(
+    StringBuffer buf,
+    LibraryImportPack imports,
+    String? dartCorePrefixWithPoint, [
+    int indentLevel = 0,
+  ]) {
     int totalIndent = indentLevel * CodegenStyle.indent;
-    if (consInfo.flexibleOrUnnamedCons){
+    if (consInfo.usesFlexibleConstructor) {
       // Use parameterless constructor
-      _genCodeForFlexibleCons(buf, consInfo.flexibleConsName!, totalIndent);
-    }else{
+      _writeFlexibleConstructorFactory(
+        buf,
+        consInfo.flexibleConstructorName!,
+        totalIndent,
+      );
+    } else {
       // Use unnamed constructor
-      _genCodeForUnnamedCons(buf, consInfo.unnamedConsParams!, totalIndent, dartCorePrefixWithPoint);
+      _writeUnnamedConstructorFactory(
+        buf,
+        consInfo.unnamedConstructorParams!,
+        totalIndent,
+        dartCorePrefixWithPoint,
+      );
     }
   }
 
-  void _genCodeForFlexibleCons(StringBuffer buf, String consName, int baseIndent){
+  void _writeFlexibleConstructorFactory(
+    StringBuffer buf,
+    String constructorName,
+    int baseIndent,
+  ) {
     CodegenTool.writeIndent(buf, baseIndent);
     buf.write("null,\n");
     CodegenTool.writeIndent(buf, baseIndent);
     buf.write("() => ");
     buf.write(className);
-    if (consName.isNotEmpty){
+    if (constructorName.isNotEmpty) {
       buf.write(".");
-      buf.write(consName);
+      buf.write(constructorName);
     }
     buf.write("(),\n");
   }
 
-  void _genCodeForUnnamedCons(StringBuffer buf, ConstructorParams consParams, int baseIndent, String? dartCorePrefixWithPoint){
+  void _writeUnnamedConstructorFactory(
+    StringBuffer buf,
+    ConstructorParams constructorParams,
+    int baseIndent,
+    String? dartCorePrefixWithPoint,
+  ) {
     int nextTotalIndent = baseIndent + CodegenStyle.indent;
     List<FieldSpecImmutable> fields = fieldsSpecGen.fields;
     List<bool> setThroughConsFlags = fieldsSpecGen.setThroughConsFlags;
@@ -75,36 +98,40 @@ class ConstructorSpecGen extends GenExport{
     buf.write("List<dynamic> objList) => ");
     buf.write(className);
     buf.write("(\n");
-    for (var param in consParams.positional){
+    for (var param in constructorParams.positional) {
       if (param.fieldIndex == -1) continue;
       CodegenTool.writeIndent(buf, nextTotalIndent);
       String paramName = "objList[${param.fieldIndex}]";
-      fields[param.fieldIndex].typeAdapter.genCodeReqImportsInfo(buf, imports, dartCorePrefixWithPoint, 0 ,paramName);
+      fields[param.fieldIndex].typeAdapter.writeCodeWithImports(
+          buf, imports, dartCorePrefixWithPoint, 0, paramName);
       buf.write(",\n");
     }
 
-    for (var param in consParams.named){
+    for (var param in constructorParams.named) {
       if (param.fieldIndex == -1) continue;
       CodegenTool.writeIndent(buf, nextTotalIndent);
       buf.write(param.name);
       buf.write(": ");
       String paramName = "objList[${param.fieldIndex}]";
-      fields[param.fieldIndex].typeAdapter.genCodeReqImportsInfo(buf, imports, dartCorePrefixWithPoint, 0, paramName);
+      fields[param.fieldIndex].typeAdapter.writeCodeWithImports(
+          buf, imports, dartCorePrefixWithPoint, 0, paramName);
       buf.write(",\n");
     }
     CodegenTool.writeIndent(buf, baseIndent);
     buf.write(')');
 
     late FieldSpecImmutable field;
-    for (int i =0; i< fields.length; ++i){
+    for (int i = 0; i < fields.length; ++i) {
       field = fields[i];
-      if (field.includeFromFory && !setThroughConsFlags[i]){
-        assert(field.canSet); // This should have been ensured in previous steps, if there's an error, it should have already stopped
+      if (field.includeFromFory && !setThroughConsFlags[i]) {
+        assert(field
+            .canSet); // This should have been ensured in previous steps, if there's an error, it should have already stopped
         buf.write("..");
         buf.write(field.name);
         buf.write(" = ");
         String paramName = "objList[$i]";
-        field.typeAdapter.genCodeReqImportsInfo(buf, imports, dartCorePrefixWithPoint, 0, paramName);
+        field.typeAdapter.writeCodeWithImports(
+            buf, imports, dartCorePrefixWithPoint, 0, paramName);
         buf.write("\n");
       }
     }

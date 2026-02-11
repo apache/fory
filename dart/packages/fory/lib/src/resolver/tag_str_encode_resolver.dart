@@ -20,7 +20,7 @@
 import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/resolver/impl/tag_str_encode_resolver_impl.dart';
 
-abstract class TagStringEncodeResolver{
+abstract class TagStringEncodeResolver {
   static TagStringEncodeResolver get newInst => TagStringEncodeResolverImpl();
   MetaString encodeTypeName(String tag);
   MetaString encodeNs(String ns);

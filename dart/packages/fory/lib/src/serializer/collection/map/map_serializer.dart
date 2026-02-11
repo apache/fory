@@ -95,13 +95,13 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
       if (keyDeclaredType && keyWrap?.ser != null) {
         keySer = keyWrap!.ser!;
       } else {
-        keySer = pack.xtypeResolver.readTypeInfo(br).ser;
+        keySer = pack.typeResolver.readTypeInfo(br).ser;
       }
       Serializer valueSer;
       if (valueDeclaredType && valueWrap?.ser != null) {
         valueSer = valueWrap!.ser!;
       } else {
-        valueSer = pack.xtypeResolver.readTypeInfo(br).ser;
+        valueSer = pack.typeResolver.readTypeInfo(br).ser;
       }
 
       for (int i = 0; i < chunkSize; ++i) {
@@ -172,20 +172,19 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     Serializer keySer;
     Serializer valueSer;
 
-    if (keyWrap != null && keyWrap.certainForSer && keyWrap.ser != null) {
+    if (keyWrap != null && keyWrap.serializationCertain && keyWrap.ser != null) {
       chunkHeader |= _keyDeclType;
       keySer = keyWrap.ser!;
     } else {
-      final typeInfo =
-          pack.xtypeResolver.writeGetTypeInfo(chunkWriter, key0, pack);
+      final typeInfo = pack.typeResolver.writeTypeInfo(chunkWriter, key0, pack);
       keySer = typeInfo.ser;
     }
-    if (valueWrap != null && valueWrap.certainForSer && valueWrap.ser != null) {
+    if (valueWrap != null && valueWrap.serializationCertain && valueWrap.ser != null) {
       chunkHeader |= _valueDeclType;
       valueSer = valueWrap.ser!;
     } else {
       final typeInfo =
-          pack.xtypeResolver.writeGetTypeInfo(chunkWriter, value0, pack);
+          pack.typeResolver.writeTypeInfo(chunkWriter, value0, pack);
       valueSer = typeInfo.ser;
     }
 
@@ -256,7 +255,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     SerializerPack pack,
   ) {
     Serializer? keySer = keyWrap?.ser;
-    if (keyWrap != null && keyWrap.certainForSer && keySer != null) {
+    if (keyWrap != null && keyWrap.serializationCertain && keySer != null) {
       bool trackingRef = keySer.writeRef;
       bw.writeUint8(trackingRef
           ? _nullValueKeyDeclTypeTrackingRef
@@ -278,7 +277,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     SerializerPack pack,
   ) {
     Serializer? valueSer = valueWrap?.ser;
-    if (valueWrap != null && valueWrap.certainForSer && valueSer != null) {
+    if (valueWrap != null && valueWrap.serializationCertain && valueSer != null) {
       bool trackingRef = valueSer.writeRef;
       bw.writeUint8(trackingRef
           ? _nullKeyValueDeclTypeTrackingRef
@@ -331,7 +330,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.forySer.xWriteRefWithSer(bw, ser, value, pack);
+      pack.serializationCoordinator.writeWithSerializer(bw, ser, value, pack);
     } else {
       ser.write(bw, value, pack);
     }
@@ -350,7 +349,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     bool pushed = _pushWrapForRead(wrap, pack);
     Object? value;
     if (trackRef) {
-      value = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+      value = pack.deserializationCoordinator.readWithSerializer(br, ser, pack);
     } else {
       value = ser.read(br, -1, pack);
     }
@@ -369,9 +368,9 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.forySer.xWriteRefNoSer(bw, value, pack);
+      pack.serializationCoordinator.writeDynamicWithRef(bw, value, pack);
     } else {
-      pack.forySer.xWriteNonRefNoSer(bw, value, pack);
+      pack.serializationCoordinator.writeDynamicWithoutRef(bw, value, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
@@ -387,9 +386,10 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     bool pushed = _pushWrapForRead(wrap, pack);
     Object value;
     if (trackRef) {
-      value = pack.foryDeser.xReadRefNoSer(br, pack) as Object;
+      value = pack.deserializationCoordinator.readDynamicWithRef(br, pack)
+          as Object;
     } else {
-      value = pack.foryDeser.xReadNonRefNoSer(br, pack);
+      value = pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();

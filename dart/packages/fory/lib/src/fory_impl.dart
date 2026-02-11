@@ -18,76 +18,144 @@
  */
 
 import 'dart:typed_data';
-import 'package:fory/src/base_fory.dart';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
+import 'package:fory/src/config/fory_config.dart';
+import 'package:fory/src/deserialization_coordinator.dart';
+import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/dev_annotation/optimize.dart';
-import 'package:fory/src/deserialize_coordinator.dart';
-import 'package:fory/src/serialize_coordinator.dart';
-import 'package:fory/src/manager/fory_config_manager.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
-import 'package:fory/src/config/fory_config.dart';
+import 'package:fory/src/meta/specs/class_spec.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
+import 'package:fory/src/meta/specs/enum_spec.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/serialization_coordinator.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-final class Fory implements BaseFory {
-  static final DeserializeCoordinator _deserDirector = DeserializeCoordinator.I;
-  static final SerializeCoordinator _serDirector = SerializeCoordinator.I;
+final class ForyBuilder {
+  bool _compatible = false;
+  bool _refTracking = false;
+  bool _basicTypesRefIgnored = true;
+  bool _timeRefIgnored = true;
+  bool _stringRefIgnored = false;
 
-  final ForyConfig _conf;
-  late final XtypeResolver _xtypeResolver;
+  ForyBuilder compatible(bool enabled) {
+    _compatible = enabled;
+    return this;
+  }
+
+  ForyBuilder refTracking(bool enabled) {
+    _refTracking = enabled;
+    return this;
+  }
+
+  ForyBuilder basicTypesRefIgnored(bool enabled) {
+    _basicTypesRefIgnored = enabled;
+    return this;
+  }
+
+  ForyBuilder timeRefIgnored(bool enabled) {
+    _timeRefIgnored = enabled;
+    return this;
+  }
+
+  ForyBuilder stringRefIgnored(bool enabled) {
+    _stringRefIgnored = enabled;
+    return this;
+  }
+
+  Fory build() {
+    return Fory.fromConfig(
+      ForyConfig(
+        compatible: _compatible,
+        refTracking: _refTracking,
+        basicTypesRefIgnored: _basicTypesRefIgnored,
+        timeRefIgnored: _timeRefIgnored,
+        stringRefIgnored: _stringRefIgnored,
+      ),
+    );
+  }
+}
+
+final class Fory {
+  static final DeserializationCoordinator _deserializer =
+      DeserializationCoordinator.I;
+  static final SerializationCoordinator _serializer =
+      SerializationCoordinator.I;
+
+  final ForyConfig _config;
+  late final TypeResolver _typeResolver;
+
+  static ForyBuilder builder() => ForyBuilder();
 
   Fory({
     bool compatible = false,
     bool refTracking = false,
     bool basicTypesRefIgnored = true,
     bool timeRefIgnored = true,
-    // bool stringRefIgnored = true,
-  }) : _conf = ForyConfigManager.inst.createConfig(
-          compatible: compatible,
-          refTracking: refTracking,
-          basicTypesRefIgnored: basicTypesRefIgnored,
-          timeRefIgnored: timeRefIgnored,
-          // stringRefIgnored: stringRefIgnored,
-        ) {
-    _xtypeResolver = XtypeResolver.newOne(_conf);
+    bool stringRefIgnored = false,
+  }) : this.fromConfig(
+          ForyConfig(
+            compatible: compatible,
+            refTracking: refTracking,
+            basicTypesRefIgnored: basicTypesRefIgnored,
+            timeRefIgnored: timeRefIgnored,
+            stringRefIgnored: stringRefIgnored,
+          ),
+        );
+
+  Fory.fromConfig(this._config) {
+    _typeResolver = TypeResolver.newOne(_config);
   }
 
-  @override
+  ForyConfig get config => _config;
+
   @inline
-  void register(CustomTypeSpec spec, [Object? tagOrTypeId]) {
-    _xtypeResolver.reg(spec, tagOrTypeId);
+  void register(CustomTypeSpec spec, [Object? typeTagOrId]) {
+    _typeResolver.registerType(spec, typeTagOrId);
   }
 
   @inline
-  @override
-  void registerSerializer(Type type, Serializer ser) {
-    _xtypeResolver.registerSerializer(type, ser);
+  void registerClass(ClassSpec spec, {Object? tagOrTypeId}) {
+    register(spec, tagOrTypeId);
   }
 
-  @override
   @inline
-  Object? fromFory(Uint8List bytes, [ByteReader? reader]) {
-    return _deserDirector.read(bytes, _conf, _xtypeResolver, reader);
+  void registerEnum(EnumSpec spec, {Object? tagOrTypeId}) {
+    register(spec, tagOrTypeId);
   }
 
-  @override
   @inline
-  Uint8List toFory(
-    Object? obj,
-  ) {
-    return _serDirector.write(obj, _conf, _xtypeResolver);
+  void registerSerializer(Type type, Serializer serializer) {
+    _typeResolver.registerSerializer(type, serializer);
   }
 
-  @override
   @inline
-  void toForyWithWriter(Object? obj, ByteWriter writer) {
-    _serDirector.writeWithWriter(obj, _conf, _xtypeResolver, writer);
+  Object? deserialize(Uint8List bytes, [ByteReader? reader]) {
+    return _deserializer.read(bytes, _config, _typeResolver, reader);
   }
 
-  // for test only
-  StructHashPair getStructHashPair(Type type) {
-    return _xtypeResolver.getHashPairForTest(type);
+  @inline
+  T deserializeAs<T>(Uint8List bytes, {ByteReader? reader}) {
+    final Object? value = deserialize(bytes, reader);
+    if (value is T) {
+      return value;
+    }
+    throw StateError(
+      'Deserialized value has type ${value.runtimeType}, expected $T.',
+    );
+  }
+
+  @inline
+  Uint8List serialize(Object? value) {
+    return _serializer.write(value, _config, _typeResolver);
+  }
+
+  @inline
+  void serializeTo(Object? value, ByteWriter writer) {
+    _serializer.writeWithWriter(value, _config, _typeResolver, writer);
+  }
+
+  StructHashPair structHashPairForTest(Type type) {
+    return _typeResolver.getHashPairForTest(type);
   }
 }

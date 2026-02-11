@@ -20,27 +20,27 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
-import 'package:fory/src/codegen/analyze/analysis_wrappers.dart';
+import 'package:fory/src/codegen/analyze/type_analysis_models.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/constraint_violation_exception.dart';
 import 'package:fory/src/const/dart_type.dart';
 
-class TypeSystemAnalyzer{
-
+class TypeSystemAnalyzer {
   const TypeSystemAnalyzer();
 
-  ObjTypeWrapper analyzeObjType(
+  ObjectTypeAnalysis resolveObjectType(
     InterfaceElement element,
-    @LocationEnsure(LocationLevel.fieldLevel)LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureFieldLevel);
     // Confirm the current ObjType
-    Either<ObjTypeWrapper, DartTypeEnum> res = Analyzer.customTypeAnalyzer.analyzeType(element);
-    if (res.isRight){
+    Either<ObjectTypeAnalysis, DartTypeEnum> res =
+        Analyzer.customTypeAnalyzer.resolveType(element);
+    if (res.isRight) {
       throw UnsupportedTypeException(
         locationMark.libPath,
         locationMark.clsName,
@@ -53,30 +53,31 @@ class TypeSystemAnalyzer{
     return res.left!;
   }
 
-  TypeDecision decideInterfaceType(DartType inputType){
+  TypeAnalysisDecision decideInterfaceType(DartType inputType) {
     InterfaceType? type;
     DartType? dartType;
-    if (inputType is InterfaceType){
+    if (inputType is InterfaceType) {
       type = inputType;
-    } else if (inputType.element is TypeParameterElement){
+    } else if (inputType.element is TypeParameterElement) {
       dartType = (inputType.element as TypeParameterElement).bound;
-      if (dartType is InterfaceType){
+      if (dartType is InterfaceType) {
         type = dartType;
-      }else if(dartType == null){
+      } else if (dartType == null) {
         // do nothing
-      }else{
+      } else {
         throw ArgumentError(
           'Field type is not InterfaceType or DynamicType: $inputType',
         );
       }
-    }else if(inputType is DynamicType){
+    } else if (inputType is DynamicType) {
       type = null;
-    }
-    else{
+    } else {
       throw ArgumentError(
         'Field type is not InterfaceType or TypeParameterElement: $inputType',
       );
     }
-    return (type == null) ? (type: AnalysisTypeIdentifier.objectType, forceNullable: true): (type: type, forceNullable: false);
+    return (type == null)
+        ? (type: AnalysisTypeIdentifier.objectType, forceNullable: true)
+        : (type: type, forceNullable: false);
   }
 }

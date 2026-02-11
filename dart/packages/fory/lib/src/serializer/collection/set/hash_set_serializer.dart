@@ -23,15 +23,15 @@ import 'package:fory/src/serializer/collection/set/set_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
-final class _HashSetSerializerCache extends CollectionSerializerCache{
+final class _HashSetSerializerCache extends CollectionSerializerCache {
   static HashSetSerializer? _serRef;
   static HashSetSerializer? _serNoRef;
 
   const _HashSetSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef){
-    if (writeRef){
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef) {
       _serRef ??= HashSetSerializer._(true);
       return _serRef!;
     } else {
@@ -41,9 +41,7 @@ final class _HashSetSerializerCache extends CollectionSerializerCache{
   }
 }
 
-
-final class HashSetSerializer extends SetSerializer{
-
+final class HashSetSerializer extends SetSerializer {
   static const SerializerCache cache = _HashSetSerializerCache();
   static const Object obj = Object();
 

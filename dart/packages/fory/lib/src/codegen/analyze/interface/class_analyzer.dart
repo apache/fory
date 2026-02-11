@@ -18,8 +18,8 @@
  */
 
 import 'package:analyzer/dart/element/element.dart';
-import 'package:fory/src/codegen/meta/impl/class_spec_gen.dart';
+import 'package:fory/src/codegen/meta/impl/class_spec_generator.dart';
 
 abstract class ClassAnalyzer {
-  ClassSpecGen analyze(ClassElement clsElement);
+  ClassSpecGenerator analyze(ClassElement clsElement);
 }

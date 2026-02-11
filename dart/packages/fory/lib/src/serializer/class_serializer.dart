@@ -86,7 +86,7 @@ final class ClassSerializer extends CustomSerializer<Object> {
   @override
   Object read(ByteReader br, int refId, DeserializerPack pack) {
     if (!_fieldsSersComputed) {
-      pack.xtypeResolver.setSersForTypeWrap(_fieldTypeWraps);
+      pack.typeResolver.bindSerializers(_fieldTypeWraps);
       _fieldsSersComputed = true;
     }
     if (!_compatible && !_hashComputed) {
@@ -123,9 +123,11 @@ final class ClassSerializer extends CustomSerializer<Object> {
       late Object? fieldValue;
       Serializer? ser = _fieldTypeWraps[i].ser;
       if (ser == null) {
-        fieldValue = pack.foryDeser.xReadRefNoSer(br, pack);
+        fieldValue =
+            pack.deserializationCoordinator.readDynamicWithRef(br, pack);
       } else if (typeWrap.nullable) {
-        fieldValue = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+        fieldValue =
+            pack.deserializationCoordinator.readWithSerializer(br, ser, pack);
       } else {
         fieldValue = ser.read(br, -1, pack);
       }
@@ -141,7 +143,7 @@ final class ClassSerializer extends CustomSerializer<Object> {
   @override
   void write(ByteWriter bw, Object v, SerializerPack pack) {
     if (!_fieldsSersComputed) {
-      pack.xtypeResolver.setSersForTypeWrap(_fieldTypeWraps);
+      pack.typeResolver.bindSerializers(_fieldTypeWraps);
       _fieldsSersComputed = true;
     }
     if (!_compatible && !_hashComputed) {
@@ -165,9 +167,10 @@ final class ClassSerializer extends CustomSerializer<Object> {
       Object? fieldValue = fieldSpec.getter!(v);
       Serializer? ser = typeWrap.ser;
       if (ser == null) {
-        pack.forySer.xWriteRefNoSer(bw, fieldValue, pack);
+        pack.serializationCoordinator.writeDynamicWithRef(bw, fieldValue, pack);
       } else if (typeWrap.nullable) {
-        pack.forySer.xWriteRefWithSer(bw, ser, fieldValue, pack);
+        pack.serializationCoordinator
+            .writeWithSerializer(bw, ser, fieldValue, pack);
       } else {
         ser.write(bw, fieldValue!, pack);
       }
@@ -189,9 +192,10 @@ final class ClassSerializer extends CustomSerializer<Object> {
       }
       Serializer? ser = typeWrap.ser;
       if (ser == null) {
-        args[i] = pack.foryDeser.xReadRefNoSer(br, pack);
+        args[i] = pack.deserializationCoordinator.readDynamicWithRef(br, pack);
       } else if (typeWrap.nullable) {
-        args[i] = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+        args[i] =
+            pack.deserializationCoordinator.readWithSerializer(br, ser, pack);
       } else {
         args[i] = ser.read(br, -1, pack);
       }

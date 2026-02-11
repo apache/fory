@@ -31,20 +31,20 @@ import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/fory_header_serializer.dart';
 import 'package:fory/src/deserializer_pack.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-class DeserializeCoordinator {
-  static final DeserializeCoordinator _instance =
-      DeserializeCoordinator._internal();
-  static DeserializeCoordinator get I => _instance;
-  DeserializeCoordinator._internal();
+class DeserializationCoordinator {
+  static final DeserializationCoordinator _instance =
+      DeserializationCoordinator._internal();
+  static DeserializationCoordinator get I => _instance;
+  DeserializationCoordinator._internal();
 
   static final ForyHeaderSerializer _foryHeaderSer = ForyHeaderSerializer.I;
 
-  Object? read(Uint8List bytes, ForyConfig conf, XtypeResolver xtypeResolver,
+  Object? read(Uint8List bytes, ForyConfig conf, TypeResolver typeResolver,
       [ByteReader? reader]) {
     var br = reader ??
         ByteReader.forBytes(
@@ -52,21 +52,21 @@ class DeserializeCoordinator {
         );
     HeaderBrief? header = _foryHeaderSer.read(br, conf);
     if (header == null) return null;
-    xtypeResolver.resetReadContext();
+    typeResolver.resetReadContext();
 
     DeserializerPack deserPack = DeserializerPack(
       StructHashResolver.inst,
-      xtypeResolver.getTagByCustomDartType,
+      typeResolver.getRegisteredTag,
       header,
       this,
       DeserializationRefResolver.getOne(conf.refTracking),
-      xtypeResolver,
+      typeResolver,
       Stack<TypeSpecWrap>(),
     );
-    return xReadRefNoSer(br, deserPack);
+    return readDynamicWithRef(br, deserPack);
   }
 
-  Object? xReadRefNoSer(ByteReader br, DeserializerPack pack) {
+  Object? readDynamicWithRef(ByteReader br, DeserializerPack pack) {
     int refFlag = br.readInt8();
     //assert(RefFlag.checkAllow(refFlag));
     //assert(refFlag >= RefFlag.NULL.id);
@@ -78,9 +78,9 @@ class DeserializeCoordinator {
     }
     if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
       // must deserialize
-      TypeInfo typeInfo = pack.xtypeResolver.readTypeInfo(br);
+      TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
       int refId = refResolver.reserveId();
-      Object o = _xRead(br, typeInfo, refId, pack);
+      Object o = _readByTypeInfo(br, typeInfo, refId, pack);
       refResolver.setRef(refId, o);
       return o;
     }
@@ -88,7 +88,7 @@ class DeserializeCoordinator {
     return null; // won't reach here
   }
 
-  Object? xReadRefWithSer(
+  Object? readWithSerializer(
       ByteReader br, Serializer ser, DeserializerPack pack) {
     if (ser.writeRef) {
       DeserializationRefResolver refResolver = pack.refResolver;
@@ -113,13 +113,12 @@ class DeserializeCoordinator {
     return ser.read(br, -1, pack);
   }
 
-  Object xReadNonRefNoSer(ByteReader br, DeserializerPack pack) {
-    TypeInfo typeInfo = pack.xtypeResolver.readTypeInfo(br);
-    return _xRead(br, typeInfo, -1, pack);
+  Object readDynamicWithoutRef(ByteReader br, DeserializerPack pack) {
+    TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
+    return _readByTypeInfo(br, typeInfo, -1, pack);
   }
 
-  /// this method will only be invoked by Fory::_xReadRef
-  Object _xRead(
+  Object _readByTypeInfo(
       ByteReader br, TypeInfo typeInfo, int refId, DeserializerPack pack) {
     switch (typeInfo.objType) {
       case ObjType.BOOL:

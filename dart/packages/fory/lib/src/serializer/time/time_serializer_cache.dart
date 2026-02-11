@@ -21,12 +21,11 @@ import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
-abstract base class TimeSerializerCache extends SerializerCache{
-
+abstract base class TimeSerializerCache extends SerializerCache {
   const TimeSerializerCache();
 
   @override
-  Serializer getSerializer(ForyConfig conf, [Type? type]){
+  Serializer getSerializer(ForyConfig conf, [Type? type]) {
     // Currently, there are only two types of Serialization for primitive types:
     // with ref and without ref. So only these two are cached here.
     bool writeRef = conf.refTracking && !conf.timeRefIgnored;

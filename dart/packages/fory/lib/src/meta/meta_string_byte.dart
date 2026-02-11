@@ -23,7 +23,7 @@ import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/util/extension/uint8list_extensions.dart';
 import 'package:fory/src/util/murmur3hash.dart';
 
-final class MetaStringBytes{
+final class MetaStringBytes {
   // static late final MetaStringBytes empty;
   // static const int defDynamicWriteStrId = -1;
   static const int _headerMask = 0xff;
@@ -36,13 +36,13 @@ final class MetaStringBytes{
   // int dynamicWriteStrId = defDynamicWriteStrId;
 
   // cons
-  MetaStringBytes(this._bytes, this._hashCode){
+  MetaStringBytes(this._bytes, this._hashCode) {
     assert(hashCode != 0);
     int header = hashCode & _headerMask;
     _encoding = MetaStringEncoding.fromId(header);
     // in case length is less than 16
     Uint8List data = _bytes;
-    if (_bytes.length < 16){
+    if (_bytes.length < 16) {
       data = Uint8List(16);
       data.setAll(0, _bytes);
     }
@@ -51,11 +51,11 @@ final class MetaStringBytes{
     _second8Bytes = byteData.getInt64(8, Endian.little);
   }
 
-  factory MetaStringBytes.of(MetaString ms){
+  factory MetaStringBytes.of(MetaString ms) {
     Uint8List bytes = ms.bytes;
     int hashCode = Murmur3Hash.hash128x64(bytes, 0, bytes.length, 47).$1;
     hashCode = hashCode.abs();
-    if (hashCode == 0){
+    if (hashCode == 0) {
       hashCode = 256;
     }
     hashCode &= 0xffffffffffffff00;
@@ -72,7 +72,7 @@ final class MetaStringBytes{
   // bool get isDefWriteId => dynamicWriteStrId == defDynamicWriteStrId;
 
   @override
-  bool operator == (Object other) {
+  bool operator ==(Object other) {
     return identical(this, other) ||
         other is MetaStringBytes &&
             runtimeType == other.runtimeType &&

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-enum MetaStringEncoding{
+enum MetaStringEncoding {
   utf8(0x00, -1),
   ls(0x01, 5),
   luds(0x02, 6),
@@ -28,9 +28,9 @@ enum MetaStringEncoding{
   final int bits;
   const MetaStringEncoding(this.id, this.bits);
 
-  static MetaStringEncoding fromId(int id){
-    for (var value in MetaStringEncoding.values){
-      if (value.id == id){
+  static MetaStringEncoding fromId(int id) {
+    for (var value in MetaStringEncoding.values) {
+      if (value.id == id) {
         return value;
       }
     }
