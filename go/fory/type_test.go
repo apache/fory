@@ -88,6 +88,7 @@ func TestCreateSerializerSliceTypes(t *testing.T) {
 		{reflect.TypeOf([]uint{}), reflect.TypeOf(uintSliceSerializer{})},
 		{reflect.TypeOf([]uint16{}), reflect.TypeOf(uint16SliceSerializer{})},
 		{reflect.TypeOf([]float16.Float16{}), reflect.TypeOf(float16SliceSerializer{})},
+		{reflect.TypeOf([]bfloat16.BFloat16{}), reflect.TypeOf(bfloat16SliceSerializer{})},
 		{reflect.TypeOf([]uint32{}), reflect.TypeOf(uint32SliceSerializer{})},
 		{reflect.TypeOf([]uint64{}), reflect.TypeOf(uint64SliceSerializer{})},
 		{reflect.TypeOf([]string{}), reflect.TypeOf(stringSliceSerializer{})},
@@ -139,6 +140,7 @@ func TestCreateSerializerArrayTypes(t *testing.T) {
 		{reflect.TypeOf([4]byte{}), reflect.TypeOf(uint8ArraySerializer{})},
 		{reflect.TypeOf([4]uint16{}), reflect.TypeOf(uint16ArraySerializer{})},
 		{reflect.TypeOf([4]float16.Float16{}), reflect.TypeOf(float16ArraySerializer{})},
+		{reflect.TypeOf([4]bfloat16.BFloat16{}), reflect.TypeOf(bfloat16ArraySerializer{})},
 		{reflect.TypeOf([4]uint32{}), reflect.TypeOf(uint32ArraySerializer{})},
 		{reflect.TypeOf([4]uint64{}), reflect.TypeOf(uint64ArraySerializer{})},
 	}
