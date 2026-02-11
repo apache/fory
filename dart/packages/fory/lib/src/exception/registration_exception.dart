@@ -46,7 +46,6 @@ class UnregisteredTypeException extends ForyException {
 }
 
 class DuplicatedTagRegistrationException extends ForyException {
-
   final String _tag;
   final Type _tagType;
   final Type _newType;
@@ -66,18 +65,51 @@ class DuplicatedTagRegistrationException extends ForyException {
 }
 
 class DuplicatedTypeRegistrationException extends ForyException {
-
   final Type _forType;
-  final String _newTag;
+  final Object _newRegistration;
 
-  DuplicatedTypeRegistrationException(this._forType, this._newTag);
+  DuplicatedTypeRegistrationException(this._forType, this._newRegistration);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
     super.giveExceptionMessage(buf);
     buf.write('Duplicate registration for type: ');
     buf.writeln(_forType);
-    buf.write('\nBut you try to register another tag: ');
-    buf.writeln(_newTag);
+    buf.write('\nBut you try to register it again with: ');
+    buf.writeln(_newRegistration);
+  }
+}
+
+class DuplicatedUserTypeIdRegistrationException extends ForyException {
+  final int _userTypeId;
+  final Type _registeredType;
+  final Type _newType;
+
+  DuplicatedUserTypeIdRegistrationException(
+      this._userTypeId, this._registeredType, this._newType);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('Duplicate registration for user type id: ');
+    buf.writeln(_userTypeId);
+    buf.write('\nThis user type id is already registered for type: ');
+    buf.writeln(_registeredType);
+    buf.write('\nBut you are now trying to register it for type: ');
+    buf.writeln(_newType);
+  }
+}
+
+class RegistrationArgumentException extends ForyException {
+  final Object? _arg;
+
+  RegistrationArgumentException(this._arg);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('Invalid registration argument: ');
+    buf.writeln(_arg);
+    buf.writeln('Expected `String` tag or `int` user type id.');
   }
 }

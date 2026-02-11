@@ -19,8 +19,9 @@
 
 import 'package:fory/src/config/config.dart';
 
-class ForyConfig extends Config{
-  final int  _configId;
+class ForyConfig extends Config {
+  final int _configId;
+  final bool _compatible;
   final bool _refTracking;
   final bool _basicTypesRefIgnored;
   final bool _timeRefIgnored;
@@ -28,21 +29,22 @@ class ForyConfig extends Config{
 
   ForyConfig.onlyForManager(
     this._configId, {
+    bool compatible = false,
     bool refTracking = true,
     bool basicTypesRefIgnored = true,
     bool timeRefIgnored = true,
     // bool stringRefIgnored = true,
-  })
-  : _refTracking = refTracking,
-    _basicTypesRefIgnored = basicTypesRefIgnored,
-    _timeRefIgnored = timeRefIgnored,
-    _stringRefIgnored = false
-  {
+  })  : _compatible = compatible,
+        _refTracking = refTracking,
+        _basicTypesRefIgnored = basicTypesRefIgnored,
+        _timeRefIgnored = timeRefIgnored,
+        _stringRefIgnored = false {
     // some checking works
     // assert(_xlangMode == true, 'currently only support xlang mode');
   }
 
   //getters
+  bool get compatible => _compatible;
   bool get refTracking => _refTracking;
   int get configId => _configId;
   bool get basicTypesRefIgnored => _basicTypesRefIgnored;
