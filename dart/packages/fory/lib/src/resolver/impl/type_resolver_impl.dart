@@ -297,17 +297,7 @@ final class TypeResolverImpl extends TypeResolver {
     for (int i = 0; i < typeWraps.length; ++i) {
       wrap = typeWraps[i];
       if (wrap.serializationCertain) {
-        final TypeInfo? typeInfo = _ctx.type2TypeInfo[wrap.type];
-        if (typeInfo != null && typeInfo.objType == wrap.objType) {
-          wrap.serializer = typeInfo.serializer;
-        } else {
-          TypeInfo? objTypeInfo;
-          if (wrap.objType.id >= 0 &&
-              wrap.objType.id < _ctx.objTypeId2TypeInfo.length) {
-            objTypeInfo = _ctx.objTypeId2TypeInfo[wrap.objType.id];
-          }
-          wrap.serializer = objTypeInfo?.serializer ?? typeInfo?.serializer;
-        }
+        wrap.serializer = _ctx.type2TypeInfo[wrap.type]!.serializer;
       } else if (wrap.objType == ObjType.LIST) {
         wrap.serializer = _ctx.abstractListSerializer;
       } else if (wrap.objType == ObjType.SET) {

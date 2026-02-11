@@ -78,11 +78,15 @@ final class ClassSerializer extends CustomSerializer<Object> {
           ObjType.NAMED_STRUCT,
           refWrite,
         ) {
-    assert(fields.length == fieldTypeWraps.length);
-    final List<int> sortedIndices = FieldSorter.sortedIndices(fields);
-    _fields = FieldSorter.reorderByIndices<FieldSpec>(fields, sortedIndices);
-    _fieldTypeWraps = FieldSorter.reorderByIndices<TypeSpecWrap>(
-        fieldTypeWraps, sortedIndices);
+    if (_construct == null) {
+      final List<int> sortedIndices = FieldSorter.sortedIndices(fields);
+      _fields = FieldSorter.reorderByIndices<FieldSpec>(fields, sortedIndices);
+      _fieldTypeWraps = FieldSorter.reorderByIndices<TypeSpecWrap>(
+          fieldTypeWraps, sortedIndices);
+    } else {
+      _fields = fields;
+      _fieldTypeWraps = fieldTypeWraps;
+    }
   }
 
   StructHashPair getHashPairForTest(StructHashResolver structHashResolver,
@@ -234,7 +238,9 @@ final class ClassSerializer extends CustomSerializer<Object> {
     // Here, ref is created after completion. In fact, it may not correctly resolve circular references,
     // but it can reach here because the user guarantees that this class will not appear in circular references through promiseAcyclic
     Object obj = _construct!(args);
-    pack.refResolver.setRef(refId, obj);
+    if (refId >= 0) {
+      pack.refResolver.setRef(refId, obj);
+    }
     return obj;
   }
 }
