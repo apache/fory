@@ -38,14 +38,17 @@ import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/float32.dart';
 
 class SerializeCoordinator {
-  static final SerializeCoordinator _instance = SerializeCoordinator._internal();
+  static final SerializeCoordinator _instance =
+      SerializeCoordinator._internal();
   static SerializeCoordinator get I => _instance;
   SerializeCoordinator._internal();
 
   static final ForyHeaderSerializer _foryHeaderSer = ForyHeaderSerializer.I;
 
-  void _write(Object? obj, ForyConfig conf, XtypeResolver xtypeResolver, ByteWriter writer) {
+  void _write(Object? obj, ForyConfig conf, XtypeResolver xtypeResolver,
+      ByteWriter writer) {
     _foryHeaderSer.write(writer, obj == null, conf);
+    xtypeResolver.resetWriteContext();
     SerializerPack pack = SerializerPack(
       StructHashResolver.inst,
       xtypeResolver.getTagByCustomDartType,
@@ -60,13 +63,18 @@ class SerializeCoordinator {
     // pack.resetAndRecycle();
   }
 
-  Uint8List write(Object? obj, ForyConfig conf, XtypeResolver xtypeResolver,) {
+  Uint8List write(
+    Object? obj,
+    ForyConfig conf,
+    XtypeResolver xtypeResolver,
+  ) {
     ByteWriter bw = ByteWriter();
     _write(obj, conf, xtypeResolver, bw);
     return bw.takeBytes();
   }
 
-  void writeWithWriter(Object? obj, ForyConfig conf, XtypeResolver xtypeResolver, ByteWriter writer) {
+  void writeWithWriter(Object? obj, ForyConfig conf,
+      XtypeResolver xtypeResolver, ByteWriter writer) {
     _write(obj, conf, xtypeResolver, writer);
   }
 
@@ -107,7 +115,39 @@ class SerializeCoordinator {
     }
   }
 
-  void xWriteRefWithSer(ByteWriter bw, Serializer ser, Object? obj, SerializerPack pack) {
+  void xWriteNonRefNoSer(ByteWriter bw, Object obj, SerializerPack pack) {
+    TypeInfo typeInfo = pack.xtypeResolver.writeGetTypeInfo(bw, obj, pack);
+    switch (typeInfo.objType) {
+      case ObjType.BOOL:
+        bw.writeBool(obj as bool);
+        break;
+      case ObjType.INT8:
+        bw.writeInt8((obj as Int8).value);
+        break;
+      case ObjType.INT16:
+        bw.writeInt16((obj as Int16).value);
+        break;
+      case ObjType.INT32:
+      case ObjType.VAR_INT32:
+        bw.writeVarInt32((obj as Int32).value);
+        break;
+      case ObjType.INT64:
+      case ObjType.VAR_INT64:
+        bw.writeVarInt64(obj as int);
+        break;
+      case ObjType.FLOAT32:
+        bw.writeFloat32((obj as Float32).value);
+        break;
+      case ObjType.FLOAT64:
+        bw.writeFloat64(obj as double);
+        break;
+      default:
+        typeInfo.ser.write(bw, obj, pack);
+    }
+  }
+
+  void xWriteRefWithSer(
+      ByteWriter bw, Serializer ser, Object? obj, SerializerPack pack) {
     if (ser.writeRef) {
       SerializationRefMeta serRef = pack.refResolver.getRefId(obj);
       bw.writeInt8(serRef.refFlag.id);
@@ -116,7 +156,7 @@ class SerializeCoordinator {
       }
       if (serRef.refFlag.noNeedToSer) return;
       ser.write(bw, obj, pack);
-    }else{
+    } else {
       RefFlag refFlag = pack.noRefResolver.getRefFlag(obj);
       bw.writeInt8(refFlag.id);
       if (refFlag.noNeedToSer) return;

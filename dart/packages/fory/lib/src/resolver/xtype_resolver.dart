@@ -28,19 +28,22 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/serializer_pack.dart';
 
-abstract base class XtypeResolver{
-
+abstract base class XtypeResolver {
   const XtypeResolver(ForyConfig conf);
 
   static XtypeResolver newOne(ForyConfig conf) {
     return XtypeResolverImpl(conf);
   }
 
-  void reg(CustomTypeSpec spec, [String? tag]);
+  void reg(CustomTypeSpec spec, [Object? tagOrTypeId]);
 
   void registerSerializer(Type type, Serializer ser);
 
   void setSersForTypeWrap(List<TypeSpecWrap> typeWraps);
+
+  void resetWriteContext();
+
+  void resetReadContext();
 
   TypeInfo readTypeInfo(ByteReader br);
 

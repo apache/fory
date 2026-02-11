@@ -31,8 +31,7 @@ import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-final class Fory implements BaseFory{
-
+final class Fory implements BaseFory {
   static final DeserializeCoordinator _deserDirector = DeserializeCoordinator.I;
   static final SerializeCoordinator _serDirector = SerializeCoordinator.I;
 
@@ -40,23 +39,25 @@ final class Fory implements BaseFory{
   late final XtypeResolver _xtypeResolver;
 
   Fory({
-    bool refTracking = true,
+    bool compatible = false,
+    bool refTracking = false,
     bool basicTypesRefIgnored = true,
     bool timeRefIgnored = true,
     // bool stringRefIgnored = true,
   }) : _conf = ForyConfigManager.inst.createConfig(
-    refTracking: refTracking,
-    basicTypesRefIgnored: basicTypesRefIgnored,
-    timeRefIgnored: timeRefIgnored,
-    // stringRefIgnored: stringRefIgnored,
-  ){
+          compatible: compatible,
+          refTracking: refTracking,
+          basicTypesRefIgnored: basicTypesRefIgnored,
+          timeRefIgnored: timeRefIgnored,
+          // stringRefIgnored: stringRefIgnored,
+        ) {
     _xtypeResolver = XtypeResolver.newOne(_conf);
   }
 
   @override
   @inline
-  void register(CustomTypeSpec spec, [String? tag]) {
-    _xtypeResolver.reg(spec, tag);
+  void register(CustomTypeSpec spec, [Object? tagOrTypeId]) {
+    _xtypeResolver.reg(spec, tagOrTypeId);
   }
 
   @inline
@@ -73,7 +74,9 @@ final class Fory implements BaseFory{
 
   @override
   @inline
-  Uint8List toFory(Object? obj,) {
+  Uint8List toFory(
+    Object? obj,
+  ) {
     return _serDirector.write(obj, _conf, _xtypeResolver);
   }
 
