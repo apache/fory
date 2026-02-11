@@ -30,6 +30,8 @@ abstract base class ByteReader {
   factory ByteReader.forBytes(Uint8List data, {int offset = 0, int? length}) =>
       ByteReaderImpl(data, offset: offset, length: length);
 
+  int get remaining;
+
   void skip(int length);
 
   bool readBool();

@@ -74,7 +74,7 @@ abstract base class SetSerializer extends IterableSerializer {
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          set.add(pack.deserializationCoordinator
+          set.add(pack.deserializationDispatcher
               .readWithSerializer(br, serializer, pack));
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
@@ -95,7 +95,7 @@ abstract base class SetSerializer extends IterableSerializer {
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          set.add(pack.deserializationCoordinator.readDynamicWithRef(br, pack));
+          set.add(pack.deserializationDispatcher.readDynamicWithRef(br, pack));
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
           IterableSerializer.hasNullFlag) {
@@ -103,14 +103,14 @@ abstract base class SetSerializer extends IterableSerializer {
           if (br.readInt8() == RefFlag.NULL.id) {
             set.add(null);
           } else {
-            set.add(pack.deserializationCoordinator
-                .readDynamicWithoutRef(br, pack));
+            set.add(
+                pack.deserializationDispatcher.readDynamicWithoutRef(br, pack));
           }
         }
       } else {
         for (int i = 0; i < num; ++i) {
           set.add(
-              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack));
+              pack.deserializationDispatcher.readDynamicWithoutRef(br, pack));
         }
       }
     }

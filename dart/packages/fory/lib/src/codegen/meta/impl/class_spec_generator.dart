@@ -93,7 +93,7 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     // the declare of variable
     buf.write("final ");
     buf.write(_varName);
-    buf.write(" = ClassSpec(\n");
+    buf.write(" = TypeSpec(\n");
 
     // arg: type name
     CodegenTool.writeIndent(buf, nextTotalIndent);
