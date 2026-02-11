@@ -39,7 +39,7 @@ final class Int8 extends FixedNum {
   static int _convert(num value) {
     if (value is int) {
       // Apply 8-bit signed integer overflow behavior
-      int result = value & 0xFF;  // Keep only the lowest 8 bits
+      int result = value & 0xFF; // Keep only the lowest 8 bits
       // Convert to signed by checking the sign bit
       return (result & 0x80) != 0 ? result - 256 : result;
     } else {
@@ -49,7 +49,6 @@ final class Int8 extends FixedNum {
 
   @override
   int get value => _value;
-
 
   // Operators
   Int8 operator +(dynamic other) =>

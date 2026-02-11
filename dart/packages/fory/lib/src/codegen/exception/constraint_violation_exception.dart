@@ -36,7 +36,6 @@ class ClassLevelException extends ForyCodegenException {
     buf.write('\n');
   }
 
-
   @override
   String toString() {
     final buf = StringBuffer();
@@ -50,7 +49,9 @@ abstract class FieldException extends ForyConstraintViolation {
   final String _className;
   final List<String> _invalidFields;
 
-  FieldException(this._libPath, this._className, this._invalidFields, super._constraint, [super.where]);
+  FieldException(
+      this._libPath, this._className, this._invalidFields, super._constraint,
+      [super.where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -91,8 +92,12 @@ class CircularIncapableRisk extends ForyConstraintViolation {
   final String libPath;
   final String className;
 
-  CircularIncapableRisk(this.libPath, this.className,)
-      : super(CodeRules.circularReferenceIncapableRisk,);
+  CircularIncapableRisk(
+    this.libPath,
+    this.className,
+  ) : super(
+          CodeRules.circularReferenceIncapableRisk,
+        );
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -113,15 +118,13 @@ class CircularIncapableRisk extends ForyConstraintViolation {
 }
 
 class InformalConstructorParamException extends ClassLevelException {
-
   final List<String> _invalidParams;
 
   // There is no need to add the reason field, because the reason is actually just invalidParams
   InformalConstructorParamException(
-      String libPath,
-      String className,
-      this._invalidParams,
-      [String? where]): super(libPath, className, where);
+      String libPath, String className, this._invalidParams,
+      [String? where])
+      : super(libPath, className, where);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -142,12 +145,10 @@ class InformalConstructorParamException extends ClassLevelException {
 
 class FieldOverridingException extends FieldException {
   FieldOverridingException(
-      String libPath,
-      String className,
-      List<String> invalidFields,
-      [String? where]
-      ):
-        super(libPath, className, invalidFields, CodeRules.unsupportFieldOverriding, where);
+      String libPath, String className, List<String> invalidFields,
+      [String? where])
+      : super(libPath, className, invalidFields,
+            CodeRules.unsupportFieldOverriding, where);
 }
 
 class NoUsableConstructorException extends ForyCodegenException {
@@ -169,13 +170,13 @@ class UnsupportedTypeException extends ForyCodegenException {
   final String typeName;
 
   UnsupportedTypeException(
-      this.clsLibPath,
-      this.clsName,
-      this.fieldName,
-      this.typeScheme,
-      this.typePath,
-      this.typeName,
-      ): super('$clsLibPath@$clsName');
+    this.clsLibPath,
+    this.clsName,
+    this.fieldName,
+    this.typeScheme,
+    this.typePath,
+    this.typeName,
+  ) : super('$clsLibPath@$clsName');
 
   /// will generate warning and error location
   @override

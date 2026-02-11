@@ -22,11 +22,11 @@ import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/resolver/impl/meta_string_writing_resolver_impl.dart';
 import 'package:fory/src/resolver/meta_string_handler.dart';
 
-abstract class MetaStringWritingResolver extends MataStringHandler{
-
+abstract class MetaStringWritingResolver extends MataStringHandler {
   const MetaStringWritingResolver();
 
-  static MetaStringWritingResolver get newInst => MetaStringWritingResolverImpl();
+  static MetaStringWritingResolver get newInst =>
+      MetaStringWritingResolverImpl();
 
   void writeMetaStringBytes(ByteWriter bw, MetaStringBytes msb);
 }

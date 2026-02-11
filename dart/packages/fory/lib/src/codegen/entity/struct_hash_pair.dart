@@ -20,7 +20,7 @@
 import 'package:meta/meta.dart';
 
 @immutable
-class StructHashPair{
+class StructHashPair {
   final int fromForyHash;
   final int toForyHash;
 

@@ -35,10 +35,9 @@ class ComplexObject2 with _$ComplexObject2Fory {
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-      (other is ComplexObject2 &&
-          runtimeType == other.runtimeType &&
-          f1 == other.f1 &&
-          f2.equals(other.f2)
-      );
+        (other is ComplexObject2 &&
+            runtimeType == other.runtimeType &&
+            f1 == other.f1 &&
+            f2.equals(other.f2));
   }
 }

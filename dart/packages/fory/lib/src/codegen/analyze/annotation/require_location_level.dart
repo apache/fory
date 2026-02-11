@@ -17,18 +17,11 @@
  * under the License.
  */
 
-import 'package:meta/meta.dart';
+import 'package:meta/meta_meta.dart';
+import 'package:fory/src/codegen/const/location_level.dart';
 
-@immutable
-class LibImportPack{
-  final String? dartCorePrefix;
-  final Map<int,String> _libIdToPrefix;
-
-  const LibImportPack(this._libIdToPrefix, this.dartCorePrefix);
-
-  String? getPrefixByLibId(int libId){
-    return _libIdToPrefix[libId];
-  }
-
-  bool get noPrefix =>_libIdToPrefix.isEmpty;
+@Target({TargetKind.parameter})
+class RequireLocationLevel {
+  final LocationLevel locationLevel;
+  const RequireLocationLevel(this.locationLevel);
 }

@@ -17,16 +17,16 @@
  * under the License.
  */
 
-import 'package:fory/src/resolver/struct_hash_resolver.dart';
+final class StringStatistics {
+  final int digitCount;
+  final int upperCount;
+  final bool canLUDS; // LowerUpperDigitSpecial
+  final bool canLS; // LowerSpecial
 
-typedef GetTagByType = String Function(Type type);
-
-abstract base class Pack {
-  final StructHashResolver structHashResolver;
-  final GetTagByType getTagByDartType;
-
-  const Pack(
-    this.structHashResolver,
-    this.getTagByDartType,
+  const StringStatistics(
+    this.digitCount,
+    this.upperCount,
+    this.canLUDS,
+    this.canLS,
   );
 }

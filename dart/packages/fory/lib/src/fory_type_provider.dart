@@ -17,6 +17,6 @@
  * under the License.
  */
 
-abstract interface class Furiable {
-  Type get $foryType;
+abstract interface class ForyTypeProvider {
+  Type get foryType;
 }

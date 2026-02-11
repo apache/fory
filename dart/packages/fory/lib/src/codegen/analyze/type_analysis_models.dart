@@ -17,16 +17,22 @@
  * under the License.
  */
 
-final class StrStat{
-  final int digitCount;
-  final int upperCount;
-  final bool canLUDS; // LowerUpperDigitSpecial
-  final bool canLS; // LowerSpecial
+import 'package:fory/src/const/types.dart';
+import 'package:analyzer/dart/element/type.dart';
 
-  const StrStat(
-    this.digitCount,
-    this.upperCount,
-    this.canLUDS,
-    this.canLS,
+typedef TypeAnalysisDecision = ({InterfaceType type, bool forceNullable});
+
+class ObjectTypeAnalysis {
+  static const namedEnumType = ObjectTypeAnalysis(
+    ObjType.NAMED_ENUM,
+    true,
   );
+  static const namedStructType =
+      ObjectTypeAnalysis(ObjType.NAMED_STRUCT, false);
+  static const unknownStructType = ObjectTypeAnalysis(ObjType.UNKNOWN, false);
+
+  final ObjType objType; // null means unsupported
+  final bool serializationCertain;
+
+  const ObjectTypeAnalysis(this.objType, this.serializationCertain);
 }

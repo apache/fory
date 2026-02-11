@@ -17,7 +17,7 @@
  * under the License.
  */
 
-class LongLongKey{
+class LongLongKey {
   final int _first;
   final int _second;
 
@@ -26,7 +26,7 @@ class LongLongKey{
   LongLongKey(this._first, this._second);
 
   @override
-  int get hashCode{
+  int get hashCode {
     // TODO: Maybe we can use other hash function that is faster
     _hashCode ??= Object.hash(_first, _second);
     return _hashCode!;
@@ -36,8 +36,8 @@ class LongLongKey{
   bool operator ==(Object other) {
     return identical(this, other) ||
         other is LongLongKey &&
-        runtimeType == other.runtimeType &&
-        _first == other._first &&
-        _second == other._second;
+            runtimeType == other.runtimeType &&
+            _first == other._first &&
+            _second == other._second;
   }
 }

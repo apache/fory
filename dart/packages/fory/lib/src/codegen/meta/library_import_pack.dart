@@ -17,16 +17,18 @@
  * under the License.
  */
 
-import 'dart:typed_data';
-import 'meta/specs/custom_type_spec.dart';
-import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/memory/byte_reader.dart';
-import 'package:fory/src/serializer/serializer.dart' show Serializer;
+import 'package:meta/meta.dart';
 
-abstract class BaseFory{
-  void register(CustomTypeSpec spec, [String? tag]);
-  void registerSerializer(Type type, Serializer ser);
-  Object? fromFory(Uint8List bytes, [ByteReader? br]);
-  Uint8List toFory(Object? obj,);
-  void toForyWithWriter(Object? obj, ByteWriter writer);
+@immutable
+class LibraryImportPack {
+  final String? dartCorePrefix;
+  final Map<int, String> _libIdToPrefix;
+
+  const LibraryImportPack(this._libIdToPrefix, this.dartCorePrefix);
+
+  String? getPrefixByLibId(int libId) {
+    return _libIdToPrefix[libId];
+  }
+
+  bool get noPrefix => _libIdToPrefix.isEmpty;
 }

@@ -17,15 +17,17 @@
  * under the License.
  */
 
-import 'package:meta/meta.dart';
+import 'library_import_pack.dart';
 
-/// During the Dart analyzer analysis phase, both setters and getters are analyzed as FieldElement.
-/// Here, AccessorField is used to represent them.
-@immutable
-class PublicAccessorField{
-  final String name;
-  final bool hasSetter;
-  final bool hasGetter;
+abstract class GeneratedCodePart {
+  const GeneratedCodePart();
+  void writeCode(StringBuffer buf, [int indentLevel = 0]) {
+    throw UnimplementedError("writeCode() is not implemented");
+  }
 
-  const PublicAccessorField(this.name, this.hasSetter, this.hasGetter);
+  void writeCodeWithImports(StringBuffer buf, LibraryImportPack imports,
+      String? dartCorePrefixWithPoint,
+      [int indentLevel = 0]) {
+    throw UnimplementedError("genCodeForType() is not implemented");
+  }
 }

@@ -21,36 +21,36 @@ import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/serializer/array_serializer.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
 final class _BoolListSerializerCache extends ArraySerializerCache {
-  static BoolListSerializer? _noRefSer;
-  static BoolListSerializer? _writeRefSer;
+  static BoolListSerializer? _serializerWithoutReference;
+  static BoolListSerializer? _serializerWithReference;
 
   const _BoolListSerializerCache();
 
   @override
-  BoolListSerializer getSerWithRef(bool writeRef) {
+  BoolListSerializer getSerializerWithRef(bool writeRef) {
     if (writeRef) {
-      _writeRefSer ??= BoolListSerializer(true);
-      return _writeRefSer!;
+      _serializerWithReference ??= BoolListSerializer(true);
+      return _serializerWithReference!;
     } else {
-      _noRefSer ??= BoolListSerializer(false);
-      return _noRefSer!;
+      _serializerWithoutReference ??= BoolListSerializer(false);
+      return _serializerWithoutReference!;
     }
   }
 }
 
-final class BoolListSerializer extends ArraySerializer<bool>{
+final class BoolListSerializer extends ArraySerializer<bool> {
   static const SerializerCache cache = _BoolListSerializerCache();
   const BoolListSerializer(bool writeRef) : super(ObjType.BOOL_ARRAY, writeRef);
 
   @override
-  BoolList read(ByteReader br, int refId, DeserializerPack pack){
+  BoolList read(ByteReader br, int refId, DeserializationContext pack) {
     int num = br.readVarUint32Small7();
     BoolList list = BoolList(num);
     Uint8List bytes = br.readBytesView(num);
@@ -61,7 +61,7 @@ final class BoolListSerializer extends ArraySerializer<bool>{
   }
 
   @override
-  void write(ByteWriter bw, covariant BoolList v, SerializerPack pack) {
+  void write(ByteWriter bw, covariant BoolList v, SerializationContext pack) {
     bw.writeVarUint32(v.length);
     Uint8List bytes = Uint8List(v.length);
     for (int i = 0; i < v.length; ++i) {

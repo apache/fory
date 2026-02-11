@@ -19,7 +19,11 @@
 
 import 'dart:collection';
 import 'package:fory/src/config/fory_config.dart';
-import 'package:fory/src/exception/registration_exception.dart' show DuplicatedTagRegistrationException, DuplicatedTypeRegistrationException;
+import 'package:fory/src/exception/registration_exception.dart'
+    show
+        DuplicatedTagRegistrationException,
+        DuplicatedTypeRegistrationException,
+        DuplicatedUserTypeIdRegistrationException;
 import 'package:fory/src/collection/long_long_key.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -28,16 +32,12 @@ import 'package:fory/src/const/dart_type.dart';
 import 'package:fory/src/const/types.dart';
 
 class ForyContext {
-  // Cannot be static because TypeInfo contains the Ser field
-  final Iterable<MapEntry<Type,TypeInfo>> _defaultTypeInfos =
-    DartTypeEnum.values.where(
-      (e) => e.objType != null
-    ).map(
-      (e) => MapEntry(
-        e.dartType,
-        TypeInfo(e.dartType, e.objType!, null,null,null),
-      )
-    );
+  // Cannot be static because TypeInfo contains the serializer field
+  final Iterable<MapEntry<Type, TypeInfo>> _defaultTypeInfos =
+      DartTypeEnum.values.where((e) => e.objType != null).map((e) => MapEntry(
+            e.dartType,
+            TypeInfo(e.dartType, e.objType!, null, null, null),
+          ));
 
   final ForyConfig conf;
   final Map<String, TypeInfo> tag2TypeInfo;
@@ -45,41 +45,58 @@ class ForyContext {
   final Map<LongLongKey, TypeInfo> userTypeId2TypeInfo;
   late final List<TypeInfo?> objTypeId2TypeInfo;
 
-  late final Serializer abstractListSer;
-  late final Serializer abstractMapSer;
+  late final Serializer abstractListSerializer;
+  late final Serializer abstractSetSerializer;
+  late final Serializer abstractMapSerializer;
 
   ForyContext(this.conf)
-    : tag2TypeInfo = HashMap(),
-    type2TypeInfo = HashMap(),
-    userTypeId2TypeInfo = HashMap();
+      : tag2TypeInfo = HashMap(),
+        type2TypeInfo = HashMap(),
+        userTypeId2TypeInfo = HashMap();
 
   void initForDefaultTypes() {
     type2TypeInfo.addEntries(_defaultTypeInfos);
-    objTypeId2TypeInfo = SerializerPool.setSerForDefaultType(type2TypeInfo, conf);
-    abstractListSer = objTypeId2TypeInfo[ObjType.LIST.id]!.ser;
-    abstractMapSer = objTypeId2TypeInfo[ObjType.MAP.id]!.ser;
+    objTypeId2TypeInfo =
+        SerializerPool.setSerializerForDefaultType(type2TypeInfo, conf);
+    abstractListSerializer = objTypeId2TypeInfo[ObjType.LIST.id]!.serializer;
+    abstractSetSerializer = objTypeId2TypeInfo[ObjType.SET.id]!.serializer;
+    abstractMapSerializer = objTypeId2TypeInfo[ObjType.MAP.id]!.serializer;
   }
 
-  void reg(TypeInfo typeInfo) {
-    assert(typeInfo.tag != null);
+  void registerType(TypeInfo typeInfo) {
     TypeInfo? info = type2TypeInfo[typeInfo.dartType];
     // Check if the type is already registered
-    if (info!= null) {
-      throw DuplicatedTypeRegistrationException(info.dartType, info.tag!);
-    }
-    // Check if the tag is already registered
-    info = tag2TypeInfo[typeInfo.tag];
     if (info != null) {
-      throw DuplicatedTagRegistrationException(
-        typeInfo.tag!,
-        info.dartType, 
-        typeInfo.dartType,
+      throw DuplicatedTypeRegistrationException(
+        info.dartType,
+        typeInfo.tag ?? typeInfo.userTypeId,
       );
     }
-    tag2TypeInfo[typeInfo.tag!] = typeInfo;
-    type2TypeInfo[typeInfo.dartType] = typeInfo;
-    if (typeInfo.objType.needsUserTypeId() && typeInfo.userTypeId != kInvalidUserTypeId) {
-      userTypeId2TypeInfo[LongLongKey(typeInfo.objType.id, typeInfo.userTypeId)] = typeInfo;
+    if (typeInfo.tag != null) {
+      // Check if the tag is already registered
+      info = tag2TypeInfo[typeInfo.tag];
+      if (info != null) {
+        throw DuplicatedTagRegistrationException(
+          typeInfo.tag!,
+          info.dartType,
+          typeInfo.dartType,
+        );
+      }
+      tag2TypeInfo[typeInfo.tag!] = typeInfo;
     }
+    if (typeInfo.objType.needsUserTypeId() &&
+        typeInfo.userTypeId != kInvalidUserTypeId) {
+      LongLongKey key = LongLongKey(typeInfo.objType.id, typeInfo.userTypeId);
+      info = userTypeId2TypeInfo[key];
+      if (info != null) {
+        throw DuplicatedUserTypeIdRegistrationException(
+          typeInfo.userTypeId,
+          info.dartType,
+          typeInfo.dartType,
+        );
+      }
+      userTypeId2TypeInfo[key] = typeInfo;
+    }
+    type2TypeInfo[typeInfo.dartType] = typeInfo;
   }
 }

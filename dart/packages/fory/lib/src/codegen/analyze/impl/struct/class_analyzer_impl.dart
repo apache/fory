@@ -24,30 +24,32 @@ import 'package:fory/src/codegen/analyze/analyzer.dart';
 import 'package:fory/src/codegen/analyze/interface/class_analyzer.dart';
 import 'package:fory/src/codegen/entity/fields_cache_unit.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/meta/impl/class_spec_gen.dart';
+import 'package:fory/src/codegen/meta/impl/class_spec_generator.dart';
 import 'package:fory/src/annotation/fory_class.dart';
 import 'package:fory/src/codegen/meta/impl/constructor_info.dart';
-import 'package:fory/src/codegen/meta/impl/fields_spec_gen.dart';
-import 'package:fory/src/codegen/meta/lib_import_pack.dart';
+import 'package:fory/src/codegen/meta/impl/fields_spec_generator.dart';
+import 'package:fory/src/codegen/meta/library_import_pack.dart';
 
-class ClassAnalyzerImpl implements ClassAnalyzer{
-
+class ClassAnalyzerImpl implements ClassAnalyzer {
   const ClassAnalyzerImpl();
 
-  void _setObjectTypeIfNeed(ClassElement clsElement){
-    if (AnalysisTypeIdentifier.objectTypeSet) return;
+  void _setObjectTypeIfNeed(ClassElement clsElement) {
+    if (AnalysisTypeIdentifier.hasObjectType) return;
     InterfaceType? type = clsElement.thisType;
-    while (type!.superclass != null){
+    while (type!.superclass != null) {
       type = type.superclass;
     }
-    AnalysisTypeIdentifier.setObjectType = type;
+    AnalysisTypeIdentifier.cacheObjectType(type);
   }
 
   @override
-  ClassSpecGen analyze(ClassElement clsElement) {
+  ClassSpecGenerator analyze(ClassElement clsElement) {
     _setObjectTypeIfNeed(clsElement);
     // here clsElement is ClassElement
-    assert(clsElement.location != null && clsElement.location!.components.isNotEmpty, 'Class location is null or empty');
+    assert(
+        clsElement.location != null &&
+            clsElement.location!.components.isNotEmpty,
+        'Class location is null or empty');
     /*------------------analyze package and class name-----------------------------*/
     String packageName = clsElement.location!.components[0];
     String className = clsElement.name;
@@ -59,32 +61,36 @@ class ClassAnalyzerImpl implements ClassAnalyzer{
       locationMark,
     );
     /*--------------analyze imports--------------------------------*/
-    LibImportPack libImportPack = Analyzer.importsAnalyzer.analyze(clsElement.library);
+    LibraryImportPack libImportPack =
+        Analyzer.importsAnalyzer.analyze(clsElement.library);
 
     /*-----------------analyze fields------------------------------*/
-    FieldsCacheUnit fieldsUnit = Analyzer.fieldsAnalyzer.analyzeFields(clsElement, locationMark);
+    FieldsCacheUnit fieldsUnit =
+        Analyzer.fieldsAnalyzer.analyzeFields(clsElement, locationMark);
 
     /*--------------analyze constructor----------------------------*/
     ConstructorInfo consInfo = Analyzer.constructorAnalyzer.analyze(
       clsElement.constructors,
       clsElement.id,
       foryClass.promiseAcyclic,
-      fieldsUnit.allFieldIndependent,
+      fieldsUnit.allFieldsIndependent,
       locationMark,
     );
 
-    FieldsSpecGen fieldsSpecGen = Analyzer.accessInfoAnalyzer.checkAndSetTheAccessInfo(consInfo.unnamedConsParams, fieldsUnit.fieldImmutables, false, locationMark);
+    FieldsSpecGenerator fieldsSpecGen = Analyzer.accessInfoAnalyzer
+        .validateAndAssignAccessInfo(consInfo.unnamedConstructorParams,
+            fieldsUnit.fieldImmutables, false, locationMark);
 
-    if (!fieldsSpecGen.fieldSorted){
+    if (!fieldsSpecGen.fieldSorted) {
       Analyzer.fieldsSorter.sortFieldsByName(fieldsSpecGen.fields);
       fieldsSpecGen.fieldSorted = true;
     }
 
-    return ClassSpecGen(
+    return ClassSpecGenerator(
       className,
       packageName,
       foryClass.promiseAcyclic,
-      fieldsUnit.allFieldIndependent,
+      fieldsUnit.allFieldsIndependent,
       fieldsSpecGen,
       libImportPack,
       consInfo,

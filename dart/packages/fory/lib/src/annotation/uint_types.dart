@@ -20,9 +20,9 @@
 library;
 
 /// Annotation to mark a field as unsigned 8-bit integer (0-255).
-/// 
+///
 /// Use this annotation on `int` fields to serialize them as UINT8 type.
-/// 
+///
 /// Example:
 /// ```dart
 /// class MyStruct {
@@ -35,9 +35,9 @@ class Uint8Type {
 }
 
 /// Annotation to mark a field as unsigned 16-bit integer (0-65535).
-/// 
+///
 /// Use this annotation on `int` fields to serialize them as UINT16 type.
-/// 
+///
 /// Example:
 /// ```dart
 /// class MyStruct {
@@ -53,53 +53,53 @@ class Uint16Type {
 enum UintEncoding {
   /// Fixed-length encoding (4 bytes for uint32, 8 bytes for uint64)
   fixed,
-  
+
   /// Variable-length encoding (VAR_UINT32 or VAR_UINT64)
   varint,
-  
+
   /// Tagged variable-length encoding (only for uint64)
   tagged,
 }
 
 /// Annotation to mark a field as unsigned 32-bit integer (0-4294967295).
-/// 
+///
 /// Use this annotation on `int` fields to serialize them as UINT32 or VAR_UINT32 type.
-/// 
+///
 /// Example:
 /// ```dart
 /// class MyStruct {
 ///   @Uint32Type()
 ///   int count;  // Serialized as UINT32 (fixed)
-///   
+///
 ///   @Uint32Type(encoding: UintEncoding.varint)
 ///   int varCount;  // Serialized as VAR_UINT32
 /// }
 /// ```
 class Uint32Type {
   final UintEncoding encoding;
-  
+
   const Uint32Type({this.encoding = UintEncoding.fixed});
 }
 
 /// Annotation to mark a field as unsigned 64-bit integer.
-/// 
+///
 /// Use this annotation on `int` fields to serialize them as UINT64, VAR_UINT64, or TAGGED_UINT64 type.
-/// 
+///
 /// Example:
 /// ```dart
 /// class MyStruct {
 ///   @Uint64Type()
 ///   int id;  // Serialized as UINT64 (fixed)
-///   
+///
 ///   @Uint64Type(encoding: UintEncoding.varint)
 ///   int varId;  // Serialized as VAR_UINT64
-///   
+///
 ///   @Uint64Type(encoding: UintEncoding.tagged)
 ///   int taggedId;  // Serialized as TAGGED_UINT64
 /// }
 /// ```
 class Uint64Type {
   final UintEncoding encoding;
-  
+
   const Uint64Type({this.encoding = UintEncoding.fixed});
 }

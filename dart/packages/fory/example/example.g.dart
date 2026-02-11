@@ -100,7 +100,7 @@ final $Person = ClassSpec(
   null,
 );
 
-mixin _$PersonFory implements Furiable {
+mixin _$PersonFory implements ForyTypeProvider {
   @override
-  Type get $foryType => Person;
+  Type get foryType => Person;
 }

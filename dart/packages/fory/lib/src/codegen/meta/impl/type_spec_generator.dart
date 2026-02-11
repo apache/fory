@@ -18,22 +18,23 @@
  */
 
 import 'package:fory/src/codegen/config/codegen_style.dart';
-import 'package:fory/src/codegen/meta/gen_export.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
 import 'package:fory/src/codegen/meta/impl/type_immutable.dart';
-import 'package:fory/src/codegen/meta/lib_import_pack.dart';
+import 'package:fory/src/codegen/meta/library_import_pack.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 import 'package:fory/src/const/types.dart';
 
-class TypeSpecGen extends GenExport{
+class TypeSpecGenerator extends GeneratedCodePart {
   final TypeImmutable immutablePart;
   late bool nullable;
-  final List<TypeSpecGen> genericsArgs; // An empty list indicates no generic arguments
+  final List<TypeSpecGenerator>
+      genericsArgs; // An empty list indicates no generic arguments
 
   String? _fullName;
   String? _fullNameNoLastNull;
   String? _shortName;
 
-  TypeSpecGen(
+  TypeSpecGenerator(
     this.immutablePart,
     this.nullable,
     this.genericsArgs,
@@ -41,13 +42,13 @@ class TypeSpecGen extends GenExport{
 
   bool get independent => immutablePart.independent;
 
-  String getFullName(LibImportPack imports) {
+  String getFullName(LibraryImportPack imports) {
     if (_fullName != null) return _fullName!;
     _fullName = _equipFullTypeName(imports);
     return _fullName!;
   }
 
-  String getFullNameNoLastNull(LibImportPack imports){
+  String getFullNameNoLastNull(LibraryImportPack imports) {
     if (_fullNameNoLastNull != null) return _fullNameNoLastNull!;
     if (!nullable) {
       return getFullName(imports);
@@ -56,11 +57,11 @@ class TypeSpecGen extends GenExport{
     return _fullNameNoLastNull!;
   }
 
-  String getShortName(LibImportPack imports) {
+  String getShortName(LibraryImportPack imports) {
     if (_shortName != null) return _shortName!;
     String? prefix = imports.getPrefixByLibId(immutablePart.typeLibId);
     StringBuffer buf = StringBuffer();
-    if (prefix != null){
+    if (prefix != null) {
       buf.write(prefix);
       buf.write(".");
     }
@@ -69,32 +70,35 @@ class TypeSpecGen extends GenExport{
     return _shortName!;
   }
 
-  String _equipFullTypeName(LibImportPack imports,[bool containLastNull = true]){
+  String _equipFullTypeName(LibraryImportPack imports,
+      [bool containLastNull = true]) {
     String? importPrefix = imports.getPrefixByLibId(immutablePart.typeLibId);
     // print("equip full type name: $name");
     StringBuffer buf = StringBuffer();
-    if (importPrefix != null){
+    if (importPrefix != null) {
       buf.write(importPrefix);
       buf.write(".");
     }
     buf.write(immutablePart.name);
-    if (genericsArgs.isNotEmpty){
+    if (genericsArgs.isNotEmpty) {
       buf.write("<");
-      for (int i = 0; i < genericsArgs.length - 1; ++i){
+      for (int i = 0; i < genericsArgs.length - 1; ++i) {
         buf.write(genericsArgs[i].getFullName(imports));
         buf.write(", ");
       }
       buf.write(genericsArgs.last.getFullName(imports));
       buf.write(">");
     }
-    if (nullable && containLastNull){
+    if (nullable && containLastNull) {
       buf.write("?");
     }
     return buf.toString();
   }
 
   @override
-  void genCodeReqImportsInfo(StringBuffer buf, LibImportPack imports, String? dartCorePrefixWithPoint, [int indentLevel = 0]) {
+  void writeCodeWithImports(StringBuffer buf, LibraryImportPack imports,
+      String? dartCorePrefixWithPoint,
+      [int indentLevel = 0]) {
     int totalIndent = indentLevel * CodegenStyle.indent;
     int nextTotalIndent = totalIndent + CodegenStyle.indent;
 
@@ -105,7 +109,7 @@ class TypeSpecGen extends GenExport{
     // ForyTypeSpec::type
     String? prefix = imports.getPrefixByLibId(immutablePart.typeLibId);
     CodegenTool.writeIndent(buf, nextTotalIndent);
-    if (prefix != null){
+    if (prefix != null) {
       buf.write(prefix);
       buf.write(".");
     }
@@ -133,14 +137,14 @@ class TypeSpecGen extends GenExport{
     buf.write(nullable ? "true,\n" : "false,\n");
 
     CodegenTool.writeIndent(buf, nextTotalIndent);
-    buf.write(immutablePart.certainForSer ? "true,\n" : "false,\n");
+    buf.write(immutablePart.serializationCertain ? "true,\n" : "false,\n");
 
     if (immutablePart.objType != ObjType.NAMED_ENUM) {
       // ForyTypeSpec::enumSpec part
       CodegenTool.writeIndent(buf, nextTotalIndent);
       buf.write("null,\n");
-    }else {
-      if (prefix != null){
+    } else {
+      if (prefix != null) {
         buf.write(prefix);
         buf.write(".");
       }
@@ -152,8 +156,9 @@ class TypeSpecGen extends GenExport{
     // ForyTypeSpec::genericsArgs part
     CodegenTool.writeIndent(buf, nextTotalIndent);
     buf.write("const [\n");
-    for (var arg in genericsArgs){
-      arg.genCodeReqImportsInfo(buf, imports, dartCorePrefixWithPoint,indentLevel + 1);
+    for (var arg in genericsArgs) {
+      arg.writeCodeWithImports(
+          buf, imports, dartCorePrefixWithPoint, indentLevel + 1);
     }
     CodegenTool.writeIndent(buf, nextTotalIndent);
     buf.write("],\n");

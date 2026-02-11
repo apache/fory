@@ -19,43 +19,43 @@
 
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/specs/enum_spec.dart';
 import 'package:fory/src/serializer/custom_serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
-final class _EnumSerializerCache extends SerializerCache{
-
+final class _EnumSerializerCache extends SerializerCache {
   static final Map<Type, EnumSerializer> _cache = {};
 
   const _EnumSerializerCache();
 
   @override
-  EnumSerializer getSerializerWithSpec(ForyConfig conf, covariant EnumSpec spec, Type dartType){
-    EnumSerializer? ser = _cache[dartType];
-    if (ser != null) {
-      return ser;
+  EnumSerializer getSerializerWithSpec(
+      ForyConfig conf, covariant EnumSpec spec, Type dartType) {
+    EnumSerializer? serializer = _cache[dartType];
+    if (serializer != null) {
+      return serializer;
     }
-    // In foryJava, EnumSer does not perform reference tracking
-    ser = EnumSerializer(false, spec.values);
-    _cache[dartType] = ser;
-    return ser;
+    // In foryJava, EnumSerializer does not perform reference tracking
+    serializer = EnumSerializer(false, spec.values);
+    _cache[dartType] = serializer;
+    return serializer;
   }
 }
 
-final class EnumSerializer extends CustomSerializer<Enum>{
-
+final class EnumSerializer extends CustomSerializer<Enum> {
   static const SerializerCache cache = _EnumSerializerCache();
 
   final List<Enum> values;
-  EnumSerializer(bool writeRef, this.values): super(ObjType.NAMED_ENUM, writeRef);
+  EnumSerializer(bool writeRef, this.values)
+      : super(ObjType.NAMED_ENUM, writeRef);
 
   @override
-  Enum read(ByteReader br, int refId, DeserializerPack pack) {
+  Enum read(ByteReader br, int refId, DeserializationContext pack) {
     int index = br.readVarUint32Small7();
     // foryJava supports deserializeUnknownEnumValueAsNull,
     // but here in Dart, it will definitely throw an error if the index is out of range
@@ -66,7 +66,7 @@ final class EnumSerializer extends CustomSerializer<Enum>{
   }
 
   @override
-  void write(ByteWriter bw, Enum v, SerializerPack pack) {
+  void write(ByteWriter bw, Enum v, SerializationContext pack) {
     bw.writeVarUint32Small7(v.index);
   }
 }

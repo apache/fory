@@ -18,26 +18,26 @@
  */
 
 import 'package:meta/meta.dart';
-import 'package:fory/src/codegen/meta/custom_type_spec_gen.dart';
-import 'package:fory/src/codegen/meta/impl/constructor_spec_gen.dart';
-import 'package:fory/src/codegen/meta/impl/fields_spec_gen.dart';
-import 'package:fory/src/codegen/meta/lib_import_pack.dart';
+import 'package:fory/src/codegen/meta/custom_type_spec_generator.dart';
+import 'package:fory/src/codegen/meta/impl/constructor_spec_generator.dart';
+import 'package:fory/src/codegen/meta/impl/fields_spec_generator.dart';
+import 'package:fory/src/codegen/meta/library_import_pack.dart';
 import 'package:fory/src/codegen/meta/impl/constructor_info.dart';
 import 'package:fory/src/codegen/config/codegen_style.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 
 @immutable
-class ClassSpecGen extends CustomTypeSpecGen{
+class ClassSpecGenerator extends CustomTypeSpecGenerator {
   final bool promiseAcyclic;
   final bool noCyclicRisk;
-  final FieldsSpecGen _fieldsSpecGen;
-  final LibImportPack imports;
-  late final ConstructorSpecGen _consSpecGen;
+  final FieldsSpecGenerator _fieldsSpecGen;
+  final LibraryImportPack imports;
+  late final ConstructorSpecGenerator _consSpecGen;
   late final String _varName;
 
   late final String? _dartCorePrefixWithPoint;
 
-  ClassSpecGen(
+  ClassSpecGenerator(
     super.name,
     super.importPath,
     this.promiseAcyclic,
@@ -45,10 +45,11 @@ class ClassSpecGen extends CustomTypeSpecGen{
     this._fieldsSpecGen,
     this.imports,
     ConstructorInfo consInfo,
-  ){
+  ) {
     _varName = "\$$name";
-    _dartCorePrefixWithPoint = imports.dartCorePrefix != null ? "${imports.dartCorePrefix}." : null;
-    _consSpecGen = ConstructorSpecGen(
+    _dartCorePrefixWithPoint =
+        imports.dartCorePrefix != null ? "${imports.dartCorePrefix}." : null;
+    _consSpecGen = ConstructorSpecGenerator(
       name,
       imports,
       consInfo,
@@ -56,23 +57,23 @@ class ClassSpecGen extends CustomTypeSpecGen{
     );
   }
 
-  void _genMixinPart(StringBuffer buf){
+  void _genMixinPart(StringBuffer buf) {
     buf.write("mixin ");
     buf.write('_\$');
     buf.write(name);
     buf.write("Fory");
-    buf.write(" implements Furiable {\n");
+    buf.write(" implements ForyTypeProvider {\n");
     CodegenTool.writeIndent(buf, CodegenStyle.indent);
     buf.write("@override\n");
     CodegenTool.writeIndent(buf, CodegenStyle.indent);
-    buf.write("Type get \$foryType => ");
+    buf.write("Type get foryType => ");
     buf.write(name);
     buf.write(";\n");
     buf.write("}\n");
   }
 
   @override
-  void genCode(StringBuffer buf,[int indentLevel = 0]) {
+  void writeCode(StringBuffer buf, [int indentLevel = 0]) {
     int totalIndent = indentLevel * CodegenStyle.indent;
     int nextTotalIndent = totalIndent + CodegenStyle.indent;
     // // the import part
@@ -126,10 +127,12 @@ class ClassSpecGen extends CustomTypeSpecGen{
     // buf.write(",\n");
 
     // arg: fields
-    _fieldsSpecGen.genCodeReqImportsInfo(buf, imports, _dartCorePrefixWithPoint, indentLevel + 1);
+    _fieldsSpecGen.writeCodeWithImports(
+        buf, imports, _dartCorePrefixWithPoint, indentLevel + 1);
 
     // arg: construct function
-    _consSpecGen.genCodeReqImportsInfo(buf, imports, _dartCorePrefixWithPoint, indentLevel + 1);
+    _consSpecGen.writeCodeWithImports(
+        buf, imports, _dartCorePrefixWithPoint, indentLevel + 1);
 
     // tail part
     buf.write(");\n\n");

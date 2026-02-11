@@ -31,51 +31,57 @@ import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/fory_header_serializer.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-class DeserializeCoordinator {
+class DeserializationRuntime {
+  static final DeserializationRuntime _instance =
+      DeserializationRuntime._internal();
+  static DeserializationRuntime get I => _instance;
+  DeserializationRuntime._internal();
 
-  static final DeserializeCoordinator _instance = DeserializeCoordinator._internal();
-  static DeserializeCoordinator get I => _instance;
-  DeserializeCoordinator._internal();
+  static final ForyHeaderSerializer _foryHeaderSerializer =
+      ForyHeaderSerializer.I;
 
-  static final ForyHeaderSerializer _foryHeaderSer = ForyHeaderSerializer.I;
-
-  Object? read(Uint8List bytes, ForyConfig conf, XtypeResolver xtypeResolver, [ByteReader? reader]) {
-    var br = reader ?? ByteReader.forBytes(bytes,);
-    HeaderBrief? header = _foryHeaderSer.read(br, conf);
+  Object? read(Uint8List bytes, ForyConfig conf, TypeResolver typeResolver,
+      [ByteReader? reader]) {
+    var br = reader ??
+        ByteReader.forBytes(
+          bytes,
+        );
+    HeaderBrief? header = _foryHeaderSerializer.read(br, conf);
     if (header == null) return null;
+    typeResolver.resetReadContext();
 
-    DeserializerPack deserPack = DeserializerPack(
+    DeserializationContext deserializationContext = DeserializationContext(
       StructHashResolver.inst,
-      xtypeResolver.getTagByCustomDartType,
+      typeResolver.getRegisteredTag,
       header,
       this,
-      DeserializationRefResolver.getOne(conf.refTracking),
-      xtypeResolver,
+      DeserializationRefResolver.getOne(conf.ref),
+      typeResolver,
       Stack<TypeSpecWrap>(),
     );
-    return xReadRefNoSer(br, deserPack);
+    return readDynamicWithRef(br, deserializationContext);
   }
 
-  Object? xReadRefNoSer(ByteReader br, DeserializerPack pack) {
+  Object? readDynamicWithRef(ByteReader br, DeserializationContext pack) {
     int refFlag = br.readInt8();
     //assert(RefFlag.checkAllow(refFlag));
     //assert(refFlag >= RefFlag.NULL.id);
     if (refFlag == RefFlag.NULL.id) return null;
     DeserializationRefResolver refResolver = pack.refResolver;
-    if (refFlag == RefFlag.TRACKED_ALREADY.id){
+    if (refFlag == RefFlag.TRACKED_ALREADY.id) {
       int refId = br.readVarUint32Small14();
       return refResolver.getObj(refId);
     }
-    if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id){
+    if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
       // must deserialize
-      TypeInfo typeInfo = pack.xtypeResolver.readTypeInfo(br);
+      TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
       int refId = refResolver.reserveId();
-      Object o = _xRead(br, typeInfo, refId, pack);
+      Object o = _readByTypeInfo(br, typeInfo, refId, pack);
       refResolver.setRef(refId, o);
       return o;
     }
@@ -83,32 +89,38 @@ class DeserializeCoordinator {
     return null; // won't reach here
   }
 
-  Object? xReadRefWithSer(ByteReader br, Serializer ser, DeserializerPack pack) {
-    if (ser.writeRef){
+  Object? readWithSerializer(
+      ByteReader br, Serializer serializer, DeserializationContext pack) {
+    if (serializer.writeRef) {
       DeserializationRefResolver refResolver = pack.refResolver;
       int refFlag = br.readInt8();
       //assert(RefFlag.checkAllow(refFlag));
       //assert(refFlag >= RefFlag.NULL.id);
       if (refFlag == RefFlag.NULL.id) return null;
-      if (refFlag == RefFlag.TRACKED_ALREADY.id){
+      if (refFlag == RefFlag.TRACKED_ALREADY.id) {
         int refId = br.readVarUint32Small14();
         return refResolver.getObj(refId);
       }
-      if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id){
+      if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
         // must deserialize
         int refId = refResolver.reserveId();
-        Object o = ser.read(br, refId, pack);
+        Object o = serializer.read(br, refId, pack);
         refResolver.setRef(refId, o);
         return o;
       }
     }
     int headFlag = br.readInt8();
     if (headFlag == RefFlag.NULL.id) return null;
-    return ser.read(br, -1, pack);
+    return serializer.read(br, -1, pack);
   }
 
-  /// this method will only be invoked by Fory::_xReadRef
-  Object _xRead(ByteReader br, TypeInfo typeInfo, int refId, DeserializerPack pack) {
+  Object readDynamicWithoutRef(ByteReader br, DeserializationContext pack) {
+    TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
+    return _readByTypeInfo(br, typeInfo, -1, pack);
+  }
+
+  Object _readByTypeInfo(ByteReader br, TypeInfo typeInfo, int refId,
+      DeserializationContext pack) {
     switch (typeInfo.objType) {
       case ObjType.BOOL:
         return br.readInt8() != 0;
@@ -128,7 +140,7 @@ class DeserializeCoordinator {
       case ObjType.FLOAT64:
         return br.readFloat64();
       default:
-        Object o = typeInfo.ser.read(br, refId, pack);
+        Object o = typeInfo.serializer.read(br, refId, pack);
         return o;
     }
   }

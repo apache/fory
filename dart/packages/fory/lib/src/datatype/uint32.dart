@@ -34,7 +34,7 @@ final class UInt32 extends FixedNum {
   static int _convert(num value) {
     if (value is int) {
       // Apply 32-bit unsigned integer overflow behavior
-      return value & 0xFFFFFFFF;  // Keep only the lowest 32 bits (0-4294967295)
+      return value & 0xFFFFFFFF; // Keep only the lowest 32 bits (0-4294967295)
     } else {
       return _convert(value.toInt());
     }

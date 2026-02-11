@@ -17,6 +17,11 @@
  * under the License.
  */
 
-class DeserFlags{
-  static const int notSupportXLangFlag = 0;
+import 'package:fory/src/meta/meta_string.dart';
+import 'package:fory/src/resolver/impl/tag_string_resolver_impl.dart';
+
+abstract class TagStringResolver {
+  static TagStringResolver get newInst => TagStringResolverImpl();
+  MetaString encodeTypeName(String tag);
+  MetaString encodeNs(String ns);
 }

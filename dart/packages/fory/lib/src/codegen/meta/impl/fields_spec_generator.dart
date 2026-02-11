@@ -18,17 +18,17 @@
  */
 
 import 'package:fory/src/codegen/config/codegen_style.dart';
-import 'package:fory/src/codegen/meta/gen_export.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/lib_import_pack.dart';
+import 'package:fory/src/codegen/meta/library_import_pack.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 
-class FieldsSpecGen extends GenExport{
+class FieldsSpecGenerator extends GeneratedCodePart {
   final List<FieldSpecImmutable> fields;
   final List<bool> setThroughConsFlags;
 
   bool fieldSorted;
-  FieldsSpecGen(this.fields, this.fieldSorted, this.setThroughConsFlags);
+  FieldsSpecGenerator(this.fields, this.fieldSorted, this.setThroughConsFlags);
 
   // Iterable<FieldSpecImmutable> get fieldsIterator sync*{
   //   for (int i = 0; i < fields.length; ++i){
@@ -41,15 +41,21 @@ class FieldsSpecGen extends GenExport{
   // bool isSetThroughCons(int index) => setThroughConsFlags[index];
 
   @override
-  void genCodeReqImportsInfo(StringBuffer buf, LibImportPack imports, String? dartCorePrefixWithPoint,[int indentLevel = 0]) {
+  void writeCodeWithImports(StringBuffer buf, LibraryImportPack imports,
+      String? dartCorePrefixWithPoint,
+      [int indentLevel = 0]) {
     int totalIndent = indentLevel * CodegenStyle.indent;
     CodegenTool.writeIndent(buf, totalIndent);
     buf.write("[\n");
-    for (var field in fields){
-      field.genCodeReqImportsInfo(buf, imports, dartCorePrefixWithPoint, indentLevel + 1,);
+    for (var field in fields) {
+      field.writeCodeWithImports(
+        buf,
+        imports,
+        dartCorePrefixWithPoint,
+        indentLevel + 1,
+      );
     }
     CodegenTool.writeIndent(buf, totalIndent);
     buf.write("],\n");
   }
-
 }

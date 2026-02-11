@@ -24,7 +24,7 @@ import 'package:fory/src/codegen/analyze/impl/annotation/uint_annotation_analyze
 import 'package:fory/src/codegen/analyze/impl/constructor/constructor_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/field/access_info_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/field/field_analyzer_impl.dart';
-import 'package:fory/src/codegen/analyze/impl/field/field_sorter.dart';
+import 'package:fory/src/codegen/analyze/impl/field/field_spec_sorter.dart';
 import 'package:fory/src/codegen/analyze/impl/field/fields_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/imports/imports_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/struct/class_analyzer_impl.dart';
@@ -36,16 +36,20 @@ import 'package:fory/src/codegen/analyze/interface/class_analyzer.dart';
 import 'package:fory/src/codegen/analyze/interface/enum_analyzer.dart';
 import 'package:fory/src/codegen/analyze/interface/field_analyzer.dart';
 import 'package:fory/src/codegen/analyze/interface/type_analyzer.dart';
-import 'package:fory/src/codegen/meta/gen_export.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
 
 abstract class Analyzer {
-  GenExport analyze(Object input);
+  GeneratedCodePart analyze(Object input);
 
   // Annotation analyzers
-  static const ClassAnnotationAnalyzer classAnnotationAnalyzer = ClassAnnotationAnalyzer();
-  static const KeyAnnotationAnalyzer keyAnnotationAnalyzer = KeyAnnotationAnalyzer();
-  static const EnumAnnotationAnalyzer enumAnnotationAnalyzer = EnumAnnotationAnalyzer();
-  static const UintAnnotationAnalyzer uintAnnotationAnalyzer = UintAnnotationAnalyzer();
+  static const ClassAnnotationAnalyzer classAnnotationAnalyzer =
+      ClassAnnotationAnalyzer();
+  static const KeyAnnotationAnalyzer keyAnnotationAnalyzer =
+      KeyAnnotationAnalyzer();
+  static const EnumAnnotationAnalyzer enumAnnotationAnalyzer =
+      EnumAnnotationAnalyzer();
+  static const UintAnnotationAnalyzer uintAnnotationAnalyzer =
+      UintAnnotationAnalyzer();
 
   // Enum analyzers
   static const EnumAnalyzer enumAnalyzer = EnumAnalyzerImpl();
@@ -59,7 +63,7 @@ abstract class Analyzer {
   static const AccessInfoAnalyzer accessInfoAnalyzer = AccessInfoAnalyzer();
   static const FieldsAnalyzer fieldsAnalyzer = FieldsAnalyzer();
   static const FieldAnalyzer fieldAnalyzer = FieldAnalyzerImpl();
-  static const FieldsSorter fieldsSorter = FieldsSorter();
+  static const FieldSpecSorter fieldsSorter = FieldSpecSorter();
 
   // Type analyzers
   static final TypeAnalyzer typeAnalyzer = TypeAnalyzerImpl();

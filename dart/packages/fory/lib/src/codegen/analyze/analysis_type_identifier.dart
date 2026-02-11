@@ -19,121 +19,129 @@
 
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/type.dart';
-import 'package:fory/src/codegen/collection/type_3string_key.dart';
+import 'package:fory/src/codegen/collection/type_string_key.dart';
 
-class AnalysisTypeIdentifier{
-
-  static bool _objectTypeSet = false;
+class AnalysisTypeIdentifier {
+  static bool _hasObjectType = false;
   static late final InterfaceType _objectType;
-  static bool get objectTypeSet => _objectTypeSet;
-  static set setObjectType(InterfaceType type){
-    _objectTypeSet = true;
+  static bool get hasObjectType => _hasObjectType;
+
+  static void cacheObjectType(InterfaceType type) {
+    _hasObjectType = true;
     _objectType = type;
   }
+
   static InterfaceType get objectType => _objectType;
 
   static int get dartCoreLibId => objectType.element.library.id;
 
-
-  static final List<int?> _ids = [null,null,null,null,null,null,null,null];
-  static final List<Type3StringKey> _keys = [
-    Type3StringKey(
+  static final List<int?> _ids = [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ];
+  static final List<TypeStringKey> _keys = [
+    TypeStringKey(
       'ForyClass',
       'package',
       'fory/src/annotation/fory_class.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'ForyKey',
       'package',
       'fory/src/annotation/fory_key.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'ForyCons',
       'package',
       'fory/src/annotation/fory_constructor.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'ForyEnum',
       'package',
       'fory/src/annotation/fory_enum.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'Uint8Type',
       'package',
       'fory/src/annotation/uint_types.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'Uint16Type',
       'package',
       'fory/src/annotation/uint_types.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'Uint32Type',
       'package',
       'fory/src/annotation/uint_types.dart',
     ),
-    Type3StringKey(
+    TypeStringKey(
       'Uint64Type',
       'package',
       'fory/src/annotation/uint_types.dart',
     ),
   ];
 
-  static bool _check(ClassElement element, int index){
-    if (_ids[index] != null){
+  static bool _check(ClassElement element, int index) {
+    if (_ids[index] != null) {
       return element.id == _ids[index];
     }
     Uri uri = element.librarySource.uri;
-    Type3StringKey key = Type3StringKey(
+    TypeStringKey key = TypeStringKey(
       element.name,
       uri.scheme,
       uri.path,
     );
-    if (key.hashCode != _keys[index].hashCode || key != _keys[index]){
+    if (key.hashCode != _keys[index].hashCode || key != _keys[index]) {
       return false;
     }
     _ids[index] = element.id;
     return true;
   }
 
-  static bool isForyClass(ClassElement element){
+  static bool isForyClass(ClassElement element) {
     return _check(element, 0);
   }
 
-  static bool isForyKey(ClassElement element){
+  static bool isForyKey(ClassElement element) {
     return _check(element, 1);
   }
 
-  static bool isForyCons(ClassElement element){
+  static bool isForyConstructorAnnotation(ClassElement element) {
     return _check(element, 2);
   }
 
-  static bool isForyEnum(ClassElement element){
+  static bool isForyEnum(ClassElement element) {
     return _check(element, 3);
   }
 
-  static void giveForyEnumId(int id){
+  static void cacheForyEnumAnnotationId(int id) {
     _ids[3] = id;
   }
 
-  static void giveForyClassId(int id){
+  static void cacheForyClassAnnotationId(int id) {
     _ids[0] = id;
   }
 
-  static bool isUint8Type(ClassElement element){
+  static bool isUint8Type(ClassElement element) {
     return _check(element, 4);
   }
 
-  static bool isUint16Type(ClassElement element){
+  static bool isUint16Type(ClassElement element) {
     return _check(element, 5);
   }
 
-  static bool isUint32Type(ClassElement element){
+  static bool isUint32Type(ClassElement element) {
     return _check(element, 6);
   }
 
-  static bool isUint64Type(ClassElement element){
+  static bool isUint64Type(ClassElement element) {
     return _check(element, 7);
   }
-
 }

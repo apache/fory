@@ -21,27 +21,26 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/resolver/meta_string_writing_resolver.dart';
 
-final class MetaStringWritingResolverImpl extends MetaStringWritingResolver{
-  
+final class MetaStringWritingResolverImpl extends MetaStringWritingResolver {
   int _dynamicWriteStrId = 0;
 
   final Map<int, int> _memHash2Id = {};
-  
+
   @override
   void writeMetaStringBytes(ByteWriter bw, MetaStringBytes msb) {
     int identityHash = identityHashCode(msb);
     int? id = _memHash2Id[identityHash];
-    if(id != null){
-      bw.writeVarUint32Small7( ((id + 1) << 1) | 1 );
+    if (id != null) {
+      bw.writeVarUint32Small7(((id + 1) << 1) | 1);
       return;
     }
     _memHash2Id[identityHash] = _dynamicWriteStrId;
     ++_dynamicWriteStrId;
     int bytesLen = msb.length;
     bw.writeVarUint32Small7(bytesLen << 1);
-    if (bytesLen > smallStringThreshold){
+    if (bytesLen > smallStringThreshold) {
       bw.writeInt64(msb.hashCode);
-    }else if (bytesLen != 0) {
+    } else if (bytesLen != 0) {
       bw.writeInt8(msb.encoding.id);
     }
     bw.writeBytes(msb.bytes);

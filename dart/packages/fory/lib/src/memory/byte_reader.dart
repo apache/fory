@@ -22,14 +22,13 @@ import 'package:meta/meta.dart';
 import 'package:fory/src/memory/byte_reader_impl.dart';
 
 abstract base class ByteReader {
-
   @protected
   final Endian endian = Endian.little;
 
   ByteReader.internal();
 
-  factory ByteReader.forBytes(Uint8List data, {int offset = 0, int? length})
-    => ByteReaderImpl(data, offset: offset, length: length);
+  factory ByteReader.forBytes(Uint8List data, {int offset = 0, int? length}) =>
+      ByteReaderImpl(data, offset: offset, length: length);
 
   void skip(int length);
 
@@ -81,7 +80,7 @@ abstract base class ByteReader {
   int readBytesAsInt64(int length);
 
   Uint8List readBytesView(int length);
-  
+
   Uint8List copyBytes(int length);
 
   Uint16List readCopyUint16List(int byteNum);

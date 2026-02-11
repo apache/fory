@@ -19,7 +19,6 @@
 
 import 'dart:math' as math show pow, log, ln2;
 
-
 import 'float32.dart' show Float32;
 import 'fory_fixed_num.dart';
 import 'int16.dart' show Int16;
@@ -56,7 +55,8 @@ final class Float16 extends FixedNum {
     int bits;
     if (val.abs() < EPSILON) {
       // Handle subnormal numbers
-      bits = ((val < 0 ? 1 : 0) << 15) | ((val.abs() / EPSILON).round() & 0x3FF);
+      bits =
+          ((val < 0 ? 1 : 0) << 15) | ((val.abs() / EPSILON).round() & 0x3FF);
     } else {
       // Extract components from double
       int sign = val < 0 ? 1 : 0;
@@ -86,11 +86,15 @@ final class Float16 extends FixedNum {
       return (sign == 0 ? 1.0 : -1.0) * frac * EPSILON;
     } else if (exp == 31) {
       // Infinity or NaN
-      return frac == 0 ? (sign == 0 ? double.infinity : double.negativeInfinity) : double.nan;
+      return frac == 0
+          ? (sign == 0 ? double.infinity : double.negativeInfinity)
+          : double.nan;
     }
 
     // Normal numbers
-    double result = (sign == 0 ? 1.0 : -1.0) * math.pow(2, exp - 15) * (1.0 + frac / 1024.0);
+    double result = (sign == 0 ? 1.0 : -1.0) *
+        math.pow(2, exp - 15) *
+        (1.0 + frac / 1024.0);
     return result;
   }
 
@@ -159,9 +163,12 @@ final class Float16 extends FixedNum {
   Float32 toFloat32() => Float32(_value);
 
   // String formatting
-  String toStringAsFixed(int fractionDigits) => _value.toStringAsFixed(fractionDigits);
-  String toStringAsExponential([int? fractionDigits]) => _value.toStringAsExponential(fractionDigits);
-  String toStringAsPrecision(int precision) => _value.toStringAsPrecision(precision);
+  String toStringAsFixed(int fractionDigits) =>
+      _value.toStringAsFixed(fractionDigits);
+  String toStringAsExponential([int? fractionDigits]) =>
+      _value.toStringAsExponential(fractionDigits);
+  String toStringAsPrecision(int precision) =>
+      _value.toStringAsPrecision(precision);
 
   @override
   String toString() => _value.toString();

@@ -26,7 +26,7 @@ class LocationMark {
   final String clsName;
   final String? fieldName;
   final LocationLevel _level;
-  
+
   LocationMark._(
     this.libPath,
     this.clsName,
@@ -43,10 +43,11 @@ class LocationMark {
 
   bool get ensureFieldLevel => _level.index >= LocationLevel.fieldLevel.index;
   bool get ensureClassLevel => _level.index >= LocationLevel.clsLevel.index;
-  
+
   String get clsLocation => '$libPath@$clsName';
-  
+
   LocationMark copyWithFieldName(String fieldName) {
-    return LocationMark._(libPath, clsName, fieldName, LocationLevel.fieldLevel);
+    return LocationMark._(
+        libPath, clsName, fieldName, LocationLevel.fieldLevel);
   }
 }

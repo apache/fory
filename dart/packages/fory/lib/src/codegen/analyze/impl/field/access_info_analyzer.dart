@@ -19,40 +19,40 @@
 
 import 'dart:collection';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/constructor_params.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/field_exception.dart' show FieldAccessErrorType, FieldAccessException;
+import 'package:fory/src/codegen/exception/field_exception.dart'
+    show FieldAccessErrorType, FieldAccessException;
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/impl/fields_spec_gen.dart';
+import 'package:fory/src/codegen/meta/impl/fields_spec_generator.dart';
 import 'package:fory/src/dev_annotation/maybe_modified.dart';
 
 class AccessInfoAnalyzer {
-
   const AccessInfoAnalyzer();
 
   // The premise is that fields have already been sorted
-  FieldsSpecGen  _analyzeConsAndFields(
+  FieldsSpecGenerator _analyzeConstructorAndFieldAccess(
     ConstructorParams consParams,
     List<FieldSpecImmutable> fields,
     bool fieldsSorted,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureClassLevel);
     assert(fieldsSorted);
 
     Map<String, int> fieldNameToIndex = HashMap();
-    for (int i = 0; i < fields.length; ++i){
+    for (int i = 0; i < fields.length; ++i) {
       fieldNameToIndex[fields[i].name] = i;
     }
     List<bool> setThroughConsFlags = List.filled(fields.length, false);
     int? index;
-    for (var consParam in consParams.iterator){
+    for (var consParam in consParams.iterator) {
       index = fieldNameToIndex[consParam.name];
       // Based on the constraints for the Constructor mentioned earlier, it is impossible not to find the index here.
       assert(index != null, "Field ${consParam.name} not found in fields");
-      if (!(fields[index!].includeFromFory)){
+      if (!(fields[index!].includeFromFory)) {
         // Indicates that this field is not in the fields list or does not need to be analyzed
         // However, if consParam is optional, it's okay
         if (consParam.optional) {
@@ -66,44 +66,48 @@ class AccessInfoAnalyzer {
           FieldAccessErrorType.notIncludedButConsDemand,
         );
       }
-      consParam.setFieldIndex(index);  // It can be found that each consParam corresponds to a field and will all be assigned an index
+      consParam.setFieldIndex(
+          index); // It can be found that each consParam corresponds to a field and will all be assigned an index
       setThroughConsFlags[index] = true;
     }
 
-    return FieldsSpecGen(fields, fieldsSorted, setThroughConsFlags);
+    return FieldsSpecGenerator(fields, fieldsSorted, setThroughConsFlags);
   }
 
-
-  FieldsSpecGen checkAndSetTheAccessInfo(
+  FieldsSpecGenerator validateAndAssignAccessInfo(
     @mayBeModified ConstructorParams? consParams,
     List<FieldSpecImmutable> fieldImmutables,
     bool fieldsSorted,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureClassLevel);
-    if (consParams == null){
+    if (consParams == null) {
       // indicate no constructor
-      return FieldsSpecGen(fieldImmutables, fieldsSorted, List.filled(fieldImmutables.length, false));
+      return FieldsSpecGenerator(fieldImmutables, fieldsSorted,
+          List.filled(fieldImmutables.length, false));
     }
     /*-----------sort field--------------------------------------------------------------*/
-    if (!fieldsSorted){
+    if (!fieldsSorted) {
       // indicate sorting has not been performed
       Analyzer.fieldsSorter.sortFieldsByName(fieldImmutables);
       fieldsSorted = true;
     }
     /*------------set consParams----------------------------------------------------------*/
-    FieldsSpecGen fieldsSpecGen =  _analyzeConsAndFields(consParams, fieldImmutables, fieldsSorted, locationMark);
+    FieldsSpecGenerator fieldsSpecGen = _analyzeConstructorAndFieldAccess(
+        consParams, fieldImmutables, fieldsSorted, locationMark);
     // Check if there are fields with includeFromFory and no assignment method
     List<String> noWayFields = [];
     var immutables = fieldsSpecGen.fields;
     var flags = fieldsSpecGen.setThroughConsFlags;
 
-    for (int i =0;i<immutables.length;++i){
-      if (immutables[i].includeFromFory && !(immutables[i].canSet) && !flags[i]){
+    for (int i = 0; i < immutables.length; ++i) {
+      if (immutables[i].includeFromFory &&
+          !(immutables[i].canSet) &&
+          !flags[i]) {
         noWayFields.add(immutables[i].name);
       }
     }
-    if (noWayFields.isNotEmpty){
+    if (noWayFields.isNotEmpty) {
       // this field has no corresponding getter
       throw FieldAccessException(
         locationMark.libPath,
@@ -114,12 +118,12 @@ class AccessInfoAnalyzer {
     }
     // Check if there are fields with includeToFory and no getter method
     noWayFields.clear();
-    for (int i =0;i<immutables.length;++i){
-      if (immutables[i].includeToFory && !(immutables[i].canGet)){
+    for (int i = 0; i < immutables.length; ++i) {
+      if (immutables[i].includeToFory && !(immutables[i].canGet)) {
         noWayFields.add(immutables[i].name);
       }
     }
-    if (noWayFields.isNotEmpty){
+    if (noWayFields.isNotEmpty) {
       // Indicates that there are fields without getter methods
       throw FieldAccessException(
         locationMark.libPath,

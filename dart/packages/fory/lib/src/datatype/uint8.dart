@@ -34,7 +34,7 @@ final class UInt8 extends FixedNum {
   static int _convert(num value) {
     if (value is int) {
       // Apply 8-bit unsigned integer overflow behavior
-      return value & 0xFF;  // Keep only the lowest 8 bits (0-255)
+      return value & 0xFF; // Keep only the lowest 8 bits (0-255)
     } else {
       return _convert(value.toInt());
     }

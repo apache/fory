@@ -21,8 +21,8 @@ import 'package:fory/src/resolver/impl/deserialization_map_ref_resolver.dart';
 import 'package:fory/src/resolver/impl/deserialization_no_ref_resolver.dart';
 
 abstract class DeserializationRefResolver {
-
-  static const DeserializationRefResolver _noRefResolver = DeserializationNoRefResolver();
+  static const DeserializationRefResolver _noRefResolver =
+      DeserializationNoRefResolver();
 
   static DeserializationRefResolver getOne(bool enableRefTracking) {
     return enableRefTracking ? DeserializationMapRefResolver() : _noRefResolver;

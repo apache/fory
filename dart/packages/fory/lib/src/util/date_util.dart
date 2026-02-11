@@ -19,7 +19,7 @@
 
 import 'package:fory/src/dev_annotation/optimize.dart';
 
-class DateUtil{
+class DateUtil {
   static final DateTime epoch = DateTime(1970, 1, 1);
 
   @inline

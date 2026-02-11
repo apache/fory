@@ -17,29 +17,15 @@
  * under the License.
  */
 
-import 'package:fory/src/config/fory_config.dart';
+import 'package:meta/meta.dart';
 
-class ForyConfigManager{
-  // singleton
-  static final ForyConfigManager _instance = ForyConfigManager._();
-  static ForyConfigManager get inst => _instance;
-  ForyConfigManager._();
+/// During the Dart analyzer analysis phase, both setters and getters are analyzed as FieldElement.
+/// Here, AccessorField is used to represent them.
+@immutable
+class PublicAccessorDescriptor {
+  final String name;
+  final bool hasSetter;
+  final bool hasGetter;
 
-  int configId = 0;
-  int get nextConfigId => configId++;
-
-  ForyConfig createConfig({
-    bool refTracking = true,
-    bool basicTypesRefIgnored = true,
-    bool timeRefIgnored = true,
-    // bool stringRefIgnored = true,
-  }) {
-    return ForyConfig.onlyForManager(
-      nextConfigId,
-      refTracking: refTracking,
-      basicTypesRefIgnored: basicTypesRefIgnored,
-      timeRefIgnored: timeRefIgnored,
-      // stringRefIgnored: stringRefIgnored,
-    );
-  }
+  const PublicAccessorDescriptor(this.name, this.hasSetter, this.hasGetter);
 }
