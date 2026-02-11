@@ -17,18 +17,16 @@
  * under the License.
  */
 
-import 'package:meta/meta.dart';
+import 'package:fory/src/resolver/struct_hash_resolver.dart';
 
-@immutable
-class LibImportPack{
-  final String? dartCorePrefix;
-  final Map<int,String> _libIdToPrefix;
+typedef TagByTypeLookup = String Function(Type type);
 
-  const LibImportPack(this._libIdToPrefix, this.dartCorePrefix);
+abstract base class Pack {
+  final StructHashResolver structHashResolver;
+  final TagByTypeLookup getTagByDartType;
 
-  String? getPrefixByLibId(int libId){
-    return _libIdToPrefix[libId];
-  }
-
-  bool get noPrefix =>_libIdToPrefix.isEmpty;
+  const Pack(
+    this.structHashResolver,
+    this.getTagByDartType,
+  );
 }

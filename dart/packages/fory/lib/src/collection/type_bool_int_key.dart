@@ -17,7 +17,7 @@
  * under the License.
  */
 
-final class TypeBoolIntKey{
+final class TypeBoolIntKey {
   final Type type;
   final bool writeRef;
   final int strIdentityHash;
@@ -25,14 +25,14 @@ final class TypeBoolIntKey{
   const TypeBoolIntKey(this.type, this.writeRef, this.strIdentityHash);
 
   @override
-  int get hashCode => type.hashCode  ^ strIdentityHash.hashCode ^ writeRef.hashCode;
+  int get hashCode =>
+      type.hashCode ^ strIdentityHash.hashCode ^ writeRef.hashCode;
 
   @override
   bool operator ==(Object other) {
-    return
-      other is TypeBoolIntKey &&
-          other.type == type &&
-          other.writeRef == writeRef &&
-          other.strIdentityHash == strIdentityHash;
+    return other is TypeBoolIntKey &&
+        other.type == type &&
+        other.writeRef == writeRef &&
+        other.strIdentityHash == strIdentityHash;
   }
 }

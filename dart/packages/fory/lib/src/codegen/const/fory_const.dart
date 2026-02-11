@@ -17,7 +17,7 @@
  * under the License.
  */
 
-class ForyConst{
+class ForyConst {
   static const String importPath = 'fory/fory.dart';
   static const String intermediateMark = 'fory_meta';
 }

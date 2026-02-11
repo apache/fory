@@ -18,25 +18,25 @@
  */
 
 import 'package:fory/src/codegen/config/codegen_style.dart';
-import 'package:fory/src/codegen/meta/custom_type_spec_gen.dart';
+import 'package:fory/src/codegen/meta/custom_type_spec_generator.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 import 'package:meta/meta.dart';
 
 @immutable
-class EnumSpecGen extends CustomTypeSpecGen{
+class EnumSpecGenerator extends CustomTypeSpecGenerator {
   final List<String> _enumVarNames;
   late final String _varName;
 
-  EnumSpecGen(super.name, super.importPath, this._enumVarNames){
+  EnumSpecGenerator(super.name, super.importPath, this._enumVarNames) {
     _varName = "\$$name";
     assert(_enumVarNames.isNotEmpty);
   }
 
-  void _writeFieldsStr(StringBuffer buf, int indentLevel){
+  void _writeFieldsStr(StringBuffer buf, int indentLevel) {
     int totalIndent = indentLevel * CodegenStyle.indent;
     CodegenTool.writeIndent(buf, totalIndent);
     buf.write("[");
-    for (String varName in _enumVarNames){
+    for (String varName in _enumVarNames) {
       buf.write(name);
       buf.write(".");
       buf.write(varName);
@@ -46,7 +46,7 @@ class EnumSpecGen extends CustomTypeSpecGen{
   }
 
   @override
-  void genCode(StringBuffer buf, [int indentLevel = 0]) {
+  void writeCode(StringBuffer buf, [int indentLevel = 0]) {
     // buf.write(GenCodeStyle.magicSign);
     // buf.write(_varName);
     // buf.write(GenCodeStyle.markSep);

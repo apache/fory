@@ -17,6 +17,21 @@
  * under the License.
  */
 
-abstract interface class Furiable {
-  Type get $foryType;
+import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
+import 'package:fory/src/util/string_util.dart';
+
+class FieldSpecSorter {
+  const FieldSpecSorter();
+
+  void sortFieldsByName(List<FieldSpecImmutable> fields) {
+    for (int i = 0; i < fields.length; ++i) {
+      fields[i].transName ??=
+          StringUtil.lowerCamelToLowerUnderscore(fields[i].name);
+    }
+    fields.sort(
+      (a, b) {
+        return a.transName!.compareTo(b.transName!);
+      },
+    );
+  }
 }

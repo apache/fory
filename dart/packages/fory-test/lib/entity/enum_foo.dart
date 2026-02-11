@@ -22,10 +22,8 @@ import 'package:fory/fory.dart';
 part '../generated/enum_foo.g.dart';
 
 @foryEnum
-enum EnumFoo {
-  A,
-  B
-}
+enum EnumFoo { A, B }
+
 @foryEnum
 enum EnumSubClass {
   A,

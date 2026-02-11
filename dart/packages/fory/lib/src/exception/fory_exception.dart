@@ -17,10 +17,10 @@
  * under the License.
  */
 
-abstract class ForyException extends Error{
+abstract class ForyException extends Error {
   ForyException();
 
-  void giveExceptionMessage(StringBuffer buf){}
+  void giveExceptionMessage(StringBuffer buf) {}
 
   @override
   String toString() {

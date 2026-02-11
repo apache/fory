@@ -25,7 +25,8 @@ final class TestFileUtil {
   static const String generatedFolder = 'test/generated_file/';
 
   static getWriteFile(String name, Uint8List bytes) {
-    String absolutePath = path.join(Directory.current.path, generatedFolder, name);
+    String absolutePath =
+        path.join(Directory.current.path, generatedFolder, name);
     File file = File(absolutePath);
     if (!file.existsSync()) {
       file.createSync(recursive: true);

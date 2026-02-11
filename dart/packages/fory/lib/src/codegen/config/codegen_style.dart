@@ -17,7 +17,7 @@
  * under the License.
  */
 
-class CodegenStyle{
+class CodegenStyle {
   static const int indent = 2;
   static const String magicSign = r'//$FORY ';
   static const String markSep = ' ';

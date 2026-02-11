@@ -32,7 +32,9 @@ class CodeRules {
   ''';
 
   // field can't override
-  static const String unsupportFieldOverriding = 'Classes in the inheritance chain cannot have members with the same name, meaning field overriding is not supported.';
+  static const String unsupportFieldOverriding =
+      'Classes in the inheritance chain cannot have members with the same name, meaning field overriding is not supported.';
 
-  static const String circularReferenceIncapableRisk = "This class's fields (including those from the inheritance chain) are not all basic types, so it may have circular references. To handle this, the class must have a constructor without required parameters, but the constructor specified by @ForyCons does not meet this condition. If you're sure there will be no circular references, use @ForyClass(promiseAcyclic: true).";
+  static const String circularReferenceIncapableRisk =
+      "This class's fields (including those from the inheritance chain) are not all basic types, so it may have circular references. To handle this, the class must have a constructor without required parameters, but the constructor specified by @ForyCons does not meet this condition. If you're sure there will be no circular references, use @ForyClass(promiseAcyclic: true).";
 }

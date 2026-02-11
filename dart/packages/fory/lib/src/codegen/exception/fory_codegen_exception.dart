@@ -26,8 +26,7 @@ abstract class ForyCodegenException extends ForyException {
   /// will generate warning and error location
   @override
   void giveExceptionMessage(StringBuffer buf) {
-    buf.write(
-'''[FORY]: Analysis error detected!
+    buf.write('''[FORY]: Analysis error detected!
 You need to make sure your codes don't contain any grammar error itself.
 And review the error messages below, correct the issues, and then REGENERATE the code.
 ''');

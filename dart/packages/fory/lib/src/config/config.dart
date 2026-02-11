@@ -17,6 +17,6 @@
  * under the License.
  */
 
-abstract class Config{
+abstract class Config {
   const Config();
 }

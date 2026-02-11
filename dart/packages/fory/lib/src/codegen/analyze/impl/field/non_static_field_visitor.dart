@@ -20,28 +20,28 @@
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/visitor.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/public_accessor_field.dart';
+import 'package:fory/src/codegen/meta/public_accessor_descriptor.dart';
 
 class NonStaticFieldVisitor extends SimpleElementVisitor {
   final LocationMark _locationMark;
   final Set<String>? _superParamNames;
 
   final List<FieldSpecImmutable> fields = [];
-  final List<PublicAccessorField> accessors = [];
+  final List<PublicAccessorDescriptor> accessors = [];
 
   NonStaticFieldVisitor(
     this._superParamNames,
-    @LocationEnsure(LocationLevel.clsLevel) this._locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) this._locationMark,
+  ) {
     assert(_locationMark.ensureClassLevel);
   }
 
-  bool _checkFieldOverride(String fieldName){
+  bool _checkFieldOverride(String fieldName) {
     return (_superParamNames != null && _superParamNames.contains(fieldName));
   }
 
@@ -49,13 +49,14 @@ class NonStaticFieldVisitor extends SimpleElementVisitor {
   visitFieldElement(FieldElement element) {
     element.type.element?.library;
     if (element.isStatic) return;
-    Either<FieldSpecImmutable, PublicAccessorField>? field = Analyzer.fieldAnalyzer.analyze(
+    Either<FieldSpecImmutable, PublicAccessorDescriptor>? field =
+        Analyzer.fieldAnalyzer.analyze(
       element,
       _checkFieldOverride,
       _locationMark,
     );
     if (field == null) return;
-    if (field.isLeft){
+    if (field.isLeft) {
       fields.add(field.left!);
     } else {
       accessors.add(field.right!);

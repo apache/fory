@@ -17,7 +17,7 @@
  * under the License.
  */
 
-class ForyHeaderConst{
+class ForyHeaderConst {
   static const int nullFlag = 1;
   static const int crossLanguageFlag = 1 << 1;
   static const int outOfBandFlag = 1 << 2;

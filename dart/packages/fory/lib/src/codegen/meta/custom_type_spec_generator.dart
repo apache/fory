@@ -17,11 +17,13 @@
  * under the License.
  */
 
-import 'package:meta/meta_meta.dart';
-import 'package:fory/src/codegen/const/location_level.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
+import 'package:meta/meta.dart';
 
-@Target({TargetKind.parameter})
-class LocationEnsure{
-  final LocationLevel locationLevel;
-  const LocationEnsure(this.locationLevel);
+@immutable
+abstract class CustomTypeSpecGenerator extends GeneratedCodePart {
+  final String name;
+  final String importPath;
+
+  const CustomTypeSpecGenerator(this.name, this.importPath);
 }

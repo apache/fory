@@ -83,7 +83,7 @@ final $TypedDataArrayExample = ClassSpec(
   () => TypedDataArrayExample(),
 );
 
-mixin _$TypedDataArrayExampleFory implements Furiable {
+mixin _$TypedDataArrayExampleFory implements ForyTypeProvider {
   @override
-  Type get $foryType => TypedDataArrayExample;
+  Type get foryType => TypedDataArrayExample;
 }

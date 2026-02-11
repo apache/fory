@@ -20,7 +20,7 @@
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
@@ -31,7 +31,7 @@ import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/serializer/custom_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
 final class ClassSerializerCache extends SerializerCache {
   const ClassSerializerCache();
@@ -46,7 +46,7 @@ final class ClassSerializerCache extends SerializerCache {
       spec.noArgConstruct,
       typeWraps,
       conf.compatible,
-      conf.refTracking,
+      conf.ref,
     );
   }
 }
@@ -64,7 +64,7 @@ final class ClassSerializer extends CustomSerializer<Object> {
   late final int _toForyHash;
 
   bool _hashComputed = false;
-  bool _fieldsSersComputed = false;
+  bool _fieldSerializersComputed = false;
 
   ClassSerializer(
     this._fields,
@@ -84,10 +84,10 @@ final class ClassSerializer extends CustomSerializer<Object> {
   }
 
   @override
-  Object read(ByteReader br, int refId, DeserializerPack pack) {
-    if (!_fieldsSersComputed) {
-      pack.xtypeResolver.setSersForTypeWrap(_fieldTypeWraps);
-      _fieldsSersComputed = true;
+  Object read(ByteReader br, int refId, DeserializationContext pack) {
+    if (!_fieldSerializersComputed) {
+      pack.typeResolver.bindSerializers(_fieldTypeWraps);
+      _fieldSerializersComputed = true;
     }
     if (!_compatible && !_hashComputed) {
       var pair =
@@ -121,13 +121,15 @@ final class ClassSerializer extends CustomSerializer<Object> {
         pack.typeWrapStack.push(typeWrap);
       }
       late Object? fieldValue;
-      Serializer? ser = _fieldTypeWraps[i].ser;
-      if (ser == null) {
-        fieldValue = pack.foryDeser.xReadRefNoSer(br, pack);
+      Serializer? serializer = _fieldTypeWraps[i].serializer;
+      if (serializer == null) {
+        fieldValue =
+            pack.deserializationCoordinator.readDynamicWithRef(br, pack);
       } else if (typeWrap.nullable) {
-        fieldValue = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+        fieldValue = pack.deserializationCoordinator
+            .readWithSerializer(br, serializer, pack);
       } else {
-        fieldValue = ser.read(br, -1, pack);
+        fieldValue = serializer.read(br, -1, pack);
       }
       assert(fieldSpec.setter != null);
       fieldSpec.setter!(obj, fieldValue);
@@ -139,10 +141,10 @@ final class ClassSerializer extends CustomSerializer<Object> {
   }
 
   @override
-  void write(ByteWriter bw, Object v, SerializerPack pack) {
-    if (!_fieldsSersComputed) {
-      pack.xtypeResolver.setSersForTypeWrap(_fieldTypeWraps);
-      _fieldsSersComputed = true;
+  void write(ByteWriter bw, Object v, SerializationContext pack) {
+    if (!_fieldSerializersComputed) {
+      pack.typeResolver.bindSerializers(_fieldTypeWraps);
+      _fieldSerializersComputed = true;
     }
     if (!_compatible && !_hashComputed) {
       var pair =
@@ -163,13 +165,14 @@ final class ClassSerializer extends CustomSerializer<Object> {
         pack.typeWrapStack.push(typeWrap);
       }
       Object? fieldValue = fieldSpec.getter!(v);
-      Serializer? ser = typeWrap.ser;
-      if (ser == null) {
-        pack.forySer.xWriteRefNoSer(bw, fieldValue, pack);
+      Serializer? serializer = typeWrap.serializer;
+      if (serializer == null) {
+        pack.serializationCoordinator.writeDynamicWithRef(bw, fieldValue, pack);
       } else if (typeWrap.nullable) {
-        pack.forySer.xWriteRefWithSer(bw, ser, fieldValue, pack);
+        pack.serializationCoordinator
+            .writeWithSerializer(bw, serializer, fieldValue, pack);
       } else {
-        ser.write(bw, fieldValue!, pack);
+        serializer.write(bw, fieldValue!, pack);
       }
       if (hasGenericsParam) {
         pack.typeWrapStack.pop();
@@ -177,7 +180,8 @@ final class ClassSerializer extends CustomSerializer<Object> {
     }
   }
 
-  Object _byParameterizedCons(ByteReader br, int refId, DeserializerPack pack) {
+  Object _byParameterizedCons(
+      ByteReader br, int refId, DeserializationContext pack) {
     List<Object?> args = List.filled(_fields.length, null);
     for (int i = 0; i < _fields.length; ++i) {
       FieldSpec fieldSpec = _fields[i];
@@ -187,13 +191,14 @@ final class ClassSerializer extends CustomSerializer<Object> {
       if (hasGenericsParam) {
         pack.typeWrapStack.push(typeWrap);
       }
-      Serializer? ser = typeWrap.ser;
-      if (ser == null) {
-        args[i] = pack.foryDeser.xReadRefNoSer(br, pack);
+      Serializer? serializer = typeWrap.serializer;
+      if (serializer == null) {
+        args[i] = pack.deserializationCoordinator.readDynamicWithRef(br, pack);
       } else if (typeWrap.nullable) {
-        args[i] = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+        args[i] = pack.deserializationCoordinator
+            .readWithSerializer(br, serializer, pack);
       } else {
-        args[i] = ser.read(br, -1, pack);
+        args[i] = serializer.read(br, -1, pack);
       }
       if (hasGenericsParam) {
         pack.typeWrapStack.pop();

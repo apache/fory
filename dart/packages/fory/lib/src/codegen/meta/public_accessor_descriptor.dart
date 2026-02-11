@@ -17,18 +17,15 @@
  * under the License.
  */
 
-import 'package:fory/src/const/types.dart';
-import 'package:analyzer/dart/element/type.dart';
+import 'package:meta/meta.dart';
 
-typedef TypeDecision = ({InterfaceType type, bool forceNullable});
+/// During the Dart analyzer analysis phase, both setters and getters are analyzed as FieldElement.
+/// Here, AccessorField is used to represent them.
+@immutable
+class PublicAccessorDescriptor {
+  final String name;
+  final bool hasSetter;
+  final bool hasGetter;
 
-class ObjTypeWrapper{
-  static const namedEnum = ObjTypeWrapper(ObjType.NAMED_ENUM, true,);
-  static const namedStruct = ObjTypeWrapper(ObjType.NAMED_STRUCT, false);
-  static const unknownStruct = ObjTypeWrapper(ObjType.UNKNOWN, false);
-
-  final ObjType objType; // null means unsupported
-  final bool certainForSer;
-
-  const ObjTypeWrapper(this.objType, this.certainForSer);
+  const PublicAccessorDescriptor(this.name, this.hasSetter, this.hasGetter);
 }

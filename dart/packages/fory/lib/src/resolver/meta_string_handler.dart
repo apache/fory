@@ -17,7 +17,7 @@
  * under the License.
  */
 
-abstract class MataStringHandler{
+abstract class MataStringHandler {
   const MataStringHandler();
   final int smallStringThreshold = 16;
 }

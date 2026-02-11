@@ -28,64 +28,66 @@ import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/meta_string_writing_resolver.dart';
 import 'package:fory/src/resolver/serialization_ref_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/fory_header_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/datatype/int8.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/float32.dart';
 
-class SerializeCoordinator {
-  static final SerializeCoordinator _instance =
-      SerializeCoordinator._internal();
-  static SerializeCoordinator get I => _instance;
-  SerializeCoordinator._internal();
+class SerializationRuntime {
+  static final SerializationRuntime _instance =
+      SerializationRuntime._internal();
+  static SerializationRuntime get I => _instance;
+  SerializationRuntime._internal();
 
-  static final ForyHeaderSerializer _foryHeaderSer = ForyHeaderSerializer.I;
+  static final ForyHeaderSerializer _foryHeaderSerializer =
+      ForyHeaderSerializer.I;
 
-  void _write(Object? obj, ForyConfig conf, XtypeResolver xtypeResolver,
+  void _write(Object? obj, ForyConfig conf, TypeResolver typeResolver,
       ByteWriter writer) {
-    _foryHeaderSer.write(writer, obj == null, conf);
-    xtypeResolver.resetWriteContext();
-    SerializerPack pack = SerializerPack(
+    _foryHeaderSerializer.write(writer, obj == null, conf);
+    typeResolver.resetWriteContext();
+    SerializationContext pack = SerializationContext(
       StructHashResolver.inst,
-      xtypeResolver.getTagByCustomDartType,
+      typeResolver.getRegisteredTag,
       this,
-      xtypeResolver,
-      SerializationRefResolver.getOne(conf.refTracking),
+      typeResolver,
+      SerializationRefResolver.getOne(conf.ref),
       SerializationRefResolver.noRefResolver,
       MetaStringWritingResolver.newInst,
       Stack<TypeSpecWrap>(),
     );
-    xWriteRefNoSer(writer, obj, pack);
+    writeDynamicWithRef(writer, obj, pack);
     // pack.resetAndRecycle();
   }
 
   Uint8List write(
     Object? obj,
     ForyConfig conf,
-    XtypeResolver xtypeResolver,
+    TypeResolver typeResolver,
   ) {
     ByteWriter bw = ByteWriter();
-    _write(obj, conf, xtypeResolver, bw);
+    _write(obj, conf, typeResolver, bw);
     return bw.takeBytes();
   }
 
-  void writeWithWriter(Object? obj, ForyConfig conf,
-      XtypeResolver xtypeResolver, ByteWriter writer) {
-    _write(obj, conf, xtypeResolver, writer);
+  void writeWithWriter(Object? obj, ForyConfig conf, TypeResolver typeResolver,
+      ByteWriter writer) {
+    _write(obj, conf, typeResolver, writer);
   }
 
-  void xWriteRefNoSer(ByteWriter bw, Object? obj, SerializerPack pack) {
-    SerializationRefMeta serRef = pack.refResolver.getRefId(obj);
-    bw.writeInt8(serRef.refFlag.id);
-    if (serRef.refId != null) {
-      bw.writeVarUint32(serRef.refId!);
+  void writeDynamicWithRef(
+      ByteWriter bw, Object? obj, SerializationContext pack) {
+    SerializationRefMeta serializerWithRef = pack.refResolver.getRefId(obj);
+    bw.writeInt8(serializerWithRef.refFlag.id);
+    if (serializerWithRef.refId != null) {
+      bw.writeVarUint32(serializerWithRef.refId!);
     }
-    if (serRef.refFlag.noNeedToSer) return;
-    TypeInfo typeInfo = pack.xtypeResolver.writeGetTypeInfo(bw, obj!, pack);
+    if (serializerWithRef.refFlag.noNeedToSerialize) return;
+    TypeInfo typeInfo = pack.typeResolver.writeTypeInfo(bw, obj!, pack);
     switch (typeInfo.objType) {
       case ObjType.BOOL:
         bw.writeBool(obj as bool);
@@ -111,12 +113,13 @@ class SerializeCoordinator {
         bw.writeFloat64(obj as double);
         break;
       default:
-        typeInfo.ser.write(bw, obj, pack);
+        typeInfo.serializer.write(bw, obj, pack);
     }
   }
 
-  void xWriteNonRefNoSer(ByteWriter bw, Object obj, SerializerPack pack) {
-    TypeInfo typeInfo = pack.xtypeResolver.writeGetTypeInfo(bw, obj, pack);
+  void writeDynamicWithoutRef(
+      ByteWriter bw, Object obj, SerializationContext pack) {
+    TypeInfo typeInfo = pack.typeResolver.writeTypeInfo(bw, obj, pack);
     switch (typeInfo.objType) {
       case ObjType.BOOL:
         bw.writeBool(obj as bool);
@@ -142,25 +145,25 @@ class SerializeCoordinator {
         bw.writeFloat64(obj as double);
         break;
       default:
-        typeInfo.ser.write(bw, obj, pack);
+        typeInfo.serializer.write(bw, obj, pack);
     }
   }
 
-  void xWriteRefWithSer(
-      ByteWriter bw, Serializer ser, Object? obj, SerializerPack pack) {
-    if (ser.writeRef) {
-      SerializationRefMeta serRef = pack.refResolver.getRefId(obj);
-      bw.writeInt8(serRef.refFlag.id);
-      if (serRef.refId != null) {
-        bw.writeVarUint32(serRef.refId!);
+  void writeWithSerializer(ByteWriter bw, Serializer serializer, Object? obj,
+      SerializationContext pack) {
+    if (serializer.writeRef) {
+      SerializationRefMeta serializerWithRef = pack.refResolver.getRefId(obj);
+      bw.writeInt8(serializerWithRef.refFlag.id);
+      if (serializerWithRef.refId != null) {
+        bw.writeVarUint32(serializerWithRef.refId!);
       }
-      if (serRef.refFlag.noNeedToSer) return;
-      ser.write(bw, obj, pack);
+      if (serializerWithRef.refFlag.noNeedToSerialize) return;
+      serializer.write(bw, obj, pack);
     } else {
       RefFlag refFlag = pack.noRefResolver.getRefFlag(obj);
       bw.writeInt8(refFlag.id);
-      if (refFlag.noNeedToSer) return;
-      ser.write(bw, obj, pack);
+      if (refFlag.noNeedToSerialize) return;
+      serializer.write(bw, obj, pack);
     }
   }
 }

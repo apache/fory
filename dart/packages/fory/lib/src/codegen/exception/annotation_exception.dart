@@ -25,14 +25,17 @@ abstract class AnnotationException extends ForyCodegenException {
   AnnotationException(super._where);
 }
 
-class InvalidClassTagException extends ForyCodegenException{
-
+class InvalidClassTagException extends ForyCodegenException {
   final List<String>? _classesWithEmptyTag;
   final List<String>? _classesWithTooLongTag;
   final Map<String, List<String>>? _repeatedTags;
 
-  InvalidClassTagException(this._classesWithEmptyTag, this._classesWithTooLongTag, this._repeatedTags, [super._where]){
-    assert(_classesWithEmptyTag != null || _repeatedTags != null || _classesWithTooLongTag != null);
+  InvalidClassTagException(this._classesWithEmptyTag,
+      this._classesWithTooLongTag, this._repeatedTags,
+      [super._where]) {
+    assert(_classesWithEmptyTag != null ||
+        _repeatedTags != null ||
+        _classesWithTooLongTag != null);
   }
 
   @override
@@ -63,7 +66,6 @@ class InvalidClassTagException extends ForyCodegenException{
     }
   }
 
-
   @override
   String toString() {
     final buf = StringBuffer();
@@ -76,16 +78,14 @@ class ConflictAnnotationException extends AnnotationException {
   final String _targetAnnotation;
   final String _conflictAnnotation;
 
-  ConflictAnnotationException(
-    this._targetAnnotation,
-    this._conflictAnnotation,
-    [super._where]
-  );
+  ConflictAnnotationException(this._targetAnnotation, this._conflictAnnotation,
+      [super._where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
     super.giveExceptionMessage(buf);
-    buf.write('The annotation $_targetAnnotation conflicts with $_conflictAnnotation.');
+    buf.write(
+        'The annotation $_targetAnnotation conflicts with $_conflictAnnotation.');
     buf.write('\n');
   }
 
@@ -97,12 +97,12 @@ class ConflictAnnotationException extends AnnotationException {
   }
 }
 
-
 class DuplicatedAnnotationException extends AnnotationException {
   final String _annotation;
   final String _displayName;
 
-  DuplicatedAnnotationException(this._annotation, this._displayName, [super._where]);
+  DuplicatedAnnotationException(this._annotation, this._displayName,
+      [super._where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -122,13 +122,15 @@ class DuplicatedAnnotationException extends AnnotationException {
   }
 }
 
-class CodegenUnregisteredTypeException extends AnnotationException{
+class CodegenUnregisteredTypeException extends AnnotationException {
   final String _libPath;
   final String _clsName;
 
   final String _annotation;
 
-  CodegenUnregisteredTypeException(this._libPath, this._clsName, this._annotation, [super._where]);
+  CodegenUnregisteredTypeException(
+      this._libPath, this._clsName, this._annotation,
+      [super._where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -154,7 +156,9 @@ class InvalidAnnotationTargetException extends AnnotationException {
   final String _theTarget;
   final List<TargetKind> _supported;
 
-  InvalidAnnotationTargetException(this._annotation, this._theTarget, this._supported, [super._where]);
+  InvalidAnnotationTargetException(
+      this._annotation, this._theTarget, this._supported,
+      [super._where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {

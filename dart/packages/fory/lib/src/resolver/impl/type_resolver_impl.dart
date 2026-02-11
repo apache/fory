@@ -44,20 +44,20 @@ import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
-import 'package:fory/src/resolver/tag_str_encode_resolver.dart';
+import 'package:fory/src/resolver/tag_string_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
-import 'package:fory/src/resolver/xtype_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/class_serializer.dart';
 import 'package:fory/src/serializer/enum_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/murmur3hash.dart';
 import 'package:fory/src/util/string_util.dart';
 
 import '../../exception/deserialization_exception.dart'
     show UnsupportedTypeException;
 
-final class XtypeResolverImpl extends XtypeResolver {
+final class TypeResolverImpl extends TypeResolver {
   static const int _metaSizeMask = 0xff;
   static const int _hasFieldsMetaFlag = 1 << 8;
   static const int _compressMetaFlag = 1 << 9;
@@ -92,7 +92,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   static const DartTypeResolver dartTypeResolver = DartTypeResolver.I;
   final ForyContext _ctx;
   final MetaStringResolver _msResolver;
-  final TagStringEncodeResolver _tstrEncoder;
+  final TagStringResolver _tstrEncoder;
   final Map<LongLongKey, TypeInfo> _tagHash2Info;
   final MetaStringEncoder _packageNameEncoder;
   final MetaStringEncoder _typeNameEncoder;
@@ -104,7 +104,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   final List<TypeInfo> _readTypeInfos;
   final Map<Type, Uint8List> _typeToEncodedTypeDef;
 
-  XtypeResolverImpl(
+  TypeResolverImpl(
     super.conf,
   )   : _tagHash2Info = HashMap<LongLongKey, TypeInfo>(),
         _packageNameEncoder = Encoders.packageEncoder,
@@ -117,43 +117,62 @@ final class XtypeResolverImpl extends XtypeResolver {
         _readTypeInfos = <TypeInfo>[],
         _typeToEncodedTypeDef = HashMap<Type, Uint8List>(),
         _msResolver = MetaStringResolver.newInst,
-        _tstrEncoder = TagStringEncodeResolver.newInst,
+        _tstrEncoder = TagStringResolver.newInst,
         _ctx = ForyContext(conf) {
     _ctx.initForDefaultTypes();
   }
 
   @override
-  void reg(CustomTypeSpec spec, [Object? tagOrTypeId]) {
-    if (tagOrTypeId == null) {
-      String typeName = spec.dartType.toString();
-      _regWithNamespace(spec, typeName, typeName);
+  void registerType(
+    CustomTypeSpec spec, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    if (typeId != null) {
+      if (namespace != null || typename != null) {
+        throw RegistrationArgumentException(
+            'typeId cannot be used with namespace/typename');
+      }
+      _regWithTypeId(spec, typeId);
       return;
     }
-    if (tagOrTypeId is int) {
-      _regWithTypeId(spec, tagOrTypeId);
+
+    if (typename == null && namespace != null) {
+      throw RegistrationArgumentException(
+          'namespace cannot be set when typename is null');
+    }
+
+    if (typename == null) {
+      final String defaultName = spec.dartType.toString();
+      _regWithNamespace(spec, defaultName, defaultName);
       return;
     }
-    if (tagOrTypeId is! String) {
-      throw RegistrationArgumentException(tagOrTypeId);
+
+    if (namespace != null) {
+      final String fullName =
+          namespace.isEmpty ? typename : '$namespace.$typename';
+      _regWithNamespace(spec, fullName, typename, namespace);
+      return;
     }
-    String tag = tagOrTypeId;
-    int idx = tag.lastIndexOf('.');
-    if (idx == -1) {
-      _regWithNamespace(spec, tag, tag);
-    } else {
-      String ns = tag.substring(0, idx);
-      String tn = tag.substring(idx + 1);
-      _regWithNamespace(spec, tag, tn, ns);
+
+    final int separator = typename.lastIndexOf('.');
+    if (separator == -1) {
+      _regWithNamespace(spec, typename, typename);
+      return;
     }
+    final String inferredNamespace = typename.substring(0, separator);
+    final String simpleName = typename.substring(separator + 1);
+    _regWithNamespace(spec, typename, simpleName, inferredNamespace);
   }
 
   @override
-  void registerSerializer(Type type, Serializer ser) {
+  void registerSerializer(Type type, Serializer serializer) {
     TypeInfo? typeInfo = _ctx.type2TypeInfo[type];
     if (typeInfo == null) {
       throw UnregisteredTypeException(type);
     }
-    typeInfo.ser = ser;
+    typeInfo.serializer = serializer;
   }
 
   void _regWithNamespace(CustomTypeSpec spec, String tag, String tn,
@@ -172,8 +191,8 @@ final class XtypeResolverImpl extends XtypeResolver {
       tnMsb,
       nsMsb,
     );
-    typeInfo.ser = _getSerFor(spec);
-    _ctx.reg(typeInfo);
+    typeInfo.serializer = _getSerializerFor(spec);
+    _ctx.registerType(typeInfo);
     _type2Spec[typeInfo.dartType] = spec;
   }
 
@@ -189,8 +208,8 @@ final class XtypeResolverImpl extends XtypeResolver {
       null,
       userTypeId: normalizedTypeId,
     );
-    typeInfo.ser = _getSerFor(spec);
-    _ctx.reg(typeInfo);
+    typeInfo.serializer = _getSerializerFor(spec);
+    _ctx.registerType(typeInfo);
     _type2Spec[typeInfo.dartType] = spec;
     if (resolvedObjType == ObjType.STRUCT) {
       _ctx.userTypeId2TypeInfo[
@@ -242,20 +261,20 @@ final class XtypeResolverImpl extends XtypeResolver {
     }
   }
 
-  /// The ClassSer generated here will not analyze the corresponding ser for each TypeArg.
+  /// The ClassSerializer generated here will not analyze the corresponding serializer for each TypeArg.
   /// There are two considerations for this:
   /// First, it intends to delay the specific analysis until the first parsing of this Class,
   /// to prevent too many tasks from being executed at the beginning.
-  /// Second, if the Ser corresponding to the arg is parsed here,
+  /// Second, if the serializer corresponding to the arg is parsed here,
   /// many Enums may still be registered later, and they cannot be recognized here,
   /// resulting in an error that they are not registered even though they are.
-  Serializer _getSerFor(CustomTypeSpec spec) {
+  Serializer _getSerializerFor(CustomTypeSpec spec) {
     if (spec.objType == ObjType.NAMED_ENUM || spec.objType == ObjType.ENUM) {
-      Serializer ser = EnumSerializer.cache
+      Serializer serializer = EnumSerializer.cache
           .getSerializerWithSpec(_ctx.conf, spec, spec.dartType);
-      return ser;
+      return serializer;
     }
-    // Indicates ClassSer
+    // Indicates ClassSerializer
     return ClassSerializer.cache
         .getSerializerWithSpec(_ctx.conf, spec as ClassSpec, spec.dartType);
   }
@@ -263,7 +282,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   /// This type must be a user-defined class or enum
   @override
   @inline
-  String getTagByCustomDartType(Type type) {
+  String getRegisteredTag(Type type) {
     String? tag = _ctx.type2TypeInfo[type]?.tag;
     if (tag == null) {
       throw UnregisteredTypeException(type);
@@ -272,21 +291,21 @@ final class XtypeResolverImpl extends XtypeResolver {
   }
 
   @override
-  void setSersForTypeWrap(List<TypeSpecWrap> typeWraps) {
+  void bindSerializers(List<TypeSpecWrap> typeWraps) {
     TypeSpecWrap wrap;
     for (int i = 0; i < typeWraps.length; ++i) {
       wrap = typeWraps[i];
-      if (wrap.certainForSer) {
-        wrap.ser = _ctx.type2TypeInfo[wrap.type]!.ser;
+      if (wrap.serializationCertain) {
+        wrap.serializer = _ctx.type2TypeInfo[wrap.type]!.serializer;
       } else if (wrap.objType == ObjType.LIST) {
-        wrap.ser = _ctx.abstractListSer;
+        wrap.serializer = _ctx.abstractListSerializer;
       } else if (wrap.objType == ObjType.SET) {
-        wrap.ser = _ctx.abstractSetSer;
+        wrap.serializer = _ctx.abstractSetSerializer;
       } else if (wrap.objType == ObjType.MAP) {
-        wrap.ser = _ctx.abstractMapSer;
+        wrap.serializer = _ctx.abstractMapSerializer;
       }
-      // At this point, ser is not set, ser is still null
-      setSersForTypeWrap(wrap.genericsArgs);
+      // At this point, serializer is not set, serializer is still null
+      bindSerializers(wrap.genericsArgs);
     }
   }
 
@@ -376,7 +395,7 @@ final class XtypeResolverImpl extends XtypeResolver {
   }
 
   @override
-  TypeInfo writeGetTypeInfo(ByteWriter bw, Object obj, SerializerPack pack) {
+  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializationContext pack) {
     Type dartType = dartTypeResolver.getForyType(obj);
     TypeInfo? typeInfo = _ctx.type2TypeInfo[dartType];
     if (typeInfo == null) {
@@ -778,10 +797,10 @@ final class XtypeResolverImpl extends XtypeResolver {
     if (typeInfo == null) {
       throw UnregisteredTypeException(type);
     }
-    ClassSerializer ser = typeInfo.ser as ClassSerializer;
-    StructHashPair pair = ser.getHashPairForTest(
+    ClassSerializer serializer = typeInfo.serializer as ClassSerializer;
+    StructHashPair pair = serializer.getHashPairForTest(
       StructHashResolver.inst,
-      getTagByCustomDartType,
+      getRegisteredTag,
     );
     return pair;
   }

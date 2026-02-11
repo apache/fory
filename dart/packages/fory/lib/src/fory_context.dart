@@ -32,7 +32,7 @@ import 'package:fory/src/const/dart_type.dart';
 import 'package:fory/src/const/types.dart';
 
 class ForyContext {
-  // Cannot be static because TypeInfo contains the Ser field
+  // Cannot be static because TypeInfo contains the serializer field
   final Iterable<MapEntry<Type, TypeInfo>> _defaultTypeInfos =
       DartTypeEnum.values.where((e) => e.objType != null).map((e) => MapEntry(
             e.dartType,
@@ -45,9 +45,9 @@ class ForyContext {
   final Map<LongLongKey, TypeInfo> userTypeId2TypeInfo;
   late final List<TypeInfo?> objTypeId2TypeInfo;
 
-  late final Serializer abstractListSer;
-  late final Serializer abstractSetSer;
-  late final Serializer abstractMapSer;
+  late final Serializer abstractListSerializer;
+  late final Serializer abstractSetSerializer;
+  late final Serializer abstractMapSerializer;
 
   ForyContext(this.conf)
       : tag2TypeInfo = HashMap(),
@@ -57,13 +57,13 @@ class ForyContext {
   void initForDefaultTypes() {
     type2TypeInfo.addEntries(_defaultTypeInfos);
     objTypeId2TypeInfo =
-        SerializerPool.setSerForDefaultType(type2TypeInfo, conf);
-    abstractListSer = objTypeId2TypeInfo[ObjType.LIST.id]!.ser;
-    abstractSetSer = objTypeId2TypeInfo[ObjType.SET.id]!.ser;
-    abstractMapSer = objTypeId2TypeInfo[ObjType.MAP.id]!.ser;
+        SerializerPool.setSerializerForDefaultType(type2TypeInfo, conf);
+    abstractListSerializer = objTypeId2TypeInfo[ObjType.LIST.id]!.serializer;
+    abstractSetSerializer = objTypeId2TypeInfo[ObjType.SET.id]!.serializer;
+    abstractMapSerializer = objTypeId2TypeInfo[ObjType.MAP.id]!.serializer;
   }
 
-  void reg(TypeInfo typeInfo) {
+  void registerType(TypeInfo typeInfo) {
     TypeInfo? info = type2TypeInfo[typeInfo.dartType];
     // Check if the type is already registered
     if (info != null) {

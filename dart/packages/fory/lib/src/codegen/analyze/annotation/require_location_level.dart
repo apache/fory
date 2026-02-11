@@ -17,13 +17,11 @@
  * under the License.
  */
 
-import 'package:fory/src/codegen/meta/gen_export.dart';
-import 'package:meta/meta.dart';
+import 'package:meta/meta_meta.dart';
+import 'package:fory/src/codegen/const/location_level.dart';
 
-@immutable
-abstract class CustomTypeSpecGen extends GenExport{
-  final String name;
-  final String importPath;
-
-  const CustomTypeSpecGen(this.name, this.importPath);
+@Target({TargetKind.parameter})
+class RequireLocationLevel {
+  final LocationLevel locationLevel;
+  const RequireLocationLevel(this.locationLevel);
 }

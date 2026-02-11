@@ -21,11 +21,11 @@ import 'package:collection/collection.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/meta/specs/enum_spec.dart';
 
-class TypeSpec{
+class TypeSpec {
   final Type type;
   final ObjType objType;
   final bool nullable;
-  final bool certainForSer;
+  final bool serializationCertain;
   final EnumSpec? enumSpec;
   final List<TypeSpec> genericsArgs;
 
@@ -33,25 +33,25 @@ class TypeSpec{
     this.type,
     this.objType,
     this.nullable,
-    this.certainForSer,
+    this.serializationCertain,
     this.enumSpec,
     this.genericsArgs,
   );
 
   @override
-  int get hashCode => Object.hash(type, objType, nullable, certainForSer, enumSpec, genericsArgs);
+  int get hashCode => Object.hash(
+      type, objType, nullable, serializationCertain, enumSpec, genericsArgs);
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-      (other is TypeSpec &&
-        runtimeType == other.runtimeType &&
-        type == other.type &&
-        objType == other.objType &&
-        nullable == other.nullable &&
-        certainForSer == other.certainForSer &&
-        enumSpec == other.enumSpec &&
-        genericsArgs.equals(other.genericsArgs)
-      );
+        (other is TypeSpec &&
+            runtimeType == other.runtimeType &&
+            type == other.type &&
+            objType == other.objType &&
+            nullable == other.nullable &&
+            serializationCertain == other.serializationCertain &&
+            enumSpec == other.enumSpec &&
+            genericsArgs.equals(other.genericsArgs));
   }
 }

@@ -17,12 +17,12 @@
  * under the License.
  */
 
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
 abstract base class MapSerializer<T extends Map<Object?, Object?>>
@@ -49,7 +49,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   T newMap(int size);
 
   @override
-  T read(ByteReader br, int refId, DeserializerPack pack) {
+  T read(ByteReader br, int refId, DeserializationContext pack) {
     int remaining = br.readVarUint32Small7();
     T map = newMap(remaining);
     if (writeRef) {
@@ -91,23 +91,24 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
       bool valueDeclaredType = (chunkHeader & _valueDeclType) != 0;
       int chunkSize = br.readUint8();
 
-      Serializer keySer;
-      if (keyDeclaredType && keyWrap?.ser != null) {
-        keySer = keyWrap!.ser!;
+      Serializer keySerializer;
+      if (keyDeclaredType && keyWrap?.serializer != null) {
+        keySerializer = keyWrap!.serializer!;
       } else {
-        keySer = pack.xtypeResolver.readTypeInfo(br).ser;
+        keySerializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
-      Serializer valueSer;
-      if (valueDeclaredType && valueWrap?.ser != null) {
-        valueSer = valueWrap!.ser!;
+      Serializer valueSerializer;
+      if (valueDeclaredType && valueWrap?.serializer != null) {
+        valueSerializer = valueWrap!.serializer!;
       } else {
-        valueSer = pack.xtypeResolver.readTypeInfo(br).ser;
+        valueSerializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
 
       for (int i = 0; i < chunkSize; ++i) {
-        Object? key = _readWithSer(br, keySer, keyTrackRef, pack, keyWrap);
-        Object? value =
-            _readWithSer(br, valueSer, valueTrackRef, pack, valueWrap);
+        Object? key =
+            _readWithSerializer(br, keySerializer, keyTrackRef, pack, keyWrap);
+        Object? value = _readWithSerializer(
+            br, valueSerializer, valueTrackRef, pack, valueWrap);
         map[key] = value;
       }
       remaining -= chunkSize;
@@ -116,7 +117,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   }
 
   @override
-  void write(ByteWriter bw, covariant T v, SerializerPack pack) {
+  void write(ByteWriter bw, covariant T v, SerializationContext pack) {
     int mapSize = v.length;
     bw.writeVarUint32Small7(mapSize);
     if (mapSize == 0) {
@@ -160,7 +161,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     Iterator<MapEntry<Object?, Object?>> iterator,
     TypeSpecWrap? keyWrap,
     TypeSpecWrap? valueWrap,
-    SerializerPack pack,
+    SerializationContext pack,
   ) {
     Object key0 = entry.key as Object;
     Object value0 = entry.value as Object;
@@ -169,28 +170,31 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
 
     int chunkHeader = 0;
     ByteWriter chunkWriter = ByteWriter();
-    Serializer keySer;
-    Serializer valueSer;
+    Serializer keySerializer;
+    Serializer valueSerializer;
 
-    if (keyWrap != null && keyWrap.certainForSer && keyWrap.ser != null) {
+    if (keyWrap != null &&
+        keyWrap.serializationCertain &&
+        keyWrap.serializer != null) {
       chunkHeader |= _keyDeclType;
-      keySer = keyWrap.ser!;
+      keySerializer = keyWrap.serializer!;
     } else {
-      final typeInfo =
-          pack.xtypeResolver.writeGetTypeInfo(chunkWriter, key0, pack);
-      keySer = typeInfo.ser;
+      final typeInfo = pack.typeResolver.writeTypeInfo(chunkWriter, key0, pack);
+      keySerializer = typeInfo.serializer;
     }
-    if (valueWrap != null && valueWrap.certainForSer && valueWrap.ser != null) {
+    if (valueWrap != null &&
+        valueWrap.serializationCertain &&
+        valueWrap.serializer != null) {
       chunkHeader |= _valueDeclType;
-      valueSer = valueWrap.ser!;
+      valueSerializer = valueWrap.serializer!;
     } else {
       final typeInfo =
-          pack.xtypeResolver.writeGetTypeInfo(chunkWriter, value0, pack);
-      valueSer = typeInfo.ser;
+          pack.typeResolver.writeTypeInfo(chunkWriter, value0, pack);
+      valueSerializer = typeInfo.serializer;
     }
 
-    bool trackKeyRef = keySer.writeRef;
-    bool trackValueRef = valueSer.writeRef;
+    bool trackKeyRef = keySerializer.writeRef;
+    bool trackValueRef = valueSerializer.writeRef;
     if (trackKeyRef) {
       chunkHeader |= _trackingKeyRef;
     }
@@ -209,9 +213,10 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
           value.runtimeType != valueType) {
         break;
       }
-      _writeWithSer(chunkWriter, key, keySer, trackKeyRef, pack, keyWrap);
-      _writeWithSer(
-          chunkWriter, value, valueSer, trackValueRef, pack, valueWrap);
+      _writeWithSerializer(
+          chunkWriter, key, keySerializer, trackKeyRef, pack, keyWrap);
+      _writeWithSerializer(
+          chunkWriter, value, valueSerializer, trackValueRef, pack, valueWrap);
       ++chunkSize;
       if (iterator.moveNext()) {
         current = iterator.current;
@@ -236,7 +241,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     Object? value,
     TypeSpecWrap? keyWrap,
     TypeSpecWrap? valueWrap,
-    SerializerPack pack,
+    SerializationContext pack,
   ) {
     if (key != null) {
       _writeNullValueChunk(bw, key, keyWrap, pack);
@@ -253,20 +258,22 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     ByteWriter bw,
     Object key,
     TypeSpecWrap? keyWrap,
-    SerializerPack pack,
+    SerializationContext pack,
   ) {
-    Serializer? keySer = keyWrap?.ser;
-    if (keyWrap != null && keyWrap.certainForSer && keySer != null) {
-      bool trackingRef = keySer.writeRef;
+    Serializer? keySerializer = keyWrap?.serializer;
+    if (keyWrap != null &&
+        keyWrap.serializationCertain &&
+        keySerializer != null) {
+      bool trackingRef = keySerializer.writeRef;
       bw.writeUint8(trackingRef
           ? _nullValueKeyDeclTypeTrackingRef
           : _nullValueKeyDeclType);
-      _writeWithSer(bw, key, keySer, trackingRef, pack, keyWrap);
+      _writeWithSerializer(bw, key, keySerializer, trackingRef, pack, keyWrap);
       return;
     }
     bool trackingRef = keyWrap == null
         ? true
-        : (keySer?.writeRef ?? _isRefTrackingEnabled(pack));
+        : (keySerializer?.writeRef ?? _isRefTrackingEnabled(pack));
     bw.writeUint8(_valueHasNull | (trackingRef ? _trackingKeyRef : 0));
     _writeWithDynamic(bw, key, trackingRef, pack, keyWrap);
   }
@@ -275,20 +282,23 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     ByteWriter bw,
     Object value,
     TypeSpecWrap? valueWrap,
-    SerializerPack pack,
+    SerializationContext pack,
   ) {
-    Serializer? valueSer = valueWrap?.ser;
-    if (valueWrap != null && valueWrap.certainForSer && valueSer != null) {
-      bool trackingRef = valueSer.writeRef;
+    Serializer? valueSerializer = valueWrap?.serializer;
+    if (valueWrap != null &&
+        valueWrap.serializationCertain &&
+        valueSerializer != null) {
+      bool trackingRef = valueSerializer.writeRef;
       bw.writeUint8(trackingRef
           ? _nullKeyValueDeclTypeTrackingRef
           : _nullKeyValueDeclType);
-      _writeWithSer(bw, value, valueSer, trackingRef, pack, valueWrap);
+      _writeWithSerializer(
+          bw, value, valueSerializer, trackingRef, pack, valueWrap);
       return;
     }
     bool trackingRef = valueWrap == null
         ? true
-        : (valueSer?.writeRef ?? _isRefTrackingEnabled(pack));
+        : (valueSerializer?.writeRef ?? _isRefTrackingEnabled(pack));
     bw.writeUint8(_keyHasNull | (trackingRef ? _trackingValueRef : 0));
     _writeWithDynamic(bw, value, trackingRef, pack, valueWrap);
   }
@@ -297,12 +307,13 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     ByteReader br,
     int chunkHeader,
     TypeSpecWrap? keyWrap,
-    DeserializerPack pack,
+    DeserializationContext pack,
   ) {
     bool trackRef = (chunkHeader & _trackingKeyRef) != 0;
     bool keyDeclaredType = (chunkHeader & _keyDeclType) != 0;
-    if (keyDeclaredType && keyWrap?.ser != null) {
-      return _readWithSer(br, keyWrap!.ser!, trackRef, pack, keyWrap);
+    if (keyDeclaredType && keyWrap?.serializer != null) {
+      return _readWithSerializer(
+          br, keyWrap!.serializer!, trackRef, pack, keyWrap);
     }
     return _readWithDynamic(br, trackRef, pack, keyWrap);
   }
@@ -311,48 +322,51 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     ByteReader br,
     int chunkHeader,
     TypeSpecWrap? valueWrap,
-    DeserializerPack pack,
+    DeserializationContext pack,
   ) {
     bool trackRef = (chunkHeader & _trackingValueRef) != 0;
     bool valueDeclaredType = (chunkHeader & _valueDeclType) != 0;
-    if (valueDeclaredType && valueWrap?.ser != null) {
-      return _readWithSer(br, valueWrap!.ser!, trackRef, pack, valueWrap);
+    if (valueDeclaredType && valueWrap?.serializer != null) {
+      return _readWithSerializer(
+          br, valueWrap!.serializer!, trackRef, pack, valueWrap);
     }
     return _readWithDynamic(br, trackRef, pack, valueWrap);
   }
 
-  void _writeWithSer(
+  void _writeWithSerializer(
     ByteWriter bw,
     Object value,
-    Serializer ser,
+    Serializer serializer,
     bool trackRef,
-    SerializerPack pack,
+    SerializationContext pack,
     TypeSpecWrap? wrap,
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.forySer.xWriteRefWithSer(bw, ser, value, pack);
+      pack.serializationCoordinator
+          .writeWithSerializer(bw, serializer, value, pack);
     } else {
-      ser.write(bw, value, pack);
+      serializer.write(bw, value, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
     }
   }
 
-  Object? _readWithSer(
+  Object? _readWithSerializer(
     ByteReader br,
-    Serializer ser,
+    Serializer serializer,
     bool trackRef,
-    DeserializerPack pack,
+    DeserializationContext pack,
     TypeSpecWrap? wrap,
   ) {
     bool pushed = _pushWrapForRead(wrap, pack);
     Object? value;
     if (trackRef) {
-      value = pack.foryDeser.xReadRefWithSer(br, ser, pack);
+      value = pack.deserializationCoordinator
+          .readWithSerializer(br, serializer, pack);
     } else {
-      value = ser.read(br, -1, pack);
+      value = serializer.read(br, -1, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
@@ -364,14 +378,14 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     ByteWriter bw,
     Object value,
     bool trackRef,
-    SerializerPack pack,
+    SerializationContext pack,
     TypeSpecWrap? wrap,
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.forySer.xWriteRefNoSer(bw, value, pack);
+      pack.serializationCoordinator.writeDynamicWithRef(bw, value, pack);
     } else {
-      pack.forySer.xWriteNonRefNoSer(bw, value, pack);
+      pack.serializationCoordinator.writeDynamicWithoutRef(bw, value, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
@@ -381,15 +395,16 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   Object _readWithDynamic(
     ByteReader br,
     bool trackRef,
-    DeserializerPack pack,
+    DeserializationContext pack,
     TypeSpecWrap? wrap,
   ) {
     bool pushed = _pushWrapForRead(wrap, pack);
     Object value;
     if (trackRef) {
-      value = pack.foryDeser.xReadRefNoSer(br, pack) as Object;
+      value = pack.deserializationCoordinator.readDynamicWithRef(br, pack)
+          as Object;
     } else {
-      value = pack.foryDeser.xReadNonRefNoSer(br, pack);
+      value = pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
@@ -397,7 +412,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     return value;
   }
 
-  bool _pushWrapForWrite(TypeSpecWrap? wrap, SerializerPack pack) {
+  bool _pushWrapForWrite(TypeSpecWrap? wrap, SerializationContext pack) {
     if (wrap != null && wrap.hasGenericsParam) {
       pack.typeWrapStack.push(wrap);
       return true;
@@ -405,7 +420,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     return false;
   }
 
-  bool _pushWrapForRead(TypeSpecWrap? wrap, DeserializerPack pack) {
+  bool _pushWrapForRead(TypeSpecWrap? wrap, DeserializationContext pack) {
     if (wrap != null && wrap.hasGenericsParam) {
       pack.typeWrapStack.push(wrap);
       return true;
@@ -413,7 +428,7 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     return false;
   }
 
-  bool _isRefTrackingEnabled(SerializerPack pack) {
+  bool _isRefTrackingEnabled(SerializationContext pack) {
     return !identical(pack.refResolver, pack.noRefResolver);
   }
 }

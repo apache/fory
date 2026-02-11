@@ -34,7 +34,7 @@ final class UInt16 extends FixedNum {
   static int _convert(num value) {
     if (value is int) {
       // Apply 16-bit unsigned integer overflow behavior
-      return value & 0xFFFF;  // Keep only the lowest 16 bits (0-65535)
+      return value & 0xFFFF; // Keep only the lowest 16 bits (0-65535)
     } else {
       return _convert(value.toInt());
     }

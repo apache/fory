@@ -18,29 +18,29 @@
  */
 
 import 'package:fory/src/codegen/config/codegen_style.dart';
-import 'package:fory/src/codegen/meta/gen_export.dart';
-import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
-import 'package:fory/src/codegen/meta/lib_import_pack.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
+import 'package:fory/src/codegen/meta/impl/type_spec_generator.dart';
+import 'package:fory/src/codegen/meta/library_import_pack.dart';
 import 'package:fory/src/codegen/tool/codegen_tool.dart';
 
 import 'package:fory/src/const/types.dart';
 
-final class TypeAdapter extends GenExport{
-  final TypeSpecGen typeSpec;
+final class TypeAdapter extends GeneratedCodePart {
+  final TypeSpecGenerator typeSpec;
   TypeAdapter(this.typeSpec);
 
-  void _genCodeInner(
+  void _writeCodeInner(
     StringBuffer buf,
-    LibImportPack imports,
-    TypeSpecGen spec,
-    String paramName,
-    [String? dartCorePrefixWithPoint]
-  ) {
+    LibraryImportPack imports,
+    TypeSpecGenerator spec,
+    String paramName, [
+    String? dartCorePrefixWithPoint,
+  ]) {
     ObjType objType = spec.immutablePart.objType;
     // It is not possible to be compatible with LinkedList here, because it does not implement the Dart List interface.
     // If you want to support LinkedList, changes must also be made here.
-    if (objType == ObjType.LIST || objType == ObjType.SET){
-      if (spec.nullable){
+    if (objType == ObjType.LIST || objType == ObjType.SET) {
+      if (spec.nullable) {
         buf.write('($paramName == null) ? null : ');
       }
       buf.write(spec.getFullNameNoLastNull(imports));
@@ -49,13 +49,14 @@ final class TypeAdapter extends GenExport{
       buf.write(' as ');
       buf.write(spec.getShortName(imports));
       buf.write(').map((v)=>');
-      _genCodeInner(buf, imports, spec.genericsArgs[0],'v', dartCorePrefixWithPoint);
+      _writeCodeInner(
+          buf, imports, spec.genericsArgs[0], 'v', dartCorePrefixWithPoint);
       buf.write(')');
       buf.write(')');
       return;
     }
-    if (objType == ObjType.MAP){
-      if (spec.nullable){
+    if (objType == ObjType.MAP) {
+      if (spec.nullable) {
         buf.write('($paramName == null) ? null : ');
       }
       buf.write(spec.getFullNameNoLastNull(imports));
@@ -65,23 +66,25 @@ final class TypeAdapter extends GenExport{
       buf.write(' as ');
       buf.write(spec.getShortName(imports));
       buf.write(').map((k,v)=>');
-      if (dartCorePrefixWithPoint!=null){
+      if (dartCorePrefixWithPoint != null) {
         buf.write(dartCorePrefixWithPoint);
       }
       buf.write('MapEntry(');
-      _genCodeInner(buf, imports, spec.genericsArgs[0],'k',dartCorePrefixWithPoint);
+      _writeCodeInner(
+          buf, imports, spec.genericsArgs[0], 'k', dartCorePrefixWithPoint);
       buf.write(',');
-      _genCodeInner(buf, imports, spec.genericsArgs[1],'v', dartCorePrefixWithPoint);
+      _writeCodeInner(
+          buf, imports, spec.genericsArgs[1], 'v', dartCorePrefixWithPoint);
       buf.write(')');
       buf.write(')');
       buf.write(')');
       return;
-    }else{
+    } else {
       buf.write('(');
       buf.write(paramName);
       buf.write(' as ');
       buf.write(spec.getShortName(imports));
-      if (spec.nullable){
+      if (spec.nullable) {
         buf.write('?');
       }
       buf.write(')');
@@ -89,14 +92,21 @@ final class TypeAdapter extends GenExport{
   }
 
   @override
-  void genCodeReqImportsInfo(
+  void writeCodeWithImports(
     StringBuffer buf,
-    LibImportPack imports,
-    String? dartCorePrefixWithPoint,
-    [int indentLevel = 0, String paramName = 'v']
-  ) {
+    LibraryImportPack imports,
+    String? dartCorePrefixWithPoint, [
+    int indentLevel = 0,
+    String paramName = 'v',
+  ]) {
     int totalIndent = indentLevel * CodegenStyle.indent;
     CodegenTool.writeIndent(buf, totalIndent);
-    _genCodeInner(buf, imports, typeSpec, paramName, dartCorePrefixWithPoint);
+    _writeCodeInner(
+      buf,
+      imports,
+      typeSpec,
+      paramName,
+      dartCorePrefixWithPoint,
+    );
   }
 }

@@ -21,25 +21,30 @@ import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
-import 'package:fory/src/resolver/impl/xtype_resolver_impl.dart';
+import 'package:fory/src/resolver/impl/type_resolver_impl.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
-abstract base class XtypeResolver {
-  const XtypeResolver(ForyConfig conf);
+abstract base class TypeResolver {
+  const TypeResolver(ForyConfig conf);
 
-  static XtypeResolver newOne(ForyConfig conf) {
-    return XtypeResolverImpl(conf);
+  static TypeResolver newOne(ForyConfig conf) {
+    return TypeResolverImpl(conf);
   }
 
-  void reg(CustomTypeSpec spec, [Object? tagOrTypeId]);
+  void registerType(
+    CustomTypeSpec spec, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  });
 
-  void registerSerializer(Type type, Serializer ser);
+  void registerSerializer(Type type, Serializer serializer);
 
-  void setSersForTypeWrap(List<TypeSpecWrap> typeWraps);
+  void bindSerializers(List<TypeSpecWrap> typeWraps);
 
   void resetWriteContext();
 
@@ -47,9 +52,9 @@ abstract base class XtypeResolver {
 
   TypeInfo readTypeInfo(ByteReader br);
 
-  String getTagByCustomDartType(Type type);
+  String getRegisteredTag(Type type);
 
-  TypeInfo writeGetTypeInfo(ByteWriter bw, Object obj, SerializerPack pack);
+  TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializationContext pack);
 
   /*-----For test only------------------------------------------------*/
   StructHashPair getHashPairForTest(

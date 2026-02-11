@@ -17,11 +17,18 @@
  * under the License.
  */
 
-import 'package:fory/src/meta/meta_string.dart';
-import 'package:fory/src/resolver/impl/tag_str_encode_resolver_impl.dart';
+import 'package:meta/meta.dart';
 
-abstract class TagStringEncodeResolver{
-  static TagStringEncodeResolver get newInst => TagStringEncodeResolverImpl();
-  MetaString encodeTypeName(String tag);
-  MetaString encodeNs(String ns);
+@immutable
+class LibraryImportPack {
+  final String? dartCorePrefix;
+  final Map<int, String> _libIdToPrefix;
+
+  const LibraryImportPack(this._libIdToPrefix, this.dartCorePrefix);
+
+  String? getPrefixByLibId(int libId) {
+    return _libIdToPrefix[libId];
+  }
+
+  bool get noPrefix => _libIdToPrefix.isEmpty;
 }

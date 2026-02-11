@@ -26,9 +26,9 @@ import 'package:fory/fory.dart';
 import 'package:fory/fory_test.dart';
 import 'package:test/test.dart';
 
-class TestFuriable implements Furiable {
+class TestForyTypeProvider implements ForyTypeProvider {
   @override
-  Type get $foryType => String;
+  Type get foryType => String;
 }
 
 void testDeterminingDartType() {
@@ -47,7 +47,7 @@ void testDeterminingDartType() {
     Float32List(10),
     HashSet<int>.from([1, 2, 3]),
     [4, 5, 6],
-    TestFuriable(),
+    TestForyTypeProvider(),
   ];
 
   final resolver = DartTypeResolver.I;
@@ -83,14 +83,12 @@ void testDeterminingDartType() {
   for (int i = 0; i < iterations; i++) {
     var obj = testObjects[i % testObjects.length];
     if (obj is Map) {
-      if (obj is LinkedHashMap) {}
-      else if (obj is HashMap) {}
-    }
-    else if (obj is List) {
-      if (obj is Uint8List) {}
-      else if (obj is Int8List) {}
-    }
-    else if (obj is Set) {
+      if (obj is LinkedHashMap) {
+      } else if (obj is HashMap) {}
+    } else if (obj is List) {
+      if (obj is Uint8List) {
+      } else if (obj is Int8List) {}
+    } else if (obj is Set) {
       if (obj is HashSet) {}
     }
   }
@@ -98,7 +96,7 @@ void testDeterminingDartType() {
   print('type chain: ${stopwatch.elapsedMilliseconds} ms');
 }
 
-void main(){
+void main() {
   test('test determining dartType', () {
     testDeterminingDartType();
   });

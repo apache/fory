@@ -30,13 +30,15 @@ void main() {
       // Valid dates
       check(LocalDate(2025, 3, 19)).isA<LocalDate>();
       check(LocalDate(2024, 2, 29)).isA<LocalDate>(); // Leap year
-      check(LocalDate(2000, 2, 29)).isA<LocalDate>(); // Leap year (divisible by 400)
+      check(LocalDate(2000, 2, 29))
+          .isA<LocalDate>(); // Leap year (divisible by 400)
 
       // Invalid dates
       check(() => LocalDate(2025, 0, 1)).throws<ArgumentError>();
       check(() => LocalDate(2025, 13, 1)).throws<ArgumentError>();
       check(() => LocalDate(2025, 4, 31)).throws<ArgumentError>();
-      check(() => LocalDate(2025, 2, 29)).throws<ArgumentError>(); // Not a leap year
+      check(() => LocalDate(2025, 2, 29))
+          .throws<ArgumentError>(); // Not a leap year
     });
 
     test('parses ISO date strings', () {
@@ -138,8 +140,9 @@ void main() {
       check(beforeEpoch.toEpochDay(utc: true)).equals(-1);
 
       var leapYearDay = LocalDate(2024, 2, 29);
-      check(leapYearDay.toEpochDay(utc: true))
-          .which((days) => days..isGreaterThan(19700)..isLessThan(19850));
+      check(leapYearDay.toEpochDay(utc: true)).which((days) => days
+        ..isGreaterThan(19700)
+        ..isLessThan(19850));
     });
 
     test('calculates epoch milliseconds', () {
@@ -147,7 +150,8 @@ void main() {
       check(epochDate.toEpochMillis(utc: true)).equals(0);
 
       var nextDay = LocalDate(1970, 1, 2);
-      check(nextDay.toEpochMillis(utc: true)).equals(86400000); // 24 hours in milliseconds
+      check(nextDay.toEpochMillis(utc: true))
+          .equals(86400000); // 24 hours in milliseconds
 
       var date2000 = LocalDate(2000, 1, 1);
       check(date2000.toEpochMillis(utc: true)).equals(946684800000);
@@ -158,7 +162,8 @@ void main() {
       check(epochDate.toEpochSeconds(utc: true)).equals(0);
 
       var nextDay = LocalDate(1970, 1, 2);
-      check(nextDay.toEpochSeconds(utc: true)).equals(86400); // 24 hours in seconds
+      check(nextDay.toEpochSeconds(utc: true))
+          .equals(86400); // 24 hours in seconds
     });
 
     test('converts to local DateTime', () {
@@ -246,7 +251,8 @@ void main() {
       // Test day adjustment for shorter months
       date = LocalDate(2025, 1, 31);
       newDate = date.plusMonths(1);
-      check(newDate.toString()).equals('2025-02-28'); // February has 28 days in 2025
+      check(newDate.toString())
+          .equals('2025-02-28'); // February has 28 days in 2025
     });
 
     test('adds years with leap adjustment', () {
@@ -304,7 +310,8 @@ void main() {
       // Test day adjustment for shorter months
       date = LocalDate(2025, 3, 31);
       newDate = date.minusMonths(1);
-      check(newDate.toString()).equals('2025-02-28'); // February has 28 days in 2025
+      check(newDate.toString())
+          .equals('2025-02-28'); // February has 28 days in 2025
     });
 
     test('subtracts years correctly', () {
@@ -321,11 +328,13 @@ void main() {
       // Test leap year adjustment
       date = LocalDate(2025, 2, 28);
       newDate = date.minusYears(1);
-      check(newDate.toString()).equals('2024-02-28'); // No day adjustment needed
+      check(newDate.toString())
+          .equals('2024-02-28'); // No day adjustment needed
 
       date = LocalDate(2025, 2, 28);
       newDate = date.minusYears(5);
-      check(newDate.toString()).equals('2020-02-28'); // Leap year but no adjustment needed
+      check(newDate.toString())
+          .equals('2020-02-28'); // Leap year but no adjustment needed
     });
   });
 
@@ -493,7 +502,8 @@ void main() {
       check(LocalDate.getDaysInMonth(2025, 12)).equals(31); // December
 
       // Leap year
-      check(LocalDate.getDaysInMonth(2024, 2)).equals(29); // February in leap year
+      check(LocalDate.getDaysInMonth(2024, 2))
+          .equals(29); // February in leap year
     });
   });
 }

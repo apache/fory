@@ -20,7 +20,7 @@
 import 'package:meta/meta.dart';
 
 @immutable
-class ImportPrefix{
+class ImportPrefix {
   final int analyzeLibId;
   final String prefix;
 

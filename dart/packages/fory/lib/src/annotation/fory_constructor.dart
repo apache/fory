@@ -19,7 +19,7 @@
 
 import 'package:meta/meta_meta.dart';
 
-/// Annotation used to specify which constructor should be used 
+/// Annotation used to specify which constructor should be used
 /// when Fory deserializes an object.
 ///
 /// Apply this annotation to a constructor to indicate it should be used
@@ -43,7 +43,7 @@ import 'package:meta/meta_meta.dart';
 class ForyConstructor {
   /// The name identifier for this annotation.
   static const String name = 'ForyCons';
-  
+
   /// The valid targets where this annotation can be applied.
   static const List<TargetKind> targets = [TargetKind.constructor];
 
