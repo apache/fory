@@ -740,7 +740,7 @@ jobs:
       - name: Generate code
         run: |
           cd dart/packages/fory-test
-          dart run build_runner build
+          dart run build_runner build --delete-conflicting-outputs
       - name: Run tests
         run: |
           cd dart/packages/fory-test

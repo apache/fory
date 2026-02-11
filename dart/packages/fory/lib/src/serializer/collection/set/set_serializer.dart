@@ -55,7 +55,7 @@ abstract base class SetSerializer extends IterableSerializer {
     int flags = br.readUint8();
     bool hasGenericsParam = elemWrap != null && elemWrap.hasGenericsParam;
     if (hasGenericsParam) {
-      pack.typeWrapStack.push(elemWrap!);
+      pack.typeWrapStack.push(elemWrap);
     }
 
     if ((flags & IterableSerializer.isSameTypeFlag) ==

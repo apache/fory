@@ -18,7 +18,6 @@
  */
 
 import 'package:fory/src/deserializer_pack.dart';
-import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/memory/byte_reader.dart';
