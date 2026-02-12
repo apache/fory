@@ -53,6 +53,8 @@ abstract base class TypeResolver {
 
   TypeInfo readTypeInfo(ByteReader br, [DeserializationContext? pack]);
 
+  TypeInfo? getTypeInfoByObjTypeId(int typeId);
+
   String getRegisteredTag(Type type);
 
   TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializationContext pack);

@@ -405,6 +405,14 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
+  @override
+  TypeInfo? getTypeInfoByObjTypeId(int typeId) {
+    if (typeId < 0 || typeId >= _ctx.objTypeId2TypeInfo.length) {
+      return null;
+    }
+    return _ctx.objTypeId2TypeInfo[typeId];
+  }
+
   TypeInfo _getAndCacheSpecByBytes(
     LongLongKey key,
     MetaStringBytes packageBytes,

@@ -65,6 +65,17 @@ class TypeSpecWrap {
     return typeSpecWraps;
   }
 
+  static TypeSpecWrap forRemote(Serializer serializer, {bool nullable = false}) {
+    return TypeSpecWrap._(
+      Object,
+      serializer.objType,
+      true,
+      nullable,
+      const [],
+      serializer,
+    );
+  }
+
   bool get hasGenericsParam => genericsArgs.isNotEmpty;
 
   TypeSpecWrap? get param0 => genericsArgs.isNotEmpty ? genericsArgs[0] : null;

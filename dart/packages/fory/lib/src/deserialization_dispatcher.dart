@@ -120,6 +120,28 @@ class DeserializationDispatcher {
     return _readByTypeInfo(br, typeInfo, -1, pack);
   }
 
+  Object? readByTypeInfo(ByteReader br, TypeInfo typeInfo, int refId,
+      DeserializationContext pack,
+      {bool? trackingRefOverride}) {
+    bool trackingRef = trackingRefOverride ?? typeInfo.serializer.writeRef;
+    if (trackingRef) {
+      DeserializationRefResolver refResolver = pack.refResolver;
+      int refFlag = br.readInt8();
+      if (refFlag == RefFlag.NULL.id) return null;
+      if (refFlag == RefFlag.TRACKED_ALREADY.id) {
+        int refId = br.readVarUint32Small14();
+        return refResolver.getObj(refId);
+      }
+      if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
+        int actualRefId = refResolver.reserveId();
+        Object o = _readByTypeInfo(br, typeInfo, actualRefId, pack);
+        refResolver.setRef(actualRefId, o);
+        return o;
+      }
+    }
+    return _readByTypeInfo(br, typeInfo, refId, pack);
+  }
+
   Object _readByTypeInfo(ByteReader br, TypeInfo typeInfo, int refId,
       DeserializationContext pack) {
     switch (typeInfo.objType) {

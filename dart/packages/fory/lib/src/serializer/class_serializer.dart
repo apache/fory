@@ -24,15 +24,19 @@ import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
+import 'package:fory/src/meta/field_def.dart';
+import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
 import 'package:fory/src/meta/specs/field_sorter.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/custom_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serialization_context.dart';
+import 'package:fory/src/util/string_util.dart';
 
 final class ClassSerializerCache extends SerializerCache {
   const ClassSerializerCache();
@@ -123,6 +127,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
     Object obj = _noArgConstruct();
     pack.refResolver.setRefTheLatestId(
         obj); // Need to ref immediately to prevent subsequent circular references and for normal reference tracking
+    final List<FieldDef>? remoteDefs = pack.currentRemoteFieldDefs;
+    if (_compatible && remoteDefs != null) {
+      pack.currentRemoteFieldDefs = null;
+      _readByRemoteFieldOrder(br, obj, remoteDefs, pack, setter: true);
+      return obj;
+    }
     for (int i = 0; i < _fields.length; ++i) {
       FieldSpec fieldSpec = _fields[i];
       if (!fieldSpec.includeFromFory) continue;
@@ -206,6 +216,17 @@ final class ClassSerializer extends CustomSerializer<Object> {
 
   Object _byParameterizedCons(
       ByteReader br, int refId, DeserializationContext pack) {
+    final List<FieldDef>? remoteDefs = pack.currentRemoteFieldDefs;
+    if (_compatible && remoteDefs != null) {
+      pack.currentRemoteFieldDefs = null;
+      final List<Object?> args = List.filled(_fields.length, null);
+      _readByRemoteFieldOrder(br, args, remoteDefs, pack, setter: false);
+      Object obj = _construct!(args);
+      if (refId >= 0) {
+        pack.refResolver.setRef(refId, obj);
+      }
+      return obj;
+    }
     List<Object?> args = List.filled(_fields.length, null);
     for (int i = 0; i < _fields.length; ++i) {
       FieldSpec fieldSpec = _fields[i];
@@ -241,5 +262,123 @@ final class ClassSerializer extends CustomSerializer<Object> {
       pack.refResolver.setRef(refId, obj);
     }
     return obj;
+  }
+
+  void _readByRemoteFieldOrder(ByteReader br, dynamic target,
+      List<FieldDef> remoteDefs, DeserializationContext pack,
+      {required bool setter}) {
+    final Map<String, int> nameToIndex = {};
+    for (int i = 0; i < _fields.length; ++i) {
+      if (!_fields[i].includeFromFory) continue;
+      final String canonical =
+          StringUtil.lowerCamelToLowerUnderscore(_fields[i].name);
+      nameToIndex[canonical] = i;
+    }
+    final TypeResolver resolver = pack.typeResolver;
+    for (final FieldDef remote in remoteDefs) {
+      final Object? value =
+          _readFieldValueByRemoteType(br, remote, pack, resolver);
+      final String name = remote.name;
+      final int? localIndex = nameToIndex[name];
+      if (localIndex != null) {
+        if (setter) {
+          assert(_fields[localIndex].setter != null);
+          _fields[localIndex].setter!(target, value);
+        } else {
+          (target as List<Object?>)[localIndex] = value;
+        }
+      }
+    }
+  }
+
+  Object? _readFieldValueByRemoteType(
+      ByteReader br, FieldDef fieldDef, DeserializationContext pack,
+      TypeResolver resolver) {
+    final RemoteFieldType rft = fieldDef.fieldType;
+    if (rft is SimpleRemoteFieldType) {
+      final TypeInfo? typeInfo = resolver.getTypeInfoByObjTypeId(rft.typeId);
+      if (typeInfo == null) {
+        _throwUnsupportedTypeId(rft.typeId);
+      }
+      return pack.deserializationDispatcher.readByTypeInfo(
+          br, typeInfo, -1, pack,
+          trackingRefOverride: fieldDef.trackingRef);
+    }
+    if (rft is ListSetRemoteFieldType) {
+      final TypeInfo? collectionTypeInfo =
+          resolver.getTypeInfoByObjTypeId(rft.typeId);
+      if (collectionTypeInfo == null) {
+        _throwUnsupportedTypeId(rft.typeId);
+      }
+      final TypeInfo? elementTypeInfo =
+          _typeInfoForRemoteFieldType(rft.elementType, resolver);
+      if (elementTypeInfo == null) {
+        _throwUnsupportedTypeId(rft.elementType.typeId);
+      }
+      pack.typeWrapStack
+          .push(TypeSpecWrap.forRemote(elementTypeInfo.serializer,
+              nullable: fieldDef.nullable));
+      try {
+        return pack.deserializationDispatcher.readByTypeInfo(
+            br, collectionTypeInfo, -1, pack,
+            trackingRefOverride: fieldDef.trackingRef);
+      } finally {
+        pack.typeWrapStack.pop();
+      }
+    }
+    if (rft is MapRemoteFieldType) {
+      final TypeInfo? mapTypeInfo =
+          resolver.getTypeInfoByObjTypeId(ObjType.MAP.id);
+      if (mapTypeInfo == null) {
+        _throwUnsupportedTypeId(ObjType.MAP.id);
+      }
+      final TypeInfo? keyTypeInfo =
+          _typeInfoForRemoteFieldType(rft.keyType, resolver);
+      final TypeInfo? valueTypeInfo =
+          _typeInfoForRemoteFieldType(rft.valueType, resolver);
+      if (keyTypeInfo == null || valueTypeInfo == null) {
+        _throwUnsupportedTypeId(rft.typeId);
+      }
+      pack.typeWrapStack
+          .push(TypeSpecWrap.forRemote(keyTypeInfo.serializer,
+              nullable: fieldDef.nullable));
+      pack.typeWrapStack
+          .push(TypeSpecWrap.forRemote(valueTypeInfo.serializer,
+              nullable: fieldDef.nullable));
+      try {
+        return pack.deserializationDispatcher.readByTypeInfo(
+            br, mapTypeInfo, -1, pack,
+            trackingRefOverride: fieldDef.trackingRef);
+      } finally {
+        pack.typeWrapStack.pop();
+        pack.typeWrapStack.pop();
+      }
+    }
+    _throwUnsupportedTypeId(rft.typeId);
+  }
+
+  Never _throwUnsupportedTypeId(int typeId) {
+    final ObjType? objType = ObjType.fromId(typeId);
+    if (objType != null) {
+      throw UnsupportedTypeException(objType);
+    }
+    throw ForyMismatchException(
+        typeId,
+        -1,
+        'Unknown type id from remote TypeDef: $typeId');
+  }
+
+  TypeInfo? _typeInfoForRemoteFieldType(
+      RemoteFieldType rft, TypeResolver resolver) {
+    if (rft is SimpleRemoteFieldType) {
+      return resolver.getTypeInfoByObjTypeId(rft.typeId);
+    }
+    if (rft is ListSetRemoteFieldType) {
+      return resolver.getTypeInfoByObjTypeId(rft.typeId);
+    }
+    if (rft is MapRemoteFieldType) {
+      return resolver.getTypeInfoByObjTypeId(ObjType.MAP.id);
+    }
+    return resolver.getTypeInfoByObjTypeId(rft.typeId);
   }
 }
