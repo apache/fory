@@ -74,4 +74,3 @@ class BFloat16Array:
         arr._data = array.array("H")
         arr._data.frombytes(data)
         return arr
-
