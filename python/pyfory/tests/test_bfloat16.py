@@ -18,7 +18,6 @@
 import math
 import pytest
 
-import pyfory
 from pyfory import Fory
 from pyfory.bfloat16 import BFloat16
 from pyfory.bfloat16_array import BFloat16Array
@@ -39,9 +38,9 @@ def test_bfloat16_basic():
 
 
 def test_bfloat16_special_values():
-    assert BFloat16(float('nan')).is_nan()
-    assert BFloat16(float('inf')).is_inf()
-    assert BFloat16(float('-inf')).is_inf()
+    assert BFloat16(float("nan")).is_nan()
+    assert BFloat16(float("inf")).is_inf()
+    assert BFloat16(float("-inf")).is_inf()
     assert BFloat16(0.0).is_zero()
     assert BFloat16(1.0).is_finite()
     assert not BFloat16(1.0).is_nan()
@@ -53,9 +52,9 @@ def test_bfloat16_conversion():
     assert BFloat16(1.0).to_float32() == 1.0
     assert BFloat16(-1.0).to_float32() == -1.0
     assert BFloat16(3.14).to_float32() == pytest.approx(3.14, abs=0.01)
-    assert math.isnan(BFloat16(float('nan')).to_float32())
-    assert math.isinf(BFloat16(float('inf')).to_float32())
-    assert math.isinf(BFloat16(float('-inf')).to_float32())
+    assert math.isnan(BFloat16(float("nan")).to_float32())
+    assert math.isinf(BFloat16(float("inf")).to_float32())
+    assert math.isinf(BFloat16(float("-inf")).to_float32())
 
 
 def test_bfloat16_serialization():
@@ -63,8 +62,8 @@ def test_bfloat16_serialization():
     assert ser_de(fory, BFloat16(0.0)).to_bits() == BFloat16(0.0).to_bits()
     assert ser_de(fory, BFloat16(1.0)).to_bits() == BFloat16(1.0).to_bits()
     assert ser_de(fory, BFloat16(3.14)).to_bits() == BFloat16(3.14).to_bits()
-    assert ser_de(fory, BFloat16(float('inf'))).is_inf()
-    assert ser_de(fory, BFloat16(float('nan'))).is_nan()
+    assert ser_de(fory, BFloat16(float("inf"))).is_inf()
+    assert ser_de(fory, BFloat16(float("nan"))).is_nan()
 
 
 def test_bfloat16_array_basic():
@@ -86,12 +85,12 @@ def test_bfloat16_array_serialization():
 
 def test_bfloat16_in_dataclass():
     from dataclasses import dataclass
-    
+
     @dataclass
     class TestStruct:
         value: BFloat16
         arr: BFloat16Array
-    
+
     fory = Fory(xlang=True)
     fory.register_type(TestStruct)
     obj = TestStruct(value=BFloat16(3.14), arr=BFloat16Array([1.0, 2.0]))
@@ -125,4 +124,3 @@ def test_bfloat16_array_type_registration():
     fory = Fory(xlang=True)
     type_info = fory.type_resolver.get_type_info(BFloat16Array)
     assert type_info.type_id == TypeId.BFLOAT16_ARRAY
-

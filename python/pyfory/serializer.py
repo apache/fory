@@ -425,12 +425,13 @@ class BFloat16ArraySerializer(XlangCompatibleSerializer):
         super().__init__(fory, ftype)
         self.type_id = type_id
         self.itemsize = 2
-    
+
     def xwrite(self, buffer, value):
         from pyfory.bfloat16_array import BFloat16Array
+
         if isinstance(value, BFloat16Array):
             arr_data = value._data
-        elif isinstance(value, array.array) and value.typecode == 'H':
+        elif isinstance(value, array.array) and value.typecode == "H":
             arr_data = value
         else:
             arr_data = BFloat16Array(value)._data
@@ -440,24 +441,25 @@ class BFloat16ArraySerializer(XlangCompatibleSerializer):
             if is_little_endian:
                 buffer.write_buffer(arr_data)
             else:
-                swapped = array.array('H', arr_data)
+                swapped = array.array("H", arr_data)
                 swapped.byteswap()
                 buffer.write_buffer(swapped)
-    
+
     def xread(self, buffer):
         from pyfory.bfloat16_array import BFloat16Array
+
         data = buffer.read_bytes_and_size()
-        arr = array.array('H', [])
+        arr = array.array("H", [])
         arr.frombytes(data)
         if not is_little_endian:
             arr.byteswap()
         bf16_arr = BFloat16Array.__new__(BFloat16Array)
         bf16_arr._data = arr
         return bf16_arr
-    
+
     def write(self, buffer, value):
         self.xwrite(buffer, value)
-    
+
     def read(self, buffer):
         return self.xread(buffer)
 

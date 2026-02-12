@@ -323,6 +323,7 @@ class TypeResolver:
         register(float, type_id=TypeId.FLOAT64, serializer=Float64Serializer)
         # BFloat16
         from pyfory.bfloat16 import BFloat16
+
         register(
             BFloat16,
             type_id=TypeId.BFLOAT16,
@@ -342,11 +343,12 @@ class TypeResolver:
         # Register BFloat16Array
         from pyfory.bfloat16_array import BFloat16Array
         from pyfory.serializer import BFloat16ArraySerializer
+
         register(
             BFloat16Array,
             type_id=TypeId.BFLOAT16_ARRAY,
             serializer=BFloat16ArraySerializer(self.fory, BFloat16Array, TypeId.BFLOAT16_ARRAY),
-            )
+        )
         if np:
             # overwrite pyarray  with same type id.
             # if pyarray are needed, one must annotate that value with XXXArrayType
