@@ -457,8 +457,8 @@ export class BinaryWriter {
   }
 
   bfloat16(value: BFloat16 | number) {
-    const bits =
-      value instanceof BFloat16 ? value.toBits() : toBFloat16(value);
+    const bits
+      = value instanceof BFloat16 ? value.toBits() : toBFloat16(value);
     this.uint16(bits);
   }
 

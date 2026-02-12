@@ -73,8 +73,8 @@ export class BFloat16Array {
       this._data = new Uint16Array(arr.length);
       for (let i = 0; i < arr.length; i++) {
         const v = arr[i];
-        this._data[i] =
-          v instanceof BFloat16 ? v.toBits() : BFloat16.fromFloat32(v).toBits();
+        this._data[i]
+          = v instanceof BFloat16 ? v.toBits() : BFloat16.fromFloat32(v).toBits();
       }
     }
   }
