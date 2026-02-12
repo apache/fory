@@ -88,8 +88,8 @@ export class BFloat16Array {
   }
 
   set(index: number, value: BFloat16 | number): void {
-    this._data[index] =
-      value instanceof BFloat16 ? value.toBits() : BFloat16.fromFloat32(value).toBits();
+    this._data[index]
+      = value instanceof BFloat16 ? value.toBits() : BFloat16.fromFloat32(value).toBits();
   }
 
   get raw(): Uint16Array {
@@ -104,11 +104,12 @@ export class BFloat16Array {
 
   [Symbol.iterator](): IterableIterator<BFloat16> {
     let i = 0;
-    const self = this;
+    const data = this._data;
+    const len = data.length;
     return {
       next(): IteratorResult<BFloat16> {
-        if (i < self._data.length) {
-          return { value: BFloat16.fromBits(self._data[i++]), done: false };
+        if (i < len) {
+          return { value: BFloat16.fromBits(data[i++]), done: false };
         }
         return { value: undefined as unknown as BFloat16, done: true };
       },
