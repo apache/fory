@@ -209,7 +209,7 @@ cdef class BFloat16Serializer(XlangCompatibleSerializer):
     cpdef inline write(self, Buffer buffer, value):
         from pyfory.bfloat16 import BFloat16
         if isinstance(value, BFloat16):
-            buffer.write_bfloat16((<BFloat16>value).to_bits())
+            buffer.write_bfloat16(value.to_bits())
         else:
             buffer.write_bfloat16(BFloat16(value).to_bits())
 

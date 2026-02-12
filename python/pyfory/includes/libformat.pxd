@@ -226,7 +226,8 @@ cdef extern from "fory/row/schema.h" namespace "fory::row" nogil:
     shared_ptr[CDataType] int32" fory::row::int32"()
     shared_ptr[CDataType] int64" fory::row::int64"()
     shared_ptr[CDataType] float16" fory::row::float16"()
-    shared_ptr[CDataType] bfloat16" fory::row::bfloat16"()
+    # TODO: Uncomment when C++ row format supports bfloat16
+    # shared_ptr[CDataType] bfloat16" fory::row::bfloat16"()
     shared_ptr[CDataType] float32" fory::row::float32"()
     shared_ptr[CDataType] float64" fory::row::float64"()
     shared_ptr[CDataType] utf8" fory::row::utf8"()

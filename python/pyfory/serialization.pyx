@@ -1797,7 +1797,7 @@ cpdef inline write_nullable_bfloat16(Buffer buffer, value):
         buffer.write_int8(NOT_NULL_VALUE_FLAG)
         from pyfory.bfloat16 import BFloat16
         if isinstance(value, BFloat16):
-            buffer.write_bfloat16((<BFloat16>value).to_bits())
+            buffer.write_bfloat16(value.to_bits())
         else:
             buffer.write_bfloat16(BFloat16(value).to_bits())
 
