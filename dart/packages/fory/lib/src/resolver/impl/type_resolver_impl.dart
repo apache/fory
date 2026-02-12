@@ -49,6 +49,7 @@ import 'package:fory/src/resolver/meta_string_resolver.dart';
 import 'package:fory/src/resolver/tag_string_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/serializer/class_serializer.dart';
 import 'package:fory/src/serializer/enum_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -65,6 +66,14 @@ class _ReadTypeDefResult {
   final List<FieldDef> fieldDefs;
 
   _ReadTypeDefResult(this.typeInfo, this.fieldDefs);
+}
+
+/// Cached entry for shared type meta: TypeInfo plus remote field list.
+class _CachedTypeDef {
+  final TypeInfo typeInfo;
+  final List<FieldDef> fieldDefs;
+
+  _CachedTypeDef(this.typeInfo, this.fieldDefs);
 }
 
 /// Field name encoding in TypeDef field header: 3 = TAG_ID (no name bytes).
@@ -114,7 +123,7 @@ final class TypeResolverImpl extends TypeResolver {
   final MetaStringDecoder _typeNameDecoder;
   final Map<Type, CustomTypeSpec> _type2Spec;
   final Map<Type, int> _writeTypeToIndex;
-  final List<TypeInfo> _readTypeInfos;
+  final List<_CachedTypeDef> _readTypeInfos;
   final Map<Type, Uint8List> _typeToEncodedTypeDef;
 
   TypeResolverImpl(
@@ -127,7 +136,7 @@ final class TypeResolverImpl extends TypeResolver {
         _typeNameDecoder = Encoders.typeNameDecoder,
         _type2Spec = HashMap<Type, CustomTypeSpec>(),
         _writeTypeToIndex = HashMap<Type, int>(),
-        _readTypeInfos = <TypeInfo>[],
+        _readTypeInfos = <_CachedTypeDef>[],
         _typeToEncodedTypeDef = HashMap<Type, Uint8List>(),
         _msResolver = MetaStringResolver.newInst,
         _tstrEncoder = TagStringResolver.newInst,
@@ -328,12 +337,15 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   @override
-  void resetReadContext() {
+  void resetReadContext([DeserializationContext? pack]) {
     _readTypeInfos.clear();
+    if (pack != null) {
+      pack.currentRemoteFieldDefs = null;
+    }
   }
 
   @override
-  TypeInfo readTypeInfo(ByteReader br) {
+  TypeInfo readTypeInfo(ByteReader br, [DeserializationContext? pack]) {
     int xtypeId = br.readUint8();
     ObjType? xtype = ObjType.fromId(xtypeId);
     if (xtype == null) {
@@ -360,13 +372,13 @@ final class TypeResolverImpl extends TypeResolver {
             '${xtype.name}(userTypeId=$userTypeId)');
       case ObjType.COMPATIBLE_STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:
-        return _readSharedTypeMeta(br);
+        return _readSharedTypeMeta(br, pack);
       case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
       case ObjType.NAMED_EXT:
       case ObjType.NAMED_UNION:
         if (_ctx.conf.compatible) {
-          return _readSharedTypeMeta(br);
+          return _readSharedTypeMeta(br, pack);
         }
         MetaStringBytes pkgBytes = _msResolver.readMetaStringBytes(br);
         // assert(pkgBytes.length == 0); // fory dart does not support package
@@ -447,7 +459,7 @@ final class TypeResolverImpl extends TypeResolver {
     return typeInfo;
   }
 
-  TypeInfo _readSharedTypeMeta(ByteReader br) {
+  TypeInfo _readSharedTypeMeta(ByteReader br, [DeserializationContext? pack]) {
     final int marker = br.readVarUint32();
     final bool isRef = (marker & 1) == 1;
     final int index = marker >>> 1;
@@ -456,7 +468,11 @@ final class TypeResolverImpl extends TypeResolver {
         throw UnregisteredTypeException(
             'Shared type index out of bounds: $index');
       }
-      return _readTypeInfos[index];
+      final _CachedTypeDef cached = _readTypeInfos[index];
+      if (pack != null) {
+        pack.currentRemoteFieldDefs = cached.fieldDefs;
+      }
+      return cached.typeInfo;
     }
     final int id = br.readInt64();
     final int unsignedId = id & _allBits64Mask;
@@ -469,7 +485,10 @@ final class TypeResolverImpl extends TypeResolver {
       throw UnregisteredTypeException('Compressed TypeDef is not supported');
     }
     final _ReadTypeDefResult result = _readTypeInfoFromTypeDefBody(bodyBytes);
-    _readTypeInfos.add(result.typeInfo);
+    _readTypeInfos.add(_CachedTypeDef(result.typeInfo, result.fieldDefs));
+    if (pack != null) {
+      pack.currentRemoteFieldDefs = result.fieldDefs;
+    }
     return result.typeInfo;
   }
 

@@ -54,7 +54,6 @@ class DeserializationDispatcher {
     HeaderBrief? header = _foryHeaderSerializer.read(br, conf);
     if (header == null) return null;
     typeResolver.resetReadContext();
-
     DeserializationContext deserializationContext = DeserializationContext(
       StructHashResolver.inst,
       typeResolver.getRegisteredTag,
@@ -79,7 +78,7 @@ class DeserializationDispatcher {
     }
     if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
       // must deserialize
-      TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
+      TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br, pack);
       int refId = refResolver.reserveId();
       Object o = _readByTypeInfo(br, typeInfo, refId, pack);
       refResolver.setRef(refId, o);
@@ -117,7 +116,7 @@ class DeserializationDispatcher {
   }
 
   Object readDynamicWithoutRef(ByteReader br, DeserializationContext pack) {
-    TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
+    TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br, pack);
     return _readByTypeInfo(br, typeInfo, -1, pack);
   }
 

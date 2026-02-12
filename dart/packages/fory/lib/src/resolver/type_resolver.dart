@@ -18,6 +18,7 @@
  */
 
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
@@ -48,9 +49,9 @@ abstract base class TypeResolver {
 
   void resetWriteContext();
 
-  void resetReadContext();
+  void resetReadContext([DeserializationContext? pack]);
 
-  TypeInfo readTypeInfo(ByteReader br);
+  TypeInfo readTypeInfo(ByteReader br, [DeserializationContext? pack]);
 
   String getRegisteredTag(Type type);
 

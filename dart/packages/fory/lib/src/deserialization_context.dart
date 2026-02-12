@@ -18,6 +18,7 @@
  */
 
 import 'package:fory/src/deserialization_dispatcher.dart';
+import 'package:fory/src/meta/field_def.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -35,7 +36,9 @@ final class DeserializationContext extends Pack {
 
   final Stack<TypeSpecWrap> typeWrapStack;
 
-  const DeserializationContext(
+  List<FieldDef>? currentRemoteFieldDefs;
+
+  DeserializationContext(
     super.structHashResolver,
     super.getTagByDartType,
     this.header,

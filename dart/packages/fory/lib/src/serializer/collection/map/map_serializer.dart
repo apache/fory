@@ -95,13 +95,13 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
       if (keyDeclaredType && keyWrap?.serializer != null) {
         keySerializer = keyWrap!.serializer!;
       } else {
-        keySerializer = pack.typeResolver.readTypeInfo(br).serializer;
+        keySerializer = pack.typeResolver.readTypeInfo(br, pack).serializer;
       }
       Serializer valueSerializer;
       if (valueDeclaredType && valueWrap?.serializer != null) {
         valueSerializer = valueWrap!.serializer!;
       } else {
-        valueSerializer = pack.typeResolver.readTypeInfo(br).serializer;
+        valueSerializer = pack.typeResolver.readTypeInfo(br, pack).serializer;
       }
 
       for (int i = 0; i < chunkSize; ++i) {

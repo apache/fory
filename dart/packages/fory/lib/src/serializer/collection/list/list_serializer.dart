@@ -60,9 +60,7 @@ abstract base class ListSerializer extends IterableSerializer {
       if (isDeclElemType) {
         serializer = elemWrap?.serializer;
       }
-      if (serializer == null) {
-        serializer = pack.typeResolver.readTypeInfo(br).serializer;
-      }
+      serializer ??= pack.typeResolver.readTypeInfo(br, pack).serializer;
 
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
