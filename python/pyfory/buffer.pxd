@@ -128,6 +128,8 @@ cdef class Buffer:
 
     cpdef inline write_float64(self, double value)
 
+    cpdef inline write_bfloat16(self, uint16_t value)
+
     cpdef inline skip(self, int32_t length)
 
     cpdef inline c_bool read_bool(self)
@@ -157,6 +159,8 @@ cdef class Buffer:
     cpdef inline double read_double(self)
 
     cpdef inline double read_float64(self)
+
+    cpdef inline uint16_t read_bfloat16(self)
 
     cpdef inline write_varint64(self, int64_t v)
 

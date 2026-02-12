@@ -56,6 +56,8 @@ def arrow_type_to_fory_type_id(arrow_type):
     # Floating point types
     if pa_types.is_float16(arrow_type):
         return 17  # FLOAT16
+    if hasattr(pa_types, 'is_bfloat16') and pa_types.is_bfloat16(arrow_type):
+        return 18  # BFLOAT16
     if pa_types.is_float32(arrow_type):
         return 19  # FLOAT32
     if pa_types.is_float64(arrow_type):
@@ -116,6 +118,7 @@ def fory_type_id_to_arrow_type(type_id, precision=None, scale=None, list_type=No
         4: pa.int32(),  # INT32
         6: pa.int64(),  # INT64
         17: pa.float16(),  # FLOAT16
+        18: pa.float16(),  # BFLOAT16 (Arrow doesn't have native bfloat16, map to float16)
         19: pa.float32(),  # FLOAT32
         20: pa.float64(),  # FLOAT64
         21: pa.utf8(),  # STRING

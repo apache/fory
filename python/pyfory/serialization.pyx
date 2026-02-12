@@ -1790,6 +1790,24 @@ cpdef inline read_nullable_pystr(Buffer buffer):
     else:
         return None
 
+cpdef inline write_nullable_bfloat16(Buffer buffer, value):
+    if value is None:
+        buffer.write_int8(NULL_FLAG)
+    else:
+        buffer.write_int8(NOT_NULL_VALUE_FLAG)
+        from pyfory.bfloat16 import BFloat16
+        if isinstance(value, BFloat16):
+            buffer.write_bfloat16((<BFloat16>value).to_bits())
+        else:
+            buffer.write_bfloat16(BFloat16(value).to_bits())
+
+cpdef inline read_nullable_bfloat16(Buffer buffer):
+    if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
+        from pyfory.bfloat16 import BFloat16
+        return BFloat16.from_bits(buffer.read_bfloat16())
+    else:
+        return None
+
 
 cdef class Serializer:
     """

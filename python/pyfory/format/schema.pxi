@@ -34,12 +34,13 @@ from pyfory.includes.libformat cimport (
     CListType, CListTypePtr, CMapType, CMapTypePtr, CStructType, CStructTypePtr,
     CFixedWidthType, CDecimalType, CTypeId,
     boolean as c_boolean, int8 as c_int8, int16 as c_int16, int32 as c_int32,
-    int64 as c_int64, float16 as c_float16, float32 as c_float32,
+    int64 as c_int64, float16 as c_float16, bfloat16 as c_bfloat16, float32 as c_float32,
     float64 as c_float64, utf8 as c_utf8, binary as c_binary,
     duration as c_duration, timestamp as c_timestamp, date32 as c_date32,
     decimal as c_decimal, fory_list, struct_, fory_map, fory_field, fory_schema,
     get_byte_width as c_get_byte_width
 )
+
 
 
 # Create Python-accessible TypeId enum
@@ -416,6 +417,10 @@ def int64():
 def float16():
     """Create a 16-bit floating point type."""
     return DataType.wrap(c_float16())
+
+def bfloat16():
+    """Create a 16-bit brain floating point type."""
+    return DataType.wrap(c_bfloat16())
 
 def float32():
     """Create a 32-bit floating point type."""

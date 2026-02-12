@@ -65,6 +65,7 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
         TaggedUint64Serializer,
         Float32Serializer,
         Float64Serializer,
+        BFloat16Serializer,
         StringSerializer,
         DateSerializer,
         TimestampSerializer,
@@ -284,6 +285,7 @@ typeid_code = (
         TypeId.UINT64_ARRAY: "Q",
         TypeId.FLOAT32_ARRAY: "f",
         TypeId.FLOAT64_ARRAY: "d",
+        TypeId.BFLOAT16_ARRAY: "H",  # bfloat16 uses 'H' typecode (uint16)
     }
 )
 
@@ -416,6 +418,48 @@ class DynamicPyArraySerializer(Serializer):
 
     def read(self, buffer):
         return self._serializer.read(buffer)
+
+
+class BFloat16ArraySerializer(XlangCompatibleSerializer):
+    def __init__(self, fory, ftype, type_id: int):
+        super().__init__(fory, ftype)
+        self.type_id = type_id
+        self.itemsize = 2
+    
+    def xwrite(self, buffer, value):
+        from pyfory.bfloat16_array import BFloat16Array
+        if isinstance(value, BFloat16Array):
+            arr_data = value._data
+        elif isinstance(value, array.array) and value.typecode == 'H':
+            arr_data = value
+        else:
+            arr_data = BFloat16Array(value)._data
+        nbytes = len(arr_data) * 2
+        buffer.write_var_uint32(nbytes)
+        if nbytes > 0:
+            if is_little_endian:
+                buffer.write_buffer(arr_data)
+            else:
+                swapped = array.array('H', arr_data)
+                swapped.byteswap()
+                buffer.write_buffer(swapped)
+    
+    def xread(self, buffer):
+        from pyfory.bfloat16_array import BFloat16Array
+        data = buffer.read_bytes_and_size()
+        arr = array.array('H', [])
+        arr.frombytes(data)
+        if not is_little_endian:
+            arr.byteswap()
+        bf16_arr = BFloat16Array.__new__(BFloat16Array)
+        bf16_arr._data = arr
+        return bf16_arr
+    
+    def write(self, buffer, value):
+        self.xwrite(buffer, value)
+    
+    def read(self, buffer):
+        return self.xread(buffer)
 
 
 if np:
