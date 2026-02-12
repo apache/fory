@@ -43,3 +43,25 @@ export function toFloat16(value: number) {
 
   return sign | ((exponent + 15) << 10) | (significand >> 13);
 }
+
+const float32ViewBf = new Float32Array(1);
+const uint32ViewBf = new Uint32Array(float32ViewBf.buffer);
+
+/**
+ * Convert float32 to bfloat16 bits (round-to-nearest, ties-to-even).
+ * BFloat16 layout: 1 sign, 8 exponent, 7 mantissa.
+ */
+export function toBFloat16(value: number): number {
+  float32ViewBf[0] = value;
+  const bits = uint32ViewBf[0];
+  const exponent = (bits >> 23) & 0xff;
+  if (exponent === 255) {
+    return (bits >> 16) & 0xffff;
+  }
+  const remainder = bits & 0x1ffff;
+  let u = (bits + 0x8000) >> 16;
+  if (remainder === 0x8000 && (u & 1) !== 0) {
+    u--;
+  }
+  return u & 0xffff;
+}

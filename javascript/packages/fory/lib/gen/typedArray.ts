@@ -78,5 +78,6 @@ CodegenRegistry.register(TypeId.UINT16_ARRAY, build(Type.uint16()));
 CodegenRegistry.register(TypeId.UINT32_ARRAY, build(Type.uint32()));
 CodegenRegistry.register(TypeId.UINT64_ARRAY, build(Type.uint64()));
 CodegenRegistry.register(TypeId.FLOAT16_ARRAY, build(Type.float16()));
+CodegenRegistry.register(TypeId.BFLOAT16_ARRAY, build(Type.bfloat16()));
 CodegenRegistry.register(TypeId.FLOAT32_ARRAY, build(Type.float32()));
 CodegenRegistry.register(TypeId.FLOAT64_ARRAY, build(Type.float64()));

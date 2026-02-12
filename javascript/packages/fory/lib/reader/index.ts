@@ -21,6 +21,7 @@ import { LATIN1, UTF16, UTF8 } from "../type";
 import { isNodeEnv } from "../util";
 import { PlatformBuffer, alloc, fromUint8Array } from "../platformBuffer";
 import { readLatin1String } from "./string";
+import { BFloat16 } from "../bfloat16";
 
 export class BinaryReader {
   private sliceStringEnable;
@@ -506,6 +507,10 @@ export class BinaryReader {
       // Normalized number
       return (sign === 0 ? 1 : -1) * (1 + mantissa * 2 ** -10) * 2 ** (exponent - 15);
     }
+  }
+
+  bfloat16(): BFloat16 {
+    return BFloat16.fromBits(this.uint16());
   }
 
   getCursor() {

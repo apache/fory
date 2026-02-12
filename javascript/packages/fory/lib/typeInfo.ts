@@ -19,6 +19,7 @@
 
 import Fory from "./fory";
 import { ForyTypeInfoSymbol, TypeId, Mode } from "./type";
+import { BFloat16 } from "./bfloat16";
 
 const targetFieldInfo = new WeakMap<new () => any, { [key: string]: StructFieldInfo }>();
 
@@ -465,6 +466,8 @@ export type HintInput<T> = T extends {
     type: typeof TypeId.STRING;
   }
   ? string
+  : T extends { type: typeof TypeId.BFLOAT16 }
+  ? BFloat16 | number
   : T extends {
     type:
     | typeof TypeId["INT8"]
@@ -479,7 +482,6 @@ export type HintInput<T> = T extends {
     | typeof TypeId.VAR_UINT32
     | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
-    | typeof TypeId.BFLOAT16
     | typeof TypeId.FLOAT32
     | typeof TypeId.FLOAT64;
   }
@@ -537,6 +539,8 @@ export type HintResult<T> = T extends never ? any : T extends {
     type: typeof TypeId.STRING;
   }
   ? string
+  : T extends { type: typeof TypeId.BFLOAT16 }
+  ? BFloat16
   : T extends {
     type:
     | typeof TypeId.INT8
@@ -549,7 +553,6 @@ export type HintResult<T> = T extends never ? any : T extends {
     | typeof TypeId.VAR_UINT32
     | typeof TypeId.FLOAT8
     | typeof TypeId.FLOAT16
-    | typeof TypeId.BFLOAT16
     | typeof TypeId.FLOAT32
     | typeof TypeId.FLOAT64;
   }
@@ -725,6 +728,12 @@ export const Type = {
 
     );
   },
+  bfloat16() {
+    return TypeInfo.fromNonParam<typeof TypeId.BFLOAT16>(
+      (TypeId.BFLOAT16),
+
+    );
+  },
   float32() {
     return TypeInfo.fromNonParam<typeof TypeId.FLOAT32>(
       (TypeId.FLOAT32),
@@ -850,6 +859,12 @@ export const Type = {
   float16Array() {
     return TypeInfo.fromNonParam<typeof TypeId.FLOAT16_ARRAY>(
       (TypeId.FLOAT16_ARRAY),
+
+    );
+  },
+  bfloat16Array() {
+    return TypeInfo.fromNonParam<typeof TypeId.BFLOAT16_ARRAY>(
+      (TypeId.BFLOAT16_ARRAY),
 
     );
   },
