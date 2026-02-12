@@ -346,7 +346,7 @@ final class TypeResolverImpl extends TypeResolver {
 
   @override
   TypeInfo readTypeInfo(ByteReader br, [DeserializationContext? pack]) {
-    int xtypeId = br.readUint8();
+    int xtypeId = br.readVarUint32Small7();
     ObjType? xtype = ObjType.fromId(xtypeId);
     if (xtype == null) {
       throw UnregisteredTypeException('xtypeId=$xtypeId');
@@ -437,7 +437,7 @@ final class TypeResolverImpl extends TypeResolver {
     if (typeInfo == null) {
       throw UnregisteredTypeException(dartType);
     }
-    bw.writeUint8(typeInfo.objType.id);
+    bw.writeVarUint32Small7(typeInfo.objType.id);
     switch (typeInfo.objType) {
       case ObjType.ENUM:
       case ObjType.STRUCT:
@@ -490,7 +490,8 @@ final class TypeResolverImpl extends TypeResolver {
     }
     final Uint8List bodyBytes = br.copyBytes(size);
     if ((unsignedId & _compressMetaFlag) != 0) {
-      throw UnregisteredTypeException('Compressed TypeDef is not supported');
+      throw UnregisteredTypeException(
+          'Compressed TypeDef is not supported; use uncompressed meta for Dart compatibility');
     }
     final _ReadTypeDefResult result = _readTypeInfoFromTypeDefBody(bodyBytes);
     _readTypeInfos.add(_CachedTypeDef(result.typeInfo, result.fieldDefs));
