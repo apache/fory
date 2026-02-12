@@ -21,6 +21,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 	"github.com/stretchr/testify/assert"
 )
@@ -61,6 +62,48 @@ func TestFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []float16.Float16
+		err = f.Deserialize(data, &result)
+		assert.NoError(t, err)
+		assert.Nil(t, result)
+	})
+}
+
+func TestBFloat16Slice(t *testing.T) {
+	f := NewFory()
+
+	t.Run("bfloat16_slice", func(t *testing.T) {
+		slice := []bfloat16.BFloat16{
+			bfloat16.BFloat16FromFloat32(1.0),
+			bfloat16.BFloat16FromFloat32(2.5),
+			bfloat16.BFloat16FromFloat32(-3.5),
+		}
+		data, err := f.Serialize(slice)
+		assert.NoError(t, err)
+
+		var result []bfloat16.BFloat16
+		err = f.Deserialize(data, &result)
+		assert.NoError(t, err)
+		assert.Equal(t, slice, result)
+	})
+
+	t.Run("bfloat16_slice_empty", func(t *testing.T) {
+		slice := []bfloat16.BFloat16{}
+		data, err := f.Serialize(slice)
+		assert.NoError(t, err)
+
+		var result []bfloat16.BFloat16
+		err = f.Deserialize(data, &result)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Empty(t, result)
+	})
+
+	t.Run("bfloat16_slice_nil", func(t *testing.T) {
+		var slice []bfloat16.BFloat16 = nil
+		data, err := f.Serialize(slice)
+		assert.NoError(t, err)
+
+		var result []bfloat16.BFloat16
 		err = f.Deserialize(data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)

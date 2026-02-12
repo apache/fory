@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { StructTypeInfo, TypeInfo } from "./typeInfo";
+import { StructTypeInfo, Type, TypeInfo } from "./typeInfo";
 import fory from "./fory";
 import { TypeMeta } from "./meta/TypeMeta";
 import { BinaryReader } from "./reader";
@@ -38,9 +38,9 @@ export class TypeMetaResolver {
       const typeId = x.getTypeId();
       const fieldName = x.getFieldName();
       const declared = typeInfo.options.props?.[fieldName];
-      const fieldTypeInfo = declared ?? this.fory.typeResolver.getTypeInfo(typeId);
+      let fieldTypeInfo = declared ?? this.fory.typeResolver.getTypeInfo(typeId);
       if (!fieldTypeInfo) {
-        throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
+        fieldTypeInfo = Type.any();
       }
       if (!typeInfo.options.fieldInfo) {
         typeInfo.options.fieldInfo = {};
@@ -62,12 +62,16 @@ export class TypeMetaResolver {
     let typeInfo;
     if (!TypeId.isNamedType(typeId)) {
       typeInfo = this.fory.typeResolver.getTypeInfo(typeId, userTypeId);
+      if (!typeInfo) {
+        typeInfo = Type.struct({ typeId });
+      }
     } else {
       typeInfo = this.fory.typeResolver.getTypeInfo(`${ns}$${typeName}`);
+      if (!typeInfo) {
+        typeInfo = Type.struct({ typeName, namespace: ns });
+      }
     }
-    if (!typeInfo) {
-      throw new Error(`${typeId} not registered`); // todo
-    }
+
     this.updateTypeInfo(typeMeta, typeInfo);
     return this.fory.replaceSerializerReader(typeInfo);
   }

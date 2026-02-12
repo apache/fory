@@ -576,6 +576,8 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		_ = ctx.buffer.ReadVarint64(err)
 
 	// Floating point types
+	case BFLOAT16, FLOAT16:
+		_ = ctx.buffer.ReadUint16(err)
 	case FLOAT32:
 		_ = ctx.buffer.ReadFloat32(err)
 	case FLOAT64:
@@ -610,7 +612,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 			return
 		}
 		_ = ctx.buffer.ReadBinary(length, err)
-	case INT16_ARRAY, UINT16_ARRAY, FLOAT16_ARRAY:
+	case INT16_ARRAY, UINT16_ARRAY, FLOAT16_ARRAY, BFLOAT16_ARRAY:
 		length := ctx.buffer.ReadLength(err)
 		if ctx.HasError() {
 			return

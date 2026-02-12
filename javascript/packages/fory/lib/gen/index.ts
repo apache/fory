@@ -25,7 +25,6 @@ import { Scope } from "./scope";
 import "./array";
 import "./struct";
 import "./string";
-import "./binary";
 import "./bool";
 import "./datetime";
 import "./map";
@@ -77,7 +76,7 @@ export class Gen {
         return;
       }
       const options = (<StructTypeInfo>typeInfo).options;
-      if (options.props) {
+      if (options?.props) {
         this.register(<StructTypeInfo>typeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);

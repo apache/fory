@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 	"github.com/stretchr/testify/require"
 )
@@ -41,6 +42,9 @@ func TestTypeResolver(t *testing.T) {
 		{reflect.TypeOf((*int)(nil)), "*int"},
 		{reflect.TypeOf((*[10]int)(nil)), "*[10]int"},
 		{reflect.TypeOf((*[10]int)(nil)).Elem(), "[10]int"},
+		{reflect.TypeOf((*bfloat16.BFloat16)(nil)).Elem(), "bfloat16.BFloat16"},
+		{reflect.TypeOf((*[]bfloat16.BFloat16)(nil)).Elem(), "[]bfloat16.BFloat16"},
+		{reflect.TypeOf((*[10]bfloat16.BFloat16)(nil)).Elem(), "[10]bfloat16.BFloat16"},
 		{reflect.TypeOf((*[]map[string][]map[string]*any)(nil)).Elem(),
 			"[]map[string][]map[string]*interface {}"},
 		{reflect.TypeOf((*A)(nil)), "*@example.A"},
@@ -84,6 +88,7 @@ func TestCreateSerializerSliceTypes(t *testing.T) {
 		{reflect.TypeOf([]uint{}), reflect.TypeOf(uintSliceSerializer{})},
 		{reflect.TypeOf([]uint16{}), reflect.TypeOf(uint16SliceSerializer{})},
 		{reflect.TypeOf([]float16.Float16{}), reflect.TypeOf(float16SliceSerializer{})},
+		{reflect.TypeOf([]bfloat16.BFloat16{}), reflect.TypeOf(bfloat16SliceSerializer{})},
 		{reflect.TypeOf([]uint32{}), reflect.TypeOf(uint32SliceSerializer{})},
 		{reflect.TypeOf([]uint64{}), reflect.TypeOf(uint64SliceSerializer{})},
 		{reflect.TypeOf([]string{}), reflect.TypeOf(stringSliceSerializer{})},
@@ -135,6 +140,7 @@ func TestCreateSerializerArrayTypes(t *testing.T) {
 		{reflect.TypeOf([4]byte{}), reflect.TypeOf(uint8ArraySerializer{})},
 		{reflect.TypeOf([4]uint16{}), reflect.TypeOf(uint16ArraySerializer{})},
 		{reflect.TypeOf([4]float16.Float16{}), reflect.TypeOf(float16ArraySerializer{})},
+		{reflect.TypeOf([4]bfloat16.BFloat16{}), reflect.TypeOf(bfloat16ArraySerializer{})},
 		{reflect.TypeOf([4]uint32{}), reflect.TypeOf(uint32ArraySerializer{})},
 		{reflect.TypeOf([4]uint64{}), reflect.TypeOf(uint64ArraySerializer{})},
 	}

@@ -20,6 +20,7 @@ package fory
 import (
 	"testing"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 	"github.com/stretchr/testify/require"
 )
@@ -52,6 +53,39 @@ func TestFloat16PrimitiveSliceDirect(t *testing.T) {
 	require.NoError(t, err)
 
 	var resSlice []float16.Float16
+	err = f.Deserialize(data, &resSlice)
+	require.NoError(t, err)
+	require.Equal(t, slice, resSlice)
+}
+
+func TestBFloat16Primitive(t *testing.T) {
+	f := New(WithXlang(true))
+	bf16 := bfloat16.BFloat16FromFloat32(3.14)
+
+	// Directly serialize a bfloat16 value
+	data, err := f.Serialize(bf16)
+	require.NoError(t, err)
+
+	var res bfloat16.BFloat16
+	err = f.Deserialize(data, &res)
+	require.NoError(t, err)
+
+	require.Equal(t, bf16.Bits(), res.Bits())
+
+	// Value check (approximate because BF16 precision is low)
+	require.InDelta(t, 3.14, res.Float32(), 0.1)
+}
+
+func TestBFloat16PrimitiveSliceDirect(t *testing.T) {
+	// Tests serializing a slice as a root object
+	f := New(WithXlang(true))
+	bf16 := bfloat16.BFloat16FromFloat32(3.14)
+
+	slice := []bfloat16.BFloat16{bf16, bfloat16.BFloat16(0)}
+	data, err := f.Serialize(slice)
+	require.NoError(t, err)
+
+	var resSlice []bfloat16.BFloat16
 	err = f.Deserialize(data, &resSlice)
 	require.NoError(t, err)
 	require.Equal(t, slice, resSlice)

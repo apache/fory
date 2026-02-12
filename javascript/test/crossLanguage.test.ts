@@ -27,6 +27,7 @@ import Fory, {
 import { describe, expect, test } from "@jest/globals";
 import * as fs from "node:fs";
 import * as beautify from 'js-beautify';
+import { TypeId } from "../packages/fory/lib/type";
 
 const Byte = {
   MAX_VALUE: 127,
@@ -223,11 +224,11 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory.registerSerializer(Type.enum(101, Color));
+    const { serialize: colorSerialize } = fory.registerSerializer(Type.enum(101, Color));
     // Deserialize various data types from Java
     const deserializedData = [];
     let cursor = 0;
-    for (let i = 0; i < 28; i++) { // 28 serialized items from Java
+    for (let i = 0; i < 27; i++) { // 28 serialized items from Java
       const deserializedItem = fory.deserialize(content.subarray(cursor));
       cursor += fory.binaryReader.getCursor();
       deserializedData.push(deserializedItem);
@@ -236,8 +237,26 @@ describe("bool", () => {
 
     const bfs = []
     // Serialize each deserialized item back
-    for (const item of deserializedData) {
-      const serializedData = fory.serialize(item);
+    for (let index = 0; index < deserializedData.length; index++) {
+      const item = deserializedData[index];
+      let serializedData;
+      if (index === 11) {
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.FLOAT32));
+      } else if (index === 12) {
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.FLOAT64));
+      } else if (index === 14) {
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.DATE));
+      } else if (index === 15) {
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.TIMESTAMP));
+      } else if (index === 16) {
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.BOOL_ARRAY));
+      } else if (index === 17) {
+        serializedData = fory.serialize(item, fory.typeResolver.getSerializerById(TypeId.BINARY));
+      } else if (index === 26) {
+        serializedData = colorSerialize(item);
+      } else {
+        serializedData = fory.serialize(item);
+      }
       bfs.push(serializedData);
     }
 
@@ -621,50 +640,172 @@ describe("bool", () => {
   });
 
   test("test_skip_id_custom", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory({
+    const fory1 = new Fory({
       compatible: true
+    });
+
+    @Type.ext(103)
+    class MyExt {
+      id: number = 0;
+    }
+    fory1.registerSerializer(MyExt, {
+      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
+        writer.varInt32(value.id);
+      },
+      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
+        result.id = reader.varInt32();
+      }
     });
 
     // Define empty wrapper for deserialization
     @Type.struct(104)
-    class EmptyWrapper { }
-    fory.registerSerializer(EmptyWrapper);
+    class Empty { }
+    fory1.registerSerializer(Empty);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    const fory2 = new Fory({
+      compatible: true
+    });
 
-    // Deserialize empty wrapper from Java
+    // Define Color enum
+    const Color = {
+      Green: 0,
+      Red: 1,
+      Blue: 2,
+      White: 3,
+    };
+    fory2.registerSerializer(Type.enum(101, Color));
+
+    @Type.struct(102, {
+      id: Type.varInt32()
+    })
+    class MyStruct {
+      id: number = 0;
+    }
+    fory2.registerSerializer(MyStruct);
+
+    fory2.registerSerializer(MyExt, {
+      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
+        writer.varInt32(value.id);
+      },
+      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
+        result.id = reader.varInt32();
+      }
+    });
+
+    @Type.struct(104, {
+      color: Type.enum(101, Color),
+      myStruct: Type.struct(102),
+      myExt: Type.ext(103)
+    })
+    class MyWrapper {
+      color: number = 0;
+      myStruct: MyStruct = new MyStruct();
+      myExt: MyExt = new MyExt();
+    }
+    fory2.registerSerializer(MyWrapper);
+
+
+    // Deserialize empty from Java
     let cursor = 0;
-    const deserializedWrapper = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    const deserializedEmpty = fory1.deserialize(content.subarray(cursor));
+    cursor += fory1.binaryReader.getCursor();
+    expect(deserializedEmpty instanceof Empty).toEqual(true);
 
-    // Serialize the deserialized wrapper back
-    const serializedData = fory.serialize(deserializedWrapper);
+    // Create wrapper object
+    const wrapper = new MyWrapper();
+    wrapper.color = Color.White;
+    wrapper.myStruct = new MyStruct();
+    wrapper.myStruct.id = 42;
+    wrapper.myExt = new MyExt();
+    wrapper.myExt.id = 43;
+
+    // Serialize wrapper
+    const serializedData = fory2.serialize(wrapper);
     writeToFile(serializedData as Buffer);
   });
 
   test("test_skip_name_custom", () => {
-    if (Boolean("1")) { return; }
-    const fory = new Fory({
+    const fory1 = new Fory({
       compatible: true
     });
 
+    @Type.ext("my_ext")
+    class MyExt {
+      id: number = 0;
+    }
+    fory1.registerSerializer(MyExt, {
+      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
+        writer.varInt32(value.id);
+      },
+      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
+        result.id = reader.varInt32();
+      }
+    });
+
     // Define empty wrapper for deserialization
-    @Type.struct({ namespace: "", typeName: "my_wrapper" })
-    class EmptyWrapper { }
-    fory.registerSerializer(EmptyWrapper);
+    @Type.struct("my_wrapper")
+    class Empty { }
+    fory1.registerSerializer(Empty);
 
-    const reader = new BinaryReader({});
-    reader.reset(content);
+    const fory2 = new Fory({
+      compatible: true
+    });
 
-    // Deserialize empty wrapper from Java
+    // Define Color enum
+    const Color = {
+      Green: 0,
+      Red: 1,
+      Blue: 2,
+      White: 3,
+    };
+    fory2.registerSerializer(Type.enum("color", Color));
+
+    @Type.struct("my_struct", {
+      id: Type.varInt32()
+    })
+    class MyStruct {
+      id: number = 0;
+    }
+    fory2.registerSerializer(MyStruct);
+
+    fory2.registerSerializer(MyExt, {
+      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
+        writer.varInt32(value.id);
+      },
+      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
+        result.id = reader.varInt32();
+      }
+    });
+
+    @Type.struct("my_wrapper", {
+      color: Type.enum("color", Color),
+      myStruct: Type.struct("my_struct"),
+      myExt: Type.ext("my_ext")
+    })
+    class MyWrapper {
+      color: number = 0;
+      myStruct: MyStruct = new MyStruct();
+      myExt: MyExt = new MyExt();
+    }
+    fory2.registerSerializer(MyWrapper);
+
+
+    // Deserialize empty from Java
     let cursor = 0;
-    const deserializedWrapper = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    const deserializedEmpty = fory1.deserialize(content.subarray(cursor));
+    cursor += fory1.binaryReader.getCursor();
+    expect(deserializedEmpty instanceof Empty).toEqual(true);
 
-    // Serialize the deserialized wrapper back
-    const serializedData = fory.serialize(deserializedWrapper);
+    // Create wrapper object
+    const wrapper = new MyWrapper();
+    wrapper.color = Color.White;
+    wrapper.myStruct = new MyStruct();
+    wrapper.myStruct.id = 42;
+    wrapper.myExt = new MyExt();
+    wrapper.myExt.id = 43;
+
+    // Serialize wrapper
+    const serializedData = fory2.serialize(wrapper);
     writeToFile(serializedData as Buffer);
   });
 
@@ -832,7 +973,7 @@ describe("bool", () => {
     })
     class Dog {
       age: number = 0;
-      @ForyField({ nullable: true})
+      @ForyField({ nullable: true })
       name: string | null = null;
     }
     fory.registerSerializer(Dog);
@@ -953,8 +1094,31 @@ describe("bool", () => {
     writeToFile(serializedData as Buffer);
   });
 
+  test("test_schema_evolution_compatible_reverse", () => {
+    const fory = new Fory({
+      compatible: true
+    });
+
+    @Type.struct(200)
+    class TwoStringFieldStruct {
+      @Type.string()
+      f1: string = "";
+      @Type.string()
+      f2: string = "";
+    }
+    fory.registerSerializer(TwoStringFieldStruct);
+
+    // Deserialize empty struct from Java
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
+
+    // Serialize the deserialized struct back
+    const serializedData = fory.serialize(deserializedStruct);
+    writeToFile(serializedData as Buffer);
+  });
+
   test("test_schema_evolution_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       compatible: true
     });
@@ -962,9 +1126,6 @@ describe("bool", () => {
     @Type.struct(200)
     class EmptyStruct { }
     fory.registerSerializer(EmptyStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize empty struct from Java
     let cursor = 0;
@@ -1073,8 +1234,41 @@ describe("bool", () => {
     writeToFile(serializedData as Buffer);
   });
 
+  test("test_enum_schema_evolution_compatible_reverse", () => {
+    const fory = new Fory({
+      compatible: true
+    });
+
+    // Define and register TestEnum
+    const TestEnum = {
+      VALUE_A: 0,
+      VALUE_B: 1,
+      VALUE_C: 2,
+    };
+    fory.registerSerializer(Type.enum(210, TestEnum));
+
+    @Type.struct(211, {
+      f1: Type.enum(210, TestEnum),
+      f2: Type.enum(210, TestEnum)
+    })
+    class TwoEnumFieldStruct {
+      f1: number = 0; // enum value
+      f2: number = 0; // enum value
+    }
+    fory.registerSerializer(TwoEnumFieldStruct);
+
+    // Deserialize struct from Java
+    let cursor = 0;
+    const deserializedStruct = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.getCursor();
+
+    // Serialize the deserialized struct back
+    const serializedData = fory.serialize(deserializedStruct);
+    writeToFile(serializedData as Buffer);
+  });
+
+
   test("test_enum_schema_evolution_compatible", () => {
-    if (Boolean("1")) { return; }
     const fory = new Fory({
       compatible: true
     });
@@ -1090,9 +1284,6 @@ describe("bool", () => {
     @Type.struct(211)
     class EmptyStruct { }
     fory.registerSerializer(EmptyStruct);
-
-    const reader = new BinaryReader({});
-    reader.reset(content);
 
     // Deserialize empty struct from Java
     let cursor = 0;

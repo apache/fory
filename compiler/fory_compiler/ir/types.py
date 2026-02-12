@@ -39,6 +39,7 @@ class PrimitiveKind(PyEnum):
     VAR_UINT64 = "var_uint64"
     TAGGED_UINT64 = "tagged_uint64"
     FLOAT16 = "float16"
+    BFLOAT16 = "bfloat16"
     FLOAT32 = "float32"
     FLOAT64 = "float64"
     STRING = "string"
@@ -67,6 +68,7 @@ PRIMITIVE_TYPES = {
     "fixed_uint64": PrimitiveKind.UINT64,
     "tagged_uint64": PrimitiveKind.TAGGED_UINT64,
     "float16": PrimitiveKind.FLOAT16,
+    "bfloat16": PrimitiveKind.BFLOAT16,
     "float32": PrimitiveKind.FLOAT32,
     "float64": PrimitiveKind.FLOAT64,
     "string": PrimitiveKind.STRING,

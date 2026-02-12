@@ -67,7 +67,7 @@ abstract base class ListSerializer extends IterableSerializer {
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          list[i] = pack.deserializationCoordinator
+          list[i] = pack.deserializationDispatcher
               .readWithSerializer(br, serializer, pack);
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
@@ -88,8 +88,7 @@ abstract base class ListSerializer extends IterableSerializer {
       if ((flags & IterableSerializer.trackingRefFlag) ==
           IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          list[i] =
-              pack.deserializationCoordinator.readDynamicWithRef(br, pack);
+          list[i] = pack.deserializationDispatcher.readDynamicWithRef(br, pack);
         }
       } else if ((flags & IterableSerializer.hasNullFlag) ==
           IterableSerializer.hasNullFlag) {
@@ -98,13 +97,13 @@ abstract base class ListSerializer extends IterableSerializer {
             list[i] = null;
           } else {
             list[i] =
-                pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+                pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
           }
         }
       } else {
         for (int i = 0; i < num; ++i) {
           list[i] =
-              pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+              pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
         }
       }
     }
