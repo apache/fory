@@ -180,7 +180,7 @@ void main() {
         TimeStamp(-1714490301000000),
       );
 
-      fory.register($TimeObj, typename: "test.TimeObj");
+      fory.register(TimeObj, typename: "test.TimeObj");
       Object? obj1 = _roundTrip(fory, timeObj);
       check(obj1).isNotNull().isA<TimeObj>();
       TimeObj timeObj1 = obj1 as TimeObj;

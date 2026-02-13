@@ -1684,6 +1684,17 @@ final Map<Type, EnumSpec> _enumSpecByType = <Type, EnumSpec>{
   Color: _colorSpec,
 };
 
+bool _xlangSpecLookupReady = false;
+
+void _ensureXlangSpecLookupReady() {
+  if (_xlangSpecLookupReady) {
+    return;
+  }
+  SpecLookup.registerAll(_structSpecByType.values);
+  SpecLookup.registerAll(_enumSpecByType.values);
+  _xlangSpecLookupReady = true;
+}
+
 void _registerStructType(
   Fory fory,
   Type type, {
@@ -1691,12 +1702,9 @@ void _registerStructType(
   String? namespace,
   String? typename,
 }) {
-  final TypeSpec? spec = _structSpecByType[type];
-  if (spec == null) {
-    throw StateError('No struct spec registered for $type');
-  }
+  _ensureXlangSpecLookupReady();
   fory.registerStruct(
-    spec,
+    type,
     typeId: typeId,
     namespace: namespace,
     typename: typename,
@@ -1710,12 +1718,9 @@ void _registerEnumType(
   String? namespace,
   String? typename,
 }) {
-  final EnumSpec? spec = _enumSpecByType[type];
-  if (spec == null) {
-    throw StateError('No enum spec registered for $type');
-  }
+  _ensureXlangSpecLookupReady();
   fory.registerEnum(
-    spec,
+    type,
     typeId: typeId,
     namespace: namespace,
     typename: typename,

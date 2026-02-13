@@ -20,6 +20,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:fory/fory.dart';
+import 'package:fory/src/resolver/spec_lookup.dart';
 
 part 'xlang_test_defs.dart';
 

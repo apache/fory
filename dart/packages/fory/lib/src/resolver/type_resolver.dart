@@ -25,7 +25,6 @@ import 'package:fory/src/resolver/impl/type_resolver_impl.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/serialization_context.dart';
 
 abstract base class TypeResolver {
@@ -36,7 +35,28 @@ abstract base class TypeResolver {
   }
 
   void registerType(
-    CustomTypeSpec spec, {
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  });
+
+  void registerStruct(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  });
+
+  void registerEnum(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  });
+
+  void registerUnion(
+    Type type, {
     int? typeId,
     String? namespace,
     String? typename,

@@ -17,29 +17,8 @@
  * under the License.
  */
 
-import 'dart:typed_data';
+import 'package:fory/src/meta/specs/custom_type_spec.dart';
 
-import 'package:fory/fory.dart';
-
-part 'example.g.dart';
-
-@foryClass
-class Person with _$PersonFory {
-  final String firstName, lastName;
-  final int age;
-  final LocalDate dateOfBirth;
-
-  const Person(this.firstName, this.lastName, this.age, this.dateOfBirth);
-}
-
-void main() {
-  Fory fory = Fory(ref: true);
-  fory.register(Person, typename: "example.Person");
-  Person obj = Person('Leo', 'Leo', 21, LocalDate(2004, 1, 1));
-
-  // Serialize
-  Uint8List bytes = fory.serialize(obj);
-
-  // Deserialize
-  obj = fory.deserialize(bytes) as Person;
+CustomTypeSpec? resolveByMirrors(Type type) {
+  return null;
 }
