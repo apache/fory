@@ -137,6 +137,46 @@ class Float16ArraySerializerGenerator extends BaseSerializerGenerator {
     return 7;
   }
 }
+
+class BFloat16ArraySerializerGenerator extends BaseSerializerGenerator {
+  typeInfo: TypeInfo;
+
+  constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
+    super(typeInfo, builder, scope);
+    this.typeInfo = <TypeInfo>typeInfo;
+  }
+
+  write(accessor: string): string {
+    const item = this.scope.uniqueName("item");
+    return `
+        ${this.builder.writer.varUInt32(`${accessor}.length * 2`)}
+        ${this.builder.writer.reserve(`${accessor}.length * 2`)};
+        for (const ${item} of ${accessor}) {
+          ${this.builder.writer.bfloat16(item)}
+        }
+    `;
+  }
+
+  read(accessor: (expr: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
+    const len = this.scope.uniqueName("len");
+    const idx = this.scope.uniqueName("idx");
+    return `
+        const ${len} = ${this.builder.reader.varUInt32()} / 2;
+        const ${result} = new Array(${len});
+        ${this.maybeReference(result, refState)}
+        for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+          ${result}[${idx}] = ${this.builder.reader.bfloat16()};
+        }
+        ${accessor(result)}
+      `;
+  }
+
+  getFixedSize(): number {
+    return 7;
+  }
+}
+
 CodegenRegistry.register(TypeId.BOOL_ARRAY, BoolArraySerializerGenerator);
 CodegenRegistry.register(TypeId.BINARY, build(Type.uint8(), `Uint8Array`, 1));
 CodegenRegistry.register(TypeId.INT8_ARRAY, build(Type.int8(), `Int8Array`, 1));
@@ -148,5 +188,6 @@ CodegenRegistry.register(TypeId.UINT16_ARRAY, build(Type.uint16(), `Uint16Array`
 CodegenRegistry.register(TypeId.UINT32_ARRAY, build(Type.uint32(), `Uint32Array`, 4));
 CodegenRegistry.register(TypeId.UINT64_ARRAY, build(Type.uint64(), `BigUint64Array`, 8));
 CodegenRegistry.register(TypeId.FLOAT16_ARRAY, Float16ArraySerializerGenerator);
+CodegenRegistry.register(TypeId.BFLOAT16_ARRAY, BFloat16ArraySerializerGenerator);
 CodegenRegistry.register(TypeId.FLOAT32_ARRAY, build(Type.float32(), `Float32Array`, 4));
 CodegenRegistry.register(TypeId.FLOAT64_ARRAY, build(Type.float64(), `Float64Array`, 6));

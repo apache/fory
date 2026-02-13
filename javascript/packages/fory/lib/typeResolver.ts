@@ -110,6 +110,7 @@ export default class TypeResolver {
     registerSerializer(Type.taggedUInt64());
     registerSerializer(Type.sliInt64());
     registerSerializer(Type.float16());
+    registerSerializer(Type.bfloat16());
     registerSerializer(Type.float32());
     registerSerializer(Type.float64());
     registerSerializer(Type.timestamp());
@@ -127,6 +128,7 @@ export default class TypeResolver {
     registerSerializer(Type.uint64Array());
     registerSerializer(Type.int64Array());
     registerSerializer(Type.float16Array());
+    registerSerializer(Type.bfloat16Array());
     registerSerializer(Type.float32Array());
     registerSerializer(Type.float64Array());
 
