@@ -23,6 +23,7 @@ import 'package:collection/collection.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/dart_type.dart';
 import 'package:fory/src/const/types.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
@@ -79,6 +80,8 @@ class SerializerPool {
         UInt32Serializer.cache.getSerializer(conf);
     typeToTypeInfo[Float32]!.serializer =
         Float32Serializer.cache.getSerializer(conf);
+    typeToTypeInfo[Float16]!.serializer =
+        Float16Serializer.cache.getSerializer(conf);
     typeToTypeInfo[String]!.serializer =
         StringSerializer.cache.getSerializer(conf);
 
