@@ -198,6 +198,7 @@ fixed_uint64 = TypeVar("fixed_uint64", bound=int)
 tagged_uint64 = TypeVar("tagged_uint64", bound=int)
 float32 = TypeVar("float32", bound=float)
 float64 = TypeVar("float64", bound=float)
+bfloat16 = TypeVar("bfloat16", bound=float)
 
 
 class RefMeta:
