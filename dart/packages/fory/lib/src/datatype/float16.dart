@@ -18,19 +18,15 @@
  */
 
 import 'dart:math' as math;
-import 'dart:typed_data'; // For ByteData
+import 'dart:typed_data';
 
 import 'float32.dart' show Float32;
 import 'fory_fixed_num.dart';
 import 'int16.dart' show Int16;
 import 'int32.dart' show Int32;
-// ignore: unused_import
 import 'int8.dart' show Int8;
-// ignore: unused_import
 import 'uint8.dart' show UInt8;
-// ignore: unused_import
 import 'uint16.dart' show UInt16;
-// ignore: unused_import
 import 'uint32.dart' show UInt32;
 
 /// Float16: 16-bit floating point (IEEE 754 half precision)
@@ -45,7 +41,6 @@ final class Float16 extends FixedNum {
   // --- Constants ---
   static const int _exponentBias = 15;
   static const int _maxExponent = 31; // 2^5 - 1
-  // ignore: unused_field
   static const int _mantissaBits = 10;
   
   // Bit placeholders
@@ -58,12 +53,12 @@ final class Float16 extends FixedNum {
   static const Float16 negativeZero = Float16.fromBits(0x8000);
   static const Float16 positiveInfinity = Float16.fromBits(0x7C00);
   static const Float16 negativeInfinity = Float16.fromBits(0xFC00);
-  static const Float16 nan = Float16.fromBits(0x7E00); // Canonical NaN
+  static const Float16 nan = Float16.fromBits(0x7E00);
 
-  static const double minValue = 6.103515625e-05; // 2^-14 (Normal)
-  static const double minSubnormal = 5.960464477539063e-08; // 2^-24
+  static const double minValue = 6.103515625e-05;
+  static const double minSubnormal = 5.960464477539063e-08;
   static const double maxValue = 65504.0;
-  static const double epsilon = 0.0009765625; // 2^-10
+  static const double epsilon = 0.0009765625;
 
   /// Constructs a [Float16] from a number. 
   /// Delegates to [Float16.fromDouble].
