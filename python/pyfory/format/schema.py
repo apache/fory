@@ -207,17 +207,17 @@ def fory_field_list_to_arrow_schema(field_list):
         nullable = field_spec.get("nullable", True)
 
         # Handle nested types
-        if type_id == 21:  # LIST
+        if type_id == 22:  # LIST
             value_type = field_spec.get("value_type")
             arrow_type = pa.list_(value_type)
-        elif type_id == 23:  # MAP
+        elif type_id == 24:  # MAP
             key_type = field_spec.get("key_type")
             item_type = field_spec.get("item_type")
             arrow_type = pa.map_(key_type, item_type)
-        elif type_id == 15:  # STRUCT
+        elif type_id == 27:  # STRUCT
             struct_fields = field_spec.get("struct_fields", [])
             arrow_type = pa.struct(struct_fields)
-        elif type_id == 27:  # DECIMAL
+        elif type_id == 40:  # DECIMAL
             precision = field_spec.get("precision", 38)
             scale = field_spec.get("scale", 18)
             arrow_type = pa.decimal128(precision, scale)
@@ -277,20 +277,20 @@ def reconstruct_arrow_type(spec):
     """
     type_id = spec["type_id"]
 
-    if type_id == 21:  # LIST
+    if type_id == 22:  # LIST
         value_type = reconstruct_arrow_type(spec["value_type"])
         return pa.list_(value_type)
-    elif type_id == 23:  # MAP
+    elif type_id == 24:  # MAP
         key_type = reconstruct_arrow_type(spec["key_type"])
         item_type = reconstruct_arrow_type(spec["item_type"])
         return pa.map_(key_type, item_type)
-    elif type_id == 15:  # STRUCT
+    elif type_id == 27:  # STRUCT
         fields = []
         for field_spec in spec["fields"]:
             field_type = reconstruct_arrow_type(field_spec["type"])
             fields.append(pa.field(field_spec["name"], field_type, nullable=field_spec.get("nullable", True)))
         return pa.struct(fields)
-    elif type_id == 27:  # DECIMAL
+    elif type_id == 40:  # DECIMAL
         return pa.decimal128(spec.get("precision", 38), spec.get("scale", 18))
     else:
         return fory_type_id_to_arrow_type(type_id)
