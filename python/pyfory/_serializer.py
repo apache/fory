@@ -255,6 +255,21 @@ class Float64Serializer(XlangCompatibleSerializer):
         return buffer.read_double()
 
 
+class BFloat16Serializer(XlangCompatibleSerializer):
+    def write(self, buffer, value):
+        from pyfory.bfloat16 import BFloat16
+
+        if isinstance(value, BFloat16):
+            buffer.write_bfloat16(value.to_bits())
+        else:
+            buffer.write_bfloat16(BFloat16(value).to_bits())
+
+    def read(self, buffer):
+        from pyfory.bfloat16 import BFloat16
+
+        return BFloat16.from_bits(buffer.read_bfloat16())
+
+
 class StringSerializer(XlangCompatibleSerializer):
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
