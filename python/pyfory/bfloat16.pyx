@@ -20,9 +20,11 @@
 # cython: language_level = 3
 
 from libc.stdint cimport uint16_t, uint32_t
+from libc.string cimport memcpy
 
 cdef inline uint16_t float32_to_bfloat16_bits(float value) nogil:
-    cdef uint32_t f32_bits = (<uint32_t*>&value)[0]
+    cdef uint32_t f32_bits
+    memcpy(&f32_bits, &value, sizeof(float))
     cdef uint16_t bf16_bits = <uint16_t>(f32_bits >> 16)
     cdef uint16_t truncated = <uint16_t>(f32_bits & 0xFFFF)
     if truncated > 0x8000:
@@ -37,7 +39,9 @@ cdef inline uint16_t float32_to_bfloat16_bits(float value) nogil:
 
 cdef inline float bfloat16_bits_to_float32(uint16_t bits) nogil:
     cdef uint32_t f32_bits = <uint32_t>bits << 16
-    return (<float*>&f32_bits)[0]
+    cdef float result
+    memcpy(&result, &f32_bits, sizeof(float))
+    return result
 
 
 cdef class BFloat16:
