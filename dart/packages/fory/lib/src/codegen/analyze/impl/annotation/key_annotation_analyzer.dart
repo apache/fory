@@ -56,9 +56,11 @@ class KeyAnnotationAnalyzer {
     // If there is no annotation, both includeFromFory and includeToFory default to true.
     bool includeFromFory = true;
     bool includeToFory = true;
+    bool ref = false;
     if (getMeta && anno != null) {
       includeFromFory = anno.getField("includeFromFory")!.toBoolValue()!;
       includeToFory = anno.getField("includeToFory")!.toBoolValue()!;
+      ref = anno.getField("ref")!.toBoolValue()!;
       // serializeToVar = anno.getField("serializeTo")?.variable;
       // deserializeFromVar = anno.getField("deserializeFrom")?.variable;
       // if (serializeToVar != null){
@@ -74,6 +76,7 @@ class KeyAnnotationAnalyzer {
       // deserializeFrom: deserializeFrom,
       includeFromFory: includeFromFory,
       includeToFory: includeToFory,
+      ref: ref,
     );
     return foryKey;
   }

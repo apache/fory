@@ -76,6 +76,8 @@ abstract base class TypeResolver {
 
   TypeInfo writeTypeInfo(ByteWriter bw, Object obj, SerializationContext pack);
 
+  Serializer getRegisteredSerializer(Type type);
+
   /*-----For test only------------------------------------------------*/
   StructHashPair getHashPairForTest(
     Type type,

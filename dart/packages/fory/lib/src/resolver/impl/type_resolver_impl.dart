@@ -386,6 +386,15 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   @override
+  Serializer getRegisteredSerializer(Type type) {
+    TypeInfo? typeInfo = _ctx.type2TypeInfo[type];
+    if (typeInfo == null) {
+      throw UnregisteredTypeException(type);
+    }
+    return typeInfo.serializer;
+  }
+
+  @override
   void bindSerializers(List<TypeSpecWrap> typeWraps) {
     TypeSpecWrap wrap;
     for (int i = 0; i < typeWraps.length; ++i) {
@@ -809,6 +818,10 @@ final class TypeResolverImpl extends TypeResolver {
       case ObjType.TYPED_UNION:
       case ObjType.NAMED_UNION:
         return ObjType.UNION.id;
+      case ObjType.INT32:
+        return ObjType.VAR_INT32.id;
+      case ObjType.INT64:
+        return ObjType.VAR_INT64.id;
       case ObjType.STRUCT:
       case ObjType.COMPATIBLE_STRUCT:
       case ObjType.NAMED_STRUCT:
