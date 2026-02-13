@@ -214,14 +214,14 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
-    const inner = this.genericTypeDescriptin();
+    const inner = this.genericTypeDescriptin()!;
     this.innerGenerator = CodegenRegistry.newGeneratorByTypeInfo(inner, this.builder, this.scope);
   }
 
-  abstract genericTypeDescriptin(): TypeInfo;
+  abstract genericTypeDescriptin(): TypeInfo | undefined;
 
   private isAny() {
-    return this.genericTypeDescriptin().typeId === TypeId.UNKNOWN;
+    return this.genericTypeDescriptin()?.typeId === TypeId.UNKNOWN;
   }
 
   abstract newCollection(lenAccessor: string): string;
@@ -295,7 +295,6 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const flags = this.scope.uniqueName("flags");
     const idx = this.scope.uniqueName("idx");
     const refFlag = this.scope.uniqueName("refFlag");
-
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
             const ${flags} = ${this.builder.reader.uint8()};
@@ -307,7 +306,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     switch (${refFlag}) {
                         case ${RefFlags.NotNullValueFlag}:
                         case ${RefFlags.RefValueFlag}:
-                            ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                            ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                             break;
                         case ${RefFlags.RefFlag}:
                             ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()), idx)}
@@ -322,13 +321,13 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     if (${this.builder.reader.int8()} == ${RefFlags.NullFlag}) {
                         ${this.putAccessor(result, "null", idx)}
                     } else {
-                        ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                        ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
                     }
                 }
 
             } else {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                    ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
                 }
             }
             ${accessor(result)}

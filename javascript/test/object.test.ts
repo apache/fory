@@ -82,9 +82,7 @@ describe('object', () => {
     const typeInfo = Type.struct("example.foo", {
       a: Type.struct("example.bar", {
         b: Type.string()
-      })
-    }, {
-      fieldInfo: { a: { nullable: true } }
+      }).setNullable(true)
     })
     const fory = new Fory({ refTracking: true });
     const { serialize, deserialize } = fory.registerSerializer(typeInfo);
@@ -137,11 +135,12 @@ describe('object', () => {
       a: Type.struct("example.bar", {
         b: Type.string(),
       }),
-      a2: Type.struct("example.foo")
+      a2: Type.struct("example.foo").setTrackingRef(true)
     })
 
     const fory = new Fory({
-      refTracking: true, hooks: {
+      refTracking: true, 
+      hooks: {
         afterCodeGenerated: (code) => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
         }
@@ -202,11 +201,7 @@ describe('object', () => {
     const hps = undefined;
     const typeInfo = Type.struct('ws-channel-protocol', {
       kind: Type.string(),
-      path: Type.string(),
-    }, {
-      fieldInfo: {
-        path: { nullable: true }
-      }
+      path: Type.string().setNullable(true),
     });
 
     const fory = new Fory({ hps });
