@@ -25,9 +25,6 @@ import 'fory_fixed_num.dart';
 import 'int16.dart' show Int16;
 import 'int32.dart' show Int32;
 import 'int8.dart' show Int8;
-import 'uint8.dart' show UInt8;
-import 'uint16.dart' show UInt16;
-import 'uint32.dart' show UInt32;
 
 /// Float16: 16-bit floating point (IEEE 754 half precision)
 /// Wraps a 16-bit integer representing the IEEE 754 binary16 format.
@@ -41,7 +38,6 @@ final class Float16 extends FixedNum {
   // --- Constants ---
   static const int _exponentBias = 15;
   static const int _maxExponent = 31; // 2^5 - 1
-  static const int _mantissaBits = 10;
   
   // Bit placeholders
   static const int _signMask = 0x8000;
@@ -219,7 +215,6 @@ final class Float16 extends FixedNum {
   int toBits() => _bits;
 
   /// Returns the value as a [double].
-  @override
   double toDouble() => _bitsToDouble(_bits);
 
   /// Returns the underlying values as a [double].
@@ -275,44 +270,33 @@ final class Float16 extends FixedNum {
 
   // --- Operators (Delegation) ---
   
-  @override
   Float16 operator +(dynamic other) =>
       add(other is Float16 ? other : Float16(other));
 
-  @override
   Float16 operator -(dynamic other) =>
       sub(other is Float16 ? other : Float16(other));
 
-  @override
   Float16 operator *(dynamic other) =>
       mul(other is Float16 ? other : Float16(other));
 
-  @override
   double operator /(dynamic other) =>
       toDouble() / (other is Float16 ? other.toDouble() : other);
       
-  @override
   Float16 operator ~/(dynamic other) =>
       Float16((toDouble() ~/ (other is Float16 ? other.toDouble() : other)));
 
-  @override
   Float16 operator %(dynamic other) =>
       Float16(toDouble() % (other is Float16 ? other.toDouble() : other));
 
-  @override
   Float16 operator -() => neg();
 
   // Comparison Operators
-  @override
   bool operator <(dynamic other) => toDouble() < (other is Float16 ? other.toDouble() : other);
 
-  @override
   bool operator <=(dynamic other) => toDouble() <= (other is Float16 ? other.toDouble() : other);
 
-  @override
   bool operator >(dynamic other) => toDouble() > (other is Float16 ? other.toDouble() : other);
 
-  @override
   bool operator >=(dynamic other) => toDouble() >= (other is Float16 ? other.toDouble() : other);
 
   @override
@@ -326,7 +310,6 @@ final class Float16 extends FixedNum {
 
   // --- Type Conversions ---
   
-  @override
   int toInt() => toDouble().toInt();
   
   Int8 toInt8() => Int8(toInt());
