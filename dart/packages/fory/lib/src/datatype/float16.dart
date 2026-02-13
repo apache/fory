@@ -65,7 +65,7 @@ final class Float16 extends FixedNum {
   factory Float16(num value) => Float16.fromDouble(value.toDouble());
 
   /// Constructs a [Float16] directly from raw bits.
-  const Float16.fromBits(int bits) : _bits = bits & _mask;
+  const Float16.fromBits(int bits) : _bits = bits & _mask, super();
 
   /// Converts a [double] to [Float16] using IEEE 754 half-precision rules (round-to-nearest-even).
   factory Float16.fromDouble(double value) {

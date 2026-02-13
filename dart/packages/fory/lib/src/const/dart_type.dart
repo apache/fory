@@ -21,6 +21,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'package:collection/collection.dart' show BoolList;
 import 'package:decimal/decimal.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
@@ -57,6 +58,8 @@ enum DartTypeEnum {
   INT(int, true, 'int', 'dart', 'core', ObjType.INT64, true, 'dart:core@int'),
   FLOAT32(Float32, true, 'Float32', 'package', 'fory/src/datatype/float32.dart',
       ObjType.FLOAT32, true, 'dart:core@Float32'),
+  FLOAT16(Float16, true, 'Float16', 'package', 'fory/src/datatype/float16.dart',
+        ObjType.FLOAT16, true, 'dart:core@Float16'),
   DOUBLE(double, true, 'double', 'dart', 'core', ObjType.FLOAT64, true,
       'dart:core@double'),
   STRING(String, true, 'String', 'dart', 'core', ObjType.STRING, true,
