@@ -60,6 +60,7 @@ static bool py_parse_int64(PyObject *obj, int64_t *out) {
     return false;
   }
 
+#if PY_VERSION_HEX < 0x030D0000
   auto *long_obj = reinterpret_cast<PyLongObject *>(obj);
   Py_ssize_t size = Py_SIZE(long_obj);
   if (size == 0) {
@@ -83,6 +84,7 @@ static bool py_parse_int64(PyObject *obj, int64_t *out) {
     *out = value;
     return true;
   }
+#endif
 
   int overflow = 0;
   long long value = PyLong_AsLongLongAndOverflow(obj, &overflow);
