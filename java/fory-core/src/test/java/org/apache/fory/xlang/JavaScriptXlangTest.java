@@ -28,7 +28,6 @@ import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /** Executes cross-language tests against the Rust implementation. */
@@ -181,7 +180,7 @@ public class JavaScriptXlangTest extends XlangTestBase {
   @Override
   @Test(dataProvider = "enableCodegen")
   public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
-    throw new SkipException("Skipping: JavaScript xlang test not implemented for this case");
+    super.testCollectionElementRefOverride(enableCodegen);
   }
 
   @Test(dataProvider = "enableCodegen")
