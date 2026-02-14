@@ -60,32 +60,6 @@ static bool py_parse_int64(PyObject *obj, int64_t *out) {
     return false;
   }
 
-#if PY_VERSION_HEX < 0x030D0000 && !defined(Py_LIMITED_API)
-  auto *long_obj = reinterpret_cast<PyLongObject *>(obj);
-  Py_ssize_t size = Py_SIZE(long_obj);
-  if (size == 0) {
-    *out = 0;
-    return true;
-  }
-  if (size == 1) {
-    *out = static_cast<int64_t>(long_obj->ob_digit[0]);
-    return true;
-  }
-  if (size == -1) {
-    *out = -static_cast<int64_t>(long_obj->ob_digit[0]);
-    return true;
-  }
-  if (size == 2 || size == -2) {
-    int64_t value = static_cast<int64_t>(long_obj->ob_digit[0]);
-    value |= static_cast<int64_t>(long_obj->ob_digit[1]) << PyLong_SHIFT;
-    if (size < 0) {
-      value = -value;
-    }
-    *out = value;
-    return true;
-  }
-#endif
-
   int overflow = 0;
   long long value = PyLong_AsLongLongAndOverflow(obj, &overflow);
   if (overflow != 0) {
