@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { SetTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { CodegenRegistry } from "./router";
 import { TypeId } from "../type";
@@ -25,15 +25,15 @@ import { Scope } from "./scope";
 import { CollectionSerializerGenerator } from "./collection";
 
 class SetSerializerGenerator extends CollectionSerializerGenerator {
-  typeInfo: SetTypeInfo;
+  typeInfo: TypeInfo;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
-    this.typeInfo = <SetTypeInfo>typeInfo;
+    this.typeInfo = typeInfo;
   }
 
-  genericTypeDescriptin(): TypeInfo {
-    return this.typeInfo.options.key;
+  genericTypeDescriptin(): TypeInfo | undefined {
+    return this.typeInfo.options?.key;
   }
 
   newCollection(): string {

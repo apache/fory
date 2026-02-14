@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "test:crosslanguage": "f() { npx jest crossLanguage.test.ts -t \"$@\" > /dev/null 2>&1; }; f",
     "test": "npm run build && jest",
     "clear": "rm -rf ./packages/fory/dist && rm -rf ./packages/hps/dist",
     "build": "npm run clear && npm run build -w packages/fory -w packages/hps",

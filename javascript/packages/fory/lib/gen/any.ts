@@ -41,7 +41,7 @@ export class AnyHelper {
       }
       const hash = serializer.getHash();
       if (hash !== typeMeta.getHash()) {
-        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta, serializer);
       }
       return serializer;
     }

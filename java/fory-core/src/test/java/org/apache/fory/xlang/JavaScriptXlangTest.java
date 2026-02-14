@@ -34,13 +34,12 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Rust implementation. */
 @Test
 public class JavaScriptXlangTest extends XlangTestBase {
-  private static final String NODE_EXECUTABLE = "npx";
-  private static final String NODE_MODULE = "crossLanguage.test.ts";
+  private static final String NODE_EXECUTABLE = "npm";
 
   private static final List<String> RUST_BASE_COMMAND =
-      Arrays.asList(NODE_EXECUTABLE, "jest", NODE_MODULE, "-t", "caseName");
+      Arrays.asList(NODE_EXECUTABLE, "run", "test:crosslanguage", "-s", "--", "caseName");
 
-  private static final int NODE_TESTCASE_INDEX = 4;
+  private static final int NODE_TESTCASE_INDEX = 5;
 
   @Override
   protected void ensurePeerReady() {
@@ -182,7 +181,7 @@ public class JavaScriptXlangTest extends XlangTestBase {
   @Override
   @Test(dataProvider = "enableCodegen")
   public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
-    throw new SkipException("Skipping: JavaScript xlang test not implemented for this case");
+    super.testCollectionElementRefOverride(enableCodegen);
   }
 
   @Test(dataProvider = "enableCodegen")
