@@ -35,6 +35,7 @@ class FieldSpecImmutable extends GeneratedCodePart {
 
   final bool includeFromFory;
   final bool includeToFory;
+  final bool trackingRef;
 
   final bool isPublic;
 
@@ -65,6 +66,7 @@ class FieldSpecImmutable extends GeneratedCodePart {
     required this.hasInitializer,
     required this.includeFromFory,
     required this.includeToFory,
+    required this.trackingRef,
   }) : typeAdapter = TypeAdapter(typeSpec) {
     if (isPublic) {
       assert(name.isNotEmpty && name[0] != "_");
@@ -124,7 +126,7 @@ class FieldSpecImmutable extends GeneratedCodePart {
     // ForyFieldSpec::name part
     CodegenTool.writeIndent(buf, nextTotalIndent);
     buf.write("'");
-    buf.write(name);
+    buf.write(transName ?? name);
     buf.write("',\n");
 
     // ForyFieldSpec::type part
@@ -167,6 +169,11 @@ class FieldSpecImmutable extends GeneratedCodePart {
       buf.write(",\n");
     } else {
       buf.write("null,\n");
+    }
+
+    if (trackingRef) {
+      CodegenTool.writeIndent(buf, nextTotalIndent);
+      buf.write("trackingRef: true,\n");
     }
 
     // tail part

@@ -20,14 +20,10 @@
 import 'dart:typed_data';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/config/fory_config.dart';
-import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_dispatcher.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/meta/specs/type_spec.dart';
-import 'package:fory/src/meta/specs/custom_type_spec.dart';
-import 'package:fory/src/meta/specs/enum_spec.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serialization_dispatcher.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -64,13 +60,13 @@ final class Fory {
 
   @inline
   void register(
-    CustomTypeSpec spec, {
+    Type type, {
     int? typeId,
     String? namespace,
     String? typename,
   }) {
     registerType(
-      spec,
+      type,
       typeId: typeId,
       namespace: namespace,
       typename: typename,
@@ -79,13 +75,13 @@ final class Fory {
 
   @inline
   void registerType(
-    CustomTypeSpec spec, {
+    Type type, {
     int? typeId,
     String? namespace,
     String? typename,
   }) {
     _typeResolver.registerType(
-      spec,
+      type,
       typeId: typeId,
       namespace: namespace,
       typename: typename,
@@ -94,13 +90,13 @@ final class Fory {
 
   @inline
   void registerStruct(
-    TypeSpec spec, {
+    Type type, {
     int? typeId,
     String? namespace,
     String? typename,
   }) {
-    register(
-      spec,
+    _typeResolver.registerStruct(
+      type,
       typeId: typeId,
       namespace: namespace,
       typename: typename,
@@ -109,13 +105,13 @@ final class Fory {
 
   @inline
   void registerEnum(
-    EnumSpec spec, {
+    Type type, {
     int? typeId,
     String? namespace,
     String? typename,
   }) {
-    register(
-      spec,
+    _typeResolver.registerEnum(
+      type,
       typeId: typeId,
       namespace: namespace,
       typename: typename,
@@ -124,23 +120,13 @@ final class Fory {
 
   @inline
   void registerUnion(
-    CustomTypeSpec spec, {
+    Type type, {
     int? typeId,
     String? namespace,
     String? typename,
   }) {
-    final ObjType objType = spec.objType;
-    if (objType != ObjType.UNION &&
-        objType != ObjType.TYPED_UNION &&
-        objType != ObjType.NAMED_UNION) {
-      throw ArgumentError.value(
-        objType,
-        'spec.objType',
-        'registerUnion only accepts union specs',
-      );
-    }
-    register(
-      spec,
+    _typeResolver.registerUnion(
+      type,
       typeId: typeId,
       namespace: namespace,
       typename: typename,
