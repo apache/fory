@@ -55,6 +55,7 @@ from pyfory.serializer import (
     TaggedUint64Serializer,
     Float32Serializer,
     Float64Serializer,
+    BFloat16Serializer,
     StringSerializer,
     DateSerializer,
     TimestampSerializer,
@@ -320,6 +321,17 @@ class TypeResolver:
             serializer=Float64Serializer,
         )
         register(float, type_id=TypeId.FLOAT64, serializer=Float64Serializer)
+        # BFloat16 is optional if the extension module is unavailable.
+        try:
+            from pyfory.bfloat16 import BFloat16
+
+            register(
+                BFloat16,
+                type_id=TypeId.BFLOAT16,
+                serializer=BFloat16Serializer,
+            )
+        except ImportError:
+            pass
         register(str, type_id=TypeId.STRING, serializer=StringSerializer)
         # TODO(chaokunyang) DURATION DECIMAL
         register(datetime.datetime, type_id=TypeId.TIMESTAMP, serializer=TimestampSerializer)
@@ -331,6 +343,18 @@ class TypeResolver:
                 type_id=typeid,
                 serializer=PyArraySerializer(self.fory, ftype, typeid),
             )
+        # BFloat16Array is optional if the extension module is unavailable.
+        try:
+            from pyfory.bfloat16_array import BFloat16Array
+            from pyfory.serializer import BFloat16ArraySerializer
+
+            register(
+                BFloat16Array,
+                type_id=TypeId.BFLOAT16_ARRAY,
+                serializer=BFloat16ArraySerializer(self.fory, BFloat16Array, TypeId.BFLOAT16_ARRAY),
+            )
+        except ImportError:
+            pass
         if np:
             # overwrite pyarray  with same type id.
             # if pyarray are needed, one must annotate that value with XXXArrayType

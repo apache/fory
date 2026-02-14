@@ -244,6 +244,14 @@ cdef class Buffer:
     cpdef inline write_float64(self, double value):
         self.c_buffer.write_double(value)
 
+    cpdef inline write_bfloat16(self, uint16_t value):
+        self.c_buffer.write_uint16(value)
+
+    cpdef inline uint16_t read_bfloat16(self):
+        cdef uint16_t value = self.c_buffer.read_uint16(self._error)
+        self._raise_if_error()
+        return value
+
     cpdef put_buffer(self, uint32_t offset, v, int32_t src_index, int32_t length):
         if length == 0:  # access an emtpy buffer may raise out-of-bound exception.
             return

@@ -71,6 +71,17 @@ pyx_library(
 )
 
 pyx_library(
+    name = "bfloat16",
+    srcs = glob([
+        "python/pyfory/bfloat16.pyx",
+        "python/pyfory/__init__.py",
+    ]),
+    cc_kwargs = dict(
+        linkstatic = 1,
+    ),
+)
+
+pyx_library(
     name = "_format",
     srcs = glob(
         [
@@ -96,6 +107,7 @@ genrule(
     name = "cp_fory_so",
     srcs = [
         ":python/pyfory/buffer.so",
+        ":python/pyfory/bfloat16.so",
         ":python/pyfory/lib/mmh3/mmh3.so",
         ":python/pyfory/format/_format.so",
         ":python/pyfory/serialization.so",
@@ -111,11 +123,13 @@ genrule(
         if [ "$${u_name: 0: 4}" == "MING" ] || [ "$${u_name: 0: 4}" == "MSYS" ]
         then
             cp -f $(location python/pyfory/buffer.so) "$$WORK_DIR/python/pyfory/buffer.pyd"
+            cp -f $(location python/pyfory/bfloat16.so) "$$WORK_DIR/python/pyfory/bfloat16.pyd"
             cp -f $(location python/pyfory/lib/mmh3/mmh3.so) "$$WORK_DIR/python/pyfory/lib/mmh3/mmh3.pyd"
             cp -f $(location python/pyfory/format/_format.so) "$$WORK_DIR/python/pyfory/format/_format.pyd"
             cp -f $(location python/pyfory/serialization.so) "$$WORK_DIR/python/pyfory/serialization.pyd"
         else
             cp -f $(location python/pyfory/buffer.so) "$$WORK_DIR/python/pyfory"
+            cp -f $(location python/pyfory/bfloat16.so) "$$WORK_DIR/python/pyfory"
             cp -f $(location python/pyfory/lib/mmh3/mmh3.so) "$$WORK_DIR/python/pyfory/lib/mmh3"
             cp -f $(location python/pyfory/format/_format.so) "$$WORK_DIR/python/pyfory/format"
             cp -f $(location python/pyfory/serialization.so) "$$WORK_DIR/python/pyfory"

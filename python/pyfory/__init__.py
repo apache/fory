@@ -51,6 +51,7 @@ from pyfory.serializer import (  # noqa: F401 # pylint: disable=unused-import
     TaggedUint64Serializer,
     Float32Serializer,
     Float64Serializer,
+    BFloat16Serializer,
     StringSerializer,
     DateSerializer,
     TimestampSerializer,
@@ -89,6 +90,8 @@ from pyfory.types import (  # noqa: F401 # pylint: disable=unused-import
     tagged_uint64,
     float32,
     float64,
+    bfloat16,
+    bfloat16_array,
     int8_array,
     uint8_array,
     int16_array,
@@ -118,6 +121,14 @@ from pyfory.type_util import (  # noqa: F401 # pylint: disable=unused-import
 )
 from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=unused-import
 from pyfory.buffer import Buffer  # noqa: F401 # pylint: disable=unused-import
+
+# BFloat16 support
+try:
+    from pyfory.bfloat16 import BFloat16  # noqa: F401
+    from pyfory.bfloat16_array import BFloat16Array  # noqa: F401
+except ImportError:
+    # Cython extensions not built yet
+    pass
 
 __version__ = "0.16.0.dev0"
 
@@ -152,6 +163,10 @@ __all__ = [
     "tagged_uint64",
     "float32",
     "float64",
+    "BFloat16",
+    "BFloat16Array",
+    "bfloat16",
+    "bfloat16_array",
     "int8_array",
     "uint8_array",
     "int16_array",
@@ -194,6 +209,7 @@ __all__ = [
     "TaggedUint64Serializer",
     "Float32Serializer",
     "Float64Serializer",
+    "BFloat16Serializer",
     "StringSerializer",
     "DateSerializer",
     "TimestampSerializer",

@@ -58,6 +58,7 @@ _type_mapping = {
         "write_nullable_pyfloat64",
         "read_nullable_pyfloat64",
     ),
+    "bfloat16": ("write_bfloat16", "read_bfloat16", "write_nullable_bfloat16", "read_nullable_bfloat16"),
 }
 
 
@@ -144,6 +145,8 @@ def compile_function(
         context["read_nullable_pyfloat64"] = serialization.read_nullable_pyfloat64
         context["write_nullable_pystr"] = serialization.write_nullable_pystr
         context["read_nullable_pystr"] = serialization.read_nullable_pystr
+        context["write_nullable_bfloat16"] = serialization.write_nullable_bfloat16
+        context["read_nullable_bfloat16"] = serialization.read_nullable_bfloat16
     stmts = [f"{ident(statement)}" for statement in stmts]
     # Sanitize the function name to ensure it is valid Python syntax
     sanitized_function_name = _sanitize_function_name(function_name)
