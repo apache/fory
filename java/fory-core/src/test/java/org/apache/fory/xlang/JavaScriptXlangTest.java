@@ -38,7 +38,7 @@ public class JavaScriptXlangTest extends XlangTestBase {
   private static final String NODE_MODULE = "crossLanguage.test.ts";
 
   private static final List<String> RUST_BASE_COMMAND =
-      Arrays.asList(NODE_EXECUTABLE, "jest", NODE_MODULE, "-t", "caseName");
+      Arrays.asList(NODE_EXECUTABLE, "jest", NODE_MODULE, "--coverage=false", "--reporters=summary", "-t", "caseName");
 
   private static final int NODE_TESTCASE_INDEX = 4;
 
