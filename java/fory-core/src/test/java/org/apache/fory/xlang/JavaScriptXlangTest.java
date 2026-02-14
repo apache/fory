@@ -28,6 +28,7 @@ import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /** Executes cross-language tests against the Rust implementation. */
