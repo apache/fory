@@ -76,7 +76,13 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     if (refTrackingUnableTypeId(this.typeInfo.typeId)) {
       return false;
     }
-    return this.builder.fory.config.refTracking === true;
+    if (this.builder.fory.config.refTracking !== true) {
+      return false;
+    }
+    if (typeof this.typeInfo.trackingRef === "boolean") {
+      return this.typeInfo.trackingRef;
+    }
+    return true;
   }
 
   abstract write(accessor: string): string;
@@ -308,6 +314,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               needToWriteRef: () => ${this.needToWriteRef()},
               getTypeId: () => ${this.getTypeId()},
               getUserTypeId: () => ${this.getUserTypeId()},
+              getTypeInfo: () => typeInfo,
               getHash,
 
               write,

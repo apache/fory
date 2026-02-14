@@ -18,7 +18,7 @@
  */
 
 import { TypeId, Serializer } from "../type";
-import { ArrayTypeInfo, MapTypeInfo, StructTypeInfo, SetTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeInfo } from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
@@ -62,12 +62,12 @@ export class Gen {
     return new Function(funcString);
   }
 
-  private register(typeInfo: StructTypeInfo, serializer?: Serializer) {
+  private register(typeInfo: TypeInfo, serializer?: Serializer) {
     this.fory.typeResolver.registerSerializer(typeInfo, serializer);
   }
 
   private isRegistered(typeInfo: TypeInfo) {
-    return !!this.fory.typeResolver.typeInfoExists(typeInfo);
+    return !!this.fory.typeResolver.getSerializerByTypeInfo(typeInfo);
   }
 
   private traversalContainer(typeInfo: TypeInfo) {
@@ -75,25 +75,28 @@ export class Gen {
       if (this.isRegistered(typeInfo)) {
         return;
       }
-      const options = (<StructTypeInfo>typeInfo).options;
+      const options = (typeInfo).options;
       if (options?.props) {
-        this.register(<StructTypeInfo>typeInfo);
+        this.register(typeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);
         });
         const func = this.generate(typeInfo);
-        this.register(<StructTypeInfo>typeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
+        this.register(typeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
       }
     }
     if (typeInfo.typeId === TypeId.LIST) {
-      this.traversalContainer((<ArrayTypeInfo>typeInfo).options.inner);
+      this.traversalContainer(typeInfo.options!.inner!);
     }
     if (typeInfo.typeId === TypeId.SET) {
-      this.traversalContainer((<SetTypeInfo>typeInfo).options.key);
+      this.traversalContainer((typeInfo).options!.key!);
     }
     if (typeInfo.typeId === TypeId.MAP) {
-      this.traversalContainer((<MapTypeInfo>typeInfo).options.key);
-      this.traversalContainer((<MapTypeInfo>typeInfo).options.value);
+      if (!typeInfo.options?.key || !typeInfo.options?.value) {
+        throw new Error("map type must have key and value");
+      }
+      this.traversalContainer((typeInfo).options!.key!);
+      this.traversalContainer((typeInfo).options!.value!);
     }
   }
 

@@ -20,7 +20,6 @@
 import Fory, {
   BinaryReader,
   BinaryWriter,
-  ForyField,
   Type,
   Dynamic,
 } from "../packages/fory/index";
@@ -639,6 +638,57 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
 
+  test("test_collection_element_ref_override", () => {
+    const fory = new Fory({
+      compatible: false,
+      refTracking: true,
+      hooks: {
+        afterCodeGenerated: (code) => {
+          return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
+        }
+      }
+    });
+
+    const Type701 = Type.struct(701, {
+      id: Type.varInt32(),
+      name: Type.string()
+    });
+
+    @Type701
+    class RefOverrideElement {
+      id: number = 0;
+      name: string = "";
+    }
+
+    @Type.struct(702, {
+      list_field: Type.array(Type701.setTrackingRef(true)),
+      map_field: Type.map(Type.string(), Type701.setTrackingRef(true))
+    })
+    class RefOverrideContainer {
+      list_field: RefOverrideElement[] = [];
+      map_field: Map<string, RefOverrideElement> = new Map();
+    }
+
+    fory.registerSerializer(RefOverrideElement);
+    fory.registerSerializer(RefOverrideContainer);
+
+    const outer = fory.deserialize(content);
+    console.log("Deserialized:", outer);
+
+    expect(outer.list_field).toBeTruthy();
+    expect(outer.list_field.length).toBeGreaterThan(0);
+    const shared = outer.list_field[0];
+    const newOuter = new RefOverrideContainer();
+    newOuter.list_field = [shared, shared];
+    newOuter.map_field = new Map([
+      ["k1", shared],
+      ["k2", shared]
+    ]);
+
+    const newBytes = fory.serialize(newOuter);
+    writeToFile(newBytes as Buffer)
+  });
+
   test("test_skip_id_custom", () => {
     const fory1 = new Fory({
       compatible: true
@@ -877,12 +927,11 @@ describe("bool", () => {
 
     @Type.struct(201, {
       f1: Type.varInt32(),
-      f2: Type.string(),
+      f2: Type.string().setNullable(true),
       f3: Type.float64()
     })
     class VersionCheckStruct {
       f1: number = 0;
-      @ForyField({ nullable: true })
       f2: string | null = null;
       f3: number = 0;
     }
@@ -909,11 +958,10 @@ describe("bool", () => {
     // Define Animal interface implementations
     @Type.struct(302, {
       age: Type.varInt32(),
-      name: Type.string()
+      name: Type.string().setNullable(true)
     })
     class Dog {
       age: number = 0;
-      @ForyField({ nullable: true })
       name: string | null = null;
     }
     fory.registerSerializer(Dog);
@@ -969,11 +1017,10 @@ describe("bool", () => {
     // Define Animal interface implementations
     @Type.struct(302, {
       age: Type.varInt32(),
-      name: Type.string()
+      name: Type.string().setNullable(true)
     })
     class Dog {
       age: number = 0;
-      @ForyField({ nullable: true })
       name: string | null = null;
     }
     fory.registerSerializer(Dog);
@@ -1028,7 +1075,7 @@ describe("bool", () => {
       f1: Type.string()
     })
     class OneStringFieldStruct {
-      @ForyField({ nullable: true })
+      @Type.string().setNullable(true)
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
@@ -1048,10 +1095,9 @@ describe("bool", () => {
     });
 
     @Type.struct(200, {
-      f1: Type.string()
+      f1: Type.string().setNullable(true)
     })
     class OneStringFieldStruct {
-      @ForyField({ nullable: true })
       f1: string | null = null;
     }
     fory.registerSerializer(OneStringFieldStruct);
@@ -1336,42 +1382,33 @@ describe("bool", () => {
       @Type.map(Type.string(), Type.string())
       mapField: Map<string, string> = new Map();
 
-      // Nullable group 1 - boxed types with @ForyField(nullable=true)
-      @ForyField({ nullable: true })
-      @Type.varInt32()
+      // Nullable group 1 - boxed types with nullable type decorators
+      @(Type.varInt32().setNullable(true))
       nullableInt1: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.varInt64()
+      @(Type.varInt64().setNullable(true))
       nullableLong1: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.float32()
+      @(Type.float32().setNullable(true))
       nullableFloat1: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.float64()
+      @(Type.float64().setNullable(true))
       nullableDouble1: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.bool()
+      @(Type.bool().setNullable(true))
       nullableBool1: boolean | null = null;
 
-      // Nullable group 2 - reference types with @ForyField(nullable=true)
-      @ForyField({ nullable: true })
-      @Type.string()
+      // Nullable group 2 - reference types with nullable type decorators
+      @(Type.string().setNullable(true))
       nullableString2: string | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.array(Type.string())
+      @(Type.array(Type.string()).setNullable(true))
       nullableList2: string[] | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.set(Type.string())
+      @(Type.set(Type.string()).setNullable(true))
       nullableSet2: Set<string> | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.map(Type.string(), Type.string())
+      @(Type.map(Type.string(), Type.string()).setNullable(true))
       nullableMap2: Map<string, string> | null = null;
     }
     return NullableComprehensiveCompatible;
@@ -1406,42 +1443,33 @@ describe("bool", () => {
       @Type.map(Type.string(), Type.string())
       mapField: Map<string, string> = new Map();
 
-      // Nullable group 1 - boxed types with @ForyField(nullable=true)
-      @ForyField({ nullable: true })
-      @Type.varInt32()
+      // Nullable group 1 - boxed types with nullable type decorators
+      @(Type.varInt32().setNullable(true))
       nullableInt: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.varInt64()
+      @(Type.varInt64().setNullable(true))
       nullableLong: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.float32()
+      @(Type.float32().setNullable(true))
       nullableFloat: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.float64()
+      @(Type.float64().setNullable(true))
       nullableDouble: number | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.bool()
+      @(Type.bool().setNullable(true))
       nullableBool: boolean | null = null;
 
-      // Nullable group 2 - reference types with @ForyField(nullable=true)
-      @ForyField({ nullable: true })
-      @Type.string()
+      // Nullable group 2 - reference types with nullable type decorators
+      @(Type.string().setNullable(true))
       nullableString: string | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.array(Type.string())
+      @(Type.array(Type.string()).setNullable(true))
       nullableList: string[] | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.set(Type.string())
+      @(Type.set(Type.string()).setNullable(true))
       nullableSet: Set<string> | null = null;
 
-      @ForyField({ nullable: true })
-      @Type.map(Type.string(), Type.string())
+      @(Type.map(Type.string(), Type.string()).setNullable(true))
       nullableMap: Map<string, string> | null = null;
     }
     return NullableComprehensiveConsistent
@@ -1543,14 +1571,12 @@ describe("bool", () => {
     fory.registerSerializer(RefInner);
 
     @Type.struct(502, {
-      inner1: Type.struct(501),
-      inner2: Type.struct(501)
+      inner1: Type.struct(501).setTrackingRef(true).setNullable(true).setDynamic(Dynamic.FALSE),
+      inner2: Type.struct(501).setTrackingRef(true).setNullable(true).setDynamic(Dynamic.FALSE),
     })
     class RefOuter {
-      @ForyField({ trackingRef: true, nullable: true, dynamic: Dynamic.FALSE })
       inner1: RefInner | null = null;
 
-      @ForyField({ trackingRef: true, nullable: true, dynamic: Dynamic.FALSE })
       inner2: RefInner | null = null;
     }
     fory.registerSerializer(RefOuter);
@@ -1582,13 +1608,11 @@ describe("bool", () => {
     fory.registerSerializer(RefInner);
 
     @Type.struct(504, {
-      inner1: Type.struct(503),
-      inner2: Type.struct(503)
+      inner1: Type.struct(503).setTrackingRef(true).setNullable(true),
+      inner2: Type.struct(503).setTrackingRef(true).setNullable(true),
     })
     class RefOuter {
-      @ForyField({ trackingRef: true, nullable: true })
       inner1: RefInner | null = null;
-      @ForyField({ trackingRef: true, nullable: true })
       inner2: RefInner | null = null;
     }
     fory.registerSerializer(RefOuter);
@@ -1612,11 +1636,10 @@ describe("bool", () => {
 
     @Type.struct(601, {
       name: Type.string(),
-      selfRef: Type.struct(601)
+      selfRef: Type.struct(601).setNullable(true).setTrackingRef(true)
     })
     class CircularRefStruct {
       name: string = "";
-      @ForyField({ nullable: true, trackingRef: true })
       selfRef: CircularRefStruct | null = null;
     }
     fory.registerSerializer(CircularRefStruct);
@@ -1642,11 +1665,10 @@ describe("bool", () => {
 
     @Type.struct(602, {
       name: Type.string(),
-      selfRef: Type.struct(602)
+      selfRef: Type.struct(602).setNullable(true).setTrackingRef(true)
     })
     class CircularRefStruct {
       name: string = "";
-      @ForyField({ nullable: true, trackingRef: true })
       selfRef: CircularRefStruct | null = null;
     }
     fory.registerSerializer(CircularRefStruct);
@@ -1668,12 +1690,11 @@ describe("bool", () => {
 
     @Type.struct(1, {
       u64Tagged: Type.taggedUInt64(),
-      u64TaggedNullable: Type.taggedUInt64()
+      u64TaggedNullable: Type.taggedUInt64().setNullable(true)
     })
     class UnsignedSchemaConsistentSimple {
       u64Tagged: bigint = 0n;
 
-      @ForyField({ nullable: true })
       u64TaggedNullable: bigint | null = null;
     }
     fory.registerSerializer(UnsignedSchemaConsistentSimple);
@@ -1711,32 +1732,25 @@ describe("bool", () => {
       u64FixedField: bigint = 0n;
       u64TaggedField: bigint = 0n;
 
-      @ForyField({ nullable: true })
-      @Type.uint8()
+      @(Type.uint8().setNullable(true))
       u8NullableField: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.uint16()
+      @(Type.uint16().setNullable(true))
       u16NullableField: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.varUInt32()
+      @(Type.varUInt32().setNullable(true))
       u32VarNullableField: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.uint32()
+      @(Type.uint32().setNullable(true))
       u32FixedNullableField: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.varUInt64()
+      @(Type.varUInt64().setNullable(true))
       u64VarNullableField: bigint = 0n;
 
-      @ForyField({ nullable: true })
-      @Type.uint64()
+      @(Type.uint64().setNullable(true))
       u64FixedNullableField: bigint = 0n;
 
-      @ForyField({ nullable: true })
-      @Type.taggedUInt64()
+      @(Type.taggedUInt64().setNullable(true))
       u64TaggedNullableField: bigint = 0n;
     }
     fory.registerSerializer(UnsignedSchemaConsistent);
@@ -1774,32 +1788,25 @@ describe("bool", () => {
       u64FixedField1: bigint = 0n;
       u64TaggedField1: bigint = 0n;
 
-      @ForyField({ nullable: true })
-      @Type.uint8()
+      @(Type.uint8().setNullable(true))
       u8Field2: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.uint16()
+      @(Type.uint16().setNullable(true))
       u16Field2: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.varUInt32()
+      @(Type.varUInt32().setNullable(true))
       u32VarField2: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.uint32()
+      @(Type.uint32().setNullable(true))
       u32FixedField2: number = 0;
 
-      @ForyField({ nullable: true })
-      @Type.varUInt64()
+      @(Type.varUInt64().setNullable(true))
       u64VarField2: bigint = 0n;
 
-      @ForyField({ nullable: true })
-      @Type.uint64()
+      @(Type.uint64().setNullable(true))
       u64FixedField2: bigint = 0n;
 
-      @ForyField({ nullable: true })
-      @Type.taggedUInt64()
+      @(Type.taggedUInt64().setNullable(true))
       u64TaggedField2: bigint = 0n;
     }
     fory.registerSerializer(UnsignedSchemaCompatible);
