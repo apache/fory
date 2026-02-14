@@ -35,9 +35,23 @@ static PyObject **py_sequence_get_items(PyObject *collection) {
 
 static bool ensure_readable_size(fory::Buffer *buffer, Py_ssize_t size,
                                  Py_ssize_t element_size) {
-  uint64_t readable =
-      static_cast<uint64_t>(buffer->size() - buffer->reader_index());
-  uint64_t expected = static_cast<uint64_t>(size) * element_size;
+  if (size < 0 || element_size < 0) {
+    return false;
+  }
+  uint32_t buffer_size = buffer->size();
+  uint32_t reader_index = buffer->reader_index();
+  if (FORY_PREDICT_FALSE(reader_index > buffer_size)) {
+    return false;
+  }
+  uint64_t element_size_u64 = static_cast<uint64_t>(element_size);
+  uint64_t size_u64 = static_cast<uint64_t>(size);
+  if (FORY_PREDICT_FALSE(element_size_u64 != 0 &&
+                         size_u64 > std::numeric_limits<uint64_t>::max() /
+                                        element_size_u64)) {
+    return false;
+  }
+  uint64_t readable = static_cast<uint64_t>(buffer_size - reader_index);
+  uint64_t expected = size_u64 * element_size_u64;
   return readable >= expected;
 }
 
