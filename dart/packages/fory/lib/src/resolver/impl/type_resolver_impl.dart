@@ -35,6 +35,7 @@ import 'package:fory/src/exception/registration_exception.dart'
 import 'package:fory/src/fory_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
+import 'package:fory/src/meta/field_def.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
@@ -48,6 +49,7 @@ import 'package:fory/src/resolver/meta_string_resolver.dart';
 import 'package:fory/src/resolver/tag_string_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/serializer/class_serializer.dart';
 import 'package:fory/src/serializer/enum_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -57,6 +59,25 @@ import 'package:fory/src/util/string_util.dart';
 
 import '../../exception/deserialization_exception.dart'
     show UnsupportedTypeException;
+
+/// Result of parsing a TypeDef body: resolved type and field definitions from the wire.
+class _ReadTypeDefResult {
+  final TypeInfo typeInfo;
+  final List<FieldDef> fieldDefs;
+
+  _ReadTypeDefResult(this.typeInfo, this.fieldDefs);
+}
+
+/// Cached entry for shared type meta: TypeInfo plus remote field list.
+class _CachedTypeDef {
+  final TypeInfo typeInfo;
+  final List<FieldDef> fieldDefs;
+
+  _CachedTypeDef(this.typeInfo, this.fieldDefs);
+}
+
+/// Field name encoding in TypeDef field header: 3 = TAG_ID (no name bytes).
+const int _fieldNameEncodingTagId = 3;
 
 final class TypeResolverImpl extends TypeResolver {
   static const int _metaSizeMask = 0xff;
@@ -102,7 +123,7 @@ final class TypeResolverImpl extends TypeResolver {
   final MetaStringDecoder _typeNameDecoder;
   final Map<Type, CustomTypeSpec> _type2Spec;
   final Map<Type, int> _writeTypeToIndex;
-  final List<TypeInfo> _readTypeInfos;
+  final List<_CachedTypeDef> _readTypeInfos;
   final Map<Type, Uint8List> _typeToEncodedTypeDef;
 
   TypeResolverImpl(
@@ -115,7 +136,7 @@ final class TypeResolverImpl extends TypeResolver {
         _typeNameDecoder = Encoders.typeNameDecoder,
         _type2Spec = HashMap<Type, CustomTypeSpec>(),
         _writeTypeToIndex = HashMap<Type, int>(),
-        _readTypeInfos = <TypeInfo>[],
+        _readTypeInfos = <_CachedTypeDef>[],
         _typeToEncodedTypeDef = HashMap<Type, Uint8List>(),
         _msResolver = MetaStringResolver.newInst,
         _tstrEncoder = TagStringResolver.newInst,
@@ -316,13 +337,16 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   @override
-  void resetReadContext() {
+  void resetReadContext([DeserializationContext? pack]) {
     _readTypeInfos.clear();
+    if (pack != null) {
+      pack.currentRemoteFieldDefs = null;
+    }
   }
 
   @override
-  TypeInfo readTypeInfo(ByteReader br) {
-    int xtypeId = br.readUint8();
+  TypeInfo readTypeInfo(ByteReader br, [DeserializationContext? pack]) {
+    int xtypeId = br.readVarUint32Small7();
     ObjType? xtype = ObjType.fromId(xtypeId);
     if (xtype == null) {
       throw UnregisteredTypeException('xtypeId=$xtypeId');
@@ -348,13 +372,13 @@ final class TypeResolverImpl extends TypeResolver {
             '${xtype.name}(userTypeId=$userTypeId)');
       case ObjType.COMPATIBLE_STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:
-        return _readSharedTypeMeta(br);
+        return _readSharedTypeMeta(br, pack);
       case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
       case ObjType.NAMED_EXT:
       case ObjType.NAMED_UNION:
         if (_ctx.conf.compatible) {
-          return _readSharedTypeMeta(br);
+          return _readSharedTypeMeta(br, pack);
         }
         MetaStringBytes pkgBytes = _msResolver.readMetaStringBytes(br);
         // assert(pkgBytes.length == 0); // fory dart does not support package
@@ -381,6 +405,14 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
+  @override
+  TypeInfo? getTypeInfoByObjTypeId(int typeId) {
+    if (typeId < 0 || typeId >= _ctx.objTypeId2TypeInfo.length) {
+      return null;
+    }
+    return _ctx.objTypeId2TypeInfo[typeId];
+  }
+
   TypeInfo _getAndCacheSpecByBytes(
     LongLongKey key,
     MetaStringBytes packageBytes,
@@ -405,7 +437,7 @@ final class TypeResolverImpl extends TypeResolver {
     if (typeInfo == null) {
       throw UnregisteredTypeException(dartType);
     }
-    bw.writeUint8(typeInfo.objType.id);
+    bw.writeVarUint32Small7(typeInfo.objType.id);
     switch (typeInfo.objType) {
       case ObjType.ENUM:
       case ObjType.STRUCT:
@@ -435,7 +467,7 @@ final class TypeResolverImpl extends TypeResolver {
     return typeInfo;
   }
 
-  TypeInfo _readSharedTypeMeta(ByteReader br) {
+  TypeInfo _readSharedTypeMeta(ByteReader br, [DeserializationContext? pack]) {
     final int marker = br.readVarUint32();
     final bool isRef = (marker & 1) == 1;
     final int index = marker >>> 1;
@@ -444,7 +476,11 @@ final class TypeResolverImpl extends TypeResolver {
         throw UnregisteredTypeException(
             'Shared type index out of bounds: $index');
       }
-      return _readTypeInfos[index];
+      final _CachedTypeDef cached = _readTypeInfos[index];
+      if (pack != null) {
+        pack.currentRemoteFieldDefs = cached.fieldDefs;
+      }
+      return cached.typeInfo;
     }
     final int id = br.readInt64();
     final int unsignedId = id & _allBits64Mask;
@@ -454,38 +490,137 @@ final class TypeResolverImpl extends TypeResolver {
     }
     final Uint8List bodyBytes = br.copyBytes(size);
     if ((unsignedId & _compressMetaFlag) != 0) {
-      throw UnregisteredTypeException('Compressed TypeDef is not supported');
+      throw UnregisteredTypeException(
+          'Compressed TypeDef is not supported; use uncompressed meta for Dart compatibility');
     }
-    final TypeInfo typeInfo = _readTypeInfoFromTypeDefBody(bodyBytes);
-    _readTypeInfos.add(typeInfo);
-    return typeInfo;
+    final _ReadTypeDefResult result = _readTypeInfoFromTypeDefBody(bodyBytes);
+    _readTypeInfos.add(_CachedTypeDef(result.typeInfo, result.fieldDefs));
+    if (pack != null) {
+      pack.currentRemoteFieldDefs = result.fieldDefs;
+    }
+    return result.typeInfo;
   }
 
-  TypeInfo _readTypeInfoFromTypeDefBody(Uint8List bodyBytes) {
+  _ReadTypeDefResult _readTypeInfoFromTypeDefBody(Uint8List bodyBytes) {
     final ByteReader bodyReader = ByteReader.forBytes(bodyBytes);
     int header = bodyReader.readUint8();
     int numFields = header & _smallFieldThreshold;
     if (numFields == _smallFieldThreshold) {
       numFields += bodyReader.readVarUint32Small7();
     }
+    TypeInfo typeInfo;
     if ((header & _registerByNameFlag) != 0) {
       final String namespace = _readPackageName(bodyReader);
       final String typeName = _readTypeName(bodyReader);
       final String qualifiedName =
           StringUtil.addingTypeNameAndNs(namespace, typeName);
-      final TypeInfo? typeInfo = _ctx.tag2TypeInfo[qualifiedName];
-      if (typeInfo == null) {
+      final TypeInfo? resolved = _ctx.tag2TypeInfo[qualifiedName];
+      if (resolved == null) {
         throw UnregisteredTagException(qualifiedName);
       }
-      return typeInfo;
+      typeInfo = resolved;
+    } else {
+      final int typeId = bodyReader.readVarUint32Small7();
+      final int userTypeId = bodyReader.readVarUint32();
+      final TypeInfo? resolved = _lookupTypeInfoByUserTypeId(typeId, userTypeId);
+      if (resolved == null) {
+        throw UnregisteredTypeException(
+            'typeId=$typeId,userTypeId=$userTypeId');
+      }
+      typeInfo = resolved;
     }
-    final int typeId = bodyReader.readUint8();
-    final int userTypeId = bodyReader.readVarUint32();
-    final TypeInfo? typeInfo = _lookupTypeInfoByUserTypeId(typeId, userTypeId);
-    if (typeInfo == null) {
-      throw UnregisteredTypeException('typeId=$typeId,userTypeId=$userTypeId');
+    final List<FieldDef> fieldDefs = _readTypeDefFields(bodyReader, numFields);
+    return _ReadTypeDefResult(typeInfo, fieldDefs);
+  }
+
+  List<FieldDef> _readTypeDefFields(ByteReader br, int numFields) {
+    final List<FieldDef> out = <FieldDef>[];
+    for (int i = 0; i < numFields; i++) {
+      out.add(_readTypeDefField(br));
     }
-    return typeInfo;
+    return out;
+  }
+
+  FieldDef _readTypeDefField(ByteReader br) {
+    final int fieldHeader = br.readUint8();
+    final int nameEncoding = (fieldHeader >> 6) & 3;
+    int size = (fieldHeader >> 2) & 15;
+    if (size == _fieldNameSizeThreshold) {
+      size += br.readVarUint32Small7();
+    }
+    final bool nullable = (fieldHeader & 2) != 0;
+    final bool trackingRef = (fieldHeader & 1) != 0;
+    final RemoteFieldType fieldType = _readRemoteFieldType(br);
+    String name = '';
+    int tagId = kTagIdUseFieldName;
+    if (nameEncoding == _fieldNameEncodingTagId) {
+      tagId = size;
+    } else {
+      final int nameBytesLength = size + 1;
+      final Uint8List nameBytes = br.readBytesView(nameBytesLength);
+      name = _decodeFieldName(nameBytes, nameEncoding);
+    }
+    return FieldDef(
+      name: name,
+      tagId: tagId,
+      nullable: nullable,
+      trackingRef: trackingRef,
+      fieldType: fieldType,
+    );
+  }
+
+  String _decodeFieldName(Uint8List bytes, int encodingFlag) {
+    final MetaStringEncoding encoding = _fieldNameEncodingByFlag(encodingFlag);
+    return _typeNameDecoder.decode(bytes, encoding);
+  }
+
+  MetaStringEncoding _fieldNameEncodingByFlag(int flag) {
+    switch (flag) {
+      case 0:
+        return MetaStringEncoding.utf8;
+      case 1:
+        return MetaStringEncoding.atls;
+      case 2:
+        return MetaStringEncoding.luds;
+      case _fieldNameEncodingTagId:
+        throw RegistrationArgumentException(
+            'TAG_ID encoding has no name bytes to decode');
+      default:
+        throw RegistrationArgumentException(flag);
+    }
+  }
+
+  RemoteFieldType _readRemoteFieldType(ByteReader br) {
+    final int typeId = br.readVarUint32Small7();
+    switch (ObjType.fromId(typeId)) {
+      case ObjType.LIST:
+      case ObjType.SET:
+        final RemoteFieldType elementType = _readNestedFieldType(br);
+        return ListSetRemoteFieldType(typeId, elementType);
+      case ObjType.MAP:
+        final RemoteFieldType keyType = _readNestedFieldType(br);
+        final RemoteFieldType valueType = _readNestedFieldType(br);
+        return MapRemoteFieldType(typeId, keyType, valueType);
+      default:
+        return SimpleRemoteFieldType(typeId);
+    }
+  }
+
+  RemoteFieldType _readNestedFieldType(ByteReader br) {
+    final int packed = br.readVarUint32Small7();
+    final int typeId = packed >> 2;
+    switch (ObjType.fromId(typeId)) {
+      case ObjType.LIST:
+      case ObjType.SET:
+        final RemoteFieldType elementType = _readNestedFieldType(br);
+        return ListSetRemoteFieldType(typeId, elementType);
+      case ObjType.MAP:
+        final RemoteFieldType keyType = _readNestedFieldType(br);
+        final RemoteFieldType valueType = _readNestedFieldType(br);
+        return MapRemoteFieldType(typeId, keyType, valueType);
+      default:
+        return SimpleRemoteFieldType(typeId);
+    }
   }
 
   TypeInfo? _lookupTypeInfoByUserTypeId(int typeId, int userTypeId) {
@@ -607,7 +742,7 @@ final class TypeResolverImpl extends TypeResolver {
       _writePackageName(writer, ns);
       _writeTypeName(writer, typeName);
     } else {
-      writer.writeUint8(typeInfo.objType.id);
+      writer.writeVarUint32Small7(typeInfo.objType.id);
       writer.writeVarUint32(typeInfo.userTypeId);
     }
     for (int i = 0; i < fields.length; ++i) {
@@ -662,7 +797,7 @@ final class TypeResolverImpl extends TypeResolver {
       writer.writeUint8(header);
     }
     final int typeId = _fieldTypeId(field.typeSpec);
-    writer.writeUint8(typeId);
+    writer.writeVarUint32Small7(typeId);
     _writeNestedTypeInfo(writer, field.typeSpec);
     writer.writeBytes(encodedName);
   }

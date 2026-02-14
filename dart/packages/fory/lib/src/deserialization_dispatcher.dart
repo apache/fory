@@ -54,7 +54,6 @@ class DeserializationDispatcher {
     HeaderBrief? header = _foryHeaderSerializer.read(br, conf);
     if (header == null) return null;
     typeResolver.resetReadContext();
-
     DeserializationContext deserializationContext = DeserializationContext(
       StructHashResolver.inst,
       typeResolver.getRegisteredTag,
@@ -79,7 +78,7 @@ class DeserializationDispatcher {
     }
     if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
       // must deserialize
-      TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
+      TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br, pack);
       int refId = refResolver.reserveId();
       Object o = _readByTypeInfo(br, typeInfo, refId, pack);
       refResolver.setRef(refId, o);
@@ -117,8 +116,30 @@ class DeserializationDispatcher {
   }
 
   Object readDynamicWithoutRef(ByteReader br, DeserializationContext pack) {
-    TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br);
+    TypeInfo typeInfo = pack.typeResolver.readTypeInfo(br, pack);
     return _readByTypeInfo(br, typeInfo, -1, pack);
+  }
+
+  Object? readByTypeInfo(ByteReader br, TypeInfo typeInfo, int refId,
+      DeserializationContext pack,
+      {bool? trackingRefOverride}) {
+    bool trackingRef = trackingRefOverride ?? typeInfo.serializer.writeRef;
+    if (trackingRef) {
+      DeserializationRefResolver refResolver = pack.refResolver;
+      int refFlag = br.readInt8();
+      if (refFlag == RefFlag.NULL.id) return null;
+      if (refFlag == RefFlag.TRACKED_ALREADY.id) {
+        int refId = br.readVarUint32Small14();
+        return refResolver.getObj(refId);
+      }
+      if (refFlag >= RefFlag.UNTRACKED_NOT_NULL.id) {
+        int actualRefId = refResolver.reserveId();
+        Object o = _readByTypeInfo(br, typeInfo, actualRefId, pack);
+        refResolver.setRef(actualRefId, o);
+        return o;
+      }
+    }
+    return _readByTypeInfo(br, typeInfo, refId, pack);
   }
 
   Object _readByTypeInfo(ByteReader br, TypeInfo typeInfo, int refId,
