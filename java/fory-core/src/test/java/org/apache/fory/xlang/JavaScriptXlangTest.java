@@ -34,11 +34,10 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Rust implementation. */
 @Test
 public class JavaScriptXlangTest extends XlangTestBase {
-  private static final String NODE_EXECUTABLE = "npx";
-  private static final String NODE_MODULE = "crossLanguage.test.ts";
+  private static final String NODE_EXECUTABLE = "npm";
 
   private static final List<String> RUST_BASE_COMMAND =
-      Arrays.asList(NODE_EXECUTABLE, "jest", NODE_MODULE, "--coverage=false", "--reporters=summary", "-t", "caseName");
+      Arrays.asList(NODE_EXECUTABLE, "run", "test:crosslanguage", "--" , "caseName");
 
   private static final int NODE_TESTCASE_INDEX = 4;
 
