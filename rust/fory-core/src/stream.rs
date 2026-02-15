@@ -17,7 +17,7 @@
 
 //! Streaming buffer for incremental deserialization.
 //!
-//! Provides [`ForyStreamBuf`], which wraps any [`Read`](std::io::Read) source
+//! Provides [`ForyStreamBuf`], which wraps any [`Read`] source
 //! and maintains a growable internal buffer that data is appended into on
 //! demand. This is the Rust equivalent of C++ `ForyInputStreamBuf` from
 //! `cpp/fory/util/stream.h` (PR #3307).
