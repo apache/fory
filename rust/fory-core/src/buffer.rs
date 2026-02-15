@@ -17,8 +17,10 @@
 
 use crate::error::Error;
 use crate::meta::buffer_rw_string::read_latin1_simd;
+use crate::stream::ForyStreamBuf;
 use byteorder::{ByteOrder, LittleEndian};
 use std::cmp::max;
+use std::io::Read;
 
 /// Threshold for using SIMD optimizations in string operations.
 /// For buffers smaller than this, direct copy is faster than SIMD setup overhead.
@@ -499,6 +501,13 @@ impl<'a> Writer<'a> {
 pub struct Reader<'a> {
     pub(crate) bf: &'a [u8],
     pub(crate) cursor: usize,
+    /// Optional stream backing for incremental deserialization.
+    /// When `Some`, `bf` points into the stream's buffer via unsafe reborrow.
+    /// When `None` (default), Reader operates on a borrowed slice with zero overhead.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::stream_` / `Buffer::stream_owner_`
+    stream: Option<Box<ForyStreamBuf>>,
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -507,7 +516,158 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn new(bf: &[u8]) -> Reader<'_> {
-        Reader { bf, cursor: 0 }
+        Reader {
+            bf,
+            cursor: 0,
+            stream: None,
+        }
+    }
+
+    /// Creates a stream-backed reader for incremental deserialization.
+    ///
+    /// Returns `Reader<'static>` because the reader owns its data through the stream
+    /// buffer. The `bf` field points into the stream's internal `Vec<u8>` via unsafe
+    /// reborrow, matching C++ where `Buffer::data_` points into `ForyInputStream`'s
+    /// buffer.
+    ///
+    /// # Safety invariants
+    ///
+    /// 1. `bf` is reborrowed from the stream after every `fill_to` call
+    /// 2. `cursor` is always a valid absolute position within the stream buffer
+    /// 3. `ensure_readable` is called before every read access
+    /// 4. The stream is owned by Reader, ensuring buffer validity
+    ///
+    /// # Equivalent
+    /// C++ `Buffer(ForyInputStream&)` constructor
+    pub fn from_stream(source: Box<dyn Read>) -> Reader<'static> {
+        Self::from_stream_with_capacity(source, 4096)
+    }
+
+    /// Creates a stream-backed reader with specified initial buffer capacity.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer(shared_ptr<ForyInputStream>)` constructor
+    pub fn from_stream_with_capacity(source: Box<dyn Read>, capacity: usize) -> Reader<'static> {
+        let stream = Box::new(ForyStreamBuf::with_capacity(source, capacity));
+        // SAFETY: bf starts as empty slice. First ensure_readable will fill and reborrow.
+        // The stream is owned by Reader, so the buffer lives as long as Reader.
+        let bf: &'static [u8] = &[];
+        Reader {
+            bf,
+            cursor: 0,
+            stream: Some(stream),
+        }
+    }
+
+    /// Returns true if this reader is backed by a stream.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::is_stream_backed()`
+    #[inline(always)]
+    pub fn is_stream_backed(&self) -> bool {
+        self.stream.is_some()
+    }
+
+    /// Takes ownership of the stream out of this reader.
+    /// Used by `deserialize_from` to transfer stream state to the context reader.
+    pub(crate) fn take_stream(&mut self) -> Option<Box<ForyStreamBuf>> {
+        self.stream.take()
+    }
+
+    /// Restores a stream and syncs bf/cursor from it.
+    /// Used by `deserialize_from` to return stream ownership after deserialization.
+    pub(crate) fn restore_stream(&mut self, stream: Box<ForyStreamBuf>) {
+        // SAFETY: Reborrow bf from stream. Same invariants as from_stream.
+        self.bf = unsafe { std::slice::from_raw_parts(stream.data_ptr(), stream.size()) };
+        self.cursor = stream.reader_index();
+        self.stream = Some(stream);
+    }
+
+    /// Creates a Reader from an existing ForyStreamBuf.
+    /// Used internally by `deserialize_from` when transferring stream state.
+    pub(crate) fn from_stream_buf(stream: Box<ForyStreamBuf>) -> Reader<'static> {
+        // SAFETY: Same invariants as from_stream.
+        let bf: &'static [u8] =
+            unsafe { std::slice::from_raw_parts(stream.data_ptr(), stream.size()) };
+        let cursor = stream.reader_index();
+        Reader {
+            bf,
+            cursor,
+            stream: Some(stream),
+        }
+    }
+
+    /// Fills the stream buffer to ensure `target_size` total bytes are available.
+    /// After fill, reborrows `bf` from the stream's buffer.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::fill_to(uint32_t target_size, Error& error)`
+    #[inline(always)]
+    fn fill_to(&mut self, target_size: usize) -> Result<(), Error> {
+        if target_size <= self.bf.len() {
+            return Ok(());
+        }
+        if let Some(stream) = &mut self.stream {
+            // Sync cursor to stream before filling
+            // C++: stream_->reader_index(reader_index_);
+            stream.set_reader_index(self.cursor);
+
+            // Fill buffer: need (target_size - cursor) bytes from current position
+            let needed = target_size - self.cursor;
+            stream.fill_buffer(needed)?;
+
+            // Reborrow bf from stream's (potentially reallocated) buffer
+            // C++: data_ = stream_->data(); size_ = stream_->size();
+            //      reader_index_ = stream_->reader_index();
+            // SAFETY: stream owns the buffer, which lives as long as Reader.
+            // After fill_buffer, the buffer pointer may have changed due to
+            // Vec reallocation, so we must reborrow.
+            self.bf = unsafe { std::slice::from_raw_parts(stream.data_ptr(), stream.size()) };
+            self.cursor = stream.reader_index();
+
+            Ok(())
+        } else {
+            // Not stream-backed, cannot fill
+            Err(Error::buffer_out_of_bound(
+                self.cursor,
+                target_size - self.cursor,
+                self.bf.len(),
+            ))
+        }
+    }
+
+    /// Ensures `len` bytes are readable from the current cursor position.
+    /// For slice-backed readers, simple bounds check. For stream-backed,
+    /// fills from source if needed.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::ensure_readable(uint32_t length, Error& error)`
+    #[inline(always)]
+    fn ensure_readable(&mut self, len: usize) -> Result<(), Error> {
+        let target = self.cursor + len;
+        // Fast path: data already available (zero overhead for in-memory)
+        if target <= self.bf.len() {
+            return Ok(());
+        }
+        // Stream path or error
+        self.fill_to(target)?;
+        // Verify after fill
+        if self.cursor + len > self.bf.len() {
+            return Err(Error::buffer_out_of_bound(self.cursor, len, self.bf.len()));
+        }
+        Ok(())
+    }
+
+    /// Syncs the stream's reader_index with our cursor after a read.
+    /// No-op when not stream-backed.
+    ///
+    /// # Equivalent
+    /// C++ `if (stream_ != nullptr) { stream_->reader_index(reader_index_); }`
+    #[inline(always)]
+    fn sync_stream_pos(&mut self) {
+        if let Some(stream) = &mut self.stream {
+            stream.set_reader_index(self.cursor);
+        }
     }
 
     #[inline(always)]
@@ -545,24 +705,23 @@ impl<'a> Reader<'a> {
     }
 
     #[inline(always)]
-    fn value_at(&self, index: usize) -> Result<u8, Error> {
-        match self.bf.get(index) {
-            None => Err(Error::buffer_out_of_bound(
-                index,
-                self.bf.len(),
-                self.bf.len(),
-            )),
-            Some(v) => Ok(*v),
+    fn value_at(&mut self, index: usize) -> Result<u8, Error> {
+        if index < self.bf.len() {
+            return Ok(self.bf[index]);
         }
+        // Stream path: try to fill
+        if self.stream.is_some() {
+            self.fill_to(index + 1)?;
+            if index < self.bf.len() {
+                return Ok(self.bf[index]);
+            }
+        }
+        Err(Error::buffer_out_of_bound(index, 1, self.bf.len()))
     }
 
     #[inline(always)]
-    fn check_bound(&self, n: usize) -> Result<(), Error> {
-        if self.cursor + n > self.bf.len() {
-            Err(Error::buffer_out_of_bound(self.cursor, n, self.bf.len()))
-        } else {
-            Ok(())
-        }
+    fn check_bound(&mut self, n: usize) -> Result<(), Error> {
+        self.ensure_readable(n)
     }
 
     #[inline(always)]
@@ -576,6 +735,7 @@ impl<'a> Reader<'a> {
     pub fn skip(&mut self, len: usize) -> Result<(), Error> {
         self.check_bound(len)?;
         self.move_next(len);
+        self.sync_stream_pos();
         Ok(())
     }
 
@@ -584,6 +744,7 @@ impl<'a> Reader<'a> {
         self.check_bound(len)?;
         let result = &self.bf[self.cursor..self.cursor + len];
         self.move_next(len);
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -662,6 +823,7 @@ impl<'a> Reader<'a> {
         if (i & 0b1) != 0b1 {
             // Bit 0 is 0, small value encoded in 4 bytes
             self.cursor += 4;
+            self.sync_stream_pos();
             Ok((i >> 1) as i64) // arithmetic right shift preserves sign
         } else {
             // Bit 0 is 1, big value: skip flag byte and read 8 bytes
@@ -669,6 +831,7 @@ impl<'a> Reader<'a> {
             self.cursor += 1;
             let value = LittleEndian::read_i64(&self.bf[self.cursor..]);
             self.cursor += 8;
+            self.sync_stream_pos();
             Ok(value)
         }
     }
@@ -683,8 +846,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_u8(&mut self) -> Result<u8, Error> {
-        let result = self.value_at(self.cursor)?;
-        self.move_next(1);
+        self.ensure_readable(1)?;
+        let result = self.bf[self.cursor];
+        self.cursor += 1;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -692,9 +857,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_u16(&mut self) -> Result<u16, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_u16(slice);
+        self.ensure_readable(2)?;
+        let result = LittleEndian::read_u16(&self.bf[self.cursor..]);
         self.cursor += 2;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -702,9 +868,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_u32(&mut self) -> Result<u32, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_u32(slice);
+        self.ensure_readable(4)?;
+        let result = LittleEndian::read_u32(&self.bf[self.cursor..]);
         self.cursor += 4;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -712,9 +879,17 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint32(&mut self) -> Result<u32, Error> {
+        // Stream fallback: byte-at-a-time when not enough bytes for bulk read
+        // C++: if (stream_ != nullptr && size_ - reader_index_ < 5)
+        if self.stream.is_some() && (self.bf.len() - self.cursor) < 5 {
+            self.ensure_readable(1)?;
+            return self.read_varuint32_stream();
+        }
+
         let b0 = self.value_at(self.cursor)? as u32;
         if b0 < 0x80 {
             self.move_next(1);
+            self.sync_stream_pos();
             return Ok(b0);
         }
 
@@ -722,6 +897,7 @@ impl<'a> Reader<'a> {
         let mut encoded = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
         if b1 < 0x80 {
             self.move_next(2);
+            self.sync_stream_pos();
             return Ok(encoded);
         }
 
@@ -729,6 +905,7 @@ impl<'a> Reader<'a> {
         encoded |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
             self.move_next(3);
+            self.sync_stream_pos();
             return Ok(encoded);
         }
 
@@ -736,12 +913,14 @@ impl<'a> Reader<'a> {
         encoded |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
             self.move_next(4);
+            self.sync_stream_pos();
             return Ok(encoded);
         }
 
         let b4 = self.value_at(self.cursor + 4)? as u32;
         encoded |= b4 << 28;
         self.move_next(5);
+        self.sync_stream_pos();
         Ok(encoded)
     }
 
@@ -749,9 +928,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_u64(&mut self) -> Result<u64, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_u64(slice);
+        self.ensure_readable(8)?;
+        let result = LittleEndian::read_u64(&self.bf[self.cursor..]);
         self.cursor += 8;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -759,9 +939,17 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint64(&mut self) -> Result<u64, Error> {
+        // Stream fallback: byte-at-a-time when not enough bytes for bulk read
+        // C++: if (stream_ != nullptr && size_ - reader_index_ < 9)
+        if self.stream.is_some() && (self.bf.len() - self.cursor) < 9 {
+            self.ensure_readable(1)?;
+            return self.read_varuint64_stream();
+        }
+
         let b0 = self.value_at(self.cursor)? as u64;
         if b0 < 0x80 {
             self.move_next(1);
+            self.sync_stream_pos();
             return Ok(b0);
         }
 
@@ -769,6 +957,7 @@ impl<'a> Reader<'a> {
         let mut result = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
         if b1 < 0x80 {
             self.move_next(2);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
@@ -776,6 +965,7 @@ impl<'a> Reader<'a> {
         result |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
             self.move_next(3);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
@@ -783,6 +973,7 @@ impl<'a> Reader<'a> {
         result |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
             self.move_next(4);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
@@ -790,6 +981,7 @@ impl<'a> Reader<'a> {
         result |= (b4 & 0x7F) << 28;
         if b4 < 0x80 {
             self.move_next(5);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
@@ -797,6 +989,7 @@ impl<'a> Reader<'a> {
         result |= (b5 & 0x7F) << 35;
         if b5 < 0x80 {
             self.move_next(6);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
@@ -804,6 +997,7 @@ impl<'a> Reader<'a> {
         result |= (b6 & 0x7F) << 42;
         if b6 < 0x80 {
             self.move_next(7);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
@@ -811,12 +1005,14 @@ impl<'a> Reader<'a> {
         result |= (b7 & 0x7F) << 49;
         if b7 < 0x80 {
             self.move_next(8);
+            self.sync_stream_pos();
             return Ok(result);
         }
 
         let b8 = self.value_at(self.cursor + 8)? as u64;
         result |= (b8 & 0xFF) << 56;
         self.move_next(9);
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -832,6 +1028,7 @@ impl<'a> Reader<'a> {
         if (i & 0b1) != 0b1 {
             // Bit 0 is 0, small value encoded in 4 bytes
             self.cursor += 4;
+            self.sync_stream_pos();
             Ok((i >> 1) as u64)
         } else {
             // Bit 0 is 1, big value: skip flag byte and read 8 bytes
@@ -839,6 +1036,7 @@ impl<'a> Reader<'a> {
             self.cursor += 1;
             let value = LittleEndian::read_u64(&self.bf[self.cursor..]);
             self.cursor += 8;
+            self.sync_stream_pos();
             Ok(value)
         }
     }
@@ -847,9 +1045,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_f32(&mut self) -> Result<f32, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_f32(slice);
+        self.ensure_readable(4)?;
+        let result = LittleEndian::read_f32(&self.bf[self.cursor..]);
         self.cursor += 4;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -857,9 +1056,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_f64(&mut self) -> Result<f64, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_f64(slice);
+        self.ensure_readable(8)?;
+        let result = LittleEndian::read_f64(&self.bf[self.cursor..]);
         self.cursor += 8;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -868,6 +1068,7 @@ impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn read_latin1_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
+        // sync_stream_pos is called implicitly via move_next paths below
         if len < SIMD_THRESHOLD {
             // Fast path for small buffers
             unsafe {
@@ -883,6 +1084,7 @@ impl<'a> Reader<'a> {
                     std::ptr::copy_nonoverlapping(src.as_ptr(), dst, len);
                     vec.set_len(len);
                     self.move_next(len);
+                    self.sync_stream_pos();
                     Ok(String::from_utf8_unchecked(vec))
                 } else {
                     // Contains Latin1 bytes (0x80-0xFF): must convert to UTF-8
@@ -904,6 +1106,7 @@ impl<'a> Reader<'a> {
 
                     out.set_len(out_len);
                     self.move_next(len);
+                    self.sync_stream_pos();
                     Ok(String::from_utf8_unchecked(out))
                 }
             }
@@ -916,6 +1119,7 @@ impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn read_utf8_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
+        // sync_stream_pos is handled by move_next below
         // don't use simd for memory copy, copy_non_overlapping is faster
         unsafe {
             let mut vec = Vec::with_capacity(len);
@@ -925,6 +1129,7 @@ impl<'a> Reader<'a> {
             std::ptr::copy_nonoverlapping(src, dst, len);
             vec.set_len(len);
             self.move_next(len);
+            self.sync_stream_pos();
             // SAFETY: Assuming valid UTF-8 bytes (responsibility of serialization protocol)
             Ok(String::from_utf8_unchecked(vec))
         }
@@ -933,12 +1138,14 @@ impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn read_utf16_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
+        // sync_stream_pos is handled by move_next below
         let slice = self.sub_slice(self.cursor, self.cursor + len)?;
         let units: Vec<u16> = slice
             .chunks_exact(2)
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
         self.move_next(len);
+        self.sync_stream_pos();
         Ok(String::from_utf16_lossy(&units))
     }
 
@@ -951,9 +1158,10 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_u128(&mut self) -> Result<u128, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_u128(slice);
+        self.ensure_readable(16)?;
+        let result = LittleEndian::read_u128(&self.bf[self.cursor..]);
         self.cursor += 16;
+        self.sync_stream_pos();
         Ok(result)
     }
 
@@ -983,12 +1191,19 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint36small(&mut self) -> Result<u64, Error> {
-        let start = self.cursor;
-        let slice = self.slice_after_cursor();
+        // Stream fallback: byte-at-a-time when not enough bytes for bulk read
+        // C++: if (stream_ != nullptr && size_ - reader_index_ < 8)
+        if self.stream.is_some() && (self.bf.len() - self.cursor) < 8 {
+            self.ensure_readable(1)?;
+            return self.read_varuint36small_stream();
+        }
 
-        if slice.len() >= 8 {
-            // here already check bound
-            let bulk = self.read_u64()?;
+        let start = self.cursor;
+        let remaining = self.bf.len() - self.cursor;
+
+        if remaining >= 8 {
+            self.ensure_readable(8)?;
+            let bulk = LittleEndian::read_u64(&self.bf[self.cursor..]);
             let mut result = bulk & 0x7F;
             let mut read_idx = start;
 
@@ -1009,9 +1224,11 @@ impl<'a> Reader<'a> {
                 }
             }
             self.cursor = read_idx + 1;
+            self.sync_stream_pos();
             return Ok(result);
         }
 
+        // Slow path: byte-by-byte read for in-memory buffers near end
         let mut result = 0u64;
         let mut shift = 0;
         while self.cursor < self.bf.len() {
@@ -1025,7 +1242,76 @@ impl<'a> Reader<'a> {
                 return Err(Error::encode_error("varuint36small overflow"));
             }
         }
+        self.sync_stream_pos();
         Ok(result)
+    }
+
+    // ============ Stream fallback methods ============
+    // Byte-at-a-time varint decoding for stream-backed readers.
+    // These match C++ read_var_uint32_stream, read_var_uint64_stream,
+    // and read_var_uint36_small_stream from buffer.h.
+
+    /// Reads a varuint32 byte-by-byte from stream-backed buffer.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::read_var_uint32_stream(Error& error)`
+    fn read_varuint32_stream(&mut self) -> Result<u32, Error> {
+        let mut result = 0u32;
+        for i in 0..5u32 {
+            self.ensure_readable(1)?;
+            let b = self.bf[self.cursor];
+            self.cursor += 1;
+            self.sync_stream_pos();
+            result |= ((b & 0x7F) as u32) << (i * 7);
+            if (b & 0x80) == 0 {
+                return Ok(result);
+            }
+        }
+        Err(Error::encode_error("Invalid var_uint32 encoding"))
+    }
+
+    /// Reads a varuint64 byte-by-byte from stream-backed buffer.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::read_var_uint64_stream(Error& error)`
+    fn read_varuint64_stream(&mut self) -> Result<u64, Error> {
+        let mut result = 0u64;
+        for i in 0..8u32 {
+            self.ensure_readable(1)?;
+            let b = self.bf[self.cursor];
+            self.cursor += 1;
+            self.sync_stream_pos();
+            result |= ((b & 0x7F) as u64) << (i * 7);
+            if (b & 0x80) == 0 {
+                return Ok(result);
+            }
+        }
+        // 9th byte: bits 56-63
+        self.ensure_readable(1)?;
+        let b = self.bf[self.cursor];
+        self.cursor += 1;
+        self.sync_stream_pos();
+        result |= (b as u64) << 56;
+        Ok(result)
+    }
+
+    /// Reads a varuint36small byte-by-byte from stream-backed buffer.
+    ///
+    /// # Equivalent
+    /// C++ `Buffer::read_var_uint36_small_stream(Error& error)`
+    fn read_varuint36small_stream(&mut self) -> Result<u64, Error> {
+        let mut result = 0u64;
+        for i in 0..5u32 {
+            self.ensure_readable(1)?;
+            let b = self.bf[self.cursor];
+            self.cursor += 1;
+            self.sync_stream_pos();
+            result |= ((b & 0x7F) as u64) << (i * 7);
+            if (b & 0x80) == 0 {
+                return Ok(result);
+            }
+        }
+        Err(Error::encode_error("Invalid var_uint36_small encoding"))
     }
 }
 

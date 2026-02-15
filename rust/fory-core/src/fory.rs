@@ -959,14 +959,30 @@ impl Fory {
         reader: &mut Reader,
     ) -> Result<T, Error> {
         self.with_read_context(|context| {
-            let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
-            let mut new_reader = Reader::new(outlive_buffer);
-            new_reader.set_cursor(reader.cursor);
-            context.attach_reader(new_reader);
-            let result = self.deserialize_with_context(context);
-            let end = context.detach_reader().get_cursor();
-            reader.set_cursor(end);
-            result
+            if let Some(stream) = reader.take_stream() {
+                // Stream-backed reader: transfer stream ownership to context reader.
+                // This ensures the context reader can fill from the stream during
+                // deserialization. After deserialization, ownership is restored.
+                let context_reader = Reader::from_stream_buf(stream);
+                context.attach_reader(context_reader);
+                let result = self.deserialize_with_context(context);
+                let mut detached = context.detach_reader();
+                // Transfer stream back to caller's reader
+                if let Some(stream_back) = detached.take_stream() {
+                    reader.restore_stream(stream_back);
+                }
+                result
+            } else {
+                // Slice-backed reader: original behavior
+                let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
+                let mut new_reader = Reader::new(outlive_buffer);
+                new_reader.set_cursor(reader.cursor);
+                context.attach_reader(new_reader);
+                let result = self.deserialize_with_context(context);
+                let end = context.detach_reader().get_cursor();
+                reader.set_cursor(end);
+                result
+            }
         })
     }
 
