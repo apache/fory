@@ -65,8 +65,8 @@ void _runEnumSchemaEvolutionCompatibleReverse() {
   _registerStructType(fory, TwoEnumFieldStructEvolution, typeId: 211);
   final TwoEnumFieldStructEvolution obj =
       fory.deserialize(data) as TwoEnumFieldStructEvolution;
-  if (obj.f1 != TestEnum.VALUE_C) {
-    throw StateError('Expected f1=VALUE_C, got ${obj.f1}');
+  if (obj.f1 != TestEnum.valueC) {
+    throw StateError('Expected f1=valueC, got ${obj.f1}');
   }
   _writeFile(dataFile, fory.serialize(obj));
 }

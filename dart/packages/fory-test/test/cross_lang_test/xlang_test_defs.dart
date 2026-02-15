@@ -20,9 +20,9 @@
 part of 'xlang_test_main.dart';
 
 enum TestEnum {
-  VALUE_A,
-  VALUE_B,
-  VALUE_C,
+  valueA,
+  valueB,
+  valueC,
 }
 
 const EnumSpec _testEnumSpec = EnumSpec(
@@ -31,8 +31,8 @@ const EnumSpec _testEnumSpec = EnumSpec(
 );
 
 class TwoEnumFieldStructEvolution {
-  TestEnum f1 = TestEnum.VALUE_A;
-  TestEnum f2 = TestEnum.VALUE_A;
+  TestEnum f1 = TestEnum.valueA;
+  TestEnum f2 = TestEnum.valueA;
 }
 
 final TypeSpec _twoEnumFieldStructEvolutionSpec = TypeSpec(
@@ -723,10 +723,10 @@ final TypeSpec _nullableComprehensiveCompatibleSpec = TypeSpec(
 );
 
 enum Color {
-  Green,
-  Red,
-  Blue,
-  White,
+  green,
+  red,
+  blue,
+  white,
 }
 
 const EnumSpec _colorSpec = EnumSpec(
@@ -761,7 +761,7 @@ class SimpleStruct {
   Int32 f2 = Int32(0);
   Item f3 = Item();
   String f4 = '';
-  Color f5 = Color.Green;
+  Color f5 = Color.green;
   List<String> f6 = <String>[];
   Int32 f7 = Int32(0);
   Int32 f8 = Int32(0);
@@ -1117,7 +1117,7 @@ final TypeSpec _twoStringFieldStructSpec = TypeSpec(
 );
 
 class OneEnumFieldStruct {
-  TestEnum f1 = TestEnum.VALUE_A;
+  TestEnum f1 = TestEnum.valueA;
 }
 
 final TypeSpec _oneEnumFieldStructSpec = TypeSpec(
@@ -1141,8 +1141,8 @@ final TypeSpec _oneEnumFieldStructSpec = TypeSpec(
 );
 
 class TwoEnumFieldStruct {
-  TestEnum f1 = TestEnum.VALUE_A;
-  TestEnum f2 = TestEnum.VALUE_A;
+  TestEnum f1 = TestEnum.valueA;
+  TestEnum f2 = TestEnum.valueA;
 }
 
 final TypeSpec _twoEnumFieldStructSpec = TypeSpec(
