@@ -16,6 +16,7 @@
 // under the License.
 
 use crate::error::Error;
+use crate::float16::float16;
 use crate::meta::buffer_rw_string::read_latin1_simd;
 use byteorder::{ByteOrder, LittleEndian};
 use std::cmp::max;
@@ -388,6 +389,12 @@ impl<'a> Writer<'a> {
         {
             self.bf.extend_from_slice(&value.to_bits().to_le_bytes());
         }
+    }
+
+    // ============ FLOAT16 (TypeId = 16) ============
+    #[inline(always)]
+    pub fn write_f16(&mut self, value: float16) {
+        self.write_u16(value.to_bits());
     }
 
     // ============ FLOAT64 (TypeId = 18) ============
@@ -854,8 +861,13 @@ impl<'a> Reader<'a> {
     }
 
     // ============ FLOAT64 (TypeId = 18) ============
-
     #[inline(always)]
+    pub fn read_f16(&mut self) -> Result<float16, Error> {
+        let bits = LittleEndian::read_u16(self.slice_after_cursor());
+        self.cursor += 2;
+        Ok(float16::from_bits(bits))
+    }
+
     pub fn read_f64(&mut self) -> Result<f64, Error> {
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f64(slice);
