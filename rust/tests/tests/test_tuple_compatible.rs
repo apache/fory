@@ -796,7 +796,6 @@ fn test_struct_missing_tuple_field() {
 }
 
 #[test]
-#[ignore]
 fn test_struct_added_tuple_field() {
     run_struct_added_tuple_field(false);
 }
@@ -828,7 +827,6 @@ fn test_struct_missing_tuple_field_xlang() {
 }
 
 #[test]
-#[ignore]
 fn test_struct_added_tuple_field_xlang() {
     run_struct_added_tuple_field(true);
 }
@@ -870,7 +868,6 @@ fn test_struct_multiple_tuple_fields_evolution_xlang() {
 /// This represents a realistic schema evolution scenario where multiple changes
 /// happen simultaneously across a complex data structure.
 #[test]
-#[ignore]
 fn test_struct_complex_evolution_scenario() {
     run_struct_complex_evolution_scenario(false);
 }
@@ -881,7 +878,6 @@ fn test_struct_complex_evolution_scenario() {
 /// This tests whether the cross-language serialization protocol can handle
 /// complex schema evolution scenarios.
 #[test]
-#[ignore]
 fn test_struct_complex_evolution_scenario_xlang() {
     run_struct_complex_evolution_scenario(true);
 }
