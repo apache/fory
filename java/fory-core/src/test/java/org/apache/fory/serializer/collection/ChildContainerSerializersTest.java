@@ -268,6 +268,49 @@ public class ChildContainerSerializersTest extends ForyTestBase {
     serDeMetaShared(fory, outerDO);
   }
 
+  /**
+   * Tests that meta context indices stay synchronized when layer class meta entries from
+   * readAndSkipLayerClassMeta are interleaved with regular type info entries. Multiple instances of
+   * the same nested HashMap subclass type force meta context reference lookups, which would fail if
+   * readAndSkipLayerClassMeta did not add placeholders to readTypeInfos.
+   */
+  @Test(dataProvider = "enableCodegen")
+  public void testMetaContextIndexSyncWithNestedChildMaps(boolean enableCodegen) {
+    Fory fory =
+        builder()
+            .withCodegen(enableCodegen)
+            .withAsyncCompilation(false)
+            .withRefTracking(false)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .build();
+
+    ChildHashMap1 map1a = new ChildHashMap1();
+    map1a.put("k1", "v1");
+
+    ChildHashMap1 map1b = new ChildHashMap1();
+    map1b.put("k2", "v2");
+
+    ChildHashMap2 map2a = new ChildHashMap2();
+    map2a.put("a", map1a);
+
+    ChildHashMap2 map2b = new ChildHashMap2();
+    map2b.put("b", map1b);
+
+    ChildHashMap3 map3a = new ChildHashMap3();
+    map3a.put("x", map2a);
+
+    ChildHashMap3 map3b = new ChildHashMap3();
+    map3b.put("y", map2b);
+
+    ChildHashMap4 map4 = new ChildHashMap4();
+    map4.put("group1", map3a);
+    map4.put("group2", map3b);
+
+    ChildMapHolder holder = new ChildMapHolder("meta-sync-test", map4);
+    ChildMapHolder deserialized = serDe(fory, holder);
+    Assert.assertEquals(deserialized, holder);
+  }
+
   /* Deeply nested HashMap subclass hierarchy for testing generic propagation */
 
   public static class ChildHashMap1 extends HashMap<String, String> {}

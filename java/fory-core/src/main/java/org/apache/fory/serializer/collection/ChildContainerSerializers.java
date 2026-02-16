@@ -292,5 +292,10 @@ public class ChildContainerSerializers {
     // New type - need to read and skip the TypeDef bytes
     long id = buffer.readInt64();
     TypeDef.skipTypeDef(buffer, id);
+    // Add a placeholder to keep readTypeInfos indices in sync with the write side's classMap.
+    // The write side (writeLayerClassMeta) adds layer marker classes to classMap which shares
+    // the same index space as writeSharedClassMeta. Without this placeholder, subsequent
+    // readSharedClassMeta reference lookups would use wrong indices.
+    metaContext.readTypeInfos.add(null);
   }
 }
