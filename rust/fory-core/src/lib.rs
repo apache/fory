@@ -184,6 +184,7 @@ pub mod meta;
 pub mod resolver;
 pub mod row;
 pub mod serializer;
+pub mod stream;
 pub mod types;
 pub mod util;
 
