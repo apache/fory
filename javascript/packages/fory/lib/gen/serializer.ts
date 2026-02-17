@@ -26,8 +26,8 @@ import { BinaryWriter } from "../writer";
 
 export const makeHead = (flag: RefFlags, typeId: number) => {
   const writer = new BinaryWriter();
-  writer.uint8(flag);
-  writer.uint8(typeId);
+  writer.writeUint8(flag);
+  writer.writeUint8(typeId);
   const buffer = writer.dump();
   return buffer;
 };

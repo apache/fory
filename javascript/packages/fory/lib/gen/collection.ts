@@ -82,7 +82,7 @@ class CollectionAnySerializer {
     if (trackingRef) {
       flag |= CollectionFlags.TRACKING_REF;
     }
-    this.fory.binaryWriter.uint8(flag);
+    this.fory.binaryWriter.writeUint8(flag);
     return {
       serializer,
       isSame,
@@ -106,9 +106,9 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.int8(RefFlags.NullFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NullFlag);
           } else {
-            this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
         }
@@ -126,10 +126,10 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.int8(RefFlags.NullFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NullFlag);
           } else {
             const serializer = this.fory.typeResolver.getSerializerByData(item);
-            this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NotNullValueFlag);
             serializer!.writeNoRef(item);
           }
         }
@@ -145,7 +145,7 @@ class CollectionAnySerializer {
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
     void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
-    const flags = this.fory.binaryReader.uint8();
+    const flags = this.fory.binaryReader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
     const refTracking = flags & CollectionFlags.TRACKING_REF;
@@ -158,7 +158,7 @@ class CollectionAnySerializer {
           serializer.readRef();
           const refFlag = this.fory.referenceResolver.readRefFlag();
           if (refFlag === RefFlags.RefFlag) {
-            const refId = this.fory.binaryReader.varUInt32();
+            const refId = this.fory.binaryReader.readVarUInt32();
             accessor(result, i, this.fory.referenceResolver.getReadObject(refId));
           } else if (refFlag === RefFlags.RefValueFlag) {
             accessor(result, i, serializer!.read(true));
@@ -168,7 +168,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.int8();
+          const flag = this.fory.binaryReader.readInt8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
@@ -188,7 +188,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.int8();
+          const flag = this.fory.binaryReader.readInt8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {

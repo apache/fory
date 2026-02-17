@@ -91,12 +91,12 @@ class MapChunkWriter {
     // KV header
     const header = this.getHead(keyInfo, valueInfo);
     // chunkSize default 0 | KV header
-    this.fory.binaryWriter.uint8(header);
+    this.fory.binaryWriter.writeUint8(header);
 
     if (!withOutSize) {
       // chunkSize, max 255
-      this.chunkOffset = this.fory.binaryWriter.getCursor();
-      this.fory.binaryWriter.uint8(0);
+      this.chunkOffset = this.fory.binaryWriter.writeGetCursor();
+      this.fory.binaryWriter.writeUint8(0);
     } else {
       this.chunkOffset = 0;
     }
@@ -152,11 +152,11 @@ class MapAnySerializer {
     if (header & MapFlags.TRACKING_REF) {
       const keyRef = this.fory.referenceResolver.existsWriteObject(v);
       if (keyRef !== undefined) {
-        this.fory.binaryWriter.int8(RefFlags.RefFlag);
-        this.fory.binaryWriter.varUInt32(keyRef);
+        this.fory.binaryWriter.writeInt8(RefFlags.RefFlag);
+        this.fory.binaryWriter.writeVarUInt32(keyRef);
         return true;
       } else {
-        this.fory.binaryWriter.int8(RefFlags.RefValueFlag);
+        this.fory.binaryWriter.writeInt8(RefFlags.RefValueFlag);
         return false;
       }
     }
@@ -218,13 +218,13 @@ class MapAnySerializer {
       return serializer!.read(false);
     }
 
-    const flag = this.fory.binaryReader.int8();
+    const flag = this.fory.binaryReader.readInt8();
     switch (flag) {
       case RefFlags.RefValueFlag:
         serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
         return serializer!.read(true);
       case RefFlags.RefFlag:
-        return this.fory.referenceResolver.getReadObject(this.fory.binaryReader.varUInt32());
+        return this.fory.referenceResolver.getReadObject(this.fory.binaryReader.readVarUInt32());
       case RefFlags.NullFlag:
         return null;
       case RefFlags.NotNullValueFlag:
@@ -240,14 +240,14 @@ class MapAnySerializer {
       this.fory.referenceResolver.reference(result);
     }
     while (count > 0) {
-      const header = this.fory.binaryReader.uint8();
+      const header = this.fory.binaryReader.readUint8();
       const valueHeader = (header >> 3) & 0b111;
       const keyHeader = header & 0b111;
       let chunkSize = 0;
       if ((valueHeader & MapFlags.HAS_NULL) || (keyHeader & MapFlags.HAS_NULL)) {
         chunkSize = 1;
       } else {
-        chunkSize = this.fory.binaryReader.uint8();
+        chunkSize = this.fory.binaryReader.readUint8();
       }
       let keySerializer = this.keySerializer;
       let valueSerializer = this.valueSerializer;

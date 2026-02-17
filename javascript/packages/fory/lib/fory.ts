@@ -145,7 +145,7 @@ export default class {
     this.binaryReader.reset(bytes);
     this.typeMetaResolver.reset();
     this.metaStringResolver.reset();
-    const bitmap = this.binaryReader.uint8();
+    const bitmap = this.binaryReader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
     }
@@ -177,7 +177,7 @@ export default class {
       bitmap |= ConfigFlags.isNullFlag;
     }
     bitmap |= ConfigFlags.isCrossLanguageFlag;
-    this.binaryWriter.uint8(bitmap);
+    this.binaryWriter.writeUint8(bitmap);
     // reserve fixed size
     this.binaryWriter.reserve(serializer.fixedSize);
     // start write

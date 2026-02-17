@@ -62,15 +62,15 @@ describe("bool", () => {
     const buffer = new BinaryWriter();
     buffer.reserve(32);
     buffer.bool(true);
-    buffer.uint8(Byte.MAX_VALUE);
-    buffer.int16(Short.MAX_VALUE);
-    buffer.int32(Integer.MAX_VALUE);
-    buffer.int64(Long.MAX_VALUE);
-    buffer.float32(-1.1);
-    buffer.float64(-1.1);
-    buffer.varUInt32(100);
+    buffer.writeUint8(Byte.MAX_VALUE);
+    buffer.writeInt16(Short.MAX_VALUE);
+    buffer.writeInt32(Integer.MAX_VALUE);
+    buffer.writeInt64(Long.MAX_VALUE);
+    buffer.writeFloat32(-1.1);
+    buffer.writeFloat64(-1.1);
+    buffer.writeVarUInt32(100);
     const bytes = ['a'.charCodeAt(0), 'b'.charCodeAt(0)];
-    buffer.int32(bytes.length);
+    buffer.writeInt32(bytes.length);
     buffer.buffer(new Uint8Array(bytes));
     writeToFile(buffer.dump() as Buffer);
   });
@@ -99,7 +99,7 @@ describe("bool", () => {
       Integer.MAX_VALUE,
     ];
     for (const expected of varInt32Values) {
-      expect(reader.varInt32()).toBe(expected);
+      expect(reader.readVarInt32()).toBe(expected);
     }
 
     const varUInt32Values = [
@@ -117,7 +117,7 @@ describe("bool", () => {
       Integer.MAX_VALUE,
     ];
     for (const expected of varUInt32Values) {
-      expect(reader.varUInt32()).toBe(expected);
+      expect(reader.readVarUInt32()).toBe(expected);
     }
 
     const varUInt64Values = [
@@ -142,7 +142,7 @@ describe("bool", () => {
       Long.MAX_VALUE,
     ];
     for (const expected of varUInt64Values) {
-      expect(reader.varUInt64()).toBe(expected);
+      expect(reader.readVarUInt64()).toBe(expected);
     }
 
     const varInt64Values = [
@@ -163,22 +163,22 @@ describe("bool", () => {
       Long.MAX_VALUE,
     ];
     for (const expected of varInt64Values) {
-      expect(reader.varInt64()).toBe(expected);
+      expect(reader.readVarInt64()).toBe(expected);
     }
 
     const writer = new BinaryWriter();
     writer.reserve(256);
     for (const value of varInt32Values) {
-      writer.varInt32(value);
+      writer.writeVarInt32(value);
     }
     for (const value of varUInt32Values) {
-      writer.varUInt32(value);
+      writer.writeVarUInt32(value);
     }
     for (const value of varUInt64Values) {
-      writer.varUInt64(value);
+      writer.writeVarUInt64(value);
     }
     for (const value of varInt64Values) {
-      writer.varInt64(value);
+      writer.writeVarInt64(value);
     }
     writeToFile(writer.dump() as Buffer);
   });
@@ -187,8 +187,8 @@ describe("bool", () => {
     const reader = new BinaryReader({});
     reader.reset(content);
     let dataview = x64hash128(new Uint8Array([1, 2, 8]), 47);
-    expect(reader.int64()).toEqual(dataview.getBigInt64(0));
-    expect(reader.int64()).toEqual(dataview.getBigInt64(8));
+    expect(reader.readInt64()).toEqual(dataview.getBigInt64(0));
+    expect(reader.readInt64()).toEqual(dataview.getBigInt64(8));
   });
   test("test_string_serializer", () => {
     const fory = new Fory({
@@ -199,7 +199,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 7; i++) { // 7 test strings
       const deserializedString = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedStrings.push(deserializedString);
     }
     const bfs = []
@@ -229,7 +229,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 27; i++) { // 28 serialized items from Java
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -400,7 +400,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 4; i++) { // 4 lists
       const deserializedList = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedLists.push(deserializedList);
     }
 
@@ -433,7 +433,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 maps
       const deserializedMap = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedMaps.push(deserializedMap);
     }
 
@@ -478,7 +478,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 7; i++) { // 1 item + 6 integers
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -513,7 +513,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 3; i++) { // 3 items
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedItems.push(deserializedItem);
     }
 
@@ -549,7 +549,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 4; i++) { // 4 colors
       const deserializedColor = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedColors.push(deserializedColor);
     }
 
@@ -585,7 +585,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 structs
       const deserializedStruct = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedStructs.push(deserializedStruct);
     }
 
@@ -622,7 +622,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 structs
       const deserializedStruct = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedStructs.push(deserializedStruct);
     }
 
@@ -700,10 +700,10 @@ describe("bool", () => {
     }
     fory1.registerSerializer(MyExt, {
       write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.varInt32(value.id);
+        writer.writeVarInt32(value.id);
       },
       read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.varInt32();
+        result.id = reader.readVarInt32();
       }
     });
 
@@ -735,10 +735,10 @@ describe("bool", () => {
 
     fory2.registerSerializer(MyExt, {
       write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.varInt32(value.id);
+        writer.writeVarInt32(value.id);
       },
       read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.varInt32();
+        result.id = reader.readVarInt32();
       }
     });
 
@@ -758,7 +758,7 @@ describe("bool", () => {
     // Deserialize empty from Java
     let cursor = 0;
     const deserializedEmpty = fory1.deserialize(content.subarray(cursor));
-    cursor += fory1.binaryReader.getCursor();
+    cursor += fory1.binaryReader.readGetCursor();
     expect(deserializedEmpty instanceof Empty).toEqual(true);
 
     // Create wrapper object
@@ -785,10 +785,10 @@ describe("bool", () => {
     }
     fory1.registerSerializer(MyExt, {
       write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.varInt32(value.id);
+        writer.writeVarInt32(value.id);
       },
       read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.varInt32();
+        result.id = reader.readVarInt32();
       }
     });
 
@@ -820,10 +820,10 @@ describe("bool", () => {
 
     fory2.registerSerializer(MyExt, {
       write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.varInt32(value.id);
+        writer.writeVarInt32(value.id);
       },
       read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.varInt32();
+        result.id = reader.readVarInt32();
       }
     });
 
@@ -843,7 +843,7 @@ describe("bool", () => {
     // Deserialize empty from Java
     let cursor = 0;
     const deserializedEmpty = fory1.deserialize(content.subarray(cursor));
-    cursor += fory1.binaryReader.getCursor();
+    cursor += fory1.binaryReader.readGetCursor();
     expect(deserializedEmpty instanceof Empty).toEqual(true);
 
     // Create wrapper object
@@ -887,10 +887,10 @@ describe("bool", () => {
     }
     fory.registerSerializer(MyExt, {
       write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.varInt32(value.id);
+        writer.writeVarInt32(value.id);
       },
       read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.varInt32();
+        result.id = reader.readVarInt32();
       }
     });
 
@@ -899,7 +899,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 9; i++) { // 3 colors + 3 structs + 3 exts
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -943,7 +943,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -992,7 +992,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // animals array + holder
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -1051,7 +1051,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // animal map + holder
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.getCursor();
+      cursor += fory.binaryReader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -1083,7 +1083,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1108,7 +1108,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1133,7 +1133,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1157,7 +1157,7 @@ describe("bool", () => {
     // Deserialize empty struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1176,7 +1176,7 @@ describe("bool", () => {
     // Deserialize empty struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1209,7 +1209,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1240,7 +1240,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1273,7 +1273,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1306,7 +1306,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1334,7 +1334,7 @@ describe("bool", () => {
     // Deserialize empty struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1486,7 +1486,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1506,7 +1506,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1524,7 +1524,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1544,7 +1544,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct: InstanceType<ReturnType<typeof buildClass>> | null = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     if (deserializedStruct === null) {
       throw new Error("deserializedStruct is null");
@@ -1584,7 +1584,7 @@ describe("bool", () => {
     // Deserialize outer struct from Java
     let cursor = 0;
     const deserializedOuter = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized outer struct back
     const serializedData = fory.serialize(deserializedOuter);
@@ -1621,7 +1621,7 @@ describe("bool", () => {
     // Deserialize outer struct from Java
     let cursor = 0;
     const deserializedOuter = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized outer struct back
     const serializedData = fory.serialize(deserializedOuter);
@@ -1650,7 +1650,7 @@ describe("bool", () => {
     // Deserialize circular struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1676,7 +1676,7 @@ describe("bool", () => {
     // Deserialize circular struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1702,7 +1702,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1758,7 +1758,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedBackData = fory.serialize(deserializedStruct);
@@ -1814,7 +1814,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.getCursor();
+    cursor += fory.binaryReader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
