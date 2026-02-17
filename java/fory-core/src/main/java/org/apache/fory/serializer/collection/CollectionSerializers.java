@@ -183,15 +183,23 @@ public class CollectionSerializers {
   }
 
   public static class SortedSetSerializer<T extends SortedSet> extends CollectionSerializer<T> {
-    private MethodHandle constructor;
+    private MethodHandle comparatorConstructor;
+    private MethodHandle noArgConstructor;
 
     public SortedSetSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, true);
       if (cls != TreeSet.class) {
         try {
-          constructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
+          comparatorConstructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
         } catch (Exception e) {
-          throw new UnsupportedOperationException(e);
+          // Subclass doesn't have a (Comparator) constructor, fall back to no-arg constructor.
+          try {
+            noArgConstructor = ReflectionUtils.getCtrHandle(cls);
+          } catch (Exception e2) {
+            throw new UnsupportedOperationException(
+                "Class " + cls.getName() + " requires either a (Comparator) or no-arg constructor",
+                e2);
+          }
         }
       }
     }
@@ -217,7 +225,11 @@ public class CollectionSerializers {
         collection = (T) new TreeSet(comparator);
       } else {
         try {
-          collection = (T) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            collection = (T) comparatorConstructor.invoke(comparator);
+          } else {
+            collection = (T) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
@@ -234,7 +246,11 @@ public class CollectionSerializers {
         collection = new TreeSet(comparator);
       } else {
         try {
-          collection = (T) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            collection = (T) comparatorConstructor.invoke(comparator);
+          } else {
+            collection = (T) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
