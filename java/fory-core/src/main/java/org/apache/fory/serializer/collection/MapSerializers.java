@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.collection;
 
+import java.lang.invoke.MethodHandle;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -113,11 +114,24 @@ public class MapSerializers {
   }
 
   public static class SortedMapSerializer<T extends SortedMap> extends MapSerializer<T> {
+    private MethodHandle comparatorConstructor;
+    private MethodHandle noArgConstructor;
 
     public SortedMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, true);
       if (cls != TreeMap.class) {
-        this.constructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
+        try {
+          comparatorConstructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
+        } catch (Exception e) {
+          // Subclass doesn't have a (Comparator) constructor, fall back to no-arg constructor.
+          try {
+            noArgConstructor = ReflectionUtils.getCtrHandle(cls);
+          } catch (Exception e2) {
+            throw new UnsupportedOperationException(
+                "Class " + cls.getName() + " requires either a (Comparator) or no-arg constructor",
+                e2);
+          }
+        }
       }
     }
 
@@ -141,7 +155,11 @@ public class MapSerializers {
         map = (T) new TreeMap(comparator);
       } else {
         try {
-          map = (T) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            map = (T) comparatorConstructor.invoke(comparator);
+          } else {
+            map = (T) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
@@ -158,7 +176,11 @@ public class MapSerializers {
         map = new TreeMap(comparator);
       } else {
         try {
-          map = (Map) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            map = (Map) comparatorConstructor.invoke(comparator);
+          } else {
+            map = (Map) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
