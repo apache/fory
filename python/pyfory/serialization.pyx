@@ -153,28 +153,7 @@ cdef class MapRefResolver:
             buffer.write_int8(NULL_FLAG)
             return True
         cdef uint64_t object_id = <uintptr_t> <PyObject *> obj
-        cdef int32_t existing_size = self.written_objects.size()
         cdef int32_t next_id
-        cdef int32_t i
-        cdef PyObject *written_obj
-        cdef uint64_t written_object_id
-        if self.written_objects_id.size() == 0:
-            if existing_size < WRITE_REF_LINEAR_SCAN_LIMIT:
-                for i in range(existing_size):
-                    written_obj = self.written_objects[i]
-                    if written_obj == <PyObject *> obj:
-                        buffer.write_int8(REF_FLAG)
-                        buffer.write_var_uint32(<uint64_t> i)
-                        return True
-                self.written_objects.push_back(<PyObject *> obj)
-                Py_INCREF(obj)
-                buffer.write_int8(REF_VALUE_FLAG)
-                return False
-            self.written_objects_id.reserve(self.written_objects.size() * 2)
-            for i in range(existing_size):
-                written_obj = self.written_objects[i]
-                written_object_id = <uintptr_t> written_obj
-                self.written_objects_id[written_object_id] = i
         cdef flat_hash_map[uint64_t, int32_t].iterator it = \
             self.written_objects_id.find(object_id)
         if it == self.written_objects_id.end():
@@ -243,24 +222,6 @@ cdef class MapRefResolver:
             # this object is not referenceable (it's a value type, not a reference type)
             self.read_ref_ids.push_back(-1)
             return head_flag
-
-    cpdef inline int32_t try_preserve_ref_id_no_stub(self, Buffer buffer):
-        if not self.track_ref:
-            return buffer.read_int8()
-        head_flag = buffer.read_int8()
-        cdef int32_t ref_id
-        cdef PyObject *obj
-        if head_flag == REF_FLAG:
-            ref_id = buffer.read_var_uint32()
-            assert 0 <= ref_id < self.read_objects.size(), f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
-            obj = self.read_objects[ref_id]
-            assert obj != NULL, f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
-            self.read_object = <object> obj
-            return head_flag
-        self.read_object = None
-        if head_flag == REF_VALUE_FLAG:
-            return self.preserve_ref_id()
-        return head_flag
 
     cpdef inline int32_t last_preserved_ref_id(self):
         cdef int32_t length = self.read_ref_ids.size()
@@ -338,7 +299,6 @@ cdef int32_t NOT_NULL_FLOAT64_FLAG = fmod.NOT_NULL_FLOAT64_FLAG
 cdef int32_t NOT_NULL_BOOL_FLAG = fmod.NOT_NULL_BOOL_FLAG
 cdef int32_t NOT_NULL_STRING_FLAG = fmod.NOT_NULL_STRING_FLAG
 cdef int32_t SMALL_STRING_THRESHOLD = fmod.SMALL_STRING_THRESHOLD
-cdef int32_t WRITE_REF_LINEAR_SCAN_LIMIT = 2
 
 
 cdef inline uint64_t _mix64(uint64_t x):
@@ -1534,7 +1494,7 @@ cdef class Fory:
 
     cpdef inline read_ref(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id(buffer)
         if ref_id < NOT_NULL_VALUE_FLAG:
             return ref_resolver.read_object
         # indicates that the object is first read.
@@ -1576,7 +1536,7 @@ cdef class Fory:
         cdef int32_t ref_id
         if serializer is None or serializer.need_to_write_ref:
             ref_resolver = self.ref_resolver
-            ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+            ref_id = ref_resolver.try_preserve_ref_id(buffer)
             # indicates that the object is first read.
             if ref_id >= NOT_NULL_VALUE_FLAG:
                 # Don't push -1 here - try_preserve_ref_id already pushed ref_id
@@ -1692,7 +1652,7 @@ cdef class Fory:
 
     cpdef inline read_ref_pyobject(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id(buffer)
         if ref_id < NOT_NULL_VALUE_FLAG:
             return ref_resolver.read_object
         # indicates that the object is first read.

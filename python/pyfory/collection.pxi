@@ -650,7 +650,7 @@ cdef class CollectionSerializer(Serializer):
             list_serializer = <ListSerializer> item_serializer
             if is_py:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -659,7 +659,7 @@ cdef class CollectionSerializer(Serializer):
                     self._add_element(collection_, i, obj)
             else:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -672,7 +672,7 @@ cdef class CollectionSerializer(Serializer):
             tuple_serializer = <TupleSerializer> item_serializer
             if is_py:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -681,7 +681,7 @@ cdef class CollectionSerializer(Serializer):
                     self._add_element(collection_, i, obj)
             else:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -694,7 +694,7 @@ cdef class CollectionSerializer(Serializer):
             set_serializer = <SetSerializer> item_serializer
             if is_py:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -703,7 +703,7 @@ cdef class CollectionSerializer(Serializer):
                     self._add_element(collection_, i, obj)
             else:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -716,7 +716,7 @@ cdef class CollectionSerializer(Serializer):
             map_serializer = <MapSerializer> item_serializer
             if is_py:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -725,7 +725,7 @@ cdef class CollectionSerializer(Serializer):
                     self._add_element(collection_, i, obj)
             else:
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         obj = ref_resolver.read_object
                     else:
@@ -736,7 +736,7 @@ cdef class CollectionSerializer(Serializer):
             return
         if is_py:
             for i in range(len_):
-                ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                ref_id = ref_resolver.try_preserve_ref_id(buffer)
                 if ref_id < NOT_NULL_VALUE_FLAG:
                     obj = ref_resolver.read_object
                 else:
@@ -745,7 +745,7 @@ cdef class CollectionSerializer(Serializer):
                 self._add_element(collection_, i, obj)
         else:
             for i in range(len_):
-                ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                ref_id = ref_resolver.try_preserve_ref_id(buffer)
                 if ref_id < NOT_NULL_VALUE_FLAG:
                     obj = ref_resolver.read_object
                 else:
@@ -857,7 +857,7 @@ cdef inline get_next_element(
     cdef int32_t ref_id
     cdef TypeInfo typeinfo
     cdef object o
-    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+    ref_id = ref_resolver.try_preserve_ref_id(buffer)
     if ref_id < NOT_NULL_VALUE_FLAG:
         return ref_resolver.read_object
     cdef uint8_t type_id
@@ -1067,7 +1067,7 @@ cdef class SetSerializer(CollectionSerializer):
             if tracking_ref:
                 # When ref tracking is enabled, read with ref handling
                 for i in range(len_):
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         instance.add(ref_resolver.read_object)
                         continue
@@ -1486,7 +1486,7 @@ cdef class MapSerializer(Serializer):
                         track_key_ref = (chunk_header & TRACKING_KEY_REF) != 0
                         if (chunk_header & KEY_DECL_TYPE) != 0:
                             if track_key_ref:
-                                ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                                ref_id = ref_resolver.try_preserve_ref_id(buffer)
                                 if ref_id < NOT_NULL_VALUE_FLAG:
                                     key = ref_resolver.read_object
                                 else:
@@ -1511,7 +1511,7 @@ cdef class MapSerializer(Serializer):
                         track_value_ref = (chunk_header & TRACKING_VALUE_REF) != 0
                         if (chunk_header & VALUE_DECL_TYPE) != 0:
                             if track_value_ref:
-                                ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                                ref_id = ref_resolver.try_preserve_ref_id(buffer)
                                 if ref_id < NOT_NULL_VALUE_FLAG:
                                     value = ref_resolver.read_object
                                 else:
@@ -1572,7 +1572,7 @@ cdef class MapSerializer(Serializer):
                 continue
             for i in range(chunk_size):
                 if track_key_ref:
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         key = ref_resolver.read_object
                     else:
@@ -1598,7 +1598,7 @@ cdef class MapSerializer(Serializer):
                         else:
                             key = fory.xread_no_ref(buffer, serializer=key_serializer)
                 if track_value_ref:
-                    ref_id = ref_resolver.try_preserve_ref_id_no_stub(buffer)
+                    ref_id = ref_resolver.try_preserve_ref_id(buffer)
                     if ref_id < NOT_NULL_VALUE_FLAG:
                         value = ref_resolver.read_object
                     else:
