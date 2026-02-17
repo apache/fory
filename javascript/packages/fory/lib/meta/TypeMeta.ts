@@ -20,7 +20,7 @@
 import { BinaryWriter } from "../writer";
 import { BinaryReader } from "../reader";
 import { Encoding, MetaStringDecoder, MetaStringEncoder } from "./MetaString";
-import { StructTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeInfo } from "../typeInfo";
 import { TypeId } from "../type";
 import { x64hash128 } from "../murmurHash3";
 import { fromString } from "../platformBuffer";
@@ -102,16 +102,16 @@ function getPrimitiveTypeSize(typeId: number) {
   }
 }
 
-type InnerFieldInfoOptions = { key?: InnerFieldInfo; value?: InnerFieldInfo; inner?: InnerFieldInfo };
-interface InnerFieldInfo {
+export type InnerFieldInfoOptions = { key?: InnerFieldInfo; value?: InnerFieldInfo; inner?: InnerFieldInfo };
+export interface InnerFieldInfo {
   typeId: number;
   userTypeId: number;
-  trackingRef: boolean;
-  nullable: boolean;
+  trackingRef?: boolean;
+  nullable?: boolean;
   options?: InnerFieldInfoOptions;
   fieldId?: number;
 }
-class FieldInfo {
+export class FieldInfo {
   constructor(
     public fieldName: string,
     public typeId: number,
@@ -242,28 +242,29 @@ export class TypeMeta {
     const fingerprint = this.computeStructFingerprint(fields);
     const bytes = fromString(fingerprint);
     const hashLong = x64hash128(bytes, 47).getBigInt64(0);
-    return Number(BigInt.asIntN(32, hashLong));
+    const result = Number(BigInt.asIntN(32, hashLong));
+    return result;
   }
 
   static fromTypeInfo(typeInfo: TypeInfo) {
     let fieldInfo: FieldInfo[] = [];
     if (TypeId.structType(typeInfo.typeId)) {
-      const structTypeInfo = typeInfo as StructTypeInfo;
-      fieldInfo = Object.entries(structTypeInfo.options.props!).map(([fieldName, typeInfo]) => {
+      const structTypeInfo = typeInfo;
+      fieldInfo = Object.entries(structTypeInfo.options!.props!).map(([fieldName, typeInfo]) => {
         let fieldTypeId = typeInfo.typeId;
         if (fieldTypeId === TypeId.NAMED_ENUM) {
           fieldTypeId = TypeId.ENUM;
         } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
           fieldTypeId = TypeId.UNION;
         }
-        const { trackingRef, nullable, id } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
+        const { trackingRef, nullable, id, userTypeId, options } = typeInfo;
         return new FieldInfo(
           fieldName,
           fieldTypeId,
-          typeInfo.userTypeId,
+          userTypeId,
           trackingRef,
           nullable,
-          typeInfo.options,
+          options!,
           id
         );
       });

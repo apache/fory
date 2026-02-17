@@ -19,7 +19,7 @@
 
 import Fory from "./fory";
 import { BinaryReader } from "./reader";
-import { StructTypeInfo } from "./typeInfo";
+import { TypeInfo } from "./typeInfo";
 import { BinaryWriter } from "./writer";
 
 export const TypeId = {
@@ -210,6 +210,7 @@ export type CustomSerializer<T> = {
 // read, write
 export type Serializer<T = any> = {
   fixedSize: number;
+  getTypeInfo: () => TypeInfo;
   needToWriteRef: () => boolean;
   getTypeId: () => number;
   getUserTypeId: () => number;
@@ -270,7 +271,7 @@ export interface Config {
 }
 
 export interface WithForyClsInfo {
-  structTypeInfo: StructTypeInfo;
+  structTypeInfo: TypeInfo;
 }
 
 export const ForyTypeInfoSymbol = Symbol("foryTypeInfo");

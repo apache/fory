@@ -115,6 +115,10 @@ export class BinaryReaderBuilder {
     return `${this.holder}.float16()`;
   }
 
+  bfloat16() {
+    return `${this.holder}.bfloat16()`;
+  }
+
   uint16() {
     return `${this.holder}.uint16()`;
   }
@@ -255,6 +259,10 @@ class BinaryWriterBuilder {
 
   float16(v: number | string) {
     return `${this.holder}.float16(${v})`;
+  }
+
+  bfloat16(v: number | string) {
+    return `${this.holder}.bfloat16(${v})`;
   }
 
   int64(v: number | string) {

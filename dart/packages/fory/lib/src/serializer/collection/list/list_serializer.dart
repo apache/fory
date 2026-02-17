@@ -58,7 +58,12 @@ abstract base class ListSerializer extends IterableSerializer {
           (flags & IterableSerializer.isDeclElementTypeFlag) ==
               IterableSerializer.isDeclElementTypeFlag;
       if (isDeclElemType) {
-        serializer = elemWrap?.serializer;
+        if (elemWrap == null) {
+          throw StateError(
+              'List element declared type flag set but element type is unavailable');
+        }
+        serializer = elemWrap.serializer ??
+            pack.typeResolver.getRegisteredSerializer(elemWrap.type);
       }
       serializer ??= pack.typeResolver.readTypeInfo(br, pack).serializer;
 

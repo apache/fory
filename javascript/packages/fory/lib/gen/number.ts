@@ -102,6 +102,12 @@ CodegenRegistry.register(TypeId.FLOAT16,
     builder => builder.reader.float16()
   )
 );
+CodegenRegistry.register(TypeId.BFLOAT16,
+  buildNumberSerializer(
+    (builder, accessor) => builder.writer.bfloat16(accessor),
+    builder => builder.reader.bfloat16()
+  )
+);
 CodegenRegistry.register(TypeId.FLOAT32,
   buildNumberSerializer(
     (builder, accessor) => builder.writer.float32(accessor),

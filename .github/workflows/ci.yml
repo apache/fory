@@ -463,14 +463,14 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Run JavaScript Xlang Test
         env:
-          FORY_JAVASCRIPT_JAVA_CI: "0"
+          FORY_JAVASCRIPT_JAVA_CI: "1"
         run: |
           cd javascript
           npm install
           cd ../java
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest
+          mvn --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest -DforkCount=0
 
   cpp_examples:
     name: C++ Examples
@@ -708,6 +708,10 @@ jobs:
         run: |
           cd dart
           dart pub get
+      - name: Generate Dart code
+        run: |
+          cd dart/packages/fory-test
+          dart run build_runner build --delete-conflicting-outputs
       - name: Run Dart Xlang Test
         env:
           FORY_DART_JAVA_CI: "1"

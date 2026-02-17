@@ -47,9 +47,13 @@ class ForyKey {
   /// A boolean value indicating whether to include this field during serialization.
   final bool includeToFory;
 
+  /// A boolean value indicating whether to track references for this field.
+  final bool ref;
+
   /// Both [includeFromFory] and [includeToFory] default to `true`.
   const ForyKey({
     this.includeFromFory = true,
     this.includeToFory = true,
+    this.ref = false,
   });
 }
