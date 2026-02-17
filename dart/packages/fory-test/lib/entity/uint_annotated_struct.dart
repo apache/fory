@@ -24,7 +24,7 @@ part '../generated/uint_annotated_struct.g.dart';
 /// Test struct for uint type annotations.
 /// Uses native int types with annotations to specify serialization format.
 @ForyClass(promiseAcyclic: true)
-class UIntAnnotatedStruct with _$UIntAnnotatedStructFory {
+class UIntAnnotatedStruct {
   @Uint8Type()
   final int age;
 

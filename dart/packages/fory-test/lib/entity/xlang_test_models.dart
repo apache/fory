@@ -93,7 +93,7 @@ enum TestEnum {
 }
 
 @foryClass
-class TwoEnumFieldStructEvolution with _$TwoEnumFieldStructEvolutionFory {
+class TwoEnumFieldStructEvolution {
   TestEnum f1 = TestEnum.VALUE_A;
 
   @ForyKey(includeFromFory: false)
@@ -101,19 +101,19 @@ class TwoEnumFieldStructEvolution with _$TwoEnumFieldStructEvolutionFory {
 }
 
 @foryClass
-class RefOverrideElement with _$RefOverrideElementFory {
+class RefOverrideElement {
   Int32 id = Int32(0);
   String name = '';
 }
 
 @foryClass
-class RefOverrideContainer with _$RefOverrideContainerFory {
+class RefOverrideContainer {
   List<RefOverrideElement> listField = <RefOverrideElement>[];
   Map<String, RefOverrideElement> mapField = <String, RefOverrideElement>{};
 }
 
 @foryClass
-class NullableComprehensiveCompatible with _$NullableComprehensiveCompatibleFory {
+class NullableComprehensiveCompatible {
   double boxedDouble = 0.0;
   double doubleField = 0.0;
   Float32 boxedFloat = Float32(0);
@@ -164,12 +164,12 @@ enum Color {
 }
 
 @foryClass
-class Item with _$ItemFory {
+class Item {
   String name = '';
 }
 
 @foryClass
-class SimpleStruct with _$SimpleStructFory {
+class SimpleStruct {
   Map<Int32?, double?> f1 = <Int32?, double?>{};
   Int32 f2 = Int32(0);
   Item f3 = Item();
@@ -182,7 +182,7 @@ class SimpleStruct with _$SimpleStructFory {
 }
 
 @foryClass
-class Item1 with _$Item1Fory {
+class Item1 {
   Int32 f1 = Int32(0);
   Int32 f2 = Int32(0);
   Int32 f3 = Int32(0);
@@ -192,47 +192,46 @@ class Item1 with _$Item1Fory {
 }
 
 @foryClass
-class StructWithList with _$StructWithListFory {
+class StructWithList {
   List<String?> items = <String?>[];
 }
 
 @foryClass
-class StructWithMap with _$StructWithMapFory {
+class StructWithMap {
   Map<String?, String?> data = <String?, String?>{};
 }
 
 @foryClass
-class VersionCheckStruct with _$VersionCheckStructFory {
+class VersionCheckStruct {
   Int32 f1 = Int32(0);
   String? f2 = '';
   double f3 = 0.0;
 }
 
 @foryClass
-class OneStringFieldStruct with _$OneStringFieldStructFory {
+class OneStringFieldStruct {
   String? f1 = '';
 }
 
 @foryClass
-class TwoStringFieldStruct with _$TwoStringFieldStructFory {
+class TwoStringFieldStruct {
   String f1 = '';
   String f2 = '';
 }
 
 @foryClass
-class OneEnumFieldStruct with _$OneEnumFieldStructFory {
+class OneEnumFieldStruct {
   TestEnum f1 = TestEnum.VALUE_A;
 }
 
 @foryClass
-class TwoEnumFieldStruct with _$TwoEnumFieldStructFory {
+class TwoEnumFieldStruct {
   TestEnum f1 = TestEnum.VALUE_A;
   TestEnum f2 = TestEnum.VALUE_A;
 }
 
 @foryClass
-class NullableComprehensiveSchemaConsistent
-    with _$NullableComprehensiveSchemaConsistentFory {
+class NullableComprehensiveSchemaConsistent {
   Int8 byteField = Int8(0);
   Int16 shortField = Int16(0);
   Int32 intField = Int32(0);
@@ -256,13 +255,13 @@ class NullableComprehensiveSchemaConsistent
 }
 
 @foryClass
-class RefInnerSchemaConsistent with _$RefInnerSchemaConsistentFory {
+class RefInnerSchemaConsistent {
   Int32 id = Int32(0);
   String name = '';
 }
 
 @foryClass
-class RefOuterSchemaConsistent with _$RefOuterSchemaConsistentFory {
+class RefOuterSchemaConsistent {
   @ForyKey(ref: true)
   RefInnerSchemaConsistent? inner1;
 
@@ -271,13 +270,13 @@ class RefOuterSchemaConsistent with _$RefOuterSchemaConsistentFory {
 }
 
 @foryClass
-class RefInnerCompatible with _$RefInnerCompatibleFory {
+class RefInnerCompatible {
   Int32 id = Int32(0);
   String name = '';
 }
 
 @foryClass
-class RefOuterCompatible with _$RefOuterCompatibleFory {
+class RefOuterCompatible {
   @ForyKey(ref: true)
   RefInnerCompatible? inner1;
 
@@ -286,7 +285,7 @@ class RefOuterCompatible with _$RefOuterCompatibleFory {
 }
 
 @foryClass
-class CircularRefStruct with _$CircularRefStructFory {
+class CircularRefStruct {
   String name = '';
 
   @ForyKey(ref: true)

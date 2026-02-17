@@ -22,7 +22,7 @@ import 'package:fory/fory.dart';
 part 'nested_collection_example.g.dart';
 
 @foryClass
-class NestedObject with _$NestedObjectFory {
+class NestedObject {
   late final String name;
   late final List<String> names;
   late final Map<double, Map<String, int>> map;
