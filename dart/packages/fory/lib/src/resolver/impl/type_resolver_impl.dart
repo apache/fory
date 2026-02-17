@@ -45,6 +45,7 @@ import 'package:fory/src/meta/specs/field_sorter.dart';
 import 'package:fory/src/meta/specs/field_type_spec.dart';
 import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
+import 'package:fory/src/resolver/spec_lookup.dart';
 import 'package:fory/src/resolver/tag_string_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -125,6 +126,82 @@ final class TypeResolverImpl extends TypeResolver {
 
   @override
   void registerType(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  @override
+  void registerStruct(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    if (!_isStructSpec(spec.objType)) {
+      throw RegistrationArgumentException(
+          'registerStruct requires a struct type, got ${spec.objType} for $type');
+    }
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  @override
+  void registerEnum(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    if (!_isEnumSpec(spec.objType)) {
+      throw RegistrationArgumentException(
+          'registerEnum requires an enum type, got ${spec.objType} for $type');
+    }
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  @override
+  void registerUnion(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    if (!_isUnionSpec(spec.objType)) {
+      throw RegistrationArgumentException(
+          'registerUnion requires a union type, got ${spec.objType} for $type');
+    }
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  CustomTypeSpec _resolveSpec(Type type) {
+    final CustomTypeSpec? cachedSpec = _type2Spec[type];
+    if (cachedSpec != null) {
+      return cachedSpec;
+    }
+    final CustomTypeSpec? lookedUpSpec = SpecLookup.resolve(type);
+    if (lookedUpSpec == null) {
+      throw RegistrationArgumentException(
+          'No generated schema found for type $type. Ensure generated code is available and imported.');
+    }
+    if (lookedUpSpec.dartType != type) {
+      throw RegistrationArgumentException(
+          'Resolved schema type mismatch for $type, got ${lookedUpSpec.dartType}.');
+    }
+    return lookedUpSpec;
+  }
+
+  void _registerResolvedSpec(
     CustomTypeSpec spec, {
     int? typeId,
     String? namespace,
@@ -165,6 +242,23 @@ final class TypeResolverImpl extends TypeResolver {
     final String inferredNamespace = typename.substring(0, separator);
     final String simpleName = typename.substring(separator + 1);
     _regWithNamespace(spec, typename, simpleName, inferredNamespace);
+  }
+
+  bool _isStructSpec(ObjType objType) {
+    return objType == ObjType.NAMED_STRUCT ||
+        objType == ObjType.STRUCT ||
+        objType == ObjType.NAMED_COMPATIBLE_STRUCT ||
+        objType == ObjType.COMPATIBLE_STRUCT;
+  }
+
+  bool _isEnumSpec(ObjType objType) {
+    return objType == ObjType.NAMED_ENUM || objType == ObjType.ENUM;
+  }
+
+  bool _isUnionSpec(ObjType objType) {
+    return objType == ObjType.UNION ||
+        objType == ObjType.TYPED_UNION ||
+        objType == ObjType.NAMED_UNION;
   }
 
   @override
@@ -289,6 +383,15 @@ final class TypeResolverImpl extends TypeResolver {
       throw UnregisteredTypeException(type);
     }
     return tag;
+  }
+
+  @override
+  Serializer getRegisteredSerializer(Type type) {
+    TypeInfo? typeInfo = _ctx.type2TypeInfo[type];
+    if (typeInfo == null) {
+      throw UnregisteredTypeException(type);
+    }
+    return typeInfo.serializer;
   }
 
   @override
@@ -715,6 +818,10 @@ final class TypeResolverImpl extends TypeResolver {
       case ObjType.TYPED_UNION:
       case ObjType.NAMED_UNION:
         return ObjType.UNION.id;
+      case ObjType.INT32:
+        return ObjType.VAR_INT32.id;
+      case ObjType.INT64:
+        return ObjType.VAR_INT64.id;
       case ObjType.STRUCT:
       case ObjType.COMPATIBLE_STRUCT:
       case ObjType.NAMED_STRUCT:

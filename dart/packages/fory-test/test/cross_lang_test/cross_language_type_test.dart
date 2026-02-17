@@ -105,10 +105,10 @@ void _basicTypeTest(bool ref) {
   check('2023年10月23日').equals(serDe(fory1, fory2, '2023年10月23日'));
   check(true).equals(CrossLangUtil.serDe(fory1, fory2, true));
 
-  fory1.register($EnumFoo);
-  fory2.register($EnumFoo);
-  fory1.register($EnumSubClass);
-  fory2.register($EnumSubClass);
+  fory1.register(EnumFoo);
+  fory2.register(EnumFoo);
+  fory1.register(EnumSubClass);
+  fory2.register(EnumSubClass);
 
   check(EnumFoo.A).equals(serDe(fory1, fory2, EnumFoo.A));
   check(EnumFoo.B).equals(serDe(fory1, fory2, EnumFoo.B));

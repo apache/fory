@@ -17,13 +17,8 @@
  * under the License.
  */
 
-import 'package:fory/fory.dart';
+import 'package:fory/src/meta/specs/custom_type_spec.dart';
 
-part 'nested_collection_example.g.dart';
-
-@foryClass
-class NestedObject {
-  late final String name;
-  late final List<String> names;
-  late final Map<double, Map<String, int>> map;
+CustomTypeSpec? resolveByMirrors(Type type) {
+  return null;
 }

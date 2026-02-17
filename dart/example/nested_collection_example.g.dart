@@ -127,8 +127,3 @@ final $NestedObject = TypeSpec(
   null,
   () => NestedObject(),
 );
-
-mixin _$NestedObjectFory implements ForyTypeProvider {
-  @override
-  Type get foryType => NestedObject;
-}

@@ -133,6 +133,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
       }
       late Object? fieldValue;
       Serializer? serializer = _fieldTypeWraps[i].serializer;
+      if (serializer == null &&
+          !_compatible &&
+          fieldSpec.trackingRef &&
+          typeWrap.objType != ObjType.UNKNOWN) {
+        serializer = pack.typeResolver.getRegisteredSerializer(typeWrap.type);
+      }
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           fieldValue =
@@ -183,6 +189,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
       }
       Object? fieldValue = fieldSpec.getter!(v);
       Serializer? serializer = typeWrap.serializer;
+      if (serializer == null &&
+          !_compatible &&
+          fieldSpec.trackingRef &&
+          typeWrap.objType != ObjType.UNKNOWN) {
+        serializer = pack.typeResolver.getRegisteredSerializer(typeWrap.type);
+      }
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           pack.serializationDispatcher
@@ -216,6 +228,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
         pack.typeWrapStack.push(typeWrap);
       }
       Serializer? serializer = typeWrap.serializer;
+      if (serializer == null &&
+          !_compatible &&
+          fieldSpec.trackingRef &&
+          typeWrap.objType != ObjType.UNKNOWN) {
+        serializer = pack.typeResolver.getRegisteredSerializer(typeWrap.type);
+      }
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           args[i] = pack.deserializationDispatcher.readDynamicWithRef(br, pack);

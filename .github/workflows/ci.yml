@@ -708,6 +708,10 @@ jobs:
         run: |
           cd dart
           dart pub get
+      - name: Generate Dart code
+        run: |
+          cd dart/packages/fory-test
+          dart run build_runner build --delete-conflicting-outputs
       - name: Run Dart Xlang Test
         env:
           FORY_DART_JAVA_CI: "1"

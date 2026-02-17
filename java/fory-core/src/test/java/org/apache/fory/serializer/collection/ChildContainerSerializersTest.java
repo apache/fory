@@ -23,18 +23,26 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.Cyclic;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -258,6 +266,242 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             .withCodegen(enableCodegen)
             .build();
     serDeMetaShared(fory, outerDO);
+  }
+
+  /**
+   * Tests that meta context indices stay synchronized when layer class meta entries from
+   * readAndSkipLayerClassMeta are interleaved with regular type info entries. Multiple instances of
+   * the same nested HashMap subclass type force meta context reference lookups, which would fail if
+   * readAndSkipLayerClassMeta did not add placeholders to readTypeInfos.
+   */
+  @Test(dataProvider = "enableCodegen")
+  public void testMetaContextIndexSyncWithNestedChildMaps(boolean enableCodegen) {
+    Fory fory =
+        builder()
+            .withCodegen(enableCodegen)
+            .withAsyncCompilation(false)
+            .withRefTracking(false)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .build();
+
+    ChildHashMap1 map1a = new ChildHashMap1();
+    map1a.put("k1", "v1");
+
+    ChildHashMap1 map1b = new ChildHashMap1();
+    map1b.put("k2", "v2");
+
+    ChildHashMap2 map2a = new ChildHashMap2();
+    map2a.put("a", map1a);
+
+    ChildHashMap2 map2b = new ChildHashMap2();
+    map2b.put("b", map1b);
+
+    ChildHashMap3 map3a = new ChildHashMap3();
+    map3a.put("x", map2a);
+
+    ChildHashMap3 map3b = new ChildHashMap3();
+    map3b.put("y", map2b);
+
+    ChildHashMap4 map4 = new ChildHashMap4();
+    map4.put("group1", map3a);
+    map4.put("group2", map3b);
+
+    ChildMapHolder holder = new ChildMapHolder("meta-sync-test", map4);
+    ChildMapHolder deserialized = serDe(fory, holder);
+    Assert.assertEquals(deserialized, holder);
+  }
+
+  /* Deeply nested HashMap subclass hierarchy for testing generic propagation */
+
+  public static class ChildHashMap1 extends HashMap<String, String> {}
+
+  public static class ChildHashMap2 extends HashMap<String, ChildHashMap1> {}
+
+  public static class ChildHashMap3 extends HashMap<String, ChildHashMap2> {}
+
+  public static class ChildHashMap4 extends HashMap<String, ChildHashMap3> {}
+
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class ChildMapHolder {
+    private String id;
+    private ChildHashMap4 nestedMaps;
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testNestedHashMapSubclassSerialization(boolean enableCodegen) {
+    Fory fory =
+        Fory.builder()
+            .withCodegen(enableCodegen)
+            .withRefTracking(false)
+            .requireClassRegistration(false)
+            .withLanguage(Language.JAVA)
+            .build();
+
+    ChildHashMap1 map1a = new ChildHashMap1();
+    map1a.put("k1", "v1");
+    map1a.put("k2", "v2");
+
+    ChildHashMap1 map1b = new ChildHashMap1();
+    map1b.put("k3", "v3");
+    map1b.put("k4", "v4");
+
+    ChildHashMap2 map2a = new ChildHashMap2();
+    map2a.put("a", map1a);
+    map2a.put("b", map1b);
+
+    ChildHashMap2 map2b = new ChildHashMap2();
+    map2b.put("c", map1b);
+
+    ChildHashMap3 map3a = new ChildHashMap3();
+    map3a.put("x", map2a);
+    map3a.put("y", map2b);
+
+    ChildHashMap3 map3b = new ChildHashMap3();
+    map3b.put("z", map2a);
+
+    ChildHashMap4 map4 = new ChildHashMap4();
+    map4.put("group1", map3a);
+    map4.put("group2", map3b);
+
+    ChildMapHolder holder = new ChildMapHolder("doc-123", map4);
+    ChildMapHolder deserialized = serDe(fory, holder);
+    Assert.assertEquals(deserialized, holder);
+  }
+
+  @Test
+  public void testNestedHashMapSubclassWithCompatibleMode() {
+    Fory fory =
+        Fory.builder()
+            .withCodegen(false)
+            .withAsyncCompilation(false)
+            .withRefTracking(false)
+            .requireClassRegistration(false)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withLanguage(Language.JAVA)
+            .build();
+
+    ChildHashMap1 map1a = new ChildHashMap1();
+    map1a.put("k1", "v1");
+    map1a.put("k2", "v2");
+
+    ChildHashMap1 map1b = new ChildHashMap1();
+    map1b.put("k3", "v3");
+    map1b.put("k4", "v4");
+
+    ChildHashMap2 map2a = new ChildHashMap2();
+    map2a.put("a", map1a);
+    map2a.put("b", map1b);
+
+    ChildHashMap2 map2b = new ChildHashMap2();
+    map2b.put("c", map1a);
+
+    ChildHashMap3 map3a = new ChildHashMap3();
+    map3a.put("x", map2a);
+    map3a.put("y", map2b);
+
+    ChildHashMap3 map3b = new ChildHashMap3();
+    map3b.put("z", map2a);
+
+    ChildHashMap4 map4 = new ChildHashMap4();
+    map4.put("group1", map3a);
+    map4.put("group2", map3b);
+
+    ChildMapHolder holder = new ChildMapHolder("config-456", map4);
+    ChildMapHolder deserialized = serDe(fory, holder);
+    Assert.assertEquals(deserialized, holder);
+  }
+
+  /* Mixed collection subclass test (TreeSet + HashMap subclasses) */
+
+  public static class ChildTreeSet extends TreeSet<ChildTreeSetEntry> {
+    public ChildTreeSet() {
+      super();
+    }
+
+    public static ChildTreeSet empty() {
+      return new ChildTreeSet();
+    }
+
+    public static Collector<ChildTreeSetEntry, ?, ChildTreeSet> collector() {
+      return Collectors.collectingAndThen(
+          Collectors.toCollection(TreeSet::new),
+          set -> {
+            ChildTreeSet docs = new ChildTreeSet();
+            docs.addAll(set);
+            return docs;
+          });
+    }
+
+    public static ChildTreeSet of(Collection<ChildTreeSetEntry> multiple) {
+      return multiple.stream().collect(collector());
+    }
+  }
+
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  @EqualsAndHashCode
+  public static class ChildTreeSetEntry implements Comparable<ChildTreeSetEntry> {
+    private String id;
+    private String name;
+
+    @Override
+    public int compareTo(ChildTreeSetEntry o) {
+      return this.id.compareTo(o.id);
+    }
+  }
+
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class ChildMixedContainer {
+    private String id;
+    private ChildHashMap4 nestedMaps;
+    private ChildTreeSet entries;
+    private Map<String, ChildTreeSet> entriesByCategory;
+  }
+
+  @Test
+  public void testMixedCollectionSubclassesWithCompatibleMode() {
+    Fory fory =
+        Fory.builder()
+            .withCodegen(false)
+            .withAsyncCompilation(false)
+            .withRefTracking(false)
+            .requireClassRegistration(false)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withLanguage(Language.JAVA)
+            .build();
+
+    ChildHashMap1 map1 = new ChildHashMap1();
+    map1.put("k1", "v1");
+    map1.put("k2", "v2");
+
+    ChildHashMap2 map2 = new ChildHashMap2();
+    map2.put("a", map1);
+
+    ChildHashMap3 map3 = new ChildHashMap3();
+    map3.put("x", map2);
+
+    ChildHashMap4 map4 = new ChildHashMap4();
+    map4.put("group1", map3);
+
+    ChildTreeSet set1 = ChildTreeSet.empty();
+    set1.add(new ChildTreeSetEntry("1", "entry1"));
+    set1.add(new ChildTreeSetEntry("2", "entry2"));
+
+    ChildTreeSet set2 = ChildTreeSet.empty();
+    set2.add(new ChildTreeSetEntry("3", "entry3"));
+
+    Map<String, ChildTreeSet> setsByKey = new HashMap<>();
+    setsByKey.put("category1", set1);
+    setsByKey.put("category2", set2);
+
+    ChildMixedContainer container = new ChildMixedContainer("mixed-789", map4, set1, setsByKey);
+    ChildMixedContainer deserialized = serDe(fory, container);
+    Assert.assertEquals(deserialized, container);
   }
 
   public static class ChildLinkedListElemList extends LinkedList<ChildLinkedListElemList> {}

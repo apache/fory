@@ -853,43 +853,25 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     } else {
       valueSerializer = valueGenericType.getSerializer(typeResolver);
     }
-    if (keyGenericType.hasGenericParameters() || valueGenericType.hasGenericParameters()) {
-      for (int i = 0; i < chunkSize; i++) {
-        generics.pushGenericType(keyGenericType);
-        fory.incReadDepth();
-        Object key =
-            trackKeyRef
-                ? binding.readRef(buffer, keySerializer)
-                : binding.read(buffer, keySerializer);
-        fory.decDepth();
-        generics.popGenericType();
-        generics.pushGenericType(valueGenericType);
-        fory.incReadDepth();
-        Object value =
-            trackValueRef
-                ? binding.readRef(buffer, valueSerializer)
-                : binding.read(buffer, valueSerializer);
-        fory.decDepth();
-        generics.popGenericType();
-        map.put(key, value);
-        size--;
-      }
-    } else {
-      for (int i = 0; i < chunkSize; i++) {
-        // increase depth to avoid read wrong outer generic type
-        fory.incReadDepth();
-        Object key =
-            trackKeyRef
-                ? binding.readRef(buffer, keySerializer)
-                : binding.read(buffer, keySerializer);
-        Object value =
-            trackValueRef
-                ? binding.readRef(buffer, valueSerializer)
-                : binding.read(buffer, valueSerializer);
-        fory.decDepth();
-        map.put(key, value);
-        size--;
-      }
+    for (int i = 0; i < chunkSize; i++) {
+      generics.pushGenericType(keyGenericType);
+      fory.incReadDepth();
+      Object key =
+          trackKeyRef
+              ? binding.readRef(buffer, keySerializer)
+              : binding.read(buffer, keySerializer);
+      fory.decDepth();
+      generics.popGenericType();
+      generics.pushGenericType(valueGenericType);
+      fory.incReadDepth();
+      Object value =
+          trackValueRef
+              ? binding.readRef(buffer, valueSerializer)
+              : binding.read(buffer, valueSerializer);
+      fory.decDepth();
+      generics.popGenericType();
+      map.put(key, value);
+      size--;
     }
     return size > 0 ? (size << 8) | buffer.readUnsignedByte() : 0;
   }
