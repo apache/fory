@@ -59,7 +59,7 @@ void main() {
       Fory fory = Fory(
         ref: true,
       );
-      fory.register($ComplexObject1, typename: "test.ComplexObject1");
+      fory.register(ComplexObject1, typename: "test.ComplexObject1");
       fory.registerSerializer(ComplexObject1, const ComplexObject1Serializer());
 
       ComplexObject1 obj = ComplexObject1();

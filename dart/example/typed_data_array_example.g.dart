@@ -82,8 +82,3 @@ final $TypedDataArrayExample = TypeSpec(
   null,
   () => TypedDataArrayExample(),
 );
-
-mixin _$TypedDataArrayExampleFory implements ForyTypeProvider {
-  @override
-  Type get foryType => TypedDataArrayExample;
-}

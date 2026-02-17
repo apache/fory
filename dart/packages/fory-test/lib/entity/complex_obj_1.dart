@@ -24,7 +24,7 @@ import 'package:fory_test/extensions/map_ext.dart';
 part '../generated/complex_obj_1.g.dart';
 
 @foryClass
-class ComplexObject1 with _$ComplexObject1Fory {
+class ComplexObject1 {
   late Object f1;
   late String f2;
   late List<Object> f3;

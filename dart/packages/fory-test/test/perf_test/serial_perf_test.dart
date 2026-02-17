@@ -63,7 +63,7 @@ void main() {
       Fory fory = Fory(
         ref: true,
       );
-      fory.register($ComplexObject2, typename: "test.ComplexObject2");
+      fory.register(ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
       _testPerfSerialize(fory, o, 1000000, 'Serialize simple struct');
     });
@@ -72,7 +72,7 @@ void main() {
       Fory fory = Fory(
         ref: true,
       );
-      fory.register($ComplexObject2, typename: "test.ComplexObject2");
+      fory.register(ComplexObject2, typename: "test.ComplexObject2");
       ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
       _testPerfDeserialize(fory, o, 1000000, 'Deserialize simple struct');
     });
@@ -81,8 +81,8 @@ void main() {
       Fory fory = Fory(
         ref: true,
       );
-      fory.register($ComplexObject2, typename: "test.ComplexObject2");
-      fory.register($ComplexObject1, typename: "test.ComplexObject1");
+      fory.register(ComplexObject2, typename: "test.ComplexObject2");
+      fory.register(ComplexObject1, typename: "test.ComplexObject1");
       ComplexObject2 obj2 = ComplexObject2(true, {Int8(-1): Int32(2)});
       ComplexObject1 obj = ComplexObject1();
       obj.f1 = obj2;
@@ -104,8 +104,8 @@ void main() {
       Fory fory = Fory(
         ref: true,
       );
-      fory.register($ComplexObject2, typename: "test.ComplexObject2");
-      fory.register($ComplexObject1, typename: "test.ComplexObject1");
+      fory.register(ComplexObject2, typename: "test.ComplexObject2");
+      fory.register(ComplexObject1, typename: "test.ComplexObject1");
       ComplexObject2 obj2 = ComplexObject2(true, {Int8(-1): Int32(2)});
       ComplexObject1 obj = ComplexObject1();
       obj.f1 = obj2;
@@ -128,8 +128,8 @@ void main() {
     //   Fory fory = Fory(
     //     ref: true,
     //   );
-    //   fory.register($ComplexObject2, typename: "test.ComplexObject2");
-    //   fory.register($ComplexObject1, typename: "test.ComplexObject1");
+    //   fory.register(ComplexObject2, typename: "test.ComplexObject2");
+    //   fory.register(ComplexObject1, typename: "test.ComplexObject1");
     //   ComplexObject2 obj2 = ComplexObject2(true,{Int8(-1):Int32(2)});
     //   ComplexObject1 obj = ComplexObject1();
     //   obj.f1 = obj2;
@@ -151,8 +151,8 @@ void main() {
     //   Fory fory = Fory(
     //     ref: true,
     //   );
-    //   fory.register($ComplexObject2, typename: "test.ComplexObject2");
-    //   fory.register($ComplexObject1, typename: "test.ComplexObject1");
+    //   fory.register(ComplexObject2, typename: "test.ComplexObject2");
+    //   fory.register(ComplexObject1, typename: "test.ComplexObject1");
     //   ComplexObject2 obj2 = ComplexObject2(true,{Int8(-1):Int32(2)});
     //   ComplexObject1 obj = ComplexObject1();
     //   obj.f1 = obj2;
