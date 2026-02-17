@@ -40,19 +40,11 @@ cdef class CollectionSerializer(Serializer):
     cdef int8_t elem_tracking_ref
     cdef elem_type
     cdef TypeInfo elem_type_info
-    cdef TypeInfo list_type_info
-    cdef TypeInfo tuple_type_info
-    cdef TypeInfo set_type_info
-    cdef TypeInfo dict_type_info
 
     def __init__(self, fory, type_, elem_serializer=None, elem_tracking_ref=None):
         super().__init__(fory, type_)
         self.type_resolver = fory.type_resolver
         self.ref_resolver = fory.ref_resolver
-        self.list_type_info = None
-        self.tuple_type_info = None
-        self.set_type_info = None
-        self.dict_type_info = None
         self.elem_serializer = elem_serializer
         if elem_serializer is None:
             self.elem_type = None
@@ -66,22 +58,6 @@ cdef class CollectionSerializer(Serializer):
                 self.elem_tracking_ref = <int8_t> (1 if elem_tracking_ref else 0)
 
     cdef inline TypeInfo _get_type_info_fast(self, type cls):
-        if cls is list:
-            if self.list_type_info is None:
-                self.list_type_info = self.type_resolver.get_type_info(list)
-            return self.list_type_info
-        if cls is tuple:
-            if self.tuple_type_info is None:
-                self.tuple_type_info = self.type_resolver.get_type_info(tuple)
-            return self.tuple_type_info
-        if cls is set:
-            if self.set_type_info is None:
-                self.set_type_info = self.type_resolver.get_type_info(set)
-            return self.set_type_info
-        if cls is dict:
-            if self.dict_type_info is None:
-                self.dict_type_info = self.type_resolver.get_type_info(dict)
-            return self.dict_type_info
         return self.type_resolver.get_type_info(cls)
 
     cdef inline pair[int8_t, int64_t] write_header(self, Buffer buffer, value):
