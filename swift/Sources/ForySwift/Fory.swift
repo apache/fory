@@ -42,12 +42,12 @@ public final class Fory {
 
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
         let writer = ByteWriter()
-        writeHead(writer: writer, isNone: value.isNilValue)
+        writeHead(writer: writer, isNone: value.foryIsNone)
 
-        if !value.isNilValue {
+        if !value.foryIsNone {
             let context = WriteContext(writer: writer, typeResolver: typeResolver, trackRef: config.trackRef)
             let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-            try value.write(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+            try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
             context.reset()
         }
 
@@ -58,12 +58,12 @@ public final class Fory {
         let reader = ByteReader(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
-            return T.defaultValue()
+            return T.foryDefault()
         }
 
         let context = ReadContext(reader: reader, typeResolver: typeResolver, trackRef: config.trackRef)
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try T.read(context, refMode: refMode, readTypeInfo: true)
+        let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
         context.reset()
         return value
     }
@@ -75,11 +75,11 @@ public final class Fory {
     public func deserializeFrom<T: Serializer>(_ reader: ByteReader, as _: T.Type = T.self) throws -> T {
         let isNone = try readHead(reader: reader)
         if isNone {
-            return T.defaultValue()
+            return T.foryDefault()
         }
         let context = ReadContext(reader: reader, typeResolver: typeResolver, trackRef: config.trackRef)
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try T.read(context, refMode: refMode, readTypeInfo: true)
+        let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
         context.reset()
         return value
     }

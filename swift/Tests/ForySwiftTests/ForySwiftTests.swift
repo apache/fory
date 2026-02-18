@@ -258,7 +258,7 @@ func macroFieldOrderFollowsForyRules() throws {
     let third = try reader.readVarInt32()
 
     let tailContext = ReadContext(reader: reader, typeResolver: fory.typeResolver, trackRef: false)
-    let fourth = try String.readData(tailContext)
+    let fourth = try String.foryReadData(tailContext)
 
     #expect(first == value.b)
     #expect(second == value.a)

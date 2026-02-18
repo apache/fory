@@ -15,6 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-@attached(member, names: named(staticTypeId), named(isReferenceTrackableType), named(defaultValue), named(writeData), named(readData))
+@attached(member, names: named(staticTypeId), named(isReferenceTrackableType), named(foryDefault), named(foryWriteData), named(foryReadData))
 @attached(extension, conformances: Serializer)
 public macro ForyObject() = #externalMacro(module: "ForySwiftMacros", type: "ForyObjectMacro")

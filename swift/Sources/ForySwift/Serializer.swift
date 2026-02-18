@@ -18,7 +18,7 @@
 import Foundation
 
 public protocol ForyDefault {
-    static func defaultValue() -> Self
+    static func foryDefault() -> Self
 }
 
 public protocol Serializer: ForyDefault {
@@ -27,26 +27,26 @@ public protocol Serializer: ForyDefault {
     static var isNullableType: Bool { get }
     static var isReferenceTrackableType: Bool { get }
 
-    var isNilValue: Bool { get }
+    var foryIsNone: Bool { get }
 
-    func writeData(_ context: WriteContext, hasGenerics: Bool) throws
-    static func readData(_ context: ReadContext) throws -> Self
+    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws
+    static func foryReadData(_ context: ReadContext) throws -> Self
 
-    func write(
+    func foryWrite(
         _ context: WriteContext,
         refMode: RefMode,
         writeTypeInfo: Bool,
         hasGenerics: Bool
     ) throws
 
-    static func read(
+    static func foryRead(
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Self
 
-    static func writeTypeInfo(_ context: WriteContext) throws
-    static func readTypeInfo(_ context: ReadContext) throws
+    static func foryWriteTypeInfo(_ context: WriteContext) throws
+    static func foryReadTypeInfo(_ context: ReadContext) throws
 }
 
 public extension Serializer {
@@ -54,9 +54,9 @@ public extension Serializer {
 
     static var isReferenceTrackableType: Bool { false }
 
-    var isNilValue: Bool { false }
+    var foryIsNone: Bool { false }
 
-    func write(
+    func foryWrite(
         _ context: WriteContext,
         refMode: RefMode,
         writeTypeInfo: Bool,
@@ -73,13 +73,13 @@ public extension Serializer {
         }
 
         if writeTypeInfo {
-            try Self.writeTypeInfo(context)
+            try Self.foryWriteTypeInfo(context)
         }
 
-        try writeData(context, hasGenerics: hasGenerics)
+        try foryWriteData(context, hasGenerics: hasGenerics)
     }
 
-    static func read(
+    static func foryRead(
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
@@ -92,7 +92,7 @@ public extension Serializer {
 
             switch flag {
             case .null:
-                return Self.defaultValue()
+                return Self.foryDefault()
             case .ref:
                 let refID = try context.reader.readVarUInt32()
                 return try context.refReader.readRef(refID, as: Self.self)
@@ -100,9 +100,9 @@ public extension Serializer {
                 let reservedRefID = context.refReader.reserveRefID()
                 context.pushPendingReference(reservedRefID)
                 if readTypeInfo {
-                    try Self.readTypeInfo(context)
+                    try Self.foryReadTypeInfo(context)
                 }
-                let value = try Self.readData(context)
+                let value = try Self.foryReadData(context)
                 context.finishPendingReferenceIfNeeded(value)
                 context.popPendingReference()
                 return value
@@ -112,12 +112,12 @@ public extension Serializer {
         }
 
         if readTypeInfo {
-            try Self.readTypeInfo(context)
+            try Self.foryReadTypeInfo(context)
         }
-        return try Self.readData(context)
+        return try Self.foryReadData(context)
     }
 
-    static func writeTypeInfo(_ context: WriteContext) throws {
+    static func foryWriteTypeInfo(_ context: WriteContext) throws {
         if staticTypeId.isUserTypeKind {
             let info = try context.typeResolver.requireRegisteredTypeInfo(for: Self.self)
             context.writer.writeUInt8(UInt8(truncatingIfNeeded: info.kind.rawValue))
@@ -127,7 +127,7 @@ public extension Serializer {
         }
     }
 
-    static func readTypeInfo(_ context: ReadContext) throws {
+    static func foryReadTypeInfo(_ context: ReadContext) throws {
         let rawTypeID = try context.reader.readVarUInt32()
         guard let typeID = ForyTypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")

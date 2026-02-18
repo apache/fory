@@ -251,7 +251,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
 }
 
 extension Array: ForyDefault where Element: Serializer {
-    public static func defaultValue() -> [Element] {
+    public static func foryDefault() -> [Element] {
         []
     }
 }
@@ -261,7 +261,7 @@ extension Array: Serializer where Element: Serializer {
         primitiveArrayTypeID(for: Element.self) ?? .list
     }
 
-    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         if primitiveArrayTypeID(for: Element.self) != nil {
             writePrimitiveArray(self, context: context)
             return
@@ -272,7 +272,7 @@ extension Array: Serializer where Element: Serializer {
             return
         }
 
-        let hasNull = Element.isNullableType && self.contains(where: { $0.isNilValue })
+        let hasNull = Element.isNullableType && self.contains(where: { $0.foryIsNone })
         let trackRef = context.trackRef && Element.isReferenceTrackableType
         let declaredElementType = hasGenerics && !ForyTypeId.needsTypeInfoForField(Element.staticTypeId)
 
@@ -289,30 +289,30 @@ extension Array: Serializer where Element: Serializer {
 
         context.writer.writeUInt8(header)
         if !declaredElementType {
-            try Element.writeTypeInfo(context)
+            try Element.foryWriteTypeInfo(context)
         }
 
         if trackRef {
             for element in self {
-                try element.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                try element.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
             }
         } else if hasNull {
             for element in self {
-                if element.isNilValue {
+                if element.foryIsNone {
                     context.writer.writeInt8(RefFlag.null.rawValue)
                 } else {
                     context.writer.writeInt8(RefFlag.notNullValue.rawValue)
-                    try element.writeData(context, hasGenerics: hasGenerics)
+                    try element.foryWriteData(context, hasGenerics: hasGenerics)
                 }
             }
         } else {
             for element in self {
-                try element.writeData(context, hasGenerics: hasGenerics)
+                try element.foryWriteData(context, hasGenerics: hasGenerics)
             }
         }
     }
 
-    public static func readData(_ context: ReadContext) throws -> [Element] {
+    public static func foryReadData(_ context: ReadContext) throws -> [Element] {
         if primitiveArrayTypeID(for: Element.self) != nil {
             return try readPrimitiveArray(context)
         }
@@ -333,7 +333,7 @@ extension Array: Serializer where Element: Serializer {
         }
 
         if !declared {
-            try Element.readTypeInfo(context)
+            try Element.foryReadTypeInfo(context)
         }
 
         var values: [Element] = []
@@ -341,7 +341,7 @@ extension Array: Serializer where Element: Serializer {
 
         if trackRef {
             for _ in 0..<length {
-                values.append(try Element.read(context, refMode: .tracking, readTypeInfo: false))
+                values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: false))
             }
             return values
         }
@@ -350,14 +350,14 @@ extension Array: Serializer where Element: Serializer {
             for _ in 0..<length {
                 let refFlag = try context.reader.readInt8()
                 if refFlag == RefFlag.null.rawValue {
-                    values.append(Element.defaultValue())
+                    values.append(Element.foryDefault())
                 } else {
-                    values.append(try Element.readData(context))
+                    values.append(try Element.foryReadData(context))
                 }
             }
         } else {
             for _ in 0..<length {
-                values.append(try Element.readData(context))
+                values.append(try Element.foryReadData(context))
             }
         }
 
@@ -366,29 +366,29 @@ extension Array: Serializer where Element: Serializer {
 }
 
 extension Set: ForyDefault where Element: Serializer & Hashable {
-    public static func defaultValue() -> Set<Element> { [] }
+    public static func foryDefault() -> Set<Element> { [] }
 }
 
 extension Set: Serializer where Element: Serializer & Hashable {
     public static var staticTypeId: ForyTypeId { .set }
 
-    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
-        try Array(self).writeData(context, hasGenerics: hasGenerics)
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        try Array(self).foryWriteData(context, hasGenerics: hasGenerics)
     }
 
-    public static func readData(_ context: ReadContext) throws -> Set<Element> {
-        Set(try Array<Element>.readData(context))
+    public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
+        Set(try Array<Element>.foryReadData(context))
     }
 }
 
 extension Dictionary: ForyDefault where Key: Serializer & Hashable, Value: Serializer {
-    public static func defaultValue() -> Dictionary<Key, Value> { [:] }
+    public static func foryDefault() -> Dictionary<Key, Value> { [:] }
 }
 
 extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
     public static var staticTypeId: ForyTypeId { .map }
 
-    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         context.writer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
             return
@@ -404,8 +404,8 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
 
         while index < pairs.count {
             let pair = pairs[index]
-            let keyIsNil = pair.key.isNilValue
-            let valueIsNil = pair.value.isNilValue
+            let keyIsNil = pair.key.foryIsNone
+            let valueIsNil = pair.value.foryIsNone
 
             if keyIsNil || valueIsNil {
                 var header: UInt8 = 0
@@ -423,22 +423,22 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 context.writer.writeUInt8(header)
                 if !keyIsNil {
                     if !keyDeclared {
-                        try Key.writeTypeInfo(context)
+                        try Key.foryWriteTypeInfo(context)
                     }
                     if trackKeyRef {
-                        try pair.key.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                        try pair.key.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
                     } else {
-                        try pair.key.writeData(context, hasGenerics: hasGenerics)
+                        try pair.key.foryWriteData(context, hasGenerics: hasGenerics)
                     }
                 }
                 if !valueIsNil {
                     if !valueDeclared {
-                        try Value.writeTypeInfo(context)
+                        try Value.foryWriteTypeInfo(context)
                     }
                     if trackValueRef {
-                        try pair.value.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                        try pair.value.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
                     } else {
-                        try pair.value.writeData(context, hasGenerics: hasGenerics)
+                        try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
                     }
                 }
                 index += 1
@@ -456,27 +456,27 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             context.writer.writeUInt8(0)
 
             if !keyDeclared {
-                try Key.writeTypeInfo(context)
+                try Key.foryWriteTypeInfo(context)
             }
             if !valueDeclared {
-                try Value.writeTypeInfo(context)
+                try Value.foryWriteTypeInfo(context)
             }
 
             var chunkSize: UInt8 = 0
             while index < pairs.count && chunkSize < UInt8.max {
                 let current = pairs[index]
-                if current.key.isNilValue || current.value.isNilValue {
+                if current.key.foryIsNone || current.value.foryIsNone {
                     break
                 }
                 if trackKeyRef {
-                    try current.key.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                    try current.key.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
                 } else {
-                    try current.key.writeData(context, hasGenerics: hasGenerics)
+                    try current.key.foryWriteData(context, hasGenerics: hasGenerics)
                 }
                 if trackValueRef {
-                    try current.value.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                    try current.value.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
                 } else {
-                    try current.value.writeData(context, hasGenerics: hasGenerics)
+                    try current.value.foryWriteData(context, hasGenerics: hasGenerics)
                 }
                 chunkSize &+= 1
                 index += 1
@@ -485,7 +485,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         }
     }
 
-    public static func readData(_ context: ReadContext) throws -> Dictionary<Key, Value> {
+    public static func foryReadData(_ context: ReadContext) throws -> Dictionary<Key, Value> {
         let totalLength = Int(try context.reader.readVarUInt32())
         if totalLength == 0 {
             return [:]
@@ -506,54 +506,54 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             let valueDeclared = (header & MapHeader.declaredValueType) != 0
 
             if keyNull && valueNull {
-                map[Key.defaultValue()] = Value.defaultValue()
+                map[Key.foryDefault()] = Value.foryDefault()
                 readCount += 1
                 continue
             }
 
             if keyNull {
                 if !valueDeclared {
-                    try Value.readTypeInfo(context)
+                    try Value.foryReadTypeInfo(context)
                 }
-                let value = try Value.read(
+                let value = try Value.foryRead(
                     context,
                     refMode: trackValueRef ? .tracking : .none,
                     readTypeInfo: false
                 )
-                map[Key.defaultValue()] = value
+                map[Key.foryDefault()] = value
                 readCount += 1
                 continue
             }
 
             if valueNull {
                 if !keyDeclared {
-                    try Key.readTypeInfo(context)
+                    try Key.foryReadTypeInfo(context)
                 }
-                let key = try Key.read(
+                let key = try Key.foryRead(
                     context,
                     refMode: trackKeyRef ? .tracking : .none,
                     readTypeInfo: false
                 )
-                map[key] = Value.defaultValue()
+                map[key] = Value.foryDefault()
                 readCount += 1
                 continue
             }
 
             let chunkSize = Int(try context.reader.readUInt8())
             if !keyDeclared {
-                try Key.readTypeInfo(context)
+                try Key.foryReadTypeInfo(context)
             }
             if !valueDeclared {
-                try Value.readTypeInfo(context)
+                try Value.foryReadTypeInfo(context)
             }
 
             for _ in 0..<chunkSize {
-                let key = try Key.read(
+                let key = try Key.foryRead(
                     context,
                     refMode: trackKeyRef ? .tracking : .none,
                     readTypeInfo: false
                 )
-                let value = try Value.read(
+                let value = try Value.foryRead(
                     context,
                     refMode: trackValueRef ? .tracking : .none,
                     readTypeInfo: false

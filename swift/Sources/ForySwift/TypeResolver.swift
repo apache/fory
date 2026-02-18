@@ -35,7 +35,7 @@ public final class TypeResolver {
         byUserTypeID[id] = (
             kind: T.staticTypeId,
             reader: { context in
-                try T.read(context, refMode: .none, readTypeInfo: false)
+                try T.foryRead(context, refMode: .none, readTypeInfo: false)
             }
         )
     }

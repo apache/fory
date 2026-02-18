@@ -18,7 +18,7 @@
 import Foundation
 
 extension Optional: ForyDefault where Wrapped: Serializer {
-    public static func defaultValue() -> Optional<Wrapped> {
+    public static func foryDefault() -> Optional<Wrapped> {
         nil
     }
 }
@@ -36,30 +36,30 @@ extension Optional: Serializer where Wrapped: Serializer {
         Wrapped.isReferenceTrackableType
     }
 
-    public var isNilValue: Bool {
+    public var foryIsNone: Bool {
         self == nil
     }
 
-    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         guard case .some(let wrapped) = self else {
             throw ForyError.invalidData("Option.none cannot write raw payload")
         }
-        try wrapped.writeData(context, hasGenerics: hasGenerics)
+        try wrapped.foryWriteData(context, hasGenerics: hasGenerics)
     }
 
-    public static func readData(_ context: ReadContext) throws -> Optional<Wrapped> {
-        .some(try Wrapped.readData(context))
+    public static func foryReadData(_ context: ReadContext) throws -> Optional<Wrapped> {
+        .some(try Wrapped.foryReadData(context))
     }
 
-    public static func writeTypeInfo(_ context: WriteContext) throws {
-        try Wrapped.writeTypeInfo(context)
+    public static func foryWriteTypeInfo(_ context: WriteContext) throws {
+        try Wrapped.foryWriteTypeInfo(context)
     }
 
-    public static func readTypeInfo(_ context: ReadContext) throws {
-        try Wrapped.readTypeInfo(context)
+    public static func foryReadTypeInfo(_ context: ReadContext) throws {
+        try Wrapped.foryReadTypeInfo(context)
     }
 
-    public func write(
+    public func foryWrite(
         _ context: WriteContext,
         refMode: RefMode,
         writeTypeInfo: Bool,
@@ -70,44 +70,44 @@ extension Optional: Serializer where Wrapped: Serializer {
             guard case .some(let wrapped) = self else {
                 throw ForyError.invalidData("Option.none with RefMode.none")
             }
-            try wrapped.write(context, refMode: .none, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
+            try wrapped.foryWrite(context, refMode: .none, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
         case .nullOnly:
             guard case .some(let wrapped) = self else {
                 context.writer.writeInt8(RefFlag.null.rawValue)
                 return
             }
             context.writer.writeInt8(RefFlag.notNullValue.rawValue)
-            try wrapped.write(context, refMode: .none, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
+            try wrapped.foryWrite(context, refMode: .none, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
         case .tracking:
             guard case .some(let wrapped) = self else {
                 context.writer.writeInt8(RefFlag.null.rawValue)
                 return
             }
-            try wrapped.write(context, refMode: .tracking, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
+            try wrapped.foryWrite(context, refMode: .tracking, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
         }
     }
 
-    public static func read(
+    public static func foryRead(
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Optional<Wrapped> {
         switch refMode {
         case .none:
-            return .some(try Wrapped.read(context, refMode: .none, readTypeInfo: readTypeInfo))
+            return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))
         case .nullOnly:
             let refFlag = try context.reader.readInt8()
             if refFlag == RefFlag.null.rawValue {
                 return nil
             }
-            return .some(try Wrapped.read(context, refMode: .none, readTypeInfo: readTypeInfo))
+            return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))
         case .tracking:
             let refFlag = try context.reader.readInt8()
             if refFlag == RefFlag.null.rawValue {
                 return nil
             }
             context.reader.moveBack(1)
-            return .some(try Wrapped.read(context, refMode: .tracking, readTypeInfo: readTypeInfo))
+            return .some(try Wrapped.foryRead(context, refMode: .tracking, readTypeInfo: readTypeInfo))
         }
     }
 }

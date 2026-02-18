@@ -207,7 +207,7 @@ private func sortFields(_ fields: [ParsedField]) -> [ParsedField] {
 private func buildDefaultDecl(isClass: Bool, fields: [ParsedField]) -> String {
     if isClass {
         return """
-        static func defaultValue() -> Self {
+        static func foryDefault() -> Self {
             Self.init()
         }
         """
@@ -215,7 +215,7 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField]) -> String {
 
     if fields.isEmpty {
         return """
-        static func defaultValue() -> Self {
+        static func foryDefault() -> Self {
             Self()
         }
         """
@@ -223,11 +223,11 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField]) -> String {
 
     let args = fields
         .sorted(by: { $0.originalIndex < $1.originalIndex })
-        .map { "\($0.name): \($0.typeText).defaultValue()" }
+        .map { "\($0.name): \($0.typeText).foryDefault()" }
         .joined(separator: ",\n            ")
 
     return """
-    static func defaultValue() -> Self {
+    static func foryDefault() -> Self {
         Self(
             \(args)
         )
@@ -239,13 +239,13 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let lines = sortedFields.map { field in
         let refMode = fieldRefModeExpression(field)
         let hasGenerics = field.isCollection ? "true" : "false"
-        return "try self.\(field.name).write(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: \(hasGenerics))"
+        return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: \(hasGenerics))"
     }
 
     let body = lines.isEmpty ? "_ = hasGenerics" : lines.joined(separator: "\n        ")
 
     return """
-    func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         \(body)
     }
     """
@@ -255,11 +255,11 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
     if isClass {
         let assignLines = sortedFields.map { field -> String in
             let refMode = fieldRefModeExpression(field)
-            return "value.\(field.name) = try \(field.typeText).read(context, refMode: \(refMode), readTypeInfo: false)"
+            return "value.\(field.name) = try \(field.typeText).foryRead(context, refMode: \(refMode), readTypeInfo: false)"
         }.joined(separator: "\n        ")
 
         return """
-        static func readData(_ context: ReadContext) throws -> Self {
+        static func foryReadData(_ context: ReadContext) throws -> Self {
             let value = Self.init()
             context.bindPendingReference(value)
             \(assignLines)
@@ -270,7 +270,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
 
     if fields.isEmpty {
         return """
-        static func readData(_ context: ReadContext) throws -> Self {
+        static func foryReadData(_ context: ReadContext) throws -> Self {
             Self()
         }
         """
@@ -278,7 +278,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
 
     let readLines = sortedFields.map { field -> String in
         let refMode = fieldRefModeExpression(field)
-        return "let __\(field.name) = try \(field.typeText).read(context, refMode: \(refMode), readTypeInfo: false)"
+        return "let __\(field.name) = try \(field.typeText).foryRead(context, refMode: \(refMode), readTypeInfo: false)"
     }.joined(separator: "\n        ")
 
     let ctorArgs = fields
@@ -287,7 +287,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
         .joined(separator: ",\n            ")
 
     return """
-    static func readData(_ context: ReadContext) throws -> Self {
+    static func foryReadData(_ context: ReadContext) throws -> Self {
         \(readLines)
         return Self(
             \(ctorArgs)
