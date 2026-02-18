@@ -40,7 +40,7 @@ export class ReferenceResolver {
   }
 
   readRefFlag() {
-    return this.binaryReader.int8() as RefFlags;
+    return this.binaryReader.readInt8() as RefFlags;
   }
 
   reference(object: any) {

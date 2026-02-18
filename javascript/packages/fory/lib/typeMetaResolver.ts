@@ -87,7 +87,7 @@ export class TypeMetaResolver {
   }
 
   readTypeMeta(reader: BinaryReader): TypeMeta {
-    const idOrLen = reader.varUInt32();
+    const idOrLen = reader.readVarUInt32();
     if (idOrLen & 1) {
       return this.typeMeta[idOrLen >> 1];
     } else {
@@ -101,14 +101,14 @@ export class TypeMetaResolver {
   writeTypeMeta(typeInfo: TypeInfo, writer: BinaryWriter, bytes: Uint8Array) {
     if (typeInfo.dynamicTypeId !== -1) {
       // Reference to previously written type: (index << 1) | 1, LSB=1
-      writer.varUInt32((typeInfo.dynamicTypeId << 1) | 1);
+      writer.writeVarUInt32((typeInfo.dynamicTypeId << 1) | 1);
     } else {
       // New type: index << 1, LSB=0, followed by TypeMeta bytes inline
       const index = this.dynamicTypeId;
       typeInfo.dynamicTypeId = index;
       this.dynamicTypeId += 1;
       this.disposeTypeInfo.push(typeInfo);
-      writer.varUInt32(index << 1);
+      writer.writeVarUInt32(index << 1);
       writer.buffer(bytes);
     }
   }

@@ -27,20 +27,20 @@ describe('writer', () => {
     test('should uint8 work', () => {
         const writer = new BinaryWriter({});
         {
-            writer.uint8(10);
+            writer.writeUint8(10);
             var ab = writer.dump();
             expect(ab.byteLength).toBe(1);
             expect(ab[0]).toBe(10);
-            expect(writer.getCursor()).toBe(1);
+            expect(writer.writeGetCursor()).toBe(1);
         }
 
         {
-            writer.uint8(256);
+            writer.writeUint8(256);
             var ab = writer.dump();
 
             expect(ab.byteLength).toBe(2);
             expect(ab[1]).toBe(0);
-            expect(writer.getCursor()).toBe(2);
+            expect(writer.writeGetCursor()).toBe(2);
         }
     });
 });

@@ -113,9 +113,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       } else if (refMode == RefMode.NULL_ONLY) {
         stmt = `
             if (${fieldAccessor} === null || ${fieldAccessor} === undefined) {
-              ${this.builder.writer.int8(RefFlags.NullFlag)}
+              ${this.builder.writer.writeInt8(RefFlags.NullFlag)}
             } else {
-              ${this.builder.writer.int8(RefFlags.NotNullValueFlag)}
+              ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)}
               ${embedGenerator.write(fieldAccessor)}
             }
           `;
@@ -134,9 +134,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       } else if (refMode == RefMode.NULL_ONLY) {
         stmt = `
             if (${fieldAccessor} === null || ${fieldAccessor} === undefined) {
-              ${this.builder.writer.int8(RefFlags.NullFlag)}
+              ${this.builder.writer.writeInt8(RefFlags.NullFlag)}
             } else {
-              ${this.builder.writer.int8(RefFlags.NotNullValueFlag)}
+              ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)}
               ${embedGenerator.writeNoRef(fieldAccessor)}
             }
           `;
@@ -156,7 +156,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     const hash = this.typeMeta.computeStructHash();
     return `
-      ${!this.builder.fory.isCompatible() ? this.builder.writer.int32(hash) : ""}
+      ${!this.builder.fory.isCompatible() ? this.builder.writer.writeInt32(hash) : ""}
       ${this.sortedProps.map(({ key, typeInfo }) => {
       const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
       if (!InnerGeneratorClass) {
@@ -176,7 +176,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     return `
       ${!this.builder.fory.isCompatible()
 ? `
-        if(${this.builder.reader.int32()} !== ${hash}) {
+        if(${this.builder.reader.readInt32()} !== ${hash}) {
           throw new Error("Read class version is not consistent with ${hash} ")
         }
       `
@@ -268,7 +268,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     }
     return `
       ${
-        this.builder.reader.uint8()
+        this.builder.reader.readUint8()
       };
       ${readUserTypeIdStmt}
       ${
@@ -348,7 +348,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return ` 
-      ${this.builder.writer.uint8(this.getTypeId())};
+      ${this.builder.writer.writeUint8(this.getTypeId())};
       ${writeUserTypeIdStmt}
       ${typeMeta}
     `;
