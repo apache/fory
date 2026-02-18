@@ -286,7 +286,7 @@ function num2Bin(num: number) {
 
         test('should setUint32Position work', () => {
             const writer = new BinaryWriter(config);
-            writer.skip(10);
+            writer.writeSkip(10);
             writer.setUint32Position(0, 100);
             writer.setUint32Position(5, 100);
             const ab = writer.dump();

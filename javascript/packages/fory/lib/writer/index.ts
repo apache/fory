@@ -111,7 +111,7 @@ export class BinaryWriter {
     this.cursor += 2;
   }
 
-  skip(len: number) {
+  writeSkip(len: number) {
     this.cursor += len;
   }
 

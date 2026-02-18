@@ -39,15 +39,15 @@ export class BinaryReaderBuilder {
     return this.holder;
   }
 
-  getCursor() {
+  readGetCursor() {
     return `${this.holder}.readGetCursor()`;
   }
 
-  setCursor(v: number | string) {
+  readSetCursor(v: number | string) {
     return `${this.holder}.readSetCursor(${v})`;
   }
 
-  varInt32() {
+  readVarInt32() {
     return `${this.holder}.readVarInt32()`;
   }
 
@@ -59,19 +59,19 @@ export class BinaryReaderBuilder {
     return `${this.holder}.readTaggedUInt64()`;
   }
 
-  varInt64() {
+  readVarInt64() {
     return `${this.holder}.readVarInt64()`;
   }
 
-  varUInt32() {
+  readVarUInt32() {
     return `${this.holder}.readVarUInt32()`;
   }
 
-  varUInt64() {
+  readVarUInt64() {
     return `${this.holder}.readVarUInt64()`;
   }
 
-  int8() {
+  readInt8() {
     return `${this.holder}.readInt8()`;
   }
 
@@ -83,7 +83,7 @@ export class BinaryReaderBuilder {
     return `${this.holder}.bufferRef(${len})`;
   }
 
-  uint8() {
+  readUint8() {
     return `${this.holder}.readUint8()`;
   }
 
@@ -103,27 +103,27 @@ export class BinaryReaderBuilder {
     return `${this.holder}.stringWithHeader()`;
   }
 
-  float64() {
+  readFloat64() {
     return `${this.holder}.readFloat64()`;
   }
 
-  float32() {
+  readFloat32() {
     return `${this.holder}.readFloat32()`;
   }
 
-  float16() {
+  readFloat16() {
     return `${this.holder}.readFloat16()`;
   }
 
-  bfloat16() {
+  readBfloat16() {
     return `${this.holder}.readBfloat16()`;
   }
 
-  uint16() {
+  readUint16() {
     return `${this.holder}.readUint16()`;
   }
 
-  int16() {
+  readInt16() {
     return `${this.holder}.readInt16()`;
   }
 
@@ -131,27 +131,27 @@ export class BinaryReaderBuilder {
     return `${this.holder}.readVarUint32Small7()`;
   }
 
-  uint64() {
+  readUint64() {
     return `${this.holder}.readUint64()`;
   }
 
-  skip(v: number) {
+  readSkip(v: number) {
     return `${this.holder}.readSkip(${v})`;
   }
 
-  int64() {
+  readInt64() {
     return `${this.holder}.readInt64()`;
   }
 
-  sliInt64() {
+  readSliInt64() {
     return `${this.holder}.readSliInt64()`;
   }
 
-  uint32() {
+  readUint32() {
     return `${this.holder}.readUint32()`;
   }
 
-  int32() {
+  readInt32() {
     return `${this.holder}.readInt32()`;
   }
 }
@@ -165,8 +165,8 @@ class BinaryWriterBuilder {
     return this.holder;
   }
 
-  skip(v: number | string) {
-    return `${this.holder}.skip(${v})`;
+  writeSkip(v: number | string) {
+    return `${this.holder}.writeSkip(${v})`;
   }
 
   getByteLen() {
@@ -185,27 +185,27 @@ class BinaryWriterBuilder {
     return `${this.holder}.arrayBuffer(${buffer}, ${byteOffset}, ${byteLength})`;
   }
 
-  uint16(v: number | string) {
+  writeUint16(v: number | string) {
     return `${this.holder}.writeUint16(${v})`;
   }
 
-  int8(v: number | string) {
+  writeInt8(v: number | string) {
     return `${this.holder}.writeInt8(${v})`;
   }
 
-  int24(v: number | string) {
+  writeInt24(v: number | string) {
     return `${this.holder}.writeInt24(${v})`;
   }
 
-  uint8(v: number | string) {
+  writeUint8(v: number | string) {
     return `${this.holder}.writeUint8(${v})`;
   }
 
-  int16(v: number | string) {
+  writeInt16(v: number | string) {
     return `${this.holder}.writeInt16(${v})`;
   }
 
-  varInt32(v: number | string) {
+  writeVarInt32(v: number | string) {
     return `${this.holder}.writeVarInt32(${v})`;
   }
 
@@ -213,11 +213,11 @@ class BinaryWriterBuilder {
     return `${this.holder}.writeVarUint32Small7(${v})`;
   }
 
-  varUInt32(v: number | string) {
+  writeVarUInt32(v: number | string) {
     return `${this.holder}.writeVarUInt32(${v})`;
   }
 
-  varUInt64(v: number | string) {
+  writeVarUInt64(v: number | string) {
     return `${this.holder}.writeVarUInt64(${v})`;
   }
 
@@ -229,7 +229,7 @@ class BinaryWriterBuilder {
     return `${this.holder}.writeTaggedUInt64(${v})`;
   }
 
-  varInt64(v: number | string) {
+  writeVarInt64(v: number | string) {
     return `${this.holder}.writeVarInt64(${v})`;
   }
 
@@ -241,7 +241,7 @@ class BinaryWriterBuilder {
     return `${this.holder}.bufferWithoutMemCheck(${v})`;
   }
 
-  uint64(v: number | string) {
+  writeUint64(v: number | string) {
     return `${this.holder}.writeUint64(${v})`;
   }
 
@@ -249,39 +249,39 @@ class BinaryWriterBuilder {
     return `${this.holder}.buffer(${v})`;
   }
 
-  float64(v: number | string) {
+  writeFloat64(v: number | string) {
     return `${this.holder}.writeFloat64(${v})`;
   }
 
-  float32(v: number | string) {
+  writeFloat32(v: number | string) {
     return `${this.holder}.writeFloat32(${v})`;
   }
 
-  float16(v: number | string) {
+  writeFloat16(v: number | string) {
     return `${this.holder}.writeFloat16(${v})`;
   }
 
-  bfloat16(v: number | string) {
+  writeBfloat16(v: number | string) {
     return `${this.holder}.writeBfloat16(${v})`;
   }
 
-  int64(v: number | string) {
+  writeInt64(v: number | string) {
     return `${this.holder}.writeInt64(${v})`;
   }
 
-  sliInt64(v: number | string) {
+  writeSliInt64(v: number | string) {
     return `${this.holder}.writeSliInt64(${v})`;
   }
 
-  uint32(v: number | string) {
+  writeUint32(v: number | string) {
     return `${this.holder}.writeUint32(${v})`;
   }
 
-  int32(v: number | string) {
+  writeInt32(v: number | string) {
     return `${this.holder}.writeInt32(${v})`;
   }
 
-  getCursor() {
+  writeGetCursor() {
     return `${this.holder}.writeGetCursor()`;
   }
 

@@ -242,7 +242,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             }
         }
     `);
-    stmts.push(`${this.builder.writer.uint8(flagAccessor)}`);
+    stmts.push(`${this.builder.writer.writeUint8(flagAccessor)}`);
     return stmts.join("\n");
   }
 
@@ -261,24 +261,24 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     if (${item} !== null && ${item} !== undefined) {
                         const ${existsId} = ${this.builder.referenceResolver.existsWriteObject(item)};
                         if (typeof ${existsId} === "number") {
-                            ${this.builder.writer.int8(RefFlags.RefFlag)}
-                            ${this.builder.writer.varUInt32(existsId)}
+                            ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
+                            ${this.builder.writer.writeVarUInt32(existsId)}
                         } else {
                             ${this.builder.referenceResolver.writeRef(item)}
-                            ${this.builder.writer.int8(RefFlags.RefValueFlag)};
+                            ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)};
                             ${this.innerGenerator.writeEmbed().write(item)}
                         }
                     } else {
-                        ${this.builder.writer.int8(RefFlags.NullFlag)};
+                        ${this.builder.writer.writeInt8(RefFlags.NullFlag)};
                     }
                 }
             } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
                 for (const ${item} of ${accessor}) {
                     if (${item} !== null && ${item} !== undefined) {
-                        ${this.builder.writer.int8(RefFlags.NotNullValueFlag)};
+                        ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)};
                         ${this.innerGenerator.writeEmbed().write(item)}
                     } else {
-                        ${this.builder.writer.int8(RefFlags.NullFlag)};
+                        ${this.builder.writer.writeInt8(RefFlags.NullFlag)};
                     }
                 }
             } else {
@@ -297,19 +297,19 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const refFlag = this.scope.uniqueName("refFlag");
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
-            const ${flags} = ${this.builder.reader.uint8()};
+            const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    const ${refFlag} = ${this.builder.reader.int8()};
+                    const ${refFlag} = ${this.builder.reader.readInt8()};
                     switch (${refFlag}) {
                         case ${RefFlags.NotNullValueFlag}:
                         case ${RefFlags.RefValueFlag}:
                             ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                             break;
                         case ${RefFlags.RefFlag}:
-                            ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()), idx)}
+                            ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()), idx)}
                             break;
                         case ${RefFlags.NullFlag}:
                             ${this.putAccessor(result, "null", idx)}
@@ -318,7 +318,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                 }
             } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    if (${this.builder.reader.int8()} == ${RefFlags.NullFlag}) {
+                    if (${this.builder.reader.readInt8()} == ${RefFlags.NullFlag}) {
                         ${this.putAccessor(result, "null", idx)}
                     } else {
                         ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}

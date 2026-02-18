@@ -34,7 +34,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
 
   write(accessor: string): string {
     if (!this.typeInfo.options?.enumProps) {
-      return this.builder.writer.varUInt32(accessor);
+      return this.builder.writer.writeVarUInt32(accessor);
     }
     if (Object.values(this.typeInfo.options.enumProps).length < 1) {
       throw new Error("An enum must contain at least one field");
@@ -51,7 +51,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
       }
       const safeValue = typeof value === "string" ? `"${value}"` : value;
       return ` if (${accessor} === ${safeValue}) {
-                    ${this.builder.writer.varUInt32(index)}
+                    ${this.builder.writer.writeVarUInt32(index)}
                 }`;
     }).join(" else ")}
         else {
@@ -87,7 +87,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     return `
       ${
       // skip the typeId
-      this.builder.reader.uint8()
+      this.builder.reader.readUint8()
       }
       ${readUserTypeIdStmt}
       ${namesStmt}
@@ -117,7 +117,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return ` 
-        ${this.builder.writer.uint8(this.getTypeId())};
+        ${this.builder.writer.writeUint8(this.getTypeId())};
         ${writeUserTypeIdStmt}
         ${typeMeta}
       `;
@@ -125,11 +125,11 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string): string {
     if (!this.typeInfo.options?.enumProps) {
-      return accessor(this.builder.reader.varUInt32());
+      return accessor(this.builder.reader.readVarUInt32());
     }
     const enumValue = this.scope.uniqueName("enum_v");
     return `
-        const ${enumValue} = ${this.builder.reader.varUInt32()};
+        const ${enumValue} = ${this.builder.reader.readVarUInt32()};
         switch(${enumValue}) {
             ${Object.values(this.typeInfo.options.enumProps).map((value, index) => {
       if (typeof value !== "string" && typeof value !== "number") {

@@ -40,14 +40,14 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
       const ${msVar} = (${accessor} instanceof Date) ? ${accessor}.getTime() : ${accessor};
       const ${secondsVar} = Math.floor(${msVar} / 1000);
       const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
-      ${this.builder.writer.int64(`${secondsVar}`)}
-      ${this.builder.writer.uint32(`${nanosVar}`)}
+      ${this.builder.writer.writeInt64(`${secondsVar}`)}
+      ${this.builder.writer.writeUint32(`${nanosVar}`)}
       `;
   }
 
   read(accessor: (expr: string) => string): string {
-    const seconds = this.builder.reader.int64();
-    const nanos = this.builder.reader.uint32();
+    const seconds = this.builder.reader.readInt64();
+    const nanos = this.builder.reader.readUint32();
     return accessor(`new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`);
   }
 
@@ -72,14 +72,14 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
       const ${msVar} = ${accessor};
       const ${secondsVar} = Math.floor(${msVar} / 1000);
       const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
-      ${this.builder.writer.int64(`${secondsVar}`)}
-      ${this.builder.writer.uint32(`${nanosVar}`)}
+      ${this.builder.writer.writeInt64(`${secondsVar}`)}
+      ${this.builder.writer.writeUint32(`${nanosVar}`)}
       `;
   }
 
   read(accessor: (expr: string) => string): string {
-    const seconds = this.builder.reader.int64();
-    const nanos = this.builder.reader.uint32();
+    const seconds = this.builder.reader.readInt64();
+    const nanos = this.builder.reader.readUint32();
     return accessor(`Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000)`);
   }
 
@@ -100,16 +100,16 @@ class DateSerializerGenerator extends BaseSerializerGenerator {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
     return `
       if (${accessor} instanceof Date) {
-        ${this.builder.writer.int32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+        ${this.builder.writer.writeInt32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
       } else {
-        ${this.builder.writer.int32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+        ${this.builder.writer.writeInt32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
       }
     `;
   }
 
   read(accessor: (expr: string) => string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
-    return accessor(`new Date(${epoch} + (${this.builder.reader.int32()} * (24 * 60 * 60) * 1000))`);
+    return accessor(`new Date(${epoch} + (${this.builder.reader.readInt32()} * (24 * 60 * 60) * 1000))`);
   }
 
   getFixedSize(): number {

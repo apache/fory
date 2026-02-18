@@ -35,7 +35,7 @@ function build(inner: TypeInfo, creator: string, size: number) {
 
     write(accessor: string): string {
       return `
-                ${this.builder.writer.varUInt32(`${accessor}.byteLength`)}
+                ${this.builder.writer.writeVarUInt32(`${accessor}.byteLength`)}
                 ${this.builder.writer.arrayBuffer(`${accessor}.buffer`, `${accessor}.byteOffset`, `${accessor}.byteLength`)}
             `;
     }
@@ -46,7 +46,7 @@ function build(inner: TypeInfo, creator: string, size: number) {
       const copied = this.scope.uniqueName("copied");
 
       return `
-                const ${len} = ${this.builder.reader.varUInt32()};
+                const ${len} = ${this.builder.reader.readVarUInt32()};
                 const ${copied} = ${this.builder.reader.buffer(len)}
                 const ${result} = new ${creator}(${copied}.buffer, ${copied}.byteOffset, ${copied}.byteLength / ${size});
                 ${this.maybeReference(result, refState)}
@@ -71,10 +71,10 @@ class BoolArraySerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     const item = this.scope.uniqueName("item");
     return `
-                ${this.builder.writer.varUInt32(`${accessor}.length`)}
+                ${this.builder.writer.writeVarUInt32(`${accessor}.length`)}
                 ${this.builder.writer.reserve(`${accessor}.length`)};
                 for (const ${item} of ${accessor}) {
-                  ${this.builder.writer.uint8(`${item} ? 1 : 0`)}
+                  ${this.builder.writer.writeUint8(`${item} ? 1 : 0`)}
                 }
             `;
   }
@@ -84,11 +84,11 @@ class BoolArraySerializerGenerator extends BaseSerializerGenerator {
     const len = this.scope.uniqueName("len");
     const idx = this.scope.uniqueName("idx");
     return `
-                const ${len} = ${this.builder.reader.varUInt32()};
+                const ${len} = ${this.builder.reader.readVarUInt32()};
                 const ${result} = new Array(${len});
                 ${this.maybeReference(result, refState)}
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                  ${result}[${idx}] = ${this.builder.reader.uint8()} === 1;
+                  ${result}[${idx}] = ${this.builder.reader.readUint8()} === 1;
                 }
                 ${accessor(result)}
              `;
@@ -110,10 +110,10 @@ class Float16ArraySerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     const item = this.scope.uniqueName("item");
     return `
-        ${this.builder.writer.varUInt32(`${accessor}.length * 2`)}
+        ${this.builder.writer.writeVarUInt32(`${accessor}.length * 2`)}
         ${this.builder.writer.reserve(`${accessor}.length * 2`)};
         for (const ${item} of ${accessor}) {
-          ${this.builder.writer.float16(item)}
+          ${this.builder.writer.writeFloat16(item)}
         }
     `;
   }
@@ -123,11 +123,11 @@ class Float16ArraySerializerGenerator extends BaseSerializerGenerator {
     const len = this.scope.uniqueName("len");
     const idx = this.scope.uniqueName("idx");
     return `
-        const ${len} = ${this.builder.reader.varUInt32()} / 2;
+        const ${len} = ${this.builder.reader.readVarUInt32()} / 2;
         const ${result} = new Array(${len});
         ${this.maybeReference(result, refState)}
         for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-          ${result}[${idx}] = ${this.builder.reader.float16()};
+          ${result}[${idx}] = ${this.builder.reader.readFloat16()};
         }
         ${accessor(result)}
       `;
@@ -149,10 +149,10 @@ class BFloat16ArraySerializerGenerator extends BaseSerializerGenerator {
   write(accessor: string): string {
     const item = this.scope.uniqueName("item");
     return `
-        ${this.builder.writer.varUInt32(`${accessor}.length * 2`)}
+        ${this.builder.writer.writeVarUInt32(`${accessor}.length * 2`)}
         ${this.builder.writer.reserve(`${accessor}.length * 2`)};
         for (const ${item} of ${accessor}) {
-          ${this.builder.writer.bfloat16(item)}
+          ${this.builder.writer.writeBfloat16(item)}
         }
     `;
   }
@@ -162,11 +162,11 @@ class BFloat16ArraySerializerGenerator extends BaseSerializerGenerator {
     const len = this.scope.uniqueName("len");
     const idx = this.scope.uniqueName("idx");
     return `
-        const ${len} = ${this.builder.reader.varUInt32()} / 2;
+        const ${len} = ${this.builder.reader.readVarUInt32()} / 2;
         const ${result} = new Array(${len});
         ${this.maybeReference(result, refState)}
         for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-          ${result}[${idx}] = ${this.builder.reader.bfloat16()};
+          ${result}[${idx}] = ${this.builder.reader.readBfloat16()};
         }
         ${accessor(result)}
       `;

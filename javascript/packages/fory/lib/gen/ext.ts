@@ -96,7 +96,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     }
     return `
       ${
-        this.builder.reader.uint8()
+        this.builder.reader.readUint8()
       };
       ${readUserTypeIdStmt}
       ${
@@ -166,7 +166,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return ` 
-      ${this.builder.writer.uint8(this.getTypeId())};
+      ${this.builder.writer.writeUint8(this.getTypeId())};
       ${writeUserTypeIdStmt}
       ${typeMeta}
     `;

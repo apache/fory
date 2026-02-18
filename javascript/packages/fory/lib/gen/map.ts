@@ -322,13 +322,13 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             ${chunkSize} = 0;
           }
           if (keyIsNull || valueIsNull) {
-            ${this.builder.writer.uint8(
+            ${this.builder.writer.writeUint8(
                 `((${valueHeader} | (valueIsNull ? ${MapFlags.HAS_NULL} : 0)) << 3) | (${keyHeader} | (keyIsNull ? ${MapFlags.HAS_NULL} : 0))`
               )
             }
           } else {
-            ${chunkSizeOffset} = ${this.builder.writer.getCursor()} + 1;
-            ${this.builder.writer.uint16(
+            ${chunkSizeOffset} = ${this.builder.writer.writeGetCursor()} + 1;
+            ${this.builder.writer.writeUint16(
                 `((${valueHeader} | (valueIsNull ? ${MapFlags.HAS_NULL} : 0)) << 3) | (${keyHeader} | (keyIsNull ? ${MapFlags.HAS_NULL} : 0))`
               )
             }
@@ -341,10 +341,10 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           ? `
               const ${keyRef} = ${this.builder.referenceResolver.existsWriteObject(v)};
               if (${keyRef} !== undefined) {
-                ${this.builder.writer.int8(RefFlags.RefFlag)};
-                ${this.builder.writer.varUInt32(keyRef)};
+                ${this.builder.writer.writeInt8(RefFlags.RefFlag)};
+                ${this.builder.writer.writeVarUInt32(keyRef)};
               } else {
-                ${this.builder.writer.int8(RefFlags.RefValueFlag)};
+                ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)};
                 ${this.keyGenerator.writeEmbed().write(k)}
               }
           `
@@ -356,10 +356,10 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           ? `
               const ${valueRef} = ${this.builder.referenceResolver.existsWriteObject(v)};
               if (${valueRef} !== undefined) {
-                ${this.builder.writer.int8(RefFlags.RefFlag)};
-                ${this.builder.writer.varUInt32(valueRef)};
+                ${this.builder.writer.writeInt8(RefFlags.RefFlag)};
+                ${this.builder.writer.writeVarUInt32(valueRef)};
               } else {
-                ${this.builder.writer.int8(RefFlags.RefValueFlag)};
+                ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)};
                 ${this.valueGenerator.writeEmbed().write(v)};
               }
           `
@@ -407,7 +407,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         ${this.builder.referenceResolver.reference(result)}
       }
       while (${count} > 0) {
-        const header = ${this.builder.reader.uint8()};
+        const header = ${this.builder.reader.readUint8()};
         const keyHeader = header & 0b111;
         const valueHeader = (header >> 3) & 0b111;
         const keyIncludeNone = keyHeader & ${MapFlags.HAS_NULL};
@@ -416,7 +416,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         const valueTrackingRef = valueHeader & ${MapFlags.TRACKING_REF};
         let chunkSize = 1;
         if (!keyIncludeNone && !valueIncludeNone) {
-          chunkSize = ${this.builder.reader.uint8()};
+          chunkSize = ${this.builder.reader.readUint8()};
         }
         for (let index = 0; index < chunkSize; index++) {
           let key;
@@ -424,13 +424,13 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           if (keyIncludeNone) {
              key = null;
           } else if (keyTrackingRef) {
-            const flag = ${this.builder.reader.int8()};
+            const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
                 ${this.keyGenerator.read(x => `key = ${x}`, "true")}
                 break;
               case ${RefFlags.RefFlag}:
-                key = ${this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32())}
+                key = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())}
                 break;
               case ${RefFlags.NullFlag}:
                 key = null;
@@ -446,13 +446,13 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           if (valueIncludeNone) {
             value = null;
           } else if (valueTrackingRef) {
-            const flag = ${this.builder.reader.int8()};
+            const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
                 ${this.valueGenerator.read(x => `value = ${x}`, "true")}
                 break;
               case ${RefFlags.RefFlag}:
-                value = ${this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32())}
+                value = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())}
                 break;
               case ${RefFlags.NullFlag}:
                 value = null;

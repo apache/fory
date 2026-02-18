@@ -33,11 +33,11 @@ class BoolSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
-    return this.builder.writer.uint8(`${accessor} ? 1 : 0`);
+    return this.builder.writer.writeUint8(`${accessor} ? 1 : 0`);
   }
 
   read(accessor: (expr: string) => string): string {
-    return accessor(`${this.builder.reader.uint8()} === 1`);
+    return accessor(`${this.builder.reader.readUint8()} === 1`);
   }
 
   getFixedSize(): number {
