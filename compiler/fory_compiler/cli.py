@@ -379,6 +379,19 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Scan and print without deleting files",
     )
 
+    parser.add_argument(
+        "--grpc",
+        action="store_true",
+        help="Generate gRPC service code (stubs, serialization traits, etc.)",
+    )
+
+    parser.add_argument(
+        "--grpc-backend",
+        type=str,
+        default=None,
+        help="Specify gRPC backend (e.g., 'grpc++' for C++, 'grpcio' for Python). Defaults to standard backend for the language.",
+    )
+
     return parser.parse_args(args)
 
 
@@ -425,6 +438,8 @@ def compile_file(
     emit_fdl: bool = False,
     emit_fdl_path: Optional[Path] = None,
     resolve_cache: Optional[Dict[Path, Schema]] = None,
+    grpc: bool = False,
+    grpc_backend: Optional[str] = None,
 ) -> bool:
     """Compile a single IDL file with import resolution.
 
@@ -486,11 +501,18 @@ def compile_file(
             output_dir=lang_output,
             package_override=package_override,
             go_nested_type_style=go_nested_type_style,
+            grpc=grpc,
+            grpc_backend=grpc_backend,
         )
 
         generator_class = GENERATORS[lang]
         generator = generator_class(schema, options)
         files = generator.generate()
+
+        if grpc:
+            service_files = generator.generate_services()
+            files.extend(service_files)
+
         generator.write_files(files)
 
         for f in files:
@@ -511,6 +533,8 @@ def compile_file_recursive(
     stack: Set[Path],
     resolve_cache: Dict[Path, Schema],
     go_module_root: Optional[Path],
+    grpc: bool = False,
+    grpc_backend: Optional[str] = None,
 ) -> bool:
     file_path = file_path.resolve()
     if file_path in generated:
@@ -574,6 +598,8 @@ def compile_file_recursive(
             stack,
             resolve_cache,
             go_module_root,
+            grpc,
+            grpc_backend,
         ):
             stack.remove(file_path)
             return False
@@ -588,6 +614,8 @@ def compile_file_recursive(
         emit_fdl,
         emit_fdl_path,
         resolve_cache,
+        grpc,
+        grpc_backend,
     )
     if ok:
         generated.add(file_path)
@@ -676,6 +704,8 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 set(),
                 resolve_cache,
                 None,
+                args.grpc,
+                args.grpc_backend,
             ):
                 success = False
         except ImportError as e:
