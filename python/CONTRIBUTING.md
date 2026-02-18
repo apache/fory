@@ -28,6 +28,9 @@ temporary directory it was the last time bazel ran. To remedy this run
 ```bash
 cd python
 pytest -v -s .
+
+# Run specific test
+pytest -v -s pyfory/tests/test_serializer.py
 ```
 
 ## Formatting
@@ -35,7 +38,8 @@ pytest -v -s .
 ```bash
 cd python
 pip install ruff
-ruff format python
+ruff format .
+ruff check --fix .
 ```
 
 ## Debugging

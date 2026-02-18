@@ -1326,25 +1326,7 @@ Apache Fory™ is an open-source project under the Apache Software Foundation. W
 3. **Improve Docs**: Documentation improvements are always welcome
 4. **Submit Code**: See our [Contributing Guide](https://github.com/apache/fory/blob/main/CONTRIBUTING.md)
 
-### Development Setup
-
-```bash
-git clone https://github.com/apache/fory.git
-cd fory/python
-
-# Install dependencies
-pip install -e ".[dev,format]"
-
-# Run tests
-pytest -v -s .
-
-# Run specific test
-pytest -v -s pyfory/tests/test_serializer.py
-
-# Format code
-ruff format .
-ruff check --fix .
-```
+> **For Contributors**: See [CONTRIBUTING.md](CONTRIBUTING.md) for comprehensive development setup instructions
 
 ## 📄 License
 
