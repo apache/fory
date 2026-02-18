@@ -17,11 +17,8 @@
 
 import Foundation
 
-public protocol ForyDefault {
+public protocol Serializer {
     static func foryDefault() -> Self
-}
-
-public protocol Serializer: ForyDefault {
     static var staticTypeId: ForyTypeId { get }
 
     static var isNullableType: Bool { get }

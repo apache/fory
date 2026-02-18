@@ -250,13 +250,11 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
     return out as! [Element]
 }
 
-extension Array: ForyDefault where Element: Serializer {
+extension Array: Serializer where Element: Serializer {
     public static func foryDefault() -> [Element] {
         []
     }
-}
 
-extension Array: Serializer where Element: Serializer {
     public static var staticTypeId: ForyTypeId {
         primitiveArrayTypeID(for: Element.self) ?? .list
     }
@@ -365,11 +363,9 @@ extension Array: Serializer where Element: Serializer {
     }
 }
 
-extension Set: ForyDefault where Element: Serializer & Hashable {
-    public static func foryDefault() -> Set<Element> { [] }
-}
-
 extension Set: Serializer where Element: Serializer & Hashable {
+    public static func foryDefault() -> Set<Element> { [] }
+
     public static var staticTypeId: ForyTypeId { .set }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -381,11 +377,9 @@ extension Set: Serializer where Element: Serializer & Hashable {
     }
 }
 
-extension Dictionary: ForyDefault where Key: Serializer & Hashable, Value: Serializer {
-    public static func foryDefault() -> Dictionary<Key, Value> { [:] }
-}
-
 extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
+    public static func foryDefault() -> Dictionary<Key, Value> { [:] }
+
     public static var staticTypeId: ForyTypeId { .map }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {

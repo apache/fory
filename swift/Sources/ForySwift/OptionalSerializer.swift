@@ -17,13 +17,11 @@
 
 import Foundation
 
-extension Optional: ForyDefault where Wrapped: Serializer {
+extension Optional: Serializer where Wrapped: Serializer {
     public static func foryDefault() -> Optional<Wrapped> {
         nil
     }
-}
 
-extension Optional: Serializer where Wrapped: Serializer {
     public static var staticTypeId: ForyTypeId {
         Wrapped.staticTypeId
     }
