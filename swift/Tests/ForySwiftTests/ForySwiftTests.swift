@@ -265,3 +265,179 @@ func macroFieldOrderFollowsForyRules() throws {
     #expect(third == value.c)
     #expect(fourth == value.z)
 }
+
+@Test
+func pvlVarInt64AndVarUInt64Extremes() throws {
+    let uintValues: [UInt64] = [
+        0,
+        1,
+        127,
+        128,
+        16_383,
+        16_384,
+        2_097_151,
+        2_097_152,
+        268_435_455,
+        268_435_456,
+        34_359_738_367,
+        34_359_738_368,
+        4_398_046_511_103,
+        4_398_046_511_104,
+        562_949_953_421_311,
+        562_949_953_421_312,
+        72_057_594_037_927_935,
+        72_057_594_037_927_936,
+        UInt64(Int64.max),
+        UInt64.max,
+    ]
+    let intValues: [Int64] = [
+        Int64.min,
+        Int64.min + 1,
+        -1_000_000_000_000,
+        -1_000_000,
+        -1_000,
+        -128,
+        -1,
+        0,
+        1,
+        127,
+        1_000,
+        1_000_000,
+        1_000_000_000_000,
+        Int64.max - 1,
+        Int64.max,
+    ]
+
+    let writer = ByteWriter()
+    for value in uintValues {
+        writer.writeVarUInt64(value)
+    }
+    for value in intValues {
+        writer.writeVarInt64(value)
+    }
+    let minWriter = ByteWriter()
+    minWriter.writeVarInt64(Int64.min)
+    #expect(minWriter.storage.count == 9)
+    #expect(minWriter.storage.allSatisfy { $0 == 0xFF })
+
+    let encoded = writer.storage
+
+    let reader = ByteReader(bytes: encoded)
+    for value in uintValues {
+        #expect(try reader.readVarUInt64() == value)
+    }
+    for value in intValues {
+        #expect(try reader.readVarInt64() == value)
+    }
+    #expect(reader.remaining == 0)
+}
+
+@Test
+func metaStringEncodingRoundTrip() throws {
+    let encoder = MetaStringEncoder.fieldName
+    let decoder = MetaStringDecoder.fieldName
+
+    let lower = try encoder.encode("alpha_beta", encoding: .lowerSpecial)
+    #expect(lower.encoding == .lowerSpecial)
+    #expect(try decoder.decode(bytes: lower.bytes, encoding: lower.encoding).value == "alpha_beta")
+
+    let firstLower = try encoder.encode("User_name", encoding: .firstToLowerSpecial)
+    #expect(firstLower.encoding == .firstToLowerSpecial)
+    #expect(try decoder.decode(bytes: firstLower.bytes, encoding: firstLower.encoding).value == "User_name")
+
+    let allLower = try encoder.encode("MyHTTPType", encoding: .allToLowerSpecial)
+    #expect(allLower.encoding == .allToLowerSpecial)
+    #expect(try decoder.decode(bytes: allLower.bytes, encoding: allLower.encoding).value == "MyHTTPType")
+
+    let lowerUpperDigit = try encoder.encode("userId2", encoding: .lowerUpperDigitSpecial)
+    #expect(lowerUpperDigit.encoding == .lowerUpperDigitSpecial)
+    #expect(try decoder.decode(bytes: lowerUpperDigit.bytes, encoding: lowerUpperDigit.encoding).value == "userId2")
+
+    let autoUtf8 = try encoder.encode("naïve_meta")
+    #expect(autoUtf8.encoding == .utf8)
+    #expect(try decoder.decode(bytes: autoUtf8.bytes, encoding: autoUtf8.encoding).value == "naïve_meta")
+}
+
+@Test
+func typeMetaRoundTripByName() throws {
+    let namespace = try MetaStringEncoder.namespace.encode("com.example")
+    let typeName = try MetaStringEncoder.typeName.encode("UserProfile")
+
+    let fields: [TypeMetaFieldInfo] = [
+        .init(
+            fieldID: nil,
+            fieldName: "createdAt",
+            fieldType: .init(typeID: ForyTypeId.varint64.rawValue, nullable: false)
+        ),
+        .init(
+            fieldID: nil,
+            fieldName: "tags",
+            fieldType: .init(
+                typeID: ForyTypeId.list.rawValue,
+                nullable: false,
+                generics: [.init(typeID: ForyTypeId.string.rawValue, nullable: true)]
+            )
+        ),
+        .init(
+            fieldID: nil,
+            fieldName: "attributes",
+            fieldType: .init(
+                typeID: ForyTypeId.map.rawValue,
+                nullable: true,
+                generics: [
+                    .init(typeID: ForyTypeId.string.rawValue, nullable: false),
+                    .init(typeID: ForyTypeId.varint32.rawValue, nullable: true),
+                ]
+            )
+        ),
+        .init(
+            fieldID: 7,
+            fieldName: "ignored_for_tag_mode",
+            fieldType: .init(typeID: ForyTypeId.varint32.rawValue, nullable: false)
+        ),
+    ]
+
+    let meta = try TypeMeta(
+        typeID: nil,
+        userTypeID: nil,
+        namespace: namespace,
+        typeName: typeName,
+        registerByName: true,
+        fields: fields
+    )
+
+    let encoded = try meta.encode()
+    let decoded = try TypeMeta.decode(encoded)
+
+    #expect(decoded.registerByName == true)
+    #expect(decoded.namespace.value == "com.example")
+    #expect(decoded.typeName.value == "UserProfile")
+    #expect(decoded.typeID == nil)
+    #expect(decoded.userTypeID == nil)
+    #expect(decoded.fields.count == 4)
+    #expect(decoded.fields[0].fieldName == "created_at")
+    #expect(decoded.fields[3].fieldID == 7)
+}
+
+@Test
+func typeMetaRoundTripByID() throws {
+    let emptyNamespace = MetaString.empty(specialChar1: ".", specialChar2: "_")
+    let emptyTypeName = MetaString.empty(specialChar1: "$", specialChar2: "_")
+
+    let meta = try TypeMeta(
+        typeID: ForyTypeId.structType.rawValue,
+        userTypeID: 101,
+        namespace: emptyNamespace,
+        typeName: emptyTypeName,
+        registerByName: false,
+        fields: []
+    )
+
+    let encoded = try meta.encode()
+    let decoded = try TypeMeta.decode(encoded)
+
+    #expect(decoded.registerByName == false)
+    #expect(decoded.typeID == ForyTypeId.structType.rawValue)
+    #expect(decoded.userTypeID == 101)
+    #expect(decoded.fields.isEmpty)
+}

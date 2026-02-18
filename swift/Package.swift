@@ -12,7 +12,11 @@ let package = Package(
         .library(
             name: "ForySwift",
             targets: ["ForySwift"]
-        )
+        ),
+        .executable(
+            name: "ForySwiftXlangPeer",
+            targets: ["ForySwiftXlangPeer"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
@@ -30,6 +34,10 @@ let package = Package(
         .target(
             name: "ForySwift",
             dependencies: ["ForySwiftMacros"]
+        ),
+        .executableTarget(
+            name: "ForySwiftXlangPeer",
+            dependencies: ["ForySwift"]
         ),
         .testTarget(
             name: "ForySwiftTests",

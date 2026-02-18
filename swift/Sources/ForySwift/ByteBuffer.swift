@@ -90,12 +90,19 @@ public final class ByteWriter {
     }
 
     public func writeVarUInt64(_ value: UInt64) {
+        // Fory PVL varuint64 uses at most 9 bytes.
+        // The first 8 bytes use 7 data bits + continuation bit.
+        // The 9th byte (if needed) stores the top 8 bits directly.
         var remaining = value
-        while remaining >= 0x80 {
+        for _ in 0..<8 {
+            if remaining < 0x80 {
+                writeUInt8(UInt8(remaining))
+                return
+            }
             writeUInt8(UInt8(remaining & 0x7F) | 0x80)
             remaining >>= 7
         }
-        writeUInt8(UInt8(remaining))
+        writeUInt8(UInt8(remaining & 0xFF))
     }
 
     public func writeVarUInt36Small(_ value: UInt64) {
@@ -280,17 +287,17 @@ public final class ByteReader {
     public func readVarUInt64() throws -> UInt64 {
         var result: UInt64 = 0
         var shift: UInt64 = 0
-        while true {
+        for _ in 0..<8 {
             let byte = try readUInt8()
             result |= UInt64(byte & 0x7F) << shift
             if (byte & 0x80) == 0 {
                 return result
             }
             shift += 7
-            if shift > 63 {
-                throw ForyError.encodingError("varuint64 overflow")
-            }
         }
+        let last = try readUInt8()
+        result |= UInt64(last) << 56
+        return result
     }
 
     public func readVarUInt36Small() throws -> UInt64 {
