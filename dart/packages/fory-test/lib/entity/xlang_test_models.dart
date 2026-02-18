@@ -18,7 +18,6 @@
  */
 
 import 'package:fory/fory.dart';
-import 'package:fory/src/resolver/spec_lookup.dart';
 
 part '../generated/xlang_test_models.g.dart';
 
@@ -87,17 +86,17 @@ void registerXlangEnum(
 
 @foryEnum
 enum TestEnum {
-  VALUE_A,
-  VALUE_B,
-  VALUE_C,
+  valueA,
+  valueB,
+  valueC,
 }
 
 @foryClass
 class TwoEnumFieldStructEvolution {
-  TestEnum f1 = TestEnum.VALUE_A;
+  TestEnum f1 = TestEnum.valueA;
 
   @ForyKey(includeFromFory: false)
-  TestEnum f2 = TestEnum.VALUE_A;
+  TestEnum f2 = TestEnum.valueA;
 }
 
 @foryClass
@@ -157,10 +156,10 @@ class NullableComprehensiveCompatible {
 
 @foryEnum
 enum Color {
-  Green,
-  Red,
-  Blue,
-  White,
+  green,
+  red,
+  blue,
+  white,
 }
 
 @foryClass
@@ -174,7 +173,7 @@ class SimpleStruct {
   Int32 f2 = Int32(0);
   Item f3 = Item();
   String f4 = '';
-  Color f5 = Color.Green;
+  Color f5 = Color.green;
   List<String> f6 = <String>[];
   Int32 f7 = Int32(0);
   Int32 f8 = Int32(0);
@@ -221,13 +220,13 @@ class TwoStringFieldStruct {
 
 @foryClass
 class OneEnumFieldStruct {
-  TestEnum f1 = TestEnum.VALUE_A;
+  TestEnum f1 = TestEnum.valueA;
 }
 
 @foryClass
 class TwoEnumFieldStruct {
-  TestEnum f1 = TestEnum.VALUE_A;
-  TestEnum f2 = TestEnum.VALUE_A;
+  TestEnum f1 = TestEnum.valueA;
+  TestEnum f2 = TestEnum.valueA;
 }
 
 @foryClass

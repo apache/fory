@@ -19,6 +19,7 @@
 
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/fory_fixed_num.dart';
 import 'package:fory/src/datatype/int16.dart';
@@ -268,6 +269,42 @@ final class Float32Serializer extends Serializer<FixedNum> {
     //   throw ForyException.serRangeExcep(objType, value);
     // }
     bw.writeFloat32(v.toDouble());
+  }
+}
+
+final class _Float16SerializerCache extends PrimitiveSerializerCache {
+  static Float16Serializer? serializerWithRef;
+  static Float16Serializer? serializerWithoutRef;
+
+  const _Float16SerializerCache();
+
+  @override
+  Serializer getSerializerWithRef(bool writeRef) {
+    if (writeRef) {
+      serializerWithRef ??= Float16Serializer._(true);
+      return serializerWithRef!;
+    } else {
+      serializerWithoutRef ??= Float16Serializer._(false);
+      return serializerWithoutRef!;
+    }
+  }
+}
+
+// Dart does not have float16; the user can specify converting Dart double to float16 through annotation, so precision errors may occur
+final class Float16Serializer extends Serializer<FixedNum> {
+  static const SerializerCache cache = _Float16SerializerCache();
+
+  Float16Serializer._(bool writeRef) : super(ObjType.FLOAT16, writeRef);
+
+  @override
+  Float16 read(ByteReader br, int refId, DeserializationContext pack) {
+    return br.readFloat16();
+  }
+
+  @override
+  void write(ByteWriter bw, covariant Float16 v, SerializationContext pack) {
+    // No checks are performed here
+    bw.writeFloat16(v);
   }
 }
 

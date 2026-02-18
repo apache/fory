@@ -19,6 +19,7 @@
 
 import 'dart:typed_data';
 import 'package:fory/src/dev_annotation/optimize.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 
 final class ByteWriterImpl extends ByteWriter {
@@ -132,6 +133,13 @@ final class ByteWriterImpl extends ByteWriter {
   void writeFloat64(double value) {
     _tempByteData.setFloat64(0, value, endian);
     _buffer.add(_tempByteData.buffer.asUint8List(0, 8));
+  }
+
+  /// Append a `Float16` (2 bytes, Little Endian) to the buffer
+  @inline
+  @override
+  void writeFloat16(Float16 value) {
+    writeUint16(value.toBits());
   }
 
   /// Append a list of bytes to the buffer
