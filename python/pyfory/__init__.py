@@ -33,7 +33,6 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
 
 from pyfory.serializer import (  # noqa: F401 # pylint: disable=unused-import
     Serializer,
-    XlangCompatibleSerializer,
     BooleanSerializer,
     ByteSerializer,
     Int16Serializer,
@@ -176,7 +175,6 @@ __all__ = [
     "dataslots",
     # Serializers
     "Serializer",
-    "XlangCompatibleSerializer",
     "BooleanSerializer",
     "ByteSerializer",
     "Int16Serializer",

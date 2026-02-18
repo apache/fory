@@ -881,7 +881,7 @@ except Exception as e:
 
 ### Custom Serializers
 
-Implement custom serialization logic for specialized types. Override `write/read` for Python mode, `xwrite/xread` for cross-language:
+Implement custom serialization logic for specialized types with a single `write/read` API:
 
 ```python
 import pyfory
@@ -907,14 +907,6 @@ class FooSerializer(Serializer):
         f1 = buffer.read_varint32()
         f2 = buffer.read_string()
         return Foo(f1, f2)
-
-    # For cross-language mode
-    def xwrite(self, buffer, obj: Foo):
-        buffer.write_int32(obj.f1)
-        buffer.write_string(obj.f2)
-
-    def xread(self, buffer):
-        return Foo(buffer.read_int32(), buffer.read_string())
 
 f = pyfory.Fory()
 f.register(Foo, type_id=100, serializer=FooSerializer(f, Foo))
