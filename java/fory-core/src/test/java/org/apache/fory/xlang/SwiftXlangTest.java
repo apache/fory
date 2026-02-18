@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.apache.fory.test.TestUtils;
@@ -62,7 +63,10 @@ public class SwiftXlangTest extends XlangTestBase {
         Arrays.asList(SWIFT_EXECUTABLE, "build", "-c", "release", "--product", SWIFT_PEER_TARGET);
     boolean built =
         TestUtils.executeCommand(
-            buildCommand, 600, Map.of("ENABLE_FORY_DEBUG_OUTPUT", "1"), new File("../../swift"));
+            buildCommand,
+            600,
+            Collections.singletonMap("ENABLE_FORY_DEBUG_OUTPUT", "1"),
+            new File("../../swift"));
     Assert.assertTrue(built, "failed to build Swift xlang peer target " + SWIFT_PEER_TARGET);
   }
 
