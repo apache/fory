@@ -167,6 +167,8 @@ class MapRefResolver(RefResolver):
 
     def read_ref_or_null(self, buffer):
         head_flag = buffer.read_int8()
+        if head_flag != NULL_FLAG and head_flag != NOT_NULL_VALUE_FLAG and head_flag != REF_VALUE_FLAG and head_flag != REF_FLAG:
+            raise ValueError(f"Invalid ref flag {head_flag}")
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
             ref_id = buffer.read_var_uint32()
@@ -184,6 +186,8 @@ class MapRefResolver(RefResolver):
 
     def try_preserve_ref_id(self, buffer) -> int:
         head_flag = buffer.read_int8()
+        if head_flag != NULL_FLAG and head_flag != NOT_NULL_VALUE_FLAG and head_flag != REF_VALUE_FLAG and head_flag != REF_FLAG:
+            raise ValueError(f"Invalid ref flag {head_flag}")
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
             ref_id = buffer.read_var_uint32()
@@ -192,9 +196,10 @@ class MapRefResolver(RefResolver):
             self.read_object = None
             if head_flag == REF_VALUE_FLAG:
                 return self.preserve_ref_id()
-            # For NOT_NULL_VALUE_FLAG, push -1 to read_ref_ids so reference() knows
-            # this object is not referenceable (it's a value type, not a reference type)
-            self.read_ref_ids.append(-1)
+            if head_flag == NOT_NULL_VALUE_FLAG:
+                # For NOT_NULL_VALUE_FLAG, push -1 to read_ref_ids so reference() knows
+                # this object is not referenceable (it's a value type, not a reference type)
+                self.read_ref_ids.append(-1)
         # `head_flag` except `REF_FLAG` can be used as stub reference id because we use
         # `refId >= NOT_NULL_VALUE_FLAG` to read data.
         return head_flag
@@ -203,6 +208,8 @@ class MapRefResolver(RefResolver):
         return self.read_ref_ids[-1]
 
     def reference(self, obj):
+        if len(self.read_ref_ids) == 0:
+            raise RuntimeError("No preserved ref id")
         ref_id = self.read_ref_ids.pop()
         # When NOT_NULL_VALUE_FLAG was read instead of REF_VALUE_FLAG,
         # -1 is pushed to read_ref_ids. This means the object is a value type
@@ -214,6 +221,8 @@ class MapRefResolver(RefResolver):
     def get_read_object(self, id_=None):
         if id_ is None:
             return self.read_object
+        if id_ < 0 or id_ >= len(self.read_objects):
+            raise RuntimeError(f"Ref id {id_} invalid, current size {len(self.read_objects)}")
         return self.read_objects[id_]
 
     def set_read_object(self, id_, obj):

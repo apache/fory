@@ -300,18 +300,38 @@ public:
   /// Slow path for get_var_uint32 when not enough bytes for bulk read.
   uint32_t get_var_uint32_slow(uint32_t offset, uint32_t *read_bytes_length) {
     uint32_t position = offset;
+    if (FORY_PREDICT_FALSE(position >= size_)) {
+      *read_bytes_length = 0;
+      return 0;
+    }
     int b = data_[position++];
     uint32_t result = b & 0x7F;
     if ((b & 0x80) != 0) {
+      if (FORY_PREDICT_FALSE(position >= size_)) {
+        *read_bytes_length = 0;
+        return 0;
+      }
       b = data_[position++];
       result |= (b & 0x7F) << 7;
       if ((b & 0x80) != 0) {
+        if (FORY_PREDICT_FALSE(position >= size_)) {
+          *read_bytes_length = 0;
+          return 0;
+        }
         b = data_[position++];
         result |= (b & 0x7F) << 14;
         if ((b & 0x80) != 0) {
+          if (FORY_PREDICT_FALSE(position >= size_)) {
+            *read_bytes_length = 0;
+            return 0;
+          }
           b = data_[position++];
           result |= (b & 0x7F) << 21;
           if ((b & 0x80) != 0) {
+            if (FORY_PREDICT_FALSE(position >= size_)) {
+              *read_bytes_length = 0;
+              return 0;
+            }
             b = data_[position++];
             result |= (b & 0x7F) << 28;
           }
@@ -442,6 +462,10 @@ public:
     uint64_t result = 0;
     int shift = 0;
     for (int i = 0; i < 8; ++i) {
+      if (FORY_PREDICT_FALSE(position >= size_)) {
+        *read_bytes_length = 0;
+        return 0;
+      }
       uint8_t b = data_[position++];
       result |= static_cast<uint64_t>(b & 0x7F) << shift;
       if ((b & 0x80) == 0) {
@@ -449,6 +473,10 @@ public:
         return result;
       }
       shift += 7;
+    }
+    if (FORY_PREDICT_FALSE(position >= size_)) {
+      *read_bytes_length = 0;
+      return 0;
     }
     uint8_t last = data_[position++];
     result |= static_cast<uint64_t>(last) << 56;
@@ -830,6 +858,10 @@ public:
     }
     uint32_t read_bytes = 0;
     uint32_t value = get_var_uint32(reader_index_, &read_bytes);
+    if (FORY_PREDICT_FALSE(read_bytes == 0)) {
+      error.set_buffer_out_of_bound(reader_index_, 1, size_);
+      return 0;
+    }
     increase_reader_index(read_bytes);
     return value;
   }
@@ -843,6 +875,10 @@ public:
     }
     uint32_t read_bytes = 0;
     uint32_t raw = get_var_uint32(reader_index_, &read_bytes);
+    if (FORY_PREDICT_FALSE(read_bytes == 0)) {
+      error.set_buffer_out_of_bound(reader_index_, 1, size_);
+      return 0;
+    }
     increase_reader_index(read_bytes);
     return static_cast<int32_t>((raw >> 1) ^ (~(raw & 1) + 1));
   }
@@ -855,6 +891,10 @@ public:
     }
     uint32_t read_bytes = 0;
     uint64_t value = get_var_uint64(reader_index_, &read_bytes);
+    if (FORY_PREDICT_FALSE(read_bytes == 0)) {
+      error.set_buffer_out_of_bound(reader_index_, 1, size_);
+      return 0;
+    }
     increase_reader_index(read_bytes);
     return value;
   }
