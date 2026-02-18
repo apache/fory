@@ -116,15 +116,9 @@ class MyExt:
 
 class MyExtSerializer(pyfory.serializer.Serializer):
     def write(self, buffer, value):
-        self.xwrite(buffer, value)
-
-    def read(self, buffer):
-        return self.xread(buffer)
-
-    def xwrite(self, buffer, value):
         buffer.write_varint32(value.id)
 
-    def xread(self, buffer):
+    def read(self, buffer):
         obj = MyExt()
         obj.id = buffer.read_varint32()
         return obj

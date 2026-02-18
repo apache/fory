@@ -235,7 +235,7 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
             buffer.write_uint8(header)
 
         # Write field type info (no field name for TAG_ID)
-        field_info.field_type.xwrite(buffer, False)
+        field_info.field_type.write(buffer, False)
     else:
         # Field name encoding
         encoding = FIELD_NAME_ENCODER.compute_encoding(field_info.name, FIELD_NAME_ENCODINGS)
@@ -254,7 +254,7 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
             buffer.write_uint8(header)
 
         # Write field type info BEFORE field name (matching Java TypeDefEncoder order)
-        field_info.field_type.xwrite(buffer, False)
+        field_info.field_type.write(buffer, False)
 
         # Write field name meta string
         buffer.write_bytes(meta_string.encoded_data)

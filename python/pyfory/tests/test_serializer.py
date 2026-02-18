@@ -354,11 +354,11 @@ class Bar(Foo):
 
 
 class BarSerializer(pyfory.Serializer):
-    def xwrite(self, buffer, value: Bar):
+    def write(self, buffer, value: Bar):
         buffer.write_int32(value.f1)
         buffer.write_int32(value.f2)
 
-    def xread(self, buffer):
+    def read(self, buffer):
         return Bar(buffer.read_int32(), buffer.read_int32())
 
 
@@ -379,12 +379,6 @@ def test_register_py_serializer():
             a.f1 = buffer.read_int32()
             return a
 
-        def xwrite(self, buffer, value):
-            raise NotImplementedError
-
-        def xread(self, buffer):
-            raise NotImplementedError
-
     fory.register_type(A, serializer=Serializer(fory, RegisterClass))
     assert fory.deserialize(fory.serialize(RegisterClass(100))).f1 == 100
 
@@ -404,12 +398,6 @@ def test_register_type():
 
         def read(self, buffer):
             return self.type_()
-
-        def xwrite(self, buffer, value):
-            raise NotImplementedError
-
-        def xread(self, buffer):
-            raise NotImplementedError
 
     fory.register_type(A, serializer=Serializer(fory, A))
     fory.register_type(A.B, serializer=Serializer(fory, A.B))
