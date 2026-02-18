@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.fory.test.TestUtils;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /** Executes cross-language tests against the Swift implementation. */
@@ -38,6 +39,10 @@ public class SwiftXlangTest extends XlangTestBase {
 
   @Override
   protected void ensurePeerReady() {
+    String enabled = System.getenv("FORY_SWIFT_JAVA_CI");
+    if (!"1".equals(enabled)) {
+      throw new SkipException("Skipping SwiftXlangTest: FORY_SWIFT_JAVA_CI not set to 1");
+    }
     boolean swiftInstalled = true;
     try {
       Process process = new ProcessBuilder(SWIFT_EXECUTABLE, "--version").start();

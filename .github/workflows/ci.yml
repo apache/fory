@@ -172,6 +172,7 @@ jobs:
       - name: Run Swift Xlang Test
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
+          FORY_SWIFT_JAVA_CI: "1"
         run: |
           cd java/fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
