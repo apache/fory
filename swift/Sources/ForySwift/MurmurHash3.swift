@@ -131,14 +131,15 @@ enum MurmurHash3 {
     }
 
     private static func readUInt64LE(_ bytes: [UInt8], offset: Int) -> UInt64 {
-        UInt64(bytes[offset]) |
-            (UInt64(bytes[offset + 1]) << 8) |
-            (UInt64(bytes[offset + 2]) << 16) |
-            (UInt64(bytes[offset + 3]) << 24) |
-            (UInt64(bytes[offset + 4]) << 32) |
-            (UInt64(bytes[offset + 5]) << 40) |
-            (UInt64(bytes[offset + 6]) << 48) |
-            (UInt64(bytes[offset + 7]) << 56)
+        var value = UInt64(bytes[offset])
+        value |= UInt64(bytes[offset + 1]) << 8
+        value |= UInt64(bytes[offset + 2]) << 16
+        value |= UInt64(bytes[offset + 3]) << 24
+        value |= UInt64(bytes[offset + 4]) << 32
+        value |= UInt64(bytes[offset + 5]) << 40
+        value |= UInt64(bytes[offset + 6]) << 48
+        value |= UInt64(bytes[offset + 7]) << 56
+        return value
     }
 
     private static func rotl64(_ x: UInt64, _ r: UInt64) -> UInt64 {
