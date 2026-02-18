@@ -1331,24 +1331,6 @@ cdef class Fory:
             self, Buffer buffer, obj, TypeInfo typeinfo=None, Serializer serializer=None):
         if serializer is None and typeinfo is not None:
             serializer = typeinfo.serializer
-        cls = type(obj)
-        if serializer is None:
-            if cls is str:
-                buffer.write_int16(NOT_NULL_STRING_FLAG)
-                buffer.write_string(obj)
-                return
-            elif cls is int:
-                buffer.write_int16(NOT_NULL_INT64_FLAG)
-                buffer.write_varint64(obj)
-                return
-            elif cls is bool:
-                buffer.write_int16(NOT_NULL_BOOL_FLAG)
-                buffer.write_bool(obj)
-                return
-            elif cls is float:
-                buffer.write_int16(NOT_NULL_FLOAT64_FLAG)
-                buffer.write_double(obj)
-                return
         if serializer is None or serializer.need_to_write_ref:
             if self.ref_resolver.write_ref_or_null(buffer, obj):
                 return
