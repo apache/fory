@@ -106,3 +106,4 @@ benchmarks/**/report/
 ignored/**
 ci-logs/**
 **/*.log
+swift/.build

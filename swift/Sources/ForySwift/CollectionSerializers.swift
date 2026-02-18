@@ -1,0 +1,568 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+import Foundation
+
+private enum CollectionHeader {
+    static let trackingRef: UInt8 = 0b0000_0001
+    static let hasNull: UInt8 = 0b0000_0010
+    static let declaredElementType: UInt8 = 0b0000_0100
+    static let sameType: UInt8 = 0b0000_1000
+}
+
+private enum MapHeader {
+    static let trackingKeyRef: UInt8 = 0b0000_0001
+    static let keyNull: UInt8 = 0b0000_0010
+    static let declaredKeyType: UInt8 = 0b0000_0100
+
+    static let trackingValueRef: UInt8 = 0b0000_1000
+    static let valueNull: UInt8 = 0b0001_0000
+    static let declaredValueType: UInt8 = 0b0010_0000
+}
+
+private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> ForyTypeId? {
+    if Element.self == UInt8.self { return .binary }
+    if Element.self == Bool.self { return .boolArray }
+    if Element.self == Int8.self { return .int8Array }
+    if Element.self == Int16.self { return .int16Array }
+    if Element.self == Int32.self { return .int32Array }
+    if Element.self == Int64.self { return .int64Array }
+    if Element.self == UInt16.self { return .uint16Array }
+    if Element.self == UInt32.self { return .uint32Array }
+    if Element.self == UInt64.self { return .uint64Array }
+    if Element.self == Float.self { return .float32Array }
+    if Element.self == Double.self { return .float64Array }
+    return nil
+}
+
+private func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
+    if Element.self == UInt8.self {
+        let bytes = value as! [UInt8]
+        context.writer.writeVarUInt32(UInt32(bytes.count))
+        context.writer.writeBytes(bytes)
+        return
+    }
+
+    if Element.self == Bool.self {
+        let bools = value as! [Bool]
+        context.writer.writeVarUInt32(UInt32(bools.count))
+        for item in bools {
+            context.writer.writeUInt8(item ? 1 : 0)
+        }
+        return
+    }
+
+    if Element.self == Int8.self {
+        let values = value as! [Int8]
+        context.writer.writeVarUInt32(UInt32(values.count))
+        for item in values {
+            context.writer.writeInt8(item)
+        }
+        return
+    }
+
+    if Element.self == Int16.self {
+        let values = value as! [Int16]
+        context.writer.writeVarUInt32(UInt32(values.count * 2))
+        for item in values {
+            context.writer.writeInt16(item)
+        }
+        return
+    }
+
+    if Element.self == Int32.self {
+        let values = value as! [Int32]
+        context.writer.writeVarUInt32(UInt32(values.count * 4))
+        for item in values {
+            context.writer.writeInt32(item)
+        }
+        return
+    }
+
+    if Element.self == UInt32.self {
+        let values = value as! [UInt32]
+        context.writer.writeVarUInt32(UInt32(values.count * 4))
+        for item in values {
+            context.writer.writeUInt32(item)
+        }
+        return
+    }
+
+    if Element.self == Int64.self {
+        let values = value as! [Int64]
+        context.writer.writeVarUInt32(UInt32(values.count * 8))
+        for item in values {
+            context.writer.writeInt64(item)
+        }
+        return
+    }
+
+    if Element.self == UInt64.self {
+        let values = value as! [UInt64]
+        context.writer.writeVarUInt32(UInt32(values.count * 8))
+        for item in values {
+            context.writer.writeUInt64(item)
+        }
+        return
+    }
+
+    if Element.self == UInt16.self {
+        let values = value as! [UInt16]
+        context.writer.writeVarUInt32(UInt32(values.count * 2))
+        for item in values {
+            context.writer.writeUInt16(item)
+        }
+        return
+    }
+
+    if Element.self == Float.self {
+        let values = value as! [Float]
+        context.writer.writeVarUInt32(UInt32(values.count * 4))
+        for item in values {
+            context.writer.writeFloat32(item)
+        }
+        return
+    }
+
+    let values = value as! [Double]
+    context.writer.writeVarUInt32(UInt32(values.count * 8))
+    for item in values {
+        context.writer.writeFloat64(item)
+    }
+}
+
+private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
+    let payloadSize = Int(try context.reader.readVarUInt32())
+
+    if Element.self == UInt8.self {
+        let bytes = try context.reader.readBytes(count: payloadSize)
+        return bytes as! [Element]
+    }
+
+    if Element.self == Bool.self {
+        var out: [Bool] = []
+        out.reserveCapacity(payloadSize)
+        for _ in 0..<payloadSize {
+            out.append(try context.reader.readUInt8() != 0)
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == Int8.self {
+        var out: [Int8] = []
+        out.reserveCapacity(payloadSize)
+        for _ in 0..<payloadSize {
+            out.append(try context.reader.readInt8())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == Int16.self {
+        if payloadSize % 2 != 0 { throw ForyError.invalidData("int16 array payload size mismatch") }
+        var out: [Int16] = []
+        out.reserveCapacity(payloadSize / 2)
+        for _ in 0..<(payloadSize / 2) {
+            out.append(try context.reader.readInt16())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == Int32.self {
+        if payloadSize % 4 != 0 { throw ForyError.invalidData("int32 array payload size mismatch") }
+        var out: [Int32] = []
+        out.reserveCapacity(payloadSize / 4)
+        for _ in 0..<(payloadSize / 4) {
+            out.append(try context.reader.readInt32())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == UInt32.self {
+        if payloadSize % 4 != 0 { throw ForyError.invalidData("uint32 array payload size mismatch") }
+        var out: [UInt32] = []
+        out.reserveCapacity(payloadSize / 4)
+        for _ in 0..<(payloadSize / 4) {
+            out.append(try context.reader.readUInt32())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == Int64.self {
+        if payloadSize % 8 != 0 { throw ForyError.invalidData("int64 array payload size mismatch") }
+        var out: [Int64] = []
+        out.reserveCapacity(payloadSize / 8)
+        for _ in 0..<(payloadSize / 8) {
+            out.append(try context.reader.readInt64())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == UInt64.self {
+        if payloadSize % 8 != 0 { throw ForyError.invalidData("uint64 array payload size mismatch") }
+        var out: [UInt64] = []
+        out.reserveCapacity(payloadSize / 8)
+        for _ in 0..<(payloadSize / 8) {
+            out.append(try context.reader.readUInt64())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == UInt16.self {
+        if payloadSize % 2 != 0 { throw ForyError.invalidData("uint16 array payload size mismatch") }
+        var out: [UInt16] = []
+        out.reserveCapacity(payloadSize / 2)
+        for _ in 0..<(payloadSize / 2) {
+            out.append(try context.reader.readUInt16())
+        }
+        return out as! [Element]
+    }
+
+    if Element.self == Float.self {
+        if payloadSize % 4 != 0 { throw ForyError.invalidData("float32 array payload size mismatch") }
+        var out: [Float] = []
+        out.reserveCapacity(payloadSize / 4)
+        for _ in 0..<(payloadSize / 4) {
+            out.append(try context.reader.readFloat32())
+        }
+        return out as! [Element]
+    }
+
+    if payloadSize % 8 != 0 { throw ForyError.invalidData("float64 array payload size mismatch") }
+    var out: [Double] = []
+    out.reserveCapacity(payloadSize / 8)
+    for _ in 0..<(payloadSize / 8) {
+        out.append(try context.reader.readFloat64())
+    }
+    return out as! [Element]
+}
+
+extension Array: ForyDefault where Element: Serializer {
+    public static func defaultValue() -> [Element] {
+        []
+    }
+}
+
+extension Array: Serializer where Element: Serializer {
+    public static var staticTypeId: ForyTypeId {
+        primitiveArrayTypeID(for: Element.self) ?? .list
+    }
+
+    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+        if primitiveArrayTypeID(for: Element.self) != nil {
+            writePrimitiveArray(self, context: context)
+            return
+        }
+
+        context.writer.writeVarUInt32(UInt32(self.count))
+        if self.isEmpty {
+            return
+        }
+
+        let hasNull = Element.isNullableType && self.contains(where: { $0.isNilValue })
+        let trackRef = context.trackRef && Element.isReferenceTrackableType
+        let declaredElementType = hasGenerics && !ForyTypeId.needsTypeInfoForField(Element.staticTypeId)
+
+        var header: UInt8 = CollectionHeader.sameType
+        if trackRef {
+            header |= CollectionHeader.trackingRef
+        }
+        if hasNull {
+            header |= CollectionHeader.hasNull
+        }
+        if declaredElementType {
+            header |= CollectionHeader.declaredElementType
+        }
+
+        context.writer.writeUInt8(header)
+        if !declaredElementType {
+            try Element.writeTypeInfo(context)
+        }
+
+        if trackRef {
+            for element in self {
+                try element.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+            }
+        } else if hasNull {
+            for element in self {
+                if element.isNilValue {
+                    context.writer.writeInt8(RefFlag.null.rawValue)
+                } else {
+                    context.writer.writeInt8(RefFlag.notNullValue.rawValue)
+                    try element.writeData(context, hasGenerics: hasGenerics)
+                }
+            }
+        } else {
+            for element in self {
+                try element.writeData(context, hasGenerics: hasGenerics)
+            }
+        }
+    }
+
+    public static func readData(_ context: ReadContext) throws -> [Element] {
+        if primitiveArrayTypeID(for: Element.self) != nil {
+            return try readPrimitiveArray(context)
+        }
+
+        let length = Int(try context.reader.readVarUInt32())
+        if length == 0 {
+            return []
+        }
+
+        let header = try context.reader.readUInt8()
+        let trackRef = (header & CollectionHeader.trackingRef) != 0
+        let hasNull = (header & CollectionHeader.hasNull) != 0
+        let declared = (header & CollectionHeader.declaredElementType) != 0
+        let sameType = (header & CollectionHeader.sameType) != 0
+
+        if !sameType {
+            throw ForyError.invalidData("heterogeneous list decoding is not supported yet")
+        }
+
+        if !declared {
+            try Element.readTypeInfo(context)
+        }
+
+        var values: [Element] = []
+        values.reserveCapacity(length)
+
+        if trackRef {
+            for _ in 0..<length {
+                values.append(try Element.read(context, refMode: .tracking, readTypeInfo: false))
+            }
+            return values
+        }
+
+        if hasNull {
+            for _ in 0..<length {
+                let refFlag = try context.reader.readInt8()
+                if refFlag == RefFlag.null.rawValue {
+                    values.append(Element.defaultValue())
+                } else {
+                    values.append(try Element.readData(context))
+                }
+            }
+        } else {
+            for _ in 0..<length {
+                values.append(try Element.readData(context))
+            }
+        }
+
+        return values
+    }
+}
+
+extension Set: ForyDefault where Element: Serializer & Hashable {
+    public static func defaultValue() -> Set<Element> { [] }
+}
+
+extension Set: Serializer where Element: Serializer & Hashable {
+    public static var staticTypeId: ForyTypeId { .set }
+
+    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+        try Array(self).writeData(context, hasGenerics: hasGenerics)
+    }
+
+    public static func readData(_ context: ReadContext) throws -> Set<Element> {
+        Set(try Array<Element>.readData(context))
+    }
+}
+
+extension Dictionary: ForyDefault where Key: Serializer & Hashable, Value: Serializer {
+    public static func defaultValue() -> Dictionary<Key, Value> { [:] }
+}
+
+extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
+    public static var staticTypeId: ForyTypeId { .map }
+
+    public func writeData(_ context: WriteContext, hasGenerics: Bool) throws {
+        context.writer.writeVarUInt32(UInt32(self.count))
+        if self.isEmpty {
+            return
+        }
+
+        let trackKeyRef = context.trackRef && Key.isReferenceTrackableType
+        let trackValueRef = context.trackRef && Value.isReferenceTrackableType
+        let keyDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Key.staticTypeId)
+        let valueDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Value.staticTypeId)
+
+        var index = 0
+        let pairs = Array(self)
+
+        while index < pairs.count {
+            let pair = pairs[index]
+            let keyIsNil = pair.key.isNilValue
+            let valueIsNil = pair.value.isNilValue
+
+            if keyIsNil || valueIsNil {
+                var header: UInt8 = 0
+                if trackKeyRef {
+                    header |= MapHeader.trackingKeyRef
+                }
+                if trackValueRef {
+                    header |= MapHeader.trackingValueRef
+                }
+                if keyIsNil { header |= MapHeader.keyNull }
+                if valueIsNil { header |= MapHeader.valueNull }
+                if !keyIsNil && keyDeclared { header |= MapHeader.declaredKeyType }
+                if !valueIsNil && valueDeclared { header |= MapHeader.declaredValueType }
+
+                context.writer.writeUInt8(header)
+                if !keyIsNil {
+                    if !keyDeclared {
+                        try Key.writeTypeInfo(context)
+                    }
+                    if trackKeyRef {
+                        try pair.key.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                    } else {
+                        try pair.key.writeData(context, hasGenerics: hasGenerics)
+                    }
+                }
+                if !valueIsNil {
+                    if !valueDeclared {
+                        try Value.writeTypeInfo(context)
+                    }
+                    if trackValueRef {
+                        try pair.value.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                    } else {
+                        try pair.value.writeData(context, hasGenerics: hasGenerics)
+                    }
+                }
+                index += 1
+                continue
+            }
+
+            var header: UInt8 = 0
+            if trackKeyRef { header |= MapHeader.trackingKeyRef }
+            if trackValueRef { header |= MapHeader.trackingValueRef }
+            if keyDeclared { header |= MapHeader.declaredKeyType }
+            if valueDeclared { header |= MapHeader.declaredValueType }
+
+            context.writer.writeUInt8(header)
+            let chunkSizeOffset = context.writer.count
+            context.writer.writeUInt8(0)
+
+            if !keyDeclared {
+                try Key.writeTypeInfo(context)
+            }
+            if !valueDeclared {
+                try Value.writeTypeInfo(context)
+            }
+
+            var chunkSize: UInt8 = 0
+            while index < pairs.count && chunkSize < UInt8.max {
+                let current = pairs[index]
+                if current.key.isNilValue || current.value.isNilValue {
+                    break
+                }
+                if trackKeyRef {
+                    try current.key.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                } else {
+                    try current.key.writeData(context, hasGenerics: hasGenerics)
+                }
+                if trackValueRef {
+                    try current.value.write(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+                } else {
+                    try current.value.writeData(context, hasGenerics: hasGenerics)
+                }
+                chunkSize &+= 1
+                index += 1
+            }
+            context.writer.setByte(at: chunkSizeOffset, to: chunkSize)
+        }
+    }
+
+    public static func readData(_ context: ReadContext) throws -> Dictionary<Key, Value> {
+        let totalLength = Int(try context.reader.readVarUInt32())
+        if totalLength == 0 {
+            return [:]
+        }
+
+        var map: [Key: Value] = [:]
+        map.reserveCapacity(totalLength)
+
+        var readCount = 0
+        while readCount < totalLength {
+            let header = try context.reader.readUInt8()
+            let trackKeyRef = (header & MapHeader.trackingKeyRef) != 0
+            let keyNull = (header & MapHeader.keyNull) != 0
+            let keyDeclared = (header & MapHeader.declaredKeyType) != 0
+
+            let trackValueRef = (header & MapHeader.trackingValueRef) != 0
+            let valueNull = (header & MapHeader.valueNull) != 0
+            let valueDeclared = (header & MapHeader.declaredValueType) != 0
+
+            if keyNull && valueNull {
+                map[Key.defaultValue()] = Value.defaultValue()
+                readCount += 1
+                continue
+            }
+
+            if keyNull {
+                if !valueDeclared {
+                    try Value.readTypeInfo(context)
+                }
+                let value = try Value.read(
+                    context,
+                    refMode: trackValueRef ? .tracking : .none,
+                    readTypeInfo: false
+                )
+                map[Key.defaultValue()] = value
+                readCount += 1
+                continue
+            }
+
+            if valueNull {
+                if !keyDeclared {
+                    try Key.readTypeInfo(context)
+                }
+                let key = try Key.read(
+                    context,
+                    refMode: trackKeyRef ? .tracking : .none,
+                    readTypeInfo: false
+                )
+                map[key] = Value.defaultValue()
+                readCount += 1
+                continue
+            }
+
+            let chunkSize = Int(try context.reader.readUInt8())
+            if !keyDeclared {
+                try Key.readTypeInfo(context)
+            }
+            if !valueDeclared {
+                try Value.readTypeInfo(context)
+            }
+
+            for _ in 0..<chunkSize {
+                let key = try Key.read(
+                    context,
+                    refMode: trackKeyRef ? .tracking : .none,
+                    readTypeInfo: false
+                )
+                let value = try Value.read(
+                    context,
+                    refMode: trackValueRef ? .tracking : .none,
+                    readTypeInfo: false
+                )
+                map[key] = value
+            }
+            readCount += chunkSize
+        }
+
+        return map
+    }
+}
