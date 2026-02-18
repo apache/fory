@@ -317,6 +317,9 @@ cdef class CollectionSerializer(Serializer):
         if collection_type is list or collection_type is tuple:
             if Fory_PyStringSequenceReadFromBuffer(collection_, &buffer.c_buffer, len_) == 0:
                 return
+            raise RuntimeError(
+                "c++ fast path failed for homogeneous string sequence read"
+            )
         for i in range(len_):
             self._add_element(collection_, i, buffer.read_string())
 
@@ -333,6 +336,9 @@ cdef class CollectionSerializer(Serializer):
         if collection_type is list or collection_type is tuple:
             if Fory_PyInt64SequenceReadVarintFromBuffer(collection_, &buffer.c_buffer, len_) == 0:
                 return
+            raise RuntimeError(
+                "c++ fast path failed for homogeneous int64 sequence read"
+            )
         for i in range(len_):
             self._add_element(collection_, i, buffer.read_varint64())
 
@@ -354,6 +360,9 @@ cdef class CollectionSerializer(Serializer):
         if collection_type is list or collection_type is tuple:
             if Fory_PyBooleanSequenceReadFromBuffer(collection_, &buffer.c_buffer, len_) == 0:
                 return
+            raise RuntimeError(
+                "c++ fast path failed for homogeneous bool sequence read"
+            )
         for i in range(len_):
             self._add_element(collection_, i, buffer.read_bool())
 
@@ -375,6 +384,9 @@ cdef class CollectionSerializer(Serializer):
         if collection_type is list or collection_type is tuple:
             if Fory_PyFloatSequenceReadFromBuffer(collection_, &buffer.c_buffer, len_) == 0:
                 return
+            raise RuntimeError(
+                "c++ fast path failed for homogeneous float64 sequence read"
+            )
         for i in range(len_):
             self._add_element(collection_, i, buffer.read_double())
 

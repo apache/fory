@@ -172,6 +172,8 @@ cdef class MapRefResolver:
     cpdef inline int8_t read_ref_or_null(self, Buffer buffer):
         cdef int8_t head_flag = buffer.read_int8()
         if not self.track_ref:
+            if head_flag != NULL_FLAG and head_flag != NOT_NULL_VALUE_FLAG:
+                raise ValueError(f"Invalid ref flag {head_flag}")
             return head_flag
         cdef int32_t ref_id
         cdef PyObject * obj
@@ -185,6 +187,12 @@ cdef class MapRefResolver:
             return REF_FLAG
         else:
             self.read_object = None
+            if (
+                head_flag != NULL_FLAG
+                and head_flag != NOT_NULL_VALUE_FLAG
+                and head_flag != REF_VALUE_FLAG
+            ):
+                raise ValueError(f"Invalid ref flag {head_flag}")
             return head_flag
 
     cpdef inline int32_t preserve_ref_id(self):
@@ -218,10 +226,14 @@ cdef class MapRefResolver:
             self.read_object = None
             if head_flag == REF_VALUE_FLAG:
                 return self.preserve_ref_id()
-            # For NOT_NULL_VALUE_FLAG, push -1 to read_ref_ids so reference() knows
-            # this object is not referenceable (it's a value type, not a reference type)
-            self.read_ref_ids.push_back(-1)
-            return head_flag
+            if head_flag == NOT_NULL_VALUE_FLAG:
+                # For NOT_NULL_VALUE_FLAG, push -1 to read_ref_ids so reference() knows
+                # this object is not referenceable (it's a value type, not a reference type)
+                self.read_ref_ids.push_back(-1)
+                return head_flag
+            if head_flag == NULL_FLAG:
+                return head_flag
+            raise ValueError(f"Invalid ref flag {head_flag}")
 
     cpdef inline int32_t last_preserved_ref_id(self):
         cdef int32_t length = self.read_ref_ids.size()
@@ -911,6 +923,7 @@ cdef class MetaContext:
     cpdef inline read_shared_type_info_with_type_id(self, Buffer buffer, uint8_t type_id):
         """Read shared type info when type_id is already consumed."""
         cdef uint32_t user_type_id = NO_USER_TYPE_ID
+        cdef int32_t read_type_infos_size
         cdef TypeRegistrationKind reg_kind = get_type_registration_kind(<TypeId>type_id)
         cdef c_bool share_meta = is_type_share_meta(<TypeId>type_id)
         if reg_kind == TypeRegistrationKind.BY_ID and not share_meta:
@@ -926,9 +939,19 @@ cdef class MetaContext:
 
         if is_ref:
             # Reference to previously read type
+            read_type_infos_size = len(self._read_type_infos)
+            if index < 0 or index >= read_type_infos_size:
+                raise ValueError(
+                    f"Invalid shared type index {index}, size {read_type_infos_size}"
+                )
             return self._read_type_infos[index]
         else:
             # New type - read TypeDef inline and build TypeInfo
+            read_type_infos_size = len(self._read_type_infos)
+            if index != read_type_infos_size:
+                raise ValueError(
+                    f"Invalid shared type define index {index}, expected {read_type_infos_size}"
+                )
             type_info = self.type_resolver._read_and_build_type_info(buffer)
             self._read_type_infos.append(type_info)
             return type_info
