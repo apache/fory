@@ -35,50 +35,6 @@ private enum PeerTestEnum {
     case valueC
 }
 
-private struct PeerDate: Serializer, Equatable {
-    var daysSinceEpoch: Int32 = 0
-
-    static func foryDefault() -> PeerDate {
-        PeerDate()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .date
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeInt32(daysSinceEpoch)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> PeerDate {
-        PeerDate(daysSinceEpoch: try context.reader.readInt32())
-    }
-}
-
-private struct PeerTimestamp: Serializer, Equatable {
-    var seconds: Int64 = 0
-    var nanos: Int32 = 0
-
-    static func foryDefault() -> PeerTimestamp {
-        PeerTimestamp()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .timestamp
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeInt64(seconds)
-        context.writer.writeInt32(nanos)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> PeerTimestamp {
-        PeerTimestamp(seconds: try context.reader.readInt64(), nanos: try context.reader.readInt32())
-    }
-}
-
 @ForyObject
 private struct Item {
     var name: String = ""
@@ -542,8 +498,8 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
         let f32: Float = try fory.deserializeFrom(reader)
         let f64: Double = try fory.deserializeFrom(reader)
         let str: String = try fory.deserializeFrom(reader)
-        let day: PeerDate = try fory.deserializeFrom(reader)
-        let ts: PeerTimestamp = try fory.deserializeFrom(reader)
+        let day: ForyDate = try fory.deserializeFrom(reader)
+        let ts: ForyTimestamp = try fory.deserializeFrom(reader)
         let boolArray: [Bool] = try fory.deserializeFrom(reader)
         let byteArray: [UInt8] = try fory.deserializeFrom(reader)
         let shortArray: [Int16] = try fory.deserializeFrom(reader)
