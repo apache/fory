@@ -143,6 +143,120 @@ extension UInt64: Serializer {
     }
 }
 
+public struct ForyInt32Fixed: Serializer, Equatable {
+    public var rawValue: Int32 = 0
+    public init(rawValue: Int32 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> ForyInt32Fixed { .init() }
+    public static var staticTypeId: ForyTypeId { .int32 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.writer.writeInt32(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyInt32Fixed {
+        .init(rawValue: try context.reader.readInt32())
+    }
+}
+
+public struct ForyInt64Fixed: Serializer, Equatable {
+    public var rawValue: Int64 = 0
+    public init(rawValue: Int64 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> ForyInt64Fixed { .init() }
+    public static var staticTypeId: ForyTypeId { .int64 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.writer.writeInt64(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyInt64Fixed {
+        .init(rawValue: try context.reader.readInt64())
+    }
+}
+
+public struct ForyInt64Tagged: Serializer, Equatable {
+    public var rawValue: Int64 = 0
+    public init(rawValue: Int64 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> ForyInt64Tagged { .init() }
+    public static var staticTypeId: ForyTypeId { .taggedInt64 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.writer.writeTaggedInt64(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyInt64Tagged {
+        .init(rawValue: try context.reader.readTaggedInt64())
+    }
+}
+
+public struct ForyUInt32Fixed: Serializer, Equatable {
+    public var rawValue: UInt32 = 0
+    public init(rawValue: UInt32 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> ForyUInt32Fixed { .init() }
+    public static var staticTypeId: ForyTypeId { .uint32 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.writer.writeUInt32(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyUInt32Fixed {
+        .init(rawValue: try context.reader.readUInt32())
+    }
+}
+
+public struct ForyUInt64Fixed: Serializer, Equatable {
+    public var rawValue: UInt64 = 0
+    public init(rawValue: UInt64 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> ForyUInt64Fixed { .init() }
+    public static var staticTypeId: ForyTypeId { .uint64 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.writer.writeUInt64(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyUInt64Fixed {
+        .init(rawValue: try context.reader.readUInt64())
+    }
+}
+
+public struct ForyUInt64Tagged: Serializer, Equatable {
+    public var rawValue: UInt64 = 0
+    public init(rawValue: UInt64 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> ForyUInt64Tagged { .init() }
+    public static var staticTypeId: ForyTypeId { .taggedUInt64 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.writer.writeTaggedUInt64(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyUInt64Tagged {
+        .init(rawValue: try context.reader.readTaggedUInt64())
+    }
+}
+
 #if arch(arm64) || arch(x86_64)
 extension Int: Serializer {
     public static var staticTypeId: ForyTypeId { .varint64 }

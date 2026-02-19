@@ -169,6 +169,20 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache Swift package dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+            swift/.build
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-
+      - name: Prebuild Swift xlang peer for cache reuse
+        run: |
+          cd swift
+          swift build -c release --disable-automatic-resolution --product ForySwiftXlangPeer
       - name: Run Swift Xlang Test
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"

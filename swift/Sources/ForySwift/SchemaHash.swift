@@ -15,26 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-@attached(
-    member,
-    names: named(staticTypeId),
-    named(isReferenceTrackableType),
-    named(__forySchemaHash),
-    named(foryCompatibleTypeMetaFields),
-    named(foryDefault),
-    named(foryWriteData),
-    named(foryReadData)
-)
-@attached(extension, conformances: Serializer)
-public macro ForyObject() = #externalMacro(module: "ForySwiftMacros", type: "ForyObjectMacro")
+import Foundation
 
-public enum ForyFieldEncoding: String {
-    case varint
-    case fixed
-    case tagged
+public enum SchemaHash {
+    public static func structHash32(_ fingerprint: String) -> UInt32 {
+        let bytes = Array(fingerprint.utf8)
+        let (h1, _) = MurmurHash3.x64_128(bytes, seed: 47)
+        return UInt32(truncatingIfNeeded: h1)
+    }
 }
-
-@attached(peer)
-public macro ForyField(
-    encoding: ForyFieldEncoding
-) = #externalMacro(module: "ForySwiftMacros", type: "ForyFieldMacro")

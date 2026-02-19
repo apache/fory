@@ -272,8 +272,8 @@ public struct TypeMeta: Equatable, Sendable {
         headerHash: UInt64 = 0
     ) throws {
         if registerByName {
-            if namespace.value.isEmpty || typeName.value.isEmpty {
-                throw ForyError.encodingError("namespace and type name are required in register-by-name mode")
+            if typeName.value.isEmpty {
+                throw ForyError.encodingError("type name is required in register-by-name mode")
             }
         } else {
             guard typeID != nil else {

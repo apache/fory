@@ -273,8 +273,9 @@ extension Array: Serializer where Element: Serializer {
         let hasNull = Element.isNullableType && self.contains(where: { $0.foryIsNone })
         let trackRef = context.trackRef && Element.isReferenceTrackableType
         let declaredElementType = hasGenerics && !ForyTypeId.needsTypeInfoForField(Element.staticTypeId)
+        let dynamicElementType = Element.staticTypeId == .unknown
 
-        var header: UInt8 = CollectionHeader.sameType
+        var header: UInt8 = dynamicElementType ? 0 : CollectionHeader.sameType
         if trackRef {
             header |= CollectionHeader.trackingRef
         }
@@ -286,8 +287,23 @@ extension Array: Serializer where Element: Serializer {
         }
 
         context.writer.writeUInt8(header)
-        if !declaredElementType {
+        if !dynamicElementType && !declaredElementType {
             try Element.foryWriteTypeInfo(context)
+        }
+
+        if dynamicElementType {
+            let refMode: RefMode
+            if trackRef {
+                refMode = .tracking
+            } else if hasNull {
+                refMode = .nullOnly
+            } else {
+                refMode = .none
+            }
+            for element in self {
+                try element.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: hasGenerics)
+            }
+            return
         }
 
         if trackRef {
@@ -325,9 +341,50 @@ extension Array: Serializer where Element: Serializer {
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
+        let canonicalizeElements = context.trackRef && !trackRef && Element.isReferenceTrackableType
 
         if !sameType {
-            throw ForyError.invalidData("heterogeneous list decoding is not supported yet")
+            var values: [Element] = []
+            values.reserveCapacity(length)
+
+            if trackRef {
+                for _ in 0..<length {
+                    values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: true))
+                }
+                return values
+            }
+
+            if hasNull {
+                for _ in 0..<length {
+                    let refFlag = try context.reader.readInt8()
+                    if refFlag == RefFlag.null.rawValue {
+                        values.append(Element.foryDefault())
+                    } else if refFlag == RefFlag.notNullValue.rawValue {
+                        if canonicalizeElements {
+                            let start = context.reader.getCursor()
+                            let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                            let end = context.reader.getCursor()
+                            values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                        } else {
+                            values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                        }
+                    } else {
+                        throw ForyError.refError("invalid nullability flag \(refFlag)")
+                    }
+                }
+            } else {
+                for _ in 0..<length {
+                    if canonicalizeElements {
+                        let start = context.reader.getCursor()
+                        let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                        let end = context.reader.getCursor()
+                        values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                    } else {
+                        values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                    }
+                }
+            }
+            return values
         }
 
         if !declared {
@@ -341,6 +398,9 @@ extension Array: Serializer where Element: Serializer {
             for _ in 0..<length {
                 values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: false))
             }
+            if !declared {
+                context.clearDynamicTypeInfo(for: Element.self)
+            }
             return values
         }
 
@@ -350,13 +410,31 @@ extension Array: Serializer where Element: Serializer {
                 if refFlag == RefFlag.null.rawValue {
                     values.append(Element.foryDefault())
                 } else {
-                    values.append(try Element.foryReadData(context))
+                    if canonicalizeElements {
+                        let start = context.reader.getCursor()
+                        let value = try Element.foryReadData(context)
+                        let end = context.reader.getCursor()
+                        values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                    } else {
+                        values.append(try Element.foryReadData(context))
+                    }
                 }
             }
         } else {
             for _ in 0..<length {
-                values.append(try Element.foryReadData(context))
+                if canonicalizeElements {
+                    let start = context.reader.getCursor()
+                    let value = try Element.foryReadData(context)
+                    let end = context.reader.getCursor()
+                    values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                } else {
+                    values.append(try Element.foryReadData(context))
+                }
             }
+        }
+
+        if !declared {
+            context.clearDynamicTypeInfo(for: Element.self)
         }
 
         return values
@@ -392,6 +470,117 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         let trackValueRef = context.trackRef && Value.isReferenceTrackableType
         let keyDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Key.staticTypeId)
         let valueDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Value.staticTypeId)
+        let keyDynamicType = Key.staticTypeId == .unknown
+        let valueDynamicType = Value.staticTypeId == .unknown
+
+        if keyDynamicType || valueDynamicType {
+            for pair in self {
+                let keyIsNil = pair.key.foryIsNone
+                let valueIsNil = pair.value.foryIsNone
+                var header: UInt8 = 0
+                if trackKeyRef {
+                    header |= MapHeader.trackingKeyRef
+                }
+                if trackValueRef {
+                    header |= MapHeader.trackingValueRef
+                }
+                if keyIsNil {
+                    header |= MapHeader.keyNull
+                } else if !keyDynamicType && keyDeclared {
+                    header |= MapHeader.declaredKeyType
+                }
+                if valueIsNil {
+                    header |= MapHeader.valueNull
+                } else if !valueDynamicType && valueDeclared {
+                    header |= MapHeader.declaredValueType
+                }
+                context.writer.writeUInt8(header)
+
+                if keyIsNil && valueIsNil {
+                    continue
+                }
+                if keyIsNil {
+                    if !valueDeclared {
+                        if valueDynamicType {
+                            try pair.value.foryWriteTypeInfo(context)
+                        } else {
+                            try Value.foryWriteTypeInfo(context)
+                        }
+                    }
+                    if trackValueRef {
+                        try pair.value.foryWrite(
+                            context,
+                            refMode: .tracking,
+                            writeTypeInfo: false,
+                            hasGenerics: hasGenerics
+                        )
+                    } else {
+                        try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
+                    }
+                    continue
+                }
+
+                if valueIsNil {
+                    if !keyDeclared {
+                        if keyDynamicType {
+                            try pair.key.foryWriteTypeInfo(context)
+                        } else {
+                            try Key.foryWriteTypeInfo(context)
+                        }
+                    }
+                    if trackKeyRef {
+                        try pair.key.foryWrite(
+                            context,
+                            refMode: .tracking,
+                            writeTypeInfo: false,
+                            hasGenerics: hasGenerics
+                        )
+                    } else {
+                        try pair.key.foryWriteData(context, hasGenerics: hasGenerics)
+                    }
+                    continue
+                }
+
+                context.writer.writeUInt8(1)
+
+                if !keyDeclared {
+                    if keyDynamicType {
+                        try pair.key.foryWriteTypeInfo(context)
+                    } else {
+                        try Key.foryWriteTypeInfo(context)
+                    }
+                }
+                if !valueDeclared {
+                    if valueDynamicType {
+                        try pair.value.foryWriteTypeInfo(context)
+                    } else {
+                        try Value.foryWriteTypeInfo(context)
+                    }
+                }
+
+                if trackKeyRef {
+                    try pair.key.foryWrite(
+                        context,
+                        refMode: .tracking,
+                        writeTypeInfo: false,
+                        hasGenerics: hasGenerics
+                    )
+                } else {
+                    try pair.key.foryWriteData(context, hasGenerics: hasGenerics)
+                }
+                if trackValueRef {
+                    try pair.value.foryWrite(
+                        context,
+                        refMode: .tracking,
+                        writeTypeInfo: false,
+                        hasGenerics: hasGenerics
+                    )
+                } else {
+                    try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
+                }
+            }
+            return
+        }
 
         var index = 0
         let pairs = Array(self)
@@ -487,6 +676,106 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
 
         var map: [Key: Value] = [:]
         map.reserveCapacity(totalLength)
+        let keyDynamicType = Key.staticTypeId == .unknown
+        let valueDynamicType = Value.staticTypeId == .unknown
+        let canonicalizeValues = context.trackRef && Value.isReferenceTrackableType
+
+        if keyDynamicType || valueDynamicType {
+            var dynamicReadCount = 0
+            while dynamicReadCount < totalLength {
+                let header = try context.reader.readUInt8()
+                let trackKeyRef = (header & MapHeader.trackingKeyRef) != 0
+                let keyNull = (header & MapHeader.keyNull) != 0
+                let keyDeclared = (header & MapHeader.declaredKeyType) != 0
+
+                let trackValueRef = (header & MapHeader.trackingValueRef) != 0
+                let valueNull = (header & MapHeader.valueNull) != 0
+                let valueDeclared = (header & MapHeader.declaredValueType) != 0
+
+                if keyNull && valueNull {
+                    map[Key.foryDefault()] = Value.foryDefault()
+                    dynamicReadCount += 1
+                    continue
+                }
+
+                if keyNull {
+                    if trackValueRef || !canonicalizeValues {
+                        let value = try Value.foryRead(
+                            context,
+                            refMode: trackValueRef ? .tracking : .none,
+                            readTypeInfo: valueDynamicType || !valueDeclared
+                        )
+                        map[Key.foryDefault()] = value
+                    } else {
+                        let start = context.reader.getCursor()
+                        let value = try Value.foryRead(
+                            context,
+                            refMode: .none,
+                            readTypeInfo: valueDynamicType || !valueDeclared
+                        )
+                        let end = context.reader.getCursor()
+                        map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
+                            value,
+                            start: start,
+                            end: end
+                        )
+                    }
+                    dynamicReadCount += 1
+                    continue
+                }
+
+                if valueNull {
+                    let key = try Key.foryRead(
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        readTypeInfo: keyDynamicType || !keyDeclared
+                    )
+                    map[key] = Value.foryDefault()
+                    dynamicReadCount += 1
+                    continue
+                }
+
+                let chunkSize = Int(try context.reader.readUInt8())
+                if !keyDeclared {
+                    try Key.foryReadTypeInfo(context)
+                }
+                if !valueDeclared {
+                    try Value.foryReadTypeInfo(context)
+                }
+                for _ in 0..<chunkSize {
+                    let key = try Key.foryRead(
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        readTypeInfo: false
+                    )
+                    if trackValueRef || !canonicalizeValues {
+                        let value = try Value.foryRead(
+                            context,
+                            refMode: trackValueRef ? .tracking : .none,
+                            readTypeInfo: false
+                        )
+                        map[key] = value
+                    } else {
+                        let start = context.reader.getCursor()
+                        let value = try Value.foryRead(
+                            context,
+                            refMode: .none,
+                            readTypeInfo: false
+                        )
+                        let end = context.reader.getCursor()
+                        map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                    }
+                }
+                if !keyDeclared {
+                    context.clearDynamicTypeInfo(for: Key.self)
+                }
+                if !valueDeclared {
+                    context.clearDynamicTypeInfo(for: Value.self)
+                }
+                dynamicReadCount += chunkSize
+            }
+            return map
+        }
 
         var readCount = 0
         while readCount < totalLength {
@@ -506,27 +795,36 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             }
 
             if keyNull {
-                if !valueDeclared {
-                    try Value.foryReadTypeInfo(context)
+                if trackValueRef || !canonicalizeValues {
+                    let value = try Value.foryRead(
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        readTypeInfo: !valueDeclared
+                    )
+                    map[Key.foryDefault()] = value
+                } else {
+                    let start = context.reader.getCursor()
+                    let value = try Value.foryRead(
+                        context,
+                        refMode: .none,
+                        readTypeInfo: !valueDeclared
+                    )
+                    let end = context.reader.getCursor()
+                    map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
+                        value,
+                        start: start,
+                        end: end
+                    )
                 }
-                let value = try Value.foryRead(
-                    context,
-                    refMode: trackValueRef ? .tracking : .none,
-                    readTypeInfo: false
-                )
-                map[Key.foryDefault()] = value
                 readCount += 1
                 continue
             }
 
             if valueNull {
-                if !keyDeclared {
-                    try Key.foryReadTypeInfo(context)
-                }
                 let key = try Key.foryRead(
                     context,
                     refMode: trackKeyRef ? .tracking : .none,
-                    readTypeInfo: false
+                    readTypeInfo: !keyDeclared
                 )
                 map[key] = Value.foryDefault()
                 readCount += 1
@@ -547,12 +845,23 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     refMode: trackKeyRef ? .tracking : .none,
                     readTypeInfo: false
                 )
-                let value = try Value.foryRead(
-                    context,
-                    refMode: trackValueRef ? .tracking : .none,
-                    readTypeInfo: false
-                )
-                map[key] = value
+                if trackValueRef || !canonicalizeValues {
+                    let value = try Value.foryRead(
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        readTypeInfo: false
+                    )
+                    map[key] = value
+                } else {
+                    let start = context.reader.getCursor()
+                    let value = try Value.foryRead(
+                        context,
+                        refMode: .none,
+                        readTypeInfo: false
+                    )
+                    let end = context.reader.getCursor()
+                    map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                }
             }
             readCount += chunkSize
         }

@@ -78,7 +78,16 @@ public enum ForyTypeId: UInt32, CaseIterable {
 
     public var isUserTypeKind: Bool {
         switch self {
-        case .enumType, .structType, .compatibleStruct, .ext, .typedUnion:
+        case .enumType,
+             .namedEnum,
+             .structType,
+             .compatibleStruct,
+             .namedStruct,
+             .namedCompatibleStruct,
+             .ext,
+             .namedExt,
+             .typedUnion,
+             .namedUnion:
             return true
         default:
             return false
@@ -87,7 +96,13 @@ public enum ForyTypeId: UInt32, CaseIterable {
 
     public static func needsTypeInfoForField(_ typeId: ForyTypeId) -> Bool {
         switch typeId {
-        case .structType, .compatibleStruct, .namedStruct, .namedCompatibleStruct, .ext, .namedExt, .unknown:
+        case .structType,
+             .compatibleStruct,
+             .namedStruct,
+             .namedCompatibleStruct,
+             .ext,
+             .namedExt,
+             .unknown:
             return true
         default:
             return false

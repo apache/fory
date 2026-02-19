@@ -20,10 +20,12 @@ import Foundation
 public struct ForyConfig {
     public var xlang: Bool
     public var trackRef: Bool
+    public var compatible: Bool
 
-    public init(xlang: Bool = true, trackRef: Bool = false) {
+    public init(xlang: Bool = true, trackRef: Bool = false, compatible: Bool = false) {
         self.xlang = xlang
         self.trackRef = trackRef
+        self.compatible = compatible
     }
 }
 
@@ -40,15 +42,31 @@ public final class Fory {
         typeResolver.register(type, id: id)
     }
 
+    public func register<T: Serializer>(_ type: T.Type, name: String) throws {
+        try typeResolver.register(type, namespace: "", typeName: name)
+    }
+
+    public func register<T: Serializer>(_ type: T.Type, namespace: String, name: String) throws {
+        try typeResolver.register(type, namespace: namespace, typeName: name)
+    }
+
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
         let writer = ByteWriter()
         writeHead(writer: writer, isNone: value.foryIsNone)
 
         if !value.foryIsNone {
-            let context = WriteContext(writer: writer, typeResolver: typeResolver, trackRef: config.trackRef)
+            let compatibleTypeDefState = CompatibleTypeDefWriteState()
+            let context = WriteContext(
+                writer: writer,
+                typeResolver: typeResolver,
+                trackRef: config.trackRef,
+                compatible: config.compatible,
+                compatibleTypeDefState: compatibleTypeDefState,
+                metaStringWriteState: MetaStringWriteState()
+            )
             let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
             try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-            context.reset()
+            context.resetObjectState()
         }
 
         return writer.toData()
@@ -61,15 +79,37 @@ public final class Fory {
             return T.foryDefault()
         }
 
-        let context = ReadContext(reader: reader, typeResolver: typeResolver, trackRef: config.trackRef)
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
-        context.reset()
+        context.resetObjectState()
         return value
     }
 
     public func serializeTo<T: Serializer>(_ buffer: inout Data, value: T) throws {
-        buffer.append(try serialize(value))
+        let writer = ByteWriter()
+        writeHead(writer: writer, isNone: value.foryIsNone)
+        if !value.foryIsNone {
+            let context = WriteContext(
+                writer: writer,
+                typeResolver: typeResolver,
+                trackRef: config.trackRef,
+                compatible: config.compatible,
+                compatibleTypeDefState: CompatibleTypeDefWriteState(),
+                metaStringWriteState: MetaStringWriteState()
+            )
+            let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+            try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+            context.resetObjectState()
+        }
+        buffer.append(writer.toData())
     }
 
     public func deserializeFrom<T: Serializer>(_ reader: ByteReader, as _: T.Type = T.self) throws -> T {
@@ -77,10 +117,17 @@ public final class Fory {
         if isNone {
             return T.foryDefault()
         }
-        let context = ReadContext(reader: reader, typeResolver: typeResolver, trackRef: config.trackRef)
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
-        context.reset()
+        context.resetObjectState()
         return value
     }
 

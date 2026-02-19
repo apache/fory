@@ -45,6 +45,15 @@ struct FieldOrder: Equatable {
 }
 
 @ForyObject
+struct EncodedNumberFields: Equatable {
+    @ForyField(encoding: .fixed)
+    var u32Fixed: UInt32
+
+    @ForyField(encoding: .tagged)
+    var u64Tagged: UInt64
+}
+
+@ForyObject
 final class Node {
     var value: Int32 = 0
     var next: Node?
@@ -252,6 +261,7 @@ func macroFieldOrderFollowsForyRules() throws {
     _ = try reader.readInt8() // root ref flag
     _ = try reader.readVarUInt32() // type id
     _ = try reader.readVarUInt32() // user type id
+    _ = try reader.readInt32() // schema hash
 
     let first = try reader.readInt16()
     let second = try reader.readVarInt64()
@@ -264,6 +274,40 @@ func macroFieldOrderFollowsForyRules() throws {
     #expect(second == value.a)
     #expect(third == value.c)
     #expect(fourth == value.z)
+}
+
+@Test
+func macroFieldEncodingOverridesForUnsignedTypes() throws {
+    let fory = Fory()
+    fory.register(EncodedNumberFields.self, id: 301)
+
+    let value = EncodedNumberFields(
+        u32Fixed: 0x11223344,
+        u64Tagged: UInt64(Int32.max) + 99
+    )
+    let data = try fory.serialize(value)
+    let decoded: EncodedNumberFields = try fory.deserialize(data)
+    #expect(decoded == value)
+
+    let reader = ByteReader(data: data)
+    _ = try fory.readHead(reader: reader)
+    _ = try reader.readInt8()
+    _ = try reader.readVarUInt32()
+    _ = try reader.readVarUInt32()
+    _ = try reader.readInt32()
+
+    #expect(try reader.readUInt32() == value.u32Fixed)
+    #expect(try reader.readTaggedUInt64() == value.u64Tagged)
+}
+
+@Test
+func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
+    let fields = EncodedNumberFields.foryCompatibleTypeMetaFields(trackRef: false)
+    #expect(fields.count == 2)
+    #expect(fields[0].fieldName == "u32Fixed")
+    #expect(fields[0].fieldType.typeID == ForyTypeId.uint32.rawValue)
+    #expect(fields[1].fieldName == "u64Tagged")
+    #expect(fields[1].fieldType.typeID == ForyTypeId.taggedUInt64.rawValue)
 }
 
 @Test
