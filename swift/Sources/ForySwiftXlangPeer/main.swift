@@ -20,46 +20,18 @@ import ForySwift
 
 // MARK: - Shared test types
 
-private enum PeerColor: UInt32 {
+private enum PeerColor: UInt32, Serializer {
     case green = 0
     case red = 1
     case blue = 2
     case white = 3
 }
 
-private enum PeerTestEnum: UInt32 {
+private enum PeerTestEnum: UInt32, Serializer {
     case valueA = 0
     case valueB = 1
     case valueC = 2
 }
-
-private protocol PeerUInt32EnumSerializer: RawRepresentable, Serializer where RawValue == UInt32 {}
-
-extension PeerUInt32EnumSerializer {
-    static func foryDefault() -> Self {
-        Self(rawValue: 0)!
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .enumType
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeVarUInt32(rawValue)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> Self {
-        let ordinal = try context.reader.readVarUInt32()
-        guard let value = Self(rawValue: ordinal) else {
-            throw ForyError.invalidData("unknown enum ordinal \(ordinal)")
-        }
-        return value
-    }
-}
-
-extension PeerColor: PeerUInt32EnumSerializer {}
-extension PeerTestEnum: PeerUInt32EnumSerializer {}
 
 private struct PeerDate: Serializer, Equatable {
     var daysSinceEpoch: Int32 = 0
@@ -349,44 +321,7 @@ private struct AnimalMapHolder {
     var animalMap: [String: Any] = [:]
 }
 
-private enum StringOrLong: Serializer, Equatable {
-    case str(String)
-    case long(Int64)
-
-    static func foryDefault() -> StringOrLong {
-        .str("")
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .typedUnion
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        switch self {
-        case .str(let value):
-            context.writer.writeVarUInt32(0)
-            try value.foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: false)
-        case .long(let value):
-            context.writer.writeVarUInt32(1)
-            try value.foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> StringOrLong {
-        let tag = try context.reader.readVarUInt32()
-        switch tag {
-        case 0:
-            let value: String = try String.foryRead(context, refMode: .tracking, readTypeInfo: true)
-            return .str(value)
-        case 1:
-            let value: Int64 = try Int64.foryRead(context, refMode: .tracking, readTypeInfo: true)
-            return .long(value)
-        default:
-            throw ForyError.invalidData("unknown union tag \(tag)")
-        }
-    }
-}
+private typealias StringOrLong = ForyUnion2<String, Int64>
 
 @ForyObject
 private struct StructWithUnion2 {
