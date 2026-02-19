@@ -21,8 +21,8 @@ package org.apache.fory.xlang;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -37,6 +37,8 @@ import org.testng.annotations.Test;
 public class SwiftXlangTest extends XlangTestBase {
   private static final String SWIFT_EXECUTABLE = "swift";
   private static final String SWIFT_PEER_TARGET = "ForySwiftXlangPeer";
+  private static final File SWIFT_WORK_DIR = new File("../../swift");
+  private String swiftPeerBinaryPath;
 
   @Override
   protected void ensurePeerReady() {
@@ -66,25 +68,27 @@ public class SwiftXlangTest extends XlangTestBase {
             buildCommand,
             600,
             Collections.singletonMap("ENABLE_FORY_DEBUG_OUTPUT", "1"),
-            new File("../../swift"));
+            SWIFT_WORK_DIR);
     Assert.assertTrue(built, "failed to build Swift xlang peer target " + SWIFT_PEER_TARGET);
+
+    Path peerBinary = SWIFT_WORK_DIR.toPath().resolve(".build/release").resolve(SWIFT_PEER_TARGET);
+    Assert.assertTrue(
+        Files.isRegularFile(peerBinary),
+        "Swift xlang peer binary not found at " + peerBinary.toAbsolutePath());
+    Assert.assertTrue(
+        Files.isExecutable(peerBinary),
+        "Swift xlang peer binary is not executable: " + peerBinary.toAbsolutePath());
+    swiftPeerBinaryPath = peerBinary.toAbsolutePath().toString();
   }
 
   @Override
   protected CommandContext buildCommandContext(String caseName, Path dataFile) {
-    List<String> command = new ArrayList<>();
-    command.add(SWIFT_EXECUTABLE);
-    command.add("run");
-    command.add("--skip-build");
-    command.add("-c");
-    command.add("release");
-    command.add(SWIFT_PEER_TARGET);
-    command.add("--case");
-    command.add(caseName);
+    Assert.assertNotNull(swiftPeerBinaryPath, "Swift xlang peer binary path is not initialized");
+    List<String> command = Arrays.asList(swiftPeerBinaryPath, "--case", caseName);
 
     Map<String, String> env = envBuilder(dataFile);
     env.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
-    return new CommandContext(command, env, new File("../../swift"));
+    return new CommandContext(command, env, SWIFT_WORK_DIR);
   }
 
   // ============================================================================
