@@ -40,7 +40,7 @@ let package = Package(
         .executableTarget(
             name: "ForySwiftXlangPeer",
             dependencies: ["Fory"],
-            path: "Sources/ForyXlangTests"
+            path: "Tests/ForyXlangPeer"
         ),
         .testTarget(
             name: "ForyTests",
