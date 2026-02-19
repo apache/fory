@@ -23,10 +23,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.apache.fory.test.TestUtils;
 import org.testng.Assert;
 import org.testng.SkipException;
@@ -38,6 +40,9 @@ public class SwiftXlangTest extends XlangTestBase {
   private static final String SWIFT_EXECUTABLE = "swift";
   private static final String SWIFT_PEER_TARGET = "ForySwiftXlangPeer";
   private static final File SWIFT_WORK_DIR = new File("../../swift");
+  private static final Path SWIFT_WORK_DIR_PATH = SWIFT_WORK_DIR.toPath();
+  private static final Path SWIFT_PEER_BINARY_PATH =
+      SWIFT_WORK_DIR_PATH.resolve(".build/release").resolve(SWIFT_PEER_TARGET);
   private String swiftPeerBinaryPath;
 
   @Override
@@ -61,17 +66,40 @@ public class SwiftXlangTest extends XlangTestBase {
     }
     Assert.assertTrue(swiftInstalled, "swift is required for SwiftXlangTest");
 
-    List<String> buildCommand =
-        Arrays.asList(SWIFT_EXECUTABLE, "build", "-c", "release", "--product", SWIFT_PEER_TARGET);
+    if (isPeerBinaryUpToDate()) {
+      swiftPeerBinaryPath = SWIFT_PEER_BINARY_PATH.toAbsolutePath().toString();
+      return;
+    }
+
+    List<String> fastBuildCommand =
+        Arrays.asList(
+            SWIFT_EXECUTABLE,
+            "build",
+            "-c",
+            "release",
+            "--disable-automatic-resolution",
+            "--product",
+            SWIFT_PEER_TARGET);
     boolean built =
         TestUtils.executeCommand(
-            buildCommand,
+            fastBuildCommand,
             600,
             Collections.singletonMap("ENABLE_FORY_DEBUG_OUTPUT", "1"),
             SWIFT_WORK_DIR);
+    if (!built) {
+      List<String> fallbackBuildCommand =
+          Arrays.asList(
+              SWIFT_EXECUTABLE, "build", "-c", "release", "--product", SWIFT_PEER_TARGET);
+      built =
+          TestUtils.executeCommand(
+              fallbackBuildCommand,
+              600,
+              Collections.singletonMap("ENABLE_FORY_DEBUG_OUTPUT", "1"),
+              SWIFT_WORK_DIR);
+    }
     Assert.assertTrue(built, "failed to build Swift xlang peer target " + SWIFT_PEER_TARGET);
 
-    Path peerBinary = SWIFT_WORK_DIR.toPath().resolve(".build/release").resolve(SWIFT_PEER_TARGET);
+    Path peerBinary = SWIFT_PEER_BINARY_PATH;
     Assert.assertTrue(
         Files.isRegularFile(peerBinary),
         "Swift xlang peer binary not found at " + peerBinary.toAbsolutePath());
@@ -89,6 +117,47 @@ public class SwiftXlangTest extends XlangTestBase {
     Map<String, String> env = envBuilder(dataFile);
     env.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
     return new CommandContext(command, env, SWIFT_WORK_DIR);
+  }
+
+  private boolean isPeerBinaryUpToDate() {
+    if (!Files.isRegularFile(SWIFT_PEER_BINARY_PATH)
+        || !Files.isExecutable(SWIFT_PEER_BINARY_PATH)) {
+      return false;
+    }
+    try {
+      FileTime binaryMTime = Files.getLastModifiedTime(SWIFT_PEER_BINARY_PATH);
+      if (isFileNewerThan(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Package.swift"))
+          || isFileNewerThan(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Package.resolved"))) {
+        return false;
+      }
+      return !hasNewerFileInTree(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Sources"));
+    } catch (IOException e) {
+      return false;
+    }
+  }
+
+  private static boolean hasNewerFileInTree(FileTime binaryMTime, Path root) throws IOException {
+    if (!Files.isDirectory(root)) {
+      return true;
+    }
+    try (Stream<Path> files = Files.walk(root)) {
+      return files
+          .filter(Files::isRegularFile)
+          .anyMatch(path -> isFileNewerThanUnchecked(binaryMTime, path));
+    }
+  }
+
+  private static boolean isFileNewerThan(FileTime binaryMTime, Path path) throws IOException {
+    return Files.isRegularFile(path)
+        && Files.getLastModifiedTime(path).compareTo(binaryMTime) > 0;
+  }
+
+  private static boolean isFileNewerThanUnchecked(FileTime binaryMTime, Path path) {
+    try {
+      return Files.getLastModifiedTime(path).compareTo(binaryMTime) > 0;
+    } catch (IOException e) {
+      return true;
+    }
   }
 
   // ============================================================================
