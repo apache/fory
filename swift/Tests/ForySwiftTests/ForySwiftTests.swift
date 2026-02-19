@@ -66,6 +66,29 @@ final class Node {
     }
 }
 
+@ForyObject
+struct AnyObjectHolder {
+    var value: AnyObject
+    var optionalValue: AnyObject?
+    var items: [AnyObject]
+}
+
+@ForyObject
+struct AnySerializerHolder {
+    var value: any Serializer
+    var items: [any Serializer]
+    var map: [String: any Serializer]
+}
+
+@ForyObject
+struct AnyFieldHolder {
+    var value: Any
+    var optionalValue: Any?
+    var list: [Any]
+    var stringMap: [String: Any]
+    var int32Map: [Int32: Any]
+}
+
 @Test
 func primitiveRoundTrip() throws {
     let fory = Fory()
@@ -207,6 +230,148 @@ func macroClassReferenceTracking() throws {
 
     #expect(decoded.value == 7)
     #expect(decoded.next === decoded)
+}
+
+@Test
+func topLevelAnyRoundTrip() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 209)
+
+    let value: Any = Address(street: "AnyTop", zip: 8080)
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    #expect(decoded as? Address == Address(street: "AnyTop", zip: 8080))
+
+    var buffer = Data()
+    try fory.serializeTo(&buffer, value: value)
+    let decodedFrom: Any = try fory.deserializeFrom(ByteReader(data: buffer))
+    #expect(decodedFrom as? Address == Address(street: "AnyTop", zip: 8080))
+
+    let nullAny: Any = Optional<Int32>.none as Any
+    let nullData = try fory.serialize(nullAny)
+    let nullDecoded: Any = try fory.deserialize(nullData)
+    #expect(nullDecoded is ForyAnyNullValue)
+}
+
+@Test
+func topLevelAnyObjectRoundTrip() throws {
+    let fory = Fory(config: .init(xlang: true, trackRef: true))
+    fory.register(Node.self, id: 210)
+
+    let value: AnyObject = Node(value: 123)
+    let data = try fory.serialize(value)
+    let decoded: AnyObject = try fory.deserialize(data)
+
+    let node = decoded as? Node
+    #expect(node != nil)
+    #expect(node?.value == 123)
+
+    var buffer = Data()
+    try fory.serializeTo(&buffer, value: value)
+    let decodedFrom: AnyObject = try fory.deserializeFrom(ByteReader(data: buffer))
+    #expect((decodedFrom as? Node)?.value == 123)
+}
+
+@Test
+func topLevelAnySerializerRoundTrip() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 211)
+
+    let value: any Serializer = Address(street: "AnyStreet", zip: 9090)
+    let data = try fory.serialize(value)
+    let decoded: any Serializer = try fory.deserialize(data)
+
+    let address = decoded as? Address
+    #expect(address == Address(street: "AnyStreet", zip: 9090))
+
+    var buffer = Data()
+    try fory.serializeTo(&buffer, value: value)
+    let decodedFrom: any Serializer = try fory.deserializeFrom(ByteReader(data: buffer))
+    #expect(decodedFrom as? Address == Address(street: "AnyStreet", zip: 9090))
+}
+
+@Test
+func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
+    let fory = Fory(config: .init(xlang: true, trackRef: true))
+    fory.register(Node.self, id: 220)
+    fory.register(Address.self, id: 221)
+    fory.register(AnyObjectHolder.self, id: 222)
+    fory.register(AnySerializerHolder.self, id: 223)
+
+    let sharedNode = Node(value: 77)
+    let objectHolder = AnyObjectHolder(
+        value: sharedNode,
+        optionalValue: nil,
+        items: [sharedNode, NSNull()]
+    )
+    let objectData = try fory.serialize(objectHolder)
+    let objectDecoded: AnyObjectHolder = try fory.deserialize(objectData)
+    #expect((objectDecoded.value as? Node)?.value == 77)
+    #expect(objectDecoded.optionalValue == nil)
+    #expect(objectDecoded.items.count == 2)
+    #expect((objectDecoded.items[0] as? Node)?.value == 77)
+    #expect(objectDecoded.items[1] is NSNull)
+
+    let serializerHolder = AnySerializerHolder(
+        value: Address(street: "Root", zip: 10001),
+        items: [Int32(11), Address(street: "Nested", zip: 10002)],
+        map: [
+            "age": Int64(19),
+            "address": Address(street: "Mapped", zip: 10003),
+        ]
+    )
+    let serializerData = try fory.serialize(serializerHolder)
+    let serializerDecoded: AnySerializerHolder = try fory.deserialize(serializerData)
+
+    #expect(serializerDecoded.value as? Address == Address(street: "Root", zip: 10001))
+    #expect(serializerDecoded.items.count == 2)
+    #expect(serializerDecoded.items[0] as? Int32 == 11)
+    #expect(serializerDecoded.items[1] as? Address == Address(street: "Nested", zip: 10002))
+    #expect(serializerDecoded.map["age"] as? Int64 == 19)
+    #expect(serializerDecoded.map["address"] as? Address == Address(street: "Mapped", zip: 10003))
+}
+
+@Test
+func macroAnyFieldsRoundTrip() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 224)
+    fory.register(AnyFieldHolder.self, id: 225)
+
+    let value = AnyFieldHolder(
+        value: Address(street: "AnyRoot", zip: 11001),
+        optionalValue: nil,
+        list: [Int32(7), "hello", Address(street: "AnyList", zip: 11002), NSNull()],
+        stringMap: [
+            "count": Int64(3),
+            "name": "map",
+            "address": Address(street: "AnyMap", zip: 11003),
+            "empty": NSNull(),
+        ],
+        int32Map: [
+            1: Int32(-9),
+            2: "v2",
+            3: Address(street: "AnyIntMap", zip: 11004),
+            4: NSNull(),
+        ]
+    )
+    let data = try fory.serialize(value)
+    let decoded: AnyFieldHolder = try fory.deserialize(data)
+
+    #expect(decoded.value as? Address == Address(street: "AnyRoot", zip: 11001))
+    #expect(decoded.optionalValue == nil)
+    #expect(decoded.list.count == 4)
+    #expect(decoded.list[0] as? Int32 == 7)
+    #expect(decoded.list[1] as? String == "hello")
+    #expect(decoded.list[2] as? Address == Address(street: "AnyList", zip: 11002))
+    #expect(decoded.list[3] is NSNull)
+    #expect(decoded.stringMap["count"] as? Int64 == 3)
+    #expect(decoded.stringMap["name"] as? String == "map")
+    #expect(decoded.stringMap["address"] as? Address == Address(street: "AnyMap", zip: 11003))
+    #expect(decoded.stringMap["empty"] is NSNull)
+    #expect(decoded.int32Map[1] as? Int32 == -9)
+    #expect(decoded.int32Map[2] as? String == "v2")
+    #expect(decoded.int32Map[3] as? Address == Address(street: "AnyIntMap", zip: 11004))
+    #expect(decoded.int32Map[4] is NSNull)
 }
 
 @Test

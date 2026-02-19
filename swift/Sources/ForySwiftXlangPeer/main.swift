@@ -339,234 +339,14 @@ private struct Cat {
     var lives: Int32 = 0
 }
 
-private enum AnyAnimal: Serializer {
-    case dog(Dog)
-    case cat(Cat)
-
-    static func foryDefault() -> AnyAnimal {
-        .dog(.foryDefault())
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .unknown
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        switch self {
-        case .dog(let value):
-            try value.foryWriteData(context, hasGenerics: hasGenerics)
-        case .cat(let value):
-            try value.foryWriteData(context, hasGenerics: hasGenerics)
-        }
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> AnyAnimal {
-        guard let typeInfo = context.dynamicTypeInfo(for: Self.self) else {
-            throw ForyError.invalidData("AnyAnimal requires pre-read type info during decode")
-        }
-        return try decode(context, typeInfo: typeInfo)
-    }
-
-    static func foryWriteTypeInfo(_ context: WriteContext) throws {
-        _ = context
-        throw ForyError.invalidData("AnyAnimal type info is dynamic")
-    }
-
-    func foryWriteTypeInfo(_ context: WriteContext) throws {
-        switch self {
-        case .dog:
-            try Dog.foryWriteTypeInfo(context)
-        case .cat:
-            try Cat.foryWriteTypeInfo(context)
-        }
-    }
-
-    static func foryReadTypeInfo(_ context: ReadContext) throws {
-        let typeInfo = try parseDynamicTypeInfo(context)
-        context.setDynamicTypeInfo(for: Self.self, typeInfo)
-    }
-
-    func foryWrite(
-        _ context: WriteContext,
-        refMode: RefMode,
-        writeTypeInfo: Bool,
-        hasGenerics: Bool
-    ) throws {
-        if refMode != .none {
-            context.writer.writeInt8(RefFlag.notNullValue.rawValue)
-        }
-        switch self {
-        case .dog(let value):
-            try value.foryWrite(
-                context,
-                refMode: .none,
-                writeTypeInfo: writeTypeInfo,
-                hasGenerics: hasGenerics
-            )
-        case .cat(let value):
-            try value.foryWrite(
-                context,
-                refMode: .none,
-                writeTypeInfo: writeTypeInfo,
-                hasGenerics: hasGenerics
-            )
-        }
-    }
-
-    static func foryRead(
-        _ context: ReadContext,
-        refMode: RefMode,
-        readTypeInfo: Bool
-    ) throws -> AnyAnimal {
-        if refMode != .none {
-            let rawFlag = try context.reader.readInt8()
-            guard let flag = RefFlag(rawValue: rawFlag) else {
-                throw ForyError.refError("invalid ref flag \(rawFlag)")
-            }
-            switch flag {
-            case .null:
-                return .foryDefault()
-            case .notNullValue, .refValue:
-                break
-            case .ref:
-                throw ForyError.refError("AnyAnimal does not support reference-only payloads")
-            }
-        }
-
-        let typeInfo: DynamicTypeInfo
-        if readTypeInfo {
-            typeInfo = try parseDynamicTypeInfo(context)
-        } else if let pendingTypeInfo = context.dynamicTypeInfo(for: Self.self) {
-            typeInfo = pendingTypeInfo
-        } else {
-            throw ForyError.invalidData("AnyAnimal requires type info")
-        }
-        return try decode(context, typeInfo: typeInfo)
-    }
-
-    private static func parseDynamicTypeInfo(_ context: ReadContext) throws -> DynamicTypeInfo {
-        let rawTypeID = try context.reader.readVarUInt32()
-        guard let typeID = ForyTypeId(rawValue: rawTypeID) else {
-            throw ForyError.invalidData("unknown dynamic animal type id \(rawTypeID)")
-        }
-        switch typeID {
-        case .structType:
-            let userTypeID = try context.reader.readVarUInt32()
-            return DynamicTypeInfo(
-                wireTypeID: .structType,
-                userTypeID: userTypeID,
-                namespace: nil,
-                typeName: nil,
-                compatibleTypeMeta: nil
-            )
-        case .compatibleStruct:
-            let typeMeta = try context.readCompatibleTypeMeta()
-            guard let userTypeID = typeMeta.userTypeID else {
-                throw ForyError.invalidData("missing user type id for dynamic compatible animal")
-            }
-            return DynamicTypeInfo(
-                wireTypeID: .compatibleStruct,
-                userTypeID: userTypeID,
-                namespace: nil,
-                typeName: nil,
-                compatibleTypeMeta: typeMeta
-            )
-        case .namedStruct:
-            let namespace = try readPeerMetaString(
-                context.reader,
-                decoder: .namespace,
-                encodings: namespaceMetaStringEncodings
-            )
-            let typeName = try readPeerMetaString(
-                context.reader,
-                decoder: .typeName,
-                encodings: typeNameMetaStringEncodings
-            )
-            return DynamicTypeInfo(
-                wireTypeID: .namedStruct,
-                userTypeID: nil,
-                namespace: namespace,
-                typeName: typeName,
-                compatibleTypeMeta: nil
-            )
-        case .namedCompatibleStruct:
-            let typeMeta = try context.readCompatibleTypeMeta()
-            return DynamicTypeInfo(
-                wireTypeID: .namedCompatibleStruct,
-                userTypeID: nil,
-                namespace: typeMeta.namespace,
-                typeName: typeMeta.typeName,
-                compatibleTypeMeta: typeMeta
-            )
-        default:
-            throw ForyError.invalidData("unsupported dynamic animal wire type \(typeID)")
-        }
-    }
-
-    private static func decode(_ context: ReadContext, typeInfo: DynamicTypeInfo) throws -> AnyAnimal {
-        let value: Any
-        switch typeInfo.wireTypeID {
-        case .structType:
-            guard let userTypeID = typeInfo.userTypeID else {
-                throw ForyError.invalidData("missing user type id for dynamic animal")
-            }
-            value = try context.typeResolver.readByUserTypeID(userTypeID, context: context)
-        case .compatibleStruct:
-            guard let userTypeID = typeInfo.userTypeID else {
-                throw ForyError.invalidData("missing user type id for dynamic compatible animal")
-            }
-            guard let compatibleTypeMeta = typeInfo.compatibleTypeMeta else {
-                throw ForyError.invalidData("missing compatible type meta for dynamic animal")
-            }
-            value = try context.typeResolver.readByUserTypeID(
-                userTypeID,
-                context: context,
-                compatibleTypeMeta: compatibleTypeMeta
-            )
-        case .namedStruct:
-            guard let namespace = typeInfo.namespace, let typeName = typeInfo.typeName else {
-                throw ForyError.invalidData("missing dynamic type name for animal")
-            }
-            value = try context.typeResolver.readByTypeName(
-                namespace: namespace.value,
-                typeName: typeName.value,
-                context: context
-            )
-        case .namedCompatibleStruct:
-            guard let namespace = typeInfo.namespace, let typeName = typeInfo.typeName else {
-                throw ForyError.invalidData("missing dynamic compatible type name for animal")
-            }
-            guard let compatibleTypeMeta = typeInfo.compatibleTypeMeta else {
-                throw ForyError.invalidData("missing compatible type meta for dynamic named animal")
-            }
-            value = try context.typeResolver.readByTypeName(
-                namespace: namespace.value,
-                typeName: typeName.value,
-                context: context,
-                compatibleTypeMeta: compatibleTypeMeta
-            )
-        default:
-            throw ForyError.invalidData("unsupported dynamic animal wire type \(typeInfo.wireTypeID)")
-        }
-
-        if let dog = value as? Dog {
-            return .dog(dog)
-        }
-        if let cat = value as? Cat {
-            return .cat(cat)
-        }
-        throw ForyError.invalidData("unsupported dynamic animal payload type")
-    }
-}
-
 @ForyObject
 private struct AnimalListHolder {
-    var animals: [AnyAnimal] = []
+    var animals: [Any] = []
 }
 
 @ForyObject
 private struct AnimalMapHolder {
-    var animalMap: [String: AnyAnimal] = [:]
+    var animalMap: [String: Any] = [:]
 }
 
 private enum StringOrLong: Serializer, Equatable {
@@ -709,26 +489,6 @@ private func debugLog(_ message: String) {
     if isDebugEnabled() {
         fputs("[swift-xlang-peer] \(message)\n", stderr)
     }
-}
-
-private func readPeerMetaString(
-    _ reader: ByteReader,
-    decoder: MetaStringDecoder,
-    encodings: [MetaStringEncoding]
-) throws -> MetaString {
-    let header = try reader.readUInt8()
-    let encodingIndex = Int(header & 0b11)
-    guard encodingIndex < encodings.count else {
-        throw ForyError.invalidData("invalid meta string encoding index")
-    }
-
-    var length = Int(header >> 2)
-    let bigNameThreshold = 0b11_1111
-    if length >= bigNameThreshold {
-        length = bigNameThreshold + Int(try reader.readVarUInt32())
-    }
-    let bytes = try reader.readBytes(count: length)
-    return try decoder.decode(bytes: bytes, encoding: encodings[encodingIndex])
 }
 
 private func verifyBufferCase(_ caseName: String, _ payload: [UInt8]) throws -> [UInt8] {
@@ -1050,7 +810,7 @@ private func handlePolymorphicList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     registerPolymorphicTypes(fory)
     return try roundTripStream(bytes) { reader, out in
-        let animals: [AnyAnimal] = try fory.deserializeFrom(reader)
+        let animals: [Any] = try fory.deserializeFrom(reader)
         let holder: AnimalListHolder = try fory.deserializeFrom(reader)
         try fory.serializeTo(&out, value: animals)
         try fory.serializeTo(&out, value: holder)
@@ -1061,7 +821,7 @@ private func handlePolymorphicMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     registerPolymorphicTypes(fory)
     return try roundTripStream(bytes) { reader, out in
-        let animalMap: [String: AnyAnimal] = try fory.deserializeFrom(reader)
+        let animalMap: [String: Any] = try fory.deserializeFrom(reader)
         let holder: AnimalMapHolder = try fory.deserializeFrom(reader)
         try fory.serializeTo(&out, value: animalMap)
         try fory.serializeTo(&out, value: holder)

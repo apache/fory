@@ -100,6 +100,13 @@ private enum FieldEncoding: String {
     case tagged
 }
 
+private enum DynamicAnyCodecKind {
+    case anyValue
+    case anyList
+    case stringAnyMap
+    case int32AnyMap
+}
+
 private struct ParsedField {
     let name: String
     let typeText: String
@@ -114,6 +121,7 @@ private struct ParsedField {
     let isCompressedNumeric: Bool
     let primitiveSize: Int
     let customCodecType: String?
+    let dynamicAnyCodec: DynamicAnyCodecKind?
 }
 
 private struct ParsedDecl {
@@ -170,6 +178,7 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
                 concreteType: concreteType,
                 fieldEncoding: fieldEncoding
             )
+            let dynamicAnyCodec = try resolveDynamicAnyCodec(rawType: rawType)
             let classification = typeResolution.classification
             let group: Int
             if classification.isPrimitive {
@@ -196,7 +205,8 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
                     typeID: classification.typeID,
                     isCompressedNumeric: classification.isCompressedNumeric,
                     primitiveSize: classification.primitiveSize,
-                    customCodecType: typeResolution.customCodecType
+                    customCodecType: typeResolution.customCodecType,
+                    dynamicAnyCodec: dynamicAnyCodec
                 )
             )
             originalIndex += 1
@@ -383,6 +393,62 @@ private func resolveFieldType(
     }
 }
 
+private func resolveDynamicAnyCodec(rawType: String) throws -> DynamicAnyCodecKind? {
+    let optional = unwrapOptional(rawType)
+    let concreteType = trimType(optional.type)
+
+    if isDynamicAnyConcreteType(concreteType) {
+        return .anyValue
+    }
+
+    if let elementType = parseArrayElement(concreteType), containsDynamicAny(typeText: elementType) {
+        return .anyList
+    }
+
+    if let elementType = parseSetElement(concreteType), containsDynamicAny(typeText: elementType) {
+        throw MacroExpansionErrorMessage("Set<...> with Any elements is not supported by @ForyObject yet")
+    }
+
+    if let (keyType, valueType) = parseDictionary(concreteType),
+       containsDynamicAny(typeText: keyType) || containsDynamicAny(typeText: valueType) {
+        let normalizedKeyType = trimType(unwrapOptional(keyType).type)
+        if normalizedKeyType == "String" {
+            return .stringAnyMap
+        }
+        if normalizedKeyType == "Int32" {
+            return .int32AnyMap
+        }
+        throw MacroExpansionErrorMessage(
+            "Dictionary<\(keyType), ...> with Any values is only supported for String or Int32 keys"
+        )
+    }
+
+    return nil
+}
+
+private func containsDynamicAny(typeText: String) -> Bool {
+    let optional = unwrapOptional(typeText)
+    let concreteType = trimType(optional.type)
+
+    if isDynamicAnyConcreteType(concreteType) {
+        return true
+    }
+
+    if let elementType = parseArrayElement(concreteType) {
+        return containsDynamicAny(typeText: elementType)
+    }
+
+    if let elementType = parseSetElement(concreteType) {
+        return containsDynamicAny(typeText: elementType)
+    }
+
+    if let (keyType, valueType) = parseDictionary(concreteType) {
+        return containsDynamicAny(typeText: keyType) || containsDynamicAny(typeText: valueType)
+    }
+
+    return false
+}
+
 private func sortFields(_ fields: [ParsedField]) -> [ParsedField] {
     fields.sorted { lhs, rhs in
         if lhs.group != rhs.group {
@@ -459,7 +525,17 @@ private func buildSchemaFingerprint(fields: [ParsedField]) -> String {
         .map { field -> String in
             let typeID = fingerprintTypeID(for: field)
             let nullable = field.isOptional ? "1" : "0"
-            let trackRefExpr = "(trackRef && \(field.typeText).isReferenceTrackableType) ? 1 : 0"
+            let trackRefExpr: String
+            if let dynamicAnyCodec = field.dynamicAnyCodec {
+                switch dynamicAnyCodec {
+                case .anyValue:
+                    trackRefExpr = "trackRef ? 1 : 0"
+                case .anyList, .stringAnyMap, .int32AnyMap:
+                    trackRefExpr = "0"
+                }
+            } else {
+                trackRefExpr = "(trackRef && \(field.typeText).isReferenceTrackableType) ? 1 : 0"
+            }
             return "\"\(field.fieldIdentifier),\(typeID),\\(\(trackRefExpr)),\(nullable);\""
         }
     if entries.isEmpty {
@@ -496,7 +572,12 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField]) -> String {
 
     let args = fields
         .sorted(by: { $0.originalIndex < $1.originalIndex })
-        .map { "\($0.name): \($0.typeText).foryDefault()" }
+        .map { field in
+            if field.dynamicAnyCodec != nil {
+                return "\(field.name): \(dynamicAnyDefaultExpr(typeText: field.typeText))"
+            }
+            return "\(field.name): \(field.typeText).foryDefault()"
+        }
         .joined(separator: ",\n            ")
 
     return """
@@ -538,6 +619,13 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
 
 private func schemaWriteLine(for field: ParsedField) -> String {
     let refMode = fieldRefModeExpression(field)
+    if let dynamicAnyCodec = field.dynamicAnyCodec {
+        return dynamicAnyWriteLine(
+            field: field,
+            dynamicAnyCodec: dynamicAnyCodec,
+            refModeExpr: refMode
+        )
+    }
     let hasGenerics = field.isCollection ? "true" : "false"
     if let codecType = field.customCodecType {
         if field.isOptional {
@@ -550,6 +638,13 @@ private func schemaWriteLine(for field: ParsedField) -> String {
 
 private func compatibleWriteLine(for field: ParsedField) -> String {
     let refMode = fieldRefModeExpression(field)
+    if let dynamicAnyCodec = field.dynamicAnyCodec {
+        return dynamicAnyWriteLine(
+            field: field,
+            dynamicAnyCodec: dynamicAnyCodec,
+            refModeExpr: refMode
+        )
+    }
     let hasGenerics = field.isCollection ? "true" : "false"
     if let codecType = field.customCodecType {
         if field.isOptional {
@@ -648,7 +743,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
         .joined(separator: ",\n            ")
     let compatibleDefaults = fields
         .sorted(by: { $0.originalIndex < $1.originalIndex })
-        .map { "var __\($0.name) = \($0.typeText).foryDefault()" }
+        .map { field in
+            if field.dynamicAnyCodec != nil {
+                return "var __\(field.name): \(field.typeText) = \(dynamicAnyDefaultExpr(typeText: field.typeText))"
+            }
+            return "var __\(field.name) = \(field.typeText).foryDefault()"
+        }
         .joined(separator: "\n                ")
     let compatibleCases = sortedFields.map { field -> String in
         let valueExpr = readFieldExpr(
@@ -693,6 +793,14 @@ private func readFieldExpr(
     refModeExpr: String,
     readTypeInfoExpr: String
 ) -> String {
+    if let dynamicAnyCodec = field.dynamicAnyCodec {
+        return dynamicAnyReadExpr(
+            field: field,
+            dynamicAnyCodec: dynamicAnyCodec,
+            refModeExpr: refModeExpr,
+            readTypeInfoExpr: readTypeInfoExpr
+        )
+    }
     if let codecType = field.customCodecType {
         if field.isOptional {
             return "try \(codecType)?.foryRead(context, refMode: \(refModeExpr), readTypeInfo: false)?.rawValue"
@@ -702,8 +810,61 @@ private func readFieldExpr(
     return "try \(field.typeText).foryRead(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"
 }
 
+private func dynamicAnyWriteLine(
+    field: ParsedField,
+    dynamicAnyCodec: DynamicAnyCodecKind,
+    refModeExpr: String
+) -> String {
+    switch dynamicAnyCodec {
+    case .anyValue:
+        return "try context.writeAny(self.\(field.name), refMode: \(refModeExpr), writeTypeInfo: true, hasGenerics: false)"
+    case .anyList:
+        if field.isOptional {
+            return "try context.writeAnyList(self.\(field.name) as [Any]?, refMode: \(refModeExpr), hasGenerics: true)"
+        }
+        return "try context.writeAnyList(self.\(field.name) as [Any], refMode: \(refModeExpr), hasGenerics: true)"
+    case .stringAnyMap:
+        if field.isOptional {
+            return "try context.writeStringAnyMap(self.\(field.name) as [String: Any]?, refMode: \(refModeExpr), hasGenerics: true)"
+        }
+        return "try context.writeStringAnyMap(self.\(field.name) as [String: Any], refMode: \(refModeExpr), hasGenerics: true)"
+    case .int32AnyMap:
+        if field.isOptional {
+            return "try context.writeInt32AnyMap(self.\(field.name) as [Int32: Any]?, refMode: \(refModeExpr), hasGenerics: true)"
+        }
+        return "try context.writeInt32AnyMap(self.\(field.name) as [Int32: Any], refMode: \(refModeExpr), hasGenerics: true)"
+    }
+}
+
+private func dynamicAnyReadExpr(
+    field: ParsedField,
+    dynamicAnyCodec: DynamicAnyCodecKind,
+    refModeExpr: String,
+    readTypeInfoExpr _: String
+) -> String {
+    let metatypeExpr = "(\(field.typeText)).self"
+    switch dynamicAnyCodec {
+    case .anyValue:
+        return "try castAnyDynamicValue(context.readAny(refMode: \(refModeExpr), readTypeInfo: true), to: \(metatypeExpr))"
+    case .anyList:
+        return "try castAnyDynamicValue(context.readAnyList(refMode: \(refModeExpr)), to: \(metatypeExpr))"
+    case .stringAnyMap:
+        return "try castAnyDynamicValue(context.readStringAnyMap(refMode: \(refModeExpr)), to: \(metatypeExpr))"
+    case .int32AnyMap:
+        return "try castAnyDynamicValue(context.readInt32AnyMap(refMode: \(refModeExpr)), to: \(metatypeExpr))"
+    }
+}
+
 private func fieldRefModeExpression(_ field: ParsedField) -> String {
     let nullable = field.isOptional ? "true" : "false"
+    if let dynamicAnyCodec = field.dynamicAnyCodec {
+        switch dynamicAnyCodec {
+        case .anyValue:
+            return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef)"
+        case .anyList, .stringAnyMap, .int32AnyMap:
+            return "RefMode.from(nullable: \(nullable), trackRef: false)"
+        }
+    }
     return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef && \(field.typeText).isReferenceTrackableType)"
 }
 
@@ -711,10 +872,22 @@ private func compatibleTypeMetaFieldExpression(
     _ field: ParsedField,
     trackRefExpression: String
 ) -> String {
-    buildCompatibleTypeMetaFieldTypeExpression(
+    let fieldTrackRefExpression: String
+    if let dynamicAnyCodec = field.dynamicAnyCodec {
+        switch dynamicAnyCodec {
+        case .anyValue:
+            fieldTrackRefExpression = trackRefExpression
+        case .anyList, .stringAnyMap, .int32AnyMap:
+            fieldTrackRefExpression = "false"
+        }
+    } else {
+        fieldTrackRefExpression = "\(trackRefExpression) && \(field.typeText).isReferenceTrackableType"
+    }
+
+    return buildCompatibleTypeMetaFieldTypeExpression(
         typeText: field.typeText,
         nullableExpression: field.isOptional ? "true" : "false",
-        trackRefExpression: "\(trackRefExpression) && \(field.typeText).isReferenceTrackableType",
+        trackRefExpression: fieldTrackRefExpression,
         explicitTypeID: field.customCodecType == nil ? nil : field.typeID
     )
 }
@@ -790,6 +963,8 @@ TypeMetaFieldType(
     let typeIDExpr: String
     if let explicitTypeID {
         typeIDExpr = "\(explicitTypeID)"
+    } else if isDynamicAnyConcreteType(concreteType) {
+        typeIDExpr = "UInt32(ForyTypeId.unknown.rawValue)"
     } else {
         typeIDExpr = "UInt32(\(concreteType).staticTypeId.rawValue)"
     }
@@ -840,6 +1015,9 @@ private struct TypeClassification {
 
 private func classifyType(_ typeText: String) -> TypeClassification {
     let normalized = trimType(typeText)
+    if isDynamicAnyConcreteType(normalized) {
+        return .init(typeID: 0, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
+    }
 
     switch normalized {
     case "Bool":
@@ -914,6 +1092,57 @@ private func parseArrayElement(_ type: String) -> String? {
         return String(type[start..<type.index(before: type.endIndex)])
     }
     return nil
+}
+
+private func dynamicAnyDefaultExpr(typeText: String) -> String {
+    let optional = unwrapOptional(typeText)
+    if optional.isOptional {
+        return "nil"
+    }
+
+    let concreteType = normalizeTypeForDynamicAny(optional.type)
+    if concreteType == "AnyObject" {
+        return "NSNull()"
+    }
+    if concreteType == "Any" || isAnySerializerExistentialType(concreteType) {
+        return "ForyAnyNullValue()"
+    }
+    if parseArrayElement(concreteType) != nil {
+        return "[]"
+    }
+    if parseDictionary(concreteType) != nil {
+        return "[:]"
+    }
+    return "\(typeText)()"
+}
+
+private func isDynamicAnyConcreteType(_ typeText: String) -> Bool {
+    let normalized = normalizeTypeForDynamicAny(typeText)
+    if normalized == "Any" || normalized == "AnyObject" {
+        return true
+    }
+    return isAnySerializerExistentialType(normalized)
+}
+
+private func isAnySerializerExistentialType(_ normalizedType: String) -> Bool {
+    let normalized = normalizeTypeForDynamicAny(normalizedType)
+    guard normalized.hasPrefix("any") else {
+        return false
+    }
+
+    let protocolType = String(normalized.dropFirst(3))
+    if protocolType == "Serializer" {
+        return true
+    }
+    return protocolType.hasSuffix(".Serializer")
+}
+
+private func normalizeTypeForDynamicAny(_ typeText: String) -> String {
+    var normalized = trimType(typeText)
+    while normalized.hasPrefix("("), normalized.hasSuffix(")"), normalized.count > 1 {
+        normalized = String(normalized.dropFirst().dropLast())
+    }
+    return normalized
 }
 
 private func parseSetElement(_ type: String) -> String? {

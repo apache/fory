@@ -371,3 +371,111 @@ public final class ReadContext {
         metaStringReadState.reset()
     }
 }
+
+public extension WriteContext {
+    func writeAny(
+        _ value: Any?,
+        refMode: RefMode,
+        writeTypeInfo: Bool = true,
+        hasGenerics: Bool = false
+    ) throws {
+        try ForySwift.writeAny(
+            value,
+            context: self,
+            refMode: refMode,
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: hasGenerics
+        )
+    }
+
+    func writeAnyList(
+        _ value: [Any]?,
+        refMode: RefMode,
+        writeTypeInfo: Bool = false,
+        hasGenerics: Bool = true
+    ) throws {
+        try ForySwift.writeAnyList(
+            value,
+            context: self,
+            refMode: refMode,
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: hasGenerics
+        )
+    }
+
+    func writeStringAnyMap(
+        _ value: [String: Any]?,
+        refMode: RefMode,
+        writeTypeInfo: Bool = false,
+        hasGenerics: Bool = true
+    ) throws {
+        try ForySwift.writeStringAnyMap(
+            value,
+            context: self,
+            refMode: refMode,
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: hasGenerics
+        )
+    }
+
+    func writeInt32AnyMap(
+        _ value: [Int32: Any]?,
+        refMode: RefMode,
+        writeTypeInfo: Bool = false,
+        hasGenerics: Bool = true
+    ) throws {
+        try ForySwift.writeInt32AnyMap(
+            value,
+            context: self,
+            refMode: refMode,
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: hasGenerics
+        )
+    }
+}
+
+public extension ReadContext {
+    func readAny(
+        refMode: RefMode,
+        readTypeInfo: Bool = true
+    ) throws -> Any? {
+        try ForySwift.readAny(
+            context: self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+
+    func readAnyList(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [Any]? {
+        try ForySwift.readAnyList(
+            context: self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+
+    func readStringAnyMap(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [String: Any]? {
+        try ForySwift.readStringAnyMap(
+            context: self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+
+    func readInt32AnyMap(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [Int32: Any]? {
+        try ForySwift.readInt32AnyMap(
+            context: self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+}
