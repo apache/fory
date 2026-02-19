@@ -184,6 +184,7 @@ pub mod meta;
 pub mod resolver;
 pub mod row;
 pub mod serializer;
+pub mod stream;
 pub mod types;
 pub mod util;
 
@@ -199,3 +200,4 @@ pub use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 pub use crate::serializer::weak::{ArcWeak, RcWeak};
 pub use crate::serializer::{read_data, write_data, ForyDefault, Serializer, StructSerializer};
 pub use crate::types::{RefFlag, RefMode, TypeId};
+pub use stream::ForyStreamBuf;
