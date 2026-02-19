@@ -341,12 +341,12 @@ private struct Cat {
 
 @ForyObject
 private struct AnimalListHolder {
-    var animals: [AnySerializerValue] = []
+    var animals: [Any] = []
 }
 
 @ForyObject
 private struct AnimalMapHolder {
-    var animalMap: [String: AnySerializerValue] = [:]
+    var animalMap: [String: Any] = [:]
 }
 
 private enum StringOrLong: Serializer, Equatable {
@@ -810,7 +810,7 @@ private func handlePolymorphicList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     registerPolymorphicTypes(fory)
     return try roundTripStream(bytes) { reader, out in
-        let animals: [AnySerializerValue] = try fory.deserializeFrom(reader)
+        let animals: [Any] = try fory.deserializeFrom(reader)
         let holder: AnimalListHolder = try fory.deserializeFrom(reader)
         try fory.serializeTo(&out, value: animals)
         try fory.serializeTo(&out, value: holder)
@@ -821,7 +821,7 @@ private func handlePolymorphicMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     registerPolymorphicTypes(fory)
     return try roundTripStream(bytes) { reader, out in
-        let animalMap: [String: AnySerializerValue] = try fory.deserializeFrom(reader)
+        let animalMap: [String: Any] = try fory.deserializeFrom(reader)
         let holder: AnimalMapHolder = try fory.deserializeFrom(reader)
         try fory.serializeTo(&out, value: animalMap)
         try fory.serializeTo(&out, value: holder)

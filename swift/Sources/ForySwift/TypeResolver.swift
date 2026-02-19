@@ -255,7 +255,7 @@ public final class TypeResolver {
         }
     }
 
-    public func readDynamicValue(typeInfo: DynamicTypeInfo, context: ReadContext) throws -> any Serializer {
+    public func readDynamicValue(typeInfo: DynamicTypeInfo, context: ReadContext) throws -> Any {
         let value: Any
         switch typeInfo.wireTypeID {
         case .bool:
@@ -317,9 +317,9 @@ public final class TypeResolver {
         case .float64Array:
             value = try [Double].foryRead(context, refMode: .none, readTypeInfo: false)
         case .list:
-            value = try [AnySerializerValue].foryRead(context, refMode: .none, readTypeInfo: false)
+            value = try context.readAnyList(refMode: .none) ?? []
         case .map:
-            value = try [String: AnySerializerValue].foryRead(context, refMode: .none, readTypeInfo: false)
+            value = try readDynamicAnyMapValue(context: context)
         case .structType, .enumType, .ext, .typedUnion:
             if let userTypeID = typeInfo.userTypeID {
                 value = try readByUserTypeID(userTypeID, context: context)
@@ -363,17 +363,11 @@ public final class TypeResolver {
                 )
             }
         case .none:
-            value = ForyNoneValue()
+            value = ForyAnyNullValue()
         default:
             throw ForyError.invalidData("unsupported dynamic type id \(typeInfo.wireTypeID)")
         }
-
-        guard let serializer = value as? any Serializer else {
-            throw ForyError.invalidData(
-                "dynamic payload type \(type(of: value)) does not conform to Serializer"
-            )
-        }
-        return serializer
+        return value
     }
 
     private func markRegistrationMode(kind: ForyTypeId, registerByName: Bool) {
