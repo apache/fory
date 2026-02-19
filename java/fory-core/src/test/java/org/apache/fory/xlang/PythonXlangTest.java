@@ -89,37 +89,37 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testList(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testMap(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testItem(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: simple struct tests covered in CrossLanguageTest");
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testColor(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: enum tests covered in CrossLanguageTest");
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testStructWithList(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: struct with list covered in CrossLanguageTest");
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testStructWithMap(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: struct with map covered in CrossLanguageTest");
   }
@@ -130,7 +130,7 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testInteger(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
@@ -151,79 +151,79 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSimpleStruct(boolean enableCodegen) throws IOException {
     super.testSimpleStruct(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSimpleNamedStruct(boolean enableCodegen) throws IOException {
     super.testSimpleNamedStruct(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSkipIdCustom(boolean enableCodegen) throws IOException {
     super.testSkipIdCustom(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSkipNameCustom(boolean enableCodegen) throws IOException {
     super.testSkipNameCustom(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testConsistentNamed(boolean enableCodegen) throws IOException {
     super.testConsistentNamed(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testStructVersionCheck(boolean enableCodegen) throws IOException {
     super.testStructVersionCheck(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testPolymorphicList(boolean enableCodegen) throws IOException {
     super.testPolymorphicList(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testPolymorphicMap(boolean enableCodegen) throws IOException {
     super.testPolymorphicMap(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testCollectionElementRefOverride(boolean enableCodegen) throws IOException {
     super.testCollectionElementRefOverride(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen) throws IOException {
     super.testNullableFieldSchemaConsistentNotNull(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldSchemaConsistentNull(boolean enableCodegen) throws IOException {
     super.testNullableFieldSchemaConsistentNull(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldCompatibleNotNull(boolean enableCodegen) throws IOException {
     super.testNullableFieldCompatibleNotNull(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldCompatibleNull(boolean enableCodegen) throws IOException {
     // Python properly supports Optional and sends actual null values,
     // unlike Rust which sends default values. Override with Python-specific expectations.
@@ -291,43 +291,43 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnionXlang(boolean enableCodegen) throws IOException {
     // Skip: Python doesn't have Union xlang support yet
     throw new SkipException("Skipping testUnionXlang: Python Union xlang support not implemented");
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testRefSchemaConsistent(boolean enableCodegen) throws IOException {
     super.testRefSchemaConsistent(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testRefCompatible(boolean enableCodegen) throws IOException {
     super.testRefCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testCircularRefSchemaConsistent(boolean enableCodegen) throws IOException {
     super.testCircularRefSchemaConsistent(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testCircularRefCompatible(boolean enableCodegen) throws IOException {
     super.testCircularRefCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaConsistent(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaConsistentSimple(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaConsistentSimple(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaCompatible(enableCodegen);
   }

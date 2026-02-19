@@ -126,27 +126,27 @@ public class GoXlangTest extends XlangTestBase {
     super.testCrossLanguageSerializer();
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSimpleStruct(boolean enableCodegen) throws java.io.IOException {
     super.testSimpleStruct(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSimpleNamedStruct(boolean enableCodegen) throws java.io.IOException {
     super.testSimpleNamedStruct(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testList(boolean enableCodegen) throws java.io.IOException {
     super.testList(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testMap(boolean enableCodegen) throws java.io.IOException {
     super.testMap(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testInteger(boolean enableCodegen) throws java.io.IOException {
     super.testInteger(enableCodegen);
   }
@@ -165,93 +165,93 @@ public class GoXlangTest extends XlangTestBase {
     super.testItem(false);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testColor(boolean enableCodegen) throws java.io.IOException {
     super.testColor(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testStructWithList(boolean enableCodegen) throws java.io.IOException {
     super.testStructWithList(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
     super.testStructWithMap(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
     super.testCollectionElementRefOverride(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSkipIdCustom(boolean enableCodegen) throws java.io.IOException {
     super.testSkipIdCustom(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSkipNameCustom(boolean enableCodegen) throws java.io.IOException {
     super.testSkipNameCustom(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testConsistentNamed(boolean enableCodegen) throws java.io.IOException {
     super.testConsistentNamed(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testStructVersionCheck(boolean enableCodegen) throws java.io.IOException {
     super.testStructVersionCheck(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testPolymorphicList(boolean enableCodegen) throws java.io.IOException {
     super.testPolymorphicList(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testPolymorphicMap(boolean enableCodegen) throws java.io.IOException {
     super.testPolymorphicMap(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testOneStringFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     super.testOneStringFieldSchemaConsistent(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testOneStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testOneStringFieldCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testTwoStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testTwoStringFieldCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testSchemaEvolutionCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testOneEnumFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     super.testOneEnumFieldSchemaConsistent(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testOneEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testOneEnumFieldCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testTwoEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testTwoEnumFieldCompatible(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testEnumSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     // Go-specific override: Go writes null for nil pointers (nullable=true by default)
     String caseName = "test_enum_schema_evolution_compatible";
@@ -317,14 +317,14 @@ public class GoXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen)
       throws java.io.IOException {
     super.testNullableFieldSchemaConsistentNotNull(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldSchemaConsistentNull(boolean enableCodegen)
       throws java.io.IOException {
     super.testNullableFieldSchemaConsistentNull(enableCodegen);
@@ -341,7 +341,7 @@ public class GoXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
     // Go-specific override: Unlike Rust which has non-nullable reference types (Vec<T>),
     // Go's slices and maps can be nil and default to nullable in COMPATIBLE mode.
@@ -446,48 +446,48 @@ public class GoXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnionXlang(boolean enableCodegen) throws java.io.IOException {
     // Skip: Go doesn't have Union xlang support yet
     throw new SkipException("Skipping testUnionXlang: Go Union xlang support not implemented");
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     // Run the test to debug hash mismatch
     super.testRefSchemaConsistent(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testRefCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testRefCompatible(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testCircularRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     super.testCircularRefSchemaConsistent(enableCodegen);
   }
 
   @Override
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testCircularRefCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testCircularRefCompatible(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaConsistent(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaConsistentSimple(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaConsistentSimple(enableCodegen);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaCompatible(enableCodegen);
   }
