@@ -11,11 +11,7 @@ let package = Package(
     products: [
         .library(
             name: "Fory",
-            targets: ["ForyCore"]
-        ),
-        .library(
-            name: "ForyCore",
-            targets: ["ForyCore"]
+            targets: ["Fory"]
         ),
         .executable(
             name: "ForySwiftXlangPeer",
@@ -27,28 +23,28 @@ let package = Package(
     ],
     targets: [
         .macro(
-            name: "ForyMacros",
+            name: "ForyMacro",
             dependencies: [
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
             ],
-            path: "Sources/ForyMacros"
+            path: "Sources/ForyMacro"
         ),
         .target(
-            name: "ForyCore",
-            dependencies: ["ForyMacros"],
-            path: "Sources/ForyCore"
+            name: "Fory",
+            dependencies: ["ForyMacro"],
+            path: "Sources/Fory"
         ),
         .executableTarget(
             name: "ForySwiftXlangPeer",
-            dependencies: ["ForyCore"],
+            dependencies: ["Fory"],
             path: "Sources/ForyXlangTests"
         ),
         .testTarget(
             name: "ForyTests",
-            dependencies: ["ForyCore"],
+            dependencies: ["Fory"],
             path: "Tests/ForyTests"
         ),
     ]

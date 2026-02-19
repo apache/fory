@@ -16,7 +16,7 @@
 // under the License.
 
 import Foundation
-import ForyCore
+import Fory
 
 // MARK: - Shared test types
 
