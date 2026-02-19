@@ -20,17 +20,19 @@ import Fory
 
 // MARK: - Shared test types
 
-private enum PeerColor: UInt32, Serializer {
-    case green = 0
-    case red = 1
-    case blue = 2
-    case white = 3
+@ForyObject
+private enum PeerColor {
+    case green
+    case red
+    case blue
+    case white
 }
 
-private enum PeerTestEnum: UInt32, Serializer {
-    case valueA = 0
-    case valueB = 1
-    case valueC = 2
+@ForyObject
+private enum PeerTestEnum {
+    case valueA
+    case valueB
+    case valueC
 }
 
 private struct PeerDate: Serializer, Equatable {
@@ -321,7 +323,11 @@ private struct AnimalMapHolder {
     var animalMap: [String: Any] = [:]
 }
 
-private typealias StringOrLong = ForyUnion2<String, Int64>
+@ForyObject
+private enum StringOrLong {
+    case text(String)
+    case number(Int64)
+}
 
 @ForyObject
 private struct StructWithUnion2 {

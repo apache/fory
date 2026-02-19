@@ -53,18 +53,6 @@ struct EncodedNumberFields: Equatable {
     var u64Tagged: UInt64
 }
 
-enum AutoPeerColor: UInt32, Serializer, Equatable {
-    case red = 0
-    case green = 1
-    case blue = 2
-}
-
-@ForyObject
-struct EnumAndUnionHolder: Equatable {
-    var color: AutoPeerColor = .red
-    var value: ForyUnion2<String, Int64> = .foryDefault()
-}
-
 @ForyObject
 final class Node {
     var value: Int32 = 0
@@ -513,23 +501,6 @@ func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
     #expect(fields[0].fieldType.typeID == ForyTypeId.uint32.rawValue)
     #expect(fields[1].fieldName == "u64Tagged")
     #expect(fields[1].fieldType.typeID == ForyTypeId.taggedUInt64.rawValue)
-}
-
-@Test
-func enumAndTypedUnionRoundTrip() throws {
-    let fory = Fory()
-    fory.register(EnumAndUnionHolder.self, id: 302)
-
-    let value1 = EnumAndUnionHolder(color: .green, value: .first("hello"))
-    let value2 = EnumAndUnionHolder(color: .blue, value: .second(12345))
-
-    let data1 = try fory.serialize(value1)
-    let decoded1: EnumAndUnionHolder = try fory.deserialize(data1)
-    #expect(decoded1 == value1)
-
-    let data2 = try fory.serialize(value2)
-    let decoded2: EnumAndUnionHolder = try fory.deserialize(data2)
-    #expect(decoded2 == value2)
 }
 
 @Test
