@@ -43,7 +43,7 @@ usage() {
     echo "Options:"
     echo "  --data <struct|sample|mediacontent|structlist|samplelist|mediacontentlist>"
     echo "                               Filter benchmark by data type"
-    echo "  --serializer <fory|fory_compatible|protobuf|msgpack|msgpack_map>"
+    echo "  --serializer <fory|protobuf|msgpack>"
     echo "                               Filter benchmark by serializer"
     echo "  --duration <seconds>         Minimum time to run each benchmark (e.g., 10, 30)"
     echo "  --debug                      Build with debug symbols and low optimization for profiling"
@@ -53,9 +53,7 @@ usage() {
     echo "  $0                          # Run all benchmarks"
     echo "  $0 --data struct            # Run only Struct benchmarks"
     echo "  $0 --serializer fory        # Run only Fory benchmarks"
-    echo "  $0 --serializer fory_compatible"
-    echo "                              # Run only Fory compatible benchmarks"
-    echo "  $0 --serializer msgpack_map # Run only Msgpack map benchmarks"
+    echo "  $0 --serializer msgpack     # Run only Msgpack benchmarks"
     echo "  $0 --data struct --serializer fory"
     echo "  $0 --duration 10            # Run each benchmark for at least 10 seconds"
     echo "  $0 --debug                  # Build for profiling (visible function names in flamegraph)"
@@ -132,21 +130,15 @@ if [[ -n "$SERIALIZER" ]]; then
         fory)
             SERIALIZER_PATTERN="Fory"
             ;;
-        fory_compatible|forycompatible)
-            SERIALIZER_PATTERN="ForyCompatible"
-            ;;
         protobuf)
             SERIALIZER_PATTERN="Protobuf"
             ;;
         msgpack)
             SERIALIZER_PATTERN="Msgpack"
             ;;
-        msgpack_map|msgpackmap)
-            SERIALIZER_PATTERN="MsgpackMap"
-            ;;
         *)
             echo -e "${RED}Unknown serializer: $SERIALIZER${NC}"
-            echo "Expected one of: fory, fory_compatible, protobuf, msgpack, msgpack_map"
+            echo "Expected one of: fory, protobuf, msgpack"
             exit 1
             ;;
     esac

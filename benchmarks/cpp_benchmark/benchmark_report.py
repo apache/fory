@@ -34,18 +34,14 @@ except ImportError:
 # === Colors and serializer order ===
 COLORS = {
     "fory": "#FF6f01",  # Orange
-    "fory_compatible": "#FFB266",  # Shallow orange
     "protobuf": "#55BCC2",  # Teal
     "msgpack": (0.55, 0.40, 0.45),
-    "msgpack_map": (0.80, 0.5, 0.6),
 }
-SERIALIZER_ORDER = ["fory", "fory_compatible", "protobuf", "msgpack", "msgpack_map"]
+SERIALIZER_ORDER = ["fory", "protobuf", "msgpack"]
 SERIALIZER_LABELS = {
     "fory": "fory",
-    "fory_compatible": "fory_compatible",
     "protobuf": "protobuf",
     "msgpack": "msgpack",
-    "msgpack_map": "msgpack_map",
 }
 
 # === Parse arguments ===
@@ -94,9 +90,8 @@ def parse_benchmark_name(name):
     """
     Parse benchmark names like:
     - BM_Fory_Struct_Serialize
-    - BM_ForyCompatible_Struct_Serialize
     - BM_Protobuf_Sample_Deserialize
-    - BM_MsgpackMap_MediaContent_Deserialize
+    - BM_Msgpack_MediaContent_Deserialize
     Returns: (library, datatype, operation)
     """
     # Remove BM_ prefix
@@ -106,10 +101,6 @@ def parse_benchmark_name(name):
     parts = name.split("_")
     if len(parts) >= 3:
         library = parts[0].lower()
-        if library == "forycompatible":
-            library = "fory_compatible"
-        elif library == "msgpackmap":
-            library = "msgpack_map"
         datatype = parts[1].lower()
         operation = parts[2].lower()
         return library, datatype, operation
@@ -348,10 +339,10 @@ for datatype, img in plot_images:
 md_report.append("\n## Benchmark Results\n\n")
 md_report.append("### Timing Results (nanoseconds)\n\n")
 md_report.append(
-    "| Datatype | Operation | fory (ns) | fory_compatible (ns) | protobuf (ns) | msgpack (ns) | msgpack_map (ns) | Fastest |\n"
+    "| Datatype | Operation | fory (ns) | protobuf (ns) | msgpack (ns) | Fastest |\n"
 )
 md_report.append(
-    "|----------|-----------|-----------|----------------------|---------------|--------------|------------------|---------|\n"
+    "|----------|-----------|-----------|---------------|--------------|---------|\n"
 )
 
 for datatype in datatypes:
@@ -375,10 +366,10 @@ for datatype in datatypes:
 # Throughput table
 md_report.append("\n### Throughput Results (ops/sec)\n\n")
 md_report.append(
-    "| Datatype | Operation | fory TPS | fory_compatible TPS | protobuf TPS | msgpack TPS | msgpack_map TPS | Fastest |\n"
+    "| Datatype | Operation | fory TPS | protobuf TPS | msgpack TPS | Fastest |\n"
 )
 md_report.append(
-    "|----------|-----------|----------|---------------------|--------------|-------------|-----------------|---------|\n"
+    "|----------|-----------|----------|--------------|-------------|---------|\n"
 )
 
 for datatype in datatypes:
@@ -393,25 +384,22 @@ for datatype in datatypes:
         md_report.append(
             "| "
             + f"{format_datatype_table_label(datatype)} | {op.capitalize()} | "
-            + " | ".join(f"{tps[lib]:,.0f}" if tps[lib] > 0 else "N/A" for lib in SERIALIZER_ORDER)
+            + " | ".join(
+                f"{tps[lib]:,.0f}" if tps[lib] > 0 else "N/A"
+                for lib in SERIALIZER_ORDER
+            )
             + f" | {fastest_str} |\n"
         )
 
 # Serialized sizes
 if sizes:
     md_report.append("\n### Serialized Data Sizes (bytes)\n\n")
-    md_report.append(
-        "| Datatype | fory | fory_compatible | protobuf | msgpack | msgpack_map |\n"
-    )
-    md_report.append(
-        "|----------|------|-----------------|----------|---------|-------------|\n"
-    )
+    md_report.append("| Datatype | fory | protobuf | msgpack |\n")
+    md_report.append("|----------|------|----------|---------|\n")
     size_prefix = {
         "fory": "fory",
-        "fory_compatible": "fory_compatible",
         "protobuf": "protobuf",
         "msgpack": "msgpack",
-        "msgpack_map": "msgpack_map",
     }
     size_datatypes = [
         ("struct", "Struct"),
@@ -435,12 +423,10 @@ if sizes:
                 row_values.append(str(value))
                 has_value = True
         if has_value:
-            md_report.append(
-                f"| {datatype_label} | " + " | ".join(row_values) + " |\n"
-            )
+            md_report.append(f"| {datatype_label} | " + " | ".join(row_values) + " |\n")
 
 # Save Markdown
-report_path = os.path.join(output_dir, "REPORT.md")
+report_path = os.path.join(output_dir, "README.md")
 with open(report_path, "w", encoding="utf-8") as f:
     f.writelines(md_report)
 

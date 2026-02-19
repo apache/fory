@@ -47,7 +47,7 @@ struct NumericStruct {
            f4 == other.f4 && f5 == other.f5 && f6 == other.f6 &&
            f7 == other.f7 && f8 == other.f8;
   }
-  MSGPACK_DEFINE(f1, f2, f3, f4, f5, f6, f7, f8);
+  MSGPACK_DEFINE_MAP(f1, f2, f3, f4, f5, f6, f7, f8);
 };
 FORY_STRUCT(NumericStruct, f1, f2, f3, f4, f5, f6, f7, f8);
 FORY_FIELD_TAGS(NumericStruct, (f1, 1), (f2, 2), (f3, 3), (f4, 4), (f5, 5),
@@ -96,12 +96,12 @@ struct Sample {
            short_array == other.short_array && char_array == other.char_array &&
            boolean_array == other.boolean_array && string == other.string;
   }
-  MSGPACK_DEFINE(int_value, long_value, float_value, double_value, short_value,
-                 char_value, boolean_value, int_value_boxed, long_value_boxed,
-                 float_value_boxed, double_value_boxed, short_value_boxed,
-                 char_value_boxed, boolean_value_boxed, int_array, long_array,
-                 float_array, double_array, short_array, char_array,
-                 boolean_array, string);
+  MSGPACK_DEFINE_MAP(int_value, long_value, float_value, double_value,
+                     short_value, char_value, boolean_value, int_value_boxed,
+                     long_value_boxed, float_value_boxed, double_value_boxed,
+                     short_value_boxed, char_value_boxed, boolean_value_boxed,
+                     int_array, long_array, float_array, double_array,
+                     short_array, char_array, boolean_array, string);
 };
 FORY_STRUCT(Sample, int_value, long_value, float_value, double_value,
             short_value, char_value, boolean_value, int_value_boxed,
@@ -147,8 +147,8 @@ struct Media {
            persons == other.persons && player == other.player &&
            copyright == other.copyright;
   }
-  MSGPACK_DEFINE(uri, title, width, height, format, duration, size, bitrate,
-                 has_bitrate, persons, player, copyright);
+  MSGPACK_DEFINE_MAP(uri, title, width, height, format, duration, size, bitrate,
+                     has_bitrate, persons, player, copyright);
 };
 FORY_STRUCT(Media, uri, title, width, height, format, duration, size, bitrate,
             has_bitrate, persons, player, copyright);
@@ -167,7 +167,7 @@ struct Image {
     return uri == other.uri && title == other.title && width == other.width &&
            height == other.height && size == other.size;
   }
-  MSGPACK_DEFINE(uri, title, width, height, size);
+  MSGPACK_DEFINE_MAP(uri, title, width, height, size);
 };
 FORY_STRUCT(Image, uri, title, width, height, size);
 FORY_FIELD_TAGS(Image, (uri, 1), (title, 2), (width, 3), (height, 4),
@@ -180,7 +180,7 @@ struct MediaContent {
   bool operator==(const MediaContent &other) const {
     return media == other.media && images == other.images;
   }
-  MSGPACK_DEFINE(media, images);
+  MSGPACK_DEFINE_MAP(media, images);
 };
 FORY_STRUCT(MediaContent, media, images);
 FORY_FIELD_TAGS(MediaContent, (media, 1), (images, 2));
@@ -191,7 +191,7 @@ struct StructList {
   bool operator==(const StructList &other) const {
     return struct_list == other.struct_list;
   }
-  MSGPACK_DEFINE(struct_list);
+  MSGPACK_DEFINE_MAP(struct_list);
 };
 FORY_STRUCT(StructList, struct_list);
 FORY_FIELD_TAGS(StructList, (struct_list, 1));
@@ -202,7 +202,7 @@ struct SampleList {
   bool operator==(const SampleList &other) const {
     return sample_list == other.sample_list;
   }
-  MSGPACK_DEFINE(sample_list);
+  MSGPACK_DEFINE_MAP(sample_list);
 };
 FORY_STRUCT(SampleList, sample_list);
 FORY_FIELD_TAGS(SampleList, (sample_list, 1));
@@ -213,7 +213,7 @@ struct MediaContentList {
   bool operator==(const MediaContentList &other) const {
     return media_content_list == other.media_content_list;
   }
-  MSGPACK_DEFINE(media_content_list);
+  MSGPACK_DEFINE_MAP(media_content_list);
 };
 FORY_STRUCT(MediaContentList, media_content_list);
 FORY_FIELD_TAGS(MediaContentList, (media_content_list, 1));
@@ -600,204 +600,6 @@ protobuf::MediaContentList create_proto_media_content_list() {
 }
 
 // ============================================================================
-// Msgpack map-mode definitions and conversion helpers
-// ============================================================================
-
-struct MsgpackMapNumericStruct {
-  int32_t f1;
-  int32_t f2;
-  int32_t f3;
-  int32_t f4;
-  int32_t f5;
-  int32_t f6;
-  int32_t f7;
-  int32_t f8;
-
-  MSGPACK_DEFINE_MAP(f1, f2, f3, f4, f5, f6, f7, f8);
-};
-
-struct MsgpackMapSample {
-  int32_t int_value;
-  int64_t long_value;
-  float float_value;
-  double double_value;
-  int32_t short_value;
-  int32_t char_value;
-  bool boolean_value;
-  int32_t int_value_boxed;
-  int64_t long_value_boxed;
-  float float_value_boxed;
-  double double_value_boxed;
-  int32_t short_value_boxed;
-  int32_t char_value_boxed;
-  bool boolean_value_boxed;
-  std::vector<int32_t> int_array;
-  std::vector<int64_t> long_array;
-  std::vector<float> float_array;
-  std::vector<double> double_array;
-  std::vector<int32_t> short_array;
-  std::vector<int32_t> char_array;
-  std::vector<bool> boolean_array;
-  std::string string;
-
-  MSGPACK_DEFINE_MAP(int_value, long_value, float_value, double_value,
-                     short_value, char_value, boolean_value, int_value_boxed,
-                     long_value_boxed, float_value_boxed, double_value_boxed,
-                     short_value_boxed, char_value_boxed, boolean_value_boxed,
-                     int_array, long_array, float_array, double_array,
-                     short_array, char_array, boolean_array, string);
-};
-
-struct MsgpackMapImage {
-  std::string uri;
-  std::string title;
-  int32_t width;
-  int32_t height;
-  Size size;
-
-  MSGPACK_DEFINE_MAP(uri, title, width, height, size);
-};
-
-struct MsgpackMapMedia {
-  std::string uri;
-  std::string title;
-  int32_t width;
-  int32_t height;
-  std::string format;
-  int64_t duration;
-  int64_t size;
-  int32_t bitrate;
-  bool has_bitrate;
-  std::vector<std::string> persons;
-  Player player;
-  std::string copyright;
-
-  MSGPACK_DEFINE_MAP(uri, title, width, height, format, duration, size, bitrate,
-                     has_bitrate, persons, player, copyright);
-};
-
-struct MsgpackMapMediaContent {
-  MsgpackMapMedia media;
-  std::vector<MsgpackMapImage> images;
-
-  MSGPACK_DEFINE_MAP(media, images);
-};
-
-struct MsgpackMapStructList {
-  std::vector<MsgpackMapNumericStruct> struct_list;
-
-  MSGPACK_DEFINE_MAP(struct_list);
-};
-
-struct MsgpackMapSampleList {
-  std::vector<MsgpackMapSample> sample_list;
-
-  MSGPACK_DEFINE_MAP(sample_list);
-};
-
-struct MsgpackMapMediaContentList {
-  std::vector<MsgpackMapMediaContent> media_content_list;
-
-  MSGPACK_DEFINE_MAP(media_content_list);
-};
-
-inline MsgpackMapNumericStruct to_msgpack_map(const NumericStruct &obj) {
-  return MsgpackMapNumericStruct{obj.f1, obj.f2, obj.f3, obj.f4,
-                                 obj.f5, obj.f6, obj.f7, obj.f8};
-}
-
-inline MsgpackMapSample to_msgpack_map(const Sample &obj) {
-  MsgpackMapSample map_obj;
-  map_obj.int_value = obj.int_value;
-  map_obj.long_value = obj.long_value;
-  map_obj.float_value = obj.float_value;
-  map_obj.double_value = obj.double_value;
-  map_obj.short_value = obj.short_value;
-  map_obj.char_value = obj.char_value;
-  map_obj.boolean_value = obj.boolean_value;
-  map_obj.int_value_boxed = obj.int_value_boxed;
-  map_obj.long_value_boxed = obj.long_value_boxed;
-  map_obj.float_value_boxed = obj.float_value_boxed;
-  map_obj.double_value_boxed = obj.double_value_boxed;
-  map_obj.short_value_boxed = obj.short_value_boxed;
-  map_obj.char_value_boxed = obj.char_value_boxed;
-  map_obj.boolean_value_boxed = obj.boolean_value_boxed;
-  map_obj.int_array = obj.int_array;
-  map_obj.long_array = obj.long_array;
-  map_obj.float_array = obj.float_array;
-  map_obj.double_array = obj.double_array;
-  map_obj.short_array = obj.short_array;
-  map_obj.char_array = obj.char_array;
-  map_obj.boolean_array = obj.boolean_array;
-  map_obj.string = obj.string;
-  return map_obj;
-}
-
-inline MsgpackMapImage to_msgpack_map(const Image &obj) {
-  MsgpackMapImage map_obj;
-  map_obj.uri = obj.uri;
-  map_obj.title = obj.title;
-  map_obj.width = obj.width;
-  map_obj.height = obj.height;
-  map_obj.size = obj.size;
-  return map_obj;
-}
-
-inline MsgpackMapMedia to_msgpack_map(const Media &obj) {
-  MsgpackMapMedia map_obj;
-  map_obj.uri = obj.uri;
-  map_obj.title = obj.title;
-  map_obj.width = obj.width;
-  map_obj.height = obj.height;
-  map_obj.format = obj.format;
-  map_obj.duration = obj.duration;
-  map_obj.size = obj.size;
-  map_obj.bitrate = obj.bitrate;
-  map_obj.has_bitrate = obj.has_bitrate;
-  map_obj.persons = obj.persons;
-  map_obj.player = obj.player;
-  map_obj.copyright = obj.copyright;
-  return map_obj;
-}
-
-inline MsgpackMapMediaContent to_msgpack_map(const MediaContent &obj) {
-  MsgpackMapMediaContent map_obj;
-  map_obj.media = to_msgpack_map(obj.media);
-  map_obj.images.reserve(obj.images.size());
-  for (const auto &image : obj.images) {
-    map_obj.images.push_back(to_msgpack_map(image));
-  }
-  return map_obj;
-}
-
-inline MsgpackMapStructList to_msgpack_map(const StructList &obj) {
-  MsgpackMapStructList map_obj;
-  map_obj.struct_list.reserve(obj.struct_list.size());
-  for (const auto &item : obj.struct_list) {
-    map_obj.struct_list.push_back(to_msgpack_map(item));
-  }
-  return map_obj;
-}
-
-inline MsgpackMapSampleList to_msgpack_map(const SampleList &obj) {
-  MsgpackMapSampleList map_obj;
-  map_obj.sample_list.reserve(obj.sample_list.size());
-  for (const auto &item : obj.sample_list) {
-    map_obj.sample_list.push_back(to_msgpack_map(item));
-  }
-  return map_obj;
-}
-
-inline MsgpackMapMediaContentList to_msgpack_map(const MediaContentList &obj) {
-  MsgpackMapMediaContentList map_obj;
-  map_obj.media_content_list.reserve(obj.media_content_list.size());
-  for (const auto &item : obj.media_content_list) {
-    map_obj.media_content_list.push_back(to_msgpack_map(item));
-  }
-  return map_obj;
-}
-
-// ============================================================================
 // Helper to configure Fory instance
 // ============================================================================
 
@@ -810,57 +612,6 @@ void register_fory_types(fory::serialization::Fory &fory) {
   fory.register_struct<StructList>(6);
   fory.register_struct<SampleList>(7);
   fory.register_struct<MediaContentList>(8);
-}
-
-template <typename T, typename Factory>
-void run_fory_serialize_benchmark(benchmark::State &state, Factory factory,
-                                  size_t buffer_reserve, bool compatible) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(compatible)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  T obj = factory();
-
-  fory::Buffer buffer;
-  buffer.reserve(buffer_reserve);
-
-  for (auto _ : state) {
-    buffer.writer_index(0);
-    auto result = fory.serialize_to(buffer, obj);
-    benchmark::DoNotOptimize(result);
-    benchmark::DoNotOptimize(buffer.data());
-  }
-}
-
-template <typename T, typename Factory>
-void run_fory_deserialize_benchmark(benchmark::State &state, Factory factory,
-                                    bool compatible) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(compatible)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  T obj = factory();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  auto test_result = fory.deserialize<T>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result = fory.deserialize<T>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
 }
 
 template <typename T, typename Factory>
@@ -892,49 +643,7 @@ void run_msgpack_deserialize_benchmark(benchmark::State &state,
   }
 }
 
-template <typename T, typename MapT, typename Factory>
-void run_msgpack_map_serialize_benchmark(benchmark::State &state,
-                                         Factory factory) {
-  T obj = factory();
-  MapT map_obj = to_msgpack_map(obj);
-  msgpack::sbuffer output;
-
-  for (auto _ : state) {
-    output.clear();
-    msgpack::pack(output, map_obj);
-    benchmark::DoNotOptimize(output.data());
-    benchmark::DoNotOptimize(output.size());
-  }
-}
-
-template <typename T, typename MapT, typename Factory>
-void run_msgpack_map_deserialize_benchmark(benchmark::State &state,
-                                           Factory factory) {
-  T obj = factory();
-  MapT map_obj = to_msgpack_map(obj);
-  msgpack::sbuffer output;
-  msgpack::pack(output, map_obj);
-
-  for (auto _ : state) {
-    msgpack::object_handle handle =
-        msgpack::unpack(output.data(), output.size());
-    MapT result;
-    handle.get().convert(result);
-    benchmark::DoNotOptimize(result);
-  }
-}
-
-#define DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(name, type, create_fn, reserve)  \
-  static void BM_Fory_##name##_Serialize(benchmark::State &state) {            \
-    run_fory_serialize_benchmark<type>(state, create_fn, reserve, false);      \
-  }                                                                            \
-  BENCHMARK(BM_Fory_##name##_Serialize);                                       \
-  static void BM_Fory_##name##_Deserialize(benchmark::State &state) {          \
-    run_fory_deserialize_benchmark<type>(state, create_fn, false);             \
-  }                                                                            \
-  BENCHMARK(BM_Fory_##name##_Deserialize)
-
-#define DEFINE_MSGPACK_BENCHMARKS(name, type, create_fn, map_type)             \
+#define DEFINE_MSGPACK_BENCHMARKS(name, type, create_fn)                       \
   static void BM_Msgpack_##name##_Serialize(benchmark::State &state) {         \
     run_msgpack_serialize_benchmark<type>(state, create_fn);                   \
   }                                                                            \
@@ -942,49 +651,23 @@ void run_msgpack_map_deserialize_benchmark(benchmark::State &state,
   static void BM_Msgpack_##name##_Deserialize(benchmark::State &state) {       \
     run_msgpack_deserialize_benchmark<type>(state, create_fn);                 \
   }                                                                            \
-  BENCHMARK(BM_Msgpack_##name##_Deserialize);                                  \
-  static void BM_MsgpackMap_##name##_Serialize(benchmark::State &state) {      \
-    run_msgpack_map_serialize_benchmark<type, map_type>(state, create_fn);     \
-  }                                                                            \
-  BENCHMARK(BM_MsgpackMap_##name##_Serialize);                                 \
-  static void BM_MsgpackMap_##name##_Deserialize(benchmark::State &state) {    \
-    run_msgpack_map_deserialize_benchmark<type, map_type>(state, create_fn);   \
-  }                                                                            \
-  BENCHMARK(BM_MsgpackMap_##name##_Deserialize)
+  BENCHMARK(BM_Msgpack_##name##_Deserialize)
 
-DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(Struct, NumericStruct,
-                                      create_numeric_struct, 64);
-DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(Sample, Sample, create_sample, 4096);
-DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(MediaContent, MediaContent,
-                                      create_media_content, 4096);
-DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(StructList, StructList,
-                                      create_struct_list, 65536);
-DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(SampleList, SampleList,
-                                      create_sample_list, 131072);
-DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS(MediaContentList, MediaContentList,
-                                      create_media_content_list, 131072);
-
-DEFINE_MSGPACK_BENCHMARKS(Struct, NumericStruct, create_numeric_struct,
-                          MsgpackMapNumericStruct);
-DEFINE_MSGPACK_BENCHMARKS(Sample, Sample, create_sample, MsgpackMapSample);
-DEFINE_MSGPACK_BENCHMARKS(MediaContent, MediaContent, create_media_content,
-                          MsgpackMapMediaContent);
-DEFINE_MSGPACK_BENCHMARKS(StructList, StructList, create_struct_list,
-                          MsgpackMapStructList);
-DEFINE_MSGPACK_BENCHMARKS(SampleList, SampleList, create_sample_list,
-                          MsgpackMapSampleList);
+DEFINE_MSGPACK_BENCHMARKS(Struct, NumericStruct, create_numeric_struct);
+DEFINE_MSGPACK_BENCHMARKS(Sample, Sample, create_sample);
+DEFINE_MSGPACK_BENCHMARKS(MediaContent, MediaContent, create_media_content);
+DEFINE_MSGPACK_BENCHMARKS(StructList, StructList, create_struct_list);
+DEFINE_MSGPACK_BENCHMARKS(SampleList, SampleList, create_sample_list);
 DEFINE_MSGPACK_BENCHMARKS(MediaContentList, MediaContentList,
-                          create_media_content_list,
-                          MsgpackMapMediaContentList);
+                          create_media_content_list);
 
-#undef DEFINE_FORY_NON_COMPATIBLE_BENCHMARKS
 #undef DEFINE_MSGPACK_BENCHMARKS
 
 // ============================================================================
 // Struct benchmarks (simple object with 8 int32 fields)
 // ============================================================================
 
-static void BM_ForyCompatible_Struct_Serialize(benchmark::State &state) {
+static void BM_Fory_Struct_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1003,7 +686,7 @@ static void BM_ForyCompatible_Struct_Serialize(benchmark::State &state) {
     benchmark::DoNotOptimize(buffer.data());
   }
 }
-BENCHMARK(BM_ForyCompatible_Struct_Serialize);
+BENCHMARK(BM_Fory_Struct_Serialize);
 
 // Fair comparison: convert plain C++ struct to protobuf, then serialize
 // (Same pattern as Java benchmark's buildPBStruct().toByteArray())
@@ -1021,7 +704,7 @@ static void BM_Protobuf_Struct_Serialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_Struct_Serialize);
 
-static void BM_ForyCompatible_Struct_Deserialize(benchmark::State &state) {
+static void BM_Fory_Struct_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1049,7 +732,7 @@ static void BM_ForyCompatible_Struct_Deserialize(benchmark::State &state) {
     benchmark::DoNotOptimize(result);
   }
 }
-BENCHMARK(BM_ForyCompatible_Struct_Deserialize);
+BENCHMARK(BM_Fory_Struct_Deserialize);
 
 // Fair comparison: deserialize and convert protobuf to plain C++ struct
 // (Same pattern as Java benchmark's fromPBObject())
@@ -1071,7 +754,7 @@ BENCHMARK(BM_Protobuf_Struct_Deserialize);
 // Sample benchmarks (complex object with various types and arrays)
 // ============================================================================
 
-static void BM_ForyCompatible_Sample_Serialize(benchmark::State &state) {
+static void BM_Fory_Sample_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1091,7 +774,7 @@ static void BM_ForyCompatible_Sample_Serialize(benchmark::State &state) {
     benchmark::DoNotOptimize(buffer.data());
   }
 }
-BENCHMARK(BM_ForyCompatible_Sample_Serialize);
+BENCHMARK(BM_Fory_Sample_Serialize);
 
 static void BM_Protobuf_Sample_Serialize(benchmark::State &state) {
   protobuf::Sample obj = create_proto_sample();
@@ -1105,7 +788,7 @@ static void BM_Protobuf_Sample_Serialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_Sample_Serialize);
 
-static void BM_ForyCompatible_Sample_Deserialize(benchmark::State &state) {
+static void BM_Fory_Sample_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1132,7 +815,7 @@ static void BM_ForyCompatible_Sample_Deserialize(benchmark::State &state) {
     benchmark::DoNotOptimize(result);
   }
 }
-BENCHMARK(BM_ForyCompatible_Sample_Deserialize);
+BENCHMARK(BM_Fory_Sample_Deserialize);
 
 static void BM_Protobuf_Sample_Deserialize(benchmark::State &state) {
   protobuf::Sample obj = create_proto_sample();
@@ -1151,7 +834,7 @@ BENCHMARK(BM_Protobuf_Sample_Deserialize);
 // MediaContent benchmarks (nested objects with strings and lists)
 // ============================================================================
 
-static void BM_ForyCompatible_MediaContent_Serialize(benchmark::State &state) {
+static void BM_Fory_MediaContent_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1171,7 +854,7 @@ static void BM_ForyCompatible_MediaContent_Serialize(benchmark::State &state) {
     benchmark::DoNotOptimize(buffer.data());
   }
 }
-BENCHMARK(BM_ForyCompatible_MediaContent_Serialize);
+BENCHMARK(BM_Fory_MediaContent_Serialize);
 
 static void BM_Protobuf_MediaContent_Serialize(benchmark::State &state) {
   MediaContent obj = create_media_content();
@@ -1187,8 +870,7 @@ static void BM_Protobuf_MediaContent_Serialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_MediaContent_Serialize);
 
-static void
-BM_ForyCompatible_MediaContent_Deserialize(benchmark::State &state) {
+static void BM_Fory_MediaContent_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1215,7 +897,7 @@ BM_ForyCompatible_MediaContent_Deserialize(benchmark::State &state) {
     benchmark::DoNotOptimize(result);
   }
 }
-BENCHMARK(BM_ForyCompatible_MediaContent_Deserialize);
+BENCHMARK(BM_Fory_MediaContent_Deserialize);
 
 static void BM_Protobuf_MediaContent_Deserialize(benchmark::State &state) {
   protobuf::MediaContent obj = create_proto_media_content();
@@ -1235,7 +917,7 @@ BENCHMARK(BM_Protobuf_MediaContent_Deserialize);
 // List benchmarks (StructList, SampleList, MediaContentList)
 // ============================================================================
 
-static void BM_ForyCompatible_StructList_Serialize(benchmark::State &state) {
+static void BM_Fory_StructList_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1254,7 +936,7 @@ static void BM_ForyCompatible_StructList_Serialize(benchmark::State &state) {
     benchmark::DoNotOptimize(buffer.data());
   }
 }
-BENCHMARK(BM_ForyCompatible_StructList_Serialize);
+BENCHMARK(BM_Fory_StructList_Serialize);
 
 static void BM_Protobuf_StructList_Serialize(benchmark::State &state) {
   StructList obj = create_struct_list();
@@ -1270,7 +952,7 @@ static void BM_Protobuf_StructList_Serialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_StructList_Serialize);
 
-static void BM_ForyCompatible_StructList_Deserialize(benchmark::State &state) {
+static void BM_Fory_StructList_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1296,7 +978,7 @@ static void BM_ForyCompatible_StructList_Deserialize(benchmark::State &state) {
     benchmark::DoNotOptimize(result);
   }
 }
-BENCHMARK(BM_ForyCompatible_StructList_Deserialize);
+BENCHMARK(BM_Fory_StructList_Deserialize);
 
 static void BM_Protobuf_StructList_Deserialize(benchmark::State &state) {
   protobuf::StructList obj = create_proto_struct_list();
@@ -1312,7 +994,7 @@ static void BM_Protobuf_StructList_Deserialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_StructList_Deserialize);
 
-static void BM_ForyCompatible_SampleList_Serialize(benchmark::State &state) {
+static void BM_Fory_SampleList_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1331,7 +1013,7 @@ static void BM_ForyCompatible_SampleList_Serialize(benchmark::State &state) {
     benchmark::DoNotOptimize(buffer.data());
   }
 }
-BENCHMARK(BM_ForyCompatible_SampleList_Serialize);
+BENCHMARK(BM_Fory_SampleList_Serialize);
 
 static void BM_Protobuf_SampleList_Serialize(benchmark::State &state) {
   SampleList obj = create_sample_list();
@@ -1347,7 +1029,7 @@ static void BM_Protobuf_SampleList_Serialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_SampleList_Serialize);
 
-static void BM_ForyCompatible_SampleList_Deserialize(benchmark::State &state) {
+static void BM_Fory_SampleList_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1373,7 +1055,7 @@ static void BM_ForyCompatible_SampleList_Deserialize(benchmark::State &state) {
     benchmark::DoNotOptimize(result);
   }
 }
-BENCHMARK(BM_ForyCompatible_SampleList_Deserialize);
+BENCHMARK(BM_Fory_SampleList_Deserialize);
 
 static void BM_Protobuf_SampleList_Deserialize(benchmark::State &state) {
   protobuf::SampleList obj = create_proto_sample_list();
@@ -1389,8 +1071,7 @@ static void BM_Protobuf_SampleList_Deserialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_SampleList_Deserialize);
 
-static void
-BM_ForyCompatible_MediaContentList_Serialize(benchmark::State &state) {
+static void BM_Fory_MediaContentList_Serialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1409,7 +1090,7 @@ BM_ForyCompatible_MediaContentList_Serialize(benchmark::State &state) {
     benchmark::DoNotOptimize(buffer.data());
   }
 }
-BENCHMARK(BM_ForyCompatible_MediaContentList_Serialize);
+BENCHMARK(BM_Fory_MediaContentList_Serialize);
 
 static void BM_Protobuf_MediaContentList_Serialize(benchmark::State &state) {
   MediaContentList obj = create_media_content_list();
@@ -1425,8 +1106,7 @@ static void BM_Protobuf_MediaContentList_Serialize(benchmark::State &state) {
 }
 BENCHMARK(BM_Protobuf_MediaContentList_Serialize);
 
-static void
-BM_ForyCompatible_MediaContentList_Deserialize(benchmark::State &state) {
+static void BM_Fory_MediaContentList_Deserialize(benchmark::State &state) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
                   .compatible(true)
@@ -1454,7 +1134,7 @@ BM_ForyCompatible_MediaContentList_Deserialize(benchmark::State &state) {
     benchmark::DoNotOptimize(result);
   }
 }
-BENCHMARK(BM_ForyCompatible_MediaContentList_Deserialize);
+BENCHMARK(BM_Fory_MediaContentList_Deserialize);
 
 static void BM_Protobuf_MediaContentList_Deserialize(benchmark::State &state) {
   protobuf::MediaContentList obj = create_proto_media_content_list();
@@ -1475,21 +1155,13 @@ BENCHMARK(BM_Protobuf_MediaContentList_Deserialize);
 // ============================================================================
 
 static void BM_PrintSerializedSizes(benchmark::State &state) {
-  // Fory (compatible = false)
+  // Fory
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
-                  .compatible(false)
+                  .compatible(true)
                   .track_ref(false)
                   .build();
   register_fory_types(fory);
-
-  // Fory compatible mode
-  auto fory_compatible = fory::serialization::Fory::builder()
-                             .xlang(true)
-                             .compatible(true)
-                             .track_ref(false)
-                             .build();
-  register_fory_types(fory_compatible);
 
   NumericStruct fory_struct = create_numeric_struct();
   Sample fory_sample = create_sample();
@@ -1504,19 +1176,6 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
   auto fory_struct_list_bytes = fory.serialize(fory_struct_list).value();
   auto fory_sample_list_bytes = fory.serialize(fory_sample_list).value();
   auto fory_media_list_bytes = fory.serialize(fory_media_list).value();
-
-  auto fory_compatible_struct_bytes =
-      fory_compatible.serialize(fory_struct).value();
-  auto fory_compatible_sample_bytes =
-      fory_compatible.serialize(fory_sample).value();
-  auto fory_compatible_media_bytes =
-      fory_compatible.serialize(fory_media).value();
-  auto fory_compatible_struct_list_bytes =
-      fory_compatible.serialize(fory_struct_list).value();
-  auto fory_compatible_sample_list_bytes =
-      fory_compatible.serialize(fory_sample_list).value();
-  auto fory_compatible_media_list_bytes =
-      fory_compatible.serialize(fory_media_list).value();
 
   // Protobuf
   protobuf::Struct proto_struct = create_proto_struct();
@@ -1548,60 +1207,32 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
   auto msgpack_sample_list_size = msgpack_size(fory_sample_list);
   auto msgpack_media_list_size = msgpack_size(fory_media_list);
 
-  auto msgpack_map_struct_size = msgpack_size(to_msgpack_map(fory_struct));
-  auto msgpack_map_sample_size = msgpack_size(to_msgpack_map(fory_sample));
-  auto msgpack_map_media_size = msgpack_size(to_msgpack_map(fory_media));
-  auto msgpack_map_struct_list_size =
-      msgpack_size(to_msgpack_map(fory_struct_list));
-  auto msgpack_map_sample_list_size =
-      msgpack_size(to_msgpack_map(fory_sample_list));
-  auto msgpack_map_media_list_size =
-      msgpack_size(to_msgpack_map(fory_media_list));
-
   for (auto _ : state) {
     // Just run once to print sizes
   }
 
   state.counters["fory_struct_size"] = fory_struct_bytes.size();
-  state.counters["fory_compatible_struct_size"] =
-      fory_compatible_struct_bytes.size();
   state.counters["protobuf_struct_size"] = proto_struct_bytes.size();
   state.counters["msgpack_struct_size"] = msgpack_struct_size;
-  state.counters["msgpack_map_struct_size"] = msgpack_map_struct_size;
 
   state.counters["fory_sample_size"] = fory_sample_bytes.size();
-  state.counters["fory_compatible_sample_size"] =
-      fory_compatible_sample_bytes.size();
   state.counters["protobuf_sample_size"] = proto_sample_bytes.size();
   state.counters["msgpack_sample_size"] = msgpack_sample_size;
-  state.counters["msgpack_map_sample_size"] = msgpack_map_sample_size;
 
   state.counters["fory_media_size"] = fory_media_bytes.size();
-  state.counters["fory_compatible_media_size"] =
-      fory_compatible_media_bytes.size();
   state.counters["protobuf_media_size"] = proto_media_bytes.size();
   state.counters["msgpack_media_size"] = msgpack_media_size;
-  state.counters["msgpack_map_media_size"] = msgpack_map_media_size;
 
   state.counters["fory_struct_list_size"] = fory_struct_list_bytes.size();
-  state.counters["fory_compatible_struct_list_size"] =
-      fory_compatible_struct_list_bytes.size();
   state.counters["protobuf_struct_list_size"] = proto_struct_list_bytes.size();
   state.counters["msgpack_struct_list_size"] = msgpack_struct_list_size;
-  state.counters["msgpack_map_struct_list_size"] = msgpack_map_struct_list_size;
 
   state.counters["fory_sample_list_size"] = fory_sample_list_bytes.size();
-  state.counters["fory_compatible_sample_list_size"] =
-      fory_compatible_sample_list_bytes.size();
   state.counters["protobuf_sample_list_size"] = proto_sample_list_bytes.size();
   state.counters["msgpack_sample_list_size"] = msgpack_sample_list_size;
-  state.counters["msgpack_map_sample_list_size"] = msgpack_map_sample_list_size;
 
   state.counters["fory_media_list_size"] = fory_media_list_bytes.size();
-  state.counters["fory_compatible_media_list_size"] =
-      fory_compatible_media_list_bytes.size();
   state.counters["protobuf_media_list_size"] = proto_media_list_bytes.size();
   state.counters["msgpack_media_list_size"] = msgpack_media_list_size;
-  state.counters["msgpack_map_media_list_size"] = msgpack_map_media_list_size;
 }
 BENCHMARK(BM_PrintSerializedSizes)->Iterations(1);
