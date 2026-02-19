@@ -299,7 +299,9 @@ def _build_single_plot_frame(spec, benchmark_data, zero_copy_data):
         if spec["benchmark"].startswith("serialize"):
             title = f"{spec['benchmark']} {spec['objectType']} to {spec['bufferType']}"
         else:
-            title = f"{spec['benchmark']} {spec['objectType']} from {spec['bufferType']}"
+            title = (
+                f"{spec['benchmark']} {spec['objectType']} from {spec['bufferType']}"
+            )
         xlabel = "enable_references"
         width = 0.7 * bar_width_scale
     else:
