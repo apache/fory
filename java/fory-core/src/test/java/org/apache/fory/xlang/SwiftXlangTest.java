@@ -29,6 +29,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.apache.fory.logging.Logger;
+import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.test.TestUtils;
 import org.testng.Assert;
 import org.testng.SkipException;
@@ -37,6 +39,7 @@ import org.testng.annotations.Test;
 /** Executes cross-language tests against the Swift implementation. */
 @Test
 public class SwiftXlangTest extends XlangTestBase {
+  private static final Logger LOG = LoggerFactory.getLogger(SwiftXlangTest.class);
   private static final String SWIFT_EXECUTABLE = "swift";
   private static final String SWIFT_PEER_TARGET = "ForySwiftXlangPeer";
   private static final File SWIFT_WORK_DIR = new File("../../swift");
@@ -47,6 +50,7 @@ public class SwiftXlangTest extends XlangTestBase {
 
   @Override
   protected void ensurePeerReady() {
+    LOG.info("Starting ensurePeerReady for Swift xlang tests");
     String enabled = System.getenv("FORY_SWIFT_JAVA_CI");
     if (!"1".equals(enabled)) {
       throw new SkipException("Skipping SwiftXlangTest: FORY_SWIFT_JAVA_CI not set to 1");
@@ -68,6 +72,7 @@ public class SwiftXlangTest extends XlangTestBase {
 
     if (isPeerBinaryUpToDate()) {
       swiftPeerBinaryPath = SWIFT_PEER_BINARY_PATH.toAbsolutePath().toString();
+      LOG.info("Completed ensurePeerReady for Swift xlang tests");
       return;
     }
 
@@ -107,6 +112,7 @@ public class SwiftXlangTest extends XlangTestBase {
         Files.isExecutable(peerBinary),
         "Swift xlang peer binary is not executable: " + peerBinary.toAbsolutePath());
     swiftPeerBinaryPath = peerBinary.toAbsolutePath().toString();
+    LOG.info("Completed ensurePeerReady for Swift xlang tests");
   }
 
   @Override
