@@ -48,7 +48,6 @@ class GeneratorOptions:
     package_override: Optional[str] = None
     go_nested_type_style: Optional[str] = None
     grpc: bool = False
-    grpc_backend: Optional[str] = None
 
 
 class BaseGenerator(ABC):
