@@ -84,6 +84,14 @@ public enum FieldSkipper {
             return fieldType.nullable
                 ? try String?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try String.foryRead(context, refMode: refMode, readTypeInfo: false)
+        case ForyTypeId.timestamp.rawValue:
+            return fieldType.nullable
+                ? try Date?.foryRead(context, refMode: refMode, readTypeInfo: false)
+                : try Date.foryRead(context, refMode: refMode, readTypeInfo: false)
+        case ForyTypeId.date.rawValue:
+            return fieldType.nullable
+                ? try ForyDate?.foryRead(context, refMode: refMode, readTypeInfo: false)
+                : try ForyDate.foryRead(context, refMode: refMode, readTypeInfo: false)
         case ForyTypeId.list.rawValue:
             guard fieldType.generics.count == 1,
                   fieldType.generics[0].typeID == ForyTypeId.string.rawValue else {

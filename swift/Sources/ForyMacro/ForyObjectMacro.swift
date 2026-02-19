@@ -33,6 +33,11 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
         conformingTo _: [TypeSyntax],
         in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
+        if let enumDecl = declaration.as(EnumDeclSyntax.self) {
+            let parsedEnum = try parseEnumDecl(enumDecl)
+            return buildEnumDecls(parsedEnum)
+        }
+
         let parsed = try parseFields(declaration)
         let sortedFields = sortFields(parsed.fields)
 
@@ -75,6 +80,8 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
             typeName = structDecl.name
         } else if let classDecl = declaration.as(ClassDeclSyntax.self) {
             typeName = classDecl.name
+        } else if let enumDecl = declaration.as(EnumDeclSyntax.self) {
+            typeName = enumDecl.name
         } else {
             return []
         }
@@ -129,9 +136,250 @@ private struct ParsedDecl {
     let fields: [ParsedField]
 }
 
+private enum ParsedEnumKind {
+    case ordinal
+    case taggedUnion
+}
+
+private struct ParsedEnumPayloadField {
+    let label: String?
+    let typeText: String
+    let hasGenerics: Bool
+}
+
+private struct ParsedEnumCase {
+    let name: String
+    let payload: [ParsedEnumPayloadField]
+}
+
+private struct ParsedEnumDecl {
+    let kind: ParsedEnumKind
+    let cases: [ParsedEnumCase]
+}
+
 private struct FieldTypeResolution {
     let classification: TypeClassification
     let customCodecType: String?
+}
+
+private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl {
+    var cases: [ParsedEnumCase] = []
+
+    for member in enumDecl.memberBlock.members {
+        guard let caseDecl = member.decl.as(EnumCaseDeclSyntax.self) else {
+            continue
+        }
+
+        for element in caseDecl.elements {
+            let caseName = element.name.text
+            if caseName.isEmpty {
+                continue
+            }
+
+            var payloadFields: [ParsedEnumPayloadField] = []
+            if let parameterClause = element.parameterClause {
+                for parameter in parameterClause.parameters {
+                    if parameter.defaultValue != nil {
+                        throw MacroExpansionErrorMessage(
+                            "@ForyObject enum associated values cannot have default values"
+                        )
+                    }
+
+                    let payloadType = parameter.type.trimmedDescription
+                    let optional = unwrapOptional(payloadType)
+                    let classification = classifyType(optional.type)
+                    let hasGenerics = classification.isCollection || classification.isMap
+                    let label: String?
+                    if let firstName = parameter.firstName, firstName.text != "_" {
+                        label = firstName.text
+                    } else {
+                        label = nil
+                    }
+
+                    payloadFields.append(
+                        .init(
+                            label: label,
+                            typeText: payloadType,
+                            hasGenerics: hasGenerics
+                        )
+                    )
+                }
+            }
+            cases.append(.init(name: caseName, payload: payloadFields))
+        }
+    }
+
+    guard !cases.isEmpty else {
+        throw MacroExpansionErrorMessage("@ForyObject enum must define at least one case")
+    }
+
+    let hasPayload = cases.contains { !$0.payload.isEmpty }
+    if hasPayload {
+        return .init(kind: .taggedUnion, cases: cases)
+    }
+
+    return .init(kind: .ordinal, cases: cases)
+}
+
+private func buildEnumDecls(_ parsedEnum: ParsedEnumDecl) -> [DeclSyntax] {
+    switch parsedEnum.kind {
+    case .ordinal:
+        return buildOrdinalEnumDecls(parsedEnum.cases)
+    case .taggedUnion:
+        return buildTaggedUnionEnumDecls(parsedEnum.cases)
+    }
+}
+
+private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
+    let defaultCase = cases[0].name
+    let writeSwitchCases = cases.enumerated().map { index, enumCase in
+        """
+        case .\(enumCase.name):
+            context.writer.writeVarUInt32(\(index))
+        """
+    }.joined(separator: "\n        ")
+    let readSwitchCases = cases.enumerated().map { index, enumCase in
+        "case \(index): return .\(enumCase.name)"
+    }.joined(separator: "\n        ")
+
+    let defaultDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+        static func foryDefault() -> Self {
+            .\(defaultCase)
+        }
+        """
+    )
+
+    let staticTypeIDDecl: DeclSyntax = """
+    static var staticTypeId: ForyTypeId { .enumType }
+    """
+
+    let writeDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+        func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+            _ = hasGenerics
+            switch self {
+            \(writeSwitchCases)
+            }
+        }
+        """
+    )
+
+    let readDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+        static func foryReadData(_ context: ReadContext) throws -> Self {
+            let ordinal = try context.reader.readVarUInt32()
+            switch ordinal {
+            \(readSwitchCases)
+            default:
+                throw ForyError.invalidData("unknown enum ordinal \\(ordinal)")
+            }
+        }
+        """
+    )
+
+    return [defaultDecl, staticTypeIDDecl, writeDecl, readDecl]
+}
+
+private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
+    let defaultExpr = enumCaseDefaultExpr(cases[0])
+    let writeSwitchCases = cases.enumerated().map { index, enumCase in
+        var lines: [String] = []
+        lines.append("case \(enumCasePattern(enumCase)):")
+        lines.append("    context.writer.writeVarUInt32(\(index))")
+        for payloadIndex in enumCase.payload.indices {
+            let variableName = "__value\(payloadIndex)"
+            let hasGenerics = enumCase.payload[payloadIndex].hasGenerics ? "true" : "false"
+            lines.append(
+                "    try \(variableName).foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: \(hasGenerics))"
+            )
+        }
+        return lines.joined(separator: "\n")
+    }.joined(separator: "\n        ")
+
+    let readSwitchCases = cases.enumerated().map { index, enumCase in
+        if enumCase.payload.isEmpty {
+            return """
+            case \(index):
+                return .\(enumCase.name)
+            """
+        }
+
+        var lines: [String] = ["case \(index):"]
+        for (payloadIndex, payloadField) in enumCase.payload.enumerated() {
+            lines.append(
+                "    let __value\(payloadIndex) = try \(payloadField.typeText).foryRead(context, refMode: .tracking, readTypeInfo: true)"
+            )
+        }
+        let ctorArgs = enumCase.payload.enumerated().map { payloadIndex, payloadField in
+            if let label = payloadField.label {
+                return "\(label): __value\(payloadIndex)"
+            }
+            return "__value\(payloadIndex)"
+        }.joined(separator: ", ")
+        lines.append("    return .\(enumCase.name)(\(ctorArgs))")
+        return lines.joined(separator: "\n")
+    }.joined(separator: "\n        ")
+
+    let defaultDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+        static func foryDefault() -> Self {
+            \(defaultExpr)
+        }
+        """
+    )
+
+    let staticTypeIDDecl: DeclSyntax = """
+    static var staticTypeId: ForyTypeId { .typedUnion }
+    """
+
+    let writeDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+        func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+            _ = hasGenerics
+            switch self {
+            \(writeSwitchCases)
+            }
+        }
+        """
+    )
+
+    let readDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+        static func foryReadData(_ context: ReadContext) throws -> Self {
+            let caseID = try context.reader.readVarUInt32()
+            switch caseID {
+            \(readSwitchCases)
+            default:
+                throw ForyError.invalidData("unknown union tag \\(caseID)")
+            }
+        }
+        """
+    )
+
+    return [defaultDecl, staticTypeIDDecl, writeDecl, readDecl]
+}
+
+private func enumCasePattern(_ enumCase: ParsedEnumCase) -> String {
+    guard !enumCase.payload.isEmpty else {
+        return ".\(enumCase.name)"
+    }
+    let bindings = enumCase.payload.indices.map { "let __value\($0)" }.joined(separator: ", ")
+    return ".\(enumCase.name)(\(bindings))"
+}
+
+private func enumCaseDefaultExpr(_ enumCase: ParsedEnumCase) -> String {
+    guard !enumCase.payload.isEmpty else {
+        return ".\(enumCase.name)"
+    }
+    let args = enumCase.payload.map { payloadField in
+        let defaultValue = "\(payloadField.typeText).foryDefault()"
+        if let label = payloadField.label {
+            return "\(label): \(defaultValue)"
+        }
+        return defaultValue
+    }.joined(separator: ", ")
+    return ".\(enumCase.name)(\(args))"
 }
 
 private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDecl {
@@ -1046,6 +1294,10 @@ private func classifyType(_ typeText: String) -> TypeClassification {
         return .init(typeID: 21, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     case "Data", "Foundation.Data":
         return .init(typeID: 41, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
+    case "Date", "Foundation.Date", "ForyTimestamp":
+        return .init(typeID: 38, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
+    case "ForyDate":
+        return .init(typeID: 39, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     default:
         break
     }

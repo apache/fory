@@ -26,7 +26,7 @@
     named(foryReadData)
 )
 @attached(extension, conformances: Serializer)
-public macro ForyObject() = #externalMacro(module: "ForySwiftMacros", type: "ForyObjectMacro")
+public macro ForyObject() = #externalMacro(module: "ForyMacro", type: "ForyObjectMacro")
 
 public enum ForyFieldEncoding: String {
     case varint
@@ -37,4 +37,4 @@ public enum ForyFieldEncoding: String {
 @attached(peer)
 public macro ForyField(
     encoding: ForyFieldEncoding
-) = #externalMacro(module: "ForySwiftMacros", type: "ForyFieldMacro")
+) = #externalMacro(module: "ForyMacro", type: "ForyFieldMacro")

@@ -294,6 +294,10 @@ public final class TypeResolver {
             value = try Double.foryRead(context, refMode: .none, readTypeInfo: false)
         case .string:
             value = try String.foryRead(context, refMode: .none, readTypeInfo: false)
+        case .timestamp:
+            value = try Date.foryRead(context, refMode: .none, readTypeInfo: false)
+        case .date:
+            value = try ForyDate.foryRead(context, refMode: .none, readTypeInfo: false)
         case .binary, .uint8Array:
             value = try Data.foryRead(context, refMode: .none, readTypeInfo: false)
         case .boolArray:

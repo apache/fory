@@ -16,93 +16,23 @@
 // under the License.
 
 import Foundation
-import ForySwift
+import Fory
 
 // MARK: - Shared test types
 
-private enum PeerColor: UInt32 {
-    case green = 0
-    case red = 1
-    case blue = 2
-    case white = 3
+@ForyObject
+private enum PeerColor {
+    case green
+    case red
+    case blue
+    case white
 }
 
-private enum PeerTestEnum: UInt32 {
-    case valueA = 0
-    case valueB = 1
-    case valueC = 2
-}
-
-private protocol PeerUInt32EnumSerializer: RawRepresentable, Serializer where RawValue == UInt32 {}
-
-extension PeerUInt32EnumSerializer {
-    static func foryDefault() -> Self {
-        Self(rawValue: 0)!
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .enumType
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeVarUInt32(rawValue)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> Self {
-        let ordinal = try context.reader.readVarUInt32()
-        guard let value = Self(rawValue: ordinal) else {
-            throw ForyError.invalidData("unknown enum ordinal \(ordinal)")
-        }
-        return value
-    }
-}
-
-extension PeerColor: PeerUInt32EnumSerializer {}
-extension PeerTestEnum: PeerUInt32EnumSerializer {}
-
-private struct PeerDate: Serializer, Equatable {
-    var daysSinceEpoch: Int32 = 0
-
-    static func foryDefault() -> PeerDate {
-        PeerDate()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .date
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeInt32(daysSinceEpoch)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> PeerDate {
-        PeerDate(daysSinceEpoch: try context.reader.readInt32())
-    }
-}
-
-private struct PeerTimestamp: Serializer, Equatable {
-    var seconds: Int64 = 0
-    var nanos: Int32 = 0
-
-    static func foryDefault() -> PeerTimestamp {
-        PeerTimestamp()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .timestamp
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeInt64(seconds)
-        context.writer.writeInt32(nanos)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> PeerTimestamp {
-        PeerTimestamp(seconds: try context.reader.readInt64(), nanos: try context.reader.readInt32())
-    }
+@ForyObject
+private enum PeerTestEnum {
+    case valueA
+    case valueB
+    case valueC
 }
 
 @ForyObject
@@ -286,7 +216,7 @@ private final class RefOverrideContainer {
 @ForyObject
 private final class CircularRefStruct {
     var name: String = ""
-    var selfRef: CircularRefStruct? = nil
+    weak var selfRef: CircularRefStruct? = nil
 
     required init() {}
 }
@@ -349,43 +279,10 @@ private struct AnimalMapHolder {
     var animalMap: [String: Any] = [:]
 }
 
-private enum StringOrLong: Serializer, Equatable {
-    case str(String)
-    case long(Int64)
-
-    static func foryDefault() -> StringOrLong {
-        .str("")
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .typedUnion
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        switch self {
-        case .str(let value):
-            context.writer.writeVarUInt32(0)
-            try value.foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: false)
-        case .long(let value):
-            context.writer.writeVarUInt32(1)
-            try value.foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> StringOrLong {
-        let tag = try context.reader.readVarUInt32()
-        switch tag {
-        case 0:
-            let value: String = try String.foryRead(context, refMode: .tracking, readTypeInfo: true)
-            return .str(value)
-        case 1:
-            let value: Int64 = try Int64.foryRead(context, refMode: .tracking, readTypeInfo: true)
-            return .long(value)
-        default:
-            throw ForyError.invalidData("unknown union tag \(tag)")
-        }
-    }
+@ForyObject
+private enum StringOrLong {
+    case text(String)
+    case number(Int64)
 }
 
 @ForyObject
@@ -601,8 +498,8 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
         let f32: Float = try fory.deserializeFrom(reader)
         let f64: Double = try fory.deserializeFrom(reader)
         let str: String = try fory.deserializeFrom(reader)
-        let day: PeerDate = try fory.deserializeFrom(reader)
-        let ts: PeerTimestamp = try fory.deserializeFrom(reader)
+        let day: ForyDate = try fory.deserializeFrom(reader)
+        let ts: ForyTimestamp = try fory.deserializeFrom(reader)
         let boolArray: [Bool] = try fory.deserializeFrom(reader)
         let byteArray: [UInt8] = try fory.deserializeFrom(reader)
         let shortArray: [Int16] = try fory.deserializeFrom(reader)

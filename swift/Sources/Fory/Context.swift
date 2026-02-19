@@ -372,6 +372,126 @@ public final class ReadContext {
     }
 }
 
+@inline(__always)
+private func writeAnyGlobal(
+    _ value: Any?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool,
+    hasGenerics: Bool
+) throws {
+    try writeAny(
+        value,
+        context: context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
+}
+
+@inline(__always)
+private func writeAnyListGlobal(
+    _ value: [Any]?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool,
+    hasGenerics: Bool
+) throws {
+    try writeAnyList(
+        value,
+        context: context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
+}
+
+@inline(__always)
+private func writeStringAnyMapGlobal(
+    _ value: [String: Any]?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool,
+    hasGenerics: Bool
+) throws {
+    try writeStringAnyMap(
+        value,
+        context: context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
+}
+
+@inline(__always)
+private func writeInt32AnyMapGlobal(
+    _ value: [Int32: Any]?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool,
+    hasGenerics: Bool
+) throws {
+    try writeInt32AnyMap(
+        value,
+        context: context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
+}
+
+@inline(__always)
+private func readAnyGlobal(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> Any? {
+    try readAny(
+        context: context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+}
+
+@inline(__always)
+private func readAnyListGlobal(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> [Any]? {
+    try readAnyList(
+        context: context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+}
+
+@inline(__always)
+private func readStringAnyMapGlobal(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> [String: Any]? {
+    try readStringAnyMap(
+        context: context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+}
+
+@inline(__always)
+private func readInt32AnyMapGlobal(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> [Int32: Any]? {
+    try readInt32AnyMap(
+        context: context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+}
+
 public extension WriteContext {
     func writeAny(
         _ value: Any?,
@@ -379,7 +499,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = true,
         hasGenerics: Bool = false
     ) throws {
-        try ForySwift.writeAny(
+        try writeAnyGlobal(
             value,
             context: self,
             refMode: refMode,
@@ -394,7 +514,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        try ForySwift.writeAnyList(
+        try writeAnyListGlobal(
             value,
             context: self,
             refMode: refMode,
@@ -409,7 +529,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        try ForySwift.writeStringAnyMap(
+        try writeStringAnyMapGlobal(
             value,
             context: self,
             refMode: refMode,
@@ -424,7 +544,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        try ForySwift.writeInt32AnyMap(
+        try writeInt32AnyMapGlobal(
             value,
             context: self,
             refMode: refMode,
@@ -439,7 +559,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = true
     ) throws -> Any? {
-        try ForySwift.readAny(
+        try readAnyGlobal(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -450,7 +570,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [Any]? {
-        try ForySwift.readAnyList(
+        try readAnyListGlobal(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -461,7 +581,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [String: Any]? {
-        try ForySwift.readStringAnyMap(
+        try readStringAnyMapGlobal(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -472,7 +592,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [Int32: Any]? {
-        try ForySwift.readInt32AnyMap(
+        try readInt32AnyMapGlobal(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
