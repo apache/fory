@@ -23,8 +23,38 @@ private enum DynamicAnyMapHeader {
     static let valueNull: UInt8 = 0b0001_0000
 }
 
-public struct ForyAnyNullValue {
+public struct ForyAnyNullValue: Serializer {
     public init() {}
+
+    public static func foryDefault() -> ForyAnyNullValue {
+        ForyAnyNullValue()
+    }
+
+    public static var staticTypeId: ForyTypeId {
+        .none
+    }
+
+    public var foryIsNone: Bool {
+        true
+    }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = context
+        _ = hasGenerics
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> ForyAnyNullValue {
+        _ = context
+        return ForyAnyNullValue()
+    }
+}
+
+private protocol OptionalTypeMarker {
+    static var noneValue: Self { get }
+}
+
+extension Optional: OptionalTypeMarker {
+    static var noneValue: Optional<Wrapped> { nil }
 }
 
 private struct DynamicAnyValue: Serializer {
@@ -154,10 +184,13 @@ private struct DynamicAnyValue: Serializer {
             case .ref:
                 let refID = try context.reader.readVarUInt32()
                 let referenced = try context.refReader.readRefValue(refID)
-                guard let value = referenced as? DynamicAnyValue else {
-                    throw ForyError.refError("ref_id \(refID) has unexpected runtime type")
+                if let value = referenced as? DynamicAnyValue {
+                    return value
                 }
-                return value
+                if referenced is NSNull {
+                    return .foryDefault()
+                }
+                return DynamicAnyValue(referenced)
             case .refValue:
                 let reservedRefID = context.refReader.reserveRefID()
                 context.pushPendingReference(reservedRefID)
@@ -239,6 +272,22 @@ private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: B
 }
 
 public func castAnyDynamicValue<T>(_ value: Any?, to type: T.Type) throws -> T {
+    _ = type
+    if value == nil {
+        if T.self == Any.self {
+            return ForyAnyNullValue() as! T
+        }
+        if T.self == AnyObject.self {
+            return NSNull() as! T
+        }
+        if T.self == (any Serializer).self {
+            return ForyAnyNullValue() as! T
+        }
+        if let optionalType = T.self as? any OptionalTypeMarker.Type {
+            return optionalType.noneValue as! T
+        }
+    }
+
     guard let typed = value as? T else {
         throw ForyError.invalidData("cannot cast dynamic Any value to \(type)")
     }

@@ -132,6 +132,94 @@ public final class Fory {
     }
 
     @_disfavoredOverload
+    public func serialize(_ value: AnyObject) throws -> Data {
+        let writer = ByteWriter()
+        writeHead(writer: writer, isNone: false)
+
+        let context = WriteContext(
+            writer: writer,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefWriteState(),
+            metaStringWriteState: MetaStringWriteState()
+        )
+        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+        try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        context.resetObjectState()
+        return writer.toData()
+    }
+
+    @_disfavoredOverload
+    public func deserialize(_ data: Data, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
+        let reader = ByteReader(data: data)
+        let isNone = try readHead(reader: reader)
+        if isNone {
+            return NSNull()
+        }
+
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
+        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+        let value = try castAnyDynamicValue(
+            context.readAny(refMode: refMode, readTypeInfo: true),
+            to: AnyObject.self
+        )
+        context.resetObjectState()
+        return value
+    }
+
+    @_disfavoredOverload
+    public func serialize(_ value: any Serializer) throws -> Data {
+        let writer = ByteWriter()
+        writeHead(writer: writer, isNone: false)
+
+        let context = WriteContext(
+            writer: writer,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefWriteState(),
+            metaStringWriteState: MetaStringWriteState()
+        )
+        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+        try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        context.resetObjectState()
+        return writer.toData()
+    }
+
+    @_disfavoredOverload
+    public func deserialize(_ data: Data, as _: (any Serializer).Type = (any Serializer).self) throws -> any Serializer {
+        let reader = ByteReader(data: data)
+        let isNone = try readHead(reader: reader)
+        if isNone {
+            return ForyAnyNullValue()
+        }
+
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
+        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+        let value = try castAnyDynamicValue(
+            context.readAny(refMode: refMode, readTypeInfo: true),
+            to: (any Serializer).self
+        )
+        context.resetObjectState()
+        return value
+    }
+
+    @_disfavoredOverload
     public func serialize(_ value: [Any]) throws -> Data {
         let writer = ByteWriter()
         writeHead(writer: writer, isNone: false)
@@ -257,6 +345,65 @@ public final class Fory {
     @_disfavoredOverload
     public func serializeTo(_ buffer: inout Data, value: [Any]) throws {
         buffer.append(try serialize(value))
+    }
+
+    @_disfavoredOverload
+    public func serializeTo(_ buffer: inout Data, value: AnyObject) throws {
+        buffer.append(try serialize(value))
+    }
+
+    @_disfavoredOverload
+    public func deserializeFrom(_ reader: ByteReader, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
+        let isNone = try readHead(reader: reader)
+        if isNone {
+            return NSNull()
+        }
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
+        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+        let value = try castAnyDynamicValue(
+            context.readAny(refMode: refMode, readTypeInfo: true),
+            to: AnyObject.self
+        )
+        context.resetObjectState()
+        return value
+    }
+
+    @_disfavoredOverload
+    public func serializeTo(_ buffer: inout Data, value: any Serializer) throws {
+        buffer.append(try serialize(value))
+    }
+
+    @_disfavoredOverload
+    public func deserializeFrom(
+        _ reader: ByteReader,
+        as _: (any Serializer).Type = (any Serializer).self
+    ) throws -> any Serializer {
+        let isNone = try readHead(reader: reader)
+        if isNone {
+            return ForyAnyNullValue()
+        }
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
+        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
+        let value = try castAnyDynamicValue(
+            context.readAny(refMode: refMode, readTypeInfo: true),
+            to: (any Serializer).self
+        )
+        context.resetObjectState()
+        return value
     }
 
     @_disfavoredOverload
