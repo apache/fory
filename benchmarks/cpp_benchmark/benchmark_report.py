@@ -191,8 +191,18 @@ if context:
 
 
 # === Plotting ===
+def format_tps_label(tps):
+    if tps >= 1e9:
+        return f"{tps / 1e9:.2f}G"
+    if tps >= 1e6:
+        return f"{tps / 1e6:.2f}M"
+    if tps >= 1e3:
+        return f"{tps / 1e3:.2f}K"
+    return f"{tps:.0f}"
+
+
 def plot_datatype(ax, datatype, operation):
-    """Plot a single datatype/operation comparison."""
+    """Plot a single datatype/operation throughput comparison."""
     if datatype not in data or operation not in data[datatype]:
         ax.set_title(f"{datatype} {operation} - No Data")
         ax.axis("off")
@@ -202,22 +212,24 @@ def plot_datatype(ax, datatype, operation):
     lib_order = [lib for lib in SERIALIZER_ORDER if lib in libs]
 
     times = [data[datatype][operation].get(lib, 0) for lib in lib_order]
+    throughput = [1e9 / t if t > 0 else 0 for t in times]
     colors = [COLORS.get(lib, "#888888") for lib in lib_order]
 
     x = np.arange(len(lib_order))
-    bars = ax.bar(x, times, color=colors, width=0.6)
+    bars = ax.bar(x, throughput, color=colors, width=0.6)
 
-    ax.set_title(f"{datatype.capitalize()} {operation.capitalize()}")
+    ax.set_title(f"{operation.capitalize()} Throughput (higher is better)")
     ax.set_xticks(x)
     ax.set_xticklabels([SERIALIZER_LABELS.get(lib, lib) for lib in lib_order])
-    ax.set_ylabel("Time (ns)")
+    ax.set_ylabel("Throughput (ops/sec)")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
+    ax.ticklabel_format(style="scientific", axis="y", scilimits=(0, 0))
 
     # Add value labels on bars
-    for bar, time_val in zip(bars, times):
+    for bar, tps_val in zip(bars, throughput):
         height = bar.get_height()
         ax.annotate(
-            f"{time_val:.1f}",
+            format_tps_label(tps_val),
             xy=(bar.get_x() + bar.get_width() / 2, height),
             xytext=(0, 3),
             textcoords="offset points",
@@ -236,7 +248,7 @@ for datatype in datatypes:
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     for i, op in enumerate(operations):
         plot_datatype(axes[i], datatype, op)
-    fig.suptitle(f"{datatype.capitalize()} Benchmark Results", fontsize=14)
+    fig.suptitle(f"{datatype.capitalize()} Throughput", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     plot_path = os.path.join(output_dir, f"{datatype}.png")
     plt.savefig(plot_path, dpi=150)
@@ -327,7 +339,11 @@ for k, v in system_info.items():
 
 # Plots section
 md_report.append("\n## Benchmark Plots\n")
-for datatype, img in plot_images:
+md_report.append("\nAll class-level plots below show throughput (ops/sec).\n")
+plot_images_sorted = sorted(
+    plot_images, key=lambda item: (0 if item[0] == "throughput" else 1, item[0])
+)
+for datatype, img in plot_images_sorted:
     img_filename = os.path.basename(img)
     img_path_report = args.plot_prefix + img_filename
     md_report.append(f"\n### {datatype.replace('_', ' ').title()}\n\n")
