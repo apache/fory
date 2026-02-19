@@ -74,6 +74,14 @@ public final class RefReader {
         return value
     }
 
+    public func readRefValue(_ refID: UInt32) throws -> Any {
+        let index = Int(refID)
+        guard refs.indices.contains(index) else {
+            throw ForyError.refError("ref_id out of range: \(refID)")
+        }
+        return refs[index]
+    }
+
     public func reset() {
         refs.removeAll(keepingCapacity: true)
     }
