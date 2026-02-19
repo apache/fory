@@ -2143,18 +2143,18 @@ public abstract class XlangTestBase extends ForyTestBase {
             (Map)
                 ((Map) actual)
                     .entrySet().stream()
-                    .collect(
-                        Collectors.toMap(
-                            (Map.Entry e) -> e.getKey().toString(),
-                            (Map.Entry e) -> e.getValue().toString()));
+                        .collect(
+                            Collectors.toMap(
+                                (Map.Entry e) -> e.getKey().toString(),
+                                (Map.Entry e) -> e.getValue().toString()));
         Map expectedMap =
             (Map)
                 ((Map) expected)
                     .entrySet().stream()
-                    .collect(
-                        Collectors.toMap(
-                            (Map.Entry e) -> e.getKey().toString(),
-                            (Map.Entry e) -> e.getValue().toString()));
+                        .collect(
+                            Collectors.toMap(
+                                (Map.Entry e) -> e.getKey().toString(),
+                                (Map.Entry e) -> e.getValue().toString()));
         Assert.assertEquals(actualMap, expectedMap);
       } else if (expected instanceof Set) {
         Object actualSet =

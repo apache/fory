@@ -93,8 +93,7 @@ public class SwiftXlangTest extends XlangTestBase {
             SWIFT_WORK_DIR);
     if (!built) {
       List<String> fallbackBuildCommand =
-          Arrays.asList(
-              SWIFT_EXECUTABLE, "build", "-c", "release", "--product", SWIFT_PEER_TARGET);
+          Arrays.asList(SWIFT_EXECUTABLE, "build", "-c", "release", "--product", SWIFT_PEER_TARGET);
       built =
           TestUtils.executeCommand(
               fallbackBuildCommand,
@@ -154,8 +153,7 @@ public class SwiftXlangTest extends XlangTestBase {
   }
 
   private static boolean isFileNewerThan(FileTime binaryMTime, Path path) throws IOException {
-    return Files.isRegularFile(path)
-        && Files.getLastModifiedTime(path).compareTo(binaryMTime) > 0;
+    return Files.isRegularFile(path) && Files.getLastModifiedTime(path).compareTo(binaryMTime) > 0;
   }
 
   private static boolean isFileNewerThanUnchecked(FileTime binaryMTime, Path path) {
