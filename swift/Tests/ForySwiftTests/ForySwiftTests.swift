@@ -67,6 +67,19 @@ final class Node {
 }
 
 @ForyObject
+final class WeakNode {
+    var value: Int32 = 0
+    weak var next: WeakNode?
+
+    required init() {}
+
+    init(value: Int32, next: WeakNode? = nil) {
+        self.value = value
+        self.next = next
+    }
+}
+
+@ForyObject
 struct AnyObjectHolder {
     var value: AnyObject
     var optionalValue: AnyObject?
@@ -229,6 +242,21 @@ func macroClassReferenceTracking() throws {
     let decoded: Node = try fory.deserialize(data)
 
     #expect(decoded.value == 7)
+    #expect(decoded.next === decoded)
+}
+
+@Test
+func macroClassWeakReferenceTracking() throws {
+    let fory = Fory(config: .init(xlang: true, trackRef: true))
+    fory.register(WeakNode.self, id: 201)
+
+    let node = WeakNode(value: 13)
+    node.next = node
+
+    let data = try fory.serialize(node)
+    let decoded: WeakNode = try fory.deserialize(data)
+
+    #expect(decoded.value == 13)
     #expect(decoded.next === decoded)
 }
 

@@ -286,7 +286,7 @@ private final class RefOverrideContainer {
 @ForyObject
 private final class CircularRefStruct {
     var name: String = ""
-    var selfRef: CircularRefStruct? = nil
+    weak var selfRef: CircularRefStruct? = nil
 
     required init() {}
 }
