@@ -233,6 +233,27 @@ func macroClassReferenceTracking() throws {
 }
 
 @Test
+func topLevelAnyRoundTrip() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 209)
+
+    let value: Any = Address(street: "AnyTop", zip: 8080)
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    #expect(decoded as? Address == Address(street: "AnyTop", zip: 8080))
+
+    var buffer = Data()
+    try fory.serializeTo(&buffer, value: value)
+    let decodedFrom: Any = try fory.deserializeFrom(ByteReader(data: buffer))
+    #expect(decodedFrom as? Address == Address(street: "AnyTop", zip: 8080))
+
+    let nullAny: Any = Optional<Int32>.none as Any
+    let nullData = try fory.serialize(nullAny)
+    let nullDecoded: Any = try fory.deserialize(nullData)
+    #expect(nullDecoded is ForyAnyNullValue)
+}
+
+@Test
 func topLevelAnyObjectRoundTrip() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 210)
@@ -244,6 +265,11 @@ func topLevelAnyObjectRoundTrip() throws {
     let node = decoded as? Node
     #expect(node != nil)
     #expect(node?.value == 123)
+
+    var buffer = Data()
+    try fory.serializeTo(&buffer, value: value)
+    let decodedFrom: AnyObject = try fory.deserializeFrom(ByteReader(data: buffer))
+    #expect((decodedFrom as? Node)?.value == 123)
 }
 
 @Test
@@ -257,6 +283,11 @@ func topLevelAnySerializerRoundTrip() throws {
 
     let address = decoded as? Address
     #expect(address == Address(street: "AnyStreet", zip: 9090))
+
+    var buffer = Data()
+    try fory.serializeTo(&buffer, value: value)
+    let decodedFrom: any Serializer = try fory.deserializeFrom(ByteReader(data: buffer))
+    #expect(decodedFrom as? Address == Address(street: "AnyStreet", zip: 9090))
 }
 
 @Test
