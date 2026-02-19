@@ -173,10 +173,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
+            date
             ~/.swiftpm
+            date
             ~/Library/Caches/org.swift.swiftpm
+            date
             swift/.build/checkouts
+            date
             swift/.build/repositories
+            date
           key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swiftpm-
@@ -186,8 +191,10 @@ jobs:
           FORY_SWIFT_JAVA_CI: "1"
         run: |
           cd java
+          date
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
+          date
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
 
   graalvm:
