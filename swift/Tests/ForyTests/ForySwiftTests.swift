@@ -17,7 +17,7 @@
 
 import Foundation
 import Testing
-@testable import ForySwift
+@testable import ForyCore
 
 @ForyObject
 struct Address: Equatable {

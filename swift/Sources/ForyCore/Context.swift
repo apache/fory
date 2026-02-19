@@ -379,7 +379,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = true,
         hasGenerics: Bool = false
     ) throws {
-        try ForySwift.writeAny(
+        try ForyCore.writeAny(
             value,
             context: self,
             refMode: refMode,
@@ -394,7 +394,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        try ForySwift.writeAnyList(
+        try ForyCore.writeAnyList(
             value,
             context: self,
             refMode: refMode,
@@ -409,7 +409,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        try ForySwift.writeStringAnyMap(
+        try ForyCore.writeStringAnyMap(
             value,
             context: self,
             refMode: refMode,
@@ -424,7 +424,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        try ForySwift.writeInt32AnyMap(
+        try ForyCore.writeInt32AnyMap(
             value,
             context: self,
             refMode: refMode,
@@ -439,7 +439,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = true
     ) throws -> Any? {
-        try ForySwift.readAny(
+        try ForyCore.readAny(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -450,7 +450,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [Any]? {
-        try ForySwift.readAnyList(
+        try ForyCore.readAnyList(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -461,7 +461,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [String: Any]? {
-        try ForySwift.readStringAnyMap(
+        try ForyCore.readStringAnyMap(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -472,7 +472,7 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [Int32: Any]? {
-        try ForySwift.readInt32AnyMap(
+        try ForyCore.readInt32AnyMap(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
