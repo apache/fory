@@ -44,11 +44,12 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
         static var isReferenceTrackableType: Bool { true }
         """ : nil
 
+        let schemaHashDecl: DeclSyntax = DeclSyntax(stringLiteral: buildSchemaHashDecl(fields: parsed.fields))
         let defaultDecl: DeclSyntax = DeclSyntax(stringLiteral: buildDefaultDecl(isClass: parsed.isClass, fields: parsed.fields))
         let writeDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteDataDecl(sortedFields: sortedFields))
         let readDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadDataDecl(isClass: parsed.isClass, fields: parsed.fields, sortedFields: sortedFields))
 
-        return [staticTypeIDDecl, referenceTrackDecl, defaultDecl, writeDecl, readDecl].compactMap { $0 }
+        return [staticTypeIDDecl, referenceTrackDecl, schemaHashDecl, defaultDecl, writeDecl, readDecl].compactMap { $0 }
     }
 
     public static func expansion(
@@ -204,6 +205,38 @@ private func sortFields(_ fields: [ParsedField]) -> [ParsedField] {
     }
 }
 
+private func buildSchemaHashDecl(fields: [ParsedField]) -> String {
+    let fingerprint = buildSchemaFingerprint(fields: fields)
+    return """
+    private static let __forySchemaHash: UInt32 = SchemaHash.structHash32("\(fingerprint)")
+    """
+}
+
+private func buildSchemaFingerprint(fields: [ParsedField]) -> String {
+    let entries = fields
+        .sorted { lhs, rhs in
+            if lhs.fieldIdentifier != rhs.fieldIdentifier {
+                return lhs.fieldIdentifier < rhs.fieldIdentifier
+            }
+            return lhs.originalIndex < rhs.originalIndex
+        }
+        .map { field -> String in
+            let typeID = fingerprintTypeID(for: field)
+            let nullable = field.isOptional ? "1" : "0"
+            return "\(field.fieldIdentifier),\(typeID),0,\(nullable);"
+        }
+    return entries.joined()
+}
+
+private func fingerprintTypeID(for field: ParsedField) -> UInt32 {
+    let optional = unwrapOptional(field.typeText)
+    let classification = classifyType(optional.type)
+    if classification.isPrimitive || classification.isBuiltIn {
+        return classification.typeID
+    }
+    return 0
+}
+
 private func buildDefaultDecl(isClass: Bool, fields: [ParsedField]) -> String {
     if isClass {
         return """
@@ -241,25 +274,95 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
         let hasGenerics = field.isCollection ? "true" : "false"
         return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: \(hasGenerics))"
     }
+    var schemaLines = ["context.writer.writeInt32(Int32(bitPattern: Self.__forySchemaHash))"]
+    if lines.isEmpty {
+        schemaLines.append("_ = hasGenerics")
+    } else {
+        schemaLines.append(contentsOf: lines)
+    }
+    let schemaBody = schemaLines.joined(separator: "\n        ")
 
-    let body = lines.isEmpty ? "_ = hasGenerics" : lines.joined(separator: "\n        ")
+    let fieldInfos = sortedFields.map { field in
+        "TypeMetaFieldInfo(fieldID: nil, fieldName: \"\(field.name)\", fieldType: \(compatibleTypeMetaFieldExpression(field)))"
+    }
+    let compatibleFieldsExpr = fieldInfos.isEmpty
+        ? "[]"
+        : "[\n                \(fieldInfos.joined(separator: ",\n                "))\n            ]"
+    let compatibleWriteLines = lines.isEmpty ? "" : "\n            \(lines.joined(separator: "\n            "))"
 
     return """
     func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        \(body)
+        if context.compatible {
+            let info = try context.typeResolver.requireRegisteredTypeInfo(for: Self.self)
+            let typeMeta = try TypeMeta(
+                typeID: ForyTypeId.compatibleStruct.rawValue,
+                userTypeID: info.userTypeID,
+                namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
+                typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
+                registerByName: false,
+                fields: \(compatibleFieldsExpr)
+            )
+            context.writer.writeVarUInt32(0)
+            context.writer.writeBytes(try typeMeta.encode())\(compatibleWriteLines)
+            return
+        }
+        \(schemaBody)
     }
     """
 }
 
 private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedFields: [ParsedField]) -> String {
+    let compatiblePrelude = """
+            let marker = try context.reader.readVarUInt32()
+            if (marker & 1) == 1 {
+                throw ForyError.invalidData("type metadata references are not supported")
+            }
+            let typeMeta = try TypeMeta.decode(context.reader)
+            if typeMeta.registerByName {
+                throw ForyError.invalidData("register-by-name compatible metadata is not supported")
+            }
+            let info = try context.typeResolver.requireRegisteredTypeInfo(for: Self.self)
+            guard let remoteUserTypeID = typeMeta.userTypeID else {
+                throw ForyError.invalidData("missing user type id in compatible type metadata")
+            }
+            if remoteUserTypeID != info.userTypeID {
+                throw ForyError.typeMismatch(expected: info.userTypeID, actual: remoteUserTypeID)
+            }
+            if let remoteTypeID = typeMeta.typeID,
+               remoteTypeID != ForyTypeId.compatibleStruct.rawValue,
+               remoteTypeID != ForyTypeId.structType.rawValue {
+                throw ForyError.typeMismatch(expected: ForyTypeId.compatibleStruct.rawValue, actual: remoteTypeID)
+            }
+    """
+
     if isClass {
         let assignLines = sortedFields.map { field -> String in
             let refMode = fieldRefModeExpression(field)
             return "value.\(field.name) = try \(field.typeText).foryRead(context, refMode: \(refMode), readTypeInfo: false)"
         }.joined(separator: "\n        ")
+        let compatibleCases = sortedFields.map { field -> String in
+            "case \"\(field.fieldIdentifier)\": value.\(field.name) = try \(field.typeText).foryRead(context, refMode: RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef), readTypeInfo: false)"
+        }.joined(separator: "\n                ")
 
         return """
         static func foryReadData(_ context: ReadContext) throws -> Self {
+            if context.compatible {
+                \(compatiblePrelude)
+                let value = Self.init()
+                context.bindPendingReference(value)
+                for remoteField in typeMeta.fields {
+                    switch remoteField.fieldName {
+                \(compatibleCases)
+                    default:
+                        try CompatibleFieldIO.skipField(context: context, fieldType: remoteField.fieldType)
+                    }
+                }
+                return value
+            }
+            let __schemaHash = UInt32(bitPattern: try context.reader.readInt32())
+            if __schemaHash != Self.__forySchemaHash {
+                throw ForyError.invalidData("class version hash mismatch: expected \\(Self.__forySchemaHash), got \\(__schemaHash)")
+            }
             let value = Self.init()
             context.bindPendingReference(value)
             \(assignLines)
@@ -271,6 +374,17 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
     if fields.isEmpty {
         return """
         static func foryReadData(_ context: ReadContext) throws -> Self {
+            if context.compatible {
+                \(compatiblePrelude)
+                for remoteField in typeMeta.fields {
+                    try CompatibleFieldIO.skipField(context: context, fieldType: remoteField.fieldType)
+                }
+                return Self()
+            }
+            let __schemaHash = UInt32(bitPattern: try context.reader.readInt32())
+            if __schemaHash != Self.__forySchemaHash {
+                throw ForyError.invalidData("class version hash mismatch: expected \\(Self.__forySchemaHash), got \\(__schemaHash)")
+            }
             Self()
         }
         """
@@ -285,9 +399,34 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
         .sorted(by: { $0.originalIndex < $1.originalIndex })
         .map { "\($0.name): __\($0.name)" }
         .joined(separator: ",\n            ")
+    let compatibleDefaults = fields
+        .sorted(by: { $0.originalIndex < $1.originalIndex })
+        .map { "var __\($0.name) = \($0.typeText).foryDefault()" }
+        .joined(separator: "\n                ")
+    let compatibleCases = sortedFields.map { field -> String in
+        "case \"\(field.fieldIdentifier)\": __\(field.name) = try \(field.typeText).foryRead(context, refMode: RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef), readTypeInfo: false)"
+    }.joined(separator: "\n                    ")
 
     return """
     static func foryReadData(_ context: ReadContext) throws -> Self {
+        if context.compatible {
+            \(compatiblePrelude)
+                \(compatibleDefaults)
+                for remoteField in typeMeta.fields {
+                    switch remoteField.fieldName {
+                    \(compatibleCases)
+                    default:
+                        try CompatibleFieldIO.skipField(context: context, fieldType: remoteField.fieldType)
+                    }
+                }
+                return Self(
+                    \(ctorArgs)
+                )
+            }
+        let __schemaHash = UInt32(bitPattern: try context.reader.readInt32())
+        if __schemaHash != Self.__forySchemaHash {
+            throw ForyError.invalidData("class version hash mismatch: expected \\(Self.__forySchemaHash), got \\(__schemaHash)")
+        }
         \(readLines)
         return Self(
             \(ctorArgs)
@@ -299,6 +438,98 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
 private func fieldRefModeExpression(_ field: ParsedField) -> String {
     let nullable = field.isOptional ? "true" : "false"
     return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef && \(field.typeText).isReferenceTrackableType)"
+}
+
+private func compatibleTypeMetaFieldExpression(_ field: ParsedField) -> String {
+    buildCompatibleTypeMetaFieldTypeExpression(
+        typeText: field.typeText,
+        nullableExpression: field.isOptional ? "true" : "false",
+        trackRefExpression: "context.trackRef && \(field.typeText).isReferenceTrackableType"
+    )
+}
+
+private func buildCompatibleTypeMetaFieldTypeExpression(
+    typeText: String,
+    nullableExpression: String,
+    trackRefExpression: String
+) -> String {
+    let normalized = trimType(typeText)
+    let optional = unwrapOptional(normalized)
+    let concreteType = optional.type
+    let outerClassification = classifyType(concreteType)
+
+    if outerClassification.typeID == 22, let elementType = parseArrayElement(concreteType) {
+        let elementNullable = compatibleGenericNullableExpression(elementType)
+        let elementExpr = buildCompatibleTypeMetaFieldTypeExpression(
+            typeText: elementType,
+            nullableExpression: elementNullable,
+            trackRefExpression: "false"
+        )
+        return """
+TypeMetaFieldType(
+    typeID: ForyTypeId.list.rawValue,
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression),
+    generics: [\(elementExpr)]
+)
+"""
+    }
+
+    if outerClassification.typeID == 23, let elementType = parseSetElement(concreteType) {
+        let elementNullable = compatibleGenericNullableExpression(elementType)
+        let elementExpr = buildCompatibleTypeMetaFieldTypeExpression(
+            typeText: elementType,
+            nullableExpression: elementNullable,
+            trackRefExpression: "false"
+        )
+        return """
+TypeMetaFieldType(
+    typeID: ForyTypeId.set.rawValue,
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression),
+    generics: [\(elementExpr)]
+)
+"""
+    }
+
+    if outerClassification.typeID == 24, let (keyType, valueType) = parseDictionary(concreteType) {
+        let keyNullable = compatibleGenericNullableExpression(keyType)
+        let valueNullable = compatibleGenericNullableExpression(valueType)
+        let keyExpr = buildCompatibleTypeMetaFieldTypeExpression(
+            typeText: keyType,
+            nullableExpression: keyNullable,
+            trackRefExpression: "false"
+        )
+        let valueExpr = buildCompatibleTypeMetaFieldTypeExpression(
+            typeText: valueType,
+            nullableExpression: valueNullable,
+            trackRefExpression: "false"
+        )
+        return """
+TypeMetaFieldType(
+    typeID: ForyTypeId.map.rawValue,
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression),
+    generics: [\(keyExpr), \(valueExpr)]
+)
+"""
+    }
+
+    return """
+TypeMetaFieldType(
+    typeID: UInt32(\(concreteType).staticTypeId.rawValue),
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression)
+)
+"""
+}
+
+private func compatibleGenericNullableExpression(_ typeText: String) -> String {
+    let optional = unwrapOptional(typeText)
+    if optional.isOptional {
+        return "true"
+    }
+    return classifyType(optional.type).isPrimitive ? "false" : "true"
 }
 
 private func unwrapOptional(_ typeText: String) -> (isOptional: Bool, type: String) {
@@ -393,7 +624,11 @@ private func classifyType(_ typeText: String) -> TypeClassification {
 
 private func parseArrayElement(_ type: String) -> String? {
     if type.hasPrefix("[") && type.hasSuffix("]") {
-        return String(type.dropFirst().dropLast())
+        let content = String(type.dropFirst().dropLast())
+        if content.contains(":") {
+            return nil
+        }
+        return content
     }
     if type.hasPrefix("Array<") && type.hasSuffix(">") {
         let start = type.index(type.startIndex, offsetBy: "Array<".count)

@@ -327,7 +327,33 @@ extension Array: Serializer where Element: Serializer {
         let sameType = (header & CollectionHeader.sameType) != 0
 
         if !sameType {
-            throw ForyError.invalidData("heterogeneous list decoding is not supported yet")
+            var values: [Element] = []
+            values.reserveCapacity(length)
+
+            if trackRef {
+                for _ in 0..<length {
+                    values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: true))
+                }
+                return values
+            }
+
+            if hasNull {
+                for _ in 0..<length {
+                    let refFlag = try context.reader.readInt8()
+                    if refFlag == RefFlag.null.rawValue {
+                        values.append(Element.foryDefault())
+                    } else if refFlag == RefFlag.notNullValue.rawValue {
+                        values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                    } else {
+                        throw ForyError.refError("invalid nullability flag \(refFlag)")
+                    }
+                }
+            } else {
+                for _ in 0..<length {
+                    values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                }
+            }
+            return values
         }
 
         if !declared {

@@ -21,12 +21,14 @@ public final class WriteContext {
     public let writer: ByteWriter
     public let typeResolver: TypeResolver
     public let trackRef: Bool
+    public let compatible: Bool
     public let refWriter: RefWriter
 
-    public init(writer: ByteWriter, typeResolver: TypeResolver, trackRef: Bool) {
+    public init(writer: ByteWriter, typeResolver: TypeResolver, trackRef: Bool, compatible: Bool = false) {
         self.writer = writer
         self.typeResolver = typeResolver
         self.trackRef = trackRef
+        self.compatible = compatible
         self.refWriter = RefWriter()
     }
 
@@ -44,14 +46,16 @@ public final class ReadContext {
     public let reader: ByteReader
     public let typeResolver: TypeResolver
     public let trackRef: Bool
+    public let compatible: Bool
     public let refReader: RefReader
 
     private var pendingRefStack: [PendingRefSlot] = []
 
-    public init(reader: ByteReader, typeResolver: TypeResolver, trackRef: Bool) {
+    public init(reader: ByteReader, typeResolver: TypeResolver, trackRef: Bool, compatible: Bool = false) {
         self.reader = reader
         self.typeResolver = typeResolver
         self.trackRef = trackRef
+        self.compatible = compatible
         self.refReader = RefReader()
     }
 

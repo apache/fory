@@ -252,6 +252,7 @@ func macroFieldOrderFollowsForyRules() throws {
     _ = try reader.readInt8() // root ref flag
     _ = try reader.readVarUInt32() // type id
     _ = try reader.readVarUInt32() // user type id
+    _ = try reader.readInt32() // schema hash
 
     let first = try reader.readInt16()
     let second = try reader.readVarInt64()

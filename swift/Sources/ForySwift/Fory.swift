@@ -20,10 +20,12 @@ import Foundation
 public struct ForyConfig {
     public var xlang: Bool
     public var trackRef: Bool
+    public var compatible: Bool
 
-    public init(xlang: Bool = true, trackRef: Bool = false) {
+    public init(xlang: Bool = true, trackRef: Bool = false, compatible: Bool = false) {
         self.xlang = xlang
         self.trackRef = trackRef
+        self.compatible = compatible
     }
 }
 
@@ -45,7 +47,12 @@ public final class Fory {
         writeHead(writer: writer, isNone: value.foryIsNone)
 
         if !value.foryIsNone {
-            let context = WriteContext(writer: writer, typeResolver: typeResolver, trackRef: config.trackRef)
+            let context = WriteContext(
+                writer: writer,
+                typeResolver: typeResolver,
+                trackRef: config.trackRef,
+                compatible: config.compatible
+            )
             let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
             try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
             context.reset()
@@ -61,7 +68,12 @@ public final class Fory {
             return T.foryDefault()
         }
 
-        let context = ReadContext(reader: reader, typeResolver: typeResolver, trackRef: config.trackRef)
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible
+        )
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
         context.reset()
@@ -77,7 +89,12 @@ public final class Fory {
         if isNone {
             return T.foryDefault()
         }
-        let context = ReadContext(reader: reader, typeResolver: typeResolver, trackRef: config.trackRef)
+        let context = ReadContext(
+            reader: reader,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible
+        )
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
         context.reset()

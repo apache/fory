@@ -115,6 +115,10 @@ public extension Serializer {
     }
 
     static func foryWriteTypeInfo(_ context: WriteContext) throws {
+        if context.compatible, staticTypeId == .structType {
+            context.writer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.compatibleStruct.rawValue))
+            return
+        }
         if staticTypeId.isUserTypeKind {
             let info = try context.typeResolver.requireRegisteredTypeInfo(for: Self.self)
             context.writer.writeUInt8(UInt8(truncatingIfNeeded: info.kind.rawValue))
@@ -128,6 +132,13 @@ public extension Serializer {
         let rawTypeID = try context.reader.readVarUInt32()
         guard let typeID = ForyTypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")
+        }
+
+        if context.compatible, staticTypeId == .structType {
+            if typeID != .compatibleStruct {
+                throw ForyError.typeMismatch(expected: ForyTypeId.compatibleStruct.rawValue, actual: rawTypeID)
+            }
+            return
         }
 
         if staticTypeId.isUserTypeKind {
