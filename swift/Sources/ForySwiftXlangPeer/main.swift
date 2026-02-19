@@ -613,73 +613,12 @@ private struct StructWithUnion2 {
     var union: StringOrLong = .foryDefault()
 }
 
-private struct UInt32Fixed: Serializer, Equatable {
-    var rawValue: UInt32 = 0
-
-    static func foryDefault() -> UInt32Fixed {
-        UInt32Fixed()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .uint32
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeUInt32(rawValue)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> UInt32Fixed {
-        UInt32Fixed(rawValue: try context.reader.readUInt32())
-    }
-}
-
-private struct UInt64Fixed: Serializer, Equatable {
-    var rawValue: UInt64 = 0
-
-    static func foryDefault() -> UInt64Fixed {
-        UInt64Fixed()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .uint64
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeUInt64(rawValue)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> UInt64Fixed {
-        UInt64Fixed(rawValue: try context.reader.readUInt64())
-    }
-}
-
-private struct UInt64Tagged: Serializer, Equatable {
-    var rawValue: UInt64 = 0
-
-    static func foryDefault() -> UInt64Tagged {
-        UInt64Tagged()
-    }
-
-    static var staticTypeId: ForyTypeId {
-        .taggedUInt64
-    }
-
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.writer.writeTaggedUInt64(rawValue)
-    }
-
-    static func foryReadData(_ context: ReadContext) throws -> UInt64Tagged {
-        UInt64Tagged(rawValue: try context.reader.readTaggedUInt64())
-    }
-}
-
 @ForyObject
 private struct UnsignedSchemaConsistentSimple {
-    var u64Tagged: UInt64Tagged = .foryDefault()
-    var u64TaggedNullable: UInt64Tagged? = nil
+    @ForyField(encoding: .tagged)
+    var u64Tagged: UInt64 = 0
+    @ForyField(encoding: .tagged)
+    var u64TaggedNullable: UInt64? = nil
 }
 
 @ForyObject
@@ -687,18 +626,24 @@ private struct UnsignedSchemaConsistent {
     var u8Field: UInt8 = 0
     var u16Field: UInt16 = 0
     var u32VarField: UInt32 = 0
-    var u32FixedField: UInt32Fixed = .foryDefault()
+    @ForyField(encoding: .fixed)
+    var u32FixedField: UInt32 = 0
     var u64VarField: UInt64 = 0
-    var u64FixedField: UInt64Fixed = .foryDefault()
-    var u64TaggedField: UInt64Tagged = .foryDefault()
+    @ForyField(encoding: .fixed)
+    var u64FixedField: UInt64 = 0
+    @ForyField(encoding: .tagged)
+    var u64TaggedField: UInt64 = 0
 
     var u8NullableField: UInt8? = nil
     var u16NullableField: UInt16? = nil
     var u32VarNullableField: UInt32? = nil
-    var u32FixedNullableField: UInt32Fixed? = nil
+    @ForyField(encoding: .fixed)
+    var u32FixedNullableField: UInt32? = nil
     var u64VarNullableField: UInt64? = nil
-    var u64FixedNullableField: UInt64Fixed? = nil
-    var u64TaggedNullableField: UInt64Tagged? = nil
+    @ForyField(encoding: .fixed)
+    var u64FixedNullableField: UInt64? = nil
+    @ForyField(encoding: .tagged)
+    var u64TaggedNullableField: UInt64? = nil
 }
 
 @ForyObject
@@ -706,18 +651,24 @@ private struct UnsignedSchemaCompatible {
     var u8Field1: UInt8? = nil
     var u16Field1: UInt16? = nil
     var u32VarField1: UInt32? = nil
-    var u32FixedField1: UInt32Fixed? = nil
+    @ForyField(encoding: .fixed)
+    var u32FixedField1: UInt32? = nil
     var u64VarField1: UInt64? = nil
-    var u64FixedField1: UInt64Fixed? = nil
-    var u64TaggedField1: UInt64Tagged? = nil
+    @ForyField(encoding: .fixed)
+    var u64FixedField1: UInt64? = nil
+    @ForyField(encoding: .tagged)
+    var u64TaggedField1: UInt64? = nil
 
     var u8Field2: UInt8 = 0
     var u16Field2: UInt16 = 0
     var u32VarField2: UInt32 = 0
-    var u32FixedField2: UInt32Fixed = .foryDefault()
+    @ForyField(encoding: .fixed)
+    var u32FixedField2: UInt32 = 0
     var u64VarField2: UInt64 = 0
-    var u64FixedField2: UInt64Fixed = .foryDefault()
-    var u64TaggedField2: UInt64Tagged = .foryDefault()
+    @ForyField(encoding: .fixed)
+    var u64FixedField2: UInt64 = 0
+    @ForyField(encoding: .tagged)
+    var u64TaggedField2: UInt64 = 0
 }
 
 private enum PeerError: Error, CustomStringConvertible {

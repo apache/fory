@@ -27,3 +27,14 @@
 )
 @attached(extension, conformances: Serializer)
 public macro ForyObject() = #externalMacro(module: "ForySwiftMacros", type: "ForyObjectMacro")
+
+public enum ForyFieldEncoding: String {
+    case varint
+    case fixed
+    case tagged
+}
+
+@attached(peer)
+public macro ForyField(
+    encoding: ForyFieldEncoding
+) = #externalMacro(module: "ForySwiftMacros", type: "ForyFieldMacro")
