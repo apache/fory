@@ -17,8 +17,8 @@
 
 import Foundation
 
-public enum CompatibleFieldIO {
-    public static func skipField(
+public enum FieldSkipper {
+    public static func skipFieldValue(
         context: ReadContext,
         fieldType: TypeMetaFieldType
     ) throws {

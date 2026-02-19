@@ -354,7 +354,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                     switch remoteField.fieldName {
                 \(compatibleCases)
                     default:
-                        try CompatibleFieldIO.skipField(context: context, fieldType: remoteField.fieldType)
+                        try FieldSkipper.skipFieldValue(context: context, fieldType: remoteField.fieldType)
                     }
                 }
                 return value
@@ -377,7 +377,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
             if context.compatible {
                 \(compatiblePrelude)
                 for remoteField in typeMeta.fields {
-                    try CompatibleFieldIO.skipField(context: context, fieldType: remoteField.fieldType)
+                    try FieldSkipper.skipFieldValue(context: context, fieldType: remoteField.fieldType)
                 }
                 return Self()
             }
@@ -416,7 +416,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                     switch remoteField.fieldName {
                     \(compatibleCases)
                     default:
-                        try CompatibleFieldIO.skipField(context: context, fieldType: remoteField.fieldType)
+                        try FieldSkipper.skipFieldValue(context: context, fieldType: remoteField.fieldType)
                     }
                 }
                 return Self(
