@@ -31,9 +31,22 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-# === Colors ===
-FORY_COLOR = "#FF6f01"  # Orange for Fory
-PROTOBUF_COLOR = "#55BCC2"  # Teal for Protobuf
+# === Colors and serializer order ===
+COLORS = {
+    "fory": "#FF6f01",  # Orange
+    "fory_compatible": "#FFB266",  # Shallow orange
+    "protobuf": "#55BCC2",  # Teal
+    "msgpack": (0.55, 0.40, 0.45),
+    "msgpack_map": (0.80, 0.5, 0.6),
+}
+SERIALIZER_ORDER = ["fory", "fory_compatible", "protobuf", "msgpack", "msgpack_map"]
+SERIALIZER_LABELS = {
+    "fory": "fory",
+    "fory_compatible": "fory_compatible",
+    "protobuf": "protobuf",
+    "msgpack": "msgpack",
+    "msgpack_map": "msgpack_map",
+}
 
 # === Parse arguments ===
 parser = argparse.ArgumentParser(
@@ -81,7 +94,9 @@ def parse_benchmark_name(name):
     """
     Parse benchmark names like:
     - BM_Fory_Struct_Serialize
+    - BM_ForyCompatible_Struct_Serialize
     - BM_Protobuf_Sample_Deserialize
+    - BM_MsgpackMap_MediaContent_Deserialize
     Returns: (library, datatype, operation)
     """
     # Remove BM_ prefix
@@ -90,9 +105,13 @@ def parse_benchmark_name(name):
 
     parts = name.split("_")
     if len(parts) >= 3:
-        library = parts[0].lower()  # fory or protobuf
-        datatype = parts[1].lower()  # struct or sample
-        operation = parts[2].lower()  # serialize or deserialize
+        library = parts[0].lower()
+        if library == "forycompatible":
+            library = "fory_compatible"
+        elif library == "msgpackmap":
+            library = "msgpack_map"
+        datatype = parts[1].lower()
+        operation = parts[2].lower()
         return library, datatype, operation
     return None, None, None
 
@@ -105,6 +124,19 @@ def format_datatype_label(datatype):
         if base == "mediacontent":
             return "MediaContent\nList"
         return f"{base.capitalize()}\nList"
+    if datatype == "mediacontent":
+        return "MediaContent"
+    return datatype.capitalize()
+
+
+def format_datatype_table_label(datatype):
+    if not datatype:
+        return ""
+    if datatype.endswith("list"):
+        base = datatype[: -len("list")]
+        if base == "mediacontent":
+            return "MediaContentList"
+        return f"{base.capitalize()}List"
     if datatype == "mediacontent":
         return "MediaContent"
     return datatype.capitalize()
@@ -135,22 +167,9 @@ for bench in benchmark_data.get("benchmarks", []):
     if "/iterations:" in name or "PrintSerializedSizes" in name:
         # Extract sizes from PrintSerializedSizes
         if "PrintSerializedSizes" in name:
-            for key in [
-                "fory_struct_size",
-                "proto_struct_size",
-                "fory_sample_size",
-                "proto_sample_size",
-                "fory_media_size",
-                "proto_media_size",
-                "fory_struct_list_size",
-                "proto_struct_list_size",
-                "fory_sample_list_size",
-                "proto_sample_list_size",
-                "fory_media_list_size",
-                "proto_media_list_size",
-            ]:
-                if key in bench:
-                    sizes[key] = int(bench[key])
+            for key, value in bench.items():
+                if key.endswith("_size"):
+                    sizes[key] = int(value)
         continue
 
     library, datatype, operation = parse_benchmark_name(name)
@@ -188,18 +207,18 @@ def plot_datatype(ax, datatype, operation):
         ax.axis("off")
         return
 
-    libs = sorted(data[datatype][operation].keys())
-    lib_order = [lib for lib in ["fory", "protobuf"] if lib in libs]
+    libs = set(data[datatype][operation].keys())
+    lib_order = [lib for lib in SERIALIZER_ORDER if lib in libs]
 
     times = [data[datatype][operation].get(lib, 0) for lib in lib_order]
-    colors = [FORY_COLOR if lib == "fory" else PROTOBUF_COLOR for lib in lib_order]
+    colors = [COLORS.get(lib, "#888888") for lib in lib_order]
 
     x = np.arange(len(lib_order))
     bars = ax.bar(x, times, color=colors, width=0.6)
 
     ax.set_title(f"{datatype.capitalize()} {operation.capitalize()}")
     ax.set_xticks(x)
-    ax.set_xticklabels([lib.capitalize() for lib in lib_order])
+    ax.set_xticklabels([SERIALIZER_LABELS.get(lib, lib) for lib in lib_order])
     ax.set_ylabel("Time (ns)")
     ax.grid(True, axis="y", linestyle="--", alpha=0.5)
 
@@ -245,17 +264,28 @@ def plot_combined_tps_subplot(ax, grouped_datatypes, operation, title):
         return
 
     x = np.arange(len(grouped_datatypes))
-    width = 0.35
+    available_libs = [
+        lib
+        for lib in SERIALIZER_ORDER
+        if any(data[dt][operation].get(lib, 0) > 0 for dt in grouped_datatypes)
+    ]
+    if not available_libs:
+        ax.set_title(f"{title}\nNo Data")
+        ax.axis("off")
+        return
 
-    fory_times = [data[dt][operation].get("fory", 0) for dt in grouped_datatypes]
-    proto_times = [data[dt][operation].get("protobuf", 0) for dt in grouped_datatypes]
-
-    # Convert to TPS (operations per second)
-    fory_tps = [1e9 / t if t > 0 else 0 for t in fory_times]
-    proto_tps = [1e9 / t if t > 0 else 0 for t in proto_times]
-
-    ax.bar(x - width / 2, fory_tps, width, label="Fory", color=FORY_COLOR)
-    ax.bar(x + width / 2, proto_tps, width, label="Protobuf", color=PROTOBUF_COLOR)
+    width = 0.8 / len(available_libs)
+    for idx, lib in enumerate(available_libs):
+        times = [data[dt][operation].get(lib, 0) for dt in grouped_datatypes]
+        tps = [1e9 / t if t > 0 else 0 for t in times]
+        offset = (idx - (len(available_libs) - 1) / 2) * width
+        ax.bar(
+            x + offset,
+            tps,
+            width,
+            label=SERIALIZER_LABELS.get(lib, lib),
+            color=COLORS.get(lib, "#888888"),
+        )
 
     ax.set_title(title)
     ax.set_xticks(x)
@@ -267,7 +297,7 @@ def plot_combined_tps_subplot(ax, grouped_datatypes, operation, title):
     ax.ticklabel_format(style="scientific", axis="y", scilimits=(0, 0))
 
 
-fig, axes = plt.subplots(1, 4, figsize=(24, 6))
+fig, axes = plt.subplots(1, 4, figsize=(28, 6))
 fig.supylabel("Throughput (ops/sec)")
 
 combined_subplots = [
@@ -317,73 +347,97 @@ for datatype, img in plot_images:
 # Results table
 md_report.append("\n## Benchmark Results\n\n")
 md_report.append("### Timing Results (nanoseconds)\n\n")
-md_report.append("| Datatype | Operation | Fory (ns) | Protobuf (ns) | Faster |\n")
-md_report.append("|----------|-----------|-----------|---------------|--------|\n")
+md_report.append(
+    "| Datatype | Operation | fory (ns) | fory_compatible (ns) | protobuf (ns) | msgpack (ns) | msgpack_map (ns) | Fastest |\n"
+)
+md_report.append(
+    "|----------|-----------|-----------|----------------------|---------------|--------------|------------------|---------|\n"
+)
 
 for datatype in datatypes:
     for op in operations:
-        f_time = data[datatype][op].get("fory", 0)
-        p_time = data[datatype][op].get("protobuf", 0)
-        if f_time > 0 and p_time > 0:
-            faster = "Fory" if f_time < p_time else "Protobuf"
-            ratio = max(f_time, p_time) / min(f_time, p_time)
-            faster_str = f"{faster} ({ratio:.1f}x)"
-        else:
-            faster_str = "N/A"
+        times = {lib: data[datatype][op].get(lib, 0) for lib in SERIALIZER_ORDER}
+        positive_times = {lib: t for lib, t in times.items() if t > 0}
+        fastest_str = "N/A"
+        if positive_times:
+            fastest_lib = min(positive_times, key=positive_times.get)
+            fastest_str = SERIALIZER_LABELS.get(fastest_lib, fastest_lib)
         md_report.append(
-            f"| {datatype.capitalize()} | {op.capitalize()} | {f_time:.1f} | {p_time:.1f} | {faster_str} |\n"
+            "| "
+            + f"{format_datatype_table_label(datatype)} | {op.capitalize()} | "
+            + " | ".join(
+                f"{times[lib]:.1f}" if times[lib] > 0 else "N/A"
+                for lib in SERIALIZER_ORDER
+            )
+            + f" | {fastest_str} |\n"
         )
 
 # Throughput table
 md_report.append("\n### Throughput Results (ops/sec)\n\n")
-md_report.append("| Datatype | Operation | Fory TPS | Protobuf TPS | Faster |\n")
-md_report.append("|----------|-----------|----------|--------------|--------|\n")
+md_report.append(
+    "| Datatype | Operation | fory TPS | fory_compatible TPS | protobuf TPS | msgpack TPS | msgpack_map TPS | Fastest |\n"
+)
+md_report.append(
+    "|----------|-----------|----------|---------------------|--------------|-------------|-----------------|---------|\n"
+)
 
 for datatype in datatypes:
     for op in operations:
-        f_time = data[datatype][op].get("fory", 0)
-        p_time = data[datatype][op].get("protobuf", 0)
-        f_tps = 1e9 / f_time if f_time > 0 else 0
-        p_tps = 1e9 / p_time if p_time > 0 else 0
-        if f_tps > 0 and p_tps > 0:
-            faster = "Fory" if f_tps > p_tps else "Protobuf"
-            ratio = max(f_tps, p_tps) / min(f_tps, p_tps)
-            faster_str = f"{faster} ({ratio:.1f}x)"
-        else:
-            faster_str = "N/A"
+        times = {lib: data[datatype][op].get(lib, 0) for lib in SERIALIZER_ORDER}
+        tps = {lib: (1e9 / t if t > 0 else 0) for lib, t in times.items()}
+        positive_tps = {lib: v for lib, v in tps.items() if v > 0}
+        fastest_str = "N/A"
+        if positive_tps:
+            fastest_lib = max(positive_tps, key=positive_tps.get)
+            fastest_str = SERIALIZER_LABELS.get(fastest_lib, fastest_lib)
         md_report.append(
-            f"| {datatype.capitalize()} | {op.capitalize()} | {f_tps:,.0f} | {p_tps:,.0f} | {faster_str} |\n"
+            "| "
+            + f"{format_datatype_table_label(datatype)} | {op.capitalize()} | "
+            + " | ".join(f"{tps[lib]:,.0f}" if tps[lib] > 0 else "N/A" for lib in SERIALIZER_ORDER)
+            + f" | {fastest_str} |\n"
         )
 
 # Serialized sizes
 if sizes:
     md_report.append("\n### Serialized Data Sizes (bytes)\n\n")
-    md_report.append("| Datatype | Fory | Protobuf |\n")
-    md_report.append("|----------|------|----------|\n")
-    if "fory_struct_size" in sizes and "proto_struct_size" in sizes:
-        md_report.append(
-            f"| Struct | {sizes['fory_struct_size']} | {sizes['proto_struct_size']} |\n"
-        )
-    if "fory_sample_size" in sizes and "proto_sample_size" in sizes:
-        md_report.append(
-            f"| Sample | {sizes['fory_sample_size']} | {sizes['proto_sample_size']} |\n"
-        )
-    if "fory_media_size" in sizes and "proto_media_size" in sizes:
-        md_report.append(
-            f"| MediaContent | {sizes['fory_media_size']} | {sizes['proto_media_size']} |\n"
-        )
-    if "fory_struct_list_size" in sizes and "proto_struct_list_size" in sizes:
-        md_report.append(
-            f"| StructList | {sizes['fory_struct_list_size']} | {sizes['proto_struct_list_size']} |\n"
-        )
-    if "fory_sample_list_size" in sizes and "proto_sample_list_size" in sizes:
-        md_report.append(
-            f"| SampleList | {sizes['fory_sample_list_size']} | {sizes['proto_sample_list_size']} |\n"
-        )
-    if "fory_media_list_size" in sizes and "proto_media_list_size" in sizes:
-        md_report.append(
-            f"| MediaContentList | {sizes['fory_media_list_size']} | {sizes['proto_media_list_size']} |\n"
-        )
+    md_report.append(
+        "| Datatype | fory | fory_compatible | protobuf | msgpack | msgpack_map |\n"
+    )
+    md_report.append(
+        "|----------|------|-----------------|----------|---------|-------------|\n"
+    )
+    size_prefix = {
+        "fory": "fory",
+        "fory_compatible": "fory_compatible",
+        "protobuf": "protobuf",
+        "msgpack": "msgpack",
+        "msgpack_map": "msgpack_map",
+    }
+    size_datatypes = [
+        ("struct", "Struct"),
+        ("sample", "Sample"),
+        ("media", "MediaContent"),
+        ("struct_list", "StructList"),
+        ("sample_list", "SampleList"),
+        ("media_list", "MediaContentList"),
+    ]
+    for datatype_key, datatype_label in size_datatypes:
+        row_values = []
+        has_value = False
+        for lib in SERIALIZER_ORDER:
+            key = f"{size_prefix[lib]}_{datatype_key}_size"
+            value = sizes.get(key)
+            if value is None and lib == "protobuf":
+                value = sizes.get(f"proto_{datatype_key}_size")
+            if value is None:
+                row_values.append("N/A")
+            else:
+                row_values.append(str(value))
+                has_value = True
+        if has_value:
+            md_report.append(
+                f"| {datatype_label} | " + " | ".join(row_values) + " |\n"
+            )
 
 # Save Markdown
 report_path = os.path.join(output_dir, "REPORT.md")
