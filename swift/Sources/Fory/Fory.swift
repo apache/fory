@@ -33,9 +33,17 @@ public final class Fory {
     public let config: ForyConfig
     public let typeResolver: TypeResolver
 
-    public init(config: ForyConfig = ForyConfig()) {
-        self.config = config
+    public init(
+        xlang: Bool = true,
+        trackRef: Bool = false,
+        compatible: Bool = false
+    ) {
+        self.config = ForyConfig(xlang: xlang, trackRef: trackRef, compatible: compatible)
         self.typeResolver = TypeResolver()
+    }
+
+    public convenience init(config: ForyConfig) {
+        self.init(xlang: config.xlang, trackRef: config.trackRef, compatible: config.compatible)
     }
 
     public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
