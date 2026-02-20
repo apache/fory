@@ -112,6 +112,7 @@ private enum DynamicAnyCodecKind {
     case anyList
     case stringAnyMap
     case int32AnyMap
+    case anyHashableAnyMap
 }
 
 private struct ParsedField {
@@ -666,8 +667,11 @@ private func resolveDynamicAnyCodec(rawType: String) throws -> DynamicAnyCodecKi
         if normalizedKeyType == "Int32" {
             return .int32AnyMap
         }
+        if normalizedKeyType == "AnyHashable" {
+            return .anyHashableAnyMap
+        }
         throw MacroExpansionErrorMessage(
-            "Dictionary<\(keyType), ...> with Any values is only supported for String or Int32 keys"
+            "Dictionary<\(keyType), ...> with Any values is only supported for String, Int32, or AnyHashable keys"
         )
     }
 
@@ -778,7 +782,7 @@ private func buildSchemaFingerprint(fields: [ParsedField]) -> String {
                 switch dynamicAnyCodec {
                 case .anyValue:
                     trackRefExpr = "trackRef ? 1 : 0"
-                case .anyList, .stringAnyMap, .int32AnyMap:
+                case .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
                     trackRefExpr = "0"
                 }
             } else {
@@ -1081,6 +1085,11 @@ private func dynamicAnyWriteLine(
             return "try context.writeInt32AnyMap(self.\(field.name) as [Int32: Any]?, refMode: \(refModeExpr), hasGenerics: true)"
         }
         return "try context.writeInt32AnyMap(self.\(field.name) as [Int32: Any], refMode: \(refModeExpr), hasGenerics: true)"
+    case .anyHashableAnyMap:
+        if field.isOptional {
+            return "try context.writeAnyHashableAnyMap(self.\(field.name) as [AnyHashable: Any]?, refMode: \(refModeExpr), hasGenerics: true)"
+        }
+        return "try context.writeAnyHashableAnyMap(self.\(field.name) as [AnyHashable: Any], refMode: \(refModeExpr), hasGenerics: true)"
     }
 }
 
@@ -1100,6 +1109,8 @@ private func dynamicAnyReadExpr(
         return "try castAnyDynamicValue(context.readStringAnyMap(refMode: \(refModeExpr)), to: \(metatypeExpr))"
     case .int32AnyMap:
         return "try castAnyDynamicValue(context.readInt32AnyMap(refMode: \(refModeExpr)), to: \(metatypeExpr))"
+    case .anyHashableAnyMap:
+        return "try castAnyDynamicValue(context.readAnyHashableAnyMap(refMode: \(refModeExpr)), to: \(metatypeExpr))"
     }
 }
 
@@ -1109,7 +1120,7 @@ private func fieldRefModeExpression(_ field: ParsedField) -> String {
         switch dynamicAnyCodec {
         case .anyValue:
             return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef)"
-        case .anyList, .stringAnyMap, .int32AnyMap:
+        case .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
             return "RefMode.from(nullable: \(nullable), trackRef: false)"
         }
     }
@@ -1125,7 +1136,7 @@ private func compatibleTypeMetaFieldExpression(
         switch dynamicAnyCodec {
         case .anyValue:
             fieldTrackRefExpression = trackRefExpression
-        case .anyList, .stringAnyMap, .int32AnyMap:
+        case .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
             fieldTrackRefExpression = "false"
         }
     } else {

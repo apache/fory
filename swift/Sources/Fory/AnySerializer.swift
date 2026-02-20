@@ -17,12 +17,6 @@
 
 import Foundation
 
-private enum DynamicAnyMapHeader {
-    static let keyNull: UInt8 = 0b0000_0010
-    static let declaredKeyType: UInt8 = 0b0000_0100
-    static let valueNull: UInt8 = 0b0001_0000
-}
-
 public struct ForyAnyNullValue: Serializer {
     public init() {}
 
@@ -46,6 +40,61 @@ public struct ForyAnyNullValue: Serializer {
     public static func foryReadData(_ context: ReadContext) throws -> ForyAnyNullValue {
         _ = context
         return ForyAnyNullValue()
+    }
+}
+
+extension AnyHashable: Serializer {
+    public static func foryDefault() -> AnyHashable {
+        AnyHashable(Int32(0))
+    }
+
+    public static var staticTypeId: ForyTypeId {
+        .unknown
+    }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        try writeAnyPayload(base, context: context, hasGenerics: hasGenerics)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> AnyHashable {
+        guard let typeInfo = context.dynamicTypeInfo(for: Self.self) else {
+            throw ForyError.invalidData("dynamic AnyHashable key requires type info")
+        }
+        context.clearDynamicTypeInfo(for: Self.self)
+        if typeInfo.wireTypeID == .none {
+            throw ForyError.invalidData("dynamic AnyHashable key cannot be null")
+        }
+        let decoded = try context.typeResolver.readDynamicValue(typeInfo: typeInfo, context: context)
+        return try toAnyHashableKey(decoded)
+    }
+
+    public static func foryWriteTypeInfo(_ context: WriteContext) throws {
+        _ = context
+        throw ForyError.invalidData("dynamic AnyHashable key type info is runtime-only")
+    }
+
+    public func foryWriteTypeInfo(_ context: WriteContext) throws {
+        try writeAnyTypeInfo(base, context: context)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws {
+        let typeInfo = try context.typeResolver.readDynamicTypeInfo(context: context)
+        context.setDynamicTypeInfo(for: Self.self, typeInfo)
+    }
+
+    public func foryWrite(
+        _ context: WriteContext,
+        refMode: RefMode,
+        writeTypeInfo: Bool,
+        hasGenerics: Bool
+    ) throws {
+        if refMode != .none {
+            context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
+        }
+        if writeTypeInfo {
+            try foryWriteTypeInfo(context)
+        }
+        try foryWriteData(context, hasGenerics: hasGenerics)
     }
 }
 
@@ -231,6 +280,19 @@ private func anyValueIsReferenceTrackable(_ value: Any) -> Bool {
     return type(of: serializer).isReferenceTrackableType
 }
 
+private func toAnyHashableKey(_ value: Any) throws -> AnyHashable {
+    if let anyHashable = value as? AnyHashable {
+        return anyHashable
+    }
+    if value is ForyAnyNullValue {
+        throw ForyError.invalidData("dynamic AnyHashable key cannot be null")
+    }
+    guard let hashableValue = value as? any Hashable else {
+        throw ForyError.invalidData("dynamic AnyHashable key must be Hashable, got \(type(of: value))")
+    }
+    return AnyHashable(hashableValue)
+}
+
 private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
     if let serializer = value as? any Serializer {
         try serializer.foryWriteTypeInfo(context)
@@ -241,7 +303,7 @@ private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.list.rawValue))
         return
     }
-    if value is [String: Any] || value is [Int32: Any] {
+    if value is [String: Any] || value is [Int32: Any] || value is [AnyHashable: Any] {
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.map.rawValue))
         return
     }
@@ -266,6 +328,11 @@ private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: B
     if let map = value as? [Int32: Any] {
         // Always include key type info for dynamic map payload.
         try writeInt32AnyMap(map, context: context, refMode: .none, hasGenerics: false)
+        return
+    }
+    if let map = value as? [AnyHashable: Any] {
+        // Always include key type info for dynamic map payload.
+        try writeAnyHashableAnyMap(map, context: context, refMode: .none, hasGenerics: false)
         return
     }
     throw ForyError.invalidData("unsupported dynamic Any runtime type \(type(of: value))")
@@ -424,48 +491,74 @@ public func readInt32AnyMap(
     return map
 }
 
-func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
-    let mapStart = context.buffer.getCursor()
-    let keyTypeID = try peekDynamicMapKeyTypeID(context: context)
-    context.buffer.setCursor(mapStart)
-
-    switch keyTypeID {
-    case .int32, .varint32:
-        return try readInt32AnyMap(context: context, refMode: .none) ?? [:]
-    case nil, .string:
-        return try readStringAnyMap(context: context, refMode: .none) ?? [:]
-    default:
-        throw ForyError.invalidData("unsupported dynamic map key type \(String(describing: keyTypeID))")
+public func writeAnyHashableAnyMap(
+    _ value: [AnyHashable: Any]?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool = false,
+    hasGenerics: Bool = true
+) throws {
+    let wrapped = value?.reduce(into: [AnyHashable: DynamicAnyValue]()) { result, pair in
+        result[pair.key] = DynamicAnyValue.wrapped(pair.value)
     }
+    try wrapped.foryWrite(
+        context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
 }
 
-private func peekDynamicMapKeyTypeID(context: ReadContext) throws -> ForyTypeId? {
-    let start = context.buffer.getCursor()
-    defer {
-        context.buffer.setCursor(start)
-    }
-
-    let length = Int(try context.buffer.readVarUInt32())
-    if length == 0 {
+public func readAnyHashableAnyMap(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool = false
+) throws -> [AnyHashable: Any]? {
+    let wrapped: [AnyHashable: DynamicAnyValue]? = try [AnyHashable: DynamicAnyValue]?.foryRead(
+        context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+    guard let wrapped else {
         return nil
     }
-
-    let header = try context.buffer.readUInt8()
-    let keyNull = (header & DynamicAnyMapHeader.keyNull) != 0
-    let keyDeclared = (header & DynamicAnyMapHeader.declaredKeyType) != 0
-    let valueNull = (header & DynamicAnyMapHeader.valueNull) != 0
-
-    if keyDeclared {
-        return nil
+    var map: [AnyHashable: Any] = [:]
+    map.reserveCapacity(wrapped.count)
+    for pair in wrapped {
+        map[pair.key] = pair.value.anyValueForCollection()
     }
-    if keyNull {
-        return nil
+    return map
+}
+
+func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
+    let map = try readAnyHashableAnyMap(context: context, refMode: .none) ?? [:]
+    if map.isEmpty {
+        return [String: Any]()
+    }
+    var stringMap: [String: Any] = [:]
+    stringMap.reserveCapacity(map.count)
+    for pair in map {
+        guard let key = pair.key.base as? String else {
+            stringMap.removeAll(keepingCapacity: false)
+            break
+        }
+        stringMap[key] = pair.value
+    }
+    if stringMap.count == map.count {
+        return stringMap
     }
 
-    if !valueNull {
-        _ = try context.buffer.readUInt8()
+    var int32Map: [Int32: Any] = [:]
+    int32Map.reserveCapacity(map.count)
+    for pair in map {
+        guard let key = pair.key.base as? Int32 else {
+            return map
+        }
+        int32Map[key] = pair.value
+    }
+    if int32Map.count == map.count {
+        return int32Map
     }
 
-    let rawTypeID = try context.buffer.readVarUInt32()
-    return ForyTypeId(rawValue: rawTypeID)
+    return map
 }

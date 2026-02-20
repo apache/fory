@@ -14,8 +14,8 @@ let package = Package(
             targets: ["Fory"]
         ),
         .executable(
-            name: "ForySwiftXlangPeer",
-            targets: ["ForySwiftXlangPeer"]
+            name: "ForyXlangTests",
+            targets: ["ForyXlangTests"]
         ),
     ],
     dependencies: [
@@ -38,9 +38,9 @@ let package = Package(
             path: "Sources/Fory"
         ),
         .executableTarget(
-            name: "ForySwiftXlangPeer",
+            name: "ForyXlangTests",
             dependencies: ["Fory"],
-            path: "Tests/ForyXlangPeer"
+            path: "Tests/ForyXlangTests"
         ),
         .testTarget(
             name: "ForyTests",

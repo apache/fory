@@ -441,6 +441,23 @@ private func writeInt32AnyMapGlobal(
 }
 
 @inline(__always)
+private func writeAnyHashableAnyMapGlobal(
+    _ value: [AnyHashable: Any]?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool,
+    hasGenerics: Bool
+) throws {
+    try writeAnyHashableAnyMap(
+        value,
+        context: context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
+}
+
+@inline(__always)
 private func readAnyGlobal(
     context: ReadContext,
     refMode: RefMode,
@@ -486,6 +503,19 @@ private func readInt32AnyMapGlobal(
     readTypeInfo: Bool
 ) throws -> [Int32: Any]? {
     try readInt32AnyMap(
+        context: context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+}
+
+@inline(__always)
+private func readAnyHashableAnyMapGlobal(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> [AnyHashable: Any]? {
+    try readAnyHashableAnyMap(
         context: context,
         refMode: refMode,
         readTypeInfo: readTypeInfo
@@ -552,6 +582,21 @@ public extension WriteContext {
             hasGenerics: hasGenerics
         )
     }
+
+    func writeAnyHashableAnyMap(
+        _ value: [AnyHashable: Any]?,
+        refMode: RefMode,
+        writeTypeInfo: Bool = false,
+        hasGenerics: Bool = true
+    ) throws {
+        try writeAnyHashableAnyMapGlobal(
+            value,
+            context: self,
+            refMode: refMode,
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: hasGenerics
+        )
+    }
 }
 
 public extension ReadContext {
@@ -593,6 +638,17 @@ public extension ReadContext {
         readTypeInfo: Bool = false
     ) throws -> [Int32: Any]? {
         try readInt32AnyMapGlobal(
+            context: self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+
+    func readAnyHashableAnyMap(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [AnyHashable: Any]? {
+        try readAnyHashableAnyMapGlobal(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo

@@ -182,7 +182,7 @@ jobs:
       - name: Prebuild Swift xlang peer for cache reuse
         run: |
           cd swift
-          swift build -c release --disable-automatic-resolution --product ForySwiftXlangPeer
+          swift build -c release --disable-automatic-resolution --product ForyXlangTests
       - name: Run Swift Xlang Test
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
