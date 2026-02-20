@@ -20,6 +20,7 @@ package fory
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"unsafe"
 )
@@ -28,6 +29,8 @@ type ByteBuffer struct {
 	data        []byte // Most accessed field first for cache locality
 	writerIndex int
 	readerIndex int
+	reader		io.Reader
+	minCap		int
 }
 
 func NewByteBuffer(data []byte) *ByteBuffer {
