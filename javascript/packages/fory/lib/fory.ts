@@ -83,8 +83,18 @@ export default class {
     }
   }
 
-  decReadDepth(): void {
-    this.depth--;
+  private resetRead(): void {
+    this.referenceResolver.resetRead();
+    this.typeMetaResolver.resetRead();
+    this.metaStringResolver.resetRead();
+    this.depth = 0;
+  }
+
+  private resetWrite(): void {
+    this.binaryWriter.reset();
+    this.referenceResolver.resetWrite();
+    this.metaStringResolver.resetWrite();
+    this.typeMetaResolver.resetWrite();
   }
 
   registerSerializer<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
@@ -162,11 +172,8 @@ export default class {
   }
 
   deserialize<T = any>(bytes: Uint8Array, serializer: Serializer = this.anySerializer): T | null {
-    this.referenceResolver.reset();
+    this.resetRead();
     this.binaryReader.reset(bytes);
-    this.typeMetaResolver.reset();
-    this.metaStringResolver.reset();
-    this.depth = 0;
     const bitmap = this.binaryReader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
@@ -184,16 +191,13 @@ export default class {
 
   private serializeInternal<T = any>(data: T, serializer: Serializer) {
     try {
-      this.binaryWriter.reset();
+      this.resetWrite();
     } catch (e) {
       if (e instanceof OwnershipError) {
         throw new Error("Permission denied. To release the serialization ownership, you must call the dispose function returned by serializeVolatile.");
       }
       throw e;
     }
-    this.referenceResolver.reset();
-    this.metaStringResolver.reset();
-    this.typeMetaResolver.reset();
     let bitmap = 0;
     if (data === null) {
       bitmap |= ConfigFlags.isNullFlag;
