@@ -43,7 +43,7 @@ public final class Fory {
     }
 
     public func register<T: Serializer>(_ type: T.Type, name: String) throws {
-        try typeResolver.register(type, namespace: "", typeName: name)
+        try typeResolver.register(type, name: name)
     }
 
     public func register<T: Serializer>(_ type: T.Type, namespace: String, name: String) throws {

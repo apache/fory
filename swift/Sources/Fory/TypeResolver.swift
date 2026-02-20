@@ -118,6 +118,18 @@ public final class TypeResolver {
         )
     }
 
+    public func register<T: Serializer>(_ type: T.Type, name: String) throws {
+        let parts = name.components(separatedBy: ".")
+        if parts.count <= 1 {
+            try register(type, namespace: "", typeName: name)
+            return
+        }
+
+        let resolvedTypeName = parts[parts.count - 1]
+        let resolvedNamespace = parts.dropLast().joined(separator: ".")
+        try register(type, namespace: resolvedNamespace, typeName: resolvedTypeName)
+    }
+
     public func registeredTypeInfo<T: Serializer>(for type: T.Type) -> RegisteredTypeInfo? {
         bySwiftType[ObjectIdentifier(type)]
     }
