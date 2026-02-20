@@ -25,9 +25,7 @@ def generate_doc_example_tests():
     # Generate C++ test files from documentation examples.
     logging.info("Generating documentation example tests")
 
-    script_path = os.path.join(
-        common.PROJECT_ROOT_DIR, "ci", "extract_cpp_doc_examples.py"
-    )
+    script_path = os.path.join(common.PROJECT_ROOT_DIR, "ci", "extract_cpp_doc_code.py")
     result = subprocess.run(
         [
             "python",

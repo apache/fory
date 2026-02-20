@@ -25,11 +25,10 @@ examples are correct.
 
 import argparse
 import logging
-import os
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
