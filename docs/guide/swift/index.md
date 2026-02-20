@@ -36,7 +36,7 @@ Add Fory Swift from the Apache Fory GitHub repository:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", branch: "main")
+    .package(url: "https://github.com/apache/fory.git", exact: "$version")
 ],
 targets: [
     .target(
