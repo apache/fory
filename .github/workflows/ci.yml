@@ -306,7 +306,7 @@ jobs:
     name: JavaScript CI
     strategy:
       matrix:
-        node-version: [18, 20, 24]
+        node-version: [18, 24]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
