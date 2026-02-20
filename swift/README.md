@@ -27,18 +27,20 @@ The Swift implementation provides high-performance object graph serialization wi
 
 ## 🏃 Quick Start
 
-### 1. Add dependency (local development)
+### 1. Add dependency
 
 `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(path: "../fory/swift")
+    .package(url: "https://github.com/apache/fory.git", branch: "main")
 ],
 targets: [
     .target(
         name: "MyApp",
-        dependencies: ["Fory"]
+        dependencies: [
+            .product(name: "Fory", package: "fory")
+        ]
     )
 ]
 ```
