@@ -145,6 +145,24 @@ func primitiveRoundTrip() throws {
 }
 
 @Test
+func namedInitializerBuildsConfig() {
+    let defaultConfig = Fory()
+    #expect(defaultConfig.config.xlang == true)
+    #expect(defaultConfig.config.trackRef == false)
+    #expect(defaultConfig.config.compatible == false)
+
+    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true)
+    #expect(explicitConfig.config.xlang == false)
+    #expect(explicitConfig.config.trackRef == true)
+    #expect(explicitConfig.config.compatible == true)
+
+    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true))
+    #expect(configInit.config.xlang == false)
+    #expect(configInit.config.trackRef == false)
+    #expect(configInit.config.compatible == true)
+}
+
+@Test
 func optionalRoundTrip() throws {
     let fory = Fory()
 

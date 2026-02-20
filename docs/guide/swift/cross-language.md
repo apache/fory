@@ -24,7 +24,7 @@ Fory Swift can exchange payloads with other Fory runtimes using the xlang protoc
 ## Recommended Cross-language Configuration
 
 ```swift
-let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+let fory = Fory(xlang: true, trackRef: false, compatible: true)
 ```
 
 ## Register Types with Shared Identity
@@ -38,7 +38,7 @@ struct Order {
     var amount: Double = 0
 }
 
-let fory = Fory(config: .init(xlang: true, compatible: true))
+let fory = Fory(xlang: true, compatible: true)
 fory.register(Order.self, id: 100)
 ```
 
