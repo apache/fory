@@ -374,19 +374,34 @@ fn test_array_rc_trait_objects() {
 fn test_array_float16() {
     use fory_core::float16::float16;
     let fory = fory_core::fory::Fory::default();
-    let arr = [float16::from_f32(1.0), float16::from_f32(2.5), float16::from_f32(-1.5), float16::ZERO];
+    let arr = [
+        float16::from_f32(1.0),
+        float16::from_f32(2.5),
+        float16::from_f32(-1.5),
+        float16::ZERO,
+    ];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [float16; 4] = fory.deserialize(&bin).expect("deserialize float16 array");
-    for (a, b) in arr.iter().zip(obj.iter()) { assert_eq!(a.to_bits(), b.to_bits()); }
+    for (a, b) in arr.iter().zip(obj.iter()) {
+        assert_eq!(a.to_bits(), b.to_bits());
+    }
 }
 
 #[test]
 fn test_array_float16_special_values() {
     use fory_core::float16::float16;
     let fory = fory_core::fory::Fory::default();
-    let arr = [float16::INFINITY, float16::NEG_INFINITY, float16::MAX, float16::MIN_POSITIVE, float16::MIN_POSITIVE_SUBNORMAL];
+    let arr = [
+        float16::INFINITY,
+        float16::NEG_INFINITY,
+        float16::MAX,
+        float16::MIN_POSITIVE,
+        float16::MIN_POSITIVE_SUBNORMAL,
+    ];
     let bin = fory.serialize(&arr).unwrap();
-    let obj: [float16; 5] = fory.deserialize(&bin).expect("deserialize float16 array specials");
+    let obj: [float16; 5] = fory
+        .deserialize(&bin)
+        .expect("deserialize float16 array specials");
     assert!(obj[0].is_infinite() && obj[0].is_sign_positive());
     assert!(obj[1].is_infinite() && obj[1].is_sign_negative());
     assert_eq!(obj[2].to_bits(), float16::MAX.to_bits());
