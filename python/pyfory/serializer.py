@@ -45,6 +45,7 @@ from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 if ENABLE_FORY_CYTHON_SERIALIZATION:
     from pyfory.serialization import (  # noqa: F401, F811
         Serializer,
+        XlangCompatibleSerializer,
         BooleanSerializer,
         ByteSerializer,
         Int16Serializer,
@@ -81,6 +82,7 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
 else:
     from pyfory._serializer import (  # noqa: F401 # pylint: disable=unused-import
         Serializer,
+        XlangCompatibleSerializer,
         BooleanSerializer,
         ByteSerializer,
         Int16Serializer,

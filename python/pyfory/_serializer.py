@@ -52,6 +52,17 @@ class Serializer(ABC):
         return False
 
 
+class XlangCompatibleSerializer(Serializer):
+    def __init__(self, fory, type_):
+        super().__init__(fory, type_)
+
+    def xwrite(self, buffer, value):
+        self.write(buffer, value)
+
+    def xread(self, buffer):
+        return self.read(buffer)
+
+
 class BooleanSerializer(Serializer):
     def write(self, buffer, value):
         buffer.write_bool(value)
@@ -232,7 +243,6 @@ class Float64Serializer(Serializer):
         return buffer.read_double()
 
 
-
 class BFloat16Serializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         from pyfory.bfloat16 import BFloat16
@@ -248,9 +258,7 @@ class BFloat16Serializer(XlangCompatibleSerializer):
         return BFloat16.from_bits(buffer.read_bfloat16())
 
 
-
 class StringSerializer(Serializer):
-  
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
         self.need_to_write_ref = False
