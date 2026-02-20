@@ -41,8 +41,10 @@ usage() {
     echo "Build and run C++ benchmarks"
     echo ""
     echo "Options:"
-    echo "  --data <struct|sample>       Filter benchmark by data type"
-    echo "  --serializer <fory|protobuf> Filter benchmark by serializer"
+    echo "  --data <struct|sample|mediacontent|structlist|samplelist|mediacontentlist>"
+    echo "                               Filter benchmark by data type"
+    echo "  --serializer <fory|protobuf|msgpack>"
+    echo "                               Filter benchmark by serializer"
     echo "  --duration <seconds>         Minimum time to run each benchmark (e.g., 10, 30)"
     echo "  --debug                      Build with debug symbols and low optimization for profiling"
     echo "  --help                       Show this help message"
@@ -51,6 +53,7 @@ usage() {
     echo "  $0                          # Run all benchmarks"
     echo "  $0 --data struct            # Run only Struct benchmarks"
     echo "  $0 --serializer fory        # Run only Fory benchmarks"
+    echo "  $0 --serializer msgpack     # Run only Msgpack benchmarks"
     echo "  $0 --data struct --serializer fory"
     echo "  $0 --duration 10            # Run each benchmark for at least 10 seconds"
     echo "  $0 --debug                  # Build for profiling (visible function names in flamegraph)"
@@ -89,17 +92,64 @@ done
 
 # Build benchmark filter
 FILTER=""
+DATA_PATTERN=""
+SERIALIZER_PATTERN=""
+
 if [[ -n "$DATA" ]]; then
-    DATA_CAP="$(echo "${DATA:0:1}" | tr '[:lower:]' '[:upper:]')${DATA:1}"
-    FILTER="${DATA_CAP}"
+    DATA_LOWER="$(echo "$DATA" | tr '[:upper:]' '[:lower:]')"
+    case "$DATA_LOWER" in
+        struct)
+            DATA_PATTERN="Struct"
+            ;;
+        sample)
+            DATA_PATTERN="Sample"
+            ;;
+        mediacontent)
+            DATA_PATTERN="MediaContent"
+            ;;
+        structlist)
+            DATA_PATTERN="StructList"
+            ;;
+        samplelist)
+            DATA_PATTERN="SampleList"
+            ;;
+        mediacontentlist)
+            DATA_PATTERN="MediaContentList"
+            ;;
+        *)
+            echo -e "${RED}Unknown data type: $DATA${NC}"
+            echo "Expected one of: struct, sample, mediacontent, structlist, samplelist, mediacontentlist"
+            exit 1
+            ;;
+    esac
 fi
+
 if [[ -n "$SERIALIZER" ]]; then
-    SER_CAP="$(echo "${SERIALIZER:0:1}" | tr '[:lower:]' '[:upper:]')${SERIALIZER:1}"
-    if [[ -n "$FILTER" ]]; then
-        FILTER="${SER_CAP}_${FILTER}"
-    else
-        FILTER="${SER_CAP}"
-    fi
+    SERIALIZER_LOWER="$(echo "$SERIALIZER" | tr '[:upper:]' '[:lower:]')"
+    case "$SERIALIZER_LOWER" in
+        fory)
+            SERIALIZER_PATTERN="Fory"
+            ;;
+        protobuf)
+            SERIALIZER_PATTERN="Protobuf"
+            ;;
+        msgpack)
+            SERIALIZER_PATTERN="Msgpack"
+            ;;
+        *)
+            echo -e "${RED}Unknown serializer: $SERIALIZER${NC}"
+            echo "Expected one of: fory, protobuf, msgpack"
+            exit 1
+            ;;
+    esac
+fi
+
+if [[ -n "$SERIALIZER_PATTERN" && -n "$DATA_PATTERN" ]]; then
+    FILTER="^BM_${SERIALIZER_PATTERN}_${DATA_PATTERN}_(Serialize|Deserialize)$"
+elif [[ -n "$SERIALIZER_PATTERN" ]]; then
+    FILTER="^BM_${SERIALIZER_PATTERN}_"
+elif [[ -n "$DATA_PATTERN" ]]; then
+    FILTER="^BM_.*_${DATA_PATTERN}_(Serialize|Deserialize)$"
 fi
 
 echo -e "${GREEN}=== Fory C++ Benchmark ===${NC}"
