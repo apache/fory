@@ -20,6 +20,7 @@ package fory
 import (
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strconv"
 	"strings"
@@ -486,6 +487,28 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
+	target := reflect.ValueOf(v).Elem()
+	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
+
+	return nil
+}
+
+func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
+	defer f.resetReadState()
+	f.readCtx.buffer.ResetWithReader(r, 0)
+
+	isNull := readHeader(f.readCtx)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
+
+	if isNull {
+		return nil
+	}
+
 	target := reflect.ValueOf(v).Elem()
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
