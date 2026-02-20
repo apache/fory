@@ -264,6 +264,7 @@ export interface Config {
   hps?: Hps;
   refTracking: boolean | null;
   useSliceString: boolean;
+  maxDepth?: number;
   hooks: {
     afterCodeGenerated?: (code: string) => string;
   };

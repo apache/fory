@@ -40,9 +40,15 @@ export default class {
   anySerializer: Serializer;
   typeMeta = TypeMeta;
   config: Config;
+  depth: number = 0;
+  maxDepth: number;
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
+    this.maxDepth = config?.maxDepth ?? 50;
+    if (this.maxDepth < 2) {
+      throw new Error(`maxDepth must be >= 2 but got ${this.maxDepth}`);
+    }
     this.binaryReader = new BinaryReader(this.config);
     this.binaryWriter = new BinaryWriter(this.config);
     this.referenceResolver = new ReferenceResolver(this.binaryReader);
@@ -57,6 +63,7 @@ export default class {
     return {
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
+      maxDepth: config?.maxDepth,
       hooks: config?.hooks || {},
       compatible: Boolean(config?.compatible),
     };
@@ -64,6 +71,20 @@ export default class {
 
   isCompatible() {
     return this.config.compatible === true;
+  }
+
+  incReadDepth(): void {
+    this.depth++;
+    if (this.depth > this.maxDepth) {
+      throw new Error(
+        `Deserialization depth limit exceeded: ${this.depth} > ${this.maxDepth}. ` +
+        `The data may be malicious, or increase maxDepth if needed.`
+      );
+    }
+  }
+
+  decReadDepth(): void {
+    this.depth--;
   }
 
   registerSerializer<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
@@ -145,6 +166,7 @@ export default class {
     this.binaryReader.reset(bytes);
     this.typeMetaResolver.reset();
     this.metaStringResolver.reset();
+    this.depth = 0;
     const bitmap = this.binaryReader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;

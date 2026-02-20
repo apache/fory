@@ -199,8 +199,13 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     return `
-      ${this.readTypeInfo()}
-      ${this.read(assignStmt, refState)};
+      fory.incReadDepth();
+      try {
+        ${this.readTypeInfo()}
+        ${this.read(assignStmt, refState)};
+      } finally {
+        fory.decReadDepth();
+      }
     `;
   }
 
@@ -211,7 +216,12 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                ${this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                fory.incReadDepth();
+                try {
+                  ${this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                } finally {
+                  fory.decReadDepth();
+                }
                 break;
             case ${RefFlags.RefFlag}:
                 ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()))}
