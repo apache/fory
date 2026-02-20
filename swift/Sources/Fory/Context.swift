@@ -165,7 +165,7 @@ public struct DynamicTypeInfo {
 }
 
 public final class WriteContext {
-    public let writer: ByteWriter
+    public let writer: ByteBuffer
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
@@ -174,7 +174,7 @@ public final class WriteContext {
     public let metaStringWriteState: MetaStringWriteState
 
     public init(
-        writer: ByteWriter,
+        writer: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
@@ -221,7 +221,7 @@ private struct PendingRefSlot {
 }
 
 public final class ReadContext {
-    public let reader: ByteReader
+    public let reader: ByteBuffer
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
@@ -235,7 +235,7 @@ public final class ReadContext {
     private var canonicalReferenceCache: [CanonicalReferenceSignature: [CanonicalReferenceEntry]] = [:]
 
     public init(
-        reader: ByteReader,
+        reader: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,

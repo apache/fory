@@ -389,8 +389,8 @@ private func debugLog(_ message: String) {
 }
 
 private func verifyBufferCase(_ caseName: String, _ payload: [UInt8]) throws -> [UInt8] {
-    let reader = ByteReader(bytes: payload)
-    let writer = ByteWriter(capacity: payload.count)
+    let reader = ByteBuffer(bytes: payload)
+    let writer = ByteBuffer(capacity: payload.count)
     switch caseName {
     case "test_buffer":
         writer.writeUInt8(try reader.readUInt8())
@@ -437,9 +437,9 @@ private func roundTripSingle<T: Serializer>(
 
 private func roundTripStream(
     _ bytes: [UInt8],
-    _ action: (_ reader: ByteReader, _ out: inout Data) throws -> Void
+    _ action: (_ reader: ByteBuffer, _ out: inout Data) throws -> Void
 ) throws -> [UInt8] {
-    let reader = ByteReader(bytes: bytes)
+    let reader = ByteBuffer(bytes: bytes)
     var out = Data()
     try action(reader, &out)
     if reader.remaining != 0 {
@@ -449,8 +449,8 @@ private func roundTripStream(
 }
 
 private func handleMurmurHash(_ bytes: [UInt8]) throws -> [UInt8] {
-    let reader = ByteReader(bytes: bytes)
-    let writer = ByteWriter(capacity: bytes.count)
+    let reader = ByteBuffer(bytes: bytes)
+    let writer = ByteBuffer(capacity: bytes.count)
     switch bytes.count {
     case 16:
         for _ in 0..<2 {

@@ -51,7 +51,7 @@ public final class Fory {
     }
 
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: value.foryIsNone)
 
         if !value.foryIsNone {
@@ -73,7 +73,7 @@ public final class Fory {
     }
 
     public func deserialize<T: Serializer>(_ data: Data, as _: T.Type = T.self) throws -> T {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return T.foryDefault()
@@ -94,7 +94,7 @@ public final class Fory {
     }
 
     public func serializeTo<T: Serializer>(_ buffer: inout Data, value: T) throws {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: value.foryIsNone)
         if !value.foryIsNone {
             let context = WriteContext(
@@ -112,7 +112,7 @@ public final class Fory {
         buffer.append(writer.toData())
     }
 
-    public func deserializeFrom<T: Serializer>(_ reader: ByteReader, as _: T.Type = T.self) throws -> T {
+    public func deserializeFrom<T: Serializer>(_ reader: ByteBuffer, as _: T.Type = T.self) throws -> T {
         let isNone = try readHead(reader: reader)
         if isNone {
             return T.foryDefault()
@@ -133,7 +133,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: Any) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: false)
 
         let context = WriteContext(
@@ -152,7 +152,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: Any.Type = Any.self) throws -> Any {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return ForyAnyNullValue()
@@ -177,7 +177,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: AnyObject) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: false)
 
         let context = WriteContext(
@@ -196,7 +196,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return NSNull()
@@ -221,7 +221,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: any Serializer) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: false)
 
         let context = WriteContext(
@@ -240,7 +240,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: (any Serializer).Type = (any Serializer).self) throws -> any Serializer {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return ForyAnyNullValue()
@@ -265,7 +265,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: [Any]) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: false)
 
         let context = WriteContext(
@@ -284,7 +284,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [Any].Type = [Any].self) throws -> [Any] {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return []
@@ -306,7 +306,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: [String: Any]) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: false)
 
         let context = WriteContext(
@@ -325,7 +325,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return [:]
@@ -347,7 +347,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: [Int32: Any]) throws -> Data {
-        let writer = ByteWriter()
+        let writer = ByteBuffer()
         writeHead(writer: writer, isNone: false)
 
         let context = WriteContext(
@@ -366,7 +366,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
-        let reader = ByteReader(data: data)
+        let reader = ByteBuffer(data: data)
         let isNone = try readHead(reader: reader)
         if isNone {
             return [:]
@@ -397,7 +397,7 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteReader, as _: Any.Type = Any.self) throws -> Any {
+    public func deserializeFrom(_ reader: ByteBuffer, as _: Any.Type = Any.self) throws -> Any {
         let isNone = try readHead(reader: reader)
         if isNone {
             return ForyAnyNullValue()
@@ -425,7 +425,7 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteReader, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
+    public func deserializeFrom(_ reader: ByteBuffer, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
         let isNone = try readHead(reader: reader)
         if isNone {
             return NSNull()
@@ -454,7 +454,7 @@ public final class Fory {
 
     @_disfavoredOverload
     public func deserializeFrom(
-        _ reader: ByteReader,
+        _ reader: ByteBuffer,
         as _: (any Serializer).Type = (any Serializer).self
     ) throws -> any Serializer {
         let isNone = try readHead(reader: reader)
@@ -479,7 +479,7 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteReader, as _: [Any].Type = [Any].self) throws -> [Any] {
+    public func deserializeFrom(_ reader: ByteBuffer, as _: [Any].Type = [Any].self) throws -> [Any] {
         let isNone = try readHead(reader: reader)
         if isNone {
             return []
@@ -504,7 +504,7 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteReader, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
+    public func deserializeFrom(_ reader: ByteBuffer, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
         let isNone = try readHead(reader: reader)
         if isNone {
             return [:]
@@ -529,7 +529,7 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteReader, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
+    public func deserializeFrom(_ reader: ByteBuffer, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
         let isNone = try readHead(reader: reader)
         if isNone {
             return [:]
@@ -548,7 +548,7 @@ public final class Fory {
         return value
     }
 
-    public func writeHead(writer: ByteWriter, isNone: Bool) {
+    public func writeHead(writer: ByteBuffer, isNone: Bool) {
         var bitmap: UInt8 = 0
         if config.xlang {
             bitmap |= ForyHeaderFlag.isXlang
@@ -559,7 +559,7 @@ public final class Fory {
         writer.writeUInt8(bitmap)
     }
 
-    public func readHead(reader: ByteReader) throws -> Bool {
+    public func readHead(reader: ByteBuffer) throws -> Bool {
         let bitmap = try reader.readUInt8()
         let peerIsXlang = (bitmap & ForyHeaderFlag.isXlang) != 0
         if peerIsXlang != config.xlang {

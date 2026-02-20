@@ -67,7 +67,7 @@ public struct TypeMetaFieldType: Equatable, Sendable {
     }
 
     fileprivate func write(
-        _ writer: ByteWriter,
+        _ writer: ByteBuffer,
         writeFlags: Bool,
         nullableOverride: Bool? = nil
     ) {
@@ -96,7 +96,7 @@ public struct TypeMetaFieldType: Equatable, Sendable {
     }
 
     fileprivate static func read(
-        _ reader: ByteReader,
+        _ reader: ByteBuffer,
         readFlags: Bool,
         nullable: Bool? = nil,
         trackRef: Bool? = nil
@@ -162,7 +162,7 @@ public struct TypeMetaFieldInfo: Equatable, Sendable {
         self.fieldType = fieldType
     }
 
-    fileprivate func write(_ writer: ByteWriter) throws {
+    fileprivate func write(_ writer: ByteBuffer) throws {
         var header: UInt8 = 0
         if fieldType.trackRef {
             header |= 0b1
@@ -210,7 +210,7 @@ public struct TypeMetaFieldInfo: Equatable, Sendable {
         writer.writeBytes(encoded.bytes)
     }
 
-    fileprivate static func read(_ reader: ByteReader) throws -> TypeMetaFieldInfo {
+    fileprivate static func read(_ reader: ByteBuffer) throws -> TypeMetaFieldInfo {
         let header = try reader.readUInt8()
         let encodingFlags = Int((header >> 6) & 0b11)
         var size = Int((header >> 2) & 0b1111)
@@ -315,7 +315,7 @@ public struct TypeMeta: Equatable, Sendable {
         }
         header |= UInt64(min(body.count, Int(typeMetaSizeMask)))
 
-        let writer = ByteWriter(capacity: body.count + 16)
+        let writer = ByteBuffer(capacity: body.count + 16)
         writer.writeUInt64(header)
         if body.count >= Int(typeMetaSizeMask) {
             writer.writeVarUInt32(UInt32(body.count - Int(typeMetaSizeMask)))
@@ -325,10 +325,10 @@ public struct TypeMeta: Equatable, Sendable {
     }
 
     public static func decode(_ bytes: [UInt8]) throws -> TypeMeta {
-        try decode(ByteReader(bytes: bytes))
+        try decode(ByteBuffer(bytes: bytes))
     }
 
-    public static func decode(_ reader: ByteReader) throws -> TypeMeta {
+    public static func decode(_ reader: ByteBuffer) throws -> TypeMeta {
         let header = try reader.readUInt64()
         let compressed = (header & typeMetaCompressedFlag) != 0
         let hasFieldsMeta = (header & typeMetaHasFieldsMetaFlag) != 0
@@ -343,7 +343,7 @@ public struct TypeMeta: Equatable, Sendable {
             throw ForyError.encodingError("compressed TypeMeta is not supported yet")
         }
 
-        let bodyReader = ByteReader(bytes: encodedBody)
+        let bodyReader = ByteBuffer(bytes: encodedBody)
         let metaHeader = try bodyReader.readUInt8()
 
         var numFields = Int(metaHeader & UInt8(smallNumFieldsThreshold))
@@ -395,7 +395,7 @@ public struct TypeMeta: Equatable, Sendable {
     }
 
     private func encodeBody() throws -> [UInt8] {
-        let writer = ByteWriter(capacity: 128)
+        let writer = ByteBuffer(capacity: 128)
 
         var metaHeader = UInt8(min(fields.count, smallNumFieldsThreshold))
         if registerByName {
@@ -429,7 +429,7 @@ public struct TypeMeta: Equatable, Sendable {
     }
 
     private static func writeName(
-        _ writer: ByteWriter,
+        _ writer: ByteBuffer,
         name: MetaString,
         encodings: [MetaStringEncoding]
     ) throws {
@@ -463,7 +463,7 @@ public struct TypeMeta: Equatable, Sendable {
     }
 
     private static func readName(
-        _ reader: ByteReader,
+        _ reader: ByteBuffer,
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {

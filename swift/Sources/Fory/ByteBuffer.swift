@@ -17,21 +17,64 @@
 
 import Foundation
 
-public final class ByteWriter {
+public final class ByteBuffer {
     @usableFromInline
     internal var storage: [UInt8]
+
+    @usableFromInline
+    internal var cursor: Int
 
     public init(capacity: Int = 256) {
         storage = []
         storage.reserveCapacity(capacity)
+        cursor = 0
+    }
+
+    public init(data: Data) {
+        storage = Array(data)
+        cursor = 0
+    }
+
+    public init(bytes: [UInt8]) {
+        storage = bytes
+        cursor = 0
     }
 
     public var count: Int {
         storage.count
     }
 
+    public var remaining: Int {
+        storage.count - cursor
+    }
+
     public func reserve(_ additional: Int) {
         storage.reserveCapacity(storage.count + additional)
+    }
+
+    public func clear() {
+        storage.removeAll(keepingCapacity: true)
+        cursor = 0
+    }
+
+    public func reset() {
+        clear()
+    }
+
+    public func flip() {
+        cursor = 0
+    }
+
+    public func setCursor(_ value: Int) {
+        cursor = value
+    }
+
+    public func getCursor() -> Int {
+        cursor
+    }
+
+    public func moveBack(_ amount: Int) {
+        cursor -= amount
     }
 
     public func writeUInt8(_ value: UInt8) {
@@ -164,48 +207,6 @@ public final class ByteWriter {
             storage[idx] = byte
             idx += 1
         }
-    }
-
-    public func toData() -> Data {
-        Data(storage)
-    }
-
-    public func reset() {
-        storage.removeAll(keepingCapacity: true)
-    }
-}
-
-public final class ByteReader {
-    @usableFromInline
-    internal let storage: [UInt8]
-
-    @usableFromInline
-    internal var cursor: Int
-
-    public init(data: Data) {
-        storage = Array(data)
-        cursor = 0
-    }
-
-    public init(bytes: [UInt8]) {
-        storage = bytes
-        cursor = 0
-    }
-
-    public var remaining: Int {
-        storage.count - cursor
-    }
-
-    public func setCursor(_ value: Int) {
-        cursor = value
-    }
-
-    public func getCursor() -> Int {
-        cursor
-    }
-
-    public func moveBack(_ amount: Int) {
-        cursor -= amount
     }
 
     public func checkBound(_ need: Int) throws {
@@ -354,5 +355,9 @@ public final class ByteReader {
     public func skip(_ count: Int) throws {
         try checkBound(count)
         cursor += count
+    }
+
+    public func toData() -> Data {
+        Data(storage)
     }
 }

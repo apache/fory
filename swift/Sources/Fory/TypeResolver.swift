@@ -393,7 +393,7 @@ public final class TypeResolver {
     }
 
     private static func readMetaString(
-        reader: ByteReader,
+        reader: ByteBuffer,
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {
