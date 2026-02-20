@@ -133,7 +133,7 @@
       <id>xlang-parallel</id>
       <activation>
         <property>
-          <name>!test</name>
+          <name>!disableXlangParallel</name>
         </property>
       </activation>
       <build>

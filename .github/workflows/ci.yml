@@ -512,6 +512,13 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache npm local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('javascript/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
       - name: Run JavaScript Xlang Test
         env:
           FORY_JAVASCRIPT_JAVA_CI: "1"
