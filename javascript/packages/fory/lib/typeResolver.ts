@@ -25,6 +25,9 @@ import Fory from "./fory";
 const uninitSerialize = {
   // for writer
   fixedSize: 0,
+  getTypeInfo: () => {
+    throw new Error("uninitSerialize");
+  },
   getTypeId: () => {
     throw new Error("uninitSerialize");
   },
@@ -79,13 +82,14 @@ const uninitSerialize = {
 export default class TypeResolver {
   private internalSerializer: Serializer[] = new Array(300);
   private customSerializer: Map<number | string, Serializer> = new Map();
-  private typeInfoMap: Map<number | string, TypeInfo> = new Map();
 
   private initInternalSerializer() {
     const registerSerializer = (typeInfo: TypeInfo) => {
       return this.registerSerializer(typeInfo, new Gen(this.fory).generateSerializer(typeInfo));
     };
     registerSerializer(Type.string());
+    registerSerializer(new TypeInfo(TypeId.ENUM));
+    registerSerializer(new TypeInfo(TypeId.NAMED_ENUM));
     registerSerializer(Type.any());
     registerSerializer(Type.array(Type.any()));
     registerSerializer(Type.map(Type.any(), Type.any()));
@@ -108,28 +112,35 @@ export default class TypeResolver {
     registerSerializer(Type.taggedUInt64());
     registerSerializer(Type.sliInt64());
     registerSerializer(Type.float16());
+    registerSerializer(Type.bfloat16());
     registerSerializer(Type.float32());
     registerSerializer(Type.float64());
     registerSerializer(Type.timestamp());
     registerSerializer(Type.duration());
+    registerSerializer(Type.date());
     registerSerializer(Type.set(Type.any()));
     registerSerializer(Type.binary());
     registerSerializer(Type.boolArray());
+    registerSerializer(Type.uint8Array());
     registerSerializer(Type.int8Array());
+    registerSerializer(Type.uint16Array());
     registerSerializer(Type.int16Array());
+    registerSerializer(Type.uint32Array());
     registerSerializer(Type.int32Array());
+    registerSerializer(Type.uint64Array());
     registerSerializer(Type.int64Array());
     registerSerializer(Type.float16Array());
+    registerSerializer(Type.bfloat16Array());
     registerSerializer(Type.float32Array());
     registerSerializer(Type.float64Array());
 
     this.float64Serializer = this.getSerializerById(TypeId.FLOAT64);
     this.float32Serializer = this.getSerializerById(TypeId.FLOAT32);
     this.varint32Serializer = this.getSerializerById(TypeId.VARINT32);
-    this.taggedint64Serializer = this.getSerializerById(TypeId.TAGGED_INT64);
+    this.varInt64Serializer = this.getSerializerById(TypeId.VARINT64);
     this.int64Serializer = this.getSerializerById((TypeId.INT64));
     this.boolSerializer = this.getSerializerById((TypeId.BOOL));
-    this.dateSerializer = this.getSerializerById((TypeId.TIMESTAMP));
+    this.datetimeSerializer = this.getSerializerById((TypeId.TIMESTAMP));
     this.stringSerializer = this.getSerializerById((TypeId.STRING));
     this.setSerializer = this.getSerializerById((TypeId.SET));
     this.arraySerializer = this.getSerializerById((TypeId.LIST));
@@ -142,15 +153,17 @@ export default class TypeResolver {
     this.int16ArraySerializer = this.getSerializerById(TypeId.INT16_ARRAY);
     this.int32ArraySerializer = this.getSerializerById(TypeId.INT32_ARRAY);
     this.int64ArraySerializer = this.getSerializerById(TypeId.INT64_ARRAY);
+    this.float32ArraySerializer = this.getSerializerById(TypeId.FLOAT32_ARRAY);
+    this.float64ArraySerializer = this.getSerializerById(TypeId.FLOAT64_ARRAY);
   }
 
   private float64Serializer: null | Serializer = null;
   private float32Serializer: null | Serializer = null;
   private varint32Serializer: null | Serializer = null;
-  private taggedint64Serializer: null | Serializer = null;
+  private varInt64Serializer: null | Serializer = null;
   private int64Serializer: null | Serializer = null;
   private boolSerializer: null | Serializer = null;
-  private dateSerializer: null | Serializer = null;
+  private datetimeSerializer: null | Serializer = null;
   private stringSerializer: null | Serializer = null;
   private setSerializer: null | Serializer = null;
   private arraySerializer: null | Serializer = null;
@@ -163,6 +176,8 @@ export default class TypeResolver {
   private int16ArraySerializer: null | Serializer = null;
   private int32ArraySerializer: null | Serializer = null;
   private int64ArraySerializer: null | Serializer = null;
+  private float32ArraySerializer: null | Serializer = null;
+  private float64ArraySerializer: null | Serializer = null;
 
   constructor(private fory: Fory) {
   }
@@ -172,14 +187,9 @@ export default class TypeResolver {
   }
 
   init() {
+    TypeInfo.attach(this.fory);
     this.initInternalSerializer();
-  }
-
-  getTypeInfo(typeIdOrName: number | string, userTypeId?: number) {
-    if (typeof typeIdOrName === "number" && userTypeId !== undefined && TypeId.needsUserTypeId(typeIdOrName)) {
-      return this.typeInfoMap.get(this.makeUserTypeKey(userTypeId));
-    }
-    return this.typeInfoMap.get(typeIdOrName);
+    TypeInfo.detach();
   }
 
   registerSerializer(typeInfo: TypeInfo, serializer: Serializer = uninitSerialize) {
@@ -187,7 +197,6 @@ export default class TypeResolver {
     if (!TypeId.isNamedType(typeId)) {
       if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId !== -1) {
         const key = this.makeUserTypeKey(typeInfo.userTypeId);
-        this.typeInfoMap.set(key, typeInfo);
         if (this.customSerializer.has(key)) {
           Object.assign(this.customSerializer.get(key)!, serializer);
         } else {
@@ -196,7 +205,6 @@ export default class TypeResolver {
         return this.customSerializer.get(key);
       }
       const id = typeId;
-      this.typeInfoMap.set(id, typeInfo);
       if (id <= 0xFF) {
         if (this.internalSerializer[id]) {
           Object.assign(this.internalSerializer[id], serializer);
@@ -212,32 +220,21 @@ export default class TypeResolver {
       }
       return this.customSerializer.get(id);
     } else {
-      const namedTypeInfo = typeInfo.castToStruct();
+      const namedTypeInfo = typeInfo;
       const name = namedTypeInfo.named!;
       if (this.customSerializer.has(name)) {
         Object.assign(this.customSerializer.get(name)!, serializer);
       } else {
         this.customSerializer.set(name, { ...serializer });
       }
-      this.typeInfoMap.set(name, typeInfo);
       return this.customSerializer.get(name);
     }
-  }
-
-  typeInfoExists(typeInfo: TypeInfo) {
-    if (typeInfo.isNamedType()) {
-      return this.typeInfoMap.has((typeInfo.castToStruct()).named!);
-    }
-    if (TypeId.needsUserTypeId(typeInfo.typeId) && typeInfo.userTypeId !== -1) {
-      return this.typeInfoMap.has(this.makeUserTypeKey(typeInfo.userTypeId));
-    }
-    return this.typeInfoMap.has(typeInfo.typeId);
   }
 
   getSerializerByTypeInfo(typeInfo: TypeInfo) {
     const typeId = typeInfo.computeTypeId(this.fory);
     if (TypeId.isNamedType(typeId)) {
-      return this.customSerializer.get((typeInfo.castToStruct()).named!);
+      return this.customSerializer.get((typeInfo).named!);
     }
     return this.getSerializerById(typeId, typeInfo.userTypeId);
   }
@@ -265,7 +262,7 @@ export default class TypeResolver {
     if (typeof v === "number") {
       if (Number.isInteger(v)) {
         if (v > MaxInt32 || v < MinInt32) {
-          return this.taggedint64Serializer;
+          return this.varInt64Serializer;
         }
         return this.varint32Serializer;
       }
@@ -276,7 +273,7 @@ export default class TypeResolver {
     }
 
     if (typeof v === "bigint") {
-      return this.taggedint64Serializer;
+      return this.varInt64Serializer;
     }
 
     if (typeof v === "string") {
@@ -315,6 +312,14 @@ export default class TypeResolver {
       return this.int64ArraySerializer;
     }
 
+    if (v instanceof Float32Array) {
+      return this.float32ArraySerializer;
+    }
+
+    if (v instanceof Float64Array) {
+      return this.float64ArraySerializer;
+    }
+
     if (Array.isArray(v)) {
       return this.arraySerializer;
     }
@@ -328,7 +333,7 @@ export default class TypeResolver {
     }
 
     if (v instanceof Date) {
-      return this.dateSerializer;
+      return this.datetimeSerializer;
     }
 
     if (v instanceof Map) {

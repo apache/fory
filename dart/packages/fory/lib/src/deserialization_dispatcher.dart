@@ -36,11 +36,11 @@ import 'package:fory/src/serializer/fory_header_serializer.dart';
 import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-class DeserializationRuntime {
-  static final DeserializationRuntime _instance =
-      DeserializationRuntime._internal();
-  static DeserializationRuntime get I => _instance;
-  DeserializationRuntime._internal();
+class DeserializationDispatcher {
+  static final DeserializationDispatcher _instance =
+      DeserializationDispatcher._internal();
+  static DeserializationDispatcher get I => _instance;
+  DeserializationDispatcher._internal();
 
   static final ForyHeaderSerializer _foryHeaderSerializer =
       ForyHeaderSerializer.I;
@@ -90,8 +90,10 @@ class DeserializationRuntime {
   }
 
   Object? readWithSerializer(
-      ByteReader br, Serializer serializer, DeserializationContext pack) {
-    if (serializer.writeRef) {
+      ByteReader br, Serializer serializer, DeserializationContext pack,
+      {bool? trackingRefOverride}) {
+    bool trackingRef = trackingRefOverride ?? serializer.writeRef;
+    if (trackingRef) {
       DeserializationRefResolver refResolver = pack.refResolver;
       int refFlag = br.readInt8();
       //assert(RefFlag.checkAllow(refFlag));

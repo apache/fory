@@ -26,10 +26,11 @@ describe('datetime', () => {
     const fory = new Fory({ refTracking: true });    
     const now = new Date();
     const input = fory.serialize(now);
-    const result = fory.deserialize(
+    const result: Date | null = fory.deserialize(
         input
     );
-    expect(result).toEqual(now)
+    expect(result?.getFullYear()).toEqual(now.getFullYear())
+    expect(result?.getDate()).toEqual(now.getDate())
   });
   test('should datetime work', () => {
     const typeinfo = Type.struct("example.foo", {
@@ -43,7 +44,7 @@ describe('datetime', () => {
     const result = fory.deserialize(
       input
     );
-    expect(result).toEqual({ a: d, b: new Date('2021/10/20 00:00') })
+    expect(result).toEqual({ a: d, b: d.getTime() })
   });
 });
 

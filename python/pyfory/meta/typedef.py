@@ -18,7 +18,7 @@
 import enum
 import typing
 from typing import List
-from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type
+from pyfory.types import TypeId, is_polymorphic_type, is_union_type
 from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.buffer import Buffer
 from pyfory.type_util import infer_field
@@ -177,7 +177,6 @@ class TypeDef:
         return DataClassSerializer(
             fory,
             self.cls,
-            xlang=fory.xlang,
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
@@ -220,12 +219,12 @@ class FieldInfo:
         """Returns True if this field uses TAG_ID encoding."""
         return self.tag_id >= 0
 
-    def xwrite(self, buffer: Buffer):
-        self.field_type.xwrite(buffer, True)
+    def write(self, buffer: Buffer):
+        self.field_type.write(buffer, True)
 
     @classmethod
-    def xread(cls, buffer: Buffer, resolver):
-        field_type = FieldType.xread(buffer, resolver)
+    def read(cls, buffer: Buffer, resolver):
+        field_type = FieldType.read(buffer, resolver)
         # Note: name and defined_class would need to be read from the buffer
         # This is a simplified version
         return cls("", field_type, "")
@@ -250,7 +249,7 @@ class FieldType:
         self.is_tracking_ref = is_tracking_ref
         self.tracking_ref_override = None
 
-    def xwrite(self, buffer: Buffer, write_flags: bool = True):
+    def write(self, buffer: Buffer, write_flags: bool = True):
         xtype_id = self.type_id
         if write_flags:
             xtype_id = xtype_id << 2
@@ -263,28 +262,28 @@ class FieldType:
             buffer.write_uint8(xtype_id)
         # Handle nested types
         if self.type_id in [TypeId.LIST, TypeId.SET]:
-            self.element_type.xwrite(buffer, True)
+            self.element_type.write(buffer, True)
         elif self.type_id == TypeId.MAP:
-            self.key_type.xwrite(buffer, True)
-            self.value_type.xwrite(buffer, True)
+            self.key_type.write(buffer, True)
+            self.value_type.write(buffer, True)
 
     @classmethod
-    def xread(cls, buffer: Buffer, resolver):
+    def read(cls, buffer: Buffer, resolver):
         xtype_id = buffer.read_var_uint32()
         is_tracking_ref = (xtype_id & 0b1) != 0
         is_nullable = (xtype_id & 0b10) != 0
         xtype_id = xtype_id >> 2
-        return cls.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
+        return cls.read_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
     @classmethod
-    def xread_with_type(cls, buffer: Buffer, resolver, xtype_id: int, is_nullable: bool, is_tracking_ref: bool):
+    def read_with_type(cls, buffer: Buffer, resolver, xtype_id: int, is_nullable: bool, is_tracking_ref: bool):
         user_type_id = NO_USER_TYPE_ID
         if xtype_id in [TypeId.LIST, TypeId.SET]:
-            element_type = cls.xread(buffer, resolver)
+            element_type = cls.read(buffer, resolver)
             return CollectionFieldType(xtype_id, True, is_nullable, is_tracking_ref, element_type)
         elif xtype_id == TypeId.MAP:
-            key_type = cls.xread(buffer, resolver)
-            value_type = cls.xread(buffer, resolver)
+            key_type = cls.read(buffer, resolver)
+            value_type = cls.read(buffer, resolver)
             return MapFieldType(xtype_id, True, is_nullable, is_tracking_ref, key_type, value_type)
         elif xtype_id == TypeId.UNKNOWN:
             return DynamicFieldType(xtype_id, False, is_nullable, is_tracking_ref, user_type_id=user_type_id)
@@ -481,23 +480,16 @@ def build_field_infos(type_resolver, cls):
         if fory_meta is not None:
             is_nullable = fory_meta.nullable
         else:
-            # For xlang mode: only Optional[T] types are nullable by default
-            # For native mode: all reference types are nullable by default
-            if not type_resolver.fory.xlang:
-                is_nullable = is_optional or not is_primitive_type(unwrapped_type)
-            else:
-                # For xlang: only Optional[T] types are nullable
-                is_nullable = is_optional
+            # Default behavior: Optional[T] fields are nullable. Global field_nullable
+            # can force nullable for all fields.
+            is_nullable = is_optional or field_nullable
 
         # Determine ref tracking: field.ref AND global track_ref
-        # For xlang mode: ref tracking defaults to false unless explicitly annotated
-        # This matches Java's behavior in TypeResolver.getFieldDescriptors()
         if fory_meta is not None:
             is_tracking_ref = fory_meta.ref and global_ref_tracking
         else:
-            # In xlang mode, default to false (matches Java's xlang behavior)
-            # In native mode, use global track_ref setting
-            is_tracking_ref = global_ref_tracking if not type_resolver.fory.xlang else False
+            # By default, field-level ref tracking is off unless explicitly annotated.
+            is_tracking_ref = False
 
         # Get tag_id from metadata (-1 if not specified)
         tag_id = fory_meta.id if fory_meta is not None else -1

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
+import Fory, { Type, BFloat16 } from '../packages/fory/index';
 import { describe, expect, test } from '@jest/globals';
 
 describe('number', () => {
@@ -151,6 +151,74 @@ describe('number', () => {
       input
     );
     expect(result.a).toBeCloseTo(Infinity)
+  });
+
+  test('should bfloat16 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.bfloat16()
+    })).serializer;
+    const input = fory.serialize({ a: BFloat16.fromFloat32(1.5) }, serializer);
+    const result = fory.deserialize(input);
+    expect(result.a).toBeInstanceOf(BFloat16);
+    expect(result.a.toFloat32()).toBeCloseTo(1.5, 2);
+  });
+
+  test('should bfloat16 accept number', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.bfloat16()
+    })).serializer;
+    const input = fory.serialize({ a: 1.5 }, serializer);
+    const result = fory.deserialize(input);
+    expect(result.a).toBeInstanceOf(BFloat16);
+    expect(result.a.toFloat32()).toBeCloseTo(1.5, 2);
+  });
+
+  test('should bfloat16 NaN work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.bfloat16()
+    })).serializer;
+    const input = fory.serialize({ a: NaN }, serializer);
+    const result = fory.deserialize(input);
+    expect(result.a).toBeInstanceOf(BFloat16);
+    expect(Number.isNaN(result.a.toFloat32())).toBe(true);
+  });
+
+  test('should bfloat16 Infinity work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.bfloat16()
+    })).serializer;
+    const input = fory.serialize({ a: Infinity }, serializer);
+    const result = fory.deserialize(input);
+    expect(result.a).toBeInstanceOf(BFloat16);
+    expect(result.a.toFloat32()).toBe(Infinity);
+  });
+
+  test('should bfloat16 zero and neg zero round-trip', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.bfloat16(),
+      b: Type.bfloat16()
+    })).serializer;
+    const input = fory.serialize({ a: 0, b: -0 }, serializer);
+    const result = fory.deserialize(input);
+    expect(result.a.toFloat32()).toBe(0);
+    expect(result.b.toFloat32()).toBe(-0);
+    expect(1 / result.a.toFloat32()).toBe(Infinity);
+    expect(1 / result.b.toFloat32()).toBe(-Infinity);
   });
 
   test('should uint8 work', () => {

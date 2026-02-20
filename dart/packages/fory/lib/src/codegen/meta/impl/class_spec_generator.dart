@@ -57,21 +57,6 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     );
   }
 
-  void _genMixinPart(StringBuffer buf) {
-    buf.write("mixin ");
-    buf.write('_\$');
-    buf.write(name);
-    buf.write("Fory");
-    buf.write(" implements ForyTypeProvider {\n");
-    CodegenTool.writeIndent(buf, CodegenStyle.indent);
-    buf.write("@override\n");
-    CodegenTool.writeIndent(buf, CodegenStyle.indent);
-    buf.write("Type get foryType => ");
-    buf.write(name);
-    buf.write(";\n");
-    buf.write("}\n");
-  }
-
   @override
   void writeCode(StringBuffer buf, [int indentLevel = 0]) {
     int totalIndent = indentLevel * CodegenStyle.indent;
@@ -93,7 +78,7 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     // the declare of variable
     buf.write("final ");
     buf.write(_varName);
-    buf.write(" = ClassSpec(\n");
+    buf.write(" = TypeSpec(\n");
 
     // arg: type name
     CodegenTool.writeIndent(buf, nextTotalIndent);
@@ -136,7 +121,5 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
 
     // tail part
     buf.write(");\n\n");
-
-    _genMixinPart(buf);
   }
 }

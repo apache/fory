@@ -20,18 +20,18 @@
 import { TypeId } from "../type";
 import { Scope } from "./scope";
 import { CodecBuilder } from "./builder";
-import { StructTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeInfo } from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
 class ExtSerializerGenerator extends BaseSerializerGenerator {
-  typeInfo: StructTypeInfo;
+  typeInfo: TypeInfo;
   typeMeta: TypeMeta;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
-    this.typeInfo = <StructTypeInfo>typeInfo;
+    this.typeInfo = typeInfo;
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo);
   }
 
@@ -44,7 +44,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     return `
-      ${this.typeInfo.options.withConstructor
+      ${this.typeInfo.options!.withConstructor
         ? `
           const ${result} = new ${this.builder.getOptions("creator")}();
         `
@@ -96,7 +96,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     }
     return `
       ${
-        this.builder.reader.uint8()
+        this.builder.reader.readUint8()
       };
       ${readUserTypeIdStmt}
       ${
@@ -158,7 +158,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
             ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
           `;
         } else {
-          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(<StructTypeInfo> this.typeInfo).toBytes().join(",")}])`);
+          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
         }
         break;
@@ -166,7 +166,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return ` 
-      ${this.builder.writer.uint8(this.getTypeId())};
+      ${this.builder.writer.writeUint8(this.getTypeId())};
       ${writeUserTypeIdStmt}
       ${typeMeta}
     `;

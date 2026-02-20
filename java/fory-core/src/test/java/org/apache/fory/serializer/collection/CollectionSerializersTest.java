@@ -243,6 +243,102 @@ public class CollectionSerializersTest extends ForyTestBase {
     }
   }
 
+  // TreeSet subclass without a Comparator constructor (natural ordering only)
+  public static class ChildTreeSet extends TreeSet<String> {
+    public ChildTreeSet() {
+      super();
+    }
+  }
+
+  // TreeSet subclass with a Comparator constructor
+  public static class ChildTreeSetWithComparator extends TreeSet<String> {
+    public ChildTreeSetWithComparator() {
+      super();
+    }
+
+    public ChildTreeSetWithComparator(Comparator<? super String> comparator) {
+      super(comparator);
+    }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testSortedSetSubclassWithoutComparatorCtor(boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    ChildTreeSet set = new ChildTreeSet();
+    set.add("b");
+    set.add("a");
+    set.add("c");
+    ChildTreeSet deserialized = serDe(fory, set);
+    assertEquals(deserialized, set);
+    assertEquals(deserialized.getClass(), ChildTreeSet.class);
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testSortedSetSubclassWithComparatorCtor(boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    ChildTreeSetWithComparator set = new ChildTreeSetWithComparator();
+    set.add("b");
+    set.add("a");
+    set.add("c");
+    ChildTreeSetWithComparator deserialized = serDe(fory, set);
+    assertEquals(deserialized, set);
+    assertEquals(deserialized.getClass(), ChildTreeSetWithComparator.class);
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testSortedSetSubclassRegisteredWithSortedSetSerializer(
+      boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    // Subclass without Comparator constructor should not throw when registered with
+    // SortedSetSerializer
+    fory.registerSerializer(
+        ChildTreeSet.class,
+        new CollectionSerializers.SortedSetSerializer<>(fory, ChildTreeSet.class));
+    ChildTreeSet set = new ChildTreeSet();
+    set.add("b");
+    set.add("a");
+    set.add("c");
+    ChildTreeSet deserialized = serDe(fory, set);
+    assertEquals(deserialized, set);
+    assertEquals(deserialized.getClass(), ChildTreeSet.class);
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testSortedSetSubclassWithComparatorRegisteredWithSortedSetSerializer(
+      boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    fory.registerSerializer(
+        ChildTreeSetWithComparator.class,
+        new CollectionSerializers.SortedSetSerializer<>(fory, ChildTreeSetWithComparator.class));
+    ChildTreeSetWithComparator set = new ChildTreeSetWithComparator();
+    set.add("b");
+    set.add("a");
+    set.add("c");
+    ChildTreeSetWithComparator deserialized = serDe(fory, set);
+    assertEquals(deserialized, set);
+    assertEquals(deserialized.getClass(), ChildTreeSetWithComparator.class);
+  }
+
   @Test
   public void testEmptyCollection() {
     serDeCheckSerializer(getJavaFory(), Collections.EMPTY_LIST, "EmptyListSerializer");

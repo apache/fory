@@ -19,7 +19,7 @@
 
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
-import 'package:fory/src/meta/specs/type_spec.dart';
+import 'package:fory/src/meta/specs/field_type_spec.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
 class TypeSpecWrap {
@@ -39,7 +39,7 @@ class TypeSpecWrap {
     this.serializer,
   );
 
-  factory TypeSpecWrap.of(TypeSpec typeSpec) {
+  factory TypeSpecWrap.of(FieldTypeSpec typeSpec) {
     List<TypeSpecWrap> genericsWraps = [];
     var genericsArgs = typeSpec.genericsArgs;
     for (int i = 0; i < genericsArgs.length; ++i) {

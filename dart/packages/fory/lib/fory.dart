@@ -29,9 +29,9 @@ export 'src/annotation/fory_constructor.dart';
 export 'src/annotation/uint_types.dart';
 
 // Analysis meta
-export 'src/meta/specs/class_spec.dart';
-export 'src/meta/specs/field_spec.dart';
 export 'src/meta/specs/type_spec.dart';
+export 'src/meta/specs/field_spec.dart';
+export 'src/meta/specs/field_type_spec.dart';
 export 'src/meta/specs/enum_spec.dart';
 
 // Fory implementation
@@ -40,6 +40,7 @@ export 'src/config/fory_config.dart';
 
 // Constants
 export 'src/const/types.dart';
+export 'src/resolver/spec_lookup.dart';
 
 // User-related
 export 'src/fory_type_provider.dart';

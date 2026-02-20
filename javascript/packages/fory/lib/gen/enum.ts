@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { EnumTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
@@ -25,19 +25,22 @@ import { TypeId, MaxUInt32 } from "../type";
 import { Scope } from "./scope";
 
 class EnumSerializerGenerator extends BaseSerializerGenerator {
-  typeInfo: EnumTypeInfo;
+  typeInfo: TypeInfo;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
-    this.typeInfo = <EnumTypeInfo>typeInfo;
+    this.typeInfo = typeInfo;
   }
 
   write(accessor: string): string {
-    if (Object.values(this.typeInfo.options.inner).length < 1) {
+    if (!this.typeInfo.options?.enumProps) {
+      return this.builder.writer.writeVarUInt32(accessor);
+    }
+    if (Object.values(this.typeInfo.options.enumProps).length < 1) {
       throw new Error("An enum must contain at least one field");
     }
     return `
-        ${Object.values(this.typeInfo.options.inner).map((value, index) => {
+        ${Object.values(this.typeInfo.options.enumProps).map((value, index) => {
       if (typeof value !== "string" && typeof value !== "number") {
         throw new Error("Enum value must be string or number");
       }
@@ -48,7 +51,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
       }
       const safeValue = typeof value === "string" ? `"${value}"` : value;
       return ` if (${accessor} === ${safeValue}) {
-                    ${this.builder.writer.varUInt32(index)}
+                    ${this.builder.writer.writeVarUInt32(index)}
                 }`;
     }).join(" else ")}
         else {
@@ -84,7 +87,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     return `
       ${
       // skip the typeId
-      this.builder.reader.uint8()
+      this.builder.reader.readUint8()
       }
       ${readUserTypeIdStmt}
       ${namesStmt}
@@ -101,7 +104,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         break;
       case TypeId.NAMED_ENUM:
         {
-          const typeInfo = this.typeInfo.castToStruct();
+          const typeInfo = this.typeInfo;
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
           const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
           typeMeta = `
@@ -114,18 +117,21 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return ` 
-        ${this.builder.writer.uint8(this.getTypeId())};
+        ${this.builder.writer.writeUint8(this.getTypeId())};
         ${writeUserTypeIdStmt}
         ${typeMeta}
       `;
   }
 
   read(accessor: (expr: string) => string): string {
+    if (!this.typeInfo.options?.enumProps) {
+      return accessor(this.builder.reader.readVarUInt32());
+    }
     const enumValue = this.scope.uniqueName("enum_v");
     return `
-        const ${enumValue} = ${this.builder.reader.varUInt32()};
+        const ${enumValue} = ${this.builder.reader.readVarUInt32()};
         switch(${enumValue}) {
-            ${Object.values(this.typeInfo.options.inner).map((value, index) => {
+            ${Object.values(this.typeInfo.options.enumProps).map((value, index) => {
       if (typeof value !== "string" && typeof value !== "number") {
         throw new Error("Enum value must be string or number");
       }

@@ -82,9 +82,7 @@ describe('object', () => {
     const typeInfo = Type.struct("example.foo", {
       a: Type.struct("example.bar", {
         b: Type.string()
-      })
-    }, {
-      fieldInfo: { a: { nullable: true } }
+      }).setNullable(true)
     })
     const fory = new Fory({ refTracking: true });
     const { serialize, deserialize } = fory.registerSerializer(typeInfo);
@@ -113,7 +111,7 @@ describe('object', () => {
       input
     );
     result.a.forEach(x => x.e = Number(x.e))
-    expect(result).toEqual({ a: [{ b: "hel", c: true, d: 123, e: 123, f: Buffer.from([1, 2, 3]) }] })
+    expect(result).toEqual({ a: [{ b: "hel", c: true, d: 123, e: 123, f: new Uint8Array([1, 2, 3]) }] })
   });
 
   test('should write tag and read tag work', () => {
@@ -137,11 +135,12 @@ describe('object', () => {
       a: Type.struct("example.bar", {
         b: Type.string(),
       }),
-      a2: Type.struct("example.foo")
+      a2: Type.struct("example.foo").setTrackingRef(true)
     })
 
     const fory = new Fory({
-      refTracking: true, hooks: {
+      refTracking: true, 
+      hooks: {
         afterCodeGenerated: (code) => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
         }
@@ -202,11 +201,7 @@ describe('object', () => {
     const hps = undefined;
     const typeInfo = Type.struct('ws-channel-protocol', {
       kind: Type.string(),
-      path: Type.string(),
-    }, {
-      fieldInfo: {
-        path: { nullable: true }
-      }
+      path: Type.string().setNullable(true),
     });
 
     const fory = new Fory({ hps });

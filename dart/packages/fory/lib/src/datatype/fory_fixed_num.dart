@@ -27,6 +27,8 @@ enum NumType { int8, int16, int32, float16, float32 }
 
 /// Base abstract class for fixed-size numeric types
 abstract base class FixedNum implements Comparable<FixedNum> {
+  const FixedNum();
+
   num get value;
 
   // Factory constructor to create the appropriate type

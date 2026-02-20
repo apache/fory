@@ -36,20 +36,20 @@ final class ComplexObject1Serializer extends Serializer<ComplexObject1> {
   ComplexObject1 read(ByteReader br, int refId, DeserializationContext pack) {
     ComplexObject1 obj = ComplexObject1();
     pack.refResolver.setRefTheLatestId(obj);
-    obj.f1 = pack.deserializationCoordinator.readDynamicWithRef(br, pack)!;
+    obj.f1 = pack.deserializationDispatcher.readDynamicWithRef(br, pack)!;
     obj.f2 =
-        pack.deserializationCoordinator.readDynamicWithRef(br, pack)! as String;
+        pack.deserializationDispatcher.readDynamicWithRef(br, pack)! as String;
     obj.f3 =
-        (pack.deserializationCoordinator.readDynamicWithRef(br, pack)! as List)
+        (pack.deserializationDispatcher.readDynamicWithRef(br, pack)! as List)
             .cast<Object>();
     return obj;
   }
 
   @override
   void write(ByteWriter bw, ComplexObject1 v, SerializationContext pack) {
-    pack.serializationCoordinator.writeDynamicWithRef(bw, v.f1, pack);
-    pack.serializationCoordinator.writeDynamicWithRef(bw, v.f2, pack);
-    pack.serializationCoordinator.writeDynamicWithRef(bw, v.f3, pack);
+    pack.serializationDispatcher.writeDynamicWithRef(bw, v.f1, pack);
+    pack.serializationDispatcher.writeDynamicWithRef(bw, v.f2, pack);
+    pack.serializationDispatcher.writeDynamicWithRef(bw, v.f3, pack);
   }
 }
 
@@ -59,7 +59,7 @@ void main() {
       Fory fory = Fory(
         ref: true,
       );
-      fory.register($ComplexObject1, typename: "test.ComplexObject1");
+      fory.register(ComplexObject1, typename: "test.ComplexObject1");
       fory.registerSerializer(ComplexObject1, const ComplexObject1Serializer());
 
       ComplexObject1 obj = ComplexObject1();

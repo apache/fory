@@ -71,8 +71,9 @@ class StructHashResolver {
       final String fieldName =
           StringUtil.lowerCamelToLowerUnderscore(field.name);
       final int typeId = _fingerprintTypeId(field.typeSpec.objType);
+      final int trackingRef = field.trackingRef ? 1 : 0;
       final int nullable = field.typeSpec.nullable ? 1 : 0;
-      entries[i] = '$fieldName,$typeId,0,$nullable;';
+      entries[i] = '$fieldName,$typeId,$trackingRef,$nullable;';
     }
     entries.sort();
     final StringBuffer fingerprint = StringBuffer();
@@ -86,6 +87,12 @@ class StructHashResolver {
   }
 
   int _fingerprintTypeId(ObjType objType) {
+    if (objType == ObjType.INT32) {
+      return ObjType.VAR_INT32.id;
+    }
+    if (objType == ObjType.INT64) {
+      return ObjType.VAR_INT64.id;
+    }
     if (objType == ObjType.UNKNOWN) {
       return ObjType.UNKNOWN.id;
     }

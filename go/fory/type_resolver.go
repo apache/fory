@@ -29,6 +29,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 	"github.com/apache/fory/go/fory/meta"
 )
@@ -77,6 +78,7 @@ var (
 	float32SliceType     = reflect.TypeOf((*[]float32)(nil)).Elem()
 	float64SliceType     = reflect.TypeOf((*[]float64)(nil)).Elem()
 	float16SliceType     = reflect.TypeOf((*[]float16.Float16)(nil)).Elem()
+	bfloat16SliceType    = reflect.TypeOf((*[]bfloat16.BFloat16)(nil)).Elem()
 	interfaceSliceType   = reflect.TypeOf((*[]any)(nil)).Elem()
 	interfaceMapType     = reflect.TypeOf((*map[any]any)(nil)).Elem()
 	stringStringMapType  = reflect.TypeOf((*map[string]string)(nil)).Elem()
@@ -103,6 +105,7 @@ var (
 	float32Type          = reflect.TypeOf((*float32)(nil)).Elem()
 	float64Type          = reflect.TypeOf((*float64)(nil)).Elem()
 	float16Type          = reflect.TypeOf((*float16.Float16)(nil)).Elem()
+	bfloat16Type         = reflect.TypeOf((*bfloat16.BFloat16)(nil)).Elem()
 	dateType             = reflect.TypeOf((*Date)(nil)).Elem()
 	timestampType        = reflect.TypeOf((*time.Time)(nil)).Elem()
 	genericSetType       = reflect.TypeOf((*Set[any])(nil)).Elem()
@@ -259,6 +262,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		float32Type,
 		float64Type,
 		float16Type,
+		bfloat16Type,
 		stringType,
 		dateType,
 		timestampType,
@@ -416,6 +420,7 @@ func (r *TypeResolver) initialize() {
 		{float32SliceType, FLOAT32_ARRAY, float32SliceSerializer{}},
 		{float64SliceType, FLOAT64_ARRAY, float64SliceSerializer{}},
 		{float16SliceType, FLOAT16_ARRAY, float16SliceSerializer{}},
+		{bfloat16SliceType, BFLOAT16_ARRAY, bfloat16SliceSerializer{}},
 		// Register common map types for fast path with optimized serializers
 		{stringStringMapType, MAP, stringStringMapSerializer{}},
 		{stringInt64MapType, MAP, stringInt64MapSerializer{}},
@@ -440,6 +445,7 @@ func (r *TypeResolver) initialize() {
 		{float32Type, FLOAT32, float32Serializer{}},
 		{float64Type, FLOAT64, float64Serializer{}},
 		{float16Type, FLOAT16, float16Serializer{}},
+		{bfloat16Type, BFLOAT16, bfloat16Serializer{}},
 		{dateType, DATE, dateSerializer{}},
 		{timestampType, TIMESTAMP, timeSerializer{}},
 		{genericSetType, SET, setSerializer{}},
@@ -1712,6 +1718,10 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			if elem == float16Type {
 				return float16SliceSerializer{}, nil
 			}
+			// Check for fory.BFloat16 (aliased to uint16)
+			if elem == bfloat16Type {
+				return bfloat16SliceSerializer{}, nil
+			}
 			return uint16SliceSerializer{}, nil
 		case reflect.Uint32:
 			return uint32SliceSerializer{}, nil
@@ -1762,6 +1772,10 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			// Check for fory.Float16 (aliased to uint16)
 			if elem == float16Type {
 				return float16ArraySerializer{arrayType: type_}, nil
+			}
+			// Check for fory.BFloat16 (aliased to uint16)
+			if elem == bfloat16Type {
+				return bfloat16ArraySerializer{arrayType: type_}, nil
 			}
 			return uint16ArraySerializer{arrayType: type_}, nil
 		case reflect.Uint32:

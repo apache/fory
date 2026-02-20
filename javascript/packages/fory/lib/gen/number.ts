@@ -49,36 +49,36 @@ function buildNumberSerializer(writeFun: (builder: CodecBuilder, accessor: strin
 
 CodegenRegistry.register(TypeId.INT8,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.int8(accessor),
-    builder => builder.reader.int8()
+    (builder, accessor) => builder.writer.writeInt8(accessor),
+    builder => builder.reader.readInt8()
   )
 );
 
 CodegenRegistry.register(TypeId.INT16,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.int16(accessor),
-    builder => builder.reader.int16()
+    (builder, accessor) => builder.writer.writeInt16(accessor),
+    builder => builder.reader.readInt16()
   )
 );
 
 CodegenRegistry.register(TypeId.INT32,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.int32(accessor),
-    builder => builder.reader.int32()
+    (builder, accessor) => builder.writer.writeInt32(accessor),
+    builder => builder.reader.readInt32()
   )
 );
 
 CodegenRegistry.register(TypeId.VARINT32,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.varInt32(accessor),
-    builder => builder.reader.varInt32()
+    (builder, accessor) => builder.writer.writeVarInt32(accessor),
+    builder => builder.reader.readVarInt32()
   )
 );
 
 CodegenRegistry.register(TypeId.INT64,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.int64(accessor),
-    builder => builder.reader.int64()
+    (builder, accessor) => builder.writer.writeInt64(accessor),
+    builder => builder.reader.readInt64()
   )
 );
 
@@ -98,68 +98,74 @@ CodegenRegistry.register(TypeId.TAGGED_UINT64,
 
 CodegenRegistry.register(TypeId.FLOAT16,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.float16(accessor),
-    builder => builder.reader.float16()
+    (builder, accessor) => builder.writer.writeFloat16(accessor),
+    builder => builder.reader.readFloat16()
+  )
+);
+CodegenRegistry.register(TypeId.BFLOAT16,
+  buildNumberSerializer(
+    (builder, accessor) => builder.writer.writeBfloat16(accessor),
+    builder => builder.reader.readBfloat16()
   )
 );
 CodegenRegistry.register(TypeId.FLOAT32,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.float32(accessor),
-    builder => builder.reader.float32()
+    (builder, accessor) => builder.writer.writeFloat32(accessor),
+    builder => builder.reader.readFloat32()
   )
 );
 CodegenRegistry.register(TypeId.FLOAT64,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.float64(accessor),
-    builder => builder.reader.float64()
+    (builder, accessor) => builder.writer.writeFloat64(accessor),
+    builder => builder.reader.readFloat64()
   )
 );
 
 CodegenRegistry.register(TypeId.UINT8,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.uint8(accessor),
-    builder => builder.reader.uint8()
+    (builder, accessor) => builder.writer.writeUint8(accessor),
+    builder => builder.reader.readUint8()
   )
 );
 
 CodegenRegistry.register(TypeId.UINT16,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.uint16(accessor),
-    builder => builder.reader.uint16()
+    (builder, accessor) => builder.writer.writeUint16(accessor),
+    builder => builder.reader.readUint16()
   )
 );
 
 CodegenRegistry.register(TypeId.UINT32,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.uint32(accessor),
-    builder => builder.reader.uint32()
+    (builder, accessor) => builder.writer.writeUint32(accessor),
+    builder => builder.reader.readUint32()
   )
 );
 
 CodegenRegistry.register(TypeId.VAR_UINT32,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.varUInt32(accessor),
-    builder => builder.reader.varUInt32()
+    (builder, accessor) => builder.writer.writeVarUInt32(accessor),
+    builder => builder.reader.readVarUInt32()
   )
 );
 
 CodegenRegistry.register(TypeId.UINT64,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.uint64(accessor),
-    builder => builder.reader.uint64()
+    (builder, accessor) => builder.writer.writeUint64(accessor),
+    builder => builder.reader.readUint64()
   )
 );
 
 CodegenRegistry.register(TypeId.VAR_UINT64,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.varUInt64(accessor),
-    builder => builder.reader.varUInt64()
+    (builder, accessor) => builder.writer.writeVarUInt64(accessor),
+    builder => builder.reader.readVarUInt64()
   )
 );
 
 CodegenRegistry.register(TypeId.VARINT64,
   buildNumberSerializer(
-    (builder, accessor) => builder.writer.varInt64(accessor),
-    builder => builder.reader.varInt64()
+    (builder, accessor) => builder.writer.writeVarInt64(accessor),
+    builder => builder.reader.readVarInt64()
   )
 );

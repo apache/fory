@@ -92,14 +92,24 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
       int chunkSize = br.readUint8();
 
       Serializer keySerializer;
-      if (keyDeclaredType && keyWrap?.serializer != null) {
-        keySerializer = keyWrap!.serializer!;
+      if (keyDeclaredType) {
+        if (keyWrap == null) {
+          throw StateError(
+              'Map key declared type flag set but key type is unavailable');
+        }
+        keySerializer = keyWrap.serializer ??
+            pack.typeResolver.getRegisteredSerializer(keyWrap.type);
       } else {
         keySerializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
       Serializer valueSerializer;
-      if (valueDeclaredType && valueWrap?.serializer != null) {
-        valueSerializer = valueWrap!.serializer!;
+      if (valueDeclaredType) {
+        if (valueWrap == null) {
+          throw StateError(
+              'Map value declared type flag set but value type is unavailable');
+        }
+        valueSerializer = valueWrap.serializer ??
+            pack.typeResolver.getRegisteredSerializer(valueWrap.type);
       } else {
         valueSerializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
@@ -311,9 +321,14 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool trackRef = (chunkHeader & _trackingKeyRef) != 0;
     bool keyDeclaredType = (chunkHeader & _keyDeclType) != 0;
-    if (keyDeclaredType && keyWrap?.serializer != null) {
-      return _readWithSerializer(
-          br, keyWrap!.serializer!, trackRef, pack, keyWrap);
+    if (keyDeclaredType) {
+      if (keyWrap == null) {
+        throw StateError(
+            'Map key declared type flag set but key type is unavailable');
+      }
+      Serializer keySerializer = keyWrap.serializer ??
+          pack.typeResolver.getRegisteredSerializer(keyWrap.type);
+      return _readWithSerializer(br, keySerializer, trackRef, pack, keyWrap);
     }
     return _readWithDynamic(br, trackRef, pack, keyWrap);
   }
@@ -326,9 +341,15 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool trackRef = (chunkHeader & _trackingValueRef) != 0;
     bool valueDeclaredType = (chunkHeader & _valueDeclType) != 0;
-    if (valueDeclaredType && valueWrap?.serializer != null) {
+    if (valueDeclaredType) {
+      if (valueWrap == null) {
+        throw StateError(
+            'Map value declared type flag set but value type is unavailable');
+      }
+      Serializer valueSerializer = valueWrap.serializer ??
+          pack.typeResolver.getRegisteredSerializer(valueWrap.type);
       return _readWithSerializer(
-          br, valueWrap!.serializer!, trackRef, pack, valueWrap);
+          br, valueSerializer, trackRef, pack, valueWrap);
     }
     return _readWithDynamic(br, trackRef, pack, valueWrap);
   }
@@ -343,8 +364,9 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.serializationCoordinator
-          .writeWithSerializer(bw, serializer, value, pack);
+      pack.serializationDispatcher.writeWithSerializer(
+          bw, serializer, value, pack,
+          trackingRefOverride: true);
     } else {
       serializer.write(bw, value, pack);
     }
@@ -363,8 +385,8 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     bool pushed = _pushWrapForRead(wrap, pack);
     Object? value;
     if (trackRef) {
-      value = pack.deserializationCoordinator
-          .readWithSerializer(br, serializer, pack);
+      value = pack.deserializationDispatcher
+          .readWithSerializer(br, serializer, pack, trackingRefOverride: true);
     } else {
       value = serializer.read(br, -1, pack);
     }
@@ -383,9 +405,9 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool pushed = _pushWrapForWrite(wrap, pack);
     if (trackRef) {
-      pack.serializationCoordinator.writeDynamicWithRef(bw, value, pack);
+      pack.serializationDispatcher.writeDynamicWithRef(bw, value, pack);
     } else {
-      pack.serializationCoordinator.writeDynamicWithoutRef(bw, value, pack);
+      pack.serializationDispatcher.writeDynamicWithoutRef(bw, value, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();
@@ -401,10 +423,10 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     bool pushed = _pushWrapForRead(wrap, pack);
     Object value;
     if (trackRef) {
-      value = pack.deserializationCoordinator.readDynamicWithRef(br, pack)
-          as Object;
+      value =
+          pack.deserializationDispatcher.readDynamicWithRef(br, pack) as Object;
     } else {
-      value = pack.deserializationCoordinator.readDynamicWithoutRef(br, pack);
+      value = pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
     }
     if (pushed) {
       pack.typeWrapStack.pop();

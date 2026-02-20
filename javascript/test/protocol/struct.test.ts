@@ -60,9 +60,7 @@ describe('protocol', () => {
         const nullableUnspecified = Type.struct({
             typeName: "example.nullableUnspecified"
         }, {
-            a: Type.string(),
-        }, {
-            fieldInfo: {a: { nullable: true }}
+            a: Type.string().setNullable(true),
         });
         const { serialize, deserialize } = fory.registerSerializer(nullableUnspecified);
         expect(deserialize(serialize({ a: null }))).toEqual({ a: null });
@@ -75,13 +73,8 @@ describe('protocol', () => {
             { typeName: 'example.schemaConsistentNullable' },
             {
                 a: Type.string(),
-                b: Type.string(),
+                b: Type.string().setNullable(true),
             },
-            {
-                fieldInfo: {
-                    b: { nullable: true}
-                }
-            }
         );
 
         const { serialize, deserialize } = fory.registerSerializer(schema);

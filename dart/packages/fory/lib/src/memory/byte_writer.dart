@@ -20,6 +20,7 @@
 import 'dart:typed_data';
 import 'package:meta/meta.dart';
 import 'package:fory/src/memory/byte_writer_impl.dart';
+import 'package:fory/src/datatype/float16.dart';
 
 abstract base class ByteWriter {
   @protected
@@ -45,6 +46,7 @@ abstract base class ByteWriter {
 
   void writeFloat32(double value);
   void writeFloat64(double value);
+  void writeFloat16(Float16 value);
 
   void writeBytes(List<int> bytes);
 

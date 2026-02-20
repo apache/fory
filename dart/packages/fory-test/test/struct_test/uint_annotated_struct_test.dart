@@ -39,7 +39,7 @@ void main() {
 
       // Serialize
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
+      fory.register(UIntAnnotatedStruct);
       var bytes = fory.serialize(original);
 
       expect(bytes.isNotEmpty, isTrue);
@@ -69,7 +69,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
+      fory.register(UIntAnnotatedStruct);
       var bytes = fory.serialize(original);
       var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
@@ -88,7 +88,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
+      fory.register(UIntAnnotatedStruct);
       var bytes = fory.serialize(original);
       var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
@@ -107,7 +107,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
+      fory.register(UIntAnnotatedStruct);
       var bytes = fory.serialize(original);
       var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
@@ -127,7 +127,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
+      fory.register(UIntAnnotatedStruct);
       var bytes = fory.serialize(original);
       var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
@@ -162,7 +162,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
+      fory.register(UIntAnnotatedStruct);
 
       var smallBytes = fory.serialize(smallValues);
       var largeBytes = fory.serialize(largeValues);

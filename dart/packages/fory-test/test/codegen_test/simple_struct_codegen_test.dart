@@ -51,31 +51,27 @@ void main() {
       check(variables.equals(['\$EnumFoo', '\$EnumSubClass'])).isTrue();
     });
 
-    test('generates ClassSpec and mixin from time_obj.dart', () async {
+    test('generates TypeSpec without mixin from time_obj.dart', () async {
       // await runBuild();
       AssetId inputId = AssetId('fory-test', 'lib/entity/time_obj.dart');
       var lib = await resolveAsset(inputId, (resolver) async {
         return resolver.libraryFor(inputId);
       });
       List<String> variables = [];
-      List<String> mixins = [];
       for (var libPart in lib.children) {
         for (var ele in libPart.children) {
           if (ele is VariableElement) {
             InterfaceType type = ele.type as InterfaceType;
-            if (type.element.name == 'ClassSpec') {
+            if (type.element.name == 'TypeSpec') {
               // print('found EnumSpec: ${ele.name}');
               variables.add(ele.name);
             }
-          } else if (ele is MixinElement) {
-            mixins.add(ele.name);
           }
         }
       }
       check(variables.equals([
         '\$TimeObj',
       ])).isTrue();
-      check(mixins).contains('_\$TimeObjFory');
     });
   });
 }

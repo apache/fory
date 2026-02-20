@@ -297,9 +297,11 @@ def _build_single_plot_frame(spec, benchmark_data, zero_copy_data):
             .unstack("Lib")
         )
         if spec["benchmark"].startswith("serialize"):
-            title = f"{spec['benchmark']} {spec['objectType']} to {spec['bufferType']} (Tps)"
+            title = f"{spec['benchmark']} {spec['objectType']} to {spec['bufferType']}"
         else:
-            title = f"{spec['benchmark']} {spec['objectType']} from {spec['bufferType']} (Tps)"
+            title = (
+                f"{spec['benchmark']} {spec['objectType']} from {spec['bufferType']}"
+            )
         xlabel = "enable_references"
         width = 0.7 * bar_width_scale
     else:
@@ -314,11 +316,9 @@ def _build_single_plot_frame(spec, benchmark_data, zero_copy_data):
             .unstack("Lib")
         )
         if spec["benchmark"].startswith("serialize"):
-            title = (
-                f"{spec['benchmark']} {spec['dataType']} to {spec['bufferType']} (Tps)"
-            )
+            title = f"{spec['benchmark']} {spec['dataType']} to {spec['bufferType']}"
         else:
-            title = f"{spec['benchmark']} {spec['dataType']} from {spec['bufferType']} (Tps)"
+            title = f"{spec['benchmark']} {spec['dataType']} from {spec['bufferType']}"
         xlabel = "array_size"
         width = 0.8 * bar_width_scale
     return final_df, title, xlabel, width

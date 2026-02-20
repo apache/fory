@@ -28,7 +28,7 @@ import { TypeMeta } from "../meta/TypeMeta";
 
 export class AnyHelper {
   static detectSerializer(fory: Fory) {
-    const typeId = fory.binaryReader.uint8();
+    const typeId = fory.binaryReader.readUint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT) {
       userTypeId = fory.binaryReader.readVarUint32Small7();
@@ -37,11 +37,11 @@ export class AnyHelper {
 
     function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
       if (!serializer) {
-        throw new Error(`can't find implements of typeId: ${typeId}`);
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
       }
       const hash = serializer.getHash();
       if (hash !== typeMeta.getHash()) {
-        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta, serializer);
       }
       return serializer;
     }

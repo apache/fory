@@ -57,7 +57,7 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     if ((flags & isSameTypeFlag) == isSameTypeFlag && serializer != null) {
       if ((flags & trackingRefFlag) == trackingRefFlag) {
         for (Object? elem in v) {
-          pack.serializationCoordinator
+          pack.serializationDispatcher
               .writeWithSerializer(bw, serializer, elem, pack);
         }
       } else {
@@ -79,7 +79,7 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
     } else {
       if ((flags & trackingRefFlag) == trackingRefFlag) {
         for (Object? elem in v) {
-          pack.serializationCoordinator.writeDynamicWithRef(bw, elem, pack);
+          pack.serializationDispatcher.writeDynamicWithRef(bw, elem, pack);
         }
       } else {
         if ((flags & hasNullFlag) == hasNullFlag) {
@@ -88,13 +88,13 @@ abstract base class IterableSerializer extends Serializer<Iterable> {
               bw.writeInt8(RefFlag.NULL.id);
             } else {
               bw.writeInt8(RefFlag.UNTRACKED_NOT_NULL.id);
-              pack.serializationCoordinator
+              pack.serializationDispatcher
                   .writeDynamicWithoutRef(bw, elem, pack);
             }
           }
         } else {
           for (Object? elem in v) {
-            pack.serializationCoordinator
+            pack.serializationDispatcher
                 .writeDynamicWithoutRef(bw, elem as Object, pack);
           }
         }

@@ -626,7 +626,7 @@ cdef class TypeResolver:
         else:
             if type_id >= self._c_registered_id_to_type_info.size():
                 self._c_registered_id_to_type_info.resize(type_id * 2, NULL)
-            if type_id > 0 and (not self.fory.xlang or not is_namespaced_type(<TypeId>type_id)):
+            if type_id > 0 and not is_namespaced_type(<TypeId>type_id):
                 self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
         # Resize if load factor >= 0.4 (using integer arithmetic: size/capacity >= 4/10)
@@ -1083,9 +1083,8 @@ cdef class Fory:
                 it controls which types can be deserialized, overriding the default policy.
                 **Strongly recommended** when strict=False to maintain security controls.
 
-            field_nullable: Treat all dataclass fields as nullable in Python-native mode
-                (xlang=False), regardless of Optional annotation. Ignored in cross-language
-                mode.
+            field_nullable: Treat all dataclass fields as nullable regardless of
+                Optional annotation.
 
         Example:
             >>> # Python-native mode with reference tracking
@@ -1103,7 +1102,7 @@ cdef class Fory:
         self.compatible = compatible
         self.track_ref = ref
         self.ref_resolver = MapRefResolver(ref)
-        self.field_nullable = field_nullable if not self.xlang else False
+        self.field_nullable = field_nullable
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
@@ -1299,7 +1298,7 @@ cdef class Fory:
 
     cpdef inline _serialize(
             self, obj, Buffer buffer, buffer_callback=None, unsupported_callback=None):
-        assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref/xwrite_ref/xwrite_no_ref."
+        assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref."
         self.depth += 1
         self.buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
@@ -1315,21 +1314,13 @@ cdef class Fory:
         else:
             clear_bit(buffer, mask_index, 0)
 
-        if self.xlang:
-            # set reader as x_lang.
-            set_bit(buffer, mask_index, 1)
-        else:
-            # set reader as native.
-            clear_bit(buffer, mask_index, 1)
+        # Unified protocol always writes xlang-compatible payload framing.
+        set_bit(buffer, mask_index, 1)
         if self.buffer_callback is not None:
             set_bit(buffer, mask_index, 2)
         else:
             clear_bit(buffer, mask_index, 2)
-        cdef int32_t start_offset
-        if not self.xlang:
-            self.write_ref(buffer, obj)
-        else:
-            self.xwrite_ref(buffer, obj)
+        self.write_ref(buffer, obj)
 
         if buffer is not self.buffer:
             return buffer
@@ -1337,32 +1328,29 @@ cdef class Fory:
             return buffer.to_bytes(0, buffer.get_writer_index())
 
     cpdef inline write_ref(
-            self, Buffer buffer, obj, TypeInfo typeinfo=None):
-        cls = type(obj)
-        if cls is str:
-            buffer.write_int16(NOT_NULL_STRING_FLAG)
-            buffer.write_string(obj)
-            return
-        elif cls is int:
-            buffer.write_int16(NOT_NULL_INT64_FLAG)
-            buffer.write_varint64(obj)
-            return
-        elif cls is bool:
-            buffer.write_int16(NOT_NULL_BOOL_FLAG)
-            buffer.write_bool(obj)
-            return
-        elif cls is float:
-            buffer.write_int16(NOT_NULL_FLOAT64_FLAG)
-            buffer.write_double(obj)
-            return
-        if self.ref_resolver.write_ref_or_null(buffer, obj):
-            return
-        if typeinfo is None:
-            typeinfo = self.type_resolver.get_type_info(cls)
-        self.type_resolver.write_type_info(buffer, typeinfo)
-        typeinfo.serializer.write(buffer, obj)
+            self, Buffer buffer, obj, TypeInfo typeinfo=None, Serializer serializer=None):
+        if serializer is None and typeinfo is not None:
+            serializer = typeinfo.serializer
+        if serializer is None or serializer.need_to_write_ref:
+            if self.ref_resolver.write_ref_or_null(buffer, obj):
+                return
+            self.write_no_ref(buffer, obj, serializer=serializer, typeinfo=typeinfo)
+        else:
+            if obj is None:
+                buffer.write_int8(NULL_FLAG)
+            else:
+                buffer.write_int8(NOT_NULL_VALUE_FLAG)
+                self.write_no_ref(buffer, obj, serializer=serializer, typeinfo=typeinfo)
 
-    cpdef inline write_no_ref(self, Buffer buffer, obj):
+    cpdef inline write_no_ref(
+            self,
+            Buffer buffer,
+            obj,
+            Serializer serializer=None,
+            TypeInfo typeinfo=None):
+        if serializer is not None:
+            serializer.write(buffer, obj)
+            return
         cls = type(obj)
         if cls is str:
             buffer.write_var_uint32(STRING_TYPE_ID)
@@ -1380,33 +1368,10 @@ cdef class Fory:
             buffer.write_var_uint32(FLOAT64_TYPE_ID)
             buffer.write_double(obj)
             return
-        cdef TypeInfo typeinfo = self.type_resolver.get_type_info(cls)
+        if typeinfo is None:
+            typeinfo = self.type_resolver.get_type_info(cls)
         self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.write(buffer, obj)
-
-    cpdef inline xwrite_ref(
-            self, Buffer buffer, obj, Serializer serializer=None):
-        if serializer is None or serializer.need_to_write_ref:
-            if not self.ref_resolver.write_ref_or_null(buffer, obj):
-                self.xwrite_no_ref(
-                    buffer, obj, serializer=serializer
-                )
-        else:
-            if obj is None:
-                buffer.write_int8(NULL_FLAG)
-            else:
-                buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.xwrite_no_ref(
-                    buffer, obj, serializer=serializer
-                )
-
-    cpdef inline xwrite_no_ref(
-            self, Buffer buffer, obj, Serializer serializer=None):
-        if serializer is None:
-            typeinfo = self.type_resolver.get_type_info(type(obj))
-            self.type_resolver.write_type_info(buffer, typeinfo)
-            serializer = typeinfo.serializer
-        serializer.xwrite(buffer, obj)
 
     def deserialize(
             self,
@@ -1445,7 +1410,7 @@ cdef class Fory:
 
     cpdef inline _deserialize(
             self, Buffer buffer, buffers=None, unsupported_objects=None):
-        assert self.depth == 0, "Nested deserialization should use read_ref/read_no_ref/xread_ref/xread_no_ref."
+        assert self.depth == 0, "Nested deserialization should use read_ref/read_no_ref."
         self.depth += 1
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
@@ -1453,7 +1418,6 @@ cdef class Fory:
         buffer.set_reader_index(reader_index + 1)
         if get_bit(buffer, reader_index, 0):
             return None
-        cdef c_bool is_target_x_lang = get_bit(buffer, reader_index, 1)
         self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
         if self.is_peer_out_of_band_enabled:
             assert buffers is not None, (
@@ -1467,90 +1431,50 @@ cdef class Fory:
                 "produced with buffer_callback null."
             )
 
-        if not is_target_x_lang:
-            obj = self.read_ref(buffer)
-        else:
-            obj = self.xread_ref(buffer)
+        return self.read_ref(buffer)
 
-        return obj
-
-    cpdef inline read_ref(self, Buffer buffer):
-        cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef int32_t ref_id = ref_resolver.try_preserve_ref_id(buffer)
-        if ref_id < NOT_NULL_VALUE_FLAG:
-            return ref_resolver.get_read_object()
-        # indicates that the object is first read.
-        cdef TypeInfo typeinfo = self.type_resolver.read_type_info(buffer)
-        cls = typeinfo.cls
-        if cls is str:
-            return buffer.read_string()
-        elif cls is int:
-            return buffer.read_varint64()
-        elif cls is bool:
-            return buffer.read_bool()
-        elif cls is float:
-            return buffer.read_double()
-        self.inc_depth()
-        o = typeinfo.serializer.read(buffer)
-        self.depth -= 1
-        ref_resolver.set_read_object(ref_id, o)
-        return o
-
-    cpdef inline read_no_ref(self, Buffer buffer):
-        """Deserialize not-null and non-reference object from buffer."""
-        cdef TypeInfo typeinfo = self.type_resolver.read_type_info(buffer)
-        cls = typeinfo.cls
-        if cls is str:
-            return buffer.read_string()
-        elif cls is int:
-            return buffer.read_varint64()
-        elif cls is bool:
-            return buffer.read_bool()
-        elif cls is float:
-            return buffer.read_double()
-        self.inc_depth()
-        o = typeinfo.serializer.read(buffer)
-        self.depth -= 1
-        return o
-
-    cpdef inline xread_ref(self, Buffer buffer, Serializer serializer=None):
+    cpdef inline read_ref(self, Buffer buffer, Serializer serializer=None):
+        cdef int8_t head_flag
         cdef MapRefResolver ref_resolver
         cdef int32_t ref_id
         if serializer is None or serializer.need_to_write_ref:
             ref_resolver = self.ref_resolver
             ref_id = ref_resolver.try_preserve_ref_id(buffer)
-            # indicates that the object is first read.
             if ref_id >= NOT_NULL_VALUE_FLAG:
-                # Don't push -1 here - try_preserve_ref_id already pushed ref_id
-                o = self._xread_no_ref_internal(buffer, serializer)
+                o = self._read_no_ref_internal(buffer, serializer)
                 ref_resolver.set_read_object(ref_id, o)
                 return o
-            else:
-                return ref_resolver.get_read_object()
-        cdef int8_t head_flag = buffer.read_int8()
+            return ref_resolver.get_read_object()
+        head_flag = buffer.read_int8()
         if head_flag == NULL_FLAG:
             return None
-        return self.xread_no_ref(
-            buffer, serializer=serializer
-        )
+        return self.read_no_ref(buffer, serializer=serializer)
 
-    cpdef inline xread_no_ref(
-            self, Buffer buffer, Serializer serializer=None):
-        if serializer is None:
-            serializer = self.type_resolver.read_type_info(buffer).serializer
-        # Push -1 to read_ref_ids so reference() can pop it and skip reference tracking
-        # This handles the case where xread_no_ref is called directly without xread_ref
+    cpdef inline read_no_ref(self, Buffer buffer, Serializer serializer=None):
+        """Deserialize not-null and non-reference object from buffer."""
         if self.ref_resolver.track_ref:
+            # Push -1 so reference() can pop and skip tracking when read_no_ref is called directly.
             self.ref_resolver.read_ref_ids.push_back(-1)
-        return self._xread_no_ref_internal(buffer, serializer)
+        return self._read_no_ref_internal(buffer, serializer)
 
-    cdef inline _xread_no_ref_internal(
+    cdef inline _read_no_ref_internal(
             self, Buffer buffer, Serializer serializer):
-        """Internal method to read without pushing to read_ref_ids."""
+        cdef TypeInfo typeinfo
+        cdef cls
         if serializer is None:
-            serializer = self.type_resolver.read_type_info(buffer).serializer
+            typeinfo = self.type_resolver.read_type_info(buffer)
+            cls = typeinfo.cls
+            if cls is str:
+                return buffer.read_string()
+            elif cls is int:
+                return buffer.read_varint64()
+            elif cls is bool:
+                return buffer.read_bool()
+            elif cls is float:
+                return buffer.read_double()
+            serializer = typeinfo.serializer
         self.inc_depth()
-        o = serializer.xread(buffer)
+        o = serializer.read(buffer)
         self.depth -= 1
         return o
 
@@ -1814,13 +1738,7 @@ cdef class Serializer:
     Base class for type-specific serializers.
 
     Serializer defines the interface for serializing and deserializing objects of a
-    specific type. Each serializer implements two modes:
-
-    - Python-native mode (write/read): Optimized for Python-to-Python serialization,
-      supporting all Python-specific features like __reduce__, local functions, etc.
-
-    - Cross-language mode (xwrite/xread): Serializes to a cross-language format
-      compatible with other Fory implementations (Java, Go, Rust, C++, etc).
+    specific type.
 
     Custom serializers can be registered for user-defined types using
     Fory.register_serializer() to override default serialization behavior.
@@ -1832,7 +1750,7 @@ cdef class Serializer:
 
     Note:
         This is a base class for implementing custom serializers. Subclasses must
-        implement write(), read(), xwrite(), and xread() methods.
+        implement write() and read() methods.
     """
     cdef readonly Fory fory
     cdef readonly object type_
@@ -1849,43 +1767,32 @@ cdef class Serializer:
     cpdef read(self, Buffer buffer):
         raise NotImplementedError(f"read method not implemented in {type(self)}")
 
-    cpdef xwrite(self, Buffer buffer, value):
-        raise NotImplementedError(f"xwrite method not implemented in {type(self)}")
-
-    cpdef xread(self, Buffer buffer):
-        raise NotImplementedError(f"xread method not implemented in {type(self)}")
-
     @classmethod
     def support_subclass(cls) -> bool:
         return False
 
-cdef class XlangCompatibleSerializer(Serializer):
-    cpdef xwrite(self, Buffer buffer, value):
-        self.write(buffer, value)
-
-    cpdef xread(self, Buffer buffer):
-        return self.read(buffer)
-
 
 @cython.final
 cdef class EnumSerializer(Serializer):
+    cdef tuple _members
+    cdef dict _ordinal_by_member
+
+    def __init__(self, fory, type_):
+        super().__init__(fory, type_)
+        self.need_to_write_ref = False
+        self._members = tuple(type_)
+        self._ordinal_by_member = {member: idx for idx, member in enumerate(self._members)}
+
     @classmethod
     def support_subclass(cls) -> bool:
         return True
 
     cpdef inline write(self, Buffer buffer, value):
-        buffer.write_string(value.name)
+        buffer.write_var_uint32(self._ordinal_by_member[value])
 
     cpdef inline read(self, Buffer buffer):
-        name = buffer.read_string()
-        return getattr(self.type_, name)
-
-    cpdef inline xwrite(self, Buffer buffer, value):
-        buffer.write_var_uint32(value.value)
-
-    cpdef inline xread(self, Buffer buffer):
         ordinal = buffer.read_var_uint32()
-        return self.type_(ordinal)
+        return self._members[ordinal]
 
 
 @cython.final
@@ -1938,13 +1845,6 @@ cdef class SliceSerializer(Serializer):
         else:
             step = self.fory.read_no_ref(buffer)
         return slice(start, stop, step)
-
-    cpdef xwrite(self, Buffer buffer, value):
-        raise NotImplementedError
-
-    cpdef xread(self, Buffer buffer):
-        raise NotImplementedError
-
 
 include "primitive.pxi"
 include "collection.pxi"

@@ -38,12 +38,14 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/type_info.dart';
 import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
-import 'package:fory/src/meta/specs/class_spec.dart';
+import 'package:fory/src/meta/specs/type_spec.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
-import 'package:fory/src/meta/specs/type_spec.dart';
+import 'package:fory/src/meta/specs/field_sorter.dart';
+import 'package:fory/src/meta/specs/field_type_spec.dart';
 import 'package:fory/src/resolver/dart_type_resolver.dart';
 import 'package:fory/src/resolver/meta_string_resolver.dart';
+import 'package:fory/src/resolver/spec_lookup.dart';
 import 'package:fory/src/resolver/tag_string_resolver.dart';
 import 'package:fory/src/resolver/struct_hash_resolver.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -124,6 +126,82 @@ final class TypeResolverImpl extends TypeResolver {
 
   @override
   void registerType(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  @override
+  void registerStruct(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    if (!_isStructSpec(spec.objType)) {
+      throw RegistrationArgumentException(
+          'registerStruct requires a struct type, got ${spec.objType} for $type');
+    }
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  @override
+  void registerEnum(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    if (!_isEnumSpec(spec.objType)) {
+      throw RegistrationArgumentException(
+          'registerEnum requires an enum type, got ${spec.objType} for $type');
+    }
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  @override
+  void registerUnion(
+    Type type, {
+    int? typeId,
+    String? namespace,
+    String? typename,
+  }) {
+    final CustomTypeSpec spec = _resolveSpec(type);
+    if (!_isUnionSpec(spec.objType)) {
+      throw RegistrationArgumentException(
+          'registerUnion requires a union type, got ${spec.objType} for $type');
+    }
+    _registerResolvedSpec(spec,
+        typeId: typeId, namespace: namespace, typename: typename);
+  }
+
+  CustomTypeSpec _resolveSpec(Type type) {
+    final CustomTypeSpec? cachedSpec = _type2Spec[type];
+    if (cachedSpec != null) {
+      return cachedSpec;
+    }
+    final CustomTypeSpec? lookedUpSpec = SpecLookup.resolve(type);
+    if (lookedUpSpec == null) {
+      throw RegistrationArgumentException(
+          'No generated schema found for type $type. Ensure generated code is available and imported.');
+    }
+    if (lookedUpSpec.dartType != type) {
+      throw RegistrationArgumentException(
+          'Resolved schema type mismatch for $type, got ${lookedUpSpec.dartType}.');
+    }
+    return lookedUpSpec;
+  }
+
+  void _registerResolvedSpec(
     CustomTypeSpec spec, {
     int? typeId,
     String? namespace,
@@ -164,6 +242,23 @@ final class TypeResolverImpl extends TypeResolver {
     final String inferredNamespace = typename.substring(0, separator);
     final String simpleName = typename.substring(separator + 1);
     _regWithNamespace(spec, typename, simpleName, inferredNamespace);
+  }
+
+  bool _isStructSpec(ObjType objType) {
+    return objType == ObjType.NAMED_STRUCT ||
+        objType == ObjType.STRUCT ||
+        objType == ObjType.NAMED_COMPATIBLE_STRUCT ||
+        objType == ObjType.COMPATIBLE_STRUCT;
+  }
+
+  bool _isEnumSpec(ObjType objType) {
+    return objType == ObjType.NAMED_ENUM || objType == ObjType.ENUM;
+  }
+
+  bool _isUnionSpec(ObjType objType) {
+    return objType == ObjType.UNION ||
+        objType == ObjType.TYPED_UNION ||
+        objType == ObjType.NAMED_UNION;
   }
 
   @override
@@ -276,7 +371,7 @@ final class TypeResolverImpl extends TypeResolver {
     }
     // Indicates ClassSerializer
     return ClassSerializer.cache
-        .getSerializerWithSpec(_ctx.conf, spec as ClassSpec, spec.dartType);
+        .getSerializerWithSpec(_ctx.conf, spec as TypeSpec, spec.dartType);
   }
 
   /// This type must be a user-defined class or enum
@@ -288,6 +383,15 @@ final class TypeResolverImpl extends TypeResolver {
       throw UnregisteredTypeException(type);
     }
     return tag;
+  }
+
+  @override
+  Serializer getRegisteredSerializer(Type type) {
+    TypeInfo? typeInfo = _ctx.type2TypeInfo[type];
+    if (typeInfo == null) {
+      throw UnregisteredTypeException(type);
+    }
+    return typeInfo.serializer;
   }
 
   @override
@@ -322,7 +426,10 @@ final class TypeResolverImpl extends TypeResolver {
   @override
   TypeInfo readTypeInfo(ByteReader br) {
     int xtypeId = br.readUint8();
-    ObjType xtype = ObjType.fromId(xtypeId)!;
+    ObjType? xtype = ObjType.fromId(xtypeId);
+    if (xtype == null) {
+      throw UnregisteredTypeException('xtypeId=$xtypeId');
+    }
     switch (xtype) {
       case ObjType.ENUM:
       case ObjType.STRUCT:
@@ -570,7 +677,7 @@ final class TypeResolverImpl extends TypeResolver {
   }
 
   List<FieldSpec> _fieldsForTypeDef(CustomTypeSpec spec) {
-    if (spec is! ClassSpec) {
+    if (spec is! TypeSpec) {
       return const <FieldSpec>[];
     }
     final List<FieldSpec> fields = <FieldSpec>[];
@@ -580,7 +687,7 @@ final class TypeResolverImpl extends TypeResolver {
         fields.add(field);
       }
     }
-    return fields;
+    return FieldSorter.sort(fields);
   }
 
   Uint8List _buildTypeDefBody(TypeInfo typeInfo, List<FieldSpec> fields) {
@@ -643,6 +750,9 @@ final class TypeResolverImpl extends TypeResolver {
     final int encodingFlag = _fieldNameEncodingFlag(meta.encoding);
     int size = encodedName.length - 1;
     int header = encodingFlag << 6;
+    if (field.trackingRef) {
+      header |= 1;
+    }
     if (field.typeSpec.nullable) {
       header |= 2;
     }
@@ -660,27 +770,27 @@ final class TypeResolverImpl extends TypeResolver {
     writer.writeBytes(encodedName);
   }
 
-  void _writeNestedTypeInfo(ByteWriter writer, TypeSpec typeSpec) {
+  void _writeNestedTypeInfo(ByteWriter writer, FieldTypeSpec typeSpec) {
     final int typeId = _fieldTypeId(typeSpec);
     switch (ObjType.fromId(typeId)) {
       case ObjType.LIST:
       case ObjType.SET:
-        final TypeSpec elem = typeSpec.genericsArgs.isNotEmpty
+        final FieldTypeSpec elem = typeSpec.genericsArgs.isNotEmpty
             ? typeSpec.genericsArgs[0]
-            : const TypeSpec(
-                Object, ObjType.UNKNOWN, true, false, null, <TypeSpec>[]);
+            : const FieldTypeSpec(
+                Object, ObjType.UNKNOWN, true, false, null, <FieldTypeSpec>[]);
         _writeNestedFieldTypeHeader(writer, elem);
         _writeNestedTypeInfo(writer, elem);
         break;
       case ObjType.MAP:
-        final TypeSpec key = typeSpec.genericsArgs.isNotEmpty
+        final FieldTypeSpec key = typeSpec.genericsArgs.isNotEmpty
             ? typeSpec.genericsArgs[0]
-            : const TypeSpec(
-                Object, ObjType.UNKNOWN, true, false, null, <TypeSpec>[]);
-        final TypeSpec value = typeSpec.genericsArgs.length > 1
+            : const FieldTypeSpec(
+                Object, ObjType.UNKNOWN, true, false, null, <FieldTypeSpec>[]);
+        final FieldTypeSpec value = typeSpec.genericsArgs.length > 1
             ? typeSpec.genericsArgs[1]
-            : const TypeSpec(
-                Object, ObjType.UNKNOWN, true, false, null, <TypeSpec>[]);
+            : const FieldTypeSpec(
+                Object, ObjType.UNKNOWN, true, false, null, <FieldTypeSpec>[]);
         _writeNestedFieldTypeHeader(writer, key);
         _writeNestedTypeInfo(writer, key);
         _writeNestedFieldTypeHeader(writer, value);
@@ -691,7 +801,7 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
-  void _writeNestedFieldTypeHeader(ByteWriter writer, TypeSpec typeSpec) {
+  void _writeNestedFieldTypeHeader(ByteWriter writer, FieldTypeSpec typeSpec) {
     int header = _fieldTypeId(typeSpec) << 2;
     if (typeSpec.nullable) {
       header |= 2;
@@ -699,19 +809,37 @@ final class TypeResolverImpl extends TypeResolver {
     writer.writeVarUint32Small7(header);
   }
 
-  int _fieldTypeId(TypeSpec typeSpec) {
+  int _fieldTypeId(FieldTypeSpec typeSpec) {
     switch (typeSpec.objType) {
       case ObjType.NAMED_ENUM:
         return ObjType.ENUM.id;
-      case ObjType.NAMED_STRUCT:
-        return ObjType.STRUCT.id;
-      case ObjType.NAMED_COMPATIBLE_STRUCT:
-        return ObjType.COMPATIBLE_STRUCT.id;
       case ObjType.NAMED_EXT:
         return ObjType.EXT.id;
       case ObjType.TYPED_UNION:
       case ObjType.NAMED_UNION:
         return ObjType.UNION.id;
+      case ObjType.INT32:
+        return ObjType.VAR_INT32.id;
+      case ObjType.INT64:
+        return ObjType.VAR_INT64.id;
+      case ObjType.STRUCT:
+      case ObjType.COMPATIBLE_STRUCT:
+      case ObjType.NAMED_STRUCT:
+      case ObjType.NAMED_COMPATIBLE_STRUCT:
+        final TypeInfo? typeInfo = _ctx.type2TypeInfo[typeSpec.type];
+        if (typeInfo != null && typeInfo.objType.isStructType()) {
+          return typeInfo.objType.id;
+        }
+        if (_ctx.conf.compatible) {
+          return typeSpec.objType == ObjType.NAMED_STRUCT ||
+                  typeSpec.objType == ObjType.NAMED_COMPATIBLE_STRUCT
+              ? ObjType.NAMED_COMPATIBLE_STRUCT.id
+              : ObjType.COMPATIBLE_STRUCT.id;
+        }
+        return typeSpec.objType == ObjType.NAMED_STRUCT ||
+                typeSpec.objType == ObjType.NAMED_COMPATIBLE_STRUCT
+            ? ObjType.NAMED_STRUCT.id
+            : ObjType.STRUCT.id;
       default:
         return typeSpec.objType.id;
     }

@@ -25,14 +25,14 @@ part of 'example.dart';
 // ForyObjSpecGenerator
 // **************************************************************************
 
-final $Person = ClassSpec(
+final $Person = TypeSpec(
   Person,
   false,
   true,
   [
     FieldSpec(
       'age',
-      TypeSpec(
+      FieldTypeSpec(
         int,
         ObjType.INT64,
         false,
@@ -47,7 +47,7 @@ final $Person = ClassSpec(
     ),
     FieldSpec(
       'dateOfBirth',
-      TypeSpec(
+      FieldTypeSpec(
         LocalDate,
         ObjType.DATE,
         false,
@@ -62,7 +62,7 @@ final $Person = ClassSpec(
     ),
     FieldSpec(
       'firstName',
-      TypeSpec(
+      FieldTypeSpec(
         String,
         ObjType.STRING,
         false,
@@ -77,7 +77,7 @@ final $Person = ClassSpec(
     ),
     FieldSpec(
       'lastName',
-      TypeSpec(
+      FieldTypeSpec(
         String,
         ObjType.STRING,
         false,
@@ -99,8 +99,3 @@ final $Person = ClassSpec(
   ),
   null,
 );
-
-mixin _$PersonFory implements ForyTypeProvider {
-  @override
-  Type get foryType => Person;
-}

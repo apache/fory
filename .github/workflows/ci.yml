@@ -142,6 +142,57 @@ jobs:
         shell: bash
         run: python ./ci/run_ci.py java --version windows_java21
 
+  swift:
+    name: Swift CI
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run Swift unit tests
+        run: |
+          cd swift
+          swift test
+
+  swift_xlang:
+    name: Swift Xlang Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Cache Swift package dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+            swift/.build
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-
+      - name: Prebuild Swift xlang peer for cache reuse
+        run: |
+          cd swift
+          swift build -c release --disable-automatic-resolution --product ForyXlangTests
+      - name: Run Swift Xlang Test
+        env:
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+          FORY_SWIFT_JAVA_CI: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests
+          cd fory-core
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
+
   graalvm:
     name: GraalVM CI
     runs-on: ubuntu-latest
@@ -255,7 +306,7 @@ jobs:
     name: JavaScript CI
     strategy:
       matrix:
-        node-version: [18, 20, 24]
+        node-version: [18, 24]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -280,6 +331,47 @@ jobs:
           python-version: ${{ runner.os == 'Windows' && '3.11' || '3.8' }}
       - name: Run CI with NodeJS
         run: python ./ci/run_ci.py javascript
+
+  javascript_xlang:
+    name: JavaScript Xlang Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Cache npm local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('javascript/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - name: Install JavaScript dependencies
+        run: |
+          cd javascript
+          npm install
+      - name: Run JavaScript Xlang Test
+        env:
+          FORY_JAVASCRIPT_JAVA_CI: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests
+          cd fory-core
+          mvn --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest -DforkCount=0
 
   rust:
     name: Rust CI
@@ -439,38 +531,6 @@ jobs:
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CPPXlangTest
       - name: Run C++ IDL Tests
         run: ./integration_tests/idl_tests/run_cpp_tests.sh
-
-  javascript_xlang:
-    name: JavaScript Xlang Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: 21
-          distribution: "temurin"
-      - name: Cache Maven local repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-      - name: Run JavaScript Xlang Test
-        env:
-          FORY_JAVASCRIPT_JAVA_CI: "0"
-        run: |
-          cd javascript
-          npm install
-          cd ../java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
-          cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest
 
   cpp_examples:
     name: C++ Examples
@@ -708,6 +768,10 @@ jobs:
         run: |
           cd dart
           dart pub get
+      - name: Generate Dart code
+        run: |
+          cd dart/packages/fory-test
+          dart run build_runner build --delete-conflicting-outputs
       - name: Run Dart Xlang Test
         env:
           FORY_DART_JAVA_CI: "1"

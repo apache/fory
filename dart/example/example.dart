@@ -24,7 +24,7 @@ import 'package:fory/fory.dart';
 part 'example.g.dart';
 
 @foryClass
-class Person with _$PersonFory {
+class Person {
   final String firstName, lastName;
   final int age;
   final LocalDate dateOfBirth;
@@ -34,7 +34,7 @@ class Person with _$PersonFory {
 
 void main() {
   Fory fory = Fory(ref: true);
-  fory.register($Person, typename: "example.Person");
+  fory.register(Person, typename: "example.Person");
   Person obj = Person('Leo', 'Leo', 21, LocalDate(2004, 1, 1));
 
   // Serialize

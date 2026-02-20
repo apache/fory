@@ -47,6 +47,7 @@ class GeneratorOptions:
     output_dir: Path
     package_override: Optional[str] = None
     go_nested_type_style: Optional[str] = None
+    grpc: bool = False
 
 
 class BaseGenerator(ABC):
@@ -70,6 +71,14 @@ class BaseGenerator(ABC):
     def generate(self) -> List[GeneratedFile]:
         """Generate code and return a list of generated files."""
         pass
+
+    def generate_services(self) -> List[GeneratedFile]:
+        """Generate service-related code (e.g. gRPC stubs).
+
+        Base implementation returns empty list. Subclasses should override
+        if they support service generation.
+        """
+        return []
 
     @abstractmethod
     def generate_type(self, field_type: FieldType, nullable: bool = False) -> str:

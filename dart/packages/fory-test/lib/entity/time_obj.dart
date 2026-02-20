@@ -22,7 +22,7 @@ import 'package:fory/fory.dart';
 part '../generated/time_obj.g.dart';
 
 @ForyClass(promiseAcyclic: true)
-class TimeObj with _$TimeObjFory {
+class TimeObj {
   final LocalDate date1;
   final LocalDate date2;
   final LocalDate date3;

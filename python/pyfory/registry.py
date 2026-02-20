@@ -35,6 +35,7 @@ from pyfory.serializer import (
     Serializer,
     Numpy1DArraySerializer,
     NDArraySerializer,
+    PythonNDArraySerializer,
     PyArraySerializer,
     DynamicPyArraySerializer,
     NoneSerializer,
@@ -249,7 +250,7 @@ class TypeResolver:
         register(tuple, serializer=TupleSerializer)
         register(slice, serializer=SliceSerializer)
         if np is not None:
-            register(np.ndarray, serializer=NDArraySerializer)
+            register(np.ndarray, serializer=PythonNDArraySerializer)
         register(array.array, serializer=DynamicPyArraySerializer)
         register(types.MappingProxyType, serializer=MappingProxySerializer)
         register(pickle.PickleBuffer, serializer=PickleBufferSerializer)
@@ -474,8 +475,7 @@ class TypeResolver:
             raise TypeError(f"type name {typename} and id {type_id} should not be set at the same time")
         if cls in self._types_info:
             raise TypeError(f"{cls} registered already")
-        register_type = self._register_xtype if self.fory.xlang else self._register_pytype
-        return register_type(
+        return self._register_xtype(
             cls,
             type_id=type_id,
             user_type_id=user_type_id,
@@ -543,30 +543,6 @@ class TypeResolver:
             internal=internal,
         )
 
-    def _register_pytype(
-        self,
-        cls: Union[type, TypeVar],
-        *,
-        type_id: int = None,
-        user_type_id: int = NO_USER_TYPE_ID,
-        namespace: str = None,
-        typename: str = None,
-        serializer: Serializer = None,
-        internal: bool = False,
-    ):
-        # Set default type_id when None, similar to _register_xtype
-        if type_id is None and typename is not None:
-            type_id = self._next_type_id()
-        return self.__register_type(
-            cls,
-            type_id=type_id,
-            user_type_id=user_type_id,
-            namespace=namespace,
-            typename=typename,
-            serializer=serializer,
-            internal=internal,
-        )
-
     def __register_type(
         self,
         cls: Union[type, TypeVar],
@@ -613,7 +589,7 @@ class TypeResolver:
                 if user_type_id not in self._user_type_id_to_type_info or not internal:
                     self._user_type_id_to_type_info[user_type_id] = typeinfo
                 self._used_user_type_ids.add(user_type_id)
-            elif not self.fory.xlang or not TypeId.is_namespaced_type(type_id):
+            elif not TypeId.is_namespaced_type(type_id):
                 if type_id not in self._type_id_to_type_info or not internal:
                     self._type_id_to_type_info[type_id] = typeinfo
         self._types_info[cls] = typeinfo
@@ -636,9 +612,6 @@ class TypeResolver:
         if cls not in self._types_info:
             raise TypeUnregisteredError(f"{cls} not registered")
         typeinfo = self._types_info[cls]
-        if not self.fory.xlang:
-            typeinfo.serializer = serializer
-            return
         prev_type_id = typeinfo.type_id
         prev_user_type_id = typeinfo.user_type_id
         if needs_user_type_id(prev_type_id) and prev_user_type_id not in {None, NO_USER_TYPE_ID}:
@@ -709,7 +682,7 @@ class TypeResolver:
             # Set a stub serializer FIRST to break recursion for self-referencing types.
             # get_type_info() only calls _set_type_info when serializer is None,
             # so setting stub first prevents re-entry for circular type references.
-            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
+            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls)
 
             if self.meta_share:
                 type_def = encode_typedef(self, typeinfo.cls)
@@ -717,9 +690,9 @@ class TypeResolver:
                     typeinfo.serializer = type_def.create_serializer(self)
                     typeinfo.type_def = type_def
                 else:
-                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
+                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls)
             else:
-                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
+                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls)
         else:
             typeinfo.serializer = self._create_serializer(typeinfo.cls)
 
@@ -756,7 +729,7 @@ class TypeResolver:
                 # lazy create serializer to handle nested struct fields.
                 from pyfory.struct import DataClassStubSerializer
 
-                serializer = DataClassStubSerializer(self.fory, cls, xlang=self.fory.xlang)
+                serializer = DataClassStubSerializer(self.fory, cls)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
             elif ("builtin_function_or_method" in str(cls) or "cython_function_or_method" in str(cls)) and "<locals>" not in str(cls):

@@ -23,7 +23,7 @@ import { BinaryReader } from "./reader";
 import { ReferenceResolver } from "./referenceResolver";
 import { ConfigFlags, Serializer, Config, ForyTypeInfoSymbol, WithForyClsInfo, TypeId, CustomSerializer } from "./type";
 import { OwnershipError } from "./error";
-import { InputType, ResultType, StructTypeInfo, TypeInfo } from "./typeInfo";
+import { InputType, ResultType, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
 import { TypeMeta } from "./meta/TypeMeta";
 import { PlatformBuffer } from "./platformBuffer";
@@ -98,10 +98,12 @@ export default class {
     TypeInfo.attach(this);
     if (constructor.prototype?.[ForyTypeInfoSymbol]) {
       const typeInfo: TypeInfo = (<WithForyClsInfo>(constructor.prototype[ForyTypeInfoSymbol])).structTypeInfo;
+      typeInfo.freeze();
       serializer = new Gen(this, { creator: constructor, customSerializer }).generateSerializer(typeInfo);
       this.typeResolver.registerSerializer(typeInfo, serializer);
     } else {
       const typeInfo = constructor;
+      typeInfo.freeze();
       serializer = new Gen(this).generateSerializer(typeInfo);
       this.typeResolver.registerSerializer(typeInfo, serializer);
     }
@@ -125,7 +127,7 @@ export default class {
 
   replaceSerializerReader(typeInfo: TypeInfo) {
     TypeInfo.attach(this);
-    const serializer = new Gen(this, { creator: (typeInfo as StructTypeInfo).options.creator }).reGenerateSerializer(typeInfo);
+    const serializer = new Gen(this, { creator: (typeInfo).options!.creator! }).reGenerateSerializer(typeInfo);
     const result = this.typeResolver.registerSerializer(typeInfo, {
       getHash: serializer.getHash,
       read: serializer.read,
@@ -143,7 +145,7 @@ export default class {
     this.binaryReader.reset(bytes);
     this.typeMetaResolver.reset();
     this.metaStringResolver.reset();
-    const bitmap = this.binaryReader.uint8();
+    const bitmap = this.binaryReader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
     }
@@ -169,12 +171,13 @@ export default class {
     }
     this.referenceResolver.reset();
     this.metaStringResolver.reset();
+    this.typeMetaResolver.reset();
     let bitmap = 0;
     if (data === null) {
       bitmap |= ConfigFlags.isNullFlag;
     }
     bitmap |= ConfigFlags.isCrossLanguageFlag;
-    this.binaryWriter.uint8(bitmap);
+    this.binaryWriter.writeUint8(bitmap);
     // reserve fixed size
     this.binaryWriter.reserve(serializer.fixedSize);
     // start write

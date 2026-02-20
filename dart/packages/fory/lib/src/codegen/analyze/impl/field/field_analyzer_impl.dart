@@ -128,6 +128,7 @@ class FieldAnalyzerImpl implements FieldAnalyzer {
         hasInitializer: element.hasInitializer,
         includeFromFory: key.includeFromFory,
         includeToFory: key.includeToFory,
+        trackingRef: key.ref,
       ),
     );
   }

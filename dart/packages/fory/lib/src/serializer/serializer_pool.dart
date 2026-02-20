@@ -23,6 +23,7 @@ import 'package:collection/collection.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/dart_type.dart';
 import 'package:fory/src/const/types.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
@@ -79,6 +80,8 @@ class SerializerPool {
         UInt32Serializer.cache.getSerializer(conf);
     typeToTypeInfo[Float32]!.serializer =
         Float32Serializer.cache.getSerializer(conf);
+    typeToTypeInfo[Float16]!.serializer =
+        Float16Serializer.cache.getSerializer(conf);
     typeToTypeInfo[String]!.serializer =
         StringSerializer.cache.getSerializer(conf);
 
@@ -129,6 +132,41 @@ class SerializerPool {
       objTypeId2TypeInfo[values[i].objType!.id] =
           typeToTypeInfo[values[i].dartType];
     }
+    objTypeId2TypeInfo[ObjType.VAR_INT32.id] = TypeInfo.fromInnerType(
+      Int32,
+      ObjType.VAR_INT32,
+      Int32Serializer.cache.getSerializer(conf),
+    );
+    objTypeId2TypeInfo[ObjType.VAR_INT64.id] = TypeInfo.fromInnerType(
+      int,
+      ObjType.VAR_INT64,
+      Int64Serializer.cache.getSerializer(conf),
+    );
+    objTypeId2TypeInfo[ObjType.SLI_INT64.id] = TypeInfo.fromInnerType(
+      int,
+      ObjType.SLI_INT64,
+      Int64Serializer.cache.getSerializer(conf),
+    );
+    objTypeId2TypeInfo[ObjType.VAR_UINT32.id] = TypeInfo.fromInnerType(
+      UInt32,
+      ObjType.VAR_UINT32,
+      VarUInt32Serializer.cache.getSerializer(conf),
+    );
+    objTypeId2TypeInfo[ObjType.UINT64.id] = TypeInfo.fromInnerType(
+      int,
+      ObjType.UINT64,
+      UInt64Serializer.cache.getSerializer(conf),
+    );
+    objTypeId2TypeInfo[ObjType.VAR_UINT64.id] = TypeInfo.fromInnerType(
+      int,
+      ObjType.VAR_UINT64,
+      VarUInt64Serializer.cache.getSerializer(conf),
+    );
+    objTypeId2TypeInfo[ObjType.TAGGED_UINT64.id] = TypeInfo.fromInnerType(
+      int,
+      ObjType.TAGGED_UINT64,
+      TaggedUInt64Serializer.cache.getSerializer(conf),
+    );
     return objTypeId2TypeInfo;
   }
 }

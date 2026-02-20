@@ -497,3 +497,33 @@ def test_generated_code_tree_ref_options_equivalent():
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
     assert "SharedWeak<TreeNode>" in cpp_output
+
+
+def test_go_bfloat16_generation():
+    idl = dedent(
+        """
+        package bfloat16_test;
+
+        message BFloat16Message {
+            bfloat16 val = 1;
+            optional bfloat16 opt_val = 2;
+            list<bfloat16> list_val = 3;
+        }
+        """
+    )
+    schema = parse_fdl(idl)
+    files = generate_files(schema, GoGenerator)
+
+    assert len(files) == 1
+    content = list(files.values())[0]
+
+    # Check imports
+    assert 'bfloat16 "github.com/apache/fory/go/fory/bfloat16"' in content
+
+    # Check fields
+    assert '\tVal bfloat16.BFloat16 `fory:"id=1"`' in content
+    assert (
+        '\tOptVal optional.Optional[bfloat16.BFloat16] `fory:"id=2,nullable"`'
+        in content
+    )
+    assert "\tListVal []bfloat16.BFloat16" in content

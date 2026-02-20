@@ -17,6 +17,7 @@
  * under the License.
  */
 
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
@@ -31,7 +32,8 @@ import 'package:fory/src/util/string_util.dart';
 
 enum _StrCode {
   latin1(0),
-  utf16(1);
+  utf16(1),
+  utf8(2);
 
   final int id;
   const _StrCode(this.id);
@@ -78,6 +80,8 @@ final class StringSerializer extends Serializer<String> {
       return _readLatin1(br, byteNum);
     } else if (coder == _StrCode.utf16.id) {
       return _readUtf16(br, byteNum);
+    } else if (coder == _StrCode.utf8.id) {
+      return _readUtf8(br, byteNum);
     }
     throw UnsupportedFeatureException(coder, _StrCode.values, 'String Coder');
   }
@@ -99,6 +103,11 @@ final class StringSerializer extends Serializer<String> {
   String _readUtf16(ByteReader br, int byteNum) {
     Uint16List bytes = br.readCopyUint16List(byteNum);
     return String.fromCharCodes(bytes);
+  }
+
+  String _readUtf8(ByteReader br, int byteNum) {
+    Uint8List bytes = br.readBytesView(byteNum);
+    return utf8.decode(bytes);
   }
 
   void _writeLatin1(ByteWriter bw, String v) {

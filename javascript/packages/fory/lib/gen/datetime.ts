@@ -33,37 +33,21 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
-    if (/^-?[0-9]+$/.test(accessor)) {
-      const msVar = this.scope.uniqueName("ts_ms");
-      const secondsVar = this.scope.uniqueName("ts_sec");
-      const nanosVar = this.scope.uniqueName("ts_nanos");
-      return `
-            {
-              const ${msVar} = ${accessor};
-              const ${secondsVar} = Math.floor(${msVar} / 1000);
-              const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
-              ${this.builder.writer.int64(`BigInt(${secondsVar})`)}
-              ${this.builder.writer.uint32(`${nanosVar}`)}
-            }
-        `;
-    }
     const msVar = this.scope.uniqueName("ts_ms");
     const secondsVar = this.scope.uniqueName("ts_sec");
     const nanosVar = this.scope.uniqueName("ts_nanos");
     return `
-            {
-              const ${msVar} = ${accessor}.getTime();
-              const ${secondsVar} = Math.floor(${msVar} / 1000);
-              const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
-              ${this.builder.writer.int64(`BigInt(${secondsVar})`)}
-              ${this.builder.writer.uint32(`${nanosVar}`)}
-            }
-        `;
+      const ${msVar} = (${accessor} instanceof Date) ? ${accessor}.getTime() : ${accessor};
+      const ${secondsVar} = Math.floor(${msVar} / 1000);
+      const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
+      ${this.builder.writer.writeInt64(`${secondsVar}`)}
+      ${this.builder.writer.writeUint32(`${nanosVar}`)}
+      `;
   }
 
   read(accessor: (expr: string) => string): string {
-    const seconds = this.builder.reader.int64();
-    const nanos = this.builder.reader.uint32();
+    const seconds = this.builder.reader.readInt64();
+    const nanos = this.builder.reader.readUint32();
     return accessor(`new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`);
   }
 
@@ -81,21 +65,51 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
+    const msVar = this.scope.uniqueName("ts_ms");
+    const secondsVar = this.scope.uniqueName("ts_sec");
+    const nanosVar = this.scope.uniqueName("ts_nanos");
+    return `
+      const ${msVar} = ${accessor};
+      const ${secondsVar} = Math.floor(${msVar} / 1000);
+      const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
+      ${this.builder.writer.writeInt64(`${secondsVar}`)}
+      ${this.builder.writer.writeUint32(`${nanosVar}`)}
+      `;
+  }
+
+  read(accessor: (expr: string) => string): string {
+    const seconds = this.builder.reader.readInt64();
+    const nanos = this.builder.reader.readUint32();
+    return accessor(`Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000)`);
+  }
+
+  getFixedSize(): number {
+    return 7;
+  }
+}
+
+class DateSerializerGenerator extends BaseSerializerGenerator {
+  typeInfo: TypeInfo;
+
+  constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
+    super(typeInfo, builder, scope);
+    this.typeInfo = typeInfo;
+  }
+
+  write(accessor: string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
     return `
       if (${accessor} instanceof Date) {
-        ${this.builder.writer.int32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+        ${this.builder.writer.writeInt32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
       } else {
-        ${this.builder.writer.int32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+        ${this.builder.writer.writeInt32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
       }
     `;
   }
 
   read(accessor: (expr: string) => string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
-    return accessor(`
-            new Date(${epoch} + (${this.builder.reader.int32()} * (24 * 60 * 60) * 1000))
-        `);
+    return accessor(`new Date(${epoch} + (${this.builder.reader.readInt32()} * (24 * 60 * 60) * 1000))`);
   }
 
   getFixedSize(): number {
@@ -105,3 +119,4 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
 
 CodegenRegistry.register(TypeId.DURATION, DurationSerializerGenerator);
 CodegenRegistry.register(TypeId.TIMESTAMP, TimestampSerializerGenerator);
+CodegenRegistry.register(TypeId.DATE, DateSerializerGenerator);

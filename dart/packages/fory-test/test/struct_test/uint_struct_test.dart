@@ -35,7 +35,7 @@ void main() {
 
       // Serialize
       var fory = Fory();
-      fory.register($UIntStruct);
+      fory.register(UIntStruct);
       var bytes = fory.serialize(original);
 
       expect(bytes.isNotEmpty, isTrue);
@@ -57,7 +57,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntStruct);
+      fory.register(UIntStruct);
       var bytes = fory.serialize(original);
       var decoded = fory.deserialize(bytes) as UIntStruct;
 
@@ -74,7 +74,7 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntStruct);
+      fory.register(UIntStruct);
       var bytes = fory.serialize(original);
       var decoded = fory.deserialize(bytes) as UIntStruct;
 

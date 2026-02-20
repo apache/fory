@@ -104,7 +104,7 @@ class TypeSpecGenerator extends GeneratedCodePart {
 
     // declare part
     CodegenTool.writeIndent(buf, totalIndent);
-    buf.write("TypeSpec(\n");
+    buf.write("FieldTypeSpec(\n");
 
     // ForyTypeSpec::type
     String? prefix = imports.getPrefixByLibId(immutablePart.typeLibId);

@@ -20,7 +20,7 @@
 import { BinaryWriter } from "../writer";
 import { BinaryReader } from "../reader";
 import { Encoding, MetaStringDecoder, MetaStringEncoder } from "./MetaString";
-import { StructTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeInfo } from "../typeInfo";
 import { TypeId } from "../type";
 import { x64hash128 } from "../murmurHash3";
 import { fromString } from "../platformBuffer";
@@ -102,16 +102,16 @@ function getPrimitiveTypeSize(typeId: number) {
   }
 }
 
-type InnerFieldInfoOptions = { key?: InnerFieldInfo; value?: InnerFieldInfo; inner?: InnerFieldInfo };
-interface InnerFieldInfo {
+export type InnerFieldInfoOptions = { key?: InnerFieldInfo; value?: InnerFieldInfo; inner?: InnerFieldInfo };
+export interface InnerFieldInfo {
   typeId: number;
   userTypeId: number;
-  trackingRef: boolean;
-  nullable: boolean;
+  trackingRef?: boolean;
+  nullable?: boolean;
   options?: InnerFieldInfoOptions;
   fieldId?: number;
 }
-class FieldInfo {
+export class FieldInfo {
   constructor(
     public fieldName: string,
     public typeId: number,
@@ -129,6 +129,10 @@ class FieldInfo {
 
   getTypeId() {
     return this.typeId;
+  }
+
+  getUserTypeId() {
+    return this.userTypeId;
   }
 
   hasFieldId() {
@@ -157,7 +161,7 @@ class FieldInfo {
       }
       writer.writeVarUint32Small7(typeId);
     } else {
-      writer.uint8(typeId);
+      writer.writeUint8(typeId);
     }
     switch (typeInfo.typeId) {
       case TypeId.LIST:
@@ -238,28 +242,29 @@ export class TypeMeta {
     const fingerprint = this.computeStructFingerprint(fields);
     const bytes = fromString(fingerprint);
     const hashLong = x64hash128(bytes, 47).getBigInt64(0);
-    return Number(BigInt.asIntN(32, hashLong));
+    const result = Number(BigInt.asIntN(32, hashLong));
+    return result;
   }
 
   static fromTypeInfo(typeInfo: TypeInfo) {
     let fieldInfo: FieldInfo[] = [];
     if (TypeId.structType(typeInfo.typeId)) {
-      const structTypeInfo = typeInfo as StructTypeInfo;
-      fieldInfo = Object.entries(structTypeInfo.options.props!).map(([fieldName, typeInfo]) => {
+      const structTypeInfo = typeInfo;
+      fieldInfo = Object.entries(structTypeInfo.options!.props!).map(([fieldName, typeInfo]) => {
         let fieldTypeId = typeInfo.typeId;
         if (fieldTypeId === TypeId.NAMED_ENUM) {
           fieldTypeId = TypeId.ENUM;
         } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
           fieldTypeId = TypeId.UNION;
         }
-        const { trackingRef, nullable, id } = structTypeInfo.options.fieldInfo?.[fieldName] || {};
+        const { trackingRef, nullable, id, userTypeId, options } = typeInfo;
         return new FieldInfo(
           fieldName,
           fieldTypeId,
-          typeInfo.userTypeId,
+          userTypeId,
           trackingRef,
           nullable,
-          typeInfo.options,
+          options!,
           id
         );
       });
@@ -276,22 +281,22 @@ export class TypeMeta {
 
   static fromBytes(reader: BinaryReader): TypeMeta {
     // Read header with hash and flags
-    const headerLong = reader.int64();
+    const headerLong = reader.readInt64();
     // todo support compress.
     // const isCompressed = (headerLong & COMPRESS_META_FLAG) !== 0n;
     // const hasFieldsMeta = (headerLong & HAS_FIELDS_META_FLAG) !== 0n;
     let metaSize = Number(headerLong & BigInt(META_SIZE_MASKS));
 
     if (metaSize === META_SIZE_MASKS) {
-      metaSize += reader.varUInt32();
+      metaSize += reader.readVarUInt32();
     }
 
     // Read class header
-    const classHeader = reader.uint8();
+    const classHeader = reader.readUint8();
     let numFields = classHeader & SMALL_NUM_FIELDS_THRESHOLD;
 
     if (numFields === SMALL_NUM_FIELDS_THRESHOLD) {
-      numFields += reader.varUInt32();
+      numFields += reader.readVarUInt32();
     }
 
     let typeId: number;
@@ -305,8 +310,8 @@ export class TypeMeta {
       typeName = this.readTypeName(reader);
       typeId = TypeId.NAMED_STRUCT; // Default for named types
     } else {
-      typeId = reader.uint8();
-      userTypeId = reader.varUInt32();
+      typeId = reader.readUint8();
+      userTypeId = reader.readVarUInt32();
     }
 
     // Read fields
@@ -328,17 +333,18 @@ export class TypeMeta {
   }
 
   private static readFieldInfo(reader: BinaryReader): FieldInfo {
-    const header = reader.int8();
+    const header = reader.readInt8();
     const encodingFlags = (header >>> 6) & 0b11;
     let size = (header >>> 2) & 0b1111;
     const bigSize = size === FIELD_NAME_SIZE_THRESHOLD;
-
+    const nullable = (header & 0b10) > 0;
+    const trackingRef = (header & 0b1) > 0;
     if (bigSize) {
       size += reader.readVarUint32Small7();
     }
 
     // Read type ID
-    const { typeId, userTypeId, trackingRef, nullable, options, fieldId } = this.readTypeId(reader);
+    const { typeId, userTypeId, options, fieldId } = this.readTypeId(reader);
 
     let fieldName: string;
     if (encodingFlags === 3) {
@@ -372,7 +378,7 @@ export class TypeMeta {
       this.readNestedTypeInfo(reader, typeId, options);
       return { typeId, userTypeId: -1, nullable, trackingRef, options };
     }
-    let typeId = reader.uint8();
+    let typeId = reader.readUint8();
     if (typeId === TypeId.NAMED_ENUM) {
       typeId = TypeId.ENUM;
     } else if (typeId === TypeId.NAMED_UNION || typeId === TypeId.TYPED_UNION) {
@@ -408,7 +414,7 @@ export class TypeMeta {
   }
 
   private static readName(reader: BinaryReader, encodings: Encoding[], decoder: MetaStringDecoder): string {
-    const header = reader.uint8();
+    const header = reader.readUint8();
     const encodingIndex = header & 0b11;
     let size = (header >> 2) & 0b111111;
 
@@ -442,20 +448,20 @@ export class TypeMeta {
 
   toBytes() {
     const writer = new BinaryWriter({});
-    writer.uint8(-1); // placeholder for header, update later
+    writer.writeUint8(-1); // placeholder for header, update later
     let currentClassHeader = this.fields.length;
 
     if (this.fields.length >= SMALL_NUM_FIELDS_THRESHOLD) {
       currentClassHeader = SMALL_NUM_FIELDS_THRESHOLD;
-      writer.varUInt32(this.fields.length - SMALL_NUM_FIELDS_THRESHOLD);
+      writer.writeVarUInt32(this.fields.length - SMALL_NUM_FIELDS_THRESHOLD);
     }
 
     if (!TypeId.isNamedType(this.type.typeId)) {
-      writer.uint8(this.type.typeId);
+      writer.writeUint8(this.type.typeId);
       if (this.type.userTypeId === undefined || this.type.userTypeId === -1) {
         throw new Error(`userTypeId required for typeId ${this.type.typeId}`);
       }
-      writer.varUInt32(this.type.userTypeId);
+      writer.writeVarUInt32(this.type.userTypeId);
     } else {
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
       const ns = this.type.namespace;
@@ -494,11 +500,11 @@ export class TypeMeta {
     const bigSize = encoded.length >= BIG_NAME_THRESHOLD;
     if (bigSize) {
       const header = (BIG_NAME_THRESHOLD << 2) | encoding;
-      writer.uint8(header);
+      writer.writeUint8(header);
       writer.writeVarUint32Small7(encoded.length - BIG_NAME_THRESHOLD);
     } else {
       const header = (encoded.length << 2) | encoding;
-      writer.uint8(header);
+      writer.writeUint8(header);
     }
     writer.buffer(encoded);
   }
@@ -537,11 +543,11 @@ export class TypeMeta {
 
       if (bigSize) {
         header |= 0b00111100;
-        writer.int8(header);
+        writer.writeInt8(header);
         writer.writeVarUint32Small7(size - FIELD_NAME_SIZE_THRESHOLD);
       } else {
         header |= (size << 2);
-        writer.int8(header);
+        writer.writeInt8(header);
       }
 
       FieldInfo.writeTypeId(writer, fieldInfo);
@@ -627,10 +633,10 @@ export class TypeMeta {
     header |= BigInt(Math.min(metaSize, META_SIZE_MASKS));
 
     const writer = new BinaryWriter({});
-    writer.int64(header);
+    writer.writeInt64(header);
 
     if (metaSize > META_SIZE_MASKS) {
-      writer.varUInt32(metaSize - META_SIZE_MASKS);
+      writer.writeVarUInt32(metaSize - META_SIZE_MASKS);
     }
 
     writer.buffer(buffer);
@@ -751,7 +757,7 @@ export class TypeMeta {
     listFields.sort(typeIdThenNameSorter);
     setFields.sort(typeIdThenNameSorter);
     mapFields.sort(typeIdThenNameSorter);
-    otherFields.sort(typeIdThenNameSorter);
+    otherFields.sort(nameSorter);
 
     return [
       primitiveFields,

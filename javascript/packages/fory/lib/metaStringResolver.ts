@@ -46,15 +46,15 @@ export class MetaStringResolver {
 
   writeBytes(writer: BinaryWriter, bytes: MetaStringBytes) {
     if (bytes.dynamicWriteStringId !== -1) {
-      writer.varUInt32(((this.dynamicNameId + 1) << 1) | 1);
+      writer.writeVarUInt32(((this.dynamicNameId + 1) << 1) | 1);
     } else {
       bytes.dynamicWriteStringId = this.dynamicNameId;
       this.dynamicNameId += 1;
       this.disposeMetaStringBytes.push(bytes);
       const len = bytes.bytes.getBytes().byteLength;
-      writer.varUInt32(len << 1);
+      writer.writeVarUInt32(len << 1);
       if (len !== 0) {
-        writer.uint8(bytes.bytes.getEncoding());
+        writer.writeUint8(bytes.bytes.getEncoding());
       }
       writer.buffer(bytes.bytes.getBytes());
     }
@@ -69,7 +69,7 @@ export class MetaStringResolver {
   }
 
   public readTypeName(reader: BinaryReader) {
-    const idOrLen = reader.varUInt32();
+    const idOrLen = reader.readVarUInt32();
     if (idOrLen & 1) {
       return this.names[idOrLen >> 1];
     } else {
@@ -78,7 +78,7 @@ export class MetaStringResolver {
         this.names.push("");
         return "";
       }
-      const encoding = reader.uint8();
+      const encoding = reader.readUint8();
       const name = this.typenameDecoder.decode(reader, len, encoding);
       this.names.push(name);
       return name;
@@ -86,7 +86,7 @@ export class MetaStringResolver {
   }
 
   public readNamespace(reader: BinaryReader) {
-    const idOrLen = reader.varUInt32();
+    const idOrLen = reader.readVarUInt32();
     if (idOrLen & 1) {
       return this.names[idOrLen >> 1];
     } else {
@@ -95,7 +95,7 @@ export class MetaStringResolver {
         this.names.push("");
         return "";
       }
-      const encoding = reader.uint8();
+      const encoding = reader.readUint8();
       const name = this.namespaceDecoder.decode(reader, len, encoding);
       this.names.push(name);
       return name;

@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
+import Fory, { Type, BFloat16Array } from '../packages/fory/index';
 import { describe, expect, test } from '@jest/globals';
 import * as beautify from 'js-beautify';
 
@@ -54,24 +54,24 @@ describe('array', () => {
       a6: Type.float64Array()
     });
 
-    const fory = new Fory({ refTracking: true }); const serializer = fory.registerSerializer(typeinfo).serializer;
+    const fory = new Fory({ refTracking: true }); 
+    const serializer = fory.registerSerializer(typeinfo).serializer;
     const input = fory.serialize({
       a: [true, false],
-      a2: [1, 2, 3],
-      a3: [3, 5, 76],
-      a4: [634, 564, 76],
-      a6: [234243.555, 55654.6786],
+      a2: new Int16Array([1, 2, 3]),
+      a3: new Int32Array([3, 5, 76]),
+      a4: new BigInt64Array([634n, 564n, 76n]),
+      a6: new Float64Array([234243.555, 55654.679]),
     }, serializer);
     const result = fory.deserialize(
       input
     );
-    result.a4 = result.a4.map(x => Number(x));
     expect(result).toEqual({
       a: [true, false],
-      a2: [1, 2, 3],
-      a3: [3, 5, 76],
-      a4: [634, 564, 76],
-      a6: [234243.555, 55654.6786],
+      a2: new Int16Array([1, 2, 3]),
+      a3: new Int32Array([3, 5, 76]),
+      a4: new BigInt64Array([634n, 564n, 76n]),
+      a6: new Float64Array([234243.555, 55654.679]),
     })
   });
 
@@ -85,7 +85,7 @@ describe('array', () => {
 
     const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
     const input = fory.serialize({
-      a5: [2.43, 654.4, 55],
+      a5: new Float32Array([2.43, 654.4, 55]),
     }, serialize);
     const result = fory.deserialize(
       input
@@ -112,6 +112,41 @@ describe('array', () => {
     expect(result.a6[0]).toBeCloseTo(1.5, 1)
     expect(result.a6[1]).toBeCloseTo(2.5, 1)
     expect(result.a6[2]).toBeCloseTo(-4.5, 1)
+  });
+
+  test('should bfloat16Array work', () => {
+    const typeinfo = Type.struct({
+      typeName: "example.foo"
+    }, {
+      a7: Type.bfloat16Array(),
+    });
+    const fory = new Fory({ refTracking: true });
+    const serialize = fory.registerSerializer(typeinfo).serializer;
+    const input = fory.serialize({
+      a7: [1.5, 2.5, -4.5],
+    }, serialize);
+    const result = fory.deserialize(input);
+    expect(result.a7).toHaveLength(3);
+    expect(result.a7[0].toFloat32()).toBeCloseTo(1.5, 2);
+    expect(result.a7[1].toFloat32()).toBeCloseTo(2.5, 2);
+    expect(result.a7[2].toFloat32()).toBeCloseTo(-4.5, 2);
+  });
+
+  test('should bfloat16Array accept BFloat16Array', () => {
+    const typeinfo = Type.struct({
+      typeName: "example.foo"
+    }, {
+      a7: Type.bfloat16Array(),
+    });
+    const fory = new Fory({ refTracking: true });
+    const serialize = fory.registerSerializer(typeinfo).serializer;
+    const arr = new BFloat16Array([1.25, -2.5, 0]);
+    const input = fory.serialize({ a7: arr }, serialize);
+    const result = fory.deserialize(input);
+    expect(result.a7).toHaveLength(3);
+    expect(result.a7[0].toFloat32()).toBeCloseTo(1.25, 2);
+    expect(result.a7[1].toFloat32()).toBeCloseTo(-2.5, 2);
+    expect(result.a7[2].toFloat32()).toBe(0);
   });
 });
 

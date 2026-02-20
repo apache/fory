@@ -20,7 +20,8 @@
 import { HalfMaxInt32, HalfMinInt32, Hps, LATIN1, UTF16, UTF8 } from "../type";
 import { PlatformBuffer, alloc, strByteLength } from "../platformBuffer";
 import { OwnershipError } from "../error";
-import { toFloat16 } from "./number";
+import { toFloat16, toBFloat16 } from "./number";
+import { BFloat16 } from "../bfloat16";
 
 const MAX_POOL_SIZE = 1024 * 1024 * 3; // 3MB
 
@@ -85,46 +86,46 @@ export class BinaryWriter {
     this.cursor++;
   }
 
-  uint8(v: number) {
+  writeUint8(v: number) {
     this.dataView.setUint8(this.cursor, v);
     this.cursor++;
   }
 
-  int8(v: number) {
+  writeInt8(v: number) {
     this.dataView.setInt8(this.cursor, v);
     this.cursor++;
   }
 
-  int24(v: number) {
+  writeInt24(v: number) {
     this.dataView.setUint32(this.cursor, v, true);
     this.cursor += 3;
   }
 
-  uint16(v: number) {
+  writeUint16(v: number) {
     this.dataView.setUint16(this.cursor, v, true);
     this.cursor += 2;
   }
 
-  int16(v: number) {
+  writeInt16(v: number) {
     this.dataView.setInt16(this.cursor, v, true);
     this.cursor += 2;
   }
 
-  skip(len: number) {
+  writeSkip(len: number) {
     this.cursor += len;
   }
 
-  int32(v: number) {
+  writeInt32(v: number) {
     this.dataView.setInt32(this.cursor, v, true);
     this.cursor += 4;
   }
 
-  uint32(v: number) {
+  writeUint32(v: number) {
     this.dataView.setUint32(this.cursor, v, true);
     this.cursor += 4;
   }
 
-  int64(v: bigint) {
+  writeInt64(v: bigint) {
     if (typeof v !== "bigint") {
       this.dataView.setBigInt64(this.cursor, BigInt(v), true);
     } else {
@@ -133,7 +134,7 @@ export class BinaryWriter {
     this.cursor += 8;
   }
 
-  sliInt64(v: bigint | number) {
+  writeSliInt64(v: bigint | number) {
     if (v <= HalfMaxInt32 && v >= HalfMinInt32) {
       // write:
       // 00xxx -> 0xxx
@@ -147,7 +148,7 @@ export class BinaryWriter {
       const BIG_LONG_FLAG = 0b1; // bit 0 set, means big long.
       this.dataView.setUint8(this.cursor, BIG_LONG_FLAG);
       this.cursor += 1;
-      this.varInt64(BigInt(v));
+      this.writeVarInt64(BigInt(v));
     }
   }
 
@@ -208,14 +209,20 @@ export class BinaryWriter {
     }
   }
 
-  float32(v: number) {
+  writeFloat32(v: number) {
     this.dataView.setFloat32(this.cursor, v, true);
     this.cursor += 4;
   }
 
-  float64(v: number) {
+  writeFloat64(v: number) {
     this.dataView.setFloat64(this.cursor, v, true);
     this.cursor += 8;
+  }
+
+  arrayBuffer(v: ArrayBuffer, byteOffset: number, byteLength: number) {
+    this.reserve(byteLength);
+    this.platformBuffer.set(new Uint8Array(v, byteOffset, byteLength), this.cursor);
+    this.cursor += byteLength;
   }
 
   buffer(v: ArrayLike<number>) {
@@ -224,7 +231,7 @@ export class BinaryWriter {
     this.cursor += v.length;
   }
 
-  uint64(v: bigint) {
+  writeUint64(v: bigint) {
     this.dataView.setBigUint64(this.cursor, v, true);
     this.cursor += 8;
   }
@@ -281,7 +288,7 @@ export class BinaryWriter {
     const isLatin1 = this.internalStringDetector!(v);
     if (isLatin1) {
       const len = v.length;
-      this.varUInt32((len << 2) | LATIN1);
+      this.writeVarUInt32((len << 2) | LATIN1);
       this.reserve(len);
       if (len < 40) {
         for (let index = 0; index < v.length; index++) {
@@ -293,7 +300,7 @@ export class BinaryWriter {
       this.cursor += len;
     } else {
       const len = v.length * 2;
-      this.varUInt32((len << 2) | UTF16);
+      this.writeVarUInt32((len << 2) | UTF16);
       this.reserve(len);
       this.platformBuffer.write(v, this.cursor, "utf16le");
       this.cursor += len;
@@ -303,7 +310,7 @@ export class BinaryWriter {
   stringWithHeaderCompatibly(v: string) {
     const len = strByteLength(v);
     const isLatin1 = len === v.length;
-    this.varUInt32((len << 2) | (isLatin1 ? LATIN1 : UTF8));
+    this.writeVarUInt32((len << 2) | (isLatin1 ? LATIN1 : UTF8));
     this.reserve(len);
     if (isLatin1) {
       if (len < 40) {
@@ -323,11 +330,11 @@ export class BinaryWriter {
     this.cursor += len;
   }
 
-  varInt32(v: number) {
-    return this.varUInt32((v << 1) ^ (v >> 31));
+  writeVarInt32(v: number) {
+    return this.writeVarUInt32((v << 1) ^ (v >> 31));
   }
 
-  varUInt32(value: number) {
+  writeVarUInt32(value: number) {
     value = (value >>> 0) & 0xFFFFFFFF; // keep only the lower 32 bits
 
     if (value >> 7 == 0) {
@@ -393,14 +400,14 @@ export class BinaryWriter {
     return 5;
   }
 
-  varInt64(v: bigint) {
+  writeVarInt64(v: bigint) {
     if (typeof v !== "bigint") {
       v = BigInt(v);
     }
-    return this.varUInt64((v << 1n) ^ (v >> 63n));
+    return this.writeVarUInt64((v << 1n) ^ (v >> 63n));
   }
 
-  varUInt64(val: bigint | number) {
+  writeVarUInt64(val: bigint | number) {
     if (typeof val !== "bigint") {
       val = BigInt(val);
     }
@@ -445,11 +452,17 @@ export class BinaryWriter {
     };
   }
 
-  float16(value: number) {
-    this.uint16(toFloat16(value));
+  writeFloat16(value: number) {
+    this.writeUint16(toFloat16(value));
   }
 
-  getCursor() {
+  writeBfloat16(value: BFloat16 | number) {
+    const bits
+      = value instanceof BFloat16 ? value.toBits() : toBFloat16(value);
+    this.writeUint16(bits);
+  }
+
+  writeGetCursor() {
     return this.cursor;
   }
 

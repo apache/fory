@@ -22,7 +22,7 @@ import 'package:fory/fory.dart';
 part '../generated/uint_struct.g.dart';
 
 @ForyClass(promiseAcyclic: true)
-class UIntStruct with _$UIntStructFory {
+class UIntStruct {
   final UInt8 age;
   final UInt16 port;
   final UInt32 count;
