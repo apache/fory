@@ -28,8 +28,6 @@ def generate_doc_example_tests():
     script_path = os.path.join(
         common.PROJECT_ROOT_DIR, "ci", "extract_cpp_doc_examples.py"
     )
-    output_dir = os.path.join(common.PROJECT_ROOT_DIR, "cpp", "doc_tests")
-
     result = subprocess.run(
         [
             "python",
