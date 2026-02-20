@@ -183,7 +183,7 @@ public final class TypeResolver {
     }
 
     public func readDynamicTypeInfo(context: ReadContext) throws -> DynamicTypeInfo {
-        let rawTypeID = try context.reader.readVarUInt32()
+        let rawTypeID = try context.buffer.readVarUInt32()
         guard let wireTypeID = ForyTypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown dynamic type id \(rawTypeID)")
         }
@@ -209,12 +209,12 @@ public final class TypeResolver {
             )
         case .namedStruct, .namedEnum, .namedExt, .namedUnion:
             let namespace = try Self.readMetaString(
-                reader: context.reader,
+                buffer: context.buffer,
                 decoder: .namespace,
                 encodings: namespaceMetaStringEncodings
             )
             let typeName = try Self.readMetaString(
-                reader: context.reader,
+                buffer: context.buffer,
                 decoder: .typeName,
                 encodings: typeNameMetaStringEncodings
             )
@@ -230,19 +230,19 @@ public final class TypeResolver {
             case .idOnly:
                 return DynamicTypeInfo(
                     wireTypeID: wireTypeID,
-                    userTypeID: try context.reader.readVarUInt32(),
+                    userTypeID: try context.buffer.readVarUInt32(),
                     namespace: nil,
                     typeName: nil,
                     compatibleTypeMeta: nil
                 )
             case .nameOnly:
                 let namespace = try Self.readMetaString(
-                    reader: context.reader,
+                    buffer: context.buffer,
                     decoder: .namespace,
                     encodings: namespaceMetaStringEncodings
                 )
                 let typeName = try Self.readMetaString(
-                    reader: context.reader,
+                    buffer: context.buffer,
                     decoder: .typeName,
                     encodings: typeNameMetaStringEncodings
                 )
@@ -405,11 +405,11 @@ public final class TypeResolver {
     }
 
     private static func readMetaString(
-        reader: ByteBuffer,
+        buffer: ByteBuffer,
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {
-        let header = try reader.readUInt8()
+        let header = try buffer.readUInt8()
         let encodingIndex = Int(header & 0b11)
         guard encodingIndex < encodings.count else {
             throw ForyError.invalidData("invalid meta string encoding index")
@@ -417,9 +417,9 @@ public final class TypeResolver {
 
         var length = Int(header >> 2)
         if length >= 0b11_1111 {
-            length = 0b11_1111 + Int(try reader.readVarUInt32())
+            length = 0b11_1111 + Int(try buffer.readVarUInt32())
         }
-        let bytes = try reader.readBytes(count: length)
+        let bytes = try buffer.readBytes(count: length)
         return try decoder.decode(bytes: bytes, encoding: encodings[encodingIndex])
     }
 }

@@ -271,8 +271,8 @@ func topLevelAnyRoundTrip() throws {
     #expect(decoded as? Address == Address(street: "AnyTop", zip: 8080))
 
     var buffer = Data()
-    try fory.serializeTo(&buffer, value: value)
-    let decodedFrom: Any = try fory.deserializeFrom(ByteBuffer(data: buffer))
+    try fory.serialize(value, to: &buffer)
+    let decodedFrom: Any = try fory.deserialize(from: ByteBuffer(data: buffer))
     #expect(decodedFrom as? Address == Address(street: "AnyTop", zip: 8080))
 
     let nullAny: Any = Optional<Int32>.none as Any
@@ -295,8 +295,8 @@ func topLevelAnyObjectRoundTrip() throws {
     #expect(node?.value == 123)
 
     var buffer = Data()
-    try fory.serializeTo(&buffer, value: value)
-    let decodedFrom: AnyObject = try fory.deserializeFrom(ByteBuffer(data: buffer))
+    try fory.serialize(value, to: &buffer)
+    let decodedFrom: AnyObject = try fory.deserialize(from: ByteBuffer(data: buffer))
     #expect((decodedFrom as? Node)?.value == 123)
 }
 
@@ -313,8 +313,8 @@ func topLevelAnySerializerRoundTrip() throws {
     #expect(address == Address(street: "AnyStreet", zip: 9090))
 
     var buffer = Data()
-    try fory.serializeTo(&buffer, value: value)
-    let decodedFrom: any Serializer = try fory.deserializeFrom(ByteBuffer(data: buffer))
+    try fory.serialize(value, to: &buffer)
+    let decodedFrom: any Serializer = try fory.deserialize(from: ByteBuffer(data: buffer))
     #expect(decodedFrom as? Address == Address(street: "AnyStreet", zip: 9090))
 }
 
@@ -411,7 +411,7 @@ func collectionAndMapReferenceTracking() throws {
     let list: [Node?] = [shared, shared, nil]
     let listData = try fory.serialize(list)
     let listReader = ByteBuffer(data: listData)
-    _ = try fory.readHead(reader: listReader)
+    _ = try fory.readHead(buffer: listReader)
     _ = try listReader.readInt8()
     _ = try listReader.readVarUInt32()
     _ = try listReader.readVarUInt32()
@@ -427,7 +427,7 @@ func collectionAndMapReferenceTracking() throws {
     let map: [Int8: Node?] = [1: sharedValue, 2: sharedValue]
     let mapData = try fory.serialize(map)
     let mapReader = ByteBuffer(data: mapData)
-    _ = try fory.readHead(reader: mapReader)
+    _ = try fory.readHead(buffer: mapReader)
     _ = try mapReader.readInt8()
     _ = try mapReader.readVarUInt32()
     _ = try mapReader.readVarUInt32()
@@ -449,18 +449,18 @@ func macroFieldOrderFollowsForyRules() throws {
     let value = FieldOrder(z: "tail", a: 123456789, b: 17, c: 99)
     let data = try fory.serialize(value)
 
-    let reader = ByteBuffer(data: data)
-    _ = try fory.readHead(reader: reader)
-    _ = try reader.readInt8() // root ref flag
-    _ = try reader.readVarUInt32() // type id
-    _ = try reader.readVarUInt32() // user type id
-    _ = try reader.readInt32() // schema hash
+    let buffer = ByteBuffer(data: data)
+    _ = try fory.readHead(buffer: buffer)
+    _ = try buffer.readInt8() // root ref flag
+    _ = try buffer.readVarUInt32() // type id
+    _ = try buffer.readVarUInt32() // user type id
+    _ = try buffer.readInt32() // schema hash
 
-    let first = try reader.readInt16()
-    let second = try reader.readVarInt64()
-    let third = try reader.readVarInt32()
+    let first = try buffer.readInt16()
+    let second = try buffer.readVarInt64()
+    let third = try buffer.readVarInt32()
 
-    let tailContext = ReadContext(reader: reader, typeResolver: fory.typeResolver, trackRef: false)
+    let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
     let fourth = try String.foryReadData(tailContext)
 
     #expect(first == value.b)
@@ -482,15 +482,15 @@ func macroFieldEncodingOverridesForUnsignedTypes() throws {
     let decoded: EncodedNumberFields = try fory.deserialize(data)
     #expect(decoded == value)
 
-    let reader = ByteBuffer(data: data)
-    _ = try fory.readHead(reader: reader)
-    _ = try reader.readInt8()
-    _ = try reader.readVarUInt32()
-    _ = try reader.readVarUInt32()
-    _ = try reader.readInt32()
+    let buffer = ByteBuffer(data: data)
+    _ = try fory.readHead(buffer: buffer)
+    _ = try buffer.readInt8()
+    _ = try buffer.readVarUInt32()
+    _ = try buffer.readVarUInt32()
+    _ = try buffer.readInt32()
 
-    #expect(try reader.readUInt32() == value.u32Fixed)
-    #expect(try reader.readTaggedUInt64() == value.u64Tagged)
+    #expect(try buffer.readUInt32() == value.u32Fixed)
+    #expect(try buffer.readTaggedUInt64() == value.u64Tagged)
 }
 
 @Test
@@ -545,28 +545,28 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         Int64.max,
     ]
 
-    let writer = ByteBuffer()
+    let writeBuffer = ByteBuffer()
     for value in uintValues {
-        writer.writeVarUInt64(value)
+        writeBuffer.writeVarUInt64(value)
     }
     for value in intValues {
-        writer.writeVarInt64(value)
+        writeBuffer.writeVarInt64(value)
     }
-    let minWriter = ByteBuffer()
-    minWriter.writeVarInt64(Int64.min)
-    #expect(minWriter.storage.count == 9)
-    #expect(minWriter.storage.allSatisfy { $0 == 0xFF })
+    let minBuffer = ByteBuffer()
+    minBuffer.writeVarInt64(Int64.min)
+    #expect(minBuffer.storage.count == 9)
+    #expect(minBuffer.storage.allSatisfy { $0 == 0xFF })
 
-    let encoded = writer.storage
+    let encoded = writeBuffer.storage
 
-    let reader = ByteBuffer(bytes: encoded)
+    let readBuffer = ByteBuffer(bytes: encoded)
     for value in uintValues {
-        #expect(try reader.readVarUInt64() == value)
+        #expect(try readBuffer.readVarUInt64() == value)
     }
     for value in intValues {
-        #expect(try reader.readVarInt64() == value)
+        #expect(try readBuffer.readVarInt64() == value)
     }
-    #expect(reader.remaining == 0)
+    #expect(readBuffer.remaining == 0)
 }
 
 @Test

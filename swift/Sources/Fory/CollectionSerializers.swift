@@ -52,104 +52,104 @@ private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> F
 private func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
     if Element.self == UInt8.self {
         let bytes = value as! [UInt8]
-        context.writer.writeVarUInt32(UInt32(bytes.count))
-        context.writer.writeBytes(bytes)
+        context.buffer.writeVarUInt32(UInt32(bytes.count))
+        context.buffer.writeBytes(bytes)
         return
     }
 
     if Element.self == Bool.self {
         let bools = value as! [Bool]
-        context.writer.writeVarUInt32(UInt32(bools.count))
+        context.buffer.writeVarUInt32(UInt32(bools.count))
         for item in bools {
-            context.writer.writeUInt8(item ? 1 : 0)
+            context.buffer.writeUInt8(item ? 1 : 0)
         }
         return
     }
 
     if Element.self == Int8.self {
         let values = value as! [Int8]
-        context.writer.writeVarUInt32(UInt32(values.count))
+        context.buffer.writeVarUInt32(UInt32(values.count))
         for item in values {
-            context.writer.writeInt8(item)
+            context.buffer.writeInt8(item)
         }
         return
     }
 
     if Element.self == Int16.self {
         let values = value as! [Int16]
-        context.writer.writeVarUInt32(UInt32(values.count * 2))
+        context.buffer.writeVarUInt32(UInt32(values.count * 2))
         for item in values {
-            context.writer.writeInt16(item)
+            context.buffer.writeInt16(item)
         }
         return
     }
 
     if Element.self == Int32.self {
         let values = value as! [Int32]
-        context.writer.writeVarUInt32(UInt32(values.count * 4))
+        context.buffer.writeVarUInt32(UInt32(values.count * 4))
         for item in values {
-            context.writer.writeInt32(item)
+            context.buffer.writeInt32(item)
         }
         return
     }
 
     if Element.self == UInt32.self {
         let values = value as! [UInt32]
-        context.writer.writeVarUInt32(UInt32(values.count * 4))
+        context.buffer.writeVarUInt32(UInt32(values.count * 4))
         for item in values {
-            context.writer.writeUInt32(item)
+            context.buffer.writeUInt32(item)
         }
         return
     }
 
     if Element.self == Int64.self {
         let values = value as! [Int64]
-        context.writer.writeVarUInt32(UInt32(values.count * 8))
+        context.buffer.writeVarUInt32(UInt32(values.count * 8))
         for item in values {
-            context.writer.writeInt64(item)
+            context.buffer.writeInt64(item)
         }
         return
     }
 
     if Element.self == UInt64.self {
         let values = value as! [UInt64]
-        context.writer.writeVarUInt32(UInt32(values.count * 8))
+        context.buffer.writeVarUInt32(UInt32(values.count * 8))
         for item in values {
-            context.writer.writeUInt64(item)
+            context.buffer.writeUInt64(item)
         }
         return
     }
 
     if Element.self == UInt16.self {
         let values = value as! [UInt16]
-        context.writer.writeVarUInt32(UInt32(values.count * 2))
+        context.buffer.writeVarUInt32(UInt32(values.count * 2))
         for item in values {
-            context.writer.writeUInt16(item)
+            context.buffer.writeUInt16(item)
         }
         return
     }
 
     if Element.self == Float.self {
         let values = value as! [Float]
-        context.writer.writeVarUInt32(UInt32(values.count * 4))
+        context.buffer.writeVarUInt32(UInt32(values.count * 4))
         for item in values {
-            context.writer.writeFloat32(item)
+            context.buffer.writeFloat32(item)
         }
         return
     }
 
     let values = value as! [Double]
-    context.writer.writeVarUInt32(UInt32(values.count * 8))
+    context.buffer.writeVarUInt32(UInt32(values.count * 8))
     for item in values {
-        context.writer.writeFloat64(item)
+        context.buffer.writeFloat64(item)
     }
 }
 
 private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
-    let payloadSize = Int(try context.reader.readVarUInt32())
+    let payloadSize = Int(try context.buffer.readVarUInt32())
 
     if Element.self == UInt8.self {
-        let bytes = try context.reader.readBytes(count: payloadSize)
+        let bytes = try context.buffer.readBytes(count: payloadSize)
         return bytes as! [Element]
     }
 
@@ -157,7 +157,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [Bool] = []
         out.reserveCapacity(payloadSize)
         for _ in 0..<payloadSize {
-            out.append(try context.reader.readUInt8() != 0)
+            out.append(try context.buffer.readUInt8() != 0)
         }
         return out as! [Element]
     }
@@ -166,7 +166,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [Int8] = []
         out.reserveCapacity(payloadSize)
         for _ in 0..<payloadSize {
-            out.append(try context.reader.readInt8())
+            out.append(try context.buffer.readInt8())
         }
         return out as! [Element]
     }
@@ -176,7 +176,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [Int16] = []
         out.reserveCapacity(payloadSize / 2)
         for _ in 0..<(payloadSize / 2) {
-            out.append(try context.reader.readInt16())
+            out.append(try context.buffer.readInt16())
         }
         return out as! [Element]
     }
@@ -186,7 +186,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [Int32] = []
         out.reserveCapacity(payloadSize / 4)
         for _ in 0..<(payloadSize / 4) {
-            out.append(try context.reader.readInt32())
+            out.append(try context.buffer.readInt32())
         }
         return out as! [Element]
     }
@@ -196,7 +196,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [UInt32] = []
         out.reserveCapacity(payloadSize / 4)
         for _ in 0..<(payloadSize / 4) {
-            out.append(try context.reader.readUInt32())
+            out.append(try context.buffer.readUInt32())
         }
         return out as! [Element]
     }
@@ -206,7 +206,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [Int64] = []
         out.reserveCapacity(payloadSize / 8)
         for _ in 0..<(payloadSize / 8) {
-            out.append(try context.reader.readInt64())
+            out.append(try context.buffer.readInt64())
         }
         return out as! [Element]
     }
@@ -216,7 +216,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [UInt64] = []
         out.reserveCapacity(payloadSize / 8)
         for _ in 0..<(payloadSize / 8) {
-            out.append(try context.reader.readUInt64())
+            out.append(try context.buffer.readUInt64())
         }
         return out as! [Element]
     }
@@ -226,7 +226,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [UInt16] = []
         out.reserveCapacity(payloadSize / 2)
         for _ in 0..<(payloadSize / 2) {
-            out.append(try context.reader.readUInt16())
+            out.append(try context.buffer.readUInt16())
         }
         return out as! [Element]
     }
@@ -236,7 +236,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         var out: [Float] = []
         out.reserveCapacity(payloadSize / 4)
         for _ in 0..<(payloadSize / 4) {
-            out.append(try context.reader.readFloat32())
+            out.append(try context.buffer.readFloat32())
         }
         return out as! [Element]
     }
@@ -245,7 +245,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
     var out: [Double] = []
     out.reserveCapacity(payloadSize / 8)
     for _ in 0..<(payloadSize / 8) {
-        out.append(try context.reader.readFloat64())
+        out.append(try context.buffer.readFloat64())
     }
     return out as! [Element]
 }
@@ -265,7 +265,7 @@ extension Array: Serializer where Element: Serializer {
             return
         }
 
-        context.writer.writeVarUInt32(UInt32(self.count))
+        context.buffer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
             return
         }
@@ -286,7 +286,7 @@ extension Array: Serializer where Element: Serializer {
             header |= CollectionHeader.declaredElementType
         }
 
-        context.writer.writeUInt8(header)
+        context.buffer.writeUInt8(header)
         if !dynamicElementType && !declaredElementType {
             try Element.foryWriteTypeInfo(context)
         }
@@ -313,9 +313,9 @@ extension Array: Serializer where Element: Serializer {
         } else if hasNull {
             for element in self {
                 if element.foryIsNone {
-                    context.writer.writeInt8(RefFlag.null.rawValue)
+                    context.buffer.writeInt8(RefFlag.null.rawValue)
                 } else {
-                    context.writer.writeInt8(RefFlag.notNullValue.rawValue)
+                    context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
                     try element.foryWriteData(context, hasGenerics: hasGenerics)
                 }
             }
@@ -331,12 +331,12 @@ extension Array: Serializer where Element: Serializer {
             return try readPrimitiveArray(context)
         }
 
-        let length = Int(try context.reader.readVarUInt32())
+        let length = Int(try context.buffer.readVarUInt32())
         if length == 0 {
             return []
         }
 
-        let header = try context.reader.readUInt8()
+        let header = try context.buffer.readUInt8()
         let trackRef = (header & CollectionHeader.trackingRef) != 0
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
@@ -356,14 +356,14 @@ extension Array: Serializer where Element: Serializer {
 
             if hasNull {
                 for _ in 0..<length {
-                    let refFlag = try context.reader.readInt8()
+                    let refFlag = try context.buffer.readInt8()
                     if refFlag == RefFlag.null.rawValue {
                         values.append(Element.foryDefault())
                     } else if refFlag == RefFlag.notNullValue.rawValue {
                         if canonicalizeElements {
-                            let start = context.reader.getCursor()
+                            let start = context.buffer.getCursor()
                             let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                            let end = context.reader.getCursor()
+                            let end = context.buffer.getCursor()
                             values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
                         } else {
                             values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
@@ -375,9 +375,9 @@ extension Array: Serializer where Element: Serializer {
             } else {
                 for _ in 0..<length {
                     if canonicalizeElements {
-                        let start = context.reader.getCursor()
+                        let start = context.buffer.getCursor()
                         let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                        let end = context.reader.getCursor()
+                        let end = context.buffer.getCursor()
                         values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
                     } else {
                         values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
@@ -406,14 +406,14 @@ extension Array: Serializer where Element: Serializer {
 
         if hasNull {
             for _ in 0..<length {
-                let refFlag = try context.reader.readInt8()
+                let refFlag = try context.buffer.readInt8()
                 if refFlag == RefFlag.null.rawValue {
                     values.append(Element.foryDefault())
                 } else {
                     if canonicalizeElements {
-                        let start = context.reader.getCursor()
+                        let start = context.buffer.getCursor()
                         let value = try Element.foryReadData(context)
-                        let end = context.reader.getCursor()
+                        let end = context.buffer.getCursor()
                         values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
                     } else {
                         values.append(try Element.foryReadData(context))
@@ -423,9 +423,9 @@ extension Array: Serializer where Element: Serializer {
         } else {
             for _ in 0..<length {
                 if canonicalizeElements {
-                    let start = context.reader.getCursor()
+                    let start = context.buffer.getCursor()
                     let value = try Element.foryReadData(context)
-                    let end = context.reader.getCursor()
+                    let end = context.buffer.getCursor()
                     values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
                 } else {
                     values.append(try Element.foryReadData(context))
@@ -461,7 +461,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
     public static var staticTypeId: ForyTypeId { .map }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarUInt32(UInt32(self.count))
+        context.buffer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
             return
         }
@@ -494,7 +494,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 } else if !valueDynamicType && valueDeclared {
                     header |= MapHeader.declaredValueType
                 }
-                context.writer.writeUInt8(header)
+                context.buffer.writeUInt8(header)
 
                 if keyIsNil && valueIsNil {
                     continue
@@ -541,7 +541,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     continue
                 }
 
-                context.writer.writeUInt8(1)
+                context.buffer.writeUInt8(1)
 
                 if !keyDeclared {
                     if keyDynamicType {
@@ -603,7 +603,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 if !keyIsNil && keyDeclared { header |= MapHeader.declaredKeyType }
                 if !valueIsNil && valueDeclared { header |= MapHeader.declaredValueType }
 
-                context.writer.writeUInt8(header)
+                context.buffer.writeUInt8(header)
                 if !keyIsNil {
                     if !keyDeclared {
                         try Key.foryWriteTypeInfo(context)
@@ -634,9 +634,9 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             if keyDeclared { header |= MapHeader.declaredKeyType }
             if valueDeclared { header |= MapHeader.declaredValueType }
 
-            context.writer.writeUInt8(header)
-            let chunkSizeOffset = context.writer.count
-            context.writer.writeUInt8(0)
+            context.buffer.writeUInt8(header)
+            let chunkSizeOffset = context.buffer.count
+            context.buffer.writeUInt8(0)
 
             if !keyDeclared {
                 try Key.foryWriteTypeInfo(context)
@@ -664,12 +664,12 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 chunkSize &+= 1
                 index += 1
             }
-            context.writer.setByte(at: chunkSizeOffset, to: chunkSize)
+            context.buffer.setByte(at: chunkSizeOffset, to: chunkSize)
         }
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Dictionary<Key, Value> {
-        let totalLength = Int(try context.reader.readVarUInt32())
+        let totalLength = Int(try context.buffer.readVarUInt32())
         if totalLength == 0 {
             return [:]
         }
@@ -683,7 +683,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         if keyDynamicType || valueDynamicType {
             var dynamicReadCount = 0
             while dynamicReadCount < totalLength {
-                let header = try context.reader.readUInt8()
+                let header = try context.buffer.readUInt8()
                 let trackKeyRef = (header & MapHeader.trackingKeyRef) != 0
                 let keyNull = (header & MapHeader.keyNull) != 0
                 let keyDeclared = (header & MapHeader.declaredKeyType) != 0
@@ -707,13 +707,13 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         )
                         map[Key.foryDefault()] = value
                     } else {
-                        let start = context.reader.getCursor()
+                        let start = context.buffer.getCursor()
                         let value = try Value.foryRead(
                             context,
                             refMode: .none,
                             readTypeInfo: valueDynamicType || !valueDeclared
                         )
-                        let end = context.reader.getCursor()
+                        let end = context.buffer.getCursor()
                         map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
                             value,
                             start: start,
@@ -735,7 +735,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     continue
                 }
 
-                let chunkSize = Int(try context.reader.readUInt8())
+                let chunkSize = Int(try context.buffer.readUInt8())
                 if !keyDeclared {
                     try Key.foryReadTypeInfo(context)
                 }
@@ -756,13 +756,13 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         )
                         map[key] = value
                     } else {
-                        let start = context.reader.getCursor()
+                        let start = context.buffer.getCursor()
                         let value = try Value.foryRead(
                             context,
                             refMode: .none,
                             readTypeInfo: false
                         )
-                        let end = context.reader.getCursor()
+                        let end = context.buffer.getCursor()
                         map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
                     }
                 }
@@ -779,7 +779,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
 
         var readCount = 0
         while readCount < totalLength {
-            let header = try context.reader.readUInt8()
+            let header = try context.buffer.readUInt8()
             let trackKeyRef = (header & MapHeader.trackingKeyRef) != 0
             let keyNull = (header & MapHeader.keyNull) != 0
             let keyDeclared = (header & MapHeader.declaredKeyType) != 0
@@ -803,13 +803,13 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     )
                     map[Key.foryDefault()] = value
                 } else {
-                    let start = context.reader.getCursor()
+                    let start = context.buffer.getCursor()
                     let value = try Value.foryRead(
                         context,
                         refMode: .none,
                         readTypeInfo: !valueDeclared
                     )
-                    let end = context.reader.getCursor()
+                    let end = context.buffer.getCursor()
                     map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
                         value,
                         start: start,
@@ -831,7 +831,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 continue
             }
 
-            let chunkSize = Int(try context.reader.readUInt8())
+            let chunkSize = Int(try context.buffer.readUInt8())
             if !keyDeclared {
                 try Key.foryReadTypeInfo(context)
             }
@@ -853,13 +853,13 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     )
                     map[key] = value
                 } else {
-                    let start = context.reader.getCursor()
+                    let start = context.buffer.getCursor()
                     let value = try Value.foryRead(
                         context,
                         refMode: .none,
                         readTypeInfo: false
                     )
-                    let end = context.reader.getCursor()
+                    let end = context.buffer.getCursor()
                     map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
                 }
             }

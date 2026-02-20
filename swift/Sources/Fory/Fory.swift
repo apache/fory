@@ -51,13 +51,13 @@ public final class Fory {
     }
 
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: value.foryIsNone)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: value.foryIsNone)
 
         if !value.foryIsNone {
             let compatibleTypeDefState = CompatibleTypeDefWriteState()
             let context = WriteContext(
-                writer: writer,
+                buffer: byteBuffer,
                 typeResolver: typeResolver,
                 trackRef: config.trackRef,
                 compatible: config.compatible,
@@ -69,18 +69,18 @@ public final class Fory {
             context.resetObjectState()
         }
 
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     public func deserialize<T: Serializer>(_ data: Data, as _: T.Type = T.self) throws -> T {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return T.foryDefault()
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -93,12 +93,12 @@ public final class Fory {
         return value
     }
 
-    public func serializeTo<T: Serializer>(_ buffer: inout Data, value: T) throws {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: value.foryIsNone)
+    public func serialize<T: Serializer>(_ value: T, to buffer: inout Data) throws {
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: value.foryIsNone)
         if !value.foryIsNone {
             let context = WriteContext(
-                writer: writer,
+                buffer: byteBuffer,
                 typeResolver: typeResolver,
                 trackRef: config.trackRef,
                 compatible: config.compatible,
@@ -109,16 +109,16 @@ public final class Fory {
             try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
             context.resetObjectState()
         }
-        buffer.append(writer.toData())
+        buffer.append(byteBuffer.toData())
     }
 
-    public func deserializeFrom<T: Serializer>(_ reader: ByteBuffer, as _: T.Type = T.self) throws -> T {
-        let isNone = try readHead(reader: reader)
+    public func deserialize<T: Serializer>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T {
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return T.foryDefault()
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -133,11 +133,11 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: Any) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: false)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: false)
 
         let context = WriteContext(
-            writer: writer,
+            buffer: byteBuffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -147,19 +147,19 @@ public final class Fory {
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
         context.resetObjectState()
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: Any.Type = Any.self) throws -> Any {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return ForyAnyNullValue()
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -177,11 +177,11 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: AnyObject) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: false)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: false)
 
         let context = WriteContext(
-            writer: writer,
+            buffer: byteBuffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -191,19 +191,19 @@ public final class Fory {
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
         context.resetObjectState()
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return NSNull()
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -221,11 +221,11 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: any Serializer) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: false)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: false)
 
         let context = WriteContext(
-            writer: writer,
+            buffer: byteBuffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -235,19 +235,19 @@ public final class Fory {
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
         context.resetObjectState()
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: (any Serializer).Type = (any Serializer).self) throws -> any Serializer {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return ForyAnyNullValue()
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -265,11 +265,11 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: [Any]) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: false)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: false)
 
         let context = WriteContext(
-            writer: writer,
+            buffer: byteBuffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -279,19 +279,19 @@ public final class Fory {
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         try context.writeAnyList(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
         context.resetObjectState()
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [Any].Type = [Any].self) throws -> [Any] {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return []
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -306,11 +306,11 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: [String: Any]) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: false)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: false)
 
         let context = WriteContext(
-            writer: writer,
+            buffer: byteBuffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -320,19 +320,19 @@ public final class Fory {
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         try context.writeStringAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
         context.resetObjectState()
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return [:]
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -347,11 +347,11 @@ public final class Fory {
 
     @_disfavoredOverload
     public func serialize(_ value: [Int32: Any]) throws -> Data {
-        let writer = ByteBuffer()
-        writeHead(writer: writer, isNone: false)
+        let byteBuffer = ByteBuffer()
+        writeHead(buffer: byteBuffer, isNone: false)
 
         let context = WriteContext(
-            writer: writer,
+            buffer: byteBuffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -361,19 +361,19 @@ public final class Fory {
         let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
         try context.writeInt32AnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
         context.resetObjectState()
-        return writer.toData()
+        return byteBuffer.toData()
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
-        let reader = ByteBuffer(data: data)
-        let isNone = try readHead(reader: reader)
+        let buffer = ByteBuffer(data: data)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return [:]
         }
 
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -387,23 +387,23 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func serializeTo(_ buffer: inout Data, value: [Any]) throws {
+    public func serialize(_ value: [Any], to buffer: inout Data) throws {
         buffer.append(try serialize(value))
     }
 
     @_disfavoredOverload
-    public func serializeTo(_ buffer: inout Data, value: Any) throws {
+    public func serialize(_ value: Any, to buffer: inout Data) throws {
         buffer.append(try serialize(value))
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteBuffer, as _: Any.Type = Any.self) throws -> Any {
-        let isNone = try readHead(reader: reader)
+    public func deserialize(from buffer: ByteBuffer, as _: Any.Type = Any.self) throws -> Any {
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return ForyAnyNullValue()
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -420,18 +420,18 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func serializeTo(_ buffer: inout Data, value: AnyObject) throws {
+    public func serialize(_ value: AnyObject, to buffer: inout Data) throws {
         buffer.append(try serialize(value))
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteBuffer, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
-        let isNone = try readHead(reader: reader)
+    public func deserialize(from buffer: ByteBuffer, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return NSNull()
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -448,21 +448,21 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func serializeTo(_ buffer: inout Data, value: any Serializer) throws {
+    public func serialize(_ value: any Serializer, to buffer: inout Data) throws {
         buffer.append(try serialize(value))
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(
-        _ reader: ByteBuffer,
+    public func deserialize(
+        from buffer: ByteBuffer,
         as _: (any Serializer).Type = (any Serializer).self
     ) throws -> any Serializer {
-        let isNone = try readHead(reader: reader)
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return ForyAnyNullValue()
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -479,13 +479,13 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteBuffer, as _: [Any].Type = [Any].self) throws -> [Any] {
-        let isNone = try readHead(reader: reader)
+    public func deserialize(from buffer: ByteBuffer, as _: [Any].Type = [Any].self) throws -> [Any] {
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return []
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -499,18 +499,18 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func serializeTo(_ buffer: inout Data, value: [String: Any]) throws {
+    public func serialize(_ value: [String: Any], to buffer: inout Data) throws {
         buffer.append(try serialize(value))
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteBuffer, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
-        let isNone = try readHead(reader: reader)
+    public func deserialize(from buffer: ByteBuffer, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return [:]
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -524,18 +524,18 @@ public final class Fory {
     }
 
     @_disfavoredOverload
-    public func serializeTo(_ buffer: inout Data, value: [Int32: Any]) throws {
+    public func serialize(_ value: [Int32: Any], to buffer: inout Data) throws {
         buffer.append(try serialize(value))
     }
 
     @_disfavoredOverload
-    public func deserializeFrom(_ reader: ByteBuffer, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
-        let isNone = try readHead(reader: reader)
+    public func deserialize(from buffer: ByteBuffer, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
+        let isNone = try readHead(buffer: buffer)
         if isNone {
             return [:]
         }
         let context = ReadContext(
-            reader: reader,
+            buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
@@ -548,7 +548,7 @@ public final class Fory {
         return value
     }
 
-    public func writeHead(writer: ByteBuffer, isNone: Bool) {
+    public func writeHead(buffer: ByteBuffer, isNone: Bool) {
         var bitmap: UInt8 = 0
         if config.xlang {
             bitmap |= ForyHeaderFlag.isXlang
@@ -556,11 +556,11 @@ public final class Fory {
         if isNone {
             bitmap |= ForyHeaderFlag.isNull
         }
-        writer.writeUInt8(bitmap)
+        buffer.writeUInt8(bitmap)
     }
 
-    public func readHead(reader: ByteBuffer) throws -> Bool {
-        let bitmap = try reader.readUInt8()
+    public func readHead(buffer: ByteBuffer) throws -> Bool {
+        let bitmap = try buffer.readUInt8()
         let peerIsXlang = (bitmap & ForyHeaderFlag.isXlang) != 0
         if peerIsXlang != config.xlang {
             throw ForyError.invalidData("xlang bitmap mismatch")

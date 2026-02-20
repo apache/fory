@@ -31,16 +31,16 @@ public enum FieldSkipper {
     ) throws -> UInt32? {
         switch refMode {
         case .none:
-            return try context.reader.readVarUInt32()
+            return try context.buffer.readVarUInt32()
         case .nullOnly:
-            let flag = try context.reader.readInt8()
+            let flag = try context.buffer.readInt8()
             if flag == RefFlag.null.rawValue {
                 return nil
             }
             if flag != RefFlag.notNullValue.rawValue {
                 throw ForyError.invalidData("unexpected enum nullOnly flag \(flag)")
             }
-            return try context.reader.readVarUInt32()
+            return try context.buffer.readVarUInt32()
         case .tracking:
             throw ForyError.invalidData("enum tracking ref mode is not supported")
         }

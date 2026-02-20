@@ -130,7 +130,7 @@ private struct DynamicAnyValue: Serializer {
 
     func foryWriteTypeInfo(_ context: WriteContext) throws {
         if foryIsNone {
-            context.writer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.none.rawValue))
+            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.none.rawValue))
             return
         }
         try writeAnyTypeInfo(value, context: context)
@@ -149,15 +149,15 @@ private struct DynamicAnyValue: Serializer {
     ) throws {
         if refMode != .none {
             if foryIsNone {
-                context.writer.writeInt8(RefFlag.null.rawValue)
+                context.buffer.writeInt8(RefFlag.null.rawValue)
                 return
             }
             if refMode == .tracking, anyValueIsReferenceTrackable(value), let object = value as AnyObject? {
-                if context.refWriter.tryWriteReference(writer: context.writer, object: object) {
+                if context.refWriter.tryWriteReference(buffer: context.buffer, object: object) {
                     return
                 }
             } else {
-                context.writer.writeInt8(RefFlag.notNullValue.rawValue)
+                context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
             }
         }
 
@@ -173,7 +173,7 @@ private struct DynamicAnyValue: Serializer {
         readTypeInfo: Bool
     ) throws -> DynamicAnyValue {
         if refMode != .none {
-            let rawFlag = try context.reader.readInt8()
+            let rawFlag = try context.buffer.readInt8()
             guard let flag = RefFlag(rawValue: rawFlag) else {
                 throw ForyError.refError("invalid ref flag \(rawFlag)")
             }
@@ -182,7 +182,7 @@ private struct DynamicAnyValue: Serializer {
             case .null:
                 return .foryDefault()
             case .ref:
-                let refID = try context.reader.readVarUInt32()
+                let refID = try context.buffer.readVarUInt32()
                 let referenced = try context.refReader.readRefValue(refID)
                 if let value = referenced as? DynamicAnyValue {
                     return value
@@ -238,11 +238,11 @@ private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
     }
 
     if value is [Any] {
-        context.writer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.list.rawValue))
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.list.rawValue))
         return
     }
     if value is [String: Any] || value is [Int32: Any] {
-        context.writer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.map.rawValue))
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.map.rawValue))
         return
     }
 
@@ -425,9 +425,9 @@ public func readInt32AnyMap(
 }
 
 func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
-    let mapStart = context.reader.getCursor()
+    let mapStart = context.buffer.getCursor()
     let keyTypeID = try peekDynamicMapKeyTypeID(context: context)
-    context.reader.setCursor(mapStart)
+    context.buffer.setCursor(mapStart)
 
     switch keyTypeID {
     case .int32, .varint32:
@@ -440,17 +440,17 @@ func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
 }
 
 private func peekDynamicMapKeyTypeID(context: ReadContext) throws -> ForyTypeId? {
-    let start = context.reader.getCursor()
+    let start = context.buffer.getCursor()
     defer {
-        context.reader.setCursor(start)
+        context.buffer.setCursor(start)
     }
 
-    let length = Int(try context.reader.readVarUInt32())
+    let length = Int(try context.buffer.readVarUInt32())
     if length == 0 {
         return nil
     }
 
-    let header = try context.reader.readUInt8()
+    let header = try context.buffer.readUInt8()
     let keyNull = (header & DynamicAnyMapHeader.keyNull) != 0
     let keyDeclared = (header & DynamicAnyMapHeader.declaredKeyType) != 0
     let valueNull = (header & DynamicAnyMapHeader.valueNull) != 0
@@ -463,9 +463,9 @@ private func peekDynamicMapKeyTypeID(context: ReadContext) throws -> ForyTypeId?
     }
 
     if !valueNull {
-        _ = try context.reader.readUInt8()
+        _ = try context.buffer.readUInt8()
     }
 
-    let rawTypeID = try context.reader.readVarUInt32()
+    let rawTypeID = try context.buffer.readVarUInt32()
     return ForyTypeId(rawValue: rawTypeID)
 }

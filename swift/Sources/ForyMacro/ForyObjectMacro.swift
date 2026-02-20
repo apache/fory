@@ -235,7 +235,7 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
     let writeSwitchCases = cases.enumerated().map { index, enumCase in
         """
         case .\(enumCase.name):
-            context.writer.writeVarUInt32(\(index))
+            context.buffer.writeVarUInt32(\(index))
         """
     }.joined(separator: "\n        ")
     let readSwitchCases = cases.enumerated().map { index, enumCase in
@@ -268,7 +268,7 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
         static func foryReadData(_ context: ReadContext) throws -> Self {
-            let ordinal = try context.reader.readVarUInt32()
+            let ordinal = try context.buffer.readVarUInt32()
             switch ordinal {
             \(readSwitchCases)
             default:
@@ -286,7 +286,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
     let writeSwitchCases = cases.enumerated().map { index, enumCase in
         var lines: [String] = []
         lines.append("case \(enumCasePattern(enumCase)):")
-        lines.append("    context.writer.writeVarUInt32(\(index))")
+        lines.append("    context.buffer.writeVarUInt32(\(index))")
         for payloadIndex in enumCase.payload.indices {
             let variableName = "__value\(payloadIndex)"
             let hasGenerics = enumCase.payload[payloadIndex].hasGenerics ? "true" : "false"
@@ -347,7 +347,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
         static func foryReadData(_ context: ReadContext) throws -> Self {
-            let caseID = try context.reader.readVarUInt32()
+            let caseID = try context.buffer.readVarUInt32()
             switch caseID {
             \(readSwitchCases)
             default:
@@ -844,7 +844,7 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let compatibleLines = sortedFields.map { field in
         compatibleWriteLine(for: field)
     }
-    var schemaBodyLines = ["context.writer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))"]
+    var schemaBodyLines = ["context.buffer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))"]
     if schemaFieldLines.isEmpty {
         schemaBodyLines.append("_ = hasGenerics")
     } else {
@@ -942,7 +942,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                 }
                 return value
             }
-            let __schemaHash = UInt32(bitPattern: try context.reader.readInt32())
+            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
             let __expectedHash = Self.__forySchemaHash(context.trackRef)
             if __schemaHash != __expectedHash {
                 throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
@@ -965,7 +965,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                 }
                 return Self()
             }
-            let __schemaHash = UInt32(bitPattern: try context.reader.readInt32())
+            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
             let __expectedHash = Self.__forySchemaHash(context.trackRef)
             if __schemaHash != __expectedHash {
                 throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
@@ -1023,7 +1023,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                     \(ctorArgs)
                 )
             }
-        let __schemaHash = UInt32(bitPattern: try context.reader.readInt32())
+        let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
         let __expectedHash = Self.__forySchemaHash(context.trackRef)
         if __schemaHash != __expectedHash {
             throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")

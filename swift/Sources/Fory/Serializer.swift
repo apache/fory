@@ -71,11 +71,11 @@ public extension Serializer {
     ) throws {
         if refMode != .none {
             if refMode == .tracking, Self.isReferenceTrackableType, let object = self as AnyObject? {
-                if context.refWriter.tryWriteReference(writer: context.writer, object: object) {
+                if context.refWriter.tryWriteReference(buffer: context.buffer, object: object) {
                     return
                 }
             } else {
-                context.writer.writeInt8(RefFlag.notNullValue.rawValue)
+                context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
             }
         }
 
@@ -92,7 +92,7 @@ public extension Serializer {
         readTypeInfo: Bool
     ) throws -> Self {
         if refMode != .none {
-            let rawFlag = try context.reader.readInt8()
+            let rawFlag = try context.buffer.readInt8()
             guard let flag = RefFlag(rawValue: rawFlag) else {
                 throw ForyError.refError("invalid ref flag \(rawFlag)")
             }
@@ -101,7 +101,7 @@ public extension Serializer {
             case .null:
                 return Self.foryDefault()
             case .ref:
-                let refID = try context.reader.readVarUInt32()
+                let refID = try context.buffer.readVarUInt32()
                 return try context.refReader.readRef(refID, as: Self.self)
             case .refValue:
                 let reservedRefID = context.refReader.reserveRefID()
@@ -126,7 +126,7 @@ public extension Serializer {
 
     static func foryWriteTypeInfo(_ context: WriteContext) throws {
         guard staticTypeId.isUserTypeKind else {
-            context.writer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
+            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
             return
         }
 
@@ -136,7 +136,7 @@ public extension Serializer {
             registerByName: info.registerByName,
             compatible: context.compatible
         )
-        context.writer.writeUInt8(UInt8(truncatingIfNeeded: wireTypeID.rawValue))
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: wireTypeID.rawValue))
         switch wireTypeID {
         case .compatibleStruct, .namedCompatibleStruct:
             let typeMeta = try buildCompatibleTypeMeta(
@@ -175,13 +175,13 @@ public extension Serializer {
                 guard let userTypeID = info.userTypeID else {
                     throw ForyError.invalidData("missing user type id for id-registered type")
                 }
-                context.writer.writeVarUInt32(userTypeID)
+                context.buffer.writeVarUInt32(userTypeID)
             }
         }
     }
 
     static func foryReadTypeInfo(_ context: ReadContext) throws {
-        let rawTypeID = try context.reader.readVarUInt32()
+        let rawTypeID = try context.buffer.readVarUInt32()
         guard let typeID = ForyTypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")
         }
@@ -256,7 +256,7 @@ public extension Serializer {
                 guard let localUserTypeID = info.userTypeID else {
                     throw ForyError.invalidData("missing user type id for id-registered type")
                 }
-                let remoteUserTypeID = try context.reader.readVarUInt32()
+                let remoteUserTypeID = try context.buffer.readVarUInt32()
                 if remoteUserTypeID != localUserTypeID {
                     throw ForyError.typeMismatch(expected: localUserTypeID, actual: remoteUserTypeID)
                 }
@@ -447,15 +447,15 @@ public extension Serializer {
         let bytes = normalized.bytes
         let assignment = context.metaStringWriteState.assignIndexIfAbsent(for: normalized)
         if assignment.isNew {
-            context.writer.writeVarUInt32(UInt32(bytes.count) << 1)
+            context.buffer.writeVarUInt32(UInt32(bytes.count) << 1)
             if bytes.count > 16 {
-                context.writer.writeInt64(Int64(bitPattern: javaMetaStringHash(metaString: normalized)))
+                context.buffer.writeInt64(Int64(bitPattern: javaMetaStringHash(metaString: normalized)))
             } else if !bytes.isEmpty {
-                context.writer.writeUInt8(normalized.encoding.rawValue)
+                context.buffer.writeUInt8(normalized.encoding.rawValue)
             }
-            context.writer.writeBytes(bytes)
+            context.buffer.writeBytes(bytes)
         } else {
-            context.writer.writeVarUInt32(((assignment.index + 1) << 1) | 1)
+            context.buffer.writeVarUInt32(((assignment.index + 1) << 1) | 1)
         }
     }
 
@@ -464,7 +464,7 @@ public extension Serializer {
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {
-        let header = try context.reader.readVarUInt32()
+        let header = try context.buffer.readVarUInt32()
         let length = Int(header >> 1)
         let isRef = (header & 1) == 1
         if isRef {
@@ -484,14 +484,14 @@ public extension Serializer {
         } else {
             let encoding: MetaStringEncoding
             if length > 16 {
-                let hash = try context.reader.readInt64()
+                let hash = try context.buffer.readInt64()
                 let rawEncoding = UInt8(truncatingIfNeeded: hash & 0xFF)
                 guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
                     throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
                 }
                 encoding = resolved
             } else {
-                let rawEncoding = try context.reader.readUInt8()
+                let rawEncoding = try context.buffer.readUInt8()
                 guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
                     throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
                 }
@@ -500,7 +500,7 @@ public extension Serializer {
             guard encodings.contains(encoding) else {
                 throw ForyError.invalidData("meta string encoding \(encoding) not allowed in this context")
             }
-            let bytes = try context.reader.readBytes(count: length)
+            let bytes = try context.buffer.readBytes(count: length)
             value = try decoder.decode(bytes: bytes, encoding: encoding)
         }
         context.metaStringReadState.append(value)

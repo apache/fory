@@ -165,7 +165,7 @@ public struct DynamicTypeInfo {
 }
 
 public final class WriteContext {
-    public let writer: ByteBuffer
+    public let buffer: ByteBuffer
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
@@ -174,14 +174,14 @@ public final class WriteContext {
     public let metaStringWriteState: MetaStringWriteState
 
     public init(
-        writer: ByteBuffer,
+        buffer: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
         compatibleTypeDefState: CompatibleTypeDefWriteState = CompatibleTypeDefWriteState(),
         metaStringWriteState: MetaStringWriteState = MetaStringWriteState()
     ) {
-        self.writer = writer
+        self.buffer = buffer
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
@@ -197,10 +197,10 @@ public final class WriteContext {
         let typeID = ObjectIdentifier(type)
         let assignment = compatibleTypeDefState.assignIndexIfAbsent(for: typeID)
         if assignment.isNew {
-            writer.writeVarUInt32(assignment.index << 1)
-            writer.writeBytes(try typeMeta.encode())
+            buffer.writeVarUInt32(assignment.index << 1)
+            buffer.writeBytes(try typeMeta.encode())
         } else {
-            writer.writeVarUInt32((assignment.index << 1) | 1)
+            buffer.writeVarUInt32((assignment.index << 1) | 1)
         }
     }
 
@@ -221,7 +221,7 @@ private struct PendingRefSlot {
 }
 
 public final class ReadContext {
-    public let reader: ByteBuffer
+    public let buffer: ByteBuffer
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
@@ -235,14 +235,14 @@ public final class ReadContext {
     private var canonicalReferenceCache: [CanonicalReferenceSignature: [CanonicalReferenceEntry]] = [:]
 
     public init(
-        reader: ByteBuffer,
+        buffer: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
-        self.reader = reader
+        self.buffer = buffer
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
@@ -279,7 +279,7 @@ public final class ReadContext {
     }
 
     public func readCompatibleTypeMeta() throws -> TypeMeta {
-        let indexMarker = try reader.readVarUInt32()
+        let indexMarker = try buffer.readVarUInt32()
         let isRef = (indexMarker & 1) == 1
         let index = Int(indexMarker >> 1)
         if isRef {
@@ -288,7 +288,7 @@ public final class ReadContext {
             }
             return typeMeta
         }
-        let typeMeta = try TypeMeta.decode(reader)
+        let typeMeta = try TypeMeta.decode(buffer)
         try compatibleTypeDefState.storeTypeMeta(typeMeta, at: index)
         return typeMeta
     }
@@ -333,7 +333,7 @@ public final class ReadContext {
             return value
         }
 
-        let bytes = Array(reader.storage[start..<end])
+        let bytes = Array(buffer.storage[start..<end])
         let (hashLo, hashHi) = MurmurHash3.x64_128(bytes, seed: 47)
         let signature = CanonicalReferenceSignature(
             typeID: ObjectIdentifier(type(of: object)),
