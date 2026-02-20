@@ -109,6 +109,7 @@ private enum FieldEncoding: String {
 
 private enum DynamicAnyCodecKind {
     case anyValue
+    case anyHashableValue
     case anyList
     case stringAnyMap
     case int32AnyMap
@@ -646,6 +647,10 @@ private func resolveDynamicAnyCodec(rawType: String) throws -> DynamicAnyCodecKi
     let optional = unwrapOptional(rawType)
     let concreteType = trimType(optional.type)
 
+    if concreteType == "AnyHashable" {
+        return .anyHashableValue
+    }
+
     if isDynamicAnyConcreteType(concreteType) {
         return .anyValue
     }
@@ -782,7 +787,7 @@ private func buildSchemaFingerprint(fields: [ParsedField]) -> String {
                 switch dynamicAnyCodec {
                 case .anyValue:
                     trackRefExpr = "trackRef ? 1 : 0"
-                case .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
+                case .anyHashableValue, .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
                     trackRefExpr = "0"
                 }
             } else {
@@ -1070,6 +1075,8 @@ private func dynamicAnyWriteLine(
     switch dynamicAnyCodec {
     case .anyValue:
         return "try context.writeAny(self.\(field.name), refMode: \(refModeExpr), writeTypeInfo: true, hasGenerics: false)"
+    case .anyHashableValue:
+        return "try context.writeAny(self.\(field.name), refMode: \(refModeExpr), writeTypeInfo: true, hasGenerics: false)"
     case .anyList:
         if field.isOptional {
             return "try context.writeAnyList(self.\(field.name) as [Any]?, refMode: \(refModeExpr), hasGenerics: true)"
@@ -1103,6 +1110,8 @@ private func dynamicAnyReadExpr(
     switch dynamicAnyCodec {
     case .anyValue:
         return "try castAnyDynamicValue(context.readAny(refMode: \(refModeExpr), readTypeInfo: true), to: \(metatypeExpr))"
+    case .anyHashableValue:
+        return "try castAnyDynamicValue(context.readAny(refMode: \(refModeExpr), readTypeInfo: true), to: \(metatypeExpr))"
     case .anyList:
         return "try castAnyDynamicValue(context.readAnyList(refMode: \(refModeExpr)), to: \(metatypeExpr))"
     case .stringAnyMap:
@@ -1120,7 +1129,7 @@ private func fieldRefModeExpression(_ field: ParsedField) -> String {
         switch dynamicAnyCodec {
         case .anyValue:
             return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef)"
-        case .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
+        case .anyHashableValue, .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
             return "RefMode.from(nullable: \(nullable), trackRef: false)"
         }
     }
@@ -1136,7 +1145,7 @@ private func compatibleTypeMetaFieldExpression(
         switch dynamicAnyCodec {
         case .anyValue:
             fieldTrackRefExpression = trackRefExpression
-        case .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
+        case .anyHashableValue, .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
             fieldTrackRefExpression = "false"
         }
     } else {
@@ -1366,6 +1375,9 @@ private func dynamicAnyDefaultExpr(typeText: String) -> String {
     let concreteType = normalizeTypeForDynamicAny(optional.type)
     if concreteType == "AnyObject" {
         return "NSNull()"
+    }
+    if concreteType == "AnyHashable" {
+        return "AnyHashable(Int32(0))"
     }
     if concreteType == "Any" || isAnySerializerExistentialType(concreteType) {
         return "ForyAnyNullValue()"
