@@ -29,12 +29,74 @@ type ByteBuffer struct {
 	data        []byte // Most accessed field first for cache locality
 	writerIndex int
 	readerIndex int
-	reader		io.Reader
-	minCap		int
+	reader      io.Reader
+	minCap      int
 }
 
 func NewByteBuffer(data []byte) *ByteBuffer {
 	return &ByteBuffer{data: data}
+}
+
+func NewByteBufferFromReader(r io.Reader, minCap int) *ByteBuffer {
+	if minCap <= 0 {
+		minCap = 4096
+	}
+	return &ByteBuffer{
+		data:   make([]byte, 0, minCap),
+		reader: r,
+		minCap: minCap,
+	}
+}
+
+//go:noinline
+func (b *ByteBuffer) fill(n int) bool {
+	if b.reader == nil {
+		return false
+	}
+
+	available := len(b.data) - b.readerIndex
+	if available >= n {
+		return true
+	}
+
+	if b.readerIndex > 0 {
+		copy(b.data, b.data[b.readerIndex:])
+		b.writerIndex -= b.readerIndex
+		b.readerIndex = 0
+		b.data = b.data[:b.writerIndex]
+	}
+
+	if cap(b.data) < n {
+		newCap := cap(b.data) * 2
+		if newCap < n {
+			newCap = n
+		}
+		if newCap < b.minCap {
+			newCap = b.minCap
+		}
+		newData := make([]byte, len(b.data), newCap)
+		copy(newData, b.data)
+		b.data = newData
+	}
+
+	for len(b.data) < n {
+		spare := b.data[len(b.data):cap(b.data)]
+		if len(spare) == 0 {
+			return false
+		}
+		readBytes, err := b.reader.Read(spare)
+		if readBytes > 0 {
+			b.data = b.data[:len(b.data)+readBytes]
+			b.writerIndex += readBytes
+		}
+		if err != nil {
+			if len(b.data) >= n {
+				return true
+			}
+			return false
+		}
+	}
+	return true
 }
 
 // grow ensures there's space for n more bytes. Hot path is inlined.
