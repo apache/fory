@@ -239,11 +239,11 @@ private struct MyExt: Serializer, Equatable {
 
     func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeVarInt32(id)
+        context.buffer.writeVarInt32(id)
     }
 
     static func foryReadData(_ context: ReadContext) throws -> MyExt {
-        MyExt(id: try context.reader.readVarInt32())
+        MyExt(id: try context.buffer.readVarInt32())
     }
 }
 
@@ -389,41 +389,41 @@ private func debugLog(_ message: String) {
 }
 
 private func verifyBufferCase(_ caseName: String, _ payload: [UInt8]) throws -> [UInt8] {
-    let reader = ByteReader(bytes: payload)
-    let writer = ByteWriter(capacity: payload.count)
+    let inputBuffer = ByteBuffer(bytes: payload)
+    let outputBuffer = ByteBuffer(capacity: payload.count)
     switch caseName {
     case "test_buffer":
-        writer.writeUInt8(try reader.readUInt8())
-        writer.writeInt8(try reader.readInt8())
-        writer.writeInt16(try reader.readInt16())
-        writer.writeInt32(try reader.readInt32())
-        writer.writeInt64(try reader.readInt64())
-        writer.writeFloat32(try reader.readFloat32())
-        writer.writeFloat64(try reader.readFloat64())
-        writer.writeVarUInt32(try reader.readVarUInt32())
-        let bytesLen = Int(try reader.readInt32())
-        writer.writeInt32(Int32(bytesLen))
-        writer.writeBytes(try reader.readBytes(count: bytesLen))
+        outputBuffer.writeUInt8(try inputBuffer.readUInt8())
+        outputBuffer.writeInt8(try inputBuffer.readInt8())
+        outputBuffer.writeInt16(try inputBuffer.readInt16())
+        outputBuffer.writeInt32(try inputBuffer.readInt32())
+        outputBuffer.writeInt64(try inputBuffer.readInt64())
+        outputBuffer.writeFloat32(try inputBuffer.readFloat32())
+        outputBuffer.writeFloat64(try inputBuffer.readFloat64())
+        outputBuffer.writeVarUInt32(try inputBuffer.readVarUInt32())
+        let bytesLen = Int(try inputBuffer.readInt32())
+        outputBuffer.writeInt32(Int32(bytesLen))
+        outputBuffer.writeBytes(try inputBuffer.readBytes(count: bytesLen))
     case "test_buffer_var":
         for _ in 0..<18 {
-            writer.writeVarInt32(try reader.readVarInt32())
+            outputBuffer.writeVarInt32(try inputBuffer.readVarInt32())
         }
         for _ in 0..<12 {
-            writer.writeVarUInt32(try reader.readVarUInt32())
+            outputBuffer.writeVarUInt32(try inputBuffer.readVarUInt32())
         }
         for _ in 0..<19 {
-            writer.writeVarUInt64(try reader.readVarUInt64())
+            outputBuffer.writeVarUInt64(try inputBuffer.readVarUInt64())
         }
         for _ in 0..<15 {
-            writer.writeVarInt64(try reader.readVarInt64())
+            outputBuffer.writeVarInt64(try inputBuffer.readVarInt64())
         }
     default:
         throw PeerError.unsupportedCase(caseName)
     }
-    if reader.remaining != 0 {
+    if inputBuffer.remaining != 0 {
         throw ForyError.invalidData("unexpected trailing bytes for case \(caseName)")
     }
-    return [UInt8](writer.toData())
+    return [UInt8](outputBuffer.toData())
 }
 
 private func roundTripSingle<T: Serializer>(
@@ -437,44 +437,44 @@ private func roundTripSingle<T: Serializer>(
 
 private func roundTripStream(
     _ bytes: [UInt8],
-    _ action: (_ reader: ByteReader, _ out: inout Data) throws -> Void
+    _ action: (_ buffer: ByteBuffer, _ out: inout Data) throws -> Void
 ) throws -> [UInt8] {
-    let reader = ByteReader(bytes: bytes)
+    let buffer = ByteBuffer(bytes: bytes)
     var out = Data()
-    try action(reader, &out)
-    if reader.remaining != 0 {
-        throw ForyError.invalidData("unexpected trailing bytes in stream: \(reader.remaining)")
+    try action(buffer, &out)
+    if buffer.remaining != 0 {
+        throw ForyError.invalidData("unexpected trailing bytes in stream: \(buffer.remaining)")
     }
     return [UInt8](out)
 }
 
 private func handleMurmurHash(_ bytes: [UInt8]) throws -> [UInt8] {
-    let reader = ByteReader(bytes: bytes)
-    let writer = ByteWriter(capacity: bytes.count)
+    let inputBuffer = ByteBuffer(bytes: bytes)
+    let outputBuffer = ByteBuffer(capacity: bytes.count)
     switch bytes.count {
     case 16:
         for _ in 0..<2 {
-            writer.writeInt64(try reader.readInt64())
+            outputBuffer.writeInt64(try inputBuffer.readInt64())
         }
     case 32:
         for _ in 0..<4 {
-            writer.writeInt64(try reader.readInt64())
+            outputBuffer.writeInt64(try inputBuffer.readInt64())
         }
     default:
         throw ForyError.invalidData("unexpected murmurhash payload size \(bytes.count)")
     }
-    if reader.remaining != 0 {
+    if inputBuffer.remaining != 0 {
         throw ForyError.invalidData("unexpected trailing bytes for murmurhash")
     }
-    return [UInt8](writer.toData())
+    return [UInt8](outputBuffer.toData())
 }
 
 private func handleStringSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
-    return try roundTripStream(bytes) { reader, out in
+    return try roundTripStream(bytes) { buffer, out in
         for _ in 0..<7 {
-            let value: String = try fory.deserializeFrom(reader)
-            try fory.serializeTo(&out, value: value)
+            let value: String = try fory.deserialize(from: buffer)
+            try fory.serialize(value, to: &out)
         }
     }
 }
@@ -483,62 +483,62 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(PeerColor.self, id: 101)
 
-    return try roundTripStream(bytes) { reader, out in
-        let b1: Bool = try fory.deserializeFrom(reader)
-        let b2: Bool = try fory.deserializeFrom(reader)
-        let i32a: Int32 = try fory.deserializeFrom(reader)
-        let i8a: Int8 = try fory.deserializeFrom(reader)
-        let i8b: Int8 = try fory.deserializeFrom(reader)
-        let i16a: Int16 = try fory.deserializeFrom(reader)
-        let i16b: Int16 = try fory.deserializeFrom(reader)
-        let i32b: Int32 = try fory.deserializeFrom(reader)
-        let i32c: Int32 = try fory.deserializeFrom(reader)
-        let i64a: Int64 = try fory.deserializeFrom(reader)
-        let i64b: Int64 = try fory.deserializeFrom(reader)
-        let f32: Float = try fory.deserializeFrom(reader)
-        let f64: Double = try fory.deserializeFrom(reader)
-        let str: String = try fory.deserializeFrom(reader)
-        let day: ForyDate = try fory.deserializeFrom(reader)
-        let ts: ForyTimestamp = try fory.deserializeFrom(reader)
-        let boolArray: [Bool] = try fory.deserializeFrom(reader)
-        let byteArray: [UInt8] = try fory.deserializeFrom(reader)
-        let shortArray: [Int16] = try fory.deserializeFrom(reader)
-        let intArray: [Int32] = try fory.deserializeFrom(reader)
-        let longArray: [Int64] = try fory.deserializeFrom(reader)
-        let floatArray: [Float] = try fory.deserializeFrom(reader)
-        let doubleArray: [Double] = try fory.deserializeFrom(reader)
-        let list: [String] = try fory.deserializeFrom(reader)
-        let set: Set<String> = try fory.deserializeFrom(reader)
-        let map: [String: String] = try fory.deserializeFrom(reader)
-        let color: PeerColor = try fory.deserializeFrom(reader)
+    return try roundTripStream(bytes) { buffer, out in
+        let b1: Bool = try fory.deserialize(from: buffer)
+        let b2: Bool = try fory.deserialize(from: buffer)
+        let i32a: Int32 = try fory.deserialize(from: buffer)
+        let i8a: Int8 = try fory.deserialize(from: buffer)
+        let i8b: Int8 = try fory.deserialize(from: buffer)
+        let i16a: Int16 = try fory.deserialize(from: buffer)
+        let i16b: Int16 = try fory.deserialize(from: buffer)
+        let i32b: Int32 = try fory.deserialize(from: buffer)
+        let i32c: Int32 = try fory.deserialize(from: buffer)
+        let i64a: Int64 = try fory.deserialize(from: buffer)
+        let i64b: Int64 = try fory.deserialize(from: buffer)
+        let f32: Float = try fory.deserialize(from: buffer)
+        let f64: Double = try fory.deserialize(from: buffer)
+        let str: String = try fory.deserialize(from: buffer)
+        let day: ForyDate = try fory.deserialize(from: buffer)
+        let ts: ForyTimestamp = try fory.deserialize(from: buffer)
+        let boolArray: [Bool] = try fory.deserialize(from: buffer)
+        let byteArray: [UInt8] = try fory.deserialize(from: buffer)
+        let shortArray: [Int16] = try fory.deserialize(from: buffer)
+        let intArray: [Int32] = try fory.deserialize(from: buffer)
+        let longArray: [Int64] = try fory.deserialize(from: buffer)
+        let floatArray: [Float] = try fory.deserialize(from: buffer)
+        let doubleArray: [Double] = try fory.deserialize(from: buffer)
+        let list: [String] = try fory.deserialize(from: buffer)
+        let set: Set<String> = try fory.deserialize(from: buffer)
+        let map: [String: String] = try fory.deserialize(from: buffer)
+        let color: PeerColor = try fory.deserialize(from: buffer)
 
-        try fory.serializeTo(&out, value: b1)
-        try fory.serializeTo(&out, value: b2)
-        try fory.serializeTo(&out, value: i32a)
-        try fory.serializeTo(&out, value: i8a)
-        try fory.serializeTo(&out, value: i8b)
-        try fory.serializeTo(&out, value: i16a)
-        try fory.serializeTo(&out, value: i16b)
-        try fory.serializeTo(&out, value: i32b)
-        try fory.serializeTo(&out, value: i32c)
-        try fory.serializeTo(&out, value: i64a)
-        try fory.serializeTo(&out, value: i64b)
-        try fory.serializeTo(&out, value: f32)
-        try fory.serializeTo(&out, value: f64)
-        try fory.serializeTo(&out, value: str)
-        try fory.serializeTo(&out, value: day)
-        try fory.serializeTo(&out, value: ts)
-        try fory.serializeTo(&out, value: boolArray)
-        try fory.serializeTo(&out, value: byteArray)
-        try fory.serializeTo(&out, value: shortArray)
-        try fory.serializeTo(&out, value: intArray)
-        try fory.serializeTo(&out, value: longArray)
-        try fory.serializeTo(&out, value: floatArray)
-        try fory.serializeTo(&out, value: doubleArray)
-        try fory.serializeTo(&out, value: list)
-        try fory.serializeTo(&out, value: set)
-        try fory.serializeTo(&out, value: map)
-        try fory.serializeTo(&out, value: color)
+        try fory.serialize(b1, to: &out)
+        try fory.serialize(b2, to: &out)
+        try fory.serialize(i32a, to: &out)
+        try fory.serialize(i8a, to: &out)
+        try fory.serialize(i8b, to: &out)
+        try fory.serialize(i16a, to: &out)
+        try fory.serialize(i16b, to: &out)
+        try fory.serialize(i32b, to: &out)
+        try fory.serialize(i32c, to: &out)
+        try fory.serialize(i64a, to: &out)
+        try fory.serialize(i64b, to: &out)
+        try fory.serialize(f32, to: &out)
+        try fory.serialize(f64, to: &out)
+        try fory.serialize(str, to: &out)
+        try fory.serialize(day, to: &out)
+        try fory.serialize(ts, to: &out)
+        try fory.serialize(boolArray, to: &out)
+        try fory.serialize(byteArray, to: &out)
+        try fory.serialize(shortArray, to: &out)
+        try fory.serialize(intArray, to: &out)
+        try fory.serialize(longArray, to: &out)
+        try fory.serialize(floatArray, to: &out)
+        try fory.serialize(doubleArray, to: &out)
+        try fory.serialize(list, to: &out)
+        try fory.serialize(set, to: &out)
+        try fory.serialize(map, to: &out)
+        try fory.serialize(color, to: &out)
     }
 }
 
@@ -561,70 +561,70 @@ private func handleNamedSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
 private func handleList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(Item.self, id: 102)
-    return try roundTripStream(bytes) { reader, out in
-        let v1: [String?] = try fory.deserializeFrom(reader)
-        let v2: [String?] = try fory.deserializeFrom(reader)
-        let v3: [Item?] = try fory.deserializeFrom(reader)
-        let v4: [Item?] = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: v1)
-        try fory.serializeTo(&out, value: v2)
-        try fory.serializeTo(&out, value: v3)
-        try fory.serializeTo(&out, value: v4)
+    return try roundTripStream(bytes) { buffer, out in
+        let v1: [String?] = try fory.deserialize(from: buffer)
+        let v2: [String?] = try fory.deserialize(from: buffer)
+        let v3: [Item?] = try fory.deserialize(from: buffer)
+        let v4: [Item?] = try fory.deserialize(from: buffer)
+        try fory.serialize(v1, to: &out)
+        try fory.serialize(v2, to: &out)
+        try fory.serialize(v3, to: &out)
+        try fory.serialize(v4, to: &out)
     }
 }
 
 private func handleMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(Item.self, id: 102)
-    return try roundTripStream(bytes) { reader, out in
-        let v1: [String?: String?] = try fory.deserializeFrom(reader)
-        let v2: [String?: Item?] = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: v1)
-        try fory.serializeTo(&out, value: v2)
+    return try roundTripStream(bytes) { buffer, out in
+        let v1: [String?: String?] = try fory.deserialize(from: buffer)
+        let v2: [String?: Item?] = try fory.deserialize(from: buffer)
+        try fory.serialize(v1, to: &out)
+        try fory.serialize(v2, to: &out)
     }
 }
 
 private func handleInteger(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(Item1.self, id: 101)
-    return try roundTripStream(bytes) { reader, out in
-        let item: Item1 = try fory.deserializeFrom(reader)
-        let f1: Int32 = try fory.deserializeFrom(reader)
-        let f2: Int32 = try fory.deserializeFrom(reader)
-        let f3: Int32 = try fory.deserializeFrom(reader)
-        let f4: Int32 = try fory.deserializeFrom(reader)
-        let f5: Int32 = try fory.deserializeFrom(reader)
-        let f6: Int32 = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: item)
-        try fory.serializeTo(&out, value: f1)
-        try fory.serializeTo(&out, value: f2)
-        try fory.serializeTo(&out, value: f3)
-        try fory.serializeTo(&out, value: f4)
-        try fory.serializeTo(&out, value: f5)
-        try fory.serializeTo(&out, value: f6)
+    return try roundTripStream(bytes) { buffer, out in
+        let item: Item1 = try fory.deserialize(from: buffer)
+        let f1: Int32 = try fory.deserialize(from: buffer)
+        let f2: Int32 = try fory.deserialize(from: buffer)
+        let f3: Int32 = try fory.deserialize(from: buffer)
+        let f4: Int32 = try fory.deserialize(from: buffer)
+        let f5: Int32 = try fory.deserialize(from: buffer)
+        let f6: Int32 = try fory.deserialize(from: buffer)
+        try fory.serialize(item, to: &out)
+        try fory.serialize(f1, to: &out)
+        try fory.serialize(f2, to: &out)
+        try fory.serialize(f3, to: &out)
+        try fory.serialize(f4, to: &out)
+        try fory.serialize(f5, to: &out)
+        try fory.serialize(f6, to: &out)
     }
 }
 
 private func handleItem(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(Item.self, id: 102)
-    return try roundTripStream(bytes) { reader, out in
-        let i1: Item = try fory.deserializeFrom(reader)
-        let i2: Item = try fory.deserializeFrom(reader)
-        let i3: Item = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: i1)
-        try fory.serializeTo(&out, value: i2)
-        try fory.serializeTo(&out, value: i3)
+    return try roundTripStream(bytes) { buffer, out in
+        let i1: Item = try fory.deserialize(from: buffer)
+        let i2: Item = try fory.deserialize(from: buffer)
+        let i3: Item = try fory.deserialize(from: buffer)
+        try fory.serialize(i1, to: &out)
+        try fory.serialize(i2, to: &out)
+        try fory.serialize(i3, to: &out)
     }
 }
 
 private func handleColor(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(PeerColor.self, id: 101)
-    return try roundTripStream(bytes) { reader, out in
+    return try roundTripStream(bytes) { buffer, out in
         for _ in 0..<4 {
-            let color: PeerColor = try fory.deserializeFrom(reader)
-            try fory.serializeTo(&out, value: color)
+            let color: PeerColor = try fory.deserialize(from: buffer)
+            try fory.serialize(color, to: &out)
         }
     }
 }
@@ -632,22 +632,22 @@ private func handleColor(_ bytes: [UInt8]) throws -> [UInt8] {
 private func handleStructWithList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(StructWithList.self, id: 201)
-    return try roundTripStream(bytes) { reader, out in
-        let v1: StructWithList = try fory.deserializeFrom(reader)
-        let v2: StructWithList = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: v1)
-        try fory.serializeTo(&out, value: v2)
+    return try roundTripStream(bytes) { buffer, out in
+        let v1: StructWithList = try fory.deserialize(from: buffer)
+        let v2: StructWithList = try fory.deserialize(from: buffer)
+        try fory.serialize(v1, to: &out)
+        try fory.serialize(v2, to: &out)
     }
 }
 
 private func handleStructWithMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(StructWithMap.self, id: 202)
-    return try roundTripStream(bytes) { reader, out in
-        let v1: StructWithMap = try fory.deserializeFrom(reader)
-        let v2: StructWithMap = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: v1)
-        try fory.serializeTo(&out, value: v2)
+    return try roundTripStream(bytes) { buffer, out in
+        let v1: StructWithMap = try fory.deserialize(from: buffer)
+        let v2: StructWithMap = try fory.deserialize(from: buffer)
+        try fory.serialize(v1, to: &out)
+        try fory.serialize(v2, to: &out)
     }
 }
 
@@ -674,18 +674,18 @@ private func handleConsistentNamed(_ bytes: [UInt8]) throws -> [UInt8] {
     try fory.register(PeerColor.self, name: "color")
     try fory.register(MyStruct.self, name: "my_struct")
     try fory.register(MyExt.self, name: "my_ext")
-    return try roundTripStream(bytes) { reader, out in
+    return try roundTripStream(bytes) { buffer, out in
         for _ in 0..<3 {
-            let color: PeerColor = try fory.deserializeFrom(reader)
-            try fory.serializeTo(&out, value: color)
+            let color: PeerColor = try fory.deserialize(from: buffer)
+            try fory.serialize(color, to: &out)
         }
         for _ in 0..<3 {
-            let myStruct: MyStruct = try fory.deserializeFrom(reader)
-            try fory.serializeTo(&out, value: myStruct)
+            let myStruct: MyStruct = try fory.deserialize(from: buffer)
+            try fory.serialize(myStruct, to: &out)
         }
         for _ in 0..<3 {
-            let myExt: MyExt = try fory.deserializeFrom(reader)
-            try fory.serializeTo(&out, value: myExt)
+            let myExt: MyExt = try fory.deserialize(from: buffer)
+            try fory.serialize(myExt, to: &out)
         }
     }
 }
@@ -706,33 +706,33 @@ private func registerPolymorphicTypes(_ fory: Fory) {
 private func handlePolymorphicList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     registerPolymorphicTypes(fory)
-    return try roundTripStream(bytes) { reader, out in
-        let animals: [Any] = try fory.deserializeFrom(reader)
-        let holder: AnimalListHolder = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: animals)
-        try fory.serializeTo(&out, value: holder)
+    return try roundTripStream(bytes) { buffer, out in
+        let animals: [Any] = try fory.deserialize(from: buffer)
+        let holder: AnimalListHolder = try fory.deserialize(from: buffer)
+        try fory.serialize(animals, to: &out)
+        try fory.serialize(holder, to: &out)
     }
 }
 
 private func handlePolymorphicMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     registerPolymorphicTypes(fory)
-    return try roundTripStream(bytes) { reader, out in
-        let animalMap: [String: Any] = try fory.deserializeFrom(reader)
-        let holder: AnimalMapHolder = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: animalMap)
-        try fory.serializeTo(&out, value: holder)
+    return try roundTripStream(bytes) { buffer, out in
+        let animalMap: [String: Any] = try fory.deserialize(from: buffer)
+        let holder: AnimalMapHolder = try fory.deserialize(from: buffer)
+        try fory.serialize(animalMap, to: &out)
+        try fory.serialize(holder, to: &out)
     }
 }
 
 private func handleUnionXlang(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(StructWithUnion2.self, id: 301)
-    return try roundTripStream(bytes) { reader, out in
-        let v1: StructWithUnion2 = try fory.deserializeFrom(reader)
-        let v2: StructWithUnion2 = try fory.deserializeFrom(reader)
-        try fory.serializeTo(&out, value: v1)
-        try fory.serializeTo(&out, value: v2)
+    return try roundTripStream(bytes) { buffer, out in
+        let v1: StructWithUnion2 = try fory.deserialize(from: buffer)
+        let v2: StructWithUnion2 = try fory.deserialize(from: buffer)
+        try fory.serialize(v1, to: &out)
+        try fory.serialize(v2, to: &out)
     }
 }
 

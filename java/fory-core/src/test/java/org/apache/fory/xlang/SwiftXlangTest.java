@@ -41,7 +41,7 @@ import org.testng.annotations.Test;
 public class SwiftXlangTest extends XlangTestBase {
   private static final Logger LOG = LoggerFactory.getLogger(SwiftXlangTest.class);
   private static final String SWIFT_EXECUTABLE = "swift";
-  private static final String SWIFT_PEER_TARGET = "ForySwiftXlangPeer";
+  private static final String SWIFT_PEER_TARGET = "ForyXlangTests";
   private static final File SWIFT_WORK_DIR = new File("../../swift");
   private static final Path SWIFT_WORK_DIR_PATH = SWIFT_WORK_DIR.toPath();
   private static final Path SWIFT_PEER_BINARY_PATH =

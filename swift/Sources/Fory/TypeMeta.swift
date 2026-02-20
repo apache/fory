@@ -67,7 +67,7 @@ public struct TypeMetaFieldType: Equatable, Sendable {
     }
 
     fileprivate func write(
-        _ writer: ByteWriter,
+        _ buffer: ByteBuffer,
         writeFlags: Bool,
         nullableOverride: Bool? = nil
     ) {
@@ -79,33 +79,33 @@ public struct TypeMetaFieldType: Equatable, Sendable {
             if trackRef {
                 header |= 0b1
             }
-            writer.writeVarUInt32(header)
+            buffer.writeVarUInt32(header)
         } else {
-            writer.writeUInt8(UInt8(truncatingIfNeeded: typeID))
+            buffer.writeUInt8(UInt8(truncatingIfNeeded: typeID))
         }
 
         if typeID == ForyTypeId.list.rawValue || typeID == ForyTypeId.set.rawValue {
             let element = generics.first ?? TypeMetaFieldType(typeID: ForyTypeId.unknown.rawValue, nullable: true)
-            element.write(writer, writeFlags: true, nullableOverride: element.nullable)
+            element.write(buffer, writeFlags: true, nullableOverride: element.nullable)
         } else if typeID == ForyTypeId.map.rawValue {
             let key = generics.first ?? TypeMetaFieldType(typeID: ForyTypeId.unknown.rawValue, nullable: true)
             let value = generics.dropFirst().first ?? TypeMetaFieldType(typeID: ForyTypeId.unknown.rawValue, nullable: true)
-            key.write(writer, writeFlags: true, nullableOverride: key.nullable)
-            value.write(writer, writeFlags: true, nullableOverride: value.nullable)
+            key.write(buffer, writeFlags: true, nullableOverride: key.nullable)
+            value.write(buffer, writeFlags: true, nullableOverride: value.nullable)
         }
     }
 
     fileprivate static func read(
-        _ reader: ByteReader,
+        _ buffer: ByteBuffer,
         readFlags: Bool,
         nullable: Bool? = nil,
         trackRef: Bool? = nil
     ) throws -> TypeMetaFieldType {
         let header: UInt32
         if readFlags {
-            header = try reader.readVarUInt32()
+            header = try buffer.readVarUInt32()
         } else {
-            header = UInt32(try reader.readUInt8())
+            header = UInt32(try buffer.readUInt8())
         }
 
         let typeID: UInt32
@@ -123,7 +123,7 @@ public struct TypeMetaFieldType: Equatable, Sendable {
         }
 
         if typeID == ForyTypeId.list.rawValue || typeID == ForyTypeId.set.rawValue {
-            let element = try read(reader, readFlags: true)
+            let element = try read(buffer, readFlags: true)
             return TypeMetaFieldType(
                 typeID: typeID,
                 nullable: resolvedNullable,
@@ -132,8 +132,8 @@ public struct TypeMetaFieldType: Equatable, Sendable {
             )
         }
         if typeID == ForyTypeId.map.rawValue {
-            let key = try read(reader, readFlags: true)
-            let value = try read(reader, readFlags: true)
+            let key = try read(buffer, readFlags: true)
+            let value = try read(buffer, readFlags: true)
             return TypeMetaFieldType(
                 typeID: typeID,
                 nullable: resolvedNullable,
@@ -162,7 +162,7 @@ public struct TypeMetaFieldInfo: Equatable, Sendable {
         self.fieldType = fieldType
     }
 
-    fileprivate func write(_ writer: ByteWriter) throws {
+    fileprivate func write(_ buffer: ByteBuffer) throws {
         var header: UInt8 = 0
         if fieldType.trackRef {
             header |= 0b1
@@ -179,13 +179,13 @@ public struct TypeMetaFieldInfo: Equatable, Sendable {
             header |= UInt8(0b11 << 6)
             if size >= fieldNameSizeThreshold {
                 header |= 0b0011_1100
-                writer.writeUInt8(header)
-                writer.writeVarUInt32(UInt32(size - fieldNameSizeThreshold))
+                buffer.writeUInt8(header)
+                buffer.writeVarUInt32(UInt32(size - fieldNameSizeThreshold))
             } else {
                 header |= UInt8(size << 2)
-                writer.writeUInt8(header)
+                buffer.writeUInt8(header)
             }
-            fieldType.write(writer, writeFlags: false)
+            fieldType.write(buffer, writeFlags: false)
             return
         }
 
@@ -199,30 +199,30 @@ public struct TypeMetaFieldInfo: Equatable, Sendable {
         header |= UInt8(encodingIndex << 6)
         if size >= fieldNameSizeThreshold {
             header |= 0b0011_1100
-            writer.writeUInt8(header)
-            writer.writeVarUInt32(UInt32(size - fieldNameSizeThreshold))
+            buffer.writeUInt8(header)
+            buffer.writeVarUInt32(UInt32(size - fieldNameSizeThreshold))
         } else {
             header |= UInt8(size << 2)
-            writer.writeUInt8(header)
+            buffer.writeUInt8(header)
         }
 
-        fieldType.write(writer, writeFlags: false)
-        writer.writeBytes(encoded.bytes)
+        fieldType.write(buffer, writeFlags: false)
+        buffer.writeBytes(encoded.bytes)
     }
 
-    fileprivate static func read(_ reader: ByteReader) throws -> TypeMetaFieldInfo {
-        let header = try reader.readUInt8()
+    fileprivate static func read(_ buffer: ByteBuffer) throws -> TypeMetaFieldInfo {
+        let header = try buffer.readUInt8()
         let encodingFlags = Int((header >> 6) & 0b11)
         var size = Int((header >> 2) & 0b1111)
         if size == fieldNameSizeThreshold {
-            size += Int(try reader.readVarUInt32())
+            size += Int(try buffer.readVarUInt32())
         }
         size += 1
 
         let nullable = (header & 0b10) != 0
         let trackRef = (header & 0b1) != 0
         let fieldType = try TypeMetaFieldType.read(
-            reader,
+            buffer,
             readFlags: false,
             nullable: nullable,
             trackRef: trackRef
@@ -240,7 +240,7 @@ public struct TypeMetaFieldInfo: Equatable, Sendable {
         guard encodingFlags < fieldNameMetaStringEncodings.count else {
             throw ForyError.invalidData("invalid field name encoding id")
         }
-        let nameBytes = try reader.readBytes(count: size)
+        let nameBytes = try buffer.readBytes(count: size)
         let name = try MetaStringDecoder.fieldName
             .decode(bytes: nameBytes, encoding: fieldNameMetaStringEncodings[encodingFlags])
             .value
@@ -315,35 +315,35 @@ public struct TypeMeta: Equatable, Sendable {
         }
         header |= UInt64(min(body.count, Int(typeMetaSizeMask)))
 
-        let writer = ByteWriter(capacity: body.count + 16)
-        writer.writeUInt64(header)
+        let buffer = ByteBuffer(capacity: body.count + 16)
+        buffer.writeUInt64(header)
         if body.count >= Int(typeMetaSizeMask) {
-            writer.writeVarUInt32(UInt32(body.count - Int(typeMetaSizeMask)))
+            buffer.writeVarUInt32(UInt32(body.count - Int(typeMetaSizeMask)))
         }
-        writer.writeBytes(body)
-        return writer.storage
+        buffer.writeBytes(body)
+        return buffer.storage
     }
 
     public static func decode(_ bytes: [UInt8]) throws -> TypeMeta {
-        try decode(ByteReader(bytes: bytes))
+        try decode(ByteBuffer(bytes: bytes))
     }
 
-    public static func decode(_ reader: ByteReader) throws -> TypeMeta {
-        let header = try reader.readUInt64()
+    public static func decode(_ buffer: ByteBuffer) throws -> TypeMeta {
+        let header = try buffer.readUInt64()
         let compressed = (header & typeMetaCompressedFlag) != 0
         let hasFieldsMeta = (header & typeMetaHasFieldsMetaFlag) != 0
 
         var metaSize = Int(header & typeMetaSizeMask)
         if metaSize == Int(typeMetaSizeMask) {
-            metaSize += Int(try reader.readVarUInt32())
+            metaSize += Int(try buffer.readVarUInt32())
         }
 
-        let encodedBody = try reader.readBytes(count: metaSize)
+        let encodedBody = try buffer.readBytes(count: metaSize)
         if compressed {
             throw ForyError.encodingError("compressed TypeMeta is not supported yet")
         }
 
-        let bodyReader = ByteReader(bytes: encodedBody)
+        let bodyReader = ByteBuffer(bytes: encodedBody)
         let metaHeader = try bodyReader.readUInt8()
 
         var numFields = Int(metaHeader & UInt8(smallNumFieldsThreshold))
@@ -395,21 +395,21 @@ public struct TypeMeta: Equatable, Sendable {
     }
 
     private func encodeBody() throws -> [UInt8] {
-        let writer = ByteWriter(capacity: 128)
+        let buffer = ByteBuffer(capacity: 128)
 
         var metaHeader = UInt8(min(fields.count, smallNumFieldsThreshold))
         if registerByName {
             metaHeader |= registerByNameFlag
         }
-        writer.writeUInt8(metaHeader)
+        buffer.writeUInt8(metaHeader)
 
         if fields.count >= smallNumFieldsThreshold {
-            writer.writeVarUInt32(UInt32(fields.count - smallNumFieldsThreshold))
+            buffer.writeVarUInt32(UInt32(fields.count - smallNumFieldsThreshold))
         }
 
         if registerByName {
-            try Self.writeName(writer, name: namespace, encodings: namespaceMetaStringEncodings)
-            try Self.writeName(writer, name: typeName, encodings: typeNameMetaStringEncodings)
+            try Self.writeName(buffer, name: namespace, encodings: namespaceMetaStringEncodings)
+            try Self.writeName(buffer, name: typeName, encodings: typeNameMetaStringEncodings)
         } else {
             guard let typeID else {
                 throw ForyError.encodingError("type id is required in register-by-id mode")
@@ -417,19 +417,19 @@ public struct TypeMeta: Equatable, Sendable {
             guard let userTypeID, userTypeID != noUserTypeID else {
                 throw ForyError.encodingError("user type id is required in register-by-id mode")
             }
-            writer.writeUInt8(UInt8(truncatingIfNeeded: typeID))
-            writer.writeVarUInt32(userTypeID)
+            buffer.writeUInt8(UInt8(truncatingIfNeeded: typeID))
+            buffer.writeVarUInt32(userTypeID)
         }
 
         for field in fields {
-            try field.write(writer)
+            try field.write(buffer)
         }
 
-        return writer.storage
+        return buffer.storage
     }
 
     private static func writeName(
-        _ writer: ByteWriter,
+        _ buffer: ByteBuffer,
         name: MetaString,
         encodings: [MetaStringEncoding]
     ) throws {
@@ -454,20 +454,20 @@ public struct TypeMeta: Equatable, Sendable {
 
         let bytes = normalizedName.bytes
         if bytes.count >= bigNameThreshold {
-            writer.writeUInt8(UInt8((bigNameThreshold << 2) | encodingIndex))
-            writer.writeVarUInt32(UInt32(bytes.count - bigNameThreshold))
+            buffer.writeUInt8(UInt8((bigNameThreshold << 2) | encodingIndex))
+            buffer.writeVarUInt32(UInt32(bytes.count - bigNameThreshold))
         } else {
-            writer.writeUInt8(UInt8((bytes.count << 2) | encodingIndex))
+            buffer.writeUInt8(UInt8((bytes.count << 2) | encodingIndex))
         }
-        writer.writeBytes(bytes)
+        buffer.writeBytes(bytes)
     }
 
     private static func readName(
-        _ reader: ByteReader,
+        _ buffer: ByteBuffer,
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {
-        let header = try reader.readUInt8()
+        let header = try buffer.readUInt8()
         let encodingIndex = Int(header & 0b11)
         guard encodingIndex < encodings.count else {
             throw ForyError.invalidData("invalid meta string encoding index")
@@ -475,9 +475,9 @@ public struct TypeMeta: Equatable, Sendable {
 
         var length = Int(header >> 2)
         if length >= bigNameThreshold {
-            length = bigNameThreshold + Int(try reader.readVarUInt32())
+            length = bigNameThreshold + Int(try buffer.readVarUInt32())
         }
-        let bytes = try reader.readBytes(count: length)
+        let bytes = try buffer.readBytes(count: length)
         return try decoder.decode(bytes: bytes, encoding: encodings[encodingIndex])
     }
 }

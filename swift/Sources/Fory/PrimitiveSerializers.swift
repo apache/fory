@@ -23,11 +23,11 @@ extension Bool: Serializer {
     public static func foryDefault() -> Bool { false }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeUInt8(self ? 1 : 0)
+        context.buffer.writeUInt8(self ? 1 : 0)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Bool {
-        try context.reader.readUInt8() != 0
+        try context.buffer.readUInt8() != 0
     }
 }
 
@@ -37,11 +37,11 @@ extension Int8: Serializer {
     public static func foryDefault() -> Int8 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeInt8(self)
+        context.buffer.writeInt8(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Int8 {
-        try context.reader.readInt8()
+        try context.buffer.readInt8()
     }
 }
 
@@ -51,11 +51,11 @@ extension Int16: Serializer {
     public static func foryDefault() -> Int16 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeInt16(self)
+        context.buffer.writeInt16(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Int16 {
-        try context.reader.readInt16()
+        try context.buffer.readInt16()
     }
 }
 
@@ -65,11 +65,11 @@ extension Int32: Serializer {
     public static func foryDefault() -> Int32 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarInt32(self)
+        context.buffer.writeVarInt32(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Int32 {
-        try context.reader.readVarInt32()
+        try context.buffer.readVarInt32()
     }
 }
 
@@ -79,11 +79,11 @@ extension Int64: Serializer {
     public static func foryDefault() -> Int64 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarInt64(self)
+        context.buffer.writeVarInt64(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Int64 {
-        try context.reader.readVarInt64()
+        try context.buffer.readVarInt64()
     }
 }
 
@@ -93,11 +93,11 @@ extension UInt8: Serializer {
     public static func foryDefault() -> UInt8 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeUInt8(self)
+        context.buffer.writeUInt8(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> UInt8 {
-        try context.reader.readUInt8()
+        try context.buffer.readUInt8()
     }
 }
 
@@ -107,11 +107,11 @@ extension UInt16: Serializer {
     public static func foryDefault() -> UInt16 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeUInt16(self)
+        context.buffer.writeUInt16(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> UInt16 {
-        try context.reader.readUInt16()
+        try context.buffer.readUInt16()
     }
 }
 
@@ -121,11 +121,11 @@ extension UInt32: Serializer {
     public static func foryDefault() -> UInt32 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarUInt32(self)
+        context.buffer.writeVarUInt32(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> UInt32 {
-        try context.reader.readVarUInt32()
+        try context.buffer.readVarUInt32()
     }
 }
 
@@ -135,11 +135,11 @@ extension UInt64: Serializer {
     public static func foryDefault() -> UInt64 { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarUInt64(self)
+        context.buffer.writeVarUInt64(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> UInt64 {
-        try context.reader.readVarUInt64()
+        try context.buffer.readVarUInt64()
     }
 }
 
@@ -154,11 +154,11 @@ public struct ForyInt32Fixed: Serializer, Equatable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeInt32(rawValue)
+        context.buffer.writeInt32(rawValue)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyInt32Fixed {
-        .init(rawValue: try context.reader.readInt32())
+        .init(rawValue: try context.buffer.readInt32())
     }
 }
 
@@ -173,11 +173,11 @@ public struct ForyInt64Fixed: Serializer, Equatable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeInt64(rawValue)
+        context.buffer.writeInt64(rawValue)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyInt64Fixed {
-        .init(rawValue: try context.reader.readInt64())
+        .init(rawValue: try context.buffer.readInt64())
     }
 }
 
@@ -192,11 +192,11 @@ public struct ForyInt64Tagged: Serializer, Equatable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeTaggedInt64(rawValue)
+        context.buffer.writeTaggedInt64(rawValue)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyInt64Tagged {
-        .init(rawValue: try context.reader.readTaggedInt64())
+        .init(rawValue: try context.buffer.readTaggedInt64())
     }
 }
 
@@ -211,11 +211,11 @@ public struct ForyUInt32Fixed: Serializer, Equatable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeUInt32(rawValue)
+        context.buffer.writeUInt32(rawValue)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyUInt32Fixed {
-        .init(rawValue: try context.reader.readUInt32())
+        .init(rawValue: try context.buffer.readUInt32())
     }
 }
 
@@ -230,11 +230,11 @@ public struct ForyUInt64Fixed: Serializer, Equatable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeUInt64(rawValue)
+        context.buffer.writeUInt64(rawValue)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyUInt64Fixed {
-        .init(rawValue: try context.reader.readUInt64())
+        .init(rawValue: try context.buffer.readUInt64())
     }
 }
 
@@ -249,11 +249,11 @@ public struct ForyUInt64Tagged: Serializer, Equatable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeTaggedUInt64(rawValue)
+        context.buffer.writeTaggedUInt64(rawValue)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyUInt64Tagged {
-        .init(rawValue: try context.reader.readTaggedUInt64())
+        .init(rawValue: try context.buffer.readTaggedUInt64())
     }
 }
 
@@ -264,11 +264,11 @@ extension Int: Serializer {
     public static func foryDefault() -> Int { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarInt64(Int64(self))
+        context.buffer.writeVarInt64(Int64(self))
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Int {
-        Int(try context.reader.readVarInt64())
+        Int(try context.buffer.readVarInt64())
     }
 }
 
@@ -278,11 +278,11 @@ extension UInt: Serializer {
     public static func foryDefault() -> UInt { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarUInt64(UInt64(self))
+        context.buffer.writeVarUInt64(UInt64(self))
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> UInt {
-        UInt(try context.reader.readVarUInt64())
+        UInt(try context.buffer.readVarUInt64())
     }
 }
 #endif
@@ -293,11 +293,11 @@ extension Float: Serializer {
     public static func foryDefault() -> Float { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeFloat32(self)
+        context.buffer.writeFloat32(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Float {
-        try context.reader.readFloat32()
+        try context.buffer.readFloat32()
     }
 }
 
@@ -307,11 +307,11 @@ extension Double: Serializer {
     public static func foryDefault() -> Double { 0 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeFloat64(self)
+        context.buffer.writeFloat64(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Double {
-        try context.reader.readFloat64()
+        try context.buffer.readFloat64()
     }
 }
 
@@ -338,15 +338,15 @@ extension String: Serializer {
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         let utf8Bytes = Array(self.utf8)
         let header = (UInt64(utf8Bytes.count) << 2) | StringEncoding.utf8.rawValue
-        context.writer.writeVarUInt36Small(header)
-        context.writer.writeBytes(utf8Bytes)
+        context.buffer.writeVarUInt36Small(header)
+        context.buffer.writeBytes(utf8Bytes)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> String {
-        let header = try context.reader.readVarUInt36Small()
+        let header = try context.buffer.readVarUInt36Small()
         let encoding = header & 0x03
         let byteLength = Int(header >> 2)
-        let bytes = try context.reader.readBytes(count: byteLength)
+        let bytes = try context.buffer.readBytes(count: byteLength)
 
         switch encoding {
         case StringEncoding.utf8.rawValue:
@@ -379,13 +379,13 @@ extension Data: Serializer {
     public static func foryDefault() -> Data { Data() }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.writer.writeVarUInt32(UInt32(self.count))
-        context.writer.writeData(self)
+        context.buffer.writeVarUInt32(UInt32(self.count))
+        context.buffer.writeData(self)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Data {
-        let length = try context.reader.readVarUInt32()
-        let bytes = try context.reader.readBytes(count: Int(length))
+        let length = try context.buffer.readVarUInt32()
+        let bytes = try context.buffer.readBytes(count: Int(length))
         return Data(bytes)
     }
 }

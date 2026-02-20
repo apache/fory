@@ -165,7 +165,7 @@ public struct DynamicTypeInfo {
 }
 
 public final class WriteContext {
-    public let writer: ByteWriter
+    public let buffer: ByteBuffer
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
@@ -174,14 +174,14 @@ public final class WriteContext {
     public let metaStringWriteState: MetaStringWriteState
 
     public init(
-        writer: ByteWriter,
+        buffer: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
         compatibleTypeDefState: CompatibleTypeDefWriteState = CompatibleTypeDefWriteState(),
         metaStringWriteState: MetaStringWriteState = MetaStringWriteState()
     ) {
-        self.writer = writer
+        self.buffer = buffer
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
@@ -197,10 +197,10 @@ public final class WriteContext {
         let typeID = ObjectIdentifier(type)
         let assignment = compatibleTypeDefState.assignIndexIfAbsent(for: typeID)
         if assignment.isNew {
-            writer.writeVarUInt32(assignment.index << 1)
-            writer.writeBytes(try typeMeta.encode())
+            buffer.writeVarUInt32(assignment.index << 1)
+            buffer.writeBytes(try typeMeta.encode())
         } else {
-            writer.writeVarUInt32((assignment.index << 1) | 1)
+            buffer.writeVarUInt32((assignment.index << 1) | 1)
         }
     }
 
@@ -221,7 +221,7 @@ private struct PendingRefSlot {
 }
 
 public final class ReadContext {
-    public let reader: ByteReader
+    public let buffer: ByteBuffer
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
@@ -235,14 +235,14 @@ public final class ReadContext {
     private var canonicalReferenceCache: [CanonicalReferenceSignature: [CanonicalReferenceEntry]] = [:]
 
     public init(
-        reader: ByteReader,
+        buffer: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
-        self.reader = reader
+        self.buffer = buffer
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
@@ -279,7 +279,7 @@ public final class ReadContext {
     }
 
     public func readCompatibleTypeMeta() throws -> TypeMeta {
-        let indexMarker = try reader.readVarUInt32()
+        let indexMarker = try buffer.readVarUInt32()
         let isRef = (indexMarker & 1) == 1
         let index = Int(indexMarker >> 1)
         if isRef {
@@ -288,7 +288,7 @@ public final class ReadContext {
             }
             return typeMeta
         }
-        let typeMeta = try TypeMeta.decode(reader)
+        let typeMeta = try TypeMeta.decode(buffer)
         try compatibleTypeDefState.storeTypeMeta(typeMeta, at: index)
         return typeMeta
     }
@@ -333,7 +333,7 @@ public final class ReadContext {
             return value
         }
 
-        let bytes = Array(reader.storage[start..<end])
+        let bytes = Array(buffer.storage[start..<end])
         let (hashLo, hashHi) = MurmurHash3.x64_128(bytes, seed: 47)
         let signature = CanonicalReferenceSignature(
             typeID: ObjectIdentifier(type(of: object)),
@@ -441,6 +441,23 @@ private func writeInt32AnyMapGlobal(
 }
 
 @inline(__always)
+private func writeAnyHashableAnyMapGlobal(
+    _ value: [AnyHashable: Any]?,
+    context: WriteContext,
+    refMode: RefMode,
+    writeTypeInfo: Bool,
+    hasGenerics: Bool
+) throws {
+    try writeAnyHashableAnyMap(
+        value,
+        context: context,
+        refMode: refMode,
+        writeTypeInfo: writeTypeInfo,
+        hasGenerics: hasGenerics
+    )
+}
+
+@inline(__always)
 private func readAnyGlobal(
     context: ReadContext,
     refMode: RefMode,
@@ -486,6 +503,19 @@ private func readInt32AnyMapGlobal(
     readTypeInfo: Bool
 ) throws -> [Int32: Any]? {
     try readInt32AnyMap(
+        context: context,
+        refMode: refMode,
+        readTypeInfo: readTypeInfo
+    )
+}
+
+@inline(__always)
+private func readAnyHashableAnyMapGlobal(
+    context: ReadContext,
+    refMode: RefMode,
+    readTypeInfo: Bool
+) throws -> [AnyHashable: Any]? {
+    try readAnyHashableAnyMap(
         context: context,
         refMode: refMode,
         readTypeInfo: readTypeInfo
@@ -552,6 +582,21 @@ public extension WriteContext {
             hasGenerics: hasGenerics
         )
     }
+
+    func writeAnyHashableAnyMap(
+        _ value: [AnyHashable: Any]?,
+        refMode: RefMode,
+        writeTypeInfo: Bool = false,
+        hasGenerics: Bool = true
+    ) throws {
+        try writeAnyHashableAnyMapGlobal(
+            value,
+            context: self,
+            refMode: refMode,
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: hasGenerics
+        )
+    }
 }
 
 public extension ReadContext {
@@ -593,6 +638,17 @@ public extension ReadContext {
         readTypeInfo: Bool = false
     ) throws -> [Int32: Any]? {
         try readInt32AnyMapGlobal(
+            context: self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+    }
+
+    func readAnyHashableAnyMap(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [AnyHashable: Any]? {
+        try readAnyHashableAnyMapGlobal(
             context: self,
             refMode: refMode,
             readTypeInfo: readTypeInfo

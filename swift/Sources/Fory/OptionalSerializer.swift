@@ -71,14 +71,14 @@ extension Optional: Serializer where Wrapped: Serializer {
             try wrapped.foryWrite(context, refMode: .none, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
         case .nullOnly:
             guard case .some(let wrapped) = self else {
-                context.writer.writeInt8(RefFlag.null.rawValue)
+                context.buffer.writeInt8(RefFlag.null.rawValue)
                 return
             }
-            context.writer.writeInt8(RefFlag.notNullValue.rawValue)
+            context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
             try wrapped.foryWrite(context, refMode: .none, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
         case .tracking:
             guard case .some(let wrapped) = self else {
-                context.writer.writeInt8(RefFlag.null.rawValue)
+                context.buffer.writeInt8(RefFlag.null.rawValue)
                 return
             }
             try wrapped.foryWrite(context, refMode: .tracking, writeTypeInfo: writeTypeInfo, hasGenerics: hasGenerics)
@@ -94,17 +94,17 @@ extension Optional: Serializer where Wrapped: Serializer {
         case .none:
             return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))
         case .nullOnly:
-            let refFlag = try context.reader.readInt8()
+            let refFlag = try context.buffer.readInt8()
             if refFlag == RefFlag.null.rawValue {
                 return nil
             }
             return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))
         case .tracking:
-            let refFlag = try context.reader.readInt8()
+            let refFlag = try context.buffer.readInt8()
             if refFlag == RefFlag.null.rawValue {
                 return nil
             }
-            context.reader.moveBack(1)
+            context.buffer.moveBack(1)
             return .some(try Wrapped.foryRead(context, refMode: .tracking, readTypeInfo: readTypeInfo))
         }
     }

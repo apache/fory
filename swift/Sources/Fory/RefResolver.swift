@@ -23,16 +23,16 @@ public final class RefWriter {
 
     public init() {}
 
-    public func tryWriteReference(writer: ByteWriter, object: AnyObject) -> Bool {
+    public func tryWriteReference(buffer: ByteBuffer, object: AnyObject) -> Bool {
         let objectID = ObjectIdentifier(object)
         if let refID = refs[objectID] {
-            writer.writeInt8(RefFlag.ref.rawValue)
-            writer.writeVarUInt32(refID)
+            buffer.writeInt8(RefFlag.ref.rawValue)
+            buffer.writeVarUInt32(refID)
             return true
         }
         refs[objectID] = nextRefID
         nextRefID &+= 1
-        writer.writeInt8(RefFlag.refValue.rawValue)
+        buffer.writeInt8(RefFlag.refValue.rawValue)
         return false
     }
 

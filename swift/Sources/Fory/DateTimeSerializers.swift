@@ -34,11 +34,11 @@ public struct ForyDate: Serializer, Equatable, Hashable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeInt32(daysSinceEpoch)
+        context.buffer.writeInt32(daysSinceEpoch)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyDate {
-        .init(daysSinceEpoch: try context.reader.readInt32())
+        .init(daysSinceEpoch: try context.buffer.readInt32())
     }
 }
 
@@ -62,12 +62,12 @@ public struct ForyTimestamp: Serializer, Equatable, Hashable {
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
-        context.writer.writeInt64(seconds)
-        context.writer.writeUInt32(nanos)
+        context.buffer.writeInt64(seconds)
+        context.buffer.writeUInt32(nanos)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> ForyTimestamp {
-        .init(seconds: try context.reader.readInt64(), nanos: try context.reader.readUInt32())
+        .init(seconds: try context.buffer.readInt64(), nanos: try context.buffer.readUInt32())
     }
 
     public init(date: Date) {
@@ -106,12 +106,12 @@ extension Date: Serializer {
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
         let ts = ForyTimestamp(date: self)
-        context.writer.writeInt64(ts.seconds)
-        context.writer.writeUInt32(ts.nanos)
+        context.buffer.writeInt64(ts.seconds)
+        context.buffer.writeUInt32(ts.nanos)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Date {
-        let ts = ForyTimestamp(seconds: try context.reader.readInt64(), nanos: try context.reader.readUInt32())
+        let ts = ForyTimestamp(seconds: try context.buffer.readInt64(), nanos: try context.buffer.readUInt32())
         return ts.toDate()
     }
 }
