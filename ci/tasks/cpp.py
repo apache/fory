@@ -16,20 +16,71 @@
 # under the License.
 
 import logging
+import os
+import subprocess
 from . import common
 
 
-def run(install_deps_only=False):
+def generate_doc_example_tests():
+    # Generate C++ test files from documentation examples.
+    logging.info("Generating documentation example tests")
+
+    script_path = os.path.join(
+        common.PROJECT_ROOT_DIR, "ci", "extract_cpp_doc_examples.py"
+    )
+    output_dir = os.path.join(common.PROJECT_ROOT_DIR, "cpp", "doc_tests")
+
+    result = subprocess.run(
+        [
+            "python",
+            script_path,
+            "--docs-dir",
+            "docs/guide/cpp",
+            "--output-dir",
+            "cpp/doc_tests",
+            "--generate-build",
+        ],
+        cwd=common.PROJECT_ROOT_DIR,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        logging.error(f"Failed to generate doc example tests: {result.stderr}")
+        raise RuntimeError("Failed to generate doc example tests")
+
+    # logging.info(f"Documentation example tests generated in {output_dir}")
+
+
+def run_doc_example_tests():
+    # Generates test files from documentation and runs them with Bazel.
+    generate_doc_example_tests()
+
+    logging.info("Running documentation example tests")
+    test_command = "test //cpp/doc_tests:doc_example_tests"
+    if common.get_os_machine() == "x86_64":
+        test_command = "test --config=x86_64 //cpp/doc_tests:doc_example_tests"
+    common.bazel(test_command)
+
+
+def run(install_deps_only=False, skip_doc_tests=False, doc_tests_only=False):
     """Run C++ CI tasks.
 
     Args:
         install_deps_only: If True, only install dependencies without running tests.
+        skip_doc_tests: If True, skip documentation example tests.
+        doc_tests_only: If True, only run documentation example tests.
     """
     logging.info("Running C++ CI tasks")
     common.install_cpp_deps()
 
     if install_deps_only:
         logging.info("Skipping tests as --install-deps-only was specified")
+        return
+
+    if doc_tests_only:
+        # logging.info("Running only documentation example tests")
+        run_doc_example_tests()
         return
 
     # collect all C++ targets
@@ -42,3 +93,10 @@ def run(install_deps_only=False):
 
     common.bazel(f"{test_command} {targets}")
     logging.info("C++ CI tasks completed successfully")
+
+    # Run documentation example tests
+    if not skip_doc_tests:
+        try:
+            run_doc_example_tests()
+        except Exception as e:
+            logging.warning(f"Documentation example tests failed: {e}")
