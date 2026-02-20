@@ -30,6 +30,24 @@ Apache Fory Swift provides high-performance object graph serialization with stro
 - Built-in support for dynamic values (`Any`, `AnyObject`, `any Serializer`, `AnyHashable`)
 - Reference tracking for shared/circular graphs, including weak references on classes
 
+## Install
+
+Add Fory Swift from the Apache Fory GitHub repository:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/apache/fory.git", branch: "main")
+],
+targets: [
+    .target(
+        name: "MyApp",
+        dependencies: [
+            .product(name: "Fory", package: "fory")
+        ]
+    )
+]
+```
+
 ## Guide Contents
 
 - [Configuration](configuration.md)
