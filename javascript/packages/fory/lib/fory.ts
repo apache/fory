@@ -40,7 +40,7 @@ export default class {
   anySerializer: Serializer;
   typeMeta = TypeMeta;
   config: Config;
-  depth: number = 0;
+  depth = 0;
   maxDepth: number;
 
   constructor(config?: Partial<Config>) {
@@ -77,8 +77,8 @@ export default class {
     this.depth++;
     if (this.depth > this.maxDepth) {
       throw new Error(
-        `Deserialization depth limit exceeded: ${this.depth} > ${this.maxDepth}. ` +
-        `The data may be malicious, or increase maxDepth if needed.`
+        `Deserialization depth limit exceeded: ${this.depth} > ${this.maxDepth}. `
+        + "The data may be malicious, or increase maxDepth if needed."
       );
     }
   }
