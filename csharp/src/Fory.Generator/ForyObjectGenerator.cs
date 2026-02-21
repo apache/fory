@@ -54,14 +54,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    private static readonly DiagnosticDescriptor UnsupportedDynamicAny = new(
-        id: "FORY004",
-        title: "Unsupported dynamic Any field shape",
-        messageFormat: "Member '{0}' has unsupported dynamic Any shape '{1}'. Only object, List<object?> and Dictionary<string|int, object?> are supported.",
-        category: "Fory",
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
-
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<TypeModel?> typeModels = context.SyntaxProvider
@@ -318,14 +310,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 sb.AppendLine(
                     $"            global::Apache.Fory.DynamicAnyCodec.WriteAnyList(ref context, {memberAccess}, {refModeExpr}, false, true);");
                 return;
-            case DynamicAnyKind.StringAnyMap:
-                sb.AppendLine(
-                    $"            global::Apache.Fory.DynamicAnyCodec.WriteStringAnyMap(ref context, {memberAccess}, {refModeExpr}, false, true);");
-                return;
-            case DynamicAnyKind.Int32AnyMap:
-                sb.AppendLine(
-                    $"            global::Apache.Fory.DynamicAnyCodec.WriteInt32AnyMap(ref context, {memberAccess}, {refModeExpr}, false, true);");
-                return;
             case DynamicAnyKind.None:
                 break;
             default:
@@ -368,23 +352,16 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     {
         string indent = new(' ', indentLevel * 2);
         string assignmentTarget = $"{valueVar}.{member.Name}";
+        string typeOfTypeName = StripNullableForTypeOf(member.TypeName);
         switch (member.DynamicAnyKind)
         {
             case DynamicAnyKind.AnyValue:
                 sb.AppendLine(
-                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAny(ref context, {refModeExpr}, true), typeof({member.TypeName}))!;");
+                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAny(ref context, {refModeExpr}, true), typeof({typeOfTypeName}))!;");
                 return;
             case DynamicAnyKind.AnyList:
                 sb.AppendLine(
-                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAnyList(ref context, {refModeExpr}, false), typeof({member.TypeName}))!;");
-                return;
-            case DynamicAnyKind.StringAnyMap:
-                sb.AppendLine(
-                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadStringAnyMap(ref context, {refModeExpr}, false), typeof({member.TypeName}))!;");
-                return;
-            case DynamicAnyKind.Int32AnyMap:
-                sb.AppendLine(
-                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadInt32AnyMap(ref context, {refModeExpr}, false), typeof({member.TypeName}))!;");
+                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAnyList(ref context, {refModeExpr}, false), typeof({typeOfTypeName}))!;");
                 return;
             case DynamicAnyKind.None:
                 break;
@@ -415,6 +392,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             $"{indent}{assignmentTarget} = global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().Read(ref context, {refModeExpr}, {readTypeInfoExpr});");
     }
 
+    private static string StripNullableForTypeOf(string typeName)
+    {
+        return typeName.Replace("?", string.Empty);
+    }
+
     private static string BuildSchemaFingerprintExpression(ImmutableArray<MemberModel> members)
     {
         if (members.IsDefaultOrEmpty)
@@ -436,7 +418,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             string trackRefExpr = member.DynamicAnyKind switch
             {
                 DynamicAnyKind.AnyValue => "(trackRef ? 1 : 0)",
-                DynamicAnyKind.AnyList or DynamicAnyKind.StringAnyMap or DynamicAnyKind.Int32AnyMap => "0",
+                DynamicAnyKind.AnyList => "0",
                 _ => member.Classification.IsBuiltIn
                     ? "0"
                     : $"((trackRef && global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().IsReferenceTrackableType) ? 1 : 0)",
@@ -475,7 +457,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         return member.DynamicAnyKind switch
         {
             DynamicAnyKind.AnyValue => $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef)",
-            DynamicAnyKind.AnyList or DynamicAnyKind.StringAnyMap or DynamicAnyKind.Int32AnyMap =>
+            DynamicAnyKind.AnyList =>
                 $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)",
             _ => member.Classification.IsBuiltIn
                 ? $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)"
@@ -610,11 +592,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         DynamicAnyKind dynamicAnyKind = ResolveDynamicAnyKind(unwrappedType);
-        if (dynamicAnyKind == DynamicAnyKind.Unsupported)
-        {
-            return null;
-        }
-
         TypeResolution resolution = ResolveTypeResolution(unwrappedType, fieldEncoding);
         if (!resolution.Supported)
         {
@@ -1051,7 +1028,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             }
         }
 
-        if (TryGetMapTypeArguments(type, out ITypeSymbol? keyType, out ITypeSymbol? valueType))
+        if (TryGetMapTypeArguments(type, out _, out ITypeSymbol? valueType))
         {
             (bool _, ITypeSymbol unwrappedValue) = UnwrapNullable(valueType);
             if (unwrappedValue.SpecialType != SpecialType.System_Object)
@@ -1059,18 +1036,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 return DynamicAnyKind.None;
             }
 
-            (bool _, ITypeSymbol unwrappedKey) = UnwrapNullable(keyType);
-            if (unwrappedKey.SpecialType == SpecialType.System_String)
-            {
-                return DynamicAnyKind.StringAnyMap;
-            }
-
-            if (unwrappedKey.SpecialType == SpecialType.System_Int32)
-            {
-                return DynamicAnyKind.Int32AnyMap;
-            }
-
-            return DynamicAnyKind.Unsupported;
+            return DynamicAnyKind.None;
         }
 
         return DynamicAnyKind.None;
@@ -1398,9 +1364,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         None,
         AnyValue,
         AnyList,
-        StringAnyMap,
-        Int32AnyMap,
-        Unsupported,
     }
 
     private enum FieldEncoding

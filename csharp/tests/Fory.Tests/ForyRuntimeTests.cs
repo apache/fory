@@ -108,6 +108,14 @@ public sealed class StructWithUnion2
     public Union2<string, long> Union { get; set; } = Union2<string, long>.OfT1(string.Empty);
 }
 
+[ForyObject]
+public sealed class DynamicAnyHolder
+{
+    public object? AnyValue { get; set; }
+    public HashSet<object> AnySet { get; set; } = [];
+    public Dictionary<object, object?> AnyMap { get; set; } = [];
+}
+
 public sealed class ForyRuntimeTests
 {
     [Fact]
@@ -398,5 +406,69 @@ public sealed class ForyRuntimeTests
         Assert.Equal(value.Name, decoded.Name);
         Assert.Equal(value.Color, decoded.Color);
         Assert.Equal(value.Value, decoded.Value);
+    }
+
+    [Fact]
+    public void DynamicObjectSupportsObjectKeyMapAndSet()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        Dictionary<object, object?> map = new()
+        {
+            ["k1"] = 7,
+            [2] = "v2",
+            [true] = null,
+        };
+        Dictionary<object, object?> mapDecoded =
+            Assert.IsType<Dictionary<object, object?>>(fory.DeserializeObject(fory.SerializeObject(map)));
+        Assert.Equal(3, mapDecoded.Count);
+        Assert.Equal(7, mapDecoded["k1"]);
+        Assert.Equal("v2", mapDecoded[2]);
+        Assert.True(mapDecoded.ContainsKey(true));
+        Assert.Null(mapDecoded[true]);
+
+        HashSet<object> set = ["a", 7, false];
+        HashSet<object?> setDecoded =
+            Assert.IsType<HashSet<object?>>(fory.DeserializeObject(fory.SerializeObject(set)));
+        Assert.Equal(3, setDecoded.Count);
+        Assert.Contains("a", setDecoded);
+        Assert.Contains(7, setDecoded);
+        Assert.Contains(false, setDecoded);
+    }
+
+    [Fact]
+    public void GeneratedSerializerSupportsObjectKeyMap()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
+        fory.Register<DynamicAnyHolder>(400);
+
+        DynamicAnyHolder source = new()
+        {
+            AnyValue = new Dictionary<object, object?>
+            {
+                ["inner"] = 9,
+                [10] = "ten",
+            },
+            AnySet = ["x", 123],
+            AnyMap = new Dictionary<object, object?>
+            {
+                ["key1"] = null,
+                [99] = new List<object?> { "n", 1 },
+            },
+        };
+
+        DynamicAnyHolder decoded = fory.Deserialize<DynamicAnyHolder>(fory.Serialize(source));
+        Dictionary<object, object?> dynamicMap = Assert.IsType<Dictionary<object, object?>>(decoded.AnyValue);
+        Assert.Equal(9, dynamicMap["inner"]);
+        Assert.Equal("ten", dynamicMap[10]);
+        Assert.Equal(source.AnySet.Count, decoded.AnySet.Count);
+        Assert.Contains("x", decoded.AnySet);
+        Assert.Contains(123, decoded.AnySet);
+        Assert.Equal(source.AnyMap.Count, decoded.AnyMap.Count);
+        Assert.True(decoded.AnyMap.ContainsKey("key1"));
+        Assert.Null(decoded.AnyMap["key1"]);
+        List<object?> nested = Assert.IsType<List<object?>>(decoded.AnyMap[99]);
+        Assert.Equal("n", nested[0]);
+        Assert.Equal(1, nested[1]);
     }
 }

@@ -187,11 +187,6 @@ public static class SerializerRegistry
             return StaticSerializerBindingFactory.Create<ForyUInt64Tagged, ForyUInt64TaggedSerializer>();
         }
 
-        if (type == typeof(ForyAnyNullValue))
-        {
-            return StaticSerializerBindingFactory.Create<ForyAnyNullValue, ForyAnyNullValueSerializer>();
-        }
-
         if (type == typeof(object))
         {
             return StaticSerializerBindingFactory.Create<object?, DynamicAnyObjectSerializer>();
@@ -275,7 +270,6 @@ public static class SerializerRegistry
         Cache[typeof(string)] = StaticSerializerBindingFactory.Create<string, StringSerializer>();
         Cache[typeof(byte[])] = StaticSerializerBindingFactory.Create<byte[], BinarySerializer>();
         Cache[typeof(object)] = StaticSerializerBindingFactory.Create<object?, DynamicAnyObjectSerializer>();
-        Cache[typeof(ForyAnyNullValue)] = StaticSerializerBindingFactory.Create<ForyAnyNullValue, ForyAnyNullValueSerializer>();
         Cache[typeof(Union)] = StaticSerializerBindingFactory.Create<Union, UnionSerializer<Union>>();
     }
 }

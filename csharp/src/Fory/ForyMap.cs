@@ -260,12 +260,35 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
 
             if (keyNull)
             {
+                DynamicTypeInfo? valueDynamicInfo = null;
+                if (!valueDeclared)
+                {
+                    if (valueDynamicType)
+                    {
+                        valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                    }
+                    else
+                    {
+                        valueSerializer.ReadTypeInfo(ref context);
+                    }
+                }
+
+                if (valueDynamicInfo is not null)
+                {
+                    context.SetDynamicTypeInfo(typeof(TValue), valueDynamicInfo);
+                }
+
                 TValue valueRead = ReadValueElement(
                     ref context,
                     trackValueRef,
-                    valueDynamicType || !valueDeclared,
+                    false,
                     canonicalizeValues,
                     valueSerializer);
+                if (valueDynamicInfo is not null)
+                {
+                    context.ClearDynamicTypeInfo(typeof(TValue));
+                }
+
                 map.Add(default, valueRead);
                 readCount += 1;
                 continue;
@@ -273,13 +296,101 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
 
             if (valueNull)
             {
-                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, keyDynamicType || !keyDeclared);
+                DynamicTypeInfo? keyDynamicInfo = null;
+                if (!keyDeclared)
+                {
+                    if (keyDynamicType)
+                    {
+                        keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                    }
+                    else
+                    {
+                        keySerializer.ReadTypeInfo(ref context);
+                    }
+                }
+
+                if (keyDynamicInfo is not null)
+                {
+                    context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
+                }
+
+                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                if (keyDynamicInfo is not null)
+                {
+                    context.ClearDynamicTypeInfo(typeof(TKey));
+                }
+
                 map.Add(key, (TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
                 continue;
             }
 
             int chunkSize = context.Reader.ReadUInt8();
+            if (keyDynamicType || valueDynamicType)
+            {
+                for (int i = 0; i < chunkSize; i++)
+                {
+                    DynamicTypeInfo? keyDynamicInfo = null;
+                    DynamicTypeInfo? valueDynamicInfo = null;
+
+                    if (!keyDeclared)
+                    {
+                        if (keyDynamicType)
+                        {
+                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                        }
+                        else
+                        {
+                            keySerializer.ReadTypeInfo(ref context);
+                        }
+                    }
+
+                    if (!valueDeclared)
+                    {
+                        if (valueDynamicType)
+                        {
+                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                        }
+                        else
+                        {
+                            valueSerializer.ReadTypeInfo(ref context);
+                        }
+                    }
+
+                    if (keyDynamicInfo is not null)
+                    {
+                        context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
+                    }
+
+                    TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                    if (keyDynamicInfo is not null)
+                    {
+                        context.ClearDynamicTypeInfo(typeof(TKey));
+                    }
+
+                    if (valueDynamicInfo is not null)
+                    {
+                        context.SetDynamicTypeInfo(typeof(TValue), valueDynamicInfo);
+                    }
+
+                    TValue valueRead = ReadValueElement(
+                        ref context,
+                        trackValueRef,
+                        false,
+                        canonicalizeValues,
+                        valueSerializer);
+                    if (valueDynamicInfo is not null)
+                    {
+                        context.ClearDynamicTypeInfo(typeof(TValue));
+                    }
+
+                    map.Add(key, valueRead);
+                }
+
+                readCount += chunkSize;
+                continue;
+            }
+
             if (!keyDeclared)
             {
                 keySerializer.ReadTypeInfo(ref context);

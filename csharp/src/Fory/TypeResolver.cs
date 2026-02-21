@@ -258,6 +258,8 @@ public sealed class TypeResolver
                 return SerializerRegistry.Get<double[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.List:
                 return DynamicAnyCodec.ReadAnyList(ref context, RefMode.None, false) ?? [];
+            case ForyTypeId.Set:
+                return DynamicAnyCodec.ReadAnySet(ref context, RefMode.None, false) ?? new HashSet<object?>();
             case ForyTypeId.Map:
                 return DynamicAnyCodec.ReadDynamicAnyMapValue(ref context);
             case ForyTypeId.Union:
@@ -317,7 +319,7 @@ public sealed class TypeResolver
                 return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, ref context, compatibleTypeMeta);
             }
             case ForyTypeId.None:
-                return new ForyAnyNullValue();
+                return null;
             default:
                 throw new ForyInvalidDataException($"unsupported dynamic type id {typeInfo.WireTypeId}");
         }
