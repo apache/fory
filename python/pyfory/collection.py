@@ -197,7 +197,7 @@ class CollectionSerializer(Serializer):
         for _ in range(len_):
             self._add_element(
                 collection_,
-                self.fory.read_no_ref(buffer, serializer=typeinfo.serializer),
+                self.fory.read_no_ref(buffer, typeinfo.serializer),
             )
         self.fory.dec_depth()
 
@@ -209,7 +209,7 @@ class CollectionSerializer(Serializer):
             else:
                 self._add_element(
                     collection_,
-                    self.fory.read_no_ref(buffer, serializer=typeinfo.serializer),
+                    self.fory.read_no_ref(buffer, typeinfo.serializer),
                 )
         self.fory.dec_depth()
 
@@ -241,7 +241,7 @@ class CollectionSerializer(Serializer):
                 if typeinfo is None:
                     elem = None
                 else:
-                    elem = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
+                    elem = self.fory.read_no_ref(buffer, typeinfo.serializer)
                 self._add_element(collection_, elem)
         else:
             # When ref tracking is disabled but has nulls, read null flag first
@@ -254,7 +254,7 @@ class CollectionSerializer(Serializer):
                     if typeinfo is None:
                         elem = None
                     else:
-                        elem = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
+                        elem = self.fory.read_no_ref(buffer, typeinfo.serializer)
                 self._add_element(collection_, elem)
         self.fory.dec_depth()
 
@@ -575,7 +575,7 @@ class MapSerializer(Serializer):
         return serializer.read(buffer)
 
     def _read_obj_no_ref(self, serializer, buffer):
-        return self.fory.read_no_ref(buffer, serializer=serializer)
+        return self.fory.read_no_ref(buffer, serializer)
 
 
 SubMapSerializer = MapSerializer

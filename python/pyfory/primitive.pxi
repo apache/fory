@@ -53,6 +53,12 @@ cdef class Int32Serializer(Serializer):
 
 @cython.final
 cdef class Int64Serializer(Serializer):
+    cpdef inline xwrite(self, Buffer buffer, value):
+        buffer.write_varint64(value)
+
+    cpdef inline xread(self, Buffer buffer):
+        return buffer.read_varint64()
+
     cpdef inline write(self, Buffer buffer, value):
         buffer.write_varint64(value)
 
@@ -196,6 +202,19 @@ cdef class Float64Serializer(Serializer):
 
     cpdef inline read(self, Buffer buffer):
         return buffer.read_double()
+
+
+@cython.final
+cdef class BFloat16Serializer(Serializer):
+    cpdef inline write(self, Buffer buffer, value):
+        from pyfory.bfloat16 import bfloat16
+        if isinstance(value, bfloat16):
+            buffer.write_bfloat16(value.to_bits())
+        else:
+            buffer.write_bfloat16(bfloat16(value).to_bits())
+
+    cpdef inline read(self, Buffer buffer):
+        return buffer.read_bfloat16()
 
 
 @cython.final

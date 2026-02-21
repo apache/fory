@@ -198,6 +198,7 @@ fixed_uint64 = TypeVar("fixed_uint64", bound=int)
 tagged_uint64 = TypeVar("tagged_uint64", bound=int)
 float32 = TypeVar("float32", bound=float)
 float64 = TypeVar("float64", bound=float)
+bfloat16 = TypeVar("bfloat16", bound=float)
 
 
 class RefMeta:
@@ -314,6 +315,7 @@ uint32_array = TypeVar("uint32_array", bound=array.ArrayType)
 uint64_array = TypeVar("uint64_array", bound=array.ArrayType)
 float32_array = TypeVar("float32_array", bound=array.ArrayType)
 float64_array = TypeVar("float64_array", bound=array.ArrayType)
+bfloat16_array = TypeVar("bfloat16_array", bound=array.ArrayType)
 BoolNDArrayType = TypeVar("BoolNDArrayType", bound=ndarray)
 Int8NDArrayType = TypeVar("Int8NDArrayType", bound=ndarray)
 Uint8NDArrayType = TypeVar("Uint8NDArrayType", bound=ndarray)
@@ -351,6 +353,7 @@ _py_array_types = {
     uint64_array,
     float32_array,
     float64_array,
+    bfloat16_array,
 }
 _np_array_types = {
     BoolNDArrayType,
@@ -384,6 +387,7 @@ _primitive_array_type_ids = {
     TypeId.UINT64_ARRAY,
     TypeId.FLOAT32_ARRAY,
     TypeId.FLOAT64_ARRAY,
+    TypeId.BFLOAT16_ARRAY,
 }
 
 
