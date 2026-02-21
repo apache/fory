@@ -22,7 +22,7 @@ public sealed class ForyObjectAttribute : Attribute
 {
 }
 
-public enum ForyFieldEncoding
+public enum FieldEncoding
 {
     Varint,
     Fixed,
@@ -30,12 +30,7 @@ public enum ForyFieldEncoding
 }
 
 [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
-public sealed class ForyFieldAttribute : Attribute
+public sealed class FieldAttribute : Attribute
 {
-    public ForyFieldAttribute(ForyFieldEncoding encoding)
-    {
-        Encoding = encoding;
-    }
-
-    public ForyFieldEncoding Encoding { get; }
+    public FieldEncoding Encoding { get; set; } = FieldEncoding.Varint;
 }

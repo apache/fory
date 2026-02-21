@@ -48,8 +48,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private static readonly DiagnosticDescriptor UnsupportedEncoding = new(
         id: "FORY003",
-        title: "Unsupported ForyField encoding",
-        messageFormat: "Member '{0}' uses unsupported [ForyField] encoding for type '{1}'.",
+        title: "Unsupported Field encoding",
+        messageFormat: "Member '{0}' uses unsupported [Field] encoding for type '{1}'.",
         category: "Fory",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -569,14 +569,22 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         foreach (AttributeData attribute in memberSymbol.GetAttributes())
         {
             string? attrName = attribute.AttributeClass?.ToDisplayString();
-            if (!string.Equals(attrName, "Apache.Fory.ForyFieldAttribute", StringComparison.Ordinal))
+            if (!string.Equals(attrName, "Apache.Fory.FieldAttribute", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (attribute.ConstructorArguments.Length == 1)
+            foreach (KeyValuePair<string, TypedConstant> namedArg in attribute.NamedArguments)
             {
-                fieldEncoding = (FieldEncoding)(int)attribute.ConstructorArguments[0].Value!;
+                if (!string.Equals(namedArg.Key, "Encoding", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (namedArg.Value.Value is int encoding)
+                {
+                    fieldEncoding = (FieldEncoding)encoding;
+                }
             }
         }
 

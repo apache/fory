@@ -68,10 +68,10 @@ public sealed class FieldOrder
 [ForyObject]
 public sealed class EncodedNumbers
 {
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public uint U32Fixed { get; set; }
 
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong U64Tagged { get; set; }
 }
 

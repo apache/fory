@@ -16,7 +16,6 @@
 // under the License.
 
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Text;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
@@ -302,8 +301,8 @@ internal static class Program
     {
         if (input.Length == 32)
         {
-            (ulong h1a, ulong h1b) = PeerMurmurHash3.X64_128([1, 2, 8], 47);
-            (ulong h2a, ulong h2b) = PeerMurmurHash3.X64_128(Encoding.UTF8.GetBytes("01234567890123456789"), 47);
+            (ulong h1a, ulong h1b) = MurmurHash3.X64_128([1, 2, 8], 47);
+            (ulong h2a, ulong h2b) = MurmurHash3.X64_128(Encoding.UTF8.GetBytes("01234567890123456789"), 47);
             ByteWriter writer = new();
             writer.WriteInt64(unchecked((long)h1a));
             writer.WriteInt64(unchecked((long)h1b));
@@ -317,7 +316,7 @@ internal static class Program
             ByteReader reader = new(input);
             long h1 = reader.ReadInt64();
             long h2 = reader.ReadInt64();
-            (ulong expected1, ulong expected2) = PeerMurmurHash3.X64_128([1, 2, 8], 47);
+            (ulong expected1, ulong expected2) = MurmurHash3.X64_128([1, 2, 8], 47);
             Ensure(h1 == unchecked((long)expected1), "murmur hash h1 mismatch");
             Ensure(h2 == unchecked((long)expected2), "murmur hash h2 mismatch");
             return [];
@@ -1246,10 +1245,10 @@ public sealed class CircularRefStruct
 [ForyObject]
 public sealed class UnsignedSchemaConsistentSimple
 {
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong U64Tagged { get; set; }
 
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong? U64TaggedNullable { get; set; }
 }
 
@@ -1260,30 +1259,30 @@ public sealed class UnsignedSchemaConsistent
     public ushort U16Field { get; set; }
     public uint U32VarField { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public uint U32FixedField { get; set; }
 
     public ulong U64VarField { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public ulong U64FixedField { get; set; }
 
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong U64TaggedField { get; set; }
 
     public byte? U8NullableField { get; set; }
     public ushort? U16NullableField { get; set; }
     public uint? U32VarNullableField { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public uint? U32FixedNullableField { get; set; }
 
     public ulong? U64VarNullableField { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public ulong? U64FixedNullableField { get; set; }
 
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong? U64TaggedNullableField { get; set; }
 }
 
@@ -1294,156 +1293,29 @@ public sealed class UnsignedSchemaCompatible
     public ushort? U16Field1 { get; set; }
     public uint? U32VarField1 { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public uint? U32FixedField1 { get; set; }
 
     public ulong? U64VarField1 { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public ulong? U64FixedField1 { get; set; }
 
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong? U64TaggedField1 { get; set; }
 
     public byte U8Field2 { get; set; }
     public ushort U16Field2 { get; set; }
     public uint U32VarField2 { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public uint U32FixedField2 { get; set; }
 
     public ulong U64VarField2 { get; set; }
 
-    [ForyField(ForyFieldEncoding.Fixed)]
+    [Field(Encoding = FieldEncoding.Fixed)]
     public ulong U64FixedField2 { get; set; }
 
-    [ForyField(ForyFieldEncoding.Tagged)]
+    [Field(Encoding = FieldEncoding.Tagged)]
     public ulong U64TaggedField2 { get; set; }
-}
-
-internal static class PeerMurmurHash3
-{
-    public static (ulong H1, ulong H2) X64_128(ReadOnlySpan<byte> bytes, ulong seed)
-    {
-        const ulong c1 = 0x87c37b91114253d5;
-        const ulong c2 = 0x4cf5ad432745937f;
-
-        ulong h1 = seed;
-        ulong h2 = seed;
-
-        int nblocks = bytes.Length / 16;
-        for (int i = 0; i < nblocks; i++)
-        {
-            int offset = i * 16;
-            ulong k1 = BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset, 8));
-            ulong k2 = BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset + 8, 8));
-
-            k1 *= c1;
-            k1 = RotateLeft(k1, 31);
-            k1 *= c2;
-            h1 ^= k1;
-
-            h1 = RotateLeft(h1, 27);
-            h1 += h2;
-            h1 = h1 * 5 + 0x52dce729;
-
-            k2 *= c2;
-            k2 = RotateLeft(k2, 33);
-            k2 *= c1;
-            h2 ^= k2;
-
-            h2 = RotateLeft(h2, 31);
-            h2 += h1;
-            h2 = h2 * 5 + 0x38495ab5;
-        }
-
-        ulong tk1 = 0;
-        ulong tk2 = 0;
-        int tailStart = nblocks * 16;
-        ReadOnlySpan<byte> tail = bytes.Slice(tailStart);
-        switch (bytes.Length & 15)
-        {
-            case 15:
-                tk2 ^= (ulong)tail[14] << 48;
-                goto case 14;
-            case 14:
-                tk2 ^= (ulong)tail[13] << 40;
-                goto case 13;
-            case 13:
-                tk2 ^= (ulong)tail[12] << 32;
-                goto case 12;
-            case 12:
-                tk2 ^= (ulong)tail[11] << 24;
-                goto case 11;
-            case 11:
-                tk2 ^= (ulong)tail[10] << 16;
-                goto case 10;
-            case 10:
-                tk2 ^= (ulong)tail[9] << 8;
-                goto case 9;
-            case 9:
-                tk2 ^= tail[8];
-                tk2 *= c2;
-                tk2 = RotateLeft(tk2, 33);
-                tk2 *= c1;
-                h2 ^= tk2;
-                goto case 8;
-            case 8:
-                tk1 ^= (ulong)tail[7] << 56;
-                goto case 7;
-            case 7:
-                tk1 ^= (ulong)tail[6] << 48;
-                goto case 6;
-            case 6:
-                tk1 ^= (ulong)tail[5] << 40;
-                goto case 5;
-            case 5:
-                tk1 ^= (ulong)tail[4] << 32;
-                goto case 4;
-            case 4:
-                tk1 ^= (ulong)tail[3] << 24;
-                goto case 3;
-            case 3:
-                tk1 ^= (ulong)tail[2] << 16;
-                goto case 2;
-            case 2:
-                tk1 ^= (ulong)tail[1] << 8;
-                goto case 1;
-            case 1:
-                tk1 ^= tail[0];
-                tk1 *= c1;
-                tk1 = RotateLeft(tk1, 31);
-                tk1 *= c2;
-                h1 ^= tk1;
-                break;
-        }
-
-        h1 ^= (ulong)bytes.Length;
-        h2 ^= (ulong)bytes.Length;
-        h1 += h2;
-        h2 += h1;
-
-        h1 = Fmix64(h1);
-        h2 = Fmix64(h2);
-
-        h1 += h2;
-        h2 += h1;
-
-        return (h1, h2);
-    }
-
-    private static ulong RotateLeft(ulong value, int count)
-    {
-        return (value << count) | (value >> (64 - count));
-    }
-
-    private static ulong Fmix64(ulong x)
-    {
-        x ^= x >> 33;
-        x *= 0xff51afd7ed558ccd;
-        x ^= x >> 33;
-        x *= 0xc4ceb9fe1a85ec53;
-        x ^= x >> 33;
-        return x;
-    }
 }

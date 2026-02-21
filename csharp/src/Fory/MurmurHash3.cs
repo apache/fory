@@ -19,7 +19,7 @@ using System.Buffers.Binary;
 
 namespace Apache.Fory;
 
-internal static class MurmurHash3
+public static class MurmurHash3
 {
     public static (ulong H1, ulong H2) X64_128(ReadOnlySpan<byte> bytes, ulong seed = 47)
     {
@@ -143,4 +143,3 @@ internal static class MurmurHash3
         return x;
     }
 }
-
