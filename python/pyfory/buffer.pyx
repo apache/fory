@@ -30,7 +30,7 @@ from cython.operator cimport dereference as deref
 from libcpp.string cimport string as c_string
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
-from pyfory.bfloat16 cimport bfloat16
+from pyfory.bfloat16 cimport bfloat16, bfloat16_from_bits
 from pyfory.includes.libutil cimport(
     CBuffer, allocate_buffer, get_bit as c_get_bit, set_bit as c_set_bit, clear_bit as c_clear_bit,
     set_bit_to as c_set_bit_to, CError, CErrorCode, CResultVoidError, utf16_has_surrogate_pairs
@@ -251,7 +251,7 @@ cdef class Buffer:
     cpdef inline bfloat16 read_bfloat16(self):
         cdef uint16_t value = self.c_buffer.read_uint16(self._error)
         self._raise_if_error()
-        return bfloat16.from_bits(value)
+        return bfloat16_from_bits(value)
 
     cpdef put_buffer(self, uint32_t offset, v, int32_t src_index, int32_t length):
         if length == 0:  # access an emtpy buffer may raise out-of-bound exception.

@@ -20,8 +20,5 @@ from libc.stdint cimport uint16_t
 cdef class bfloat16:
     cdef uint16_t _bits
 
-    @staticmethod
-    cpdef bfloat16 from_bits(uint16_t bits)
 
-    cpdef uint16_t to_bits(self)
-
+cdef bfloat16 bfloat16_from_bits(uint16_t bits)
