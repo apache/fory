@@ -89,7 +89,7 @@ from pyfory.types import (  # noqa: F401 # pylint: disable=unused-import
     tagged_uint64,
     float32,
     float64,
-    bfloat16,
+    bfloat16 as bfloat16_type,
     bfloat16_array,
     int8_array,
     uint8_array,

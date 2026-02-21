@@ -54,12 +54,12 @@ cdef class bfloat16:
             self._bits = float32_to_bfloat16_bits(<float>float(value))
     
     @staticmethod
-    def from_bits(uint16_t bits):
+    cpdef bfloat16 from_bits(uint16_t bits):
         cdef bfloat16 bf16 = bfloat16.__new__(bfloat16)
         bf16._bits = bits
         return bf16
     
-    def to_bits(self):
+    cpdef uint16_t to_bits(self):
         return self._bits
     
     def to_float32(self):

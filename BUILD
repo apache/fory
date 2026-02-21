@@ -23,6 +23,7 @@ pyx_library(
     name = "buffer",
     srcs = glob([
         "python/pyfory/includes/*.pxd",
+        "python/pyfory/bfloat16.pxd",
         "python/pyfory/buffer.pxd",
         "python/pyfory/buffer.pyx",
         "python/pyfory/__init__.py",
@@ -54,6 +55,7 @@ pyx_library(
     name = "serialization",
     srcs = glob([
         "python/pyfory/includes/*.pxd",
+        "python/pyfory/bfloat16.pxd",
         "python/pyfory/buffer.pxd",
         "python/pyfory/serialization.pyx",
         "python/pyfory/*.pxi",
@@ -73,6 +75,7 @@ pyx_library(
 pyx_library(
     name = "bfloat16",
     srcs = glob([
+        "python/pyfory/bfloat16.pxd",
         "python/pyfory/bfloat16.pyx",
         "python/pyfory/__init__.py",
     ]),

@@ -250,11 +250,8 @@ cdef class Buffer:
 
     cpdef inline bfloat16 read_bfloat16(self):
         cdef uint16_t value = self.c_buffer.read_uint16(self._error)
-        cdef bfloat16 result
         self._raise_if_error()
-        result = bfloat16.__new__(bfloat16)
-        result._bits = value
-        return result
+        return bfloat16.from_bits(value)
 
     cpdef put_buffer(self, uint32_t offset, v, int32_t src_index, int32_t length):
         if length == 0:  # access an emtpy buffer may raise out-of-bound exception.

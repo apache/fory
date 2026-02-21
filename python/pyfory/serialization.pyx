@@ -1362,7 +1362,7 @@ cdef class Fory:
         self.type_resolver.write_type_info(buffer, typeinfo)
         typeinfo.serializer.write(buffer, obj)
 
-    cpdef inline write_no_ref(self, Buffer buffer, obj):
+    cpdef inline write_no_ref(self, Buffer buffer, obj, Serializer serializer=None, TypeInfo typeinfo=None):
         cls = type(obj)
         if cls is str:
             buffer.write_var_uint32(STRING_TYPE_ID)
@@ -1380,9 +1380,12 @@ cdef class Fory:
             buffer.write_var_uint32(FLOAT64_TYPE_ID)
             buffer.write_double(obj)
             return
-        cdef TypeInfo typeinfo = self.type_resolver.get_type_info(cls)
-        self.type_resolver.write_type_info(buffer, typeinfo)
-        typeinfo.serializer.write(buffer, obj)
+        if serializer is None:
+            if typeinfo is None:
+                typeinfo = self.type_resolver.get_type_info(cls)
+            self.type_resolver.write_type_info(buffer, typeinfo)
+            serializer = typeinfo.serializer
+        serializer.write(buffer, obj)
 
     cpdef inline xwrite_ref(
             self, Buffer buffer, obj, Serializer serializer=None):
@@ -1496,20 +1499,24 @@ cdef class Fory:
         ref_resolver.set_read_object(ref_id, o)
         return o
 
-    cpdef inline read_no_ref(self, Buffer buffer):
+    cpdef inline read_no_ref(self, Buffer buffer, Serializer serializer=None):
         """Deserialize not-null and non-reference object from buffer."""
-        cdef TypeInfo typeinfo = self.type_resolver.read_type_info(buffer)
-        cls = typeinfo.cls
-        if cls is str:
-            return buffer.read_string()
-        elif cls is int:
-            return buffer.read_varint64()
-        elif cls is bool:
-            return buffer.read_bool()
-        elif cls is float:
-            return buffer.read_double()
+        cdef TypeInfo typeinfo
+        cdef object cls
+        if serializer is None:
+            typeinfo = self.type_resolver.read_type_info(buffer)
+            cls = typeinfo.cls
+            if cls is str:
+                return buffer.read_string()
+            elif cls is int:
+                return buffer.read_varint64()
+            elif cls is bool:
+                return buffer.read_bool()
+            elif cls is float:
+                return buffer.read_double()
+            serializer = typeinfo.serializer
         self.inc_depth()
-        o = typeinfo.serializer.read(buffer)
+        o = serializer.read(buffer)
         self.depth -= 1
         return o
 
