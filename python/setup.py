@@ -93,10 +93,7 @@ class BinaryDistribution(Distribution):
                         raise
                     # Retry transient dependency fetch failures (e.g. 502 from external archives).
                     backoff_seconds = 5 * attempt
-                    print(
-                        f"Bazel build failed (attempt {attempt}/{max_attempts}), "
-                        f"retrying in {backoff_seconds}s..."
-                    )
+                    print(f"Bazel build failed (attempt {attempt}/{max_attempts}), retrying in {backoff_seconds}s...")
                     time.sleep(backoff_seconds)
 
     def has_ext_modules(self):
