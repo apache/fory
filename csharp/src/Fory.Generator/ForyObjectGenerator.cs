@@ -147,17 +147,17 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        return nullable ? global::Apache.Fory.RefMode.NullOnly : global::Apache.Fory.RefMode.None;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    private static bool __ForyNeedsTypeInfoForField(global::Apache.Fory.ForyTypeId typeId)");
+        sb.AppendLine("    private static bool __ForyNeedsTypeInfoForField(global::Apache.Fory.TypeId typeId)");
         sb.AppendLine("    {");
         sb.AppendLine("        return typeId switch");
         sb.AppendLine("        {");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.Struct or");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.CompatibleStruct or");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.NamedStruct or");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.NamedCompatibleStruct or");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.Ext or");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.NamedExt or");
-        sb.AppendLine("            global::Apache.Fory.ForyTypeId.Unknown => true,");
+        sb.AppendLine("            global::Apache.Fory.TypeId.Struct or");
+        sb.AppendLine("            global::Apache.Fory.TypeId.CompatibleStruct or");
+        sb.AppendLine("            global::Apache.Fory.TypeId.NamedStruct or");
+        sb.AppendLine("            global::Apache.Fory.TypeId.NamedCompatibleStruct or");
+        sb.AppendLine("            global::Apache.Fory.TypeId.Ext or");
+        sb.AppendLine("            global::Apache.Fory.TypeId.NamedExt or");
+        sb.AppendLine("            global::Apache.Fory.TypeId.Unknown => true,");
         sb.AppendLine("            _ => false,");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
@@ -169,7 +169,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine(");");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    public static global::Apache.Fory.ForyTypeId StaticTypeId => global::Apache.Fory.ForyTypeId.Struct;");
+        sb.AppendLine("    public static global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
         if (model.Kind == DeclKind.Class)
         {
             sb.AppendLine("    public static bool IsNullableType => true;");
@@ -248,7 +248,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("            foreach (global::Apache.Fory.TypeMetaFieldInfo remoteField in typeMeta.Fields)");
         sb.AppendLine("            {");
         sb.AppendLine("                global::Apache.Fory.RefMode remoteRefMode = __ForyRefMode(remoteField.FieldType.Nullable, remoteField.FieldType.TrackRef);");
-        sb.AppendLine("                bool remoteReadTypeInfo = __ForyNeedsTypeInfoForField((global::Apache.Fory.ForyTypeId)remoteField.FieldType.TypeId);");
+        sb.AppendLine("                bool remoteReadTypeInfo = __ForyNeedsTypeInfoForField((global::Apache.Fory.TypeId)remoteField.FieldType.TypeId);");
         sb.AppendLine("                switch (remoteField.FieldName)");
         sb.AppendLine("                {");
         foreach (MemberModel member in model.SortedMembers)
@@ -657,7 +657,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 null,
                 0);
             return new TypeMetaFieldTypeModel(
-                "(uint)global::Apache.Fory.ForyTypeId.List",
+                "(uint)global::Apache.Fory.TypeId.List",
                 nullable,
                 false,
                 ImmutableArray.Create(element));
@@ -673,7 +673,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 null,
                 0);
             return new TypeMetaFieldTypeModel(
-                "(uint)global::Apache.Fory.ForyTypeId.Set",
+                "(uint)global::Apache.Fory.TypeId.Set",
                 nullable,
                 false,
                 ImmutableArray.Create(element));
@@ -696,7 +696,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 null,
                 0);
             return new TypeMetaFieldTypeModel(
-                "(uint)global::Apache.Fory.ForyTypeId.Map",
+                "(uint)global::Apache.Fory.TypeId.Map",
                 nullable,
                 false,
                 ImmutableArray.Create(key, value));
@@ -714,7 +714,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         if (IsUnionType(unwrapped))
         {
             return new TypeMetaFieldTypeModel(
-                "(uint)global::Apache.Fory.ForyTypeId.Union",
+                "(uint)global::Apache.Fory.TypeId.Union",
                 nullable,
                 true,
                 ImmutableArray<TypeMetaFieldTypeModel>.Empty);
@@ -723,7 +723,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         if (dynamicAnyKind == DynamicAnyKind.AnyValue)
         {
             return new TypeMetaFieldTypeModel(
-                "(uint)global::Apache.Fory.ForyTypeId.Unknown",
+                "(uint)global::Apache.Fory.TypeId.Unknown",
                 nullable,
                 true,
                 ImmutableArray<TypeMetaFieldTypeModel>.Empty);

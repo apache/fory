@@ -56,56 +56,56 @@ public static class FieldSkipper
         RefMode refMode = RefModeExtensions.From(fieldType.Nullable, fieldType.TrackRef);
         switch (fieldType.TypeId)
         {
-            case (uint)ForyTypeId.Bool:
+            case (uint)TypeId.Bool:
                 return SerializerRegistry.Get<bool>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.Int8:
+            case (uint)TypeId.Int8:
                 return SerializerRegistry.Get<sbyte>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.Int16:
+            case (uint)TypeId.Int16:
                 return SerializerRegistry.Get<short>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.VarInt32:
+            case (uint)TypeId.VarInt32:
                 return SerializerRegistry.Get<int>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.VarInt64:
+            case (uint)TypeId.VarInt64:
                 return SerializerRegistry.Get<long>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.Float32:
+            case (uint)TypeId.Float32:
                 return SerializerRegistry.Get<float>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.Float64:
+            case (uint)TypeId.Float64:
                 return SerializerRegistry.Get<double>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.String:
+            case (uint)TypeId.String:
                 return SerializerRegistry.Get<string>().Read(ref context, refMode, false);
-            case (uint)ForyTypeId.List:
+            case (uint)TypeId.List:
             {
-                if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)ForyTypeId.String)
+                if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
                 {
                     throw new ForyInvalidDataException("unsupported compatible list element type");
                 }
 
                 return SerializerRegistry.Get<List<string>>().Read(ref context, refMode, false);
             }
-            case (uint)ForyTypeId.Set:
+            case (uint)TypeId.Set:
             {
-                if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)ForyTypeId.String)
+                if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
                 {
                     throw new ForyInvalidDataException("unsupported compatible set element type");
                 }
 
                 return SerializerRegistry.Get<HashSet<string>>().Read(ref context, refMode, false);
             }
-            case (uint)ForyTypeId.Map:
+            case (uint)TypeId.Map:
             {
                 if (fieldType.Generics.Count != 2 ||
-                    fieldType.Generics[0].TypeId != (uint)ForyTypeId.String ||
-                    fieldType.Generics[1].TypeId != (uint)ForyTypeId.String)
+                    fieldType.Generics[0].TypeId != (uint)TypeId.String ||
+                    fieldType.Generics[1].TypeId != (uint)TypeId.String)
                 {
                     throw new ForyInvalidDataException("unsupported compatible map key/value type");
                 }
 
                 return SerializerRegistry.Get<Dictionary<string, string>>().Read(ref context, refMode, false);
             }
-            case (uint)ForyTypeId.Enum:
+            case (uint)TypeId.Enum:
                 return ReadEnumOrdinal(ref context, refMode);
-            case (uint)ForyTypeId.Union:
-            case (uint)ForyTypeId.TypedUnion:
-            case (uint)ForyTypeId.NamedUnion:
+            case (uint)TypeId.Union:
+            case (uint)TypeId.TypedUnion:
+            case (uint)TypeId.NamedUnion:
                 return SerializerRegistry.Get<Union>().Read(ref context, refMode, false);
             default:
                 throw new ForyInvalidDataException($"unsupported compatible field type id {fieldType.TypeId}");

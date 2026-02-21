@@ -70,7 +70,7 @@ public readonly record struct ForyTimestamp(long Seconds, uint Nanos)
 
 public readonly struct BoolSerializer : IStaticSerializer<BoolSerializer, bool>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Bool;
+    public static TypeId StaticTypeId => TypeId.Bool;
     public static bool DefaultValue => false;
     public static void WriteData(ref WriteContext context, in bool value, bool hasGenerics)
     {
@@ -86,7 +86,7 @@ public readonly struct BoolSerializer : IStaticSerializer<BoolSerializer, bool>
 
 public readonly struct Int8Serializer : IStaticSerializer<Int8Serializer, sbyte>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Int8;
+    public static TypeId StaticTypeId => TypeId.Int8;
     public static sbyte DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in sbyte value, bool hasGenerics)
     {
@@ -102,7 +102,7 @@ public readonly struct Int8Serializer : IStaticSerializer<Int8Serializer, sbyte>
 
 public readonly struct Int16Serializer : IStaticSerializer<Int16Serializer, short>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Int16;
+    public static TypeId StaticTypeId => TypeId.Int16;
     public static short DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in short value, bool hasGenerics)
     {
@@ -118,7 +118,7 @@ public readonly struct Int16Serializer : IStaticSerializer<Int16Serializer, shor
 
 public readonly struct Int32Serializer : IStaticSerializer<Int32Serializer, int>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.VarInt32;
+    public static TypeId StaticTypeId => TypeId.VarInt32;
     public static int DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in int value, bool hasGenerics)
     {
@@ -134,7 +134,7 @@ public readonly struct Int32Serializer : IStaticSerializer<Int32Serializer, int>
 
 public readonly struct Int64Serializer : IStaticSerializer<Int64Serializer, long>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.VarInt64;
+    public static TypeId StaticTypeId => TypeId.VarInt64;
     public static long DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in long value, bool hasGenerics)
     {
@@ -150,7 +150,7 @@ public readonly struct Int64Serializer : IStaticSerializer<Int64Serializer, long
 
 public readonly struct UInt8Serializer : IStaticSerializer<UInt8Serializer, byte>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.UInt8;
+    public static TypeId StaticTypeId => TypeId.UInt8;
     public static byte DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in byte value, bool hasGenerics)
     {
@@ -166,7 +166,7 @@ public readonly struct UInt8Serializer : IStaticSerializer<UInt8Serializer, byte
 
 public readonly struct UInt16Serializer : IStaticSerializer<UInt16Serializer, ushort>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.UInt16;
+    public static TypeId StaticTypeId => TypeId.UInt16;
     public static ushort DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in ushort value, bool hasGenerics)
     {
@@ -182,7 +182,7 @@ public readonly struct UInt16Serializer : IStaticSerializer<UInt16Serializer, us
 
 public readonly struct UInt32Serializer : IStaticSerializer<UInt32Serializer, uint>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.VarUInt32;
+    public static TypeId StaticTypeId => TypeId.VarUInt32;
     public static uint DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in uint value, bool hasGenerics)
     {
@@ -198,7 +198,7 @@ public readonly struct UInt32Serializer : IStaticSerializer<UInt32Serializer, ui
 
 public readonly struct UInt64Serializer : IStaticSerializer<UInt64Serializer, ulong>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.VarUInt64;
+    public static TypeId StaticTypeId => TypeId.VarUInt64;
     public static ulong DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in ulong value, bool hasGenerics)
     {
@@ -214,7 +214,7 @@ public readonly struct UInt64Serializer : IStaticSerializer<UInt64Serializer, ul
 
 public readonly struct Float32Serializer : IStaticSerializer<Float32Serializer, float>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Float32;
+    public static TypeId StaticTypeId => TypeId.Float32;
     public static float DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in float value, bool hasGenerics)
     {
@@ -230,7 +230,7 @@ public readonly struct Float32Serializer : IStaticSerializer<Float32Serializer, 
 
 public readonly struct Float64Serializer : IStaticSerializer<Float64Serializer, double>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Float64;
+    public static TypeId StaticTypeId => TypeId.Float64;
     public static double DefaultValue => 0;
     public static void WriteData(ref WriteContext context, in double value, bool hasGenerics)
     {
@@ -246,7 +246,7 @@ public readonly struct Float64Serializer : IStaticSerializer<Float64Serializer, 
 
 public readonly struct StringSerializer : IStaticSerializer<StringSerializer, string>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.String;
+    public static TypeId StaticTypeId => TypeId.String;
     public static bool IsNullableType => true;
     public static string DefaultValue => null!;
     public static bool IsNone(in string value) => value is null;
@@ -300,7 +300,7 @@ public readonly struct StringSerializer : IStaticSerializer<StringSerializer, st
 
 public readonly struct BinarySerializer : IStaticSerializer<BinarySerializer, byte[]>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Binary;
+    public static TypeId StaticTypeId => TypeId.Binary;
     public static bool IsNullableType => true;
     public static byte[] DefaultValue => null!;
     public static bool IsNone(in byte[] value) => value is null;
@@ -322,7 +322,7 @@ public readonly struct BinarySerializer : IStaticSerializer<BinarySerializer, by
 
 public readonly struct ForyInt32FixedSerializer : IStaticSerializer<ForyInt32FixedSerializer, ForyInt32Fixed>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Int32;
+    public static TypeId StaticTypeId => TypeId.Int32;
     public static ForyInt32Fixed DefaultValue => new(0);
     public static void WriteData(ref WriteContext context, in ForyInt32Fixed value, bool hasGenerics)
     {
@@ -338,7 +338,7 @@ public readonly struct ForyInt32FixedSerializer : IStaticSerializer<ForyInt32Fix
 
 public readonly struct ForyInt64FixedSerializer : IStaticSerializer<ForyInt64FixedSerializer, ForyInt64Fixed>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Int64;
+    public static TypeId StaticTypeId => TypeId.Int64;
     public static ForyInt64Fixed DefaultValue => new(0);
     public static void WriteData(ref WriteContext context, in ForyInt64Fixed value, bool hasGenerics)
     {
@@ -354,7 +354,7 @@ public readonly struct ForyInt64FixedSerializer : IStaticSerializer<ForyInt64Fix
 
 public readonly struct ForyInt64TaggedSerializer : IStaticSerializer<ForyInt64TaggedSerializer, ForyInt64Tagged>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.TaggedInt64;
+    public static TypeId StaticTypeId => TypeId.TaggedInt64;
     public static ForyInt64Tagged DefaultValue => new(0);
     public static void WriteData(ref WriteContext context, in ForyInt64Tagged value, bool hasGenerics)
     {
@@ -370,7 +370,7 @@ public readonly struct ForyInt64TaggedSerializer : IStaticSerializer<ForyInt64Ta
 
 public readonly struct ForyUInt32FixedSerializer : IStaticSerializer<ForyUInt32FixedSerializer, ForyUInt32Fixed>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.UInt32;
+    public static TypeId StaticTypeId => TypeId.UInt32;
     public static ForyUInt32Fixed DefaultValue => new(0);
     public static void WriteData(ref WriteContext context, in ForyUInt32Fixed value, bool hasGenerics)
     {
@@ -386,7 +386,7 @@ public readonly struct ForyUInt32FixedSerializer : IStaticSerializer<ForyUInt32F
 
 public readonly struct ForyUInt64FixedSerializer : IStaticSerializer<ForyUInt64FixedSerializer, ForyUInt64Fixed>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.UInt64;
+    public static TypeId StaticTypeId => TypeId.UInt64;
     public static ForyUInt64Fixed DefaultValue => new(0);
     public static void WriteData(ref WriteContext context, in ForyUInt64Fixed value, bool hasGenerics)
     {
@@ -402,7 +402,7 @@ public readonly struct ForyUInt64FixedSerializer : IStaticSerializer<ForyUInt64F
 
 public readonly struct ForyUInt64TaggedSerializer : IStaticSerializer<ForyUInt64TaggedSerializer, ForyUInt64Tagged>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.TaggedUInt64;
+    public static TypeId StaticTypeId => TypeId.TaggedUInt64;
     public static ForyUInt64Tagged DefaultValue => new(0);
     public static void WriteData(ref WriteContext context, in ForyUInt64Tagged value, bool hasGenerics)
     {
@@ -419,7 +419,7 @@ public readonly struct ForyUInt64TaggedSerializer : IStaticSerializer<ForyUInt64
 public readonly struct DateOnlySerializer : IStaticSerializer<DateOnlySerializer, DateOnly>
 {
     private static readonly DateOnly Epoch = new(1970, 1, 1);
-    public static ForyTypeId StaticTypeId => ForyTypeId.Date;
+    public static TypeId StaticTypeId => TypeId.Date;
     public static DateOnly DefaultValue => Epoch;
 
     public static void WriteData(ref WriteContext context, in DateOnly value, bool hasGenerics)
@@ -438,7 +438,7 @@ public readonly struct DateOnlySerializer : IStaticSerializer<DateOnlySerializer
 
 public readonly struct DateTimeOffsetSerializer : IStaticSerializer<DateTimeOffsetSerializer, DateTimeOffset>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Timestamp;
+    public static TypeId StaticTypeId => TypeId.Timestamp;
     public static DateTimeOffset DefaultValue => DateTimeOffset.UnixEpoch;
 
     public static void WriteData(ref WriteContext context, in DateTimeOffset value, bool hasGenerics)
@@ -459,7 +459,7 @@ public readonly struct DateTimeOffsetSerializer : IStaticSerializer<DateTimeOffs
 
 public readonly struct DateTimeSerializer : IStaticSerializer<DateTimeSerializer, DateTime>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Timestamp;
+    public static TypeId StaticTypeId => TypeId.Timestamp;
     public static DateTime DefaultValue => DateTime.UnixEpoch;
 
     public static void WriteData(ref WriteContext context, in DateTime value, bool hasGenerics)
@@ -486,7 +486,7 @@ public readonly struct DateTimeSerializer : IStaticSerializer<DateTimeSerializer
 
 public readonly struct TimeSpanSerializer : IStaticSerializer<TimeSpanSerializer, TimeSpan>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Duration;
+    public static TypeId StaticTypeId => TypeId.Duration;
     public static TimeSpan DefaultValue => TimeSpan.Zero;
 
     public static void WriteData(ref WriteContext context, in TimeSpan value, bool hasGenerics)

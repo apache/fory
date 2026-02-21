@@ -23,13 +23,13 @@ public sealed class Fory
 {
     private readonly TypeResolver _typeResolver;
 
-    internal Fory(ForyConfig config)
+    internal Fory(Config config)
     {
         Config = config;
         _typeResolver = new TypeResolver();
     }
 
-    public ForyConfig Config { get; }
+    public Config Config { get; }
 
     public static ForyBuilder Builder()
     {

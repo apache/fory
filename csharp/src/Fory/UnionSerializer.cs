@@ -25,7 +25,7 @@ public readonly struct UnionSerializer<TUnion> : IStaticSerializer<UnionSerializ
 {
     private static readonly Func<int, object?, TUnion> Factory = BuildFactory();
 
-    public static ForyTypeId StaticTypeId => ForyTypeId.TypedUnion;
+    public static TypeId StaticTypeId => TypeId.TypedUnion;
 
     public static bool IsNullableType => true;
 

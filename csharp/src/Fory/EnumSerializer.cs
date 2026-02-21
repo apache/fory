@@ -19,7 +19,7 @@ namespace Apache.Fory;
 
 public readonly struct EnumSerializer<TEnum> : IStaticSerializer<EnumSerializer<TEnum>, TEnum> where TEnum : struct, Enum
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Enum;
+    public static TypeId StaticTypeId => TypeId.Enum;
     public static TEnum DefaultValue => default;
 
     public static void WriteData(ref WriteContext context, in TEnum value, bool hasGenerics)

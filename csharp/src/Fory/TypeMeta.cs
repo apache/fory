@@ -151,21 +151,21 @@ public sealed class TypeMetaFieldType : IEquatable<TypeMetaFieldType>
             writer.WriteUInt8(unchecked((byte)TypeId));
         }
 
-        if (TypeId is (uint)ForyTypeId.List or (uint)ForyTypeId.Set)
+        if (TypeId is (uint)global::Apache.Fory.TypeId.List or (uint)global::Apache.Fory.TypeId.Set)
         {
             TypeMetaFieldType element = Generics.Count > 0
                 ? Generics[0]
-                : new TypeMetaFieldType((uint)ForyTypeId.Unknown, true);
+                : new TypeMetaFieldType((uint)global::Apache.Fory.TypeId.Unknown, true);
             element.Write(writer, true, element.Nullable);
         }
-        else if (TypeId == (uint)ForyTypeId.Map)
+        else if (TypeId == (uint)global::Apache.Fory.TypeId.Map)
         {
             TypeMetaFieldType key = Generics.Count > 0
                 ? Generics[0]
-                : new TypeMetaFieldType((uint)ForyTypeId.Unknown, true);
+                : new TypeMetaFieldType((uint)global::Apache.Fory.TypeId.Unknown, true);
             TypeMetaFieldType value = Generics.Count > 1
                 ? Generics[1]
-                : new TypeMetaFieldType((uint)ForyTypeId.Unknown, true);
+                : new TypeMetaFieldType((uint)global::Apache.Fory.TypeId.Unknown, true);
             key.Write(writer, true, key.Nullable);
             value.Write(writer, true, value.Nullable);
         }
@@ -195,13 +195,13 @@ public sealed class TypeMetaFieldType : IEquatable<TypeMetaFieldType>
             resolvedTrackRef = trackRef ?? false;
         }
 
-        if (typeId is (uint)ForyTypeId.List or (uint)ForyTypeId.Set)
+        if (typeId is (uint)global::Apache.Fory.TypeId.List or (uint)global::Apache.Fory.TypeId.Set)
         {
             TypeMetaFieldType element = Read(reader, true);
             return new TypeMetaFieldType(typeId, resolvedNullable, resolvedTrackRef, [element]);
         }
 
-        if (typeId == (uint)ForyTypeId.Map)
+        if (typeId == (uint)global::Apache.Fory.TypeId.Map)
         {
             TypeMetaFieldType key = Read(reader, true);
             TypeMetaFieldType value = Read(reader, true);

@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public sealed record ForyConfig(
+public sealed record Config(
     bool Xlang = true,
     bool TrackRef = false,
     bool Compatible = false,
@@ -78,7 +78,7 @@ public sealed class ForyBuilder
     public Fory Build()
     {
         return new Fory(
-            new ForyConfig(
+            new Config(
                 Xlang: _xlang,
                 TrackRef: _trackRef,
                 Compatible: _compatible,

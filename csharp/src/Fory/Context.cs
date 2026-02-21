@@ -136,7 +136,7 @@ public sealed class MetaStringReadState
 }
 
 public sealed record DynamicTypeInfo(
-    ForyTypeId WireTypeId,
+    TypeId WireTypeId,
     uint? UserTypeId,
     MetaString? NamespaceName,
     MetaString? TypeName,

@@ -20,7 +20,7 @@ namespace Apache.Fory;
 public interface IStaticSerializer<TSerializer, T>
     where TSerializer : IStaticSerializer<TSerializer, T>
 {
-    static abstract ForyTypeId StaticTypeId { get; }
+    static abstract TypeId StaticTypeId { get; }
 
     static virtual bool IsNullableType => false;
 
@@ -158,7 +158,7 @@ public readonly struct Serializer<T>
 
     public Type Type => typeof(T);
 
-    public ForyTypeId StaticTypeId => Binding.StaticTypeId;
+    public TypeId StaticTypeId => Binding.StaticTypeId;
 
     public bool IsNullableType => Binding.IsNullableType;
 
@@ -224,7 +224,7 @@ internal static class SerializerTypeInfo
     public static void WriteTypeInfo<T, TSerializer>(ref WriteContext context)
         where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        ForyTypeId staticTypeId = TSerializer.StaticTypeId;
+        TypeId staticTypeId = TSerializer.StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
         {
             context.Writer.WriteUInt8((byte)staticTypeId);
@@ -233,21 +233,21 @@ internal static class SerializerTypeInfo
 
         Type type = typeof(T);
         RegisteredTypeInfo info = context.TypeResolver.RequireRegisteredTypeInfo(type);
-        ForyTypeId wireTypeId = ResolveWireTypeId(info.Kind, info.RegisterByName, context.Compatible);
+        TypeId wireTypeId = ResolveWireTypeId(info.Kind, info.RegisterByName, context.Compatible);
         context.Writer.WriteUInt8((byte)wireTypeId);
         switch (wireTypeId)
         {
-            case ForyTypeId.CompatibleStruct:
-            case ForyTypeId.NamedCompatibleStruct:
+            case TypeId.CompatibleStruct:
+            case TypeId.NamedCompatibleStruct:
             {
                 TypeMeta typeMeta = BuildCompatibleTypeMeta<T, TSerializer>(info, wireTypeId, context.TrackRef);
                 context.WriteCompatibleTypeMeta(type, typeMeta);
                 return;
             }
-            case ForyTypeId.NamedEnum:
-            case ForyTypeId.NamedStruct:
-            case ForyTypeId.NamedExt:
-            case ForyTypeId.NamedUnion:
+            case TypeId.NamedEnum:
+            case TypeId.NamedStruct:
+            case TypeId.NamedExt:
+            case TypeId.NamedUnion:
             {
                 if (context.Compatible)
                 {
@@ -294,13 +294,13 @@ internal static class SerializerTypeInfo
         where TSerializer : IStaticSerializer<TSerializer, T>
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
-        if (!Enum.IsDefined(typeof(ForyTypeId), rawTypeId))
+        if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
         {
             throw new ForyInvalidDataException($"unknown type id {rawTypeId}");
         }
 
-        ForyTypeId typeId = (ForyTypeId)rawTypeId;
-        ForyTypeId staticTypeId = TSerializer.StaticTypeId;
+        TypeId typeId = (TypeId)rawTypeId;
+        TypeId staticTypeId = TSerializer.StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
         {
             if (typeId != staticTypeId)
@@ -313,7 +313,7 @@ internal static class SerializerTypeInfo
 
         Type type = typeof(T);
         RegisteredTypeInfo info = context.TypeResolver.RequireRegisteredTypeInfo(type);
-        HashSet<ForyTypeId> allowed = AllowedWireTypeIds(info.Kind, info.RegisterByName, context.Compatible);
+        HashSet<TypeId> allowed = AllowedWireTypeIds(info.Kind, info.RegisterByName, context.Compatible);
         if (!allowed.Contains(typeId))
         {
             uint expected = allowed.Count > 0 ? (uint)allowed.First() : 0;
@@ -322,24 +322,24 @@ internal static class SerializerTypeInfo
 
         switch (typeId)
         {
-            case ForyTypeId.CompatibleStruct:
-            case ForyTypeId.NamedCompatibleStruct:
+            case TypeId.CompatibleStruct:
+            case TypeId.NamedCompatibleStruct:
             {
                 TypeMeta remoteTypeMeta = context.ReadCompatibleTypeMeta();
                 ValidateCompatibleTypeMeta(remoteTypeMeta, info, allowed, typeId);
                 context.PushCompatibleTypeMeta(type, remoteTypeMeta);
                 return;
             }
-            case ForyTypeId.NamedEnum:
-            case ForyTypeId.NamedStruct:
-            case ForyTypeId.NamedExt:
-            case ForyTypeId.NamedUnion:
+            case TypeId.NamedEnum:
+            case TypeId.NamedStruct:
+            case TypeId.NamedExt:
+            case TypeId.NamedUnion:
             {
                 if (context.Compatible)
                 {
                     TypeMeta remoteTypeMeta = context.ReadCompatibleTypeMeta();
                     ValidateCompatibleTypeMeta(remoteTypeMeta, info, allowed, typeId);
-                    if (typeId == ForyTypeId.NamedStruct)
+                    if (typeId == TypeId.NamedStruct)
                     {
                         context.PushCompatibleTypeMeta(type, remoteTypeMeta);
                     }
@@ -387,9 +387,9 @@ internal static class SerializerTypeInfo
         }
     }
 
-    public static ForyTypeId ResolveWireTypeId(ForyTypeId declaredKind, bool registerByName, bool compatible)
+    public static TypeId ResolveWireTypeId(TypeId declaredKind, bool registerByName, bool compatible)
     {
-        ForyTypeId baseKind = NormalizeBaseKind(declaredKind);
+        TypeId baseKind = NormalizeBaseKind(declaredKind);
         if (registerByName)
         {
             return NamedKind(baseKind, compatible);
@@ -398,63 +398,63 @@ internal static class SerializerTypeInfo
         return IdKind(baseKind, compatible);
     }
 
-    public static HashSet<ForyTypeId> AllowedWireTypeIds(ForyTypeId declaredKind, bool registerByName, bool compatible)
+    public static HashSet<TypeId> AllowedWireTypeIds(TypeId declaredKind, bool registerByName, bool compatible)
     {
-        ForyTypeId baseKind = NormalizeBaseKind(declaredKind);
-        ForyTypeId expected = ResolveWireTypeId(declaredKind, registerByName, compatible);
-        HashSet<ForyTypeId> allowed = [expected];
-        if (baseKind == ForyTypeId.Struct && compatible)
+        TypeId baseKind = NormalizeBaseKind(declaredKind);
+        TypeId expected = ResolveWireTypeId(declaredKind, registerByName, compatible);
+        HashSet<TypeId> allowed = [expected];
+        if (baseKind == TypeId.Struct && compatible)
         {
-            allowed.Add(ForyTypeId.CompatibleStruct);
-            allowed.Add(ForyTypeId.NamedCompatibleStruct);
-            allowed.Add(ForyTypeId.Struct);
-            allowed.Add(ForyTypeId.NamedStruct);
+            allowed.Add(TypeId.CompatibleStruct);
+            allowed.Add(TypeId.NamedCompatibleStruct);
+            allowed.Add(TypeId.Struct);
+            allowed.Add(TypeId.NamedStruct);
         }
 
         return allowed;
     }
 
-    private static ForyTypeId NormalizeBaseKind(ForyTypeId kind)
+    private static TypeId NormalizeBaseKind(TypeId kind)
     {
         return kind switch
         {
-            ForyTypeId.NamedEnum => ForyTypeId.Enum,
-            ForyTypeId.CompatibleStruct or ForyTypeId.NamedCompatibleStruct or ForyTypeId.NamedStruct => ForyTypeId.Struct,
-            ForyTypeId.NamedExt => ForyTypeId.Ext,
-            ForyTypeId.NamedUnion => ForyTypeId.TypedUnion,
+            TypeId.NamedEnum => TypeId.Enum,
+            TypeId.CompatibleStruct or TypeId.NamedCompatibleStruct or TypeId.NamedStruct => TypeId.Struct,
+            TypeId.NamedExt => TypeId.Ext,
+            TypeId.NamedUnion => TypeId.TypedUnion,
             _ => kind,
         };
     }
 
-    private static ForyTypeId NamedKind(ForyTypeId baseKind, bool compatible)
+    private static TypeId NamedKind(TypeId baseKind, bool compatible)
     {
         return baseKind switch
         {
-            ForyTypeId.Struct => compatible ? ForyTypeId.NamedCompatibleStruct : ForyTypeId.NamedStruct,
-            ForyTypeId.Enum => ForyTypeId.NamedEnum,
-            ForyTypeId.Ext => ForyTypeId.NamedExt,
-            ForyTypeId.TypedUnion => ForyTypeId.NamedUnion,
+            TypeId.Struct => compatible ? TypeId.NamedCompatibleStruct : TypeId.NamedStruct,
+            TypeId.Enum => TypeId.NamedEnum,
+            TypeId.Ext => TypeId.NamedExt,
+            TypeId.TypedUnion => TypeId.NamedUnion,
             _ => baseKind,
         };
     }
 
-    private static ForyTypeId IdKind(ForyTypeId baseKind, bool compatible)
+    private static TypeId IdKind(TypeId baseKind, bool compatible)
     {
         return baseKind switch
         {
-            ForyTypeId.Struct => compatible ? ForyTypeId.CompatibleStruct : ForyTypeId.Struct,
+            TypeId.Struct => compatible ? TypeId.CompatibleStruct : TypeId.Struct,
             _ => baseKind,
         };
     }
 
-    private static bool WireTypeNeedsUserTypeId(ForyTypeId typeId)
+    private static bool WireTypeNeedsUserTypeId(TypeId typeId)
     {
-        return typeId is ForyTypeId.Enum or ForyTypeId.Struct or ForyTypeId.Ext or ForyTypeId.TypedUnion;
+        return typeId is TypeId.Enum or TypeId.Struct or TypeId.Ext or TypeId.TypedUnion;
     }
 
     private static TypeMeta BuildCompatibleTypeMeta<T, TSerializer>(
         RegisteredTypeInfo info,
-        ForyTypeId wireTypeId,
+        TypeId wireTypeId,
         bool trackRef)
         where TSerializer : IStaticSerializer<TSerializer, T>
     {
@@ -495,8 +495,8 @@ internal static class SerializerTypeInfo
     private static void ValidateCompatibleTypeMeta(
         TypeMeta remoteTypeMeta,
         RegisteredTypeInfo localInfo,
-        HashSet<ForyTypeId> expectedWireTypes,
-        ForyTypeId actualWireTypeId)
+        HashSet<TypeId> expectedWireTypes,
+        TypeId actualWireTypeId)
     {
         if (remoteTypeMeta.RegisterByName)
         {
@@ -543,9 +543,9 @@ internal static class SerializerTypeInfo
         }
 
         if (remoteTypeMeta.TypeId.HasValue &&
-            Enum.IsDefined(typeof(ForyTypeId), remoteTypeMeta.TypeId.Value))
+            Enum.IsDefined(typeof(TypeId), remoteTypeMeta.TypeId.Value))
         {
-            ForyTypeId remoteWireTypeId = (ForyTypeId)remoteTypeMeta.TypeId.Value;
+            TypeId remoteWireTypeId = (TypeId)remoteTypeMeta.TypeId.Value;
             if (!expectedWireTypes.Contains(remoteWireTypeId))
             {
                 throw new ForyTypeMismatchException((uint)actualWireTypeId, remoteTypeMeta.TypeId.Value);

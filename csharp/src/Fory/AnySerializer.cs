@@ -19,7 +19,7 @@ namespace Apache.Fory;
 
 public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAnyObjectSerializer, object?>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Unknown;
+    public static TypeId StaticTypeId => TypeId.Unknown;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
     public static object? DefaultValue => null;
@@ -159,7 +159,7 @@ public static class DynamicAnyCodec
 {
     internal static void WriteAnyTypeInfo(object value, ref WriteContext context)
     {
-        if (DynamicContainerCodec.TryGetTypeId(value, out ForyTypeId containerTypeId))
+        if (DynamicContainerCodec.TryGetTypeId(value, out TypeId containerTypeId))
         {
             context.Writer.WriteUInt8((byte)containerTypeId);
             return;

@@ -106,7 +106,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
     private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
     private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
 
-    public static ForyTypeId StaticTypeId => ForyTypeId.Map;
+    public static TypeId StaticTypeId => TypeId.Map;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
     public static ForyMap<TKey, TValue> DefaultValue => null!;
@@ -127,8 +127,8 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
         bool trackValueRef = context.TrackRef && valueSerializer.IsReferenceTrackableType;
         bool keyDeclared = hasGenerics && !keySerializer.StaticTypeId.NeedsTypeInfoForField();
         bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
+        bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
         KeyValuePair<TKey?, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
@@ -255,8 +255,8 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
         }
 
         ForyMap<TKey, TValue> map = new();
-        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
+        bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
         bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
 
         int readCount = 0;

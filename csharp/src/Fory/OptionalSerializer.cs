@@ -21,7 +21,7 @@ public readonly struct NullableSerializer<T> : IStaticSerializer<NullableSeriali
 {
     private static Serializer<T> WrappedSerializer => SerializerRegistry.Get<T>();
 
-    public static ForyTypeId StaticTypeId => WrappedSerializer.StaticTypeId;
+    public static TypeId StaticTypeId => WrappedSerializer.StaticTypeId;
 
     public static bool IsNullableType => true;
 

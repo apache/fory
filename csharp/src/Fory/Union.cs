@@ -20,7 +20,7 @@ namespace Apache.Fory;
 public class Union : IEquatable<Union>
 {
     public Union(int index, object? value)
-        : this(index, value, (int)ForyTypeId.Unknown)
+        : this(index, value, (int)TypeId.Unknown)
     {
     }
 
@@ -74,7 +74,7 @@ public class Union : IEquatable<Union>
 public sealed class Union2<T1, T2> : Union
 {
     private Union2(int index, object? value)
-        : this(index, value, (int)ForyTypeId.Unknown)
+        : this(index, value, (int)TypeId.Unknown)
     {
     }
 

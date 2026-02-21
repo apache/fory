@@ -19,7 +19,7 @@ namespace Apache.Fory;
 
 internal sealed record RegisteredTypeInfo(
     uint? UserTypeId,
-    ForyTypeId Kind,
+    TypeId Kind,
     bool RegisterByName,
     MetaString? NamespaceName,
     MetaString TypeName,
@@ -36,7 +36,7 @@ internal readonly record struct TypeNameKey(string NamespaceName, string TypeNam
 
 internal sealed class TypeReader
 {
-    public required ForyTypeId Kind { get; init; }
+    public required TypeId Kind { get; init; }
     public required Func<ReadContext, object?> Reader { get; init; }
     public required Func<ReadContext, TypeMeta, object?> CompatibleReader { get; init; }
 }
@@ -46,7 +46,7 @@ public sealed class TypeResolver
     private readonly Dictionary<Type, RegisteredTypeInfo> _byType = [];
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
-    private readonly Dictionary<ForyTypeId, DynamicRegistrationMode> _registrationModeByKind = [];
+    private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
     internal void Register(Type type, uint id, SerializerBinding? explicitSerializer = null)
     {
@@ -140,16 +140,16 @@ public sealed class TypeResolver
     public DynamicTypeInfo ReadDynamicTypeInfo(ref ReadContext context)
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
-        if (!Enum.IsDefined(typeof(ForyTypeId), rawTypeId))
+        if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
         {
             throw new ForyInvalidDataException($"unknown dynamic type id {rawTypeId}");
         }
 
-        ForyTypeId wireTypeId = (ForyTypeId)rawTypeId;
+        TypeId wireTypeId = (TypeId)rawTypeId;
         switch (wireTypeId)
         {
-            case ForyTypeId.CompatibleStruct:
-            case ForyTypeId.NamedCompatibleStruct:
+            case TypeId.CompatibleStruct:
+            case TypeId.NamedCompatibleStruct:
             {
                 TypeMeta typeMeta = context.ReadCompatibleTypeMeta();
                 if (typeMeta.RegisterByName)
@@ -159,19 +159,19 @@ public sealed class TypeResolver
 
                 return new DynamicTypeInfo(wireTypeId, typeMeta.UserTypeId, null, null, typeMeta);
             }
-            case ForyTypeId.NamedStruct:
-            case ForyTypeId.NamedEnum:
-            case ForyTypeId.NamedExt:
-            case ForyTypeId.NamedUnion:
+            case TypeId.NamedStruct:
+            case TypeId.NamedEnum:
+            case TypeId.NamedExt:
+            case TypeId.NamedUnion:
             {
                 MetaString namespaceName = ReadMetaString(context.Reader, MetaStringDecoder.Namespace, TypeMetaEncodings.NamespaceMetaStringEncodings);
                 MetaString typeName = ReadMetaString(context.Reader, MetaStringDecoder.TypeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
                 return new DynamicTypeInfo(wireTypeId, null, namespaceName, typeName, null);
             }
-            case ForyTypeId.Struct:
-            case ForyTypeId.Enum:
-            case ForyTypeId.Ext:
-            case ForyTypeId.TypedUnion:
+            case TypeId.Struct:
+            case TypeId.Enum:
+            case TypeId.Ext:
+            case TypeId.TypedUnion:
             {
                 DynamicRegistrationMode mode = DynamicRegistrationModeFor(wireTypeId);
                 if (mode == DynamicRegistrationMode.IdOnly)
@@ -197,77 +197,77 @@ public sealed class TypeResolver
     {
         switch (typeInfo.WireTypeId)
         {
-            case ForyTypeId.Bool:
+            case TypeId.Bool:
                 return SerializerRegistry.Get<bool>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int8:
+            case TypeId.Int8:
                 return SerializerRegistry.Get<sbyte>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int16:
+            case TypeId.Int16:
                 return SerializerRegistry.Get<short>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int32:
+            case TypeId.Int32:
                 return SerializerRegistry.Get<ForyInt32Fixed>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.VarInt32:
+            case TypeId.VarInt32:
                 return SerializerRegistry.Get<int>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int64:
+            case TypeId.Int64:
                 return SerializerRegistry.Get<ForyInt64Fixed>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.VarInt64:
+            case TypeId.VarInt64:
                 return SerializerRegistry.Get<long>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.TaggedInt64:
+            case TypeId.TaggedInt64:
                 return SerializerRegistry.Get<ForyInt64Tagged>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt8:
+            case TypeId.UInt8:
                 return SerializerRegistry.Get<byte>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt16:
+            case TypeId.UInt16:
                 return SerializerRegistry.Get<ushort>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt32:
+            case TypeId.UInt32:
                 return SerializerRegistry.Get<ForyUInt32Fixed>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.VarUInt32:
+            case TypeId.VarUInt32:
                 return SerializerRegistry.Get<uint>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt64:
+            case TypeId.UInt64:
                 return SerializerRegistry.Get<ForyUInt64Fixed>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.VarUInt64:
+            case TypeId.VarUInt64:
                 return SerializerRegistry.Get<ulong>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.TaggedUInt64:
+            case TypeId.TaggedUInt64:
                 return SerializerRegistry.Get<ForyUInt64Tagged>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Float32:
+            case TypeId.Float32:
                 return SerializerRegistry.Get<float>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Float64:
+            case TypeId.Float64:
                 return SerializerRegistry.Get<double>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.String:
+            case TypeId.String:
                 return SerializerRegistry.Get<string>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Binary:
-            case ForyTypeId.UInt8Array:
+            case TypeId.Binary:
+            case TypeId.UInt8Array:
                 return SerializerRegistry.Get<byte[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.BoolArray:
+            case TypeId.BoolArray:
                 return SerializerRegistry.Get<bool[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int8Array:
+            case TypeId.Int8Array:
                 return SerializerRegistry.Get<sbyte[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int16Array:
+            case TypeId.Int16Array:
                 return SerializerRegistry.Get<short[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int32Array:
+            case TypeId.Int32Array:
                 return SerializerRegistry.Get<int[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Int64Array:
+            case TypeId.Int64Array:
                 return SerializerRegistry.Get<long[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt16Array:
+            case TypeId.UInt16Array:
                 return SerializerRegistry.Get<ushort[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt32Array:
+            case TypeId.UInt32Array:
                 return SerializerRegistry.Get<uint[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.UInt64Array:
+            case TypeId.UInt64Array:
                 return SerializerRegistry.Get<ulong[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Float32Array:
+            case TypeId.Float32Array:
                 return SerializerRegistry.Get<float[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Float64Array:
+            case TypeId.Float64Array:
                 return SerializerRegistry.Get<double[]>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.List:
+            case TypeId.List:
                 return DynamicContainerCodec.ReadListPayload(ref context);
-            case ForyTypeId.Set:
+            case TypeId.Set:
                 return DynamicContainerCodec.ReadSetPayload(ref context);
-            case ForyTypeId.Map:
+            case TypeId.Map:
                 return DynamicContainerCodec.ReadMapPayload(ref context);
-            case ForyTypeId.Union:
+            case TypeId.Union:
                 return SerializerRegistry.Get<Union>().Read(ref context, RefMode.None, false);
-            case ForyTypeId.Struct:
-            case ForyTypeId.Enum:
-            case ForyTypeId.Ext:
-            case ForyTypeId.TypedUnion:
+            case TypeId.Struct:
+            case TypeId.Enum:
+            case TypeId.Ext:
+            case TypeId.TypedUnion:
             {
                 if (typeInfo.UserTypeId.HasValue)
                 {
@@ -281,10 +281,10 @@ public sealed class TypeResolver
 
                 throw new ForyInvalidDataException($"missing dynamic registration info for {typeInfo.WireTypeId}");
             }
-            case ForyTypeId.NamedStruct:
-            case ForyTypeId.NamedEnum:
-            case ForyTypeId.NamedExt:
-            case ForyTypeId.NamedUnion:
+            case TypeId.NamedStruct:
+            case TypeId.NamedEnum:
+            case TypeId.NamedExt:
+            case TypeId.NamedUnion:
             {
                 if (!typeInfo.NamespaceName.HasValue || !typeInfo.TypeName.HasValue)
                 {
@@ -293,8 +293,8 @@ public sealed class TypeResolver
 
                 return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, ref context);
             }
-            case ForyTypeId.CompatibleStruct:
-            case ForyTypeId.NamedCompatibleStruct:
+            case TypeId.CompatibleStruct:
+            case TypeId.NamedCompatibleStruct:
             {
                 if (typeInfo.CompatibleTypeMeta is null)
                 {
@@ -318,14 +318,14 @@ public sealed class TypeResolver
 
                 return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, ref context, compatibleTypeMeta);
             }
-            case ForyTypeId.None:
+            case TypeId.None:
                 return null;
             default:
                 throw new ForyInvalidDataException($"unsupported dynamic type id {typeInfo.WireTypeId}");
         }
     }
 
-    private void MarkRegistrationMode(ForyTypeId kind, bool registerByName)
+    private void MarkRegistrationMode(TypeId kind, bool registerByName)
     {
         DynamicRegistrationMode mode = registerByName ? DynamicRegistrationMode.NameOnly : DynamicRegistrationMode.IdOnly;
         if (!_registrationModeByKind.TryGetValue(kind, out DynamicRegistrationMode existing))
@@ -340,7 +340,7 @@ public sealed class TypeResolver
         }
     }
 
-    private DynamicRegistrationMode DynamicRegistrationModeFor(ForyTypeId kind)
+    private DynamicRegistrationMode DynamicRegistrationModeFor(TypeId kind)
     {
         if (_registrationModeByKind.TryGetValue(kind, out DynamicRegistrationMode mode))
         {

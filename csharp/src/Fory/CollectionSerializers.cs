@@ -60,7 +60,7 @@ internal static class CollectionCodec
 
         bool trackRef = context.TrackRef && elementSerializer.IsReferenceTrackableType;
         bool declaredElementType = hasGenerics && !elementSerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool dynamicElementType = elementSerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool dynamicElementType = elementSerializer.StaticTypeId == TypeId.Unknown;
 
         byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
         if (trackRef)
@@ -274,24 +274,24 @@ internal static class CollectionCodec
 
 internal static class DynamicContainerCodec
 {
-    public static bool TryGetTypeId(object value, out ForyTypeId typeId)
+    public static bool TryGetTypeId(object value, out TypeId typeId)
     {
         if (value is IDictionary)
         {
-            typeId = ForyTypeId.Map;
+            typeId = TypeId.Map;
             return true;
         }
 
         Type valueType = value.GetType();
         if (value is IList && !valueType.IsArray)
         {
-            typeId = ForyTypeId.List;
+            typeId = TypeId.List;
             return true;
         }
 
         if (IsSet(valueType))
         {
-            typeId = ForyTypeId.Set;
+            typeId = TypeId.Set;
             return true;
         }
 
@@ -393,61 +393,61 @@ internal static class DynamicContainerCodec
 
 internal static class PrimitiveArrayCodec
 {
-    public static ForyTypeId? PrimitiveArrayTypeId(Type elementType)
+    public static TypeId? PrimitiveArrayTypeId(Type elementType)
     {
         if (elementType == typeof(byte))
         {
-            return ForyTypeId.Binary;
+            return TypeId.Binary;
         }
 
         if (elementType == typeof(bool))
         {
-            return ForyTypeId.BoolArray;
+            return TypeId.BoolArray;
         }
 
         if (elementType == typeof(sbyte))
         {
-            return ForyTypeId.Int8Array;
+            return TypeId.Int8Array;
         }
 
         if (elementType == typeof(short))
         {
-            return ForyTypeId.Int16Array;
+            return TypeId.Int16Array;
         }
 
         if (elementType == typeof(int))
         {
-            return ForyTypeId.Int32Array;
+            return TypeId.Int32Array;
         }
 
         if (elementType == typeof(long))
         {
-            return ForyTypeId.Int64Array;
+            return TypeId.Int64Array;
         }
 
         if (elementType == typeof(ushort))
         {
-            return ForyTypeId.UInt16Array;
+            return TypeId.UInt16Array;
         }
 
         if (elementType == typeof(uint))
         {
-            return ForyTypeId.UInt32Array;
+            return TypeId.UInt32Array;
         }
 
         if (elementType == typeof(ulong))
         {
-            return ForyTypeId.UInt64Array;
+            return TypeId.UInt64Array;
         }
 
         if (elementType == typeof(float))
         {
-            return ForyTypeId.Float32Array;
+            return TypeId.Float32Array;
         }
 
         if (elementType == typeof(double))
         {
-            return ForyTypeId.Float64Array;
+            return TypeId.Float64Array;
         }
 
         return null;
@@ -739,9 +739,9 @@ internal static class PrimitiveArrayCodec
 public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>, T[]>
 {
     private static Serializer<T> ElementSerializer => SerializerRegistry.Get<T>();
-    private static readonly ForyTypeId? PrimitiveArrayTypeId = PrimitiveArrayCodec.PrimitiveArrayTypeId(typeof(T));
+    private static readonly TypeId? PrimitiveArrayTypeId = PrimitiveArrayCodec.PrimitiveArrayTypeId(typeof(T));
 
-    public static ForyTypeId StaticTypeId => PrimitiveArrayTypeId ?? ForyTypeId.List;
+    public static TypeId StaticTypeId => PrimitiveArrayTypeId ?? TypeId.List;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
     public static T[] DefaultValue => null!;
@@ -779,7 +779,7 @@ public readonly struct ListSerializer<T> : IStaticSerializer<ListSerializer<T>, 
 {
     private static Serializer<T> ElementSerializer => SerializerRegistry.Get<T>();
 
-    public static ForyTypeId StaticTypeId => ForyTypeId.List;
+    public static TypeId StaticTypeId => TypeId.List;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
     public static List<T> DefaultValue => null!;
@@ -801,7 +801,7 @@ public readonly struct SetSerializer<T> : IStaticSerializer<SetSerializer<T>, Ha
 {
     private static Serializer<List<T>> ListSerializer => SerializerRegistry.Get<List<T>>();
 
-    public static ForyTypeId StaticTypeId => ForyTypeId.Set;
+    public static TypeId StaticTypeId => TypeId.Set;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
     public static HashSet<T> DefaultValue => null!;

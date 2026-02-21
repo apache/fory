@@ -68,7 +68,7 @@ internal delegate object? UntypedReadDelegate(
 internal sealed class TypedSerializerBinding<T>
 {
     public TypedSerializerBinding(
-        ForyTypeId staticTypeId,
+        TypeId staticTypeId,
         bool isNullableType,
         bool isReferenceTrackableType,
         T defaultValue,
@@ -95,7 +95,7 @@ internal sealed class TypedSerializerBinding<T>
         _compatibleTypeMetaFields = compatibleTypeMetaFields;
     }
 
-    public ForyTypeId StaticTypeId { get; }
+    public TypeId StaticTypeId { get; }
 
     public bool IsNullableType { get; }
 
@@ -157,7 +157,7 @@ internal sealed class SerializerBinding
 {
     public SerializerBinding(
         Type type,
-        ForyTypeId staticTypeId,
+        TypeId staticTypeId,
         bool isNullableType,
         bool isReferenceTrackableType,
         object? defaultObject,
@@ -189,7 +189,7 @@ internal sealed class SerializerBinding
 
     public Type Type { get; }
 
-    public ForyTypeId StaticTypeId { get; }
+    public TypeId StaticTypeId { get; }
 
     public bool IsNullableType { get; }
 

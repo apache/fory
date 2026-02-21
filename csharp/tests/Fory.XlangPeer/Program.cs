@@ -1027,7 +1027,7 @@ public sealed class MyExt
 
 public readonly struct MyExtSerializer : IStaticSerializer<MyExtSerializer, MyExt>
 {
-    public static ForyTypeId StaticTypeId => ForyTypeId.Ext;
+    public static TypeId StaticTypeId => TypeId.Ext;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
     public static MyExt DefaultValue => null!;

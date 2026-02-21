@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public enum ForyTypeId : uint
+public enum TypeId : uint
 {
     Unknown = 0,
     Bool = 1,
@@ -78,37 +78,37 @@ public enum ForyTypeId : uint
     Float64Array = 56,
 }
 
-internal static class ForyTypeIdExtensions
+internal static class TypeIdExtensions
 {
-    public static bool IsUserTypeKind(this ForyTypeId typeId)
+    public static bool IsUserTypeKind(this TypeId typeId)
     {
         return typeId switch
         {
-            ForyTypeId.Enum or
-                ForyTypeId.NamedEnum or
-                ForyTypeId.Struct or
-                ForyTypeId.CompatibleStruct or
-                ForyTypeId.NamedStruct or
-                ForyTypeId.NamedCompatibleStruct or
-                ForyTypeId.Ext or
-                ForyTypeId.NamedExt or
-                ForyTypeId.TypedUnion or
-                ForyTypeId.NamedUnion => true,
+            TypeId.Enum or
+                TypeId.NamedEnum or
+                TypeId.Struct or
+                TypeId.CompatibleStruct or
+                TypeId.NamedStruct or
+                TypeId.NamedCompatibleStruct or
+                TypeId.Ext or
+                TypeId.NamedExt or
+                TypeId.TypedUnion or
+                TypeId.NamedUnion => true,
             _ => false,
         };
     }
 
-    public static bool NeedsTypeInfoForField(this ForyTypeId typeId)
+    public static bool NeedsTypeInfoForField(this TypeId typeId)
     {
         return typeId switch
         {
-            ForyTypeId.Struct or
-                ForyTypeId.CompatibleStruct or
-                ForyTypeId.NamedStruct or
-                ForyTypeId.NamedCompatibleStruct or
-                ForyTypeId.Ext or
-                ForyTypeId.NamedExt or
-                ForyTypeId.Unknown => true,
+            TypeId.Struct or
+                TypeId.CompatibleStruct or
+                TypeId.NamedStruct or
+                TypeId.NamedCompatibleStruct or
+                TypeId.Ext or
+                TypeId.NamedExt or
+                TypeId.Unknown => true,
             _ => false,
         };
     }
