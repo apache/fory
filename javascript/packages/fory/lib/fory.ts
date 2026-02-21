@@ -83,6 +83,10 @@ export default class {
     }
   }
 
+  decReadDepth(): void {
+    this.depth--;
+  }
+
   private resetRead(): void {
     this.referenceResolver.resetRead();
     this.typeMetaResolver.resetRead();

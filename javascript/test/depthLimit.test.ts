@@ -62,6 +62,11 @@ describe('depth-limit', () => {
       expect(typeof fory.incReadDepth).toBe('function');
     });
 
+    test('should have decReadDepth method', () => {
+      const fory = new Fory();
+      expect(typeof fory.decReadDepth).toBe('function');
+    });
+
     test('incReadDepth should increment depth', () => {
       const fory = new Fory({ maxDepth: 100 });
       expect(fory.depth).toBe(0);
@@ -69,6 +74,17 @@ describe('depth-limit', () => {
       expect(fory.depth).toBe(1);
       fory.incReadDepth();
       expect(fory.depth).toBe(2);
+    });
+
+    test('decReadDepth should decrement depth', () => {
+      const fory = new Fory({ maxDepth: 100 });
+      fory.incReadDepth();
+      fory.incReadDepth();
+      expect(fory.depth).toBe(2);
+      fory.decReadDepth();
+      expect(fory.depth).toBe(1);
+      fory.decReadDepth();
+      expect(fory.depth).toBe(0);
     });
 
     test('incReadDepth should throw when depth exceeds limit', () => {
@@ -146,7 +162,7 @@ describe('depth-limit', () => {
       const deserialized = deserialize(serialized);
 
       expect(deserialized).toEqual(data);
-      // Depth accumulates during deserialization, will be reset on next call
+      expect(fory.depth).toBe(0); // Should be 0 after deserialization
     });
 
     test('should deserialize map within depth limit', () => {
@@ -159,7 +175,7 @@ describe('depth-limit', () => {
       const deserialized = deserialize(serialized);
 
       expect(deserialized).toEqual(data);
-      // Depth accumulates during deserialization, will be reset on next call
+      expect(fory.depth).toBe(0); // Should be 0 after deserialization
     });
 
     test('should reset depth at start of each deserialization', () => {
