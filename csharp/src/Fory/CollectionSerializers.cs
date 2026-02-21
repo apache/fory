@@ -309,7 +309,7 @@ internal static class DynamicContainerCodec
                 map.Add(entry.Key, entry.Value);
             }
 
-            SerializerRegistry.Get<NullableKeyDictionary<object, object?>>().WriteData(ref context, map, false);
+            context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().WriteData(ref context, map, false);
             return true;
         }
 
@@ -322,7 +322,7 @@ internal static class DynamicContainerCodec
                 values.Add(list[i]);
             }
 
-            SerializerRegistry.Get<List<object?>>().WriteData(ref context, values, hasGenerics);
+            context.TypeResolver.GetSerializer<List<object?>>().WriteData(ref context, values, hasGenerics);
             return true;
         }
 
@@ -337,23 +337,23 @@ internal static class DynamicContainerCodec
             set.Add(item);
         }
 
-        SerializerRegistry.Get<HashSet<object?>>().WriteData(ref context, set, hasGenerics);
+        context.TypeResolver.GetSerializer<HashSet<object?>>().WriteData(ref context, set, hasGenerics);
         return true;
     }
 
     public static List<object?> ReadListPayload(ref ReadContext context)
     {
-        return SerializerRegistry.Get<List<object?>>().ReadData(ref context);
+        return context.TypeResolver.GetSerializer<List<object?>>().ReadData(ref context);
     }
 
     public static HashSet<object?> ReadSetPayload(ref ReadContext context)
     {
-        return SerializerRegistry.Get<HashSet<object?>>().ReadData(ref context);
+        return context.TypeResolver.GetSerializer<HashSet<object?>>().ReadData(ref context);
     }
 
     public static object ReadMapPayload(ref ReadContext context)
     {
-        NullableKeyDictionary<object, object?> map = SerializerRegistry.Get<NullableKeyDictionary<object, object?>>().ReadData(ref context);
+        NullableKeyDictionary<object, object?> map = context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().ReadData(ref context);
         if (map.HasNullKey)
         {
             return map;
@@ -738,7 +738,6 @@ internal static class PrimitiveArrayCodec
 
 public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>, T[]>
 {
-    private static Serializer<T> ElementSerializer => SerializerRegistry.Get<T>();
     private static readonly TypeId? PrimitiveArrayTypeId = PrimitiveArrayCodec.PrimitiveArrayTypeId(typeof(T));
 
     public static TypeId StaticTypeId => PrimitiveArrayTypeId ?? TypeId.List;
@@ -758,7 +757,7 @@ public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>
 
         CollectionCodec.WriteCollectionData(
             safe,
-            ElementSerializer,
+            context.TypeResolver.GetSerializer<T>(),
             ref context,
             hasGenerics);
     }
@@ -770,15 +769,13 @@ public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>
             return PrimitiveArrayCodec.ReadPrimitiveArray<T>(ref context);
         }
 
-        List<T> values = CollectionCodec.ReadCollectionData<T>(ElementSerializer, ref context);
+        List<T> values = CollectionCodec.ReadCollectionData<T>(context.TypeResolver.GetSerializer<T>(), ref context);
         return values.ToArray();
     }
 }
 
 public readonly struct ListSerializer<T> : IStaticSerializer<ListSerializer<T>, List<T>>
 {
-    private static Serializer<T> ElementSerializer => SerializerRegistry.Get<T>();
-
     public static TypeId StaticTypeId => TypeId.List;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
@@ -788,19 +785,17 @@ public readonly struct ListSerializer<T> : IStaticSerializer<ListSerializer<T>, 
     public static void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
     {
         List<T> safe = value ?? [];
-        CollectionCodec.WriteCollectionData(safe, ElementSerializer, ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
     }
 
     public static List<T> ReadData(ref ReadContext context)
     {
-        return CollectionCodec.ReadCollectionData(ElementSerializer, ref context);
+        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
     }
 }
 
 public readonly struct SetSerializer<T> : IStaticSerializer<SetSerializer<T>, HashSet<T>> where T : notnull
 {
-    private static Serializer<List<T>> ListSerializer => SerializerRegistry.Get<List<T>>();
-
     public static TypeId StaticTypeId => TypeId.Set;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
@@ -810,12 +805,11 @@ public readonly struct SetSerializer<T> : IStaticSerializer<SetSerializer<T>, Ha
     public static void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
         List<T> list = value is null ? [] : [.. value];
-        ListSerializer.WriteData(ref context, list, hasGenerics);
+        context.TypeResolver.GetSerializer<List<T>>().WriteData(ref context, list, hasGenerics);
     }
 
     public static HashSet<T> ReadData(ref ReadContext context)
     {
-        return [.. ListSerializer.ReadData(ref context)];
+        return [.. context.TypeResolver.GetSerializer<List<T>>().ReadData(ref context)];
     }
 }
-

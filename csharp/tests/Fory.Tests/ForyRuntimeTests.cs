@@ -360,7 +360,7 @@ public sealed class ForyRuntimeTests
         long second = reader.ReadVarInt64();
         int third = reader.ReadVarInt32();
         ReadContext tailContext = new(reader, new TypeResolver(), false, false);
-        string fourth = SerializerRegistry.Get<string>().ReadData(ref tailContext);
+        string fourth = tailContext.TypeResolver.GetSerializer<string>().ReadData(ref tailContext);
 
         Assert.Equal(value.B, first);
         Assert.Equal(value.A, second);

@@ -390,9 +390,6 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 
 public readonly struct NullableKeyDictionarySerializer<TKey, TValue> : IStaticSerializer<NullableKeyDictionarySerializer<TKey, TValue>, NullableKeyDictionary<TKey, TValue>>
 {
-    private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
-    private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
-
     public static TypeId StaticTypeId => TypeId.Map;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
@@ -401,8 +398,8 @@ public readonly struct NullableKeyDictionarySerializer<TKey, TValue> : IStaticSe
 
     public static void WriteData(ref WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
     {
-        Serializer<TKey> keySerializer = KeySerializer;
-        Serializer<TValue> valueSerializer = ValueSerializer;
+        Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
+        Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         NullableKeyDictionary<TKey, TValue> map = value ?? new NullableKeyDictionary<TKey, TValue>();
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
@@ -533,8 +530,8 @@ public readonly struct NullableKeyDictionarySerializer<TKey, TValue> : IStaticSe
 
     public static NullableKeyDictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
-        Serializer<TKey> keySerializer = KeySerializer;
-        Serializer<TValue> valueSerializer = ValueSerializer;
+        Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
+        Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {

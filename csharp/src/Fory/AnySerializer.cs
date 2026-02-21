@@ -68,7 +68,7 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
             }
 
             bool wroteTrackingRefFlag = false;
-            if (refMode == RefMode.Tracking && AnyValueIsReferenceTrackable(value!))
+            if (refMode == RefMode.Tracking && AnyValueIsReferenceTrackable(value!, context.TypeResolver))
             {
                 if (context.RefWriter.TryWriteReference(context.Writer, value!))
                 {
@@ -147,12 +147,11 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
         return result;
     }
 
-    private static bool AnyValueIsReferenceTrackable(object value)
+    private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
     {
-        SerializerBinding serializer = SerializerRegistry.GetBinding(value.GetType());
+        SerializerBinding serializer = typeResolver.GetBinding(value.GetType());
         return serializer.IsReferenceTrackableType;
     }
-
 }
 
 public static class DynamicAnyCodec
@@ -165,7 +164,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        SerializerBinding serializer = SerializerRegistry.GetBinding(value.GetType());
+        SerializerBinding serializer = context.TypeResolver.GetBinding(value.GetType());
         serializer.WriteTypeInfo(ref context);
     }
 
@@ -196,12 +195,12 @@ public static class DynamicAnyCodec
 
     public static void WriteAny(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo = true, bool hasGenerics = false)
     {
-        SerializerRegistry.Get<object?>().Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
+        context.TypeResolver.GetSerializer<object?>().Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
     }
 
     public static object? ReadAny(ref ReadContext context, RefMode refMode, bool readTypeInfo = true)
     {
-        return SerializerRegistry.Get<object?>().Read(ref context, refMode, readTypeInfo);
+        return context.TypeResolver.GetSerializer<object?>().Read(ref context, refMode, readTypeInfo);
     }
 
     public static void WriteAnyPayload(object value, ref WriteContext context, bool hasGenerics)
@@ -211,7 +210,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        SerializerBinding serializer = SerializerRegistry.GetBinding(value.GetType());
+        SerializerBinding serializer = context.TypeResolver.GetBinding(value.GetType());
         serializer.WriteData(ref context, value, hasGenerics);
     }
 }

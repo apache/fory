@@ -57,21 +57,21 @@ public static class FieldSkipper
         switch (fieldType.TypeId)
         {
             case (uint)TypeId.Bool:
-                return SerializerRegistry.Get<bool>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<bool>().Read(ref context, refMode, false);
             case (uint)TypeId.Int8:
-                return SerializerRegistry.Get<sbyte>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<sbyte>().Read(ref context, refMode, false);
             case (uint)TypeId.Int16:
-                return SerializerRegistry.Get<short>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<short>().Read(ref context, refMode, false);
             case (uint)TypeId.VarInt32:
-                return SerializerRegistry.Get<int>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<int>().Read(ref context, refMode, false);
             case (uint)TypeId.VarInt64:
-                return SerializerRegistry.Get<long>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<long>().Read(ref context, refMode, false);
             case (uint)TypeId.Float32:
-                return SerializerRegistry.Get<float>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<float>().Read(ref context, refMode, false);
             case (uint)TypeId.Float64:
-                return SerializerRegistry.Get<double>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<double>().Read(ref context, refMode, false);
             case (uint)TypeId.String:
-                return SerializerRegistry.Get<string>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<string>().Read(ref context, refMode, false);
             case (uint)TypeId.List:
             {
                 if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
@@ -79,7 +79,7 @@ public static class FieldSkipper
                     throw new InvalidDataException("unsupported compatible list element type");
                 }
 
-                return SerializerRegistry.Get<List<string>>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<List<string>>().Read(ref context, refMode, false);
             }
             case (uint)TypeId.Set:
             {
@@ -88,7 +88,7 @@ public static class FieldSkipper
                     throw new InvalidDataException("unsupported compatible set element type");
                 }
 
-                return SerializerRegistry.Get<HashSet<string>>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<HashSet<string>>().Read(ref context, refMode, false);
             }
             case (uint)TypeId.Map:
             {
@@ -99,14 +99,14 @@ public static class FieldSkipper
                     throw new InvalidDataException("unsupported compatible map key/value type");
                 }
 
-                return SerializerRegistry.Get<Dictionary<string, string>>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<Dictionary<string, string>>().Read(ref context, refMode, false);
             }
             case (uint)TypeId.Enum:
                 return ReadEnumOrdinal(ref context, refMode);
             case (uint)TypeId.Union:
             case (uint)TypeId.TypedUnion:
             case (uint)TypeId.NamedUnion:
-                return SerializerRegistry.Get<Union>().Read(ref context, refMode, false);
+                return context.TypeResolver.GetSerializer<Union>().Read(ref context, refMode, false);
             default:
                 throw new InvalidDataException($"unsupported compatible field type id {fieldType.TypeId}");
         }

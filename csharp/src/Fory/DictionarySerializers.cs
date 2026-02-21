@@ -30,9 +30,6 @@ internal static class DictionaryBits
 public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<DictionarySerializer<TKey, TValue>, Dictionary<TKey, TValue>>
     where TKey : notnull
 {
-    private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
-    private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
-
     public static TypeId StaticTypeId => TypeId.Map;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
@@ -41,8 +38,8 @@ public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<Di
 
     public static void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
-        Serializer<TKey> keySerializer = KeySerializer;
-        Serializer<TValue> valueSerializer = ValueSerializer;
+        Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
+        Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         Dictionary<TKey, TValue> map = value ?? [];
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
@@ -194,8 +191,8 @@ public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<Di
 
     public static Dictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
-        Serializer<TKey> keySerializer = KeySerializer;
-        Serializer<TValue> valueSerializer = ValueSerializer;
+        Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
+        Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {

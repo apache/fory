@@ -16,7 +16,6 @@
 // under the License.
 
 using System.Reflection;
-using System.Threading;
 
 namespace Apache.Fory;
 
@@ -410,37 +409,5 @@ internal static class StaticSerializerBindingFactory
         where TSerializer : IStaticSerializer<TSerializer, T>
     {
         return Create<T, TSerializer>();
-    }
-}
-
-internal static class TypedSerializerBindingCache<T>
-{
-    private static readonly object Gate = new();
-    private static TypedSerializerBinding<T>? _binding;
-    private static int _bindingVersion = -1;
-
-    public static Serializer<T> Get()
-    {
-        int currentVersion = SerializerRegistry.Version;
-        TypedSerializerBinding<T>? binding = Volatile.Read(ref _binding);
-        if (binding is not null && Volatile.Read(ref _bindingVersion) == currentVersion)
-        {
-            return new Serializer<T>(binding);
-        }
-
-        lock (Gate)
-        {
-            binding = _binding;
-            if (binding is not null && _bindingVersion == currentVersion)
-            {
-                return new Serializer<T>(binding);
-            }
-
-            SerializerBinding untyped = SerializerRegistry.GetBinding(typeof(T));
-            binding = untyped.RequireTypedBinding<T>();
-            _binding = binding;
-            Volatile.Write(ref _bindingVersion, currentVersion);
-            return new Serializer<T>(binding);
-        }
     }
 }

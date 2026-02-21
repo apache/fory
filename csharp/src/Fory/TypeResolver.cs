@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections.Concurrent;
+
 namespace Apache.Fory;
 
 internal sealed record RegisteredTypeInfo(
@@ -43,14 +45,75 @@ internal sealed class TypeReader
 
 public sealed class TypeResolver
 {
+    private static readonly ConcurrentDictionary<Type, Func<SerializerBinding>> GeneratedFactories = new();
+    private static readonly ConcurrentDictionary<Type, SerializerBinding> SharedStaticBindings = new();
+
     private readonly Dictionary<Type, RegisteredTypeInfo> _byType = [];
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
     private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
+    private readonly ConcurrentDictionary<Type, SerializerBinding> _serializerBindings = new();
+    private readonly ConcurrentDictionary<Type, object> _typedBindings = new();
+
+    public static void RegisterGenerated<T, TSerializer>()
+        where TSerializer : IStaticSerializer<TSerializer, T>
+    {
+        Type type = typeof(T);
+        GeneratedFactories[type] = StaticSerializerBindingFactory.Create<T, TSerializer>;
+        SharedStaticBindings.TryRemove(type, out _);
+    }
+
+    public static TypeId StaticTypeIdOf<T>()
+    {
+        return GetSharedStaticBinding(typeof(T)).RequireTypedBinding<T>().StaticTypeId;
+    }
+
+    public static bool IsReferenceTrackableTypeOf<T>()
+    {
+        return GetSharedStaticBinding(typeof(T)).RequireTypedBinding<T>().IsReferenceTrackableType;
+    }
+
+    public static IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFieldsOf<T>(bool trackRef)
+    {
+        return GetSharedStaticBinding(typeof(T)).RequireTypedBinding<T>().CompatibleTypeMetaFields(trackRef);
+    }
+
+    public Serializer<T> GetSerializer<T>()
+    {
+        Type type = typeof(T);
+        if (_typedBindings.TryGetValue(type, out object? cachedTypedBinding))
+        {
+            return new Serializer<T>((TypedSerializerBinding<T>)cachedTypedBinding);
+        }
+
+        TypedSerializerBinding<T> typedBinding = GetBinding(type).RequireTypedBinding<T>();
+        object typedObject = _typedBindings.GetOrAdd(type, typedBinding);
+        return new Serializer<T>((TypedSerializerBinding<T>)typedObject);
+    }
+
+    internal SerializerBinding GetBinding(Type type)
+    {
+        return _serializerBindings.GetOrAdd(type, CreateBindingCore);
+    }
+
+    internal SerializerBinding RegisterCustom<T, TSerializer>()
+        where TSerializer : IStaticSerializer<TSerializer, T>
+    {
+        SerializerBinding serializerBinding = StaticSerializerBindingFactory.Create<T, TSerializer>();
+        RegisterCustom(typeof(T), serializerBinding);
+        return serializerBinding;
+    }
+
+    internal void RegisterCustom(Type type, SerializerBinding serializerBinding)
+    {
+        _serializerBindings[type] = serializerBinding;
+        _typedBindings.TryRemove(type, out _);
+    }
+
     internal void Register(Type type, uint id, SerializerBinding? explicitSerializer = null)
     {
-        SerializerBinding serializer = explicitSerializer ?? SerializerRegistry.GetBinding(type);
+        SerializerBinding serializer = explicitSerializer ?? GetBinding(type);
         RegisteredTypeInfo info = new(
             id,
             serializer.StaticTypeId,
@@ -74,7 +137,7 @@ public sealed class TypeResolver
 
     internal void Register(Type type, string namespaceName, string typeName, SerializerBinding? explicitSerializer = null)
     {
-        SerializerBinding serializer = explicitSerializer ?? SerializerRegistry.GetBinding(type);
+        SerializerBinding serializer = explicitSerializer ?? GetBinding(type);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
         RegisteredTypeInfo info = new(
@@ -198,64 +261,64 @@ public sealed class TypeResolver
         switch (typeInfo.WireTypeId)
         {
             case TypeId.Bool:
-                return SerializerRegistry.Get<bool>().Read(ref context, RefMode.None, false);
+                return GetSerializer<bool>().Read(ref context, RefMode.None, false);
             case TypeId.Int8:
-                return SerializerRegistry.Get<sbyte>().Read(ref context, RefMode.None, false);
+                return GetSerializer<sbyte>().Read(ref context, RefMode.None, false);
             case TypeId.Int16:
-                return SerializerRegistry.Get<short>().Read(ref context, RefMode.None, false);
+                return GetSerializer<short>().Read(ref context, RefMode.None, false);
             case TypeId.Int32:
-                return SerializerRegistry.Get<ForyInt32Fixed>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ForyInt32Fixed>().Read(ref context, RefMode.None, false);
             case TypeId.VarInt32:
-                return SerializerRegistry.Get<int>().Read(ref context, RefMode.None, false);
+                return GetSerializer<int>().Read(ref context, RefMode.None, false);
             case TypeId.Int64:
-                return SerializerRegistry.Get<ForyInt64Fixed>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ForyInt64Fixed>().Read(ref context, RefMode.None, false);
             case TypeId.VarInt64:
-                return SerializerRegistry.Get<long>().Read(ref context, RefMode.None, false);
+                return GetSerializer<long>().Read(ref context, RefMode.None, false);
             case TypeId.TaggedInt64:
-                return SerializerRegistry.Get<ForyInt64Tagged>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ForyInt64Tagged>().Read(ref context, RefMode.None, false);
             case TypeId.UInt8:
-                return SerializerRegistry.Get<byte>().Read(ref context, RefMode.None, false);
+                return GetSerializer<byte>().Read(ref context, RefMode.None, false);
             case TypeId.UInt16:
-                return SerializerRegistry.Get<ushort>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ushort>().Read(ref context, RefMode.None, false);
             case TypeId.UInt32:
-                return SerializerRegistry.Get<ForyUInt32Fixed>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ForyUInt32Fixed>().Read(ref context, RefMode.None, false);
             case TypeId.VarUInt32:
-                return SerializerRegistry.Get<uint>().Read(ref context, RefMode.None, false);
+                return GetSerializer<uint>().Read(ref context, RefMode.None, false);
             case TypeId.UInt64:
-                return SerializerRegistry.Get<ForyUInt64Fixed>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ForyUInt64Fixed>().Read(ref context, RefMode.None, false);
             case TypeId.VarUInt64:
-                return SerializerRegistry.Get<ulong>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ulong>().Read(ref context, RefMode.None, false);
             case TypeId.TaggedUInt64:
-                return SerializerRegistry.Get<ForyUInt64Tagged>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ForyUInt64Tagged>().Read(ref context, RefMode.None, false);
             case TypeId.Float32:
-                return SerializerRegistry.Get<float>().Read(ref context, RefMode.None, false);
+                return GetSerializer<float>().Read(ref context, RefMode.None, false);
             case TypeId.Float64:
-                return SerializerRegistry.Get<double>().Read(ref context, RefMode.None, false);
+                return GetSerializer<double>().Read(ref context, RefMode.None, false);
             case TypeId.String:
-                return SerializerRegistry.Get<string>().Read(ref context, RefMode.None, false);
+                return GetSerializer<string>().Read(ref context, RefMode.None, false);
             case TypeId.Binary:
             case TypeId.UInt8Array:
-                return SerializerRegistry.Get<byte[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<byte[]>().Read(ref context, RefMode.None, false);
             case TypeId.BoolArray:
-                return SerializerRegistry.Get<bool[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<bool[]>().Read(ref context, RefMode.None, false);
             case TypeId.Int8Array:
-                return SerializerRegistry.Get<sbyte[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<sbyte[]>().Read(ref context, RefMode.None, false);
             case TypeId.Int16Array:
-                return SerializerRegistry.Get<short[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<short[]>().Read(ref context, RefMode.None, false);
             case TypeId.Int32Array:
-                return SerializerRegistry.Get<int[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<int[]>().Read(ref context, RefMode.None, false);
             case TypeId.Int64Array:
-                return SerializerRegistry.Get<long[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<long[]>().Read(ref context, RefMode.None, false);
             case TypeId.UInt16Array:
-                return SerializerRegistry.Get<ushort[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ushort[]>().Read(ref context, RefMode.None, false);
             case TypeId.UInt32Array:
-                return SerializerRegistry.Get<uint[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<uint[]>().Read(ref context, RefMode.None, false);
             case TypeId.UInt64Array:
-                return SerializerRegistry.Get<ulong[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<ulong[]>().Read(ref context, RefMode.None, false);
             case TypeId.Float32Array:
-                return SerializerRegistry.Get<float[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<float[]>().Read(ref context, RefMode.None, false);
             case TypeId.Float64Array:
-                return SerializerRegistry.Get<double[]>().Read(ref context, RefMode.None, false);
+                return GetSerializer<double[]>().Read(ref context, RefMode.None, false);
             case TypeId.List:
                 return DynamicContainerCodec.ReadListPayload(ref context);
             case TypeId.Set:
@@ -263,7 +326,7 @@ public sealed class TypeResolver
             case TypeId.Map:
                 return DynamicContainerCodec.ReadMapPayload(ref context);
             case TypeId.Union:
-                return SerializerRegistry.Get<Union>().Read(ref context, RefMode.None, false);
+                return GetSerializer<Union>().Read(ref context, RefMode.None, false);
             case TypeId.Struct:
             case TypeId.Enum:
             case TypeId.Ext:
@@ -348,6 +411,195 @@ public sealed class TypeResolver
         }
 
         throw new TypeNotRegisteredException($"no dynamic registration mode for kind {kind}");
+    }
+
+    private static SerializerBinding GetSharedStaticBinding(Type type)
+    {
+        return SharedStaticBindings.GetOrAdd(type, CreateBindingCore);
+    }
+
+    private static SerializerBinding CreateBindingCore(Type type)
+    {
+        if (GeneratedFactories.TryGetValue(type, out Func<SerializerBinding>? generatedFactory))
+        {
+            return generatedFactory();
+        }
+
+        if (type == typeof(bool))
+        {
+            return StaticSerializerBindingFactory.Create<bool, BoolSerializer>();
+        }
+
+        if (type == typeof(sbyte))
+        {
+            return StaticSerializerBindingFactory.Create<sbyte, Int8Serializer>();
+        }
+
+        if (type == typeof(short))
+        {
+            return StaticSerializerBindingFactory.Create<short, Int16Serializer>();
+        }
+
+        if (type == typeof(int))
+        {
+            return StaticSerializerBindingFactory.Create<int, Int32Serializer>();
+        }
+
+        if (type == typeof(long))
+        {
+            return StaticSerializerBindingFactory.Create<long, Int64Serializer>();
+        }
+
+        if (type == typeof(byte))
+        {
+            return StaticSerializerBindingFactory.Create<byte, UInt8Serializer>();
+        }
+
+        if (type == typeof(ushort))
+        {
+            return StaticSerializerBindingFactory.Create<ushort, UInt16Serializer>();
+        }
+
+        if (type == typeof(uint))
+        {
+            return StaticSerializerBindingFactory.Create<uint, UInt32Serializer>();
+        }
+
+        if (type == typeof(ulong))
+        {
+            return StaticSerializerBindingFactory.Create<ulong, UInt64Serializer>();
+        }
+
+        if (type == typeof(float))
+        {
+            return StaticSerializerBindingFactory.Create<float, Float32Serializer>();
+        }
+
+        if (type == typeof(double))
+        {
+            return StaticSerializerBindingFactory.Create<double, Float64Serializer>();
+        }
+
+        if (type == typeof(string))
+        {
+            return StaticSerializerBindingFactory.Create<string, StringSerializer>();
+        }
+
+        if (type == typeof(byte[]))
+        {
+            return StaticSerializerBindingFactory.Create<byte[], BinarySerializer>();
+        }
+
+        if (type == typeof(DateOnly))
+        {
+            return StaticSerializerBindingFactory.Create<DateOnly, DateOnlySerializer>();
+        }
+
+        if (type == typeof(DateTimeOffset))
+        {
+            return StaticSerializerBindingFactory.Create<DateTimeOffset, DateTimeOffsetSerializer>();
+        }
+
+        if (type == typeof(DateTime))
+        {
+            return StaticSerializerBindingFactory.Create<DateTime, DateTimeSerializer>();
+        }
+
+        if (type == typeof(TimeSpan))
+        {
+            return StaticSerializerBindingFactory.Create<TimeSpan, TimeSpanSerializer>();
+        }
+
+        if (type == typeof(ForyInt32Fixed))
+        {
+            return StaticSerializerBindingFactory.Create<ForyInt32Fixed, ForyInt32FixedSerializer>();
+        }
+
+        if (type == typeof(ForyInt64Fixed))
+        {
+            return StaticSerializerBindingFactory.Create<ForyInt64Fixed, ForyInt64FixedSerializer>();
+        }
+
+        if (type == typeof(ForyInt64Tagged))
+        {
+            return StaticSerializerBindingFactory.Create<ForyInt64Tagged, ForyInt64TaggedSerializer>();
+        }
+
+        if (type == typeof(ForyUInt32Fixed))
+        {
+            return StaticSerializerBindingFactory.Create<ForyUInt32Fixed, ForyUInt32FixedSerializer>();
+        }
+
+        if (type == typeof(ForyUInt64Fixed))
+        {
+            return StaticSerializerBindingFactory.Create<ForyUInt64Fixed, ForyUInt64FixedSerializer>();
+        }
+
+        if (type == typeof(ForyUInt64Tagged))
+        {
+            return StaticSerializerBindingFactory.Create<ForyUInt64Tagged, ForyUInt64TaggedSerializer>();
+        }
+
+        if (type == typeof(object))
+        {
+            return StaticSerializerBindingFactory.Create<object?, DynamicAnyObjectSerializer>();
+        }
+
+        if (typeof(Union).IsAssignableFrom(type))
+        {
+            Type serializerType = typeof(UnionSerializer<>).MakeGenericType(type);
+            return StaticSerializerBindingFactory.Create(type, serializerType);
+        }
+
+        if (type.IsEnum)
+        {
+            Type serializerType = typeof(EnumSerializer<>).MakeGenericType(type);
+            return StaticSerializerBindingFactory.Create(type, serializerType);
+        }
+
+        if (type.IsArray)
+        {
+            Type elementType = type.GetElementType()!;
+            Type serializerType = typeof(ArraySerializer<>).MakeGenericType(elementType);
+            return StaticSerializerBindingFactory.Create(type, serializerType);
+        }
+
+        if (type.IsGenericType)
+        {
+            Type genericType = type.GetGenericTypeDefinition();
+            Type[] genericArgs = type.GetGenericArguments();
+            if (genericType == typeof(Nullable<>))
+            {
+                Type serializerType = typeof(NullableSerializer<>).MakeGenericType(genericArgs[0]);
+                return StaticSerializerBindingFactory.Create(type, serializerType);
+            }
+
+            if (genericType == typeof(List<>))
+            {
+                Type serializerType = typeof(ListSerializer<>).MakeGenericType(genericArgs[0]);
+                return StaticSerializerBindingFactory.Create(type, serializerType);
+            }
+
+            if (genericType == typeof(HashSet<>))
+            {
+                Type serializerType = typeof(SetSerializer<>).MakeGenericType(genericArgs[0]);
+                return StaticSerializerBindingFactory.Create(type, serializerType);
+            }
+
+            if (genericType == typeof(Dictionary<,>))
+            {
+                Type serializerType = typeof(DictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                return StaticSerializerBindingFactory.Create(type, serializerType);
+            }
+
+            if (genericType == typeof(NullableKeyDictionary<,>))
+            {
+                Type serializerType = typeof(NullableKeyDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                return StaticSerializerBindingFactory.Create(type, serializerType);
+            }
+        }
+
+        throw new TypeNotRegisteredException($"No serializer available for {type}");
     }
 
     private static MetaString ReadMetaString(ByteReader reader, MetaStringDecoder decoder, IReadOnlyList<MetaStringEncoding> encodings)

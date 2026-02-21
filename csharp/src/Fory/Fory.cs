@@ -57,23 +57,23 @@ public sealed class Fory
     public Fory Register<T, TSerializer>(uint typeId)
         where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        SerializerRegistry.RegisterCustom<T, TSerializer>();
-        _typeResolver.Register(typeof(T), typeId);
+        SerializerBinding serializerBinding = _typeResolver.RegisterCustom<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeId, serializerBinding);
         return this;
     }
 
     public Fory Register<T, TSerializer>(string typeNamespace, string typeName)
         where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        SerializerRegistry.RegisterCustom<T, TSerializer>();
-        _typeResolver.Register(typeof(T), typeNamespace, typeName);
+        SerializerBinding serializerBinding = _typeResolver.RegisterCustom<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeNamespace, typeName, serializerBinding);
         return this;
     }
 
     public byte[] Serialize<T>(in T value)
     {
         ByteWriter writer = new();
-        Serializer<T> binding = TypedSerializerBindingCache<T>.Get();
+        Serializer<T> binding = _typeResolver.GetSerializer<T>();
         bool isNone = binding.IsNone(value);
         WriteHead(writer, isNone);
         if (!isNone)
@@ -200,7 +200,7 @@ public sealed class Fory
     private T DeserializeFromReader<T>(ByteReader reader)
     {
         bool isNone = ReadHead(reader);
-        Serializer<T> binding = TypedSerializerBindingCache<T>.Get();
+        Serializer<T> binding = _typeResolver.GetSerializer<T>();
         if (isNone)
         {
             return binding.DefaultValue;

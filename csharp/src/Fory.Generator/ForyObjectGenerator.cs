@@ -118,12 +118,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             if (model.Kind == DeclKind.Enum)
             {
                 sb.AppendLine(
-                    $"        global::Apache.Fory.SerializerRegistry.RegisterGenerated<{model.TypeName}, global::Apache.Fory.EnumSerializer<{model.TypeName}>>();");
+                    $"        global::Apache.Fory.TypeResolver.RegisterGenerated<{model.TypeName}, global::Apache.Fory.EnumSerializer<{model.TypeName}>>();");
             }
             else
             {
                 sb.AppendLine(
-                    $"        global::Apache.Fory.SerializerRegistry.RegisterGenerated<{model.TypeName}, {model.SerializerName}>();");
+                    $"        global::Apache.Fory.TypeResolver.RegisterGenerated<{model.TypeName}, {model.SerializerName}>();");
             }
         }
 
@@ -162,7 +162,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        };");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    private static uint __ForySchemaHash(bool trackRef)");
+        sb.AppendLine("    private static uint __ForySchemaHash(bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.Append("        return global::Apache.Fory.SchemaHash.StructHash32(");
         sb.Append(BuildSchemaFingerprintExpression(model.Members));
@@ -226,7 +226,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        context.Writer.WriteInt32(unchecked((int)__ForySchemaHash(context.TrackRef)));");
+        sb.AppendLine("        context.Writer.WriteInt32(unchecked((int)__ForySchemaHash(context.TrackRef, context.TypeResolver)));");
         foreach (MemberModel member in model.SortedMembers)
         {
             EmitWriteMember(sb, member, false);
@@ -269,7 +269,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        uint schemaHash = unchecked((uint)context.Reader.ReadInt32());");
-        sb.AppendLine("        uint expectedHash = __ForySchemaHash(context.TrackRef);");
+        sb.AppendLine("        uint expectedHash = __ForySchemaHash(context.TrackRef, context.TypeResolver);");
         sb.AppendLine("        if (schemaHash != expectedHash)");
         sb.AppendLine("        {");
         sb.AppendLine("            throw new global::Apache.Fory.InvalidDataException($\"class version hash mismatch: expected {expectedHash}, got {schemaHash}\");");
@@ -297,7 +297,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string memberAccess = $"value.{member.Name}";
         string hasGenerics = member.IsCollection ? "true" : "false";
         string writeTypeInfo = compatibleMode
-            ? $"__ForyNeedsTypeInfoForField(global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().StaticTypeId)"
+            ? $"__ForyNeedsTypeInfoForField(context.TypeResolver.GetSerializer<{member.TypeName}>().StaticTypeId)"
             : "false";
 
         switch (member.DynamicAnyKind)
@@ -322,19 +322,19 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 sb.AppendLine(
                     $"            {member.CustomWrapperTypeName}? {wrappedVarName} = {memberAccess}.HasValue ? new {member.CustomWrapperTypeName}({memberAccess}.Value) : null;");
                 sb.AppendLine(
-                    $"            global::Apache.Fory.SerializerRegistry.Get<{member.CustomWrapperTypeName}?>().Write(ref context, {wrappedVarName}, {refModeExpr}, false, false);");
+                    $"            context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}?>().Write(ref context, {wrappedVarName}, {refModeExpr}, false, false);");
             }
             else
             {
                 sb.AppendLine(
-                    $"            global::Apache.Fory.SerializerRegistry.Get<{member.CustomWrapperTypeName}>().Write(ref context, new {member.CustomWrapperTypeName}({memberAccess}), {refModeExpr}, false, false);");
+                    $"            context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}>().Write(ref context, new {member.CustomWrapperTypeName}({memberAccess}), {refModeExpr}, false, false);");
             }
 
             return;
         }
 
         sb.AppendLine(
-            $"            global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().Write(ref context, {memberAccess}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+            $"            context.TypeResolver.GetSerializer<{member.TypeName}>().Write(ref context, {memberAccess}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
     }
 
     private static void EmitReadMemberAssignment(
@@ -367,21 +367,21 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             if (member.IsNullableValueType)
             {
                 sb.AppendLine(
-                    $"{indent}{member.CustomWrapperTypeName}? {wrappedVarName} = global::Apache.Fory.SerializerRegistry.Get<{member.CustomWrapperTypeName}?>().Read(ref context, {refModeExpr}, false);");
+                    $"{indent}{member.CustomWrapperTypeName}? {wrappedVarName} = context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}?>().Read(ref context, {refModeExpr}, false);");
                 sb.AppendLine(
                     $"{indent}{assignmentTarget} = {wrappedVarName}.HasValue ? {wrappedVarName}.Value.RawValue : ({member.TypeName})null!;");
             }
             else
             {
                 sb.AppendLine(
-                    $"{indent}{assignmentTarget} = global::Apache.Fory.SerializerRegistry.Get<{member.CustomWrapperTypeName}>().Read(ref context, {refModeExpr}, false).RawValue;");
+                    $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}>().Read(ref context, {refModeExpr}, false).RawValue;");
             }
 
             return;
         }
 
         sb.AppendLine(
-            $"{indent}{assignmentTarget} = global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().Read(ref context, {refModeExpr}, {readTypeInfoExpr});");
+            $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(ref context, {refModeExpr}, {readTypeInfoExpr});");
     }
 
     private static string StripNullableForTypeOf(string typeName)
@@ -412,7 +412,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 DynamicAnyKind.AnyValue => "(trackRef ? 1 : 0)",
                 _ => member.Classification.IsBuiltIn
                     ? "0"
-                    : $"((trackRef && global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().IsReferenceTrackableType) ? 1 : 0)",
+                    : $"((trackRef && typeResolver.GetSerializer<{member.TypeName}>().IsReferenceTrackableType) ? 1 : 0)",
             };
             string nullable = member.IsNullable ? "1" : "0";
             string piece = $"\"{EscapeString(member.FieldIdentifier)},{fingerprintTypeId},\" + {trackRefExpr} + \",{nullable};\"";
@@ -450,7 +450,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             DynamicAnyKind.AnyValue => $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef)",
             _ => member.Classification.IsBuiltIn
                 ? $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)"
-                : $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef && global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().IsReferenceTrackableType)",
+                : $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef && context.TypeResolver.GetSerializer<{member.TypeName}>().IsReferenceTrackableType)",
         };
     }
 
@@ -732,7 +732,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string typeName = memberType.ToDisplayString(FullNameFormat);
         TypeClassification classification = ClassifyType(unwrapped);
         return new TypeMetaFieldTypeModel(
-            $"(uint)global::Apache.Fory.SerializerRegistry.Get<{typeName}>().StaticTypeId",
+            $"(uint)global::Apache.Fory.TypeResolver.StaticTypeIdOf<{typeName}>()",
             nullable,
             !classification.IsBuiltIn && unwrapped.TypeKind != TypeKind.Enum,
             ImmutableArray<TypeMetaFieldTypeModel>.Empty);
