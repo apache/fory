@@ -1772,6 +1772,17 @@ cdef class Serializer:
         return False
 
 
+cdef class XlangCompatibleSerializer(Serializer):
+    def __init__(self, fory, type_):
+        super().__init__(fory, type_)
+
+    cpdef xwrite(self, Buffer buffer, value):
+        self.write(buffer, value)
+
+    cpdef xread(self, Buffer buffer):
+        return self.read(buffer)
+
+
 @cython.final
 cdef class EnumSerializer(Serializer):
     cdef tuple _members
