@@ -305,6 +305,22 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void DictionarySerializerSkipsNullKeyEntries()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
+
+        NullableKeyDictionary<string, string?> source = new();
+        source.Add("k1", "v1");
+        source.Add((string)null!, "v-null");
+        source.Add("k2", "v2");
+
+        Dictionary<string, string?> decoded = fory.Deserialize<Dictionary<string, string?>>(fory.Serialize(source));
+        Assert.Equal(2, decoded.Count);
+        Assert.Equal("v1", decoded["k1"]);
+        Assert.Equal("v2", decoded["k2"]);
+    }
+
+    [Fact]
     public void StructWithNullableMapRoundTrip()
     {
         ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();

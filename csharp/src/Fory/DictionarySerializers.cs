@@ -220,7 +220,8 @@ public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<Di
 
             if (keyNull && valueNull)
             {
-                map[(TKey)keySerializer.DefaultObject!] = (TValue)valueSerializer.DefaultObject!;
+                // Dictionary<TKey, TValue> cannot represent a null key.
+                // Drop this entry instead of mapping it to default(TKey), which would corrupt key semantics.
                 readCount += 1;
                 continue;
             }
@@ -234,7 +235,8 @@ public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<Di
                     canonicalizeValues,
                     valueSerializer);
 
-                map[(TKey)keySerializer.DefaultObject!] = value;
+                // Preserve stream/reference state by reading value payload, then skip null-key entry.
+                // This avoids injecting a fake default(TKey) key into Dictionary.
                 readCount += 1;
                 continue;
             }
