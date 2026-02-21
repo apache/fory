@@ -47,20 +47,15 @@ class Serializer(ABC):
     def read(self, buffer):
         raise NotImplementedError
 
-    @classmethod
-    def support_subclass(cls) -> bool:
-        return False
-
-
-class XlangCompatibleSerializer(Serializer):
-    def __init__(self, fory, type_):
-        super().__init__(fory, type_)
-
     def xwrite(self, buffer, value):
         self.write(buffer, value)
 
     def xread(self, buffer):
         return self.read(buffer)
+
+    @classmethod
+    def support_subclass(cls) -> bool:
+        return False
 
 
 class BooleanSerializer(Serializer):
@@ -109,6 +104,12 @@ class FixedInt32Serializer(Serializer):
 
 class Int64Serializer(Serializer):
     """Serializer for INT64/VARINT64 type - uses variable-length encoding for xlang compatibility."""
+
+    def xwrite(self, buffer, value):
+        buffer.write_varint64(value)
+
+    def xread(self, buffer):
+        return buffer.read_varint64()
 
     def write(self, buffer, value):
         buffer.write_varint64(value)
@@ -243,19 +244,17 @@ class Float64Serializer(Serializer):
         return buffer.read_double()
 
 
-class BFloat16Serializer(XlangCompatibleSerializer):
+class BFloat16Serializer(Serializer):
     def write(self, buffer, value):
-        from pyfory.bfloat16 import BFloat16
+        from pyfory.bfloat16 import bfloat16
 
-        if isinstance(value, BFloat16):
+        if isinstance(value, bfloat16):
             buffer.write_bfloat16(value.to_bits())
         else:
-            buffer.write_bfloat16(BFloat16(value).to_bits())
+            buffer.write_bfloat16(bfloat16(value).to_bits())
 
     def read(self, buffer):
-        from pyfory.bfloat16 import BFloat16
-
-        return BFloat16.from_bits(buffer.read_bfloat16())
+        return buffer.read_bfloat16()
 
 
 class StringSerializer(Serializer):
@@ -318,19 +317,24 @@ class EnumSerializer(Serializer):
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
         self.need_to_write_ref = False
-        self._members = tuple(type_)
-        self._ordinal_by_member = {member: idx for idx, member in enumerate(self._members)}
 
     @classmethod
     def support_subclass(cls) -> bool:
         return True
 
     def write(self, buffer, value):
-        buffer.write_var_uint32(self._ordinal_by_member[value])
+        buffer.write_string(value.name)
 
     def read(self, buffer):
+        name = buffer.read_string()
+        return getattr(self.type_, name)
+
+    def xwrite(self, buffer, value):
+        buffer.write_var_uint32(value.value)
+
+    def xread(self, buffer):
         ordinal = buffer.read_var_uint32()
-        return self._members[ordinal]
+        return self.type_(ordinal)
 
 
 class SliceSerializer(Serializer):
@@ -381,3 +385,9 @@ class SliceSerializer(Serializer):
         else:
             step = self.fory.read_no_ref(buffer)
         return slice(start, stop, step)
+
+    def xwrite(self, buffer, value):
+        raise NotImplementedError
+
+    def xread(self, buffer):
+        raise NotImplementedError

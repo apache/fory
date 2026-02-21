@@ -44,18 +44,18 @@ cdef inline float bfloat16_bits_to_float32(uint16_t bits) nogil:
     return result
 
 
-cdef class BFloat16:
+cdef class bfloat16:
     cdef uint16_t _bits
     
     def __init__(self, value):
-        if isinstance(value, BFloat16):
-            self._bits = (<BFloat16>value)._bits
+        if isinstance(value, bfloat16):
+            self._bits = (<bfloat16>value)._bits
         else:
             self._bits = float32_to_bfloat16_bits(<float>float(value))
     
     @staticmethod
     def from_bits(uint16_t bits):
-        cdef BFloat16 bf16 = BFloat16.__new__(BFloat16)
+        cdef bfloat16 bf16 = bfloat16.__new__(bfloat16)
         bf16._bits = bits
         return bf16
     
@@ -69,18 +69,18 @@ cdef class BFloat16:
         return float(self.to_float32())
     
     def __repr__(self):
-        return f"BFloat16({self.to_float32()})"
+        return f"bfloat16({self.to_float32()})"
     
     def __str__(self):
         return str(self.to_float32())
     
     def __eq__(self, other):
-        if isinstance(other, BFloat16):
-            if self.is_nan() or (<BFloat16>other).is_nan():
+        if isinstance(other, bfloat16):
+            if self.is_nan() or (<bfloat16>other).is_nan():
                 return False
-            if self.is_zero() and (<BFloat16>other).is_zero():
+            if self.is_zero() and (<bfloat16>other).is_zero():
                 return True
-            return self._bits == (<BFloat16>other)._bits
+            return self._bits == (<bfloat16>other)._bits
         return False
     
     def __hash__(self):
@@ -114,3 +114,7 @@ cdef class BFloat16:
     
     def signbit(self):
         return (self._bits & 0x8000) != 0
+
+
+# Backward-compatible alias for existing user code.
+BFloat16 = bfloat16

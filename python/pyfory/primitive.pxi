@@ -53,6 +53,12 @@ cdef class Int32Serializer(Serializer):
 
 @cython.final
 cdef class Int64Serializer(Serializer):
+    cpdef inline xwrite(self, Buffer buffer, value):
+        buffer.write_varint64(value)
+
+    cpdef inline xread(self, Buffer buffer):
+        return buffer.read_varint64()
+
     cpdef inline write(self, Buffer buffer, value):
         buffer.write_varint64(value)
 
@@ -199,23 +205,20 @@ cdef class Float64Serializer(Serializer):
 
 
 @cython.final
-
-cdef class BFloat16Serializer(XlangCompatibleSerializer):
+cdef class BFloat16Serializer(Serializer):
     cpdef inline write(self, Buffer buffer, value):
-        from pyfory.bfloat16 import BFloat16
-        if isinstance(value, BFloat16):
+        from pyfory.bfloat16 import bfloat16
+        if isinstance(value, bfloat16):
             buffer.write_bfloat16(value.to_bits())
         else:
-            buffer.write_bfloat16(BFloat16(value).to_bits())
+            buffer.write_bfloat16(bfloat16(value).to_bits())
 
     cpdef inline read(self, Buffer buffer):
-        from pyfory.bfloat16 import BFloat16
-        return BFloat16.from_bits(buffer.read_bfloat16())
+        return buffer.read_bfloat16()
+
 
 @cython.final
-
 cdef class StringSerializer(Serializer):
-
     def __init__(self, fory, type_, track_ref=False):
         super().__init__(fory, type_)
         self.need_to_write_ref = track_ref

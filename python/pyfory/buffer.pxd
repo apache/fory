@@ -25,6 +25,7 @@ from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from pyfory.includes.libutil cimport CBuffer, CError
+from pyfory.bfloat16 cimport bfloat16
 
 
 cdef class Buffer:
@@ -160,7 +161,7 @@ cdef class Buffer:
 
     cpdef inline double read_float64(self)
 
-    cpdef inline uint16_t read_bfloat16(self)
+    cpdef inline bfloat16 read_bfloat16(self)
 
     cpdef inline write_varint64(self, int64_t v)
 

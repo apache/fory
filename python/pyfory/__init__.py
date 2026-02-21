@@ -122,12 +122,10 @@ from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=
 from pyfory.buffer import Buffer  # noqa: F401 # pylint: disable=unused-import
 
 # BFloat16 support
-try:
-    from pyfory.bfloat16 import BFloat16  # noqa: F401
-    from pyfory.bfloat16_array import BFloat16Array  # noqa: F401
-except ImportError:
-    # Cython extensions not built yet
-    pass
+from pyfory.bfloat16 import bfloat16  # noqa: F401
+from pyfory.bfloat16_array import BFloat16Array  # noqa: F401
+# Keep compatibility with existing API naming.
+BFloat16 = bfloat16
 
 __version__ = "0.16.0.dev0"
 
