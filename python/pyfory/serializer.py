@@ -456,6 +456,7 @@ class BFloat16ArraySerializer(Serializer):
         bf16_arr._data = arr
         return bf16_arr
 
+
 if np:
     _np_dtypes_dict = (
         {
