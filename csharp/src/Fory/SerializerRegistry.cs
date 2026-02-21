@@ -16,13 +16,15 @@
 // under the License.
 
 using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Apache.Fory;
 
 public static class SerializerRegistry
 {
-    private static readonly ConcurrentDictionary<Type, ISerializer> Cache = new();
-    private static readonly ConcurrentDictionary<Type, Func<ISerializer>> GeneratedFactories = new();
+    private static readonly ConcurrentDictionary<Type, SerializerBinding> Cache = new();
+    private static readonly ConcurrentDictionary<Type, Func<SerializerBinding>> GeneratedFactories = new();
+    private static int _version;
 
     static SerializerRegistry()
     {
@@ -30,182 +32,188 @@ public static class SerializerRegistry
         GeneratedSerializerRegistry.Register(GeneratedFactories);
     }
 
-    public static void RegisterGenerated<T>(Func<Serializer<T>> factory)
+    public static void RegisterGenerated<T, TSerializer>()
+        where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        GeneratedFactories[typeof(T)] = () => factory();
+        GeneratedFactories[typeof(T)] = StaticSerializerBindingFactory.Create<T, TSerializer>;
         Cache.TryRemove(typeof(T), out _);
+        Interlocked.Increment(ref _version);
     }
 
-    public static void RegisterCustom(Type type, ISerializer serializer)
+    public static void RegisterCustom<T, TSerializer>()
+        where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        Cache[type] = serializer;
+        Cache[typeof(T)] = StaticSerializerBindingFactory.Create<T, TSerializer>();
+        Interlocked.Increment(ref _version);
     }
+
+    internal static void RegisterCustom(Type type, SerializerBinding serializerBinding)
+    {
+        Cache[type] = serializerBinding;
+        Interlocked.Increment(ref _version);
+    }
+
+    internal static int Version => Volatile.Read(ref _version);
 
     public static Serializer<T> Get<T>()
     {
-        ISerializer serializer = Get(typeof(T));
-        if (serializer is Serializer<T> typed)
-        {
-            return typed;
-        }
-
-        throw new ForyInvalidDataException($"serializer type mismatch for {typeof(T)}");
+        return TypedSerializerBindingCache<T>.Get();
     }
 
-    public static ISerializer Get(Type type)
+    internal static SerializerBinding GetBinding(Type type)
     {
         return Cache.GetOrAdd(type, Create);
     }
 
-    private static ISerializer Create(Type type)
+    private static SerializerBinding Create(Type type)
     {
-        if (GeneratedFactories.TryGetValue(type, out Func<ISerializer>? generatedFactory))
+        if (GeneratedFactories.TryGetValue(type, out Func<SerializerBinding>? generatedFactory))
         {
             return generatedFactory();
         }
 
         if (type == typeof(bool))
         {
-            return BoolSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<bool, BoolSerializer>();
         }
 
         if (type == typeof(sbyte))
         {
-            return Int8Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<sbyte, Int8Serializer>();
         }
 
         if (type == typeof(short))
         {
-            return Int16Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<short, Int16Serializer>();
         }
 
         if (type == typeof(int))
         {
-            return Int32Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<int, Int32Serializer>();
         }
 
         if (type == typeof(long))
         {
-            return Int64Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<long, Int64Serializer>();
         }
 
         if (type == typeof(byte))
         {
-            return UInt8Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<byte, UInt8Serializer>();
         }
 
         if (type == typeof(ushort))
         {
-            return UInt16Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<ushort, UInt16Serializer>();
         }
 
         if (type == typeof(uint))
         {
-            return UInt32Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<uint, UInt32Serializer>();
         }
 
         if (type == typeof(ulong))
         {
-            return UInt64Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<ulong, UInt64Serializer>();
         }
 
         if (type == typeof(float))
         {
-            return Float32Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<float, Float32Serializer>();
         }
 
         if (type == typeof(double))
         {
-            return Float64Serializer.Instance;
+            return StaticSerializerBindingFactory.Create<double, Float64Serializer>();
         }
 
         if (type == typeof(string))
         {
-            return StringSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<string, StringSerializer>();
         }
 
         if (type == typeof(byte[]))
         {
-            return BinarySerializer.Instance;
+            return StaticSerializerBindingFactory.Create<byte[], BinarySerializer>();
         }
 
         if (type == typeof(DateOnly))
         {
-            return DateOnlySerializer.Instance;
+            return StaticSerializerBindingFactory.Create<DateOnly, DateOnlySerializer>();
         }
 
         if (type == typeof(DateTimeOffset))
         {
-            return DateTimeOffsetSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<DateTimeOffset, DateTimeOffsetSerializer>();
         }
 
         if (type == typeof(DateTime))
         {
-            return DateTimeSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<DateTime, DateTimeSerializer>();
         }
 
         if (type == typeof(TimeSpan))
         {
-            return TimeSpanSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<TimeSpan, TimeSpanSerializer>();
         }
 
         if (type == typeof(ForyInt32Fixed))
         {
-            return ForyInt32FixedSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyInt32Fixed, ForyInt32FixedSerializer>();
         }
 
         if (type == typeof(ForyInt64Fixed))
         {
-            return ForyInt64FixedSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyInt64Fixed, ForyInt64FixedSerializer>();
         }
 
         if (type == typeof(ForyInt64Tagged))
         {
-            return ForyInt64TaggedSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyInt64Tagged, ForyInt64TaggedSerializer>();
         }
 
         if (type == typeof(ForyUInt32Fixed))
         {
-            return ForyUInt32FixedSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyUInt32Fixed, ForyUInt32FixedSerializer>();
         }
 
         if (type == typeof(ForyUInt64Fixed))
         {
-            return ForyUInt64FixedSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyUInt64Fixed, ForyUInt64FixedSerializer>();
         }
 
         if (type == typeof(ForyUInt64Tagged))
         {
-            return ForyUInt64TaggedSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyUInt64Tagged, ForyUInt64TaggedSerializer>();
         }
 
         if (type == typeof(ForyAnyNullValue))
         {
-            return ForyAnyNullValueSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<ForyAnyNullValue, ForyAnyNullValueSerializer>();
         }
 
         if (type == typeof(object))
         {
-            return DynamicAnyObjectSerializer.Instance;
+            return StaticSerializerBindingFactory.Create<object?, DynamicAnyObjectSerializer>();
         }
 
         if (typeof(Union).IsAssignableFrom(type))
         {
             Type serializerType = typeof(UnionSerializer<>).MakeGenericType(type);
-            return (ISerializer)Activator.CreateInstance(serializerType)!;
+            return StaticSerializerBindingFactory.Create(type, serializerType);
         }
 
         if (type.IsEnum)
         {
             Type serializerType = typeof(EnumSerializer<>).MakeGenericType(type);
-            return (ISerializer)Activator.CreateInstance(serializerType)!;
+            return StaticSerializerBindingFactory.Create(type, serializerType);
         }
 
         if (type.IsArray)
         {
             Type elementType = type.GetElementType()!;
             Type serializerType = typeof(ArraySerializer<>).MakeGenericType(elementType);
-            return (ISerializer)Activator.CreateInstance(serializerType)!;
+            return StaticSerializerBindingFactory.Create(type, serializerType);
         }
 
         if (type.IsGenericType)
@@ -215,35 +223,35 @@ public static class SerializerRegistry
             if (genericType == typeof(Nullable<>))
             {
                 Type serializerType = typeof(NullableSerializer<>).MakeGenericType(genericArgs[0]);
-                return (ISerializer)Activator.CreateInstance(serializerType)!;
+                return StaticSerializerBindingFactory.Create(type, serializerType);
             }
 
             if (genericType == typeof(List<>))
             {
                 Type serializerType = typeof(ListSerializer<>).MakeGenericType(genericArgs[0]);
-                return (ISerializer)Activator.CreateInstance(serializerType)!;
+                return StaticSerializerBindingFactory.Create(type, serializerType);
             }
 
             if (genericType == typeof(HashSet<>))
             {
                 Type serializerType = typeof(SetSerializer<>).MakeGenericType(genericArgs[0]);
-                return (ISerializer)Activator.CreateInstance(serializerType)!;
+                return StaticSerializerBindingFactory.Create(type, serializerType);
             }
 
             if (genericType == typeof(Dictionary<,>))
             {
                 Type serializerType = typeof(MapSerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return (ISerializer)Activator.CreateInstance(serializerType)!;
+                return StaticSerializerBindingFactory.Create(type, serializerType);
             }
 
             if (genericType == typeof(ForyMap<,>))
             {
                 Type serializerType = typeof(ForyMapSerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return (ISerializer)Activator.CreateInstance(serializerType)!;
+                return StaticSerializerBindingFactory.Create(type, serializerType);
             }
         }
 
-        if (GeneratedSerializerRegistry.TryCreate(type, out ISerializer? generatedSerializer))
+        if (GeneratedSerializerRegistry.TryCreate(type, out SerializerBinding? generatedSerializer))
         {
             return generatedSerializer!;
         }
@@ -253,33 +261,33 @@ public static class SerializerRegistry
 
     private static void RegisterBuiltins()
     {
-        Cache[typeof(bool)] = BoolSerializer.Instance;
-        Cache[typeof(sbyte)] = Int8Serializer.Instance;
-        Cache[typeof(short)] = Int16Serializer.Instance;
-        Cache[typeof(int)] = Int32Serializer.Instance;
-        Cache[typeof(long)] = Int64Serializer.Instance;
-        Cache[typeof(byte)] = UInt8Serializer.Instance;
-        Cache[typeof(ushort)] = UInt16Serializer.Instance;
-        Cache[typeof(uint)] = UInt32Serializer.Instance;
-        Cache[typeof(ulong)] = UInt64Serializer.Instance;
-        Cache[typeof(float)] = Float32Serializer.Instance;
-        Cache[typeof(double)] = Float64Serializer.Instance;
-        Cache[typeof(string)] = StringSerializer.Instance;
-        Cache[typeof(byte[])] = BinarySerializer.Instance;
-        Cache[typeof(object)] = DynamicAnyObjectSerializer.Instance;
-        Cache[typeof(ForyAnyNullValue)] = ForyAnyNullValueSerializer.Instance;
-        Cache[typeof(Union)] = new UnionSerializer<Union>();
+        Cache[typeof(bool)] = StaticSerializerBindingFactory.Create<bool, BoolSerializer>();
+        Cache[typeof(sbyte)] = StaticSerializerBindingFactory.Create<sbyte, Int8Serializer>();
+        Cache[typeof(short)] = StaticSerializerBindingFactory.Create<short, Int16Serializer>();
+        Cache[typeof(int)] = StaticSerializerBindingFactory.Create<int, Int32Serializer>();
+        Cache[typeof(long)] = StaticSerializerBindingFactory.Create<long, Int64Serializer>();
+        Cache[typeof(byte)] = StaticSerializerBindingFactory.Create<byte, UInt8Serializer>();
+        Cache[typeof(ushort)] = StaticSerializerBindingFactory.Create<ushort, UInt16Serializer>();
+        Cache[typeof(uint)] = StaticSerializerBindingFactory.Create<uint, UInt32Serializer>();
+        Cache[typeof(ulong)] = StaticSerializerBindingFactory.Create<ulong, UInt64Serializer>();
+        Cache[typeof(float)] = StaticSerializerBindingFactory.Create<float, Float32Serializer>();
+        Cache[typeof(double)] = StaticSerializerBindingFactory.Create<double, Float64Serializer>();
+        Cache[typeof(string)] = StaticSerializerBindingFactory.Create<string, StringSerializer>();
+        Cache[typeof(byte[])] = StaticSerializerBindingFactory.Create<byte[], BinarySerializer>();
+        Cache[typeof(object)] = StaticSerializerBindingFactory.Create<object?, DynamicAnyObjectSerializer>();
+        Cache[typeof(ForyAnyNullValue)] = StaticSerializerBindingFactory.Create<ForyAnyNullValue, ForyAnyNullValueSerializer>();
+        Cache[typeof(Union)] = StaticSerializerBindingFactory.Create<Union, UnionSerializer<Union>>();
     }
 }
 
 internal static partial class GeneratedSerializerRegistry
 {
-    public static void Register(ConcurrentDictionary<Type, Func<ISerializer>> factories)
+    public static void Register(ConcurrentDictionary<Type, Func<SerializerBinding>> factories)
     {
         _ = factories;
     }
 
-    public static bool TryCreate(Type type, out ISerializer? serializer)
+    public static bool TryCreate(Type type, out SerializerBinding? serializer)
     {
         _ = type;
         serializer = null;

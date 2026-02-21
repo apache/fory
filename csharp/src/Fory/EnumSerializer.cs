@@ -17,19 +17,19 @@
 
 namespace Apache.Fory;
 
-public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : struct, Enum
+public readonly struct EnumSerializer<TEnum> : IStaticSerializer<EnumSerializer<TEnum>, TEnum> where TEnum : struct, Enum
 {
-    public override ForyTypeId StaticTypeId => ForyTypeId.Enum;
-    public override TEnum DefaultValue => default;
+    public static ForyTypeId StaticTypeId => ForyTypeId.Enum;
+    public static TEnum DefaultValue => default;
 
-    public override void WriteData(ref WriteContext context, in TEnum value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in TEnum value, bool hasGenerics)
     {
         _ = hasGenerics;
         uint ordinal = Convert.ToUInt32(value);
         context.Writer.WriteVarUInt32(ordinal);
     }
 
-    public override TEnum ReadData(ref ReadContext context)
+    public static TEnum ReadData(ref ReadContext context)
     {
         uint ordinal = context.Reader.ReadVarUInt32();
         TEnum value = (TEnum)Enum.ToObject(typeof(TEnum), ordinal);
@@ -41,4 +41,3 @@ public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : stru
         return value;
     }
 }
-

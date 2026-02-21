@@ -101,19 +101,21 @@ public sealed class ForyMap<TKey, TValue> : IEnumerable<KeyValuePair<TKey?, TVal
     }
 }
 
-public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, TValue>>
+public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyMapSerializer<TKey, TValue>, ForyMap<TKey, TValue>>
 {
-    private readonly Serializer<TKey> _keySerializer = SerializerRegistry.Get<TKey>();
-    private readonly Serializer<TValue> _valueSerializer = SerializerRegistry.Get<TValue>();
+    private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
+    private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
 
-    public override ForyTypeId StaticTypeId => ForyTypeId.Map;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override ForyMap<TKey, TValue> DefaultValue => null!;
-    public override bool IsNone(ForyMap<TKey, TValue> value) => value is null;
+    public static ForyTypeId StaticTypeId => ForyTypeId.Map;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static ForyMap<TKey, TValue> DefaultValue => null!;
+    public static bool IsNone(in ForyMap<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in ForyMap<TKey, TValue> value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in ForyMap<TKey, TValue> value, bool hasGenerics)
     {
+        Serializer<TKey> keySerializer = KeySerializer;
+        Serializer<TValue> valueSerializer = ValueSerializer;
         ForyMap<TKey, TValue> map = value ?? new ForyMap<TKey, TValue>();
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
@@ -121,15 +123,15 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
             return;
         }
 
-        bool trackKeyRef = context.TrackRef && _keySerializer.IsReferenceTrackableType;
-        bool trackValueRef = context.TrackRef && _valueSerializer.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !_keySerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !_valueSerializer.StaticTypeId.NeedsTypeInfoForField();
+        bool trackKeyRef = context.TrackRef && keySerializer.IsReferenceTrackableType;
+        bool trackValueRef = context.TrackRef && valueSerializer.IsReferenceTrackableType;
+        bool keyDeclared = hasGenerics && !keySerializer.StaticTypeId.NeedsTypeInfoForField();
+        bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
 
         foreach (KeyValuePair<TKey?, TValue> entry in map)
         {
-            bool keyIsNull = entry.Key is null || _keySerializer.IsNoneObject(entry.Key);
-            bool valueIsNull = _valueSerializer.IsNoneObject(entry.Value);
+            bool keyIsNull = entry.Key is null || keySerializer.IsNoneObject(entry.Key);
+            bool valueIsNull = valueSerializer.IsNoneObject(entry.Value);
             byte header = 0;
             if (trackKeyRef)
             {
@@ -169,10 +171,10 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
             {
                 if (!valueDeclared)
                 {
-                    _valueSerializer.WriteTypeInfo(ref context);
+                    valueSerializer.WriteTypeInfo(ref context);
                 }
 
-                _valueSerializer.Write(
+                valueSerializer.Write(
                     ref context,
                     entry.Value,
                     trackValueRef ? RefMode.Tracking : RefMode.None,
@@ -185,10 +187,10 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
             {
                 if (!keyDeclared)
                 {
-                    _keySerializer.WriteTypeInfo(ref context);
+                    keySerializer.WriteTypeInfo(ref context);
                 }
 
-                _keySerializer.Write(
+                keySerializer.Write(
                     ref context,
                     entry.Key!,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
@@ -200,21 +202,21 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
             context.Writer.WriteUInt8(1);
             if (!keyDeclared)
             {
-                _keySerializer.WriteTypeInfo(ref context);
+                keySerializer.WriteTypeInfo(ref context);
             }
 
             if (!valueDeclared)
             {
-                _valueSerializer.WriteTypeInfo(ref context);
+                valueSerializer.WriteTypeInfo(ref context);
             }
 
-            _keySerializer.Write(
+            keySerializer.Write(
                 ref context,
                 entry.Key!,
                 trackKeyRef ? RefMode.Tracking : RefMode.None,
                 false,
                 hasGenerics);
-            _valueSerializer.Write(
+            valueSerializer.Write(
                 ref context,
                 entry.Value,
                 trackValueRef ? RefMode.Tracking : RefMode.None,
@@ -223,8 +225,10 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
         }
     }
 
-    public override ForyMap<TKey, TValue> ReadData(ref ReadContext context)
+    public static ForyMap<TKey, TValue> ReadData(ref ReadContext context)
     {
+        Serializer<TKey> keySerializer = KeySerializer;
+        Serializer<TValue> valueSerializer = ValueSerializer;
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
@@ -232,9 +236,9 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
         }
 
         ForyMap<TKey, TValue> map = new();
-        bool keyDynamicType = _keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = _valueSerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool canonicalizeValues = context.TrackRef && _valueSerializer.IsReferenceTrackableType;
+        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
 
         int readCount = 0;
         while (readCount < totalLength)
@@ -249,28 +253,28 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
 
             if (keyNull && valueNull)
             {
-                map.Add(default, (TValue)_valueSerializer.DefaultObject!);
+                map.Add(default, (TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
                 continue;
             }
 
             if (keyNull)
             {
-                TValue value = ReadValueElement(
+                TValue valueRead = ReadValueElement(
                     ref context,
                     trackValueRef,
                     valueDynamicType || !valueDeclared,
                     canonicalizeValues,
-                    _valueSerializer);
-                map.Add(default, value);
+                    valueSerializer);
+                map.Add(default, valueRead);
                 readCount += 1;
                 continue;
             }
 
             if (valueNull)
             {
-                TKey key = (TKey)_keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, keyDynamicType || !keyDeclared)!;
-                map.Add(key, (TValue)_valueSerializer.DefaultObject!);
+                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, keyDynamicType || !keyDeclared);
+                map.Add(key, (TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
                 continue;
             }
@@ -278,19 +282,19 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
             int chunkSize = context.Reader.ReadUInt8();
             if (!keyDeclared)
             {
-                _keySerializer.ReadTypeInfo(ref context);
+                keySerializer.ReadTypeInfo(ref context);
             }
 
             if (!valueDeclared)
             {
-                _valueSerializer.ReadTypeInfo(ref context);
+                valueSerializer.ReadTypeInfo(ref context);
             }
 
             for (int i = 0; i < chunkSize; i++)
             {
-                TKey key = (TKey)_keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false)!;
-                TValue value = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, _valueSerializer);
-                map.Add(key, value);
+                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                TValue valueRead = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
+                map.Add(key, valueRead);
             }
 
             if (!keyDeclared)
@@ -314,15 +318,15 @@ public sealed class ForyMapSerializer<TKey, TValue> : Serializer<ForyMap<TKey, T
         bool trackValueRef,
         bool readTypeInfo,
         bool canonicalizeValues,
-        ISerializer valueSerializer)
+        Serializer<TValue> valueSerializer)
     {
         if (trackValueRef || !canonicalizeValues)
         {
-            return (TValue)valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo)!;
+            return valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
         }
 
         int start = context.Reader.Cursor;
-        TValue value = (TValue)valueSerializer.Read(ref context, RefMode.None, readTypeInfo)!;
+        TValue value = valueSerializer.Read(ref context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }

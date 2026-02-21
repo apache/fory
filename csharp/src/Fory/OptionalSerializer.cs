@@ -17,29 +17,24 @@
 
 namespace Apache.Fory;
 
-public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
+public readonly struct NullableSerializer<T> : IStaticSerializer<NullableSerializer<T>, T?> where T : struct
 {
-    private readonly Serializer<T> _wrappedSerializer;
+    private static Serializer<T> WrappedSerializer => SerializerRegistry.Get<T>();
 
-    public NullableSerializer()
-    {
-        _wrappedSerializer = SerializerRegistry.Get<T>();
-    }
+    public static ForyTypeId StaticTypeId => WrappedSerializer.StaticTypeId;
 
-    public override ForyTypeId StaticTypeId => _wrappedSerializer.StaticTypeId;
+    public static bool IsNullableType => true;
 
-    public override bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => WrappedSerializer.IsReferenceTrackableType;
 
-    public override bool IsReferenceTrackableType => _wrappedSerializer.IsReferenceTrackableType;
+    public static T? DefaultValue => null;
 
-    public override T? DefaultValue => null;
-
-    public override bool IsNone(T? value)
+    public static bool IsNone(in T? value)
     {
         return !value.HasValue;
     }
 
-    public override void WriteData(ref WriteContext context, in T? value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in T? value, bool hasGenerics)
     {
         if (!value.HasValue)
         {
@@ -47,30 +42,30 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
         }
 
         T wrapped = value.Value;
-        _wrappedSerializer.WriteData(ref context, wrapped, hasGenerics);
+        WrappedSerializer.WriteData(ref context, wrapped, hasGenerics);
     }
 
-    public override T? ReadData(ref ReadContext context)
+    public static T? ReadData(ref ReadContext context)
     {
-        return _wrappedSerializer.ReadData(ref context);
+        return WrappedSerializer.ReadData(ref context);
     }
 
-    public override void WriteTypeInfo(ref WriteContext context)
+    public static void WriteTypeInfo(ref WriteContext context)
     {
-        _wrappedSerializer.WriteTypeInfo(ref context);
+        WrappedSerializer.WriteTypeInfo(ref context);
     }
 
-    public override void ReadTypeInfo(ref ReadContext context)
+    public static void ReadTypeInfo(ref ReadContext context)
     {
-        _wrappedSerializer.ReadTypeInfo(ref context);
+        WrappedSerializer.ReadTypeInfo(ref context);
     }
 
-    public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
+    public static IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
     {
-        return _wrappedSerializer.CompatibleTypeMetaFields(trackRef);
+        return WrappedSerializer.CompatibleTypeMetaFields(trackRef);
     }
 
-    public override void Write(ref WriteContext context, in T? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public static void Write(ref WriteContext context, in T? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         switch (refMode)
         {
@@ -81,7 +76,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                 }
 
                 T wrapped = value.Value;
-                _wrappedSerializer.Write(ref context, wrapped, RefMode.None, writeTypeInfo, hasGenerics);
+                WrappedSerializer.Write(ref context, wrapped, RefMode.None, writeTypeInfo, hasGenerics);
                 break;
             case RefMode.NullOnly:
                 if (!value.HasValue)
@@ -91,7 +86,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                 }
 
                 context.Writer.WriteInt8((sbyte)RefFlag.NotNullValue);
-                _wrappedSerializer.Write(ref context, value.Value, RefMode.None, writeTypeInfo, hasGenerics);
+                WrappedSerializer.Write(ref context, value.Value, RefMode.None, writeTypeInfo, hasGenerics);
                 break;
             case RefMode.Tracking:
                 if (!value.HasValue)
@@ -100,17 +95,17 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                     return;
                 }
 
-                _wrappedSerializer.Write(ref context, value.Value, RefMode.Tracking, writeTypeInfo, hasGenerics);
+                WrappedSerializer.Write(ref context, value.Value, RefMode.Tracking, writeTypeInfo, hasGenerics);
                 break;
         }
     }
 
-    public override T? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public static T? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         switch (refMode)
         {
             case RefMode.None:
-                return _wrappedSerializer.Read(ref context, RefMode.None, readTypeInfo);
+                return WrappedSerializer.Read(ref context, RefMode.None, readTypeInfo);
             case RefMode.NullOnly:
             {
                 sbyte refFlag = context.Reader.ReadInt8();
@@ -119,7 +114,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                     return null;
                 }
 
-                return _wrappedSerializer.Read(ref context, RefMode.None, readTypeInfo);
+                return WrappedSerializer.Read(ref context, RefMode.None, readTypeInfo);
             }
             case RefMode.Tracking:
             {
@@ -130,11 +125,10 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                 }
 
                 context.Reader.MoveBack(1);
-                return _wrappedSerializer.Read(ref context, RefMode.Tracking, readTypeInfo);
+                return WrappedSerializer.Read(ref context, RefMode.Tracking, readTypeInfo);
             }
             default:
                 throw new ForyInvalidDataException($"unsupported ref mode {refMode}");
         }
     }
 }
-

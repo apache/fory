@@ -380,21 +380,21 @@ internal static class PrimitiveArrayCodec
     }
 }
 
-public sealed class ArraySerializer<T> : Serializer<T[]>
+public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>, T[]>
 {
-    private readonly Serializer<T> _elementSerializer = SerializerRegistry.Get<T>();
-    private readonly ForyTypeId? _primitiveArrayTypeId = PrimitiveArrayCodec.PrimitiveArrayTypeId(typeof(T));
+    private static Serializer<T> ElementSerializer => SerializerRegistry.Get<T>();
+    private static readonly ForyTypeId? PrimitiveArrayTypeId = PrimitiveArrayCodec.PrimitiveArrayTypeId(typeof(T));
 
-    public override ForyTypeId StaticTypeId => _primitiveArrayTypeId ?? ForyTypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override T[] DefaultValue => null!;
-    public override bool IsNone(T[] value) => value is null;
+    public static ForyTypeId StaticTypeId => PrimitiveArrayTypeId ?? ForyTypeId.List;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static T[] DefaultValue => null!;
+    public static bool IsNone(in T[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in T[] value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in T[] value, bool hasGenerics)
     {
         T[] safe = value ?? [];
-        if (_primitiveArrayTypeId is not null)
+        if (PrimitiveArrayTypeId is not null)
         {
             PrimitiveArrayCodec.WritePrimitiveArray(safe, ref context);
             return;
@@ -402,81 +402,83 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
 
         DynamicAnyCodec.WriteCollectionData(
             safe,
-            _elementSerializer,
+            ElementSerializer,
             ref context,
             hasGenerics);
     }
 
-    public override T[] ReadData(ref ReadContext context)
+    public static T[] ReadData(ref ReadContext context)
     {
-        if (_primitiveArrayTypeId is not null)
+        if (PrimitiveArrayTypeId is not null)
         {
             return PrimitiveArrayCodec.ReadPrimitiveArray<T>(ref context);
         }
 
-        List<T> values = DynamicAnyCodec.ReadCollectionData<T>(_elementSerializer, ref context);
+        List<T> values = DynamicAnyCodec.ReadCollectionData<T>(ElementSerializer, ref context);
         return values.ToArray();
     }
 }
 
-public sealed class ListSerializer<T> : Serializer<List<T>>
+public readonly struct ListSerializer<T> : IStaticSerializer<ListSerializer<T>, List<T>>
 {
-    private readonly Serializer<T> _elementSerializer = SerializerRegistry.Get<T>();
+    private static Serializer<T> ElementSerializer => SerializerRegistry.Get<T>();
 
-    public override ForyTypeId StaticTypeId => ForyTypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override List<T> DefaultValue => null!;
-    public override bool IsNone(List<T> value) => value is null;
+    public static ForyTypeId StaticTypeId => ForyTypeId.List;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static List<T> DefaultValue => null!;
+    public static bool IsNone(in List<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
     {
         List<T> safe = value ?? [];
-        DynamicAnyCodec.WriteCollectionData(safe, _elementSerializer, ref context, hasGenerics);
+        DynamicAnyCodec.WriteCollectionData(safe, ElementSerializer, ref context, hasGenerics);
     }
 
-    public override List<T> ReadData(ref ReadContext context)
+    public static List<T> ReadData(ref ReadContext context)
     {
-        return DynamicAnyCodec.ReadCollectionData(_elementSerializer, ref context);
+        return DynamicAnyCodec.ReadCollectionData(ElementSerializer, ref context);
     }
 }
 
-public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
+public readonly struct SetSerializer<T> : IStaticSerializer<SetSerializer<T>, HashSet<T>> where T : notnull
 {
-    private readonly ListSerializer<T> _listSerializer = new();
+    private static Serializer<List<T>> ListSerializer => SerializerRegistry.Get<List<T>>();
 
-    public override ForyTypeId StaticTypeId => ForyTypeId.Set;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override HashSet<T> DefaultValue => null!;
-    public override bool IsNone(HashSet<T> value) => value is null;
+    public static ForyTypeId StaticTypeId => ForyTypeId.Set;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static HashSet<T> DefaultValue => null!;
+    public static bool IsNone(in HashSet<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
         List<T> list = value is null ? [] : [.. value];
-        _listSerializer.WriteData(ref context, list, hasGenerics);
+        ListSerializer.WriteData(ref context, list, hasGenerics);
     }
 
-    public override HashSet<T> ReadData(ref ReadContext context)
+    public static HashSet<T> ReadData(ref ReadContext context)
     {
-        return [.. _listSerializer.ReadData(ref context)];
+        return [.. ListSerializer.ReadData(ref context)];
     }
 }
 
-public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TValue>>
+public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerializer<TKey, TValue>, Dictionary<TKey, TValue>>
     where TKey : notnull
 {
-    private readonly Serializer<TKey> _keySerializer = SerializerRegistry.Get<TKey>();
-    private readonly Serializer<TValue> _valueSerializer = SerializerRegistry.Get<TValue>();
+    private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
+    private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
 
-    public override ForyTypeId StaticTypeId => ForyTypeId.Map;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override Dictionary<TKey, TValue> DefaultValue => null!;
-    public override bool IsNone(Dictionary<TKey, TValue> value) => value is null;
+    public static ForyTypeId StaticTypeId => ForyTypeId.Map;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static Dictionary<TKey, TValue> DefaultValue => null!;
+    public static bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
+        Serializer<TKey> keySerializer = KeySerializer;
+        Serializer<TValue> valueSerializer = ValueSerializer;
         Dictionary<TKey, TValue> map = value ?? [];
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
@@ -484,17 +486,28 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
             return;
         }
 
-        bool trackKeyRef = context.TrackRef && _keySerializer.IsReferenceTrackableType;
-        bool trackValueRef = context.TrackRef && _valueSerializer.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !_keySerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !_valueSerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool keyDynamicType = _keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = _valueSerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool trackKeyRef = context.TrackRef && keySerializer.IsReferenceTrackableType;
+        bool trackValueRef = context.TrackRef && valueSerializer.IsReferenceTrackableType;
+        bool keyDeclared = hasGenerics && !keySerializer.StaticTypeId.NeedsTypeInfoForField();
+        bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
+        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
 
         KeyValuePair<TKey, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
-            WriteDynamicMapPairs(pairs, ref context, hasGenerics, trackKeyRef, trackValueRef, keyDeclared, valueDeclared, keyDynamicType, valueDynamicType);
+            WriteDynamicMapPairs(
+                pairs,
+                ref context,
+                hasGenerics,
+                trackKeyRef,
+                trackValueRef,
+                keyDeclared,
+                valueDeclared,
+                keyDynamicType,
+                valueDynamicType,
+                keySerializer,
+                valueSerializer);
             return;
         }
 
@@ -502,8 +515,8 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         while (index < pairs.Length)
         {
             KeyValuePair<TKey, TValue> pair = pairs[index];
-            bool keyIsNull = _keySerializer.IsNoneObject(pair.Key);
-            bool valueIsNull = _valueSerializer.IsNoneObject(pair.Value);
+            bool keyIsNull = keySerializer.IsNoneObject(pair.Key);
+            bool valueIsNull = valueSerializer.IsNoneObject(pair.Value);
             if (keyIsNull || valueIsNull)
             {
                 byte header = 0;
@@ -542,20 +555,20 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                 {
                     if (!keyDeclared)
                     {
-                        _keySerializer.WriteTypeInfo(ref context);
+                        keySerializer.WriteTypeInfo(ref context);
                     }
 
-                    _keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                    keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 }
 
                 if (!valueIsNull)
                 {
                     if (!valueDeclared)
                     {
-                        _valueSerializer.WriteTypeInfo(ref context);
+                        valueSerializer.WriteTypeInfo(ref context);
                     }
 
-                    _valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                    valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 }
 
                 index += 1;
@@ -588,25 +601,25 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
             context.Writer.WriteUInt8(0);
             if (!keyDeclared)
             {
-                _keySerializer.WriteTypeInfo(ref context);
+                keySerializer.WriteTypeInfo(ref context);
             }
 
             if (!valueDeclared)
             {
-                _valueSerializer.WriteTypeInfo(ref context);
+                valueSerializer.WriteTypeInfo(ref context);
             }
 
             byte chunkSize = 0;
             while (index < pairs.Length && chunkSize < byte.MaxValue)
             {
                 KeyValuePair<TKey, TValue> current = pairs[index];
-                if (_keySerializer.IsNoneObject(current.Key) || _valueSerializer.IsNoneObject(current.Value))
+                if (keySerializer.IsNoneObject(current.Key) || valueSerializer.IsNoneObject(current.Value))
                 {
                     break;
                 }
 
-                _keySerializer.Write(ref context, current.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                _valueSerializer.Write(ref context, current.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                keySerializer.Write(ref context, current.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                valueSerializer.Write(ref context, current.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 chunkSize += 1;
                 index += 1;
             }
@@ -615,8 +628,10 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         }
     }
 
-    public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public static Dictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
+        Serializer<TKey> keySerializer = KeySerializer;
+        Serializer<TValue> valueSerializer = ValueSerializer;
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
@@ -624,9 +639,9 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         }
 
         Dictionary<TKey, TValue> map = new(totalLength);
-        bool keyDynamicType = _keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = _valueSerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool canonicalizeValues = context.TrackRef && _valueSerializer.IsReferenceTrackableType;
+        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
+        bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
 
         int readCount = 0;
         while (readCount < totalLength)
@@ -641,7 +656,7 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
 
             if (keyNull && valueNull)
             {
-                map[(TKey)_keySerializer.DefaultObject!] = (TValue)_valueSerializer.DefaultObject!;
+                map[(TKey)keySerializer.DefaultObject!] = (TValue)valueSerializer.DefaultObject!;
                 readCount += 1;
                 continue;
             }
@@ -653,16 +668,16 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                     trackValueRef,
                     valueDynamicType || !valueDeclared,
                     canonicalizeValues,
-                    _valueSerializer);
-                map[(TKey)_keySerializer.DefaultObject!] = value;
+                    valueSerializer);
+                map[(TKey)keySerializer.DefaultObject!] = value;
                 readCount += 1;
                 continue;
             }
 
             if (valueNull)
             {
-                TKey key = (TKey)_keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, keyDynamicType || !keyDeclared)!;
-                map[key] = (TValue)_valueSerializer.DefaultObject!;
+                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, keyDynamicType || !keyDeclared);
+                map[key] = (TValue)valueSerializer.DefaultObject!;
                 readCount += 1;
                 continue;
             }
@@ -670,18 +685,18 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
             int chunkSize = context.Reader.ReadUInt8();
             if (!keyDeclared)
             {
-                _keySerializer.ReadTypeInfo(ref context);
+                keySerializer.ReadTypeInfo(ref context);
             }
 
             if (!valueDeclared)
             {
-                _valueSerializer.ReadTypeInfo(ref context);
+                valueSerializer.ReadTypeInfo(ref context);
             }
 
             for (int i = 0; i < chunkSize; i++)
             {
-                TKey key = (TKey)_keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false)!;
-                TValue value = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, _valueSerializer);
+                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                TValue value = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
                 map[key] = value;
             }
 
@@ -701,7 +716,7 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         return map;
     }
 
-    private void WriteDynamicMapPairs(
+    private static void WriteDynamicMapPairs(
         KeyValuePair<TKey, TValue>[] pairs,
         ref WriteContext context,
         bool hasGenerics,
@@ -710,12 +725,14 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         bool keyDeclared,
         bool valueDeclared,
         bool keyDynamicType,
-        bool valueDynamicType)
+        bool valueDynamicType,
+        Serializer<TKey> keySerializer,
+        Serializer<TValue> valueSerializer)
     {
         foreach (KeyValuePair<TKey, TValue> pair in pairs)
         {
-            bool keyIsNull = _keySerializer.IsNoneObject(pair.Key);
-            bool valueIsNull = _valueSerializer.IsNoneObject(pair.Value);
+            bool keyIsNull = keySerializer.IsNoneObject(pair.Key);
+            bool valueIsNull = valueSerializer.IsNoneObject(pair.Value);
             byte header = 0;
             if (trackKeyRef)
             {
@@ -761,11 +778,11 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                     }
                     else
                     {
-                        _valueSerializer.WriteTypeInfo(ref context);
+                        valueSerializer.WriteTypeInfo(ref context);
                     }
                 }
 
-                _valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 continue;
             }
 
@@ -779,11 +796,11 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                     }
                     else
                     {
-                        _keySerializer.WriteTypeInfo(ref context);
+                        keySerializer.WriteTypeInfo(ref context);
                     }
                 }
 
-                _keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 continue;
             }
 
@@ -796,7 +813,7 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                 }
                 else
                 {
-                    _keySerializer.WriteTypeInfo(ref context);
+                    keySerializer.WriteTypeInfo(ref context);
                 }
             }
 
@@ -808,12 +825,12 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                 }
                 else
                 {
-                    _valueSerializer.WriteTypeInfo(ref context);
+                    valueSerializer.WriteTypeInfo(ref context);
                 }
             }
 
-            _keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-            _valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+            keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+            valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
         }
     }
 
@@ -822,15 +839,15 @@ public sealed class MapSerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         bool trackValueRef,
         bool readTypeInfo,
         bool canonicalizeValues,
-        ISerializer valueSerializer)
+        Serializer<TValue> valueSerializer)
     {
         if (trackValueRef || !canonicalizeValues)
         {
-            return (TValue)valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo)!;
+            return valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
         }
 
         int start = context.Reader.Cursor;
-        TValue value = (TValue)valueSerializer.Read(ref context, RefMode.None, readTypeInfo)!;
+        TValue value = valueSerializer.Read(ref context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }

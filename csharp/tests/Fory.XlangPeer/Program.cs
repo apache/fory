@@ -1026,21 +1026,21 @@ public sealed class MyExt
     public int Id { get; set; }
 }
 
-public sealed class MyExtSerializer : Serializer<MyExt>
+public readonly struct MyExtSerializer : IStaticSerializer<MyExtSerializer, MyExt>
 {
-    public override ForyTypeId StaticTypeId => ForyTypeId.Ext;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override MyExt DefaultValue => null!;
-    public override bool IsNone(MyExt value) => value is null;
+    public static ForyTypeId StaticTypeId => ForyTypeId.Ext;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static MyExt DefaultValue => null!;
+    public static bool IsNone(in MyExt value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in MyExt value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in MyExt value, bool hasGenerics)
     {
         _ = hasGenerics;
         context.Writer.WriteVarInt32((value ?? new MyExt()).Id);
     }
 
-    public override MyExt ReadData(ref ReadContext context)
+    public static MyExt ReadData(ref ReadContext context)
     {
         return new MyExt { Id = context.Reader.ReadVarInt32() };
     }

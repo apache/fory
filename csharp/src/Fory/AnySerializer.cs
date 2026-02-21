@@ -28,38 +28,35 @@ public readonly struct ForyAnyNullValue
 {
 }
 
-public sealed class ForyAnyNullValueSerializer : Serializer<ForyAnyNullValue>
+public readonly struct ForyAnyNullValueSerializer : IStaticSerializer<ForyAnyNullValueSerializer, ForyAnyNullValue>
 {
-    public static ForyAnyNullValueSerializer Instance { get; } = new();
-    public override ForyTypeId StaticTypeId => ForyTypeId.None;
-    public override bool IsNullableType => true;
-    public override ForyAnyNullValue DefaultValue => new();
-    public override bool IsNone(ForyAnyNullValue value) => true;
-    public override void WriteData(ref WriteContext context, in ForyAnyNullValue value, bool hasGenerics)
+    public static ForyTypeId StaticTypeId => ForyTypeId.None;
+    public static bool IsNullableType => true;
+    public static ForyAnyNullValue DefaultValue => new();
+    public static bool IsNone(in ForyAnyNullValue value) => true;
+    public static void WriteData(ref WriteContext context, in ForyAnyNullValue value, bool hasGenerics)
     {
         _ = context;
         _ = value;
         _ = hasGenerics;
     }
 
-    public override ForyAnyNullValue ReadData(ref ReadContext context)
+    public static ForyAnyNullValue ReadData(ref ReadContext context)
     {
         _ = context;
         return new ForyAnyNullValue();
     }
 }
 
-public sealed class DynamicAnyObjectSerializer : Serializer<object?>
+public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAnyObjectSerializer, object?>
 {
-    public static DynamicAnyObjectSerializer Instance { get; } = new();
+    public static ForyTypeId StaticTypeId => ForyTypeId.Unknown;
+    public static bool IsNullableType => true;
+    public static bool IsReferenceTrackableType => true;
+    public static object? DefaultValue => new ForyAnyNullValue();
+    public static bool IsNone(in object? value) => value is null || value is ForyAnyNullValue;
 
-    public override ForyTypeId StaticTypeId => ForyTypeId.Unknown;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
-    public override object? DefaultValue => new ForyAnyNullValue();
-    public override bool IsNone(object? value) => value is null || value is ForyAnyNullValue;
-
-    public override void WriteData(ref WriteContext context, in object? value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in object? value, bool hasGenerics)
     {
         if (IsNone(value))
         {
@@ -69,7 +66,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         DynamicAnyCodec.WriteAnyPayload(value!, ref context, hasGenerics);
     }
 
-    public override object? ReadData(ref ReadContext context)
+    public static object? ReadData(ref ReadContext context)
     {
         DynamicTypeInfo? dynamicTypeInfo = context.DynamicTypeInfo(typeof(object));
         if (dynamicTypeInfo is null)
@@ -86,18 +83,18 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, ref context);
     }
 
-    public override void WriteTypeInfo(ref WriteContext context)
+    public static void WriteTypeInfo(ref WriteContext context)
     {
         throw new ForyInvalidDataException("dynamic Any value type info is runtime-only");
     }
 
-    public override void ReadTypeInfo(ref ReadContext context)
+    public static void ReadTypeInfo(ref ReadContext context)
     {
         DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
         context.SetDynamicTypeInfo(typeof(object), typeInfo);
     }
 
-    public override void Write(ref WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public static void Write(ref WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         if (refMode != RefMode.None)
         {
@@ -132,7 +129,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         WriteData(ref context, value, hasGenerics);
     }
 
-    public override object? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public static object? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         if (refMode != RefMode.None)
         {
@@ -179,7 +176,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
     private static bool AnyValueIsReferenceTrackable(object value)
     {
-        ISerializer serializer = SerializerRegistry.Get(value.GetType());
+        SerializerBinding serializer = SerializerRegistry.GetBinding(value.GetType());
         return serializer.IsReferenceTrackableType;
     }
 
@@ -207,7 +204,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        ISerializer serializer = SerializerRegistry.Get(value.GetType());
+        SerializerBinding serializer = SerializerRegistry.GetBinding(value.GetType());
         serializer.WriteTypeInfo(ref context);
     }
 
@@ -241,25 +238,25 @@ public static class DynamicAnyCodec
 
     public static void WriteAny(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo = true, bool hasGenerics = false)
     {
-        DynamicAnyObjectSerializer.Instance.Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
+        SerializerRegistry.Get<object?>().Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
     }
 
     public static object? ReadAny(ref ReadContext context, RefMode refMode, bool readTypeInfo = true)
     {
-        object? value = DynamicAnyObjectSerializer.Instance.Read(ref context, refMode, readTypeInfo);
+        object? value = SerializerRegistry.Get<object?>().Read(ref context, refMode, readTypeInfo);
         return value is ForyAnyNullValue ? null : value;
     }
 
     public static void WriteAnyList(ref WriteContext context, IList<object?>? value, RefMode refMode, bool writeTypeInfo = false, bool hasGenerics = true)
     {
         List<object?>? wrapped = value is null ? null : [.. value];
-        Serializer<List<object?>> serializer = new ListSerializer<object?>();
-        serializer.Write(ref context, wrapped, refMode, writeTypeInfo, hasGenerics);
+        Serializer<List<object?>> serializer = SerializerRegistry.Get<List<object?>>();
+        serializer.Write(ref context, wrapped!, refMode, writeTypeInfo, hasGenerics);
     }
 
     public static List<object?>? ReadAnyList(ref ReadContext context, RefMode refMode, bool readTypeInfo = false)
     {
-        Serializer<List<object?>> serializer = new ListSerializer<object?>();
+        Serializer<List<object?>> serializer = SerializerRegistry.Get<List<object?>>();
         List<object?>? wrapped = serializer.Read(ref context, refMode, readTypeInfo);
         if (wrapped is null)
         {
@@ -280,13 +277,13 @@ public static class DynamicAnyCodec
     public static void WriteStringAnyMap(ref WriteContext context, IDictionary<string, object?>? value, RefMode refMode, bool writeTypeInfo = false, bool hasGenerics = true)
     {
         Dictionary<string, object?>? wrapped = value is null ? null : new Dictionary<string, object?>(value);
-        Serializer<Dictionary<string, object?>> serializer = new MapSerializer<string, object?>();
-        serializer.Write(ref context, wrapped, refMode, writeTypeInfo, hasGenerics);
+        Serializer<Dictionary<string, object?>> serializer = SerializerRegistry.Get<Dictionary<string, object?>>();
+        serializer.Write(ref context, wrapped!, refMode, writeTypeInfo, hasGenerics);
     }
 
     public static Dictionary<string, object?>? ReadStringAnyMap(ref ReadContext context, RefMode refMode, bool readTypeInfo = false)
     {
-        Serializer<Dictionary<string, object?>> serializer = new MapSerializer<string, object?>();
+        Serializer<Dictionary<string, object?>> serializer = SerializerRegistry.Get<Dictionary<string, object?>>();
         Dictionary<string, object?>? wrapped = serializer.Read(ref context, refMode, readTypeInfo);
         if (wrapped is null)
         {
@@ -305,13 +302,13 @@ public static class DynamicAnyCodec
     public static void WriteInt32AnyMap(ref WriteContext context, IDictionary<int, object?>? value, RefMode refMode, bool writeTypeInfo = false, bool hasGenerics = true)
     {
         Dictionary<int, object?>? wrapped = value is null ? null : new Dictionary<int, object?>(value);
-        Serializer<Dictionary<int, object?>> serializer = new MapSerializer<int, object?>();
-        serializer.Write(ref context, wrapped, refMode, writeTypeInfo, hasGenerics);
+        Serializer<Dictionary<int, object?>> serializer = SerializerRegistry.Get<Dictionary<int, object?>>();
+        serializer.Write(ref context, wrapped!, refMode, writeTypeInfo, hasGenerics);
     }
 
     public static Dictionary<int, object?>? ReadInt32AnyMap(ref ReadContext context, RefMode refMode, bool readTypeInfo = false)
     {
-        Serializer<Dictionary<int, object?>> serializer = new MapSerializer<int, object?>();
+        Serializer<Dictionary<int, object?>> serializer = SerializerRegistry.Get<Dictionary<int, object?>>();
         Dictionary<int, object?>? wrapped = serializer.Read(ref context, refMode, readTypeInfo);
         if (wrapped is null)
         {
@@ -394,7 +391,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        ISerializer serializer = SerializerRegistry.Get(value.GetType());
+        SerializerBinding serializer = SerializerRegistry.GetBinding(value.GetType());
         serializer.WriteData(ref context, value, hasGenerics);
     }
 
@@ -505,7 +502,7 @@ public static class DynamicAnyCodec
             {
                 for (int i = 0; i < length; i++)
                 {
-                    values.Add((T)elementSerializer.Read(ref context, RefMode.Tracking, true)!);
+                    values.Add(elementSerializer.Read(ref context, RefMode.Tracking, true));
                 }
 
                 return values;
@@ -548,10 +545,10 @@ public static class DynamicAnyCodec
 
         if (trackRef)
         {
-            for (int i = 0; i < length; i++)
-            {
-                values.Add((T)elementSerializer.Read(ref context, RefMode.Tracking, false)!);
-            }
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(elementSerializer.Read(ref context, RefMode.Tracking, false));
+                }
 
             if (!declared)
             {
@@ -600,11 +597,11 @@ public static class DynamicAnyCodec
     {
         if (!canonicalize)
         {
-            return (T)elementSerializer.Read(ref context, RefMode.None, readTypeInfo)!;
+            return elementSerializer.Read(ref context, RefMode.None, readTypeInfo);
         }
 
         int start = context.Reader.Cursor;
-        T value = (T)elementSerializer.Read(ref context, RefMode.None, readTypeInfo)!;
+        T value = elementSerializer.Read(ref context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }

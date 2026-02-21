@@ -55,28 +55,26 @@ public sealed class Fory
     }
 
     public Fory Register<T, TSerializer>(uint typeId)
-        where TSerializer : Serializer<T>, new()
+        where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        TSerializer serializer = new();
-        SerializerRegistry.RegisterCustom(typeof(T), serializer);
-        _typeResolver.Register(typeof(T), typeId, serializer);
+        SerializerRegistry.RegisterCustom<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeId);
         return this;
     }
 
     public Fory Register<T, TSerializer>(string typeNamespace, string typeName)
-        where TSerializer : Serializer<T>, new()
+        where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        TSerializer serializer = new();
-        SerializerRegistry.RegisterCustom(typeof(T), serializer);
-        _typeResolver.Register(typeof(T), typeNamespace, typeName, serializer);
+        SerializerRegistry.RegisterCustom<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeNamespace, typeName);
         return this;
     }
 
     public byte[] Serialize<T>(in T value)
     {
         ByteWriter writer = new();
-        Serializer<T> serializer = SerializerRegistry.Get<T>();
-        bool isNone = serializer.IsNoneObject(value);
+        Serializer<T> binding = TypedSerializerBindingCache<T>.Get();
+        bool isNone = binding.IsNone(value);
         WriteHead(writer, isNone);
         if (!isNone)
         {
@@ -88,7 +86,7 @@ public sealed class Fory
                 new CompatibleTypeDefWriteState(),
                 new MetaStringWriteState());
             RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-            serializer.Write(ref context, value, refMode, true, false);
+            binding.Write(ref context, value, refMode, true, false);
             context.ResetObjectState();
         }
 
@@ -202,10 +200,10 @@ public sealed class Fory
     private T DeserializeFromReader<T>(ByteReader reader)
     {
         bool isNone = ReadHead(reader);
-        Serializer<T> serializer = SerializerRegistry.Get<T>();
+        Serializer<T> binding = TypedSerializerBindingCache<T>.Get();
         if (isNone)
         {
-            return serializer.DefaultValue;
+            return binding.DefaultValue;
         }
 
         ReadContext context = new(
@@ -216,7 +214,7 @@ public sealed class Fory
             new CompatibleTypeDefReadState(),
             new MetaStringReadState());
         RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-        T value = serializer.Read(ref context, refMode, true);
+        T value = binding.Read(ref context, refMode, true);
         context.ResetObjectState();
         return value;
     }

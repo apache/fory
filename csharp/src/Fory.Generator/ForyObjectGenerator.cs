@@ -126,12 +126,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             if (model.Kind == DeclKind.Enum)
             {
                 sb.AppendLine(
-                    $"        global::Apache.Fory.SerializerRegistry.RegisterGenerated<{model.TypeName}>(() => new global::Apache.Fory.EnumSerializer<{model.TypeName}>());");
+                    $"        global::Apache.Fory.SerializerRegistry.RegisterGenerated<{model.TypeName}, global::Apache.Fory.EnumSerializer<{model.TypeName}>>();");
             }
             else
             {
                 sb.AppendLine(
-                    $"        global::Apache.Fory.SerializerRegistry.RegisterGenerated<{model.TypeName}>(() => new {model.SerializerName}());");
+                    $"        global::Apache.Fory.SerializerRegistry.RegisterGenerated<{model.TypeName}, {model.SerializerName}>();");
             }
         }
 
@@ -143,7 +143,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
-        sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
+        sb.AppendLine($"file readonly struct {model.SerializerName} : global::Apache.Fory.IStaticSerializer<{model.SerializerName}, {model.TypeName}>");
         sb.AppendLine("{");
         sb.AppendLine("    private static global::Apache.Fory.RefMode __ForyRefMode(bool nullable, bool trackRef)");
         sb.AppendLine("    {");
@@ -177,21 +177,21 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine(");");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    public override global::Apache.Fory.ForyTypeId StaticTypeId => global::Apache.Fory.ForyTypeId.Struct;");
+        sb.AppendLine("    public static global::Apache.Fory.ForyTypeId StaticTypeId => global::Apache.Fory.ForyTypeId.Struct;");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("    public override bool IsNullableType => true;");
-            sb.AppendLine("    public override bool IsReferenceTrackableType => true;");
-            sb.AppendLine($"    public override {model.TypeName} DefaultValue => null!;");
-            sb.AppendLine($"    public override bool IsNone({model.TypeName} value) => value is null;");
+            sb.AppendLine("    public static bool IsNullableType => true;");
+            sb.AppendLine("    public static bool IsReferenceTrackableType => true;");
+            sb.AppendLine($"    public static {model.TypeName} DefaultValue => null!;");
+            sb.AppendLine($"    public static bool IsNone(in {model.TypeName} value) => value is null;");
         }
         else
         {
-            sb.AppendLine($"    public override {model.TypeName} DefaultValue => new {model.TypeName}();");
+            sb.AppendLine($"    public static {model.TypeName} DefaultValue => new {model.TypeName}();");
         }
 
         sb.AppendLine();
-        sb.AppendLine("    public override global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
+        sb.AppendLine("    public static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
         if (model.SortedMembers.Length == 0)
         {
@@ -213,7 +213,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            $"    public override void WriteData(ref global::Apache.Fory.WriteContext context, in {model.TypeName} value, bool hasGenerics)");
+            $"    public static void WriteData(ref global::Apache.Fory.WriteContext context, in {model.TypeName} value, bool hasGenerics)");
         sb.AppendLine("    {");
         sb.AppendLine("        _ = hasGenerics;");
         sb.AppendLine("        if (context.Compatible)");
@@ -242,7 +242,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    public override {model.TypeName} ReadData(ref global::Apache.Fory.ReadContext context)");
+        sb.AppendLine($"    public static {model.TypeName} ReadData(ref global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");

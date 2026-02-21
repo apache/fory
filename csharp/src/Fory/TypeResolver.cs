@@ -17,13 +17,13 @@
 
 namespace Apache.Fory;
 
-public sealed record RegisteredTypeInfo(
+internal sealed record RegisteredTypeInfo(
     uint? UserTypeId,
     ForyTypeId Kind,
     bool RegisterByName,
     MetaString? NamespaceName,
     MetaString TypeName,
-    ISerializer Serializer);
+    SerializerBinding Serializer);
 
 internal enum DynamicRegistrationMode
 {
@@ -48,9 +48,9 @@ public sealed class TypeResolver
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
     private readonly Dictionary<ForyTypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
-    public void Register(Type type, uint id, ISerializer? explicitSerializer = null)
+    internal void Register(Type type, uint id, SerializerBinding? explicitSerializer = null)
     {
-        ISerializer serializer = explicitSerializer ?? SerializerRegistry.Get(type);
+        SerializerBinding serializer = explicitSerializer ?? SerializerRegistry.GetBinding(type);
         RegisteredTypeInfo info = new(
             id,
             serializer.StaticTypeId,
@@ -72,9 +72,9 @@ public sealed class TypeResolver
         };
     }
 
-    public void Register(Type type, string namespaceName, string typeName, ISerializer? explicitSerializer = null)
+    internal void Register(Type type, string namespaceName, string typeName, SerializerBinding? explicitSerializer = null)
     {
-        ISerializer serializer = explicitSerializer ?? SerializerRegistry.Get(type);
+        SerializerBinding serializer = explicitSerializer ?? SerializerRegistry.GetBinding(type);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
         RegisteredTypeInfo info = new(
@@ -98,12 +98,12 @@ public sealed class TypeResolver
         };
     }
 
-    public RegisteredTypeInfo? RegisteredTypeInfo(Type type)
+    internal RegisteredTypeInfo? RegisteredTypeInfo(Type type)
     {
         return _byType.TryGetValue(type, out RegisteredTypeInfo? info) ? info : null;
     }
 
-    public RegisteredTypeInfo RequireRegisteredTypeInfo(Type type)
+    internal RegisteredTypeInfo RequireRegisteredTypeInfo(Type type)
     {
         if (_byType.TryGetValue(type, out RegisteredTypeInfo? info))
         {
@@ -198,64 +198,64 @@ public sealed class TypeResolver
         switch (typeInfo.WireTypeId)
         {
             case ForyTypeId.Bool:
-                return BoolSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<bool>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int8:
-                return Int8Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<sbyte>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int16:
-                return Int16Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<short>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int32:
-                return ForyInt32FixedSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ForyInt32Fixed>().Read(ref context, RefMode.None, false);
             case ForyTypeId.VarInt32:
-                return Int32Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<int>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int64:
-                return ForyInt64FixedSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ForyInt64Fixed>().Read(ref context, RefMode.None, false);
             case ForyTypeId.VarInt64:
-                return Int64Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<long>().Read(ref context, RefMode.None, false);
             case ForyTypeId.TaggedInt64:
-                return ForyInt64TaggedSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ForyInt64Tagged>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt8:
-                return UInt8Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<byte>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt16:
-                return UInt16Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ushort>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt32:
-                return ForyUInt32FixedSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ForyUInt32Fixed>().Read(ref context, RefMode.None, false);
             case ForyTypeId.VarUInt32:
-                return UInt32Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<uint>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt64:
-                return ForyUInt64FixedSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ForyUInt64Fixed>().Read(ref context, RefMode.None, false);
             case ForyTypeId.VarUInt64:
-                return UInt64Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ulong>().Read(ref context, RefMode.None, false);
             case ForyTypeId.TaggedUInt64:
-                return ForyUInt64TaggedSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ForyUInt64Tagged>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Float32:
-                return Float32Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<float>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Float64:
-                return Float64Serializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<double>().Read(ref context, RefMode.None, false);
             case ForyTypeId.String:
-                return StringSerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<string>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Binary:
             case ForyTypeId.UInt8Array:
-                return BinarySerializer.Instance.Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<byte[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.BoolArray:
-                return new ArraySerializer<bool>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<bool[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int8Array:
-                return new ArraySerializer<sbyte>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<sbyte[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int16Array:
-                return new ArraySerializer<short>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<short[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int32Array:
-                return new ArraySerializer<int>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<int[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Int64Array:
-                return new ArraySerializer<long>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<long[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt16Array:
-                return new ArraySerializer<ushort>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ushort[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt32Array:
-                return new ArraySerializer<uint>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<uint[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.UInt64Array:
-                return new ArraySerializer<ulong>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<ulong[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Float32Array:
-                return new ArraySerializer<float>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<float[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Float64Array:
-                return new ArraySerializer<double>().Read(ref context, RefMode.None, false);
+                return SerializerRegistry.Get<double[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.List:
                 return DynamicAnyCodec.ReadAnyList(ref context, RefMode.None, false) ?? [];
             case ForyTypeId.Map:

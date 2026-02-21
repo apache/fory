@@ -57,21 +57,21 @@ public static class FieldSkipper
         switch (fieldType.TypeId)
         {
             case (uint)ForyTypeId.Bool:
-                return BoolSerializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<bool>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.Int8:
-                return Int8Serializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<sbyte>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.Int16:
-                return Int16Serializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<short>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.VarInt32:
-                return Int32Serializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<int>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.VarInt64:
-                return Int64Serializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<long>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.Float32:
-                return Float32Serializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<float>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.Float64:
-                return Float64Serializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<double>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.String:
-                return StringSerializer.Instance.Read(ref context, refMode, false);
+                return SerializerRegistry.Get<string>().Read(ref context, refMode, false);
             case (uint)ForyTypeId.List:
             {
                 if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)ForyTypeId.String)
@@ -79,7 +79,7 @@ public static class FieldSkipper
                     throw new ForyInvalidDataException("unsupported compatible list element type");
                 }
 
-                return new ListSerializer<string>().Read(ref context, refMode, false);
+                return SerializerRegistry.Get<List<string>>().Read(ref context, refMode, false);
             }
             case (uint)ForyTypeId.Set:
             {
@@ -88,7 +88,7 @@ public static class FieldSkipper
                     throw new ForyInvalidDataException("unsupported compatible set element type");
                 }
 
-                return new SetSerializer<string>().Read(ref context, refMode, false);
+                return SerializerRegistry.Get<HashSet<string>>().Read(ref context, refMode, false);
             }
             case (uint)ForyTypeId.Map:
             {
@@ -99,7 +99,7 @@ public static class FieldSkipper
                     throw new ForyInvalidDataException("unsupported compatible map key/value type");
                 }
 
-                return new MapSerializer<string, string>().Read(ref context, refMode, false);
+                return SerializerRegistry.Get<Dictionary<string, string>>().Read(ref context, refMode, false);
             }
             case (uint)ForyTypeId.Enum:
                 return ReadEnumOrdinal(ref context, refMode);
