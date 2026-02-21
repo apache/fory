@@ -38,7 +38,7 @@ public readonly struct NullableSerializer<T> : IStaticSerializer<NullableSeriali
     {
         if (!value.HasValue)
         {
-            throw new ForyInvalidDataException("Nullable<T>.None cannot write raw payload");
+            throw new InvalidDataException("Nullable<T>.None cannot write raw payload");
         }
 
         T wrapped = value.Value;
@@ -72,7 +72,7 @@ public readonly struct NullableSerializer<T> : IStaticSerializer<NullableSeriali
             case RefMode.None:
                 if (!value.HasValue)
                 {
-                    throw new ForyInvalidDataException("Nullable<T>.None with RefMode.None");
+                    throw new InvalidDataException("Nullable<T>.None with RefMode.None");
                 }
 
                 T wrapped = value.Value;
@@ -128,7 +128,7 @@ public readonly struct NullableSerializer<T> : IStaticSerializer<NullableSeriali
                 return WrappedSerializer.Read(ref context, RefMode.Tracking, readTypeInfo);
             }
             default:
-                throw new ForyInvalidDataException($"unsupported ref mode {refMode}");
+                throw new InvalidDataException($"unsupported ref mode {refMode}");
         }
     }
 }

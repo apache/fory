@@ -254,7 +254,7 @@ internal sealed class SerializerBinding
             return typed;
         }
 
-        throw new ForyInvalidDataException($"serializer type mismatch for {typeof(T)}");
+        throw new InvalidDataException($"serializer type mismatch for {typeof(T)}");
     }
 }
 
@@ -359,7 +359,7 @@ internal static class StaticSerializerDispatch<T, TSerializer>
             return TSerializer.DefaultValue;
         }
 
-        throw new ForyInvalidDataException(
+        throw new InvalidDataException(
             $"serializer {typeof(TSerializer).Name} expected value of type {typeof(T)}, got {value?.GetType()}");
     }
 }

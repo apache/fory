@@ -30,8 +30,8 @@ public static class FieldSkipper
         {
             RefMode.None => context.Reader.ReadVarUInt32(),
             RefMode.NullOnly => ReadNullableEnumOrdinal(ref context),
-            RefMode.Tracking => throw new ForyInvalidDataException("enum tracking ref mode is not supported"),
-            _ => throw new ForyInvalidDataException($"unsupported ref mode {refMode}"),
+            RefMode.Tracking => throw new InvalidDataException("enum tracking ref mode is not supported"),
+            _ => throw new InvalidDataException($"unsupported ref mode {refMode}"),
         };
     }
 
@@ -45,7 +45,7 @@ public static class FieldSkipper
 
         if (flag != (sbyte)RefFlag.NotNullValue)
         {
-            throw new ForyInvalidDataException($"unexpected enum nullOnly flag {flag}");
+            throw new InvalidDataException($"unexpected enum nullOnly flag {flag}");
         }
 
         return context.Reader.ReadVarUInt32();
@@ -76,7 +76,7 @@ public static class FieldSkipper
             {
                 if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
                 {
-                    throw new ForyInvalidDataException("unsupported compatible list element type");
+                    throw new InvalidDataException("unsupported compatible list element type");
                 }
 
                 return SerializerRegistry.Get<List<string>>().Read(ref context, refMode, false);
@@ -85,7 +85,7 @@ public static class FieldSkipper
             {
                 if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
                 {
-                    throw new ForyInvalidDataException("unsupported compatible set element type");
+                    throw new InvalidDataException("unsupported compatible set element type");
                 }
 
                 return SerializerRegistry.Get<HashSet<string>>().Read(ref context, refMode, false);
@@ -96,7 +96,7 @@ public static class FieldSkipper
                     fieldType.Generics[0].TypeId != (uint)TypeId.String ||
                     fieldType.Generics[1].TypeId != (uint)TypeId.String)
                 {
-                    throw new ForyInvalidDataException("unsupported compatible map key/value type");
+                    throw new InvalidDataException("unsupported compatible map key/value type");
                 }
 
                 return SerializerRegistry.Get<Dictionary<string, string>>().Read(ref context, refMode, false);
@@ -108,7 +108,7 @@ public static class FieldSkipper
             case (uint)TypeId.NamedUnion:
                 return SerializerRegistry.Get<Union>().Read(ref context, refMode, false);
             default:
-                throw new ForyInvalidDataException($"unsupported compatible field type id {fieldType.TypeId}");
+                throw new InvalidDataException($"unsupported compatible field type id {fieldType.TypeId}");
         }
     }
 }

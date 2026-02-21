@@ -105,7 +105,7 @@ public sealed class Fory
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
-            throw new ForyInvalidDataException($"unexpected trailing bytes after deserializing {typeof(T)}");
+            throw new InvalidDataException($"unexpected trailing bytes after deserializing {typeof(T)}");
         }
 
         return value;
@@ -154,7 +154,7 @@ public sealed class Fory
         object? value = DeserializeObjectFromReader(reader);
         if (reader.Remaining != 0)
         {
-            throw new ForyInvalidDataException("unexpected trailing bytes after deserializing dynamic object");
+            throw new InvalidDataException("unexpected trailing bytes after deserializing dynamic object");
         }
 
         return value;
@@ -191,7 +191,7 @@ public sealed class Fory
         bool peerIsXlang = (bitmap & ForyHeaderFlag.IsXlang) != 0;
         if (peerIsXlang != Config.Xlang)
         {
-            throw new ForyInvalidDataException("xlang bitmap mismatch");
+            throw new InvalidDataException("xlang bitmap mismatch");
         }
 
         return (bitmap & ForyHeaderFlag.IsNull) != 0;

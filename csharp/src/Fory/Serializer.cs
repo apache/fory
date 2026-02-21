@@ -121,7 +121,7 @@ public interface IStaticSerializer<TSerializer, T>
                 case RefFlag.NotNullValue:
                     break;
                 default:
-                    throw new ForyRefException($"invalid ref flag {rawFlag}");
+                    throw new RefException($"invalid ref flag {rawFlag}");
             }
         }
 
@@ -149,7 +149,7 @@ public readonly struct Serializer<T>
         {
             if (_binding is null)
             {
-                throw new ForyInvalidDataException($"serializer handle for {typeof(T)} is not initialized");
+                throw new InvalidDataException($"serializer handle for {typeof(T)} is not initialized");
             }
 
             return _binding;
@@ -258,7 +258,7 @@ internal static class SerializerTypeInfo
                 {
                     if (info.NamespaceName is null)
                     {
-                        throw new ForyInvalidDataException("missing namespace metadata for name-registered type");
+                        throw new InvalidDataException("missing namespace metadata for name-registered type");
                     }
 
                     WriteMetaString(
@@ -280,7 +280,7 @@ internal static class SerializerTypeInfo
                 {
                     if (!info.UserTypeId.HasValue)
                     {
-                        throw new ForyInvalidDataException("missing user type id for id-registered type");
+                        throw new InvalidDataException("missing user type id for id-registered type");
                     }
 
                     context.Writer.WriteVarUInt32(info.UserTypeId.Value);
@@ -296,7 +296,7 @@ internal static class SerializerTypeInfo
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
         {
-            throw new ForyInvalidDataException($"unknown type id {rawTypeId}");
+            throw new InvalidDataException($"unknown type id {rawTypeId}");
         }
 
         TypeId typeId = (TypeId)rawTypeId;
@@ -305,7 +305,7 @@ internal static class SerializerTypeInfo
         {
             if (typeId != staticTypeId)
             {
-                throw new ForyTypeMismatchException((uint)staticTypeId, rawTypeId);
+                throw new TypeMismatchException((uint)staticTypeId, rawTypeId);
             }
 
             return;
@@ -317,7 +317,7 @@ internal static class SerializerTypeInfo
         if (!allowed.Contains(typeId))
         {
             uint expected = allowed.Count > 0 ? (uint)allowed.First() : 0;
-            throw new ForyTypeMismatchException(expected, rawTypeId);
+            throw new TypeMismatchException(expected, rawTypeId);
         }
 
         switch (typeId)
@@ -356,12 +356,12 @@ internal static class SerializerTypeInfo
                         TypeMetaEncodings.TypeNameMetaStringEncodings);
                     if (!info.RegisterByName || info.NamespaceName is null)
                     {
-                        throw new ForyInvalidDataException("received name-registered type info for id-registered local type");
+                        throw new InvalidDataException("received name-registered type info for id-registered local type");
                     }
 
                     if (namespaceName.Value != info.NamespaceName.Value.Value || typeName.Value != info.TypeName.Value)
                     {
-                        throw new ForyInvalidDataException(
+                        throw new InvalidDataException(
                             $"type name mismatch: expected {info.NamespaceName.Value.Value}::{info.TypeName.Value}, got {namespaceName.Value}::{typeName.Value}");
                     }
                 }
@@ -373,13 +373,13 @@ internal static class SerializerTypeInfo
                 {
                     if (!info.UserTypeId.HasValue)
                     {
-                        throw new ForyInvalidDataException("missing user type id for id-registered local type");
+                        throw new InvalidDataException("missing user type id for id-registered local type");
                     }
 
                     uint remoteUserTypeId = context.Reader.ReadVarUInt32();
                     if (remoteUserTypeId != info.UserTypeId.Value)
                     {
-                        throw new ForyTypeMismatchException(info.UserTypeId.Value, remoteUserTypeId);
+                        throw new TypeMismatchException(info.UserTypeId.Value, remoteUserTypeId);
                     }
                 }
 
@@ -464,7 +464,7 @@ internal static class SerializerTypeInfo
         {
             if (info.NamespaceName is null)
             {
-                throw new ForyInvalidDataException("missing namespace metadata for name-registered type");
+                throw new InvalidDataException("missing namespace metadata for name-registered type");
             }
 
             return new TypeMeta(
@@ -479,7 +479,7 @@ internal static class SerializerTypeInfo
 
         if (!info.UserTypeId.HasValue)
         {
-            throw new ForyInvalidDataException("missing user type id metadata for id-registered type");
+            throw new InvalidDataException("missing user type id metadata for id-registered type");
         }
 
         return new TypeMeta(
@@ -502,19 +502,19 @@ internal static class SerializerTypeInfo
         {
             if (!localInfo.RegisterByName || localInfo.NamespaceName is null)
             {
-                throw new ForyInvalidDataException(
+                throw new InvalidDataException(
                     "received name-registered compatible metadata for id-registered local type");
             }
 
             if (remoteTypeMeta.NamespaceName.Value != localInfo.NamespaceName.Value.Value)
             {
-                throw new ForyInvalidDataException(
+                throw new InvalidDataException(
                     $"namespace mismatch: expected {localInfo.NamespaceName.Value.Value}, got {remoteTypeMeta.NamespaceName.Value}");
             }
 
             if (remoteTypeMeta.TypeName.Value != localInfo.TypeName.Value)
             {
-                throw new ForyInvalidDataException(
+                throw new InvalidDataException(
                     $"type name mismatch: expected {localInfo.TypeName.Value}, got {remoteTypeMeta.TypeName.Value}");
             }
         }
@@ -522,23 +522,23 @@ internal static class SerializerTypeInfo
         {
             if (localInfo.RegisterByName)
             {
-                throw new ForyInvalidDataException(
+                throw new InvalidDataException(
                     "received id-registered compatible metadata for name-registered local type");
             }
 
             if (!remoteTypeMeta.UserTypeId.HasValue)
             {
-                throw new ForyInvalidDataException("missing user type id in compatible type metadata");
+                throw new InvalidDataException("missing user type id in compatible type metadata");
             }
 
             if (!localInfo.UserTypeId.HasValue)
             {
-                throw new ForyInvalidDataException("missing local user type id metadata for id-registered type");
+                throw new InvalidDataException("missing local user type id metadata for id-registered type");
             }
 
             if (remoteTypeMeta.UserTypeId.Value != localInfo.UserTypeId.Value)
             {
-                throw new ForyTypeMismatchException(localInfo.UserTypeId.Value, remoteTypeMeta.UserTypeId.Value);
+                throw new TypeMismatchException(localInfo.UserTypeId.Value, remoteTypeMeta.UserTypeId.Value);
             }
         }
 
@@ -548,7 +548,7 @@ internal static class SerializerTypeInfo
             TypeId remoteWireTypeId = (TypeId)remoteTypeMeta.TypeId.Value;
             if (!expectedWireTypes.Contains(remoteWireTypeId))
             {
-                throw new ForyTypeMismatchException((uint)actualWireTypeId, remoteTypeMeta.TypeId.Value);
+                throw new TypeMismatchException((uint)actualWireTypeId, remoteTypeMeta.TypeId.Value);
             }
         }
     }
@@ -564,7 +564,7 @@ internal static class SerializerTypeInfo
             : encoder.Encode(value.Value, encodings);
         if (!encodings.Contains(normalized.Encoding))
         {
-            throw new ForyEncodingException("failed to normalize meta string encoding");
+            throw new EncodingException("failed to normalize meta string encoding");
         }
 
         byte[] bytes = normalized.Bytes;
@@ -603,7 +603,7 @@ internal static class SerializerTypeInfo
             MetaString? cached = context.MetaStringReadState.ValueAt(index);
             if (cached is null)
             {
-                throw new ForyInvalidDataException($"unknown meta string ref index {index}");
+                throw new InvalidDataException($"unknown meta string ref index {index}");
             }
 
             return cached.Value;
@@ -630,7 +630,7 @@ internal static class SerializerTypeInfo
 
             if (!encodings.Contains(encoding))
             {
-                throw new ForyInvalidDataException($"meta string encoding {encoding} not allowed in this context");
+                throw new InvalidDataException($"meta string encoding {encoding} not allowed in this context");
             }
 
             byte[] bytes = context.Reader.ReadBytes(length);

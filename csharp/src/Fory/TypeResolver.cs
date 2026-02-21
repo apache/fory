@@ -110,14 +110,14 @@ public sealed class TypeResolver
             return info;
         }
 
-        throw new ForyTypeNotRegisteredException($"{type} is not registered");
+        throw new TypeNotRegisteredException($"{type} is not registered");
     }
 
     public object? ReadByUserTypeId(uint userTypeId, ref ReadContext context, TypeMeta? compatibleTypeMeta = null)
     {
         if (!_byUserTypeId.TryGetValue(userTypeId, out TypeReader? entry))
         {
-            throw new ForyTypeNotRegisteredException($"user_type_id={userTypeId}");
+            throw new TypeNotRegisteredException($"user_type_id={userTypeId}");
         }
 
         return compatibleTypeMeta is null
@@ -129,7 +129,7 @@ public sealed class TypeResolver
     {
         if (!_byTypeName.TryGetValue(new TypeNameKey(namespaceName, typeName), out TypeReader? entry))
         {
-            throw new ForyTypeNotRegisteredException($"namespace={namespaceName}, type={typeName}");
+            throw new TypeNotRegisteredException($"namespace={namespaceName}, type={typeName}");
         }
 
         return compatibleTypeMeta is null
@@ -142,7 +142,7 @@ public sealed class TypeResolver
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
         {
-            throw new ForyInvalidDataException($"unknown dynamic type id {rawTypeId}");
+            throw new InvalidDataException($"unknown dynamic type id {rawTypeId}");
         }
 
         TypeId wireTypeId = (TypeId)rawTypeId;
@@ -186,7 +186,7 @@ public sealed class TypeResolver
                     return new DynamicTypeInfo(wireTypeId, null, namespaceName, typeName, null);
                 }
 
-                throw new ForyInvalidDataException($"ambiguous dynamic type registration mode for {wireTypeId}");
+                throw new InvalidDataException($"ambiguous dynamic type registration mode for {wireTypeId}");
             }
             default:
                 return new DynamicTypeInfo(wireTypeId, null, null, null, null);
@@ -279,7 +279,7 @@ public sealed class TypeResolver
                     return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, ref context);
                 }
 
-                throw new ForyInvalidDataException($"missing dynamic registration info for {typeInfo.WireTypeId}");
+                throw new InvalidDataException($"missing dynamic registration info for {typeInfo.WireTypeId}");
             }
             case TypeId.NamedStruct:
             case TypeId.NamedEnum:
@@ -288,7 +288,7 @@ public sealed class TypeResolver
             {
                 if (!typeInfo.NamespaceName.HasValue || !typeInfo.TypeName.HasValue)
                 {
-                    throw new ForyInvalidDataException($"missing dynamic type name for {typeInfo.WireTypeId}");
+                    throw new InvalidDataException($"missing dynamic type name for {typeInfo.WireTypeId}");
                 }
 
                 return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, ref context);
@@ -298,7 +298,7 @@ public sealed class TypeResolver
             {
                 if (typeInfo.CompatibleTypeMeta is null)
                 {
-                    throw new ForyInvalidDataException($"missing compatible type meta for {typeInfo.WireTypeId}");
+                    throw new InvalidDataException($"missing compatible type meta for {typeInfo.WireTypeId}");
                 }
 
                 TypeMeta compatibleTypeMeta = typeInfo.CompatibleTypeMeta;
@@ -313,7 +313,7 @@ public sealed class TypeResolver
 
                 if (!compatibleTypeMeta.UserTypeId.HasValue)
                 {
-                    throw new ForyInvalidDataException("missing user type id in compatible dynamic type meta");
+                    throw new InvalidDataException("missing user type id in compatible dynamic type meta");
                 }
 
                 return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, ref context, compatibleTypeMeta);
@@ -321,7 +321,7 @@ public sealed class TypeResolver
             case TypeId.None:
                 return null;
             default:
-                throw new ForyInvalidDataException($"unsupported dynamic type id {typeInfo.WireTypeId}");
+                throw new InvalidDataException($"unsupported dynamic type id {typeInfo.WireTypeId}");
         }
     }
 
@@ -347,7 +347,7 @@ public sealed class TypeResolver
             return mode;
         }
 
-        throw new ForyTypeNotRegisteredException($"no dynamic registration mode for kind {kind}");
+        throw new TypeNotRegisteredException($"no dynamic registration mode for kind {kind}");
     }
 
     private static MetaString ReadMetaString(ByteReader reader, MetaStringDecoder decoder, IReadOnlyList<MetaStringEncoding> encodings)
@@ -356,7 +356,7 @@ public sealed class TypeResolver
         int encodingIndex = header & 0b11;
         if (encodingIndex >= encodings.Count)
         {
-            throw new ForyInvalidDataException("invalid meta string encoding index");
+            throw new InvalidDataException("invalid meta string encoding index");
         }
 
         int length = header >> 2;

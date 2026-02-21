@@ -35,7 +35,7 @@ public readonly struct EnumSerializer<TEnum> : IStaticSerializer<EnumSerializer<
         TEnum value = (TEnum)Enum.ToObject(typeof(TEnum), ordinal);
         if (!Enum.IsDefined(typeof(TEnum), value))
         {
-            throw new ForyInvalidDataException($"unknown enum ordinal {ordinal}");
+            throw new InvalidDataException($"unknown enum ordinal {ordinal}");
         }
 
         return value;

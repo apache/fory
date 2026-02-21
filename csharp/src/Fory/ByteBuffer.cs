@@ -117,7 +117,7 @@ public sealed class ByteWriter
     {
         if (value >= (1UL << 36))
         {
-            throw new ForyEncodingException("varuint36small overflow");
+            throw new EncodingException("varuint36small overflow");
         }
 
         WriteVarUInt64(value);
@@ -238,7 +238,7 @@ public sealed class ByteReader
     {
         if (_cursor + need > _storage.Length)
         {
-            throw new ForyOutOfBoundsException(_cursor, need, _storage.Length);
+            throw new OutOfBoundsException(_cursor, need, _storage.Length);
         }
     }
 
@@ -310,7 +310,7 @@ public sealed class ByteReader
             shift += 7;
             if (shift > 28)
             {
-                throw new ForyEncodingException("varuint32 overflow");
+                throw new EncodingException("varuint32 overflow");
             }
         }
     }
@@ -341,7 +341,7 @@ public sealed class ByteReader
         ulong value = ReadVarUInt64();
         if (value >= (1UL << 36))
         {
-            throw new ForyEncodingException("varuint36small overflow");
+            throw new EncodingException("varuint36small overflow");
         }
 
         return value;

@@ -272,7 +272,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        uint expectedHash = __ForySchemaHash(context.TrackRef);");
         sb.AppendLine("        if (schemaHash != expectedHash)");
         sb.AppendLine("        {");
-        sb.AppendLine("            throw new global::Apache.Fory.ForyInvalidDataException($\"class version hash mismatch: expected {expectedHash}, got {schemaHash}\");");
+        sb.AppendLine("            throw new global::Apache.Fory.InvalidDataException($\"class version hash mismatch: expected {expectedHash}, got {schemaHash}\");");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");

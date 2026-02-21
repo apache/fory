@@ -251,7 +251,7 @@ public static class SerializerRegistry
             return generatedSerializer!;
         }
 
-        throw new ForyTypeNotRegisteredException($"No serializer available for {type}");
+        throw new TypeNotRegisteredException($"No serializer available for {type}");
     }
 
     private static void RegisterBuiltins()

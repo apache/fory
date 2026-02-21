@@ -24,45 +24,45 @@ public class ForyException : Exception
     }
 }
 
-public sealed class ForyInvalidDataException : ForyException
+public sealed class InvalidDataException : ForyException
 {
-    public ForyInvalidDataException(string message) : base($"Invalid data: {message}")
+    public InvalidDataException(string message) : base($"Invalid data: {message}")
     {
     }
 }
 
-public sealed class ForyTypeMismatchException : ForyException
+public sealed class TypeMismatchException : ForyException
 {
-    public ForyTypeMismatchException(uint expected, uint actual)
+    public TypeMismatchException(uint expected, uint actual)
         : base($"Type mismatch: expected {expected}, got {actual}")
     {
     }
 }
 
-public sealed class ForyTypeNotRegisteredException : ForyException
+public sealed class TypeNotRegisteredException : ForyException
 {
-    public ForyTypeNotRegisteredException(string message) : base($"Type not registered: {message}")
+    public TypeNotRegisteredException(string message) : base($"Type not registered: {message}")
     {
     }
 }
 
-public sealed class ForyRefException : ForyException
+public sealed class RefException : ForyException
 {
-    public ForyRefException(string message) : base($"Reference error: {message}")
+    public RefException(string message) : base($"Reference error: {message}")
     {
     }
 }
 
-public sealed class ForyEncodingException : ForyException
+public sealed class EncodingException : ForyException
 {
-    public ForyEncodingException(string message) : base($"Encoding error: {message}")
+    public EncodingException(string message) : base($"Encoding error: {message}")
     {
     }
 }
 
-public sealed class ForyOutOfBoundsException : ForyException
+public sealed class OutOfBoundsException : ForyException
 {
-    public ForyOutOfBoundsException(int cursor, int need, int length)
+    public OutOfBoundsException(int cursor, int need, int length)
         : base($"Buffer out of bounds: cursor={cursor}, need={need}, length={length}")
     {
     }

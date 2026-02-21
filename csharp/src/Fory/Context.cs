@@ -60,7 +60,7 @@ public sealed class CompatibleTypeDefReadState
     {
         if (index < 0)
         {
-            throw new ForyInvalidDataException("negative compatible type definition index");
+            throw new InvalidDataException("negative compatible type definition index");
         }
 
         if (index == _typeMetas.Count)
@@ -75,7 +75,7 @@ public sealed class CompatibleTypeDefReadState
             return;
         }
 
-        throw new ForyInvalidDataException(
+        throw new InvalidDataException(
             $"compatible type definition index gap: index={index}, count={_typeMetas.Count}");
     }
 
@@ -304,7 +304,7 @@ public sealed class ReadContext
             TypeMeta? cached = CompatibleTypeDefState.TypeMetaAt(index);
             if (cached is null)
             {
-                throw new ForyInvalidDataException($"unknown compatible type definition ref index {index}");
+                throw new InvalidDataException($"unknown compatible type definition ref index {index}");
             }
 
             return cached;
@@ -324,7 +324,7 @@ public sealed class ReadContext
     {
         if (!_pendingCompatibleTypeMeta.TryGetValue(type, out List<TypeMeta>? stack) || stack.Count == 0)
         {
-            throw new ForyInvalidDataException($"missing compatible type metadata for {type}");
+            throw new InvalidDataException($"missing compatible type metadata for {type}");
         }
 
         return stack[^1];

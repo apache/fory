@@ -73,7 +73,7 @@ public sealed class RefReader
         int index = checked((int)refId);
         if (index < 0 || index >= _refs.Count)
         {
-            throw new ForyRefException($"ref_id out of range: {refId}");
+            throw new RefException($"ref_id out of range: {refId}");
         }
 
         if (_refs[index] is T typed)
@@ -81,7 +81,7 @@ public sealed class RefReader
             return typed;
         }
 
-        throw new ForyRefException($"ref_id {refId} has unexpected runtime type");
+        throw new RefException($"ref_id {refId} has unexpected runtime type");
     }
 
     public object? ReadRefValue(uint refId)
@@ -89,7 +89,7 @@ public sealed class RefReader
         int index = checked((int)refId);
         if (index < 0 || index >= _refs.Count)
         {
-            throw new ForyRefException($"ref_id out of range: {refId}");
+            throw new RefException($"ref_id out of range: {refId}");
         }
 
         return _refs[index];

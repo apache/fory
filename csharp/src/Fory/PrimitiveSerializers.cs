@@ -272,7 +272,7 @@ public readonly struct StringSerializer : IStaticSerializer<StringSerializer, st
             (ulong)ForyStringEncoding.Utf8 => Encoding.UTF8.GetString(bytes),
             (ulong)ForyStringEncoding.Latin1 => DecodeLatin1(bytes),
             (ulong)ForyStringEncoding.Utf16 => DecodeUtf16(bytes),
-            _ => throw new ForyEncodingException($"unsupported string encoding {encoding}"),
+            _ => throw new EncodingException($"unsupported string encoding {encoding}"),
         };
     }
 
@@ -291,7 +291,7 @@ public readonly struct StringSerializer : IStaticSerializer<StringSerializer, st
     {
         if ((bytes.Length & 1) != 0)
         {
-            throw new ForyEncodingException("utf16 byte length is not even");
+            throw new EncodingException("utf16 byte length is not even");
         }
 
         return Encoding.Unicode.GetString(bytes);

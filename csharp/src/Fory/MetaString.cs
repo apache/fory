@@ -41,12 +41,12 @@ public readonly struct MetaString : IEquatable<MetaString>
     {
         if (value.Length >= MaxMetaStringLength)
         {
-            throw new ForyEncodingException("meta string too long");
+            throw new EncodingException("meta string too long");
         }
 
         if (encoding != MetaStringEncoding.Utf8 && bytes.Length == 0)
         {
-            throw new ForyEncodingException("encoded meta string cannot be empty");
+            throw new EncodingException("encoded meta string cannot be empty");
         }
 
         Value = value;
@@ -138,7 +138,7 @@ public sealed class MetaStringEncoder
     {
         if (input.Length >= MaxMetaStringLength)
         {
-            throw new ForyEncodingException("meta string too long");
+            throw new EncodingException("meta string too long");
         }
 
         if (input.Length == 0)
@@ -148,7 +148,7 @@ public sealed class MetaStringEncoder
 
         if (encoding != MetaStringEncoding.Utf8 && !IsLatin(input))
         {
-            throw new ForyEncodingException("non-ASCII characters are not allowed for packed meta string");
+            throw new EncodingException("non-ASCII characters are not allowed for packed meta string");
         }
 
         return encoding switch
@@ -183,7 +183,7 @@ public sealed class MetaStringEncoder
                 SpecialChar1,
                 SpecialChar2,
                 EncodeGeneric(EscapeAllUpper(input), 5, MapLowerSpecial)),
-            _ => throw new ForyEncodingException($"unsupported meta string encoding: {encoding}"),
+            _ => throw new EncodingException($"unsupported meta string encoding: {encoding}"),
         };
     }
 
@@ -191,7 +191,7 @@ public sealed class MetaStringEncoder
     {
         if (input.Length >= MaxMetaStringLength)
         {
-            throw new ForyEncodingException("meta string too long");
+            throw new EncodingException("meta string too long");
         }
 
         if (input.Length == 0)
@@ -331,7 +331,7 @@ public sealed class MetaStringEncoder
             '_' => 27,
             '$' => 28,
             '|' => 29,
-            _ => throw new ForyEncodingException("unsupported character in LOWER_SPECIAL"),
+            _ => throw new EncodingException("unsupported character in LOWER_SPECIAL"),
         };
     }
 
@@ -362,7 +362,7 @@ public sealed class MetaStringEncoder
             return 63;
         }
 
-        throw new ForyEncodingException("unsupported character in LOWER_UPPER_DIGIT_SPECIAL");
+        throw new EncodingException("unsupported character in LOWER_UPPER_DIGIT_SPECIAL");
     }
 
     private static string LowerFirstAscii(string input)
@@ -437,7 +437,7 @@ public sealed class MetaStringDecoder
                 DecodeFirstToLowerSpecial(bytes),
             MetaStringEncoding.AllToLowerSpecial =>
                 UnescapeAllUpper(DecodeGeneric(bytes, 5, UnmapLowerSpecial)),
-            _ => throw new ForyEncodingException($"unsupported meta string encoding: {encoding}"),
+            _ => throw new EncodingException($"unsupported meta string encoding: {encoding}"),
         };
 
         return new MetaString(value, encoding, SpecialChar1, SpecialChar2, bytes);
@@ -493,7 +493,7 @@ public sealed class MetaStringDecoder
             27 => '_',
             28 => '$',
             29 => '|',
-            _ => throw new ForyEncodingException("invalid LOWER_SPECIAL value"),
+            _ => throw new EncodingException("invalid LOWER_SPECIAL value"),
         };
     }
 
@@ -506,7 +506,7 @@ public sealed class MetaStringDecoder
             <= 61 => (char)('0' + value - 52),
             62 => SpecialChar1,
             63 => SpecialChar2,
-            _ => throw new ForyEncodingException("invalid LOWER_UPPER_DIGIT_SPECIAL value"),
+            _ => throw new EncodingException("invalid LOWER_UPPER_DIGIT_SPECIAL value"),
         };
     }
 

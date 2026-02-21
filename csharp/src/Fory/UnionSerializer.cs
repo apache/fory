@@ -43,7 +43,7 @@ public readonly struct UnionSerializer<TUnion> : IStaticSerializer<UnionSerializ
         _ = hasGenerics;
         if (value is null)
         {
-            throw new ForyInvalidDataException("union value is null");
+            throw new InvalidDataException("union value is null");
         }
 
         context.Writer.WriteVarUInt32((uint)value.Index);
@@ -55,7 +55,7 @@ public readonly struct UnionSerializer<TUnion> : IStaticSerializer<UnionSerializ
         uint rawCaseId = context.Reader.ReadVarUInt32();
         if (rawCaseId > int.MaxValue)
         {
-            throw new ForyInvalidDataException($"union case id out of range: {rawCaseId}");
+            throw new InvalidDataException($"union case id out of range: {rawCaseId}");
         }
 
         object? caseValue = DynamicAnyCodec.ReadAny(ref context, RefMode.Tracking, true);
@@ -93,7 +93,7 @@ public readonly struct UnionSerializer<TUnion> : IStaticSerializer<UnionSerializ
             return (index, value) => (TUnion)ofFactory.Invoke(null, [index, value])!;
         }
 
-        throw new ForyInvalidDataException(
+        throw new InvalidDataException(
             $"union type {typeof(TUnion)} must define (int, object) constructor or static Of(int, object)");
     }
 }

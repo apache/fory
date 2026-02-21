@@ -277,7 +277,7 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
             short fieldId = FieldId.Value;
             if (fieldId < 0)
             {
-                throw new ForyEncodingException("negative field id is invalid");
+                throw new EncodingException("negative field id is invalid");
             }
 
             int size = fieldId;
@@ -303,7 +303,7 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
         int encodingIndex = Array.IndexOf(TypeMetaEncodings.FieldNameMetaStringEncodings, encoded.Encoding);
         if (encodingIndex < 0)
         {
-            throw new ForyEncodingException("unsupported field name encoding");
+            throw new EncodingException("unsupported field name encoding");
         }
 
         int encodedSize = encoded.Bytes.Length - 1;
@@ -348,7 +348,7 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
 
         if (encodingFlags >= TypeMetaEncodings.FieldNameMetaStringEncodings.Length)
         {
-            throw new ForyInvalidDataException("invalid field name encoding id");
+            throw new InvalidDataException("invalid field name encoding id");
         }
 
         byte[] nameBytes = reader.ReadBytes(size);
@@ -398,19 +398,19 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         {
             if (typeName.Value.Length == 0)
             {
-                throw new ForyEncodingException("type name is required in register-by-name mode");
+                throw new EncodingException("type name is required in register-by-name mode");
             }
         }
         else
         {
             if (!typeId.HasValue)
             {
-                throw new ForyEncodingException("type id is required in register-by-id mode");
+                throw new EncodingException("type id is required in register-by-id mode");
             }
 
             if (!userTypeId.HasValue || userTypeId.Value == TypeMetaConstants.NoUserTypeId)
             {
-                throw new ForyEncodingException("user type id is required in register-by-id mode");
+                throw new EncodingException("user type id is required in register-by-id mode");
             }
         }
 
@@ -447,7 +447,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
     {
         if (Compressed)
         {
-            throw new ForyEncodingException("compressed TypeMeta is not supported yet");
+            throw new EncodingException("compressed TypeMeta is not supported yet");
         }
 
         byte[] body = EncodeBody();
@@ -498,7 +498,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         byte[] encodedBody = reader.ReadBytes(metaSize);
         if (compressed)
         {
-            throw new ForyEncodingException("compressed TypeMeta is not supported yet");
+            throw new EncodingException("compressed TypeMeta is not supported yet");
         }
 
         ByteReader bodyReader = new(encodedBody);
@@ -537,7 +537,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
 
         if (bodyReader.Remaining != 0)
         {
-            throw new ForyInvalidDataException("unexpected trailing bytes in TypeMeta body");
+            throw new InvalidDataException("unexpected trailing bytes in TypeMeta body");
         }
 
         return new TypeMeta(
@@ -576,12 +576,12 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         {
             if (!TypeId.HasValue)
             {
-                throw new ForyEncodingException("type id is required in register-by-id mode");
+                throw new EncodingException("type id is required in register-by-id mode");
             }
 
             if (!UserTypeId.HasValue || UserTypeId == TypeMetaConstants.NoUserTypeId)
             {
-                throw new ForyEncodingException("user type id is required in register-by-id mode");
+                throw new EncodingException("user type id is required in register-by-id mode");
             }
 
             writer.WriteUInt8(unchecked((byte)TypeId.Value));
@@ -609,7 +609,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         int encodingIndex = TypeMetaUtils.EncodingIndexOf(encodings, normalized.Encoding);
         if (encodingIndex < 0)
         {
-            throw new ForyEncodingException("failed to normalize meta string encoding");
+            throw new EncodingException("failed to normalize meta string encoding");
         }
 
         byte[] bytes = normalized.Bytes;
@@ -632,7 +632,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         int encodingIndex = header & 0b11;
         if (encodingIndex >= encodings.Count)
         {
-            throw new ForyInvalidDataException("invalid meta string encoding index");
+            throw new InvalidDataException("invalid meta string encoding index");
         }
 
         int length = header >> 2;

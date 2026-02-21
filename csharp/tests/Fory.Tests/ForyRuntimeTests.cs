@@ -412,7 +412,7 @@ public sealed class ForyRuntimeTests
         reader.Register<TwoStringField>(200);
 
         byte[] payload = writer.Serialize(new OneStringField { F1 = "hello" });
-        Assert.Throws<ForyInvalidDataException>(() => { _ = reader.Deserialize<TwoStringField>(payload); });
+        Assert.Throws<InvalidDataException>(() => { _ = reader.Deserialize<TwoStringField>(payload); });
     }
 
     [Fact]

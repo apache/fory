@@ -172,7 +172,7 @@ internal static class CollectionCodec
                     }
                     else
                     {
-                        throw new ForyRefException($"invalid nullability flag {refFlag}");
+                        throw new RefException($"invalid nullability flag {refFlag}");
                     }
                 }
             }
@@ -613,7 +613,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 1) != 0)
             {
-                throw new ForyInvalidDataException("int16 array payload size mismatch");
+                throw new InvalidDataException("int16 array payload size mismatch");
             }
 
             short[] outValues = new short[payloadSize / 2];
@@ -629,7 +629,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 3) != 0)
             {
-                throw new ForyInvalidDataException("int32 array payload size mismatch");
+                throw new InvalidDataException("int32 array payload size mismatch");
             }
 
             int[] outValues = new int[payloadSize / 4];
@@ -645,7 +645,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 3) != 0)
             {
-                throw new ForyInvalidDataException("uint32 array payload size mismatch");
+                throw new InvalidDataException("uint32 array payload size mismatch");
             }
 
             uint[] outValues = new uint[payloadSize / 4];
@@ -661,7 +661,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 7) != 0)
             {
-                throw new ForyInvalidDataException("int64 array payload size mismatch");
+                throw new InvalidDataException("int64 array payload size mismatch");
             }
 
             long[] outValues = new long[payloadSize / 8];
@@ -677,7 +677,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 7) != 0)
             {
-                throw new ForyInvalidDataException("uint64 array payload size mismatch");
+                throw new InvalidDataException("uint64 array payload size mismatch");
             }
 
             ulong[] outValues = new ulong[payloadSize / 8];
@@ -693,7 +693,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 1) != 0)
             {
-                throw new ForyInvalidDataException("uint16 array payload size mismatch");
+                throw new InvalidDataException("uint16 array payload size mismatch");
             }
 
             ushort[] outValues = new ushort[payloadSize / 2];
@@ -709,7 +709,7 @@ internal static class PrimitiveArrayCodec
         {
             if ((payloadSize & 3) != 0)
             {
-                throw new ForyInvalidDataException("float32 array payload size mismatch");
+                throw new InvalidDataException("float32 array payload size mismatch");
             }
 
             float[] outValues = new float[payloadSize / 4];
@@ -723,7 +723,7 @@ internal static class PrimitiveArrayCodec
 
         if ((payloadSize & 7) != 0)
         {
-            throw new ForyInvalidDataException("float64 array payload size mismatch");
+            throw new InvalidDataException("float64 array payload size mismatch");
         }
 
         double[] doubles = new double[payloadSize / 8];

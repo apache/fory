@@ -40,7 +40,7 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
         DynamicTypeInfo? dynamicTypeInfo = context.DynamicTypeInfo(typeof(object));
         if (dynamicTypeInfo is null)
         {
-            throw new ForyInvalidDataException("dynamic Any value requires type info");
+            throw new InvalidDataException("dynamic Any value requires type info");
         }
 
         return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, ref context);
@@ -48,7 +48,7 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
 
     public static void WriteTypeInfo(ref WriteContext context)
     {
-        throw new ForyInvalidDataException("dynamic Any value type info is runtime-only");
+        throw new InvalidDataException("dynamic Any value type info is runtime-only");
     }
 
     public static void ReadTypeInfo(ref ReadContext context)
@@ -129,7 +129,7 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
                 case RefFlag.NotNullValue:
                     break;
                 default:
-                    throw new ForyRefException($"invalid ref flag {rawFlag}");
+                    throw new RefException($"invalid ref flag {rawFlag}");
             }
         }
 
@@ -183,7 +183,7 @@ public static class DynamicAnyCodec
                 return null;
             }
 
-            throw new ForyInvalidDataException($"cannot cast null dynamic Any value to non-nullable {targetType}");
+            throw new InvalidDataException($"cannot cast null dynamic Any value to non-nullable {targetType}");
         }
 
         if (targetType.IsInstanceOfType(value))
@@ -191,7 +191,7 @@ public static class DynamicAnyCodec
             return value;
         }
 
-        throw new ForyInvalidDataException($"cannot cast dynamic Any value to {targetType}");
+        throw new InvalidDataException($"cannot cast dynamic Any value to {targetType}");
     }
 
     public static void WriteAny(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo = true, bool hasGenerics = false)
