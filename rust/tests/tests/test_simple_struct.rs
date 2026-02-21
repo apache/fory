@@ -207,3 +207,45 @@ fn test_compatible_map_to_empty_struct() {
     let _result: EmptyData = fory2.deserialize(&bytes).unwrap();
     // If we get here without panic, the test passes
 }
+
+#[test]
+fn test_struct_with_float16_fields() {
+    use fory_core::float16::float16;
+
+    #[derive(ForyObject, Debug)]
+    struct Float16Data {
+        scalar: float16,
+        vec_field: Vec<float16>,
+        arr_field: [float16; 3],
+    }
+
+    let mut fory = Fory::default();
+    fory.register::<Float16Data>(200).unwrap();
+
+    let obj = Float16Data {
+        scalar: float16::from_f32(1.5),
+        vec_field: vec![
+            float16::from_f32(1.0),
+            float16::from_f32(2.0),
+            float16::INFINITY,
+        ],
+        arr_field: [float16::from_f32(-1.0), float16::MAX, float16::ZERO],
+    };
+
+    let bin = fory.serialize(&obj).unwrap();
+    let obj2: Float16Data = fory.deserialize(&bin).expect("deserialize Float16Data");
+
+    assert_eq!(obj2.scalar.to_bits(), float16::from_f32(1.5).to_bits());
+    assert_eq!(obj2.vec_field.len(), 3);
+    assert_eq!(
+        obj2.vec_field[0].to_bits(),
+        float16::from_f32(1.0).to_bits()
+    );
+    assert!(obj2.vec_field[2].is_infinite() && obj2.vec_field[2].is_sign_positive());
+    assert_eq!(
+        obj2.arr_field[0].to_bits(),
+        float16::from_f32(-1.0).to_bits()
+    );
+    assert_eq!(obj2.arr_field[1].to_bits(), float16::MAX.to_bits());
+    assert_eq!(obj2.arr_field[2].to_bits(), float16::ZERO.to_bits());
+}
