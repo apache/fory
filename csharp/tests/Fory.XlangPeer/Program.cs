@@ -457,8 +457,8 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Item>(102);
         ReadOnlySequence<byte> sequence = new(input);
-        ForyMap<string, string?> strMap = fory.Deserialize<ForyMap<string, string?>>(ref sequence);
-        ForyMap<string, Item?> itemMap = fory.Deserialize<ForyMap<string, Item?>>(ref sequence);
+        NullableKeyDictionary<string, string?> strMap = fory.Deserialize<NullableKeyDictionary<string, string?>>(ref sequence);
+        NullableKeyDictionary<string, Item?> itemMap = fory.Deserialize<NullableKeyDictionary<string, Item?>>(ref sequence);
         EnsureConsumed(sequence, nameof(CaseMap));
 
         List<byte> output = [];
@@ -1004,7 +1004,7 @@ public sealed class StructWithList
 [ForyObject]
 public sealed class StructWithMap
 {
-    public ForyMap<string, string?> Data { get; set; } = new();
+    public NullableKeyDictionary<string, string?> Data { get; set; } = new();
 }
 
 [ForyObject]
@@ -1146,7 +1146,7 @@ public sealed class NullableComprehensiveSchemaConsistent
     public string StringField { get; set; } = string.Empty;
     public List<string> ListField { get; set; } = [];
     public HashSet<string> SetField { get; set; } = [];
-    public ForyMap<string, string> MapField { get; set; } = new();
+    public NullableKeyDictionary<string, string> MapField { get; set; } = new();
 
     public int? NullableInt { get; set; }
     public long? NullableLong { get; set; }
@@ -1156,7 +1156,7 @@ public sealed class NullableComprehensiveSchemaConsistent
     public string? NullableString { get; set; }
     public List<string>? NullableList { get; set; }
     public HashSet<string>? NullableSet { get; set; }
-    public ForyMap<string, string>? NullableMap { get; set; }
+    public NullableKeyDictionary<string, string>? NullableMap { get; set; }
 }
 
 [ForyObject]
@@ -1179,7 +1179,7 @@ public sealed class NullableComprehensiveCompatible
     public string StringField { get; set; } = string.Empty;
     public List<string> ListField { get; set; } = [];
     public HashSet<string> SetField { get; set; } = [];
-    public ForyMap<string, string> MapField { get; set; } = new();
+    public NullableKeyDictionary<string, string> MapField { get; set; } = new();
 
     public int NullableInt1 { get; set; }
     public long NullableLong1 { get; set; }
@@ -1190,7 +1190,7 @@ public sealed class NullableComprehensiveCompatible
     public string NullableString2 { get; set; } = string.Empty;
     public List<string> NullableList2 { get; set; } = [];
     public HashSet<string> NullableSet2 { get; set; } = [];
-    public ForyMap<string, string> NullableMap2 { get; set; } = new();
+    public NullableKeyDictionary<string, string> NullableMap2 { get; set; } = new();
 }
 
 [ForyObject]

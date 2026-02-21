@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-internal static class MapBits
+internal static class DictionaryBits
 {
     public const byte TrackingKeyRef = 0b0000_0001;
     public const byte KeyNull = 0b0000_0010;
@@ -27,7 +27,7 @@ internal static class MapBits
     public const byte DeclaredValueType = 0b0010_0000;
 }
 
-public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerializer<TKey, TValue>, Dictionary<TKey, TValue>>
+public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<DictionarySerializer<TKey, TValue>, Dictionary<TKey, TValue>>
     where TKey : notnull
 {
     private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
@@ -86,32 +86,32 @@ public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerial
                 byte header = 0;
                 if (trackKeyRef)
                 {
-                    header |= MapBits.TrackingKeyRef;
+                    header |= DictionaryBits.TrackingKeyRef;
                 }
 
                 if (trackValueRef)
                 {
-                    header |= MapBits.TrackingValueRef;
+                    header |= DictionaryBits.TrackingValueRef;
                 }
 
                 if (keyIsNull)
                 {
-                    header |= MapBits.KeyNull;
+                    header |= DictionaryBits.KeyNull;
                 }
 
                 if (valueIsNull)
                 {
-                    header |= MapBits.ValueNull;
+                    header |= DictionaryBits.ValueNull;
                 }
 
                 if (!keyIsNull && keyDeclared)
                 {
-                    header |= MapBits.DeclaredKeyType;
+                    header |= DictionaryBits.DeclaredKeyType;
                 }
 
                 if (!valueIsNull && valueDeclared)
                 {
-                    header |= MapBits.DeclaredValueType;
+                    header |= DictionaryBits.DeclaredValueType;
                 }
 
                 context.Writer.WriteUInt8(header);
@@ -142,22 +142,22 @@ public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerial
             byte blockHeader = 0;
             if (trackKeyRef)
             {
-                blockHeader |= MapBits.TrackingKeyRef;
+                blockHeader |= DictionaryBits.TrackingKeyRef;
             }
 
             if (trackValueRef)
             {
-                blockHeader |= MapBits.TrackingValueRef;
+                blockHeader |= DictionaryBits.TrackingValueRef;
             }
 
             if (keyDeclared)
             {
-                blockHeader |= MapBits.DeclaredKeyType;
+                blockHeader |= DictionaryBits.DeclaredKeyType;
             }
 
             if (valueDeclared)
             {
-                blockHeader |= MapBits.DeclaredValueType;
+                blockHeader |= DictionaryBits.DeclaredValueType;
             }
 
             context.Writer.WriteUInt8(blockHeader);
@@ -211,12 +211,12 @@ public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerial
         while (readCount < totalLength)
         {
             byte header = context.Reader.ReadUInt8();
-            bool trackKeyRef = (header & MapBits.TrackingKeyRef) != 0;
-            bool keyNull = (header & MapBits.KeyNull) != 0;
-            bool keyDeclared = (header & MapBits.DeclaredKeyType) != 0;
-            bool trackValueRef = (header & MapBits.TrackingValueRef) != 0;
-            bool valueNull = (header & MapBits.ValueNull) != 0;
-            bool valueDeclared = (header & MapBits.DeclaredValueType) != 0;
+            bool trackKeyRef = (header & DictionaryBits.TrackingKeyRef) != 0;
+            bool keyNull = (header & DictionaryBits.KeyNull) != 0;
+            bool keyDeclared = (header & DictionaryBits.DeclaredKeyType) != 0;
+            bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
+            bool valueNull = (header & DictionaryBits.ValueNull) != 0;
+            bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
 
             if (keyNull && valueNull)
             {
@@ -370,30 +370,30 @@ public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerial
             byte header = 0;
             if (trackKeyRef)
             {
-                header |= MapBits.TrackingKeyRef;
+                header |= DictionaryBits.TrackingKeyRef;
             }
 
             if (trackValueRef)
             {
-                header |= MapBits.TrackingValueRef;
+                header |= DictionaryBits.TrackingValueRef;
             }
 
             if (keyIsNull)
             {
-                header |= MapBits.KeyNull;
+                header |= DictionaryBits.KeyNull;
             }
             else if (!keyDynamicType && keyDeclared)
             {
-                header |= MapBits.DeclaredKeyType;
+                header |= DictionaryBits.DeclaredKeyType;
             }
 
             if (valueIsNull)
             {
-                header |= MapBits.ValueNull;
+                header |= DictionaryBits.ValueNull;
             }
             else if (!valueDynamicType && valueDeclared)
             {
-                header |= MapBits.DeclaredValueType;
+                header |= DictionaryBits.DeclaredValueType;
             }
 
             context.Writer.WriteUInt8(header);

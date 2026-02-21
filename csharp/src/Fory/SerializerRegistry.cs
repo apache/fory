@@ -235,13 +235,13 @@ public static class SerializerRegistry
 
             if (genericType == typeof(Dictionary<,>))
             {
-                Type serializerType = typeof(MapSerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                Type serializerType = typeof(DictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
                 return StaticSerializerBindingFactory.Create(type, serializerType);
             }
 
-            if (genericType == typeof(ForyMap<,>))
+            if (genericType == typeof(NullableKeyDictionary<,>))
             {
-                Type serializerType = typeof(ForyMapSerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                Type serializerType = typeof(NullableKeyDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
                 return StaticSerializerBindingFactory.Create(type, serializerType);
             }
         }

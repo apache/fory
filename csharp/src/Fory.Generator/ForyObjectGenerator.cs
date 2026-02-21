@@ -1114,7 +1114,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             "System.Collections.Generic.Dictionary<TKey, TValue>" or
             "System.Collections.Generic.IDictionary<TKey, TValue>" or
             "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>" or
-            "Apache.Fory.ForyMap<TKey, TValue>")
+            "Apache.Fory.NullableKeyDictionary<TKey, TValue>")
         {
             keyType = named.TypeArguments[0];
             valueType = named.TypeArguments[1];

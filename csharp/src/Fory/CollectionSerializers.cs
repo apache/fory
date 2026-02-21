@@ -303,13 +303,13 @@ internal static class DynamicContainerCodec
     {
         if (value is IDictionary dictionary)
         {
-            ForyMap<object, object?> map = new();
+            NullableKeyDictionary<object, object?> map = new();
             foreach (DictionaryEntry entry in dictionary)
             {
                 map.Add(entry.Key, entry.Value);
             }
 
-            SerializerRegistry.Get<ForyMap<object, object?>>().WriteData(ref context, map, false);
+            SerializerRegistry.Get<NullableKeyDictionary<object, object?>>().WriteData(ref context, map, false);
             return true;
         }
 
@@ -353,7 +353,7 @@ internal static class DynamicContainerCodec
 
     public static object ReadMapPayload(ref ReadContext context)
     {
-        ForyMap<object, object?> map = SerializerRegistry.Get<ForyMap<object, object?>>().ReadData(ref context);
+        NullableKeyDictionary<object, object?> map = SerializerRegistry.Get<NullableKeyDictionary<object, object?>>().ReadData(ref context);
         if (map.HasNullKey)
         {
             return map;

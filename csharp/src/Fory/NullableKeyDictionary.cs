@@ -20,22 +20,49 @@ using System.Collections;
 namespace Apache.Fory;
 
 #pragma warning disable CS8714
-public sealed class ForyMap<TKey, TValue> : IEnumerable<KeyValuePair<TKey?, TValue>>
+public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IReadOnlyDictionary<TKey, TValue>
 {
     private readonly Dictionary<TKey, TValue> _nonNullEntries;
     private bool _hasNullKey;
     private TValue _nullValue = default!;
+    private KeyCollection? _keys;
+    private ValueCollection? _values;
 
-    public ForyMap()
-        : this(null)
+    public NullableKeyDictionary()
+        : this((IEqualityComparer<TKey>?)null)
     {
     }
 
-    public ForyMap(IEqualityComparer<TKey>? comparer)
+    public NullableKeyDictionary(int capacity)
+        : this(capacity, null)
+    {
+    }
+
+    public NullableKeyDictionary(IEqualityComparer<TKey>? comparer)
+        : this(0, comparer)
+    {
+    }
+
+    public NullableKeyDictionary(int capacity, IEqualityComparer<TKey>? comparer)
     {
         _nonNullEntries = comparer is null
-            ? new Dictionary<TKey, TValue>()
-            : new Dictionary<TKey, TValue>(comparer);
+            ? new Dictionary<TKey, TValue>(capacity)
+            : new Dictionary<TKey, TValue>(capacity, comparer);
+    }
+
+    public NullableKeyDictionary(IDictionary<TKey, TValue> dictionary)
+        : this(dictionary, null)
+    {
+    }
+
+    public NullableKeyDictionary(IDictionary<TKey, TValue> dictionary, IEqualityComparer<TKey>? comparer)
+        : this(dictionary?.Count ?? 0, comparer)
+    {
+        ArgumentNullException.ThrowIfNull(dictionary);
+        foreach (KeyValuePair<TKey, TValue> entry in dictionary)
+        {
+            this[entry.Key] = entry.Value;
+        }
     }
 
     public int Count => _nonNullEntries.Count + (_hasNullKey ? 1 : 0);
@@ -44,21 +71,78 @@ public sealed class ForyMap<TKey, TValue> : IEnumerable<KeyValuePair<TKey?, TVal
 
     public TValue NullKeyValue => _nullValue;
 
+    public IEqualityComparer<TKey> Comparer => _nonNullEntries.Comparer;
+
     public IEnumerable<KeyValuePair<TKey, TValue>> NonNullEntries => _nonNullEntries;
 
-    public void Add(TKey? key, TValue value)
+    public ICollection<TKey> Keys => _keys ??= new KeyCollection(this);
+
+    IEnumerable<TKey> IReadOnlyDictionary<TKey, TValue>.Keys => Keys;
+
+    public ICollection<TValue> Values => _values ??= new ValueCollection(this);
+
+    IEnumerable<TValue> IReadOnlyDictionary<TKey, TValue>.Values => Values;
+
+    public TValue this[TKey key]
+    {
+        get
+        {
+            if (TryGetValue(key, out TValue value))
+            {
+                return value;
+            }
+
+            throw new KeyNotFoundException();
+        }
+        set => SetValue(key, value);
+    }
+
+    public bool IsReadOnly => false;
+
+    public void Add(TKey key, TValue value)
     {
         if (key is null)
         {
-            _hasNullKey = true;
-            _nullValue = value;
+            if (_hasNullKey)
+            {
+                throw new ArgumentException("An item with the same key has already been added.", nameof(key));
+            }
+
+            SetNullKeyValue(value);
             return;
         }
 
-        _nonNullEntries[key] = value;
+        _nonNullEntries.Add(key, value);
     }
 
-    public bool TryGetValue(TKey? key, out TValue value)
+    public bool ContainsKey(TKey key)
+    {
+        if (key is null)
+        {
+            return _hasNullKey;
+        }
+
+        return _nonNullEntries.ContainsKey(key);
+    }
+
+    public bool Remove(TKey key)
+    {
+        if (key is null)
+        {
+            if (!_hasNullKey)
+            {
+                return false;
+            }
+
+            _hasNullKey = false;
+            _nullValue = default!;
+            return true;
+        }
+
+        return _nonNullEntries.Remove(key);
+    }
+
+    public bool TryGetValue(TKey key, out TValue value)
     {
         if (key is null)
         {
@@ -75,6 +159,51 @@ public sealed class ForyMap<TKey, TValue> : IEnumerable<KeyValuePair<TKey?, TVal
         return _nonNullEntries.TryGetValue(key, out value!);
     }
 
+    public void Add(KeyValuePair<TKey, TValue> item)
+    {
+        Add(item.Key, item.Value);
+    }
+
+    public bool Contains(KeyValuePair<TKey, TValue> item)
+    {
+        return TryGetValue(item.Key, out TValue value) &&
+               EqualityComparer<TValue>.Default.Equals(value, item.Value);
+    }
+
+    public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
+    {
+        ArgumentNullException.ThrowIfNull(array);
+        if (arrayIndex < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(arrayIndex));
+        }
+
+        if (array.Length - arrayIndex < Count)
+        {
+            throw new ArgumentException("The destination array is too small.", nameof(array));
+        }
+
+        if (_hasNullKey)
+        {
+            array[arrayIndex++] = new KeyValuePair<TKey, TValue>(default!, _nullValue);
+        }
+
+        foreach (KeyValuePair<TKey, TValue> entry in _nonNullEntries)
+        {
+            array[arrayIndex++] = entry;
+        }
+    }
+
+    public bool Remove(KeyValuePair<TKey, TValue> item)
+    {
+        if (!Contains(item))
+        {
+            return false;
+        }
+
+        return Remove(item.Key);
+    }
+
     public void Clear()
     {
         _nonNullEntries.Clear();
@@ -82,16 +211,33 @@ public sealed class ForyMap<TKey, TValue> : IEnumerable<KeyValuePair<TKey?, TVal
         _nullValue = default!;
     }
 
-    public IEnumerator<KeyValuePair<TKey?, TValue>> GetEnumerator()
+    internal void SetNullKeyValue(TValue value)
+    {
+        _hasNullKey = true;
+        _nullValue = value;
+    }
+
+    private void SetValue(TKey key, TValue value)
+    {
+        if (key is null)
+        {
+            SetNullKeyValue(value);
+            return;
+        }
+
+        _nonNullEntries[key] = value;
+    }
+
+    public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
     {
         if (_hasNullKey)
         {
-            yield return new KeyValuePair<TKey?, TValue>(default, _nullValue);
+            yield return new KeyValuePair<TKey, TValue>(default!, _nullValue);
         }
 
         foreach (KeyValuePair<TKey, TValue> entry in _nonNullEntries)
         {
-            yield return new KeyValuePair<TKey?, TValue>(entry.Key, entry.Value);
+            yield return entry;
         }
     }
 
@@ -99,9 +245,150 @@ public sealed class ForyMap<TKey, TValue> : IEnumerable<KeyValuePair<TKey?, TVal
     {
         return GetEnumerator();
     }
+
+    private sealed class KeyCollection(NullableKeyDictionary<TKey, TValue> map) : ICollection<TKey>
+    {
+        private readonly NullableKeyDictionary<TKey, TValue> _map = map;
+
+        public int Count => _map.Count;
+
+        public bool IsReadOnly => true;
+
+        public void Add(TKey item)
+        {
+            throw new NotSupportedException("Collection is read-only.");
+        }
+
+        public void Clear()
+        {
+            throw new NotSupportedException("Collection is read-only.");
+        }
+
+        public bool Contains(TKey item)
+        {
+            return _map.ContainsKey(item);
+        }
+
+        public void CopyTo(TKey[] array, int arrayIndex)
+        {
+            ArgumentNullException.ThrowIfNull(array);
+            if (arrayIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(arrayIndex));
+            }
+
+            if (array.Length - arrayIndex < Count)
+            {
+                throw new ArgumentException("The destination array is too small.", nameof(array));
+            }
+
+            if (_map._hasNullKey)
+            {
+                array[arrayIndex++] = default!;
+            }
+
+            _map._nonNullEntries.Keys.CopyTo(array, arrayIndex);
+        }
+
+        public bool Remove(TKey item)
+        {
+            throw new NotSupportedException("Collection is read-only.");
+        }
+
+        public IEnumerator<TKey> GetEnumerator()
+        {
+            if (_map._hasNullKey)
+            {
+                yield return default!;
+            }
+
+            foreach (TKey key in _map._nonNullEntries.Keys)
+            {
+                yield return key;
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
+
+    private sealed class ValueCollection(NullableKeyDictionary<TKey, TValue> map) : ICollection<TValue>
+    {
+        private readonly NullableKeyDictionary<TKey, TValue> _map = map;
+
+        public int Count => _map.Count;
+
+        public bool IsReadOnly => true;
+
+        public void Add(TValue item)
+        {
+            throw new NotSupportedException("Collection is read-only.");
+        }
+
+        public void Clear()
+        {
+            throw new NotSupportedException("Collection is read-only.");
+        }
+
+        public bool Contains(TValue item)
+        {
+            if (_map._hasNullKey && EqualityComparer<TValue>.Default.Equals(_map._nullValue, item))
+            {
+                return true;
+            }
+
+            return _map._nonNullEntries.Values.Contains(item);
+        }
+
+        public void CopyTo(TValue[] array, int arrayIndex)
+        {
+            ArgumentNullException.ThrowIfNull(array);
+            if (arrayIndex < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(arrayIndex));
+            }
+
+            if (array.Length - arrayIndex < Count)
+            {
+                throw new ArgumentException("The destination array is too small.", nameof(array));
+            }
+
+            if (_map._hasNullKey)
+            {
+                array[arrayIndex++] = _map._nullValue;
+            }
+
+            _map._nonNullEntries.Values.CopyTo(array, arrayIndex);
+        }
+
+        public bool Remove(TValue item)
+        {
+            throw new NotSupportedException("Collection is read-only.");
+        }
+
+        public IEnumerator<TValue> GetEnumerator()
+        {
+            if (_map._hasNullKey)
+            {
+                yield return _map._nullValue;
+            }
+
+            foreach (TValue value in _map._nonNullEntries.Values)
+            {
+                yield return value;
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+    }
 }
 
-public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyMapSerializer<TKey, TValue>, ForyMap<TKey, TValue>>
+public readonly struct NullableKeyDictionarySerializer<TKey, TValue> : IStaticSerializer<NullableKeyDictionarySerializer<TKey, TValue>, NullableKeyDictionary<TKey, TValue>>
 {
     private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
     private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
@@ -109,14 +396,14 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
     public static TypeId StaticTypeId => TypeId.Map;
     public static bool IsNullableType => true;
     public static bool IsReferenceTrackableType => true;
-    public static ForyMap<TKey, TValue> DefaultValue => null!;
-    public static bool IsNone(in ForyMap<TKey, TValue> value) => value is null;
+    public static NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
+    public static bool IsNone(in NullableKeyDictionary<TKey, TValue> value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in ForyMap<TKey, TValue> value, bool hasGenerics)
+    public static void WriteData(ref WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = KeySerializer;
         Serializer<TValue> valueSerializer = ValueSerializer;
-        ForyMap<TKey, TValue> map = value ?? new ForyMap<TKey, TValue>();
+        NullableKeyDictionary<TKey, TValue> map = value ?? new NullableKeyDictionary<TKey, TValue>();
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
         {
@@ -129,7 +416,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
         bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
         bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
         bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
-        KeyValuePair<TKey?, TValue>[] pairs = [.. map];
+        KeyValuePair<TKey, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
             WriteDynamicMapPairs(
@@ -147,37 +434,37 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
             return;
         }
 
-        foreach (KeyValuePair<TKey?, TValue> entry in pairs)
+        foreach (KeyValuePair<TKey, TValue> entry in pairs)
         {
             bool keyIsNull = entry.Key is null || keySerializer.IsNoneObject(entry.Key);
             bool valueIsNull = valueSerializer.IsNoneObject(entry.Value);
             byte header = 0;
             if (trackKeyRef)
             {
-                header |= MapBits.TrackingKeyRef;
+                header |= DictionaryBits.TrackingKeyRef;
             }
 
             if (trackValueRef)
             {
-                header |= MapBits.TrackingValueRef;
+                header |= DictionaryBits.TrackingValueRef;
             }
 
             if (keyIsNull)
             {
-                header |= MapBits.KeyNull;
+                header |= DictionaryBits.KeyNull;
             }
             else if (keyDeclared)
             {
-                header |= MapBits.DeclaredKeyType;
+                header |= DictionaryBits.DeclaredKeyType;
             }
 
             if (valueIsNull)
             {
-                header |= MapBits.ValueNull;
+                header |= DictionaryBits.ValueNull;
             }
             else if (valueDeclared)
             {
-                header |= MapBits.DeclaredValueType;
+                header |= DictionaryBits.DeclaredValueType;
             }
 
             context.Writer.WriteUInt8(header);
@@ -244,17 +531,17 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
         }
     }
 
-    public static ForyMap<TKey, TValue> ReadData(ref ReadContext context)
+    public static NullableKeyDictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
         Serializer<TKey> keySerializer = KeySerializer;
         Serializer<TValue> valueSerializer = ValueSerializer;
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
-            return new ForyMap<TKey, TValue>();
+            return new NullableKeyDictionary<TKey, TValue>();
         }
 
-        ForyMap<TKey, TValue> map = new();
+        NullableKeyDictionary<TKey, TValue> map = new();
         bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
         bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
         bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
@@ -263,16 +550,16 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
         while (readCount < totalLength)
         {
             byte header = context.Reader.ReadUInt8();
-            bool trackKeyRef = (header & MapBits.TrackingKeyRef) != 0;
-            bool keyNull = (header & MapBits.KeyNull) != 0;
-            bool keyDeclared = (header & MapBits.DeclaredKeyType) != 0;
-            bool trackValueRef = (header & MapBits.TrackingValueRef) != 0;
-            bool valueNull = (header & MapBits.ValueNull) != 0;
-            bool valueDeclared = (header & MapBits.DeclaredValueType) != 0;
+            bool trackKeyRef = (header & DictionaryBits.TrackingKeyRef) != 0;
+            bool keyNull = (header & DictionaryBits.KeyNull) != 0;
+            bool keyDeclared = (header & DictionaryBits.DeclaredKeyType) != 0;
+            bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
+            bool valueNull = (header & DictionaryBits.ValueNull) != 0;
+            bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
 
             if (keyNull && valueNull)
             {
-                map.Add(default, (TValue)valueSerializer.DefaultObject!);
+                map.SetNullKeyValue((TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
                 continue;
             }
@@ -286,7 +573,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
                     canonicalizeValues,
                     valueSerializer);
 
-                map.Add(default, valueRead);
+                map.SetNullKeyValue(valueRead);
                 readCount += 1;
                 continue;
             }
@@ -298,7 +585,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     !keyDeclared);
 
-                map.Add(key, (TValue)valueSerializer.DefaultObject!);
+                map[key] = (TValue)valueSerializer.DefaultObject!;
                 readCount += 1;
                 continue;
             }
@@ -362,7 +649,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
                         context.ClearDynamicTypeInfo(typeof(TValue));
                     }
 
-                    map.Add(key, valueRead);
+                    map[key] = valueRead;
                 }
 
                 readCount += chunkSize;
@@ -383,7 +670,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
             {
                 TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
                 TValue valueRead = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
-                map.Add(key, valueRead);
+                map[key] = valueRead;
             }
 
             if (!keyDeclared)
@@ -403,7 +690,7 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
     }
 
     private static void WriteDynamicMapPairs(
-        KeyValuePair<TKey?, TValue>[] pairs,
+        KeyValuePair<TKey, TValue>[] pairs,
         ref WriteContext context,
         bool hasGenerics,
         bool trackKeyRef,
@@ -415,37 +702,37 @@ public readonly struct ForyMapSerializer<TKey, TValue> : IStaticSerializer<ForyM
         Serializer<TKey> keySerializer,
         Serializer<TValue> valueSerializer)
     {
-        foreach (KeyValuePair<TKey?, TValue> pair in pairs)
+        foreach (KeyValuePair<TKey, TValue> pair in pairs)
         {
             bool keyIsNull = pair.Key is null || keySerializer.IsNoneObject(pair.Key);
             bool valueIsNull = valueSerializer.IsNoneObject(pair.Value);
             byte header = 0;
             if (trackKeyRef)
             {
-                header |= MapBits.TrackingKeyRef;
+                header |= DictionaryBits.TrackingKeyRef;
             }
 
             if (trackValueRef)
             {
-                header |= MapBits.TrackingValueRef;
+                header |= DictionaryBits.TrackingValueRef;
             }
 
             if (keyIsNull)
             {
-                header |= MapBits.KeyNull;
+                header |= DictionaryBits.KeyNull;
             }
             else if (!keyDynamicType && keyDeclared)
             {
-                header |= MapBits.DeclaredKeyType;
+                header |= DictionaryBits.DeclaredKeyType;
             }
 
             if (valueIsNull)
             {
-                header |= MapBits.ValueNull;
+                header |= DictionaryBits.ValueNull;
             }
             else if (!valueDynamicType && valueDeclared)
             {
-                header |= MapBits.DeclaredValueType;
+                header |= DictionaryBits.DeclaredValueType;
             }
 
             context.Writer.WriteUInt8(header);

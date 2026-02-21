@@ -99,7 +99,7 @@ public sealed class StructWithEnum
 [ForyObject]
 public sealed class StructWithNullableMap
 {
-    public ForyMap<string, string?> Data { get; set; } = new();
+    public NullableKeyDictionary<string, string?> Data { get; set; } = new();
 }
 
 [ForyObject]
@@ -262,23 +262,46 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void ForyMapSupportsNullKeyRoundTrip()
+    public void NullableKeyDictionarySupportsNullKeyRoundTrip()
     {
         ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
 
-        ForyMap<string, string?> map = new();
+        NullableKeyDictionary<string, string?> map = new();
         map.Add("k1", "v1");
-        map.Add(null, "v2");
+        map.Add((string)null!, "v2");
         map.Add("k3", null);
         map.Add("k4", "v4");
 
-        ForyMap<string, string?> decoded = fory.Deserialize<ForyMap<string, string?>>(fory.Serialize(map));
+        NullableKeyDictionary<string, string?> decoded = fory.Deserialize<NullableKeyDictionary<string, string?>>(fory.Serialize(map));
         Assert.True(decoded.HasNullKey);
         Assert.Equal("v2", decoded.NullKeyValue);
         Assert.True(decoded.TryGetValue("k1", out string? v1));
         Assert.Equal("v1", v1);
         Assert.True(decoded.TryGetValue("k3", out string? v3));
         Assert.Null(v3);
+    }
+
+    [Fact]
+    public void NullableKeyDictionarySupportsDropInDictionaryBehavior()
+    {
+        IDictionary<string, string?> map = new NullableKeyDictionary<string, string?>();
+        map.Add("k1", "v1");
+        map.Add(null!, "v2");
+
+        Assert.Throws<ArgumentException>(() => map.Add("k1", "dup"));
+        Assert.Throws<ArgumentException>(() => map.Add(null!, "dup"));
+
+        map["k1"] = "v1-updated";
+        map[null!] = "v2-updated";
+
+        Assert.True(map.ContainsKey("k1"));
+        Assert.True(map.ContainsKey(null!));
+        Assert.Equal("v1-updated", map["k1"]);
+        Assert.Equal("v2-updated", map[null!]);
+        Assert.True(map.TryGetValue(null!, out string? nullValue));
+        Assert.Equal("v2-updated", nullValue);
+        Assert.True(map.Remove(null!));
+        Assert.False(map.ContainsKey(null!));
     }
 
     [Fact]
@@ -289,7 +312,7 @@ public sealed class ForyRuntimeTests
 
         StructWithNullableMap value = new();
         value.Data.Add("key1", "value1");
-        value.Data.Add(null, "value2");
+        value.Data.Add((string)null!, "value2");
         value.Data.Add("key3", null);
 
         StructWithNullableMap decoded = fory.Deserialize<StructWithNullableMap>(fory.Serialize(value));
