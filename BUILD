@@ -90,6 +90,7 @@ pyx_library(
         [
             "python/pyfory/__init__.py",
             "python/pyfory/includes/*.pxd",
+            "python/pyfory/bfloat16.pxd",
             "python/pyfory/buffer.pxd",
             "python/pyfory/*.pxi",
             "python/pyfory/format/_format.pyx",
