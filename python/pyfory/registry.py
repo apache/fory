@@ -701,7 +701,7 @@ class TypeResolver:
             # Set a stub serializer FIRST to break recursion for self-referencing types.
             # get_type_info() only calls _set_type_info when serializer is None,
             # so setting stub first prevents re-entry for circular type references.
-            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
+            typeinfo.serializer = DataClassStubSerializer(self.fory, typeinfo.cls)
 
             if self.meta_share:
                 type_def = encode_typedef(self, typeinfo.cls)
@@ -709,9 +709,9 @@ class TypeResolver:
                     typeinfo.serializer = type_def.create_serializer(self)
                     typeinfo.type_def = type_def
                 else:
-                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
+                    typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls)
             else:
-                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls, xlang=self.fory.xlang)
+                typeinfo.serializer = DataClassSerializer(self.fory, typeinfo.cls)
         else:
             typeinfo.serializer = self._create_serializer(typeinfo.cls)
 
@@ -748,7 +748,7 @@ class TypeResolver:
                 # lazy create serializer to handle nested struct fields.
                 from pyfory.struct import DataClassStubSerializer
 
-                serializer = DataClassStubSerializer(self.fory, cls, xlang=self.fory.xlang)
+                serializer = DataClassStubSerializer(self.fory, cls)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
             elif ("builtin_function_or_method" in str(cls) or "cython_function_or_method" in str(cls)) and "<locals>" not in str(cls):
