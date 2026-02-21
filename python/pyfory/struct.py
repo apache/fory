@@ -768,7 +768,11 @@ class DataClassSerializer(Serializer):
                     # dynamic=True: don't pass serializer, write actual type info
                     # dynamic=False: pass serializer, use declared type
                     serializer_arg = "None" if is_dynamic else serializer_var
-                    stmts.append(f"{fory}.write_ref({buffer}, {field_value}, serializer={serializer_arg})")
+                    if self.fory.xlang:
+                        stmts.append(f"{fory}.xwrite_ref({buffer}, {field_value}, serializer={serializer_arg})")
+                    else:
+                        # Python-native write_ref doesn't take serializer kwarg.
+                        stmts.append(f"{fory}.write_ref({buffer}, {field_value})")
             else:
                 stmt = self._get_write_stmt_for_codegen(serializer, buffer, field_value)
                 if stmt is None:
@@ -874,7 +878,11 @@ class DataClassSerializer(Serializer):
                     # dynamic=True: don't pass serializer, read type info from buffer
                     # dynamic=False: pass serializer, use declared type
                     serializer_arg = "None" if is_dynamic else serializer_var
-                    stmts.append(f"{field_value} = {fory}.read_ref({buffer}, serializer={serializer_arg})")
+                    if self.fory.xlang:
+                        stmts.append(f"{field_value} = {fory}.xread_ref({buffer}, serializer={serializer_arg})")
+                    else:
+                        # Python-native read_ref doesn't take serializer kwarg.
+                        stmts.append(f"{field_value} = {fory}.read_ref({buffer})")
             else:
                 stmt = self._get_read_stmt_for_codegen(serializer, buffer, field_value)
                 if stmt is None:
@@ -951,7 +959,10 @@ class DataClassSerializer(Serializer):
                 else:
                     # dynamic=True: don't pass serializer, write actual type info
                     # dynamic=False: pass serializer, use declared type
-                    self.fory.write_ref(buffer, field_value, serializer=None if is_dynamic else serializer)
+                    if self.fory.xlang:
+                        self.fory.xwrite_ref(buffer, field_value, serializer=None if is_dynamic else serializer)
+                    else:
+                        self.fory.write_ref(buffer, field_value)
             else:
                 if is_dynamic:
                     self.fory.write_no_ref(buffer, field_value)
@@ -993,7 +1004,10 @@ class DataClassSerializer(Serializer):
                     buffer.set_reader_index(buffer.get_reader_index() - 1)
                     # dynamic=True: don't pass serializer, read type info from buffer
                     # dynamic=False: pass serializer, use declared type
-                    field_value = self.fory.read_ref(buffer, serializer=None if is_dynamic else serializer)
+                    if self.fory.xlang:
+                        field_value = self.fory.xread_ref(buffer, serializer=None if is_dynamic else serializer)
+                    else:
+                        field_value = self.fory.read_ref(buffer)
             else:
                 if is_dynamic:
                     field_value = self.fory.read_no_ref(buffer)

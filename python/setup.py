@@ -18,6 +18,7 @@
 import os
 import platform
 import subprocess
+import time
 from os.path import abspath, join as pjoin
 
 from setuptools import setup
@@ -82,7 +83,21 @@ class BinaryDistribution(Distribution):
             bazel_args += ["//:cp_fory_so"]
             # Ensure Windows path compatibility
             cwd_path = os.path.normpath(project_dir)
-            subprocess.check_call(bazel_args, cwd=cwd_path)
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    subprocess.check_call(bazel_args, cwd=cwd_path)
+                    break
+                except subprocess.CalledProcessError:
+                    if attempt == max_attempts:
+                        raise
+                    # Retry transient dependency fetch failures (e.g. 502 from external archives).
+                    backoff_seconds = 5 * attempt
+                    print(
+                        f"Bazel build failed (attempt {attempt}/{max_attempts}), "
+                        f"retrying in {backoff_seconds}s..."
+                    )
+                    time.sleep(backoff_seconds)
 
     def has_ext_modules(self):
         return True
