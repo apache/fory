@@ -286,6 +286,7 @@ class DataClassSerializer(Serializer):
         serializers: List[Serializer] = None,
         nullable_fields: Dict[str, bool] = None,
         dynamic_fields: Dict[str, bool] = None,
+        xlang=None,
     ):
         super().__init__(fory, clz)
 
@@ -1017,7 +1018,7 @@ class DataClassSerializer(Serializer):
 
 
 class DataClassStubSerializer(DataClassSerializer):
-    def __init__(self, fory, clz: type):
+    def __init__(self, fory, clz: type, xlang=None):
         Serializer.__init__(self, fory, clz)
 
     def write(self, buffer, value):
