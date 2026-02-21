@@ -37,7 +37,8 @@ from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
 from pyfory.includes.libserialization cimport \
     (TypeId, TypeRegistrationKind, get_type_registration_kind,
      is_namespaced_type, is_type_share_meta,
-     Fory_PyBooleanSequenceWriteToBuffer, Fory_PyFloatSequenceWriteToBuffer)
+     Fory_PyBooleanSequenceWriteToBuffer, Fory_PyFloatSequenceWriteToBuffer,
+     Fory_PyInt64SequenceWriteToBuffer, Fory_PyInt64SequenceReadFromBuffer)
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
