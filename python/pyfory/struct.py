@@ -769,7 +769,7 @@ class DataClassSerializer(Serializer):
                     # dynamic=False: pass serializer, use declared type
                     serializer_arg = "None" if is_dynamic else serializer_var
                     if self.fory.xlang:
-                        stmts.append(f"{fory}.xwrite_ref({buffer}, {field_value}, serializer={serializer_arg})")
+                        stmts.append(f"{fory}.xwrite_ref({buffer}, {field_value}, {serializer_arg})")
                     else:
                         # Python-native write_ref doesn't take serializer kwarg.
                         stmts.append(f"{fory}.write_ref({buffer}, {field_value})")
@@ -781,7 +781,7 @@ class DataClassSerializer(Serializer):
                     if is_dynamic:
                         stmt = f"{fory}.write_no_ref({buffer}, {field_value})"
                     else:
-                        stmt = f"{fory}.write_no_ref({buffer}, {field_value}, serializer={serializer_var})"
+                        stmt = f"{fory}.write_no_ref({buffer}, {field_value}, {serializer_var})"
                 # In compatible mode, handle None for non-nullable fields (schema evolution)
                 # Write zero/default value when field is None due to missing from remote schema
                 if self.fory.compatible:
@@ -879,7 +879,7 @@ class DataClassSerializer(Serializer):
                     # dynamic=False: pass serializer, use declared type
                     serializer_arg = "None" if is_dynamic else serializer_var
                     if self.fory.xlang:
-                        stmts.append(f"{field_value} = {fory}.xread_ref({buffer}, serializer={serializer_arg})")
+                        stmts.append(f"{field_value} = {fory}.xread_ref({buffer}, {serializer_arg})")
                     else:
                         # Python-native read_ref doesn't take serializer kwarg.
                         stmts.append(f"{field_value} = {fory}.read_ref({buffer})")
@@ -891,7 +891,7 @@ class DataClassSerializer(Serializer):
                     if is_dynamic:
                         stmt = f"{field_value} = {fory}.read_no_ref({buffer})"
                     else:
-                        stmt = f"{field_value} = {fory}.read_no_ref({buffer}, serializer={serializer_var})"
+                        stmt = f"{field_value} = {fory}.read_no_ref({buffer}, {serializer_var})"
                 stmts.append(stmt)
 
             if field_name not in current_class_field_names:
@@ -960,14 +960,14 @@ class DataClassSerializer(Serializer):
                     # dynamic=True: don't pass serializer, write actual type info
                     # dynamic=False: pass serializer, use declared type
                     if self.fory.xlang:
-                        self.fory.xwrite_ref(buffer, field_value, serializer=None if is_dynamic else serializer)
+                        self.fory.xwrite_ref(buffer, field_value, None if is_dynamic else serializer)
                     else:
                         self.fory.write_ref(buffer, field_value)
             else:
                 if is_dynamic:
                     self.fory.write_no_ref(buffer, field_value)
                 else:
-                    self.fory.write_no_ref(buffer, field_value, serializer=serializer)
+                    self.fory.write_no_ref(buffer, field_value, serializer)
 
     def read(self, buffer):
         """Read dataclass instance from buffer.
@@ -1005,14 +1005,14 @@ class DataClassSerializer(Serializer):
                     # dynamic=True: don't pass serializer, read type info from buffer
                     # dynamic=False: pass serializer, use declared type
                     if self.fory.xlang:
-                        field_value = self.fory.xread_ref(buffer, serializer=None if is_dynamic else serializer)
+                        field_value = self.fory.xread_ref(buffer, None if is_dynamic else serializer)
                     else:
                         field_value = self.fory.read_ref(buffer)
             else:
                 if is_dynamic:
                     field_value = self.fory.read_no_ref(buffer)
                 else:
-                    field_value = self.fory.read_no_ref(buffer, serializer=serializer)
+                    field_value = self.fory.read_no_ref(buffer, serializer)
             if field_name in current_class_field_names:
                 setattr(obj, field_name, field_value)
                 read_field_names.add(field_name)
