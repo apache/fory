@@ -32,6 +32,7 @@ set(FORY_UTIL_HEADERS
     platform.h
     pool.h
     result.h
+    stream.h
     string_util.h
     time_util.h
     flat_int_map.h

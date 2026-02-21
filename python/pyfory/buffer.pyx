@@ -34,6 +34,7 @@ from pyfory.includes.libutil cimport(
     CBuffer, allocate_buffer, get_bit as c_get_bit, set_bit as c_set_bit, clear_bit as c_clear_bit,
     set_bit_to as c_set_bit_to, CError, CErrorCode, CResultVoidError, utf16_has_surrogate_pairs
 )
+from pyfory.includes.libpyfory cimport Fory_PyCreateBufferFromStream
 import os
 from pyfory.error import raise_fory_error
 
@@ -52,8 +53,25 @@ cdef class _SharedBufferOwner:
 cdef class Buffer:
     def __init__(self,  data not None, int32_t offset=0, length=None):
         self.data = data
-        cdef int32_t buffer_len = len(data)
+        cdef int32_t buffer_len
         cdef int length_
+        cdef CBuffer* stream_buffer
+        cdef c_string stream_error
+        try:
+            buffer_len = len(data)
+        except TypeError:
+            if not hasattr(data, "read"):
+                raise
+            if offset != 0 or length is not None:
+                raise ValueError("offset and length are unsupported for stream input")
+            if Fory_PyCreateBufferFromStream(<PyObject*>data, 4096, &stream_buffer, &stream_error) != 0:
+                raise ValueError(stream_error.decode("UTF-8"))
+            if stream_buffer == NULL:
+                raise ValueError("failed to create stream buffer")
+            self.c_buffer = move(deref(stream_buffer))
+            del stream_buffer
+            self.data = data
+            return
         if length is None:
             length_ = buffer_len - offset
         else:
@@ -196,7 +214,14 @@ cdef class Buffer:
 
     cpdef inline check_bound(self, int32_t offset, int32_t length):
         cdef int32_t size_ = self.c_buffer.size()
+        cdef int64_t target = 0
         if offset | length | (offset + length) | (size_- (offset + length)) < 0:
+            if offset >= 0 and length >= 0:
+                target = <int64_t>offset + <int64_t>length
+                if target <= 0xFFFFFFFF and self.c_buffer.ensure_size(<uint32_t>target, self._error):
+                    return
+                self._raise_if_error()
+                size_ = self.c_buffer.size()
             raise_fory_error(
                 CErrorCode.BufferOutOfBound,
                 f"Address range {offset, offset + length} out of bound {0, size_}",
