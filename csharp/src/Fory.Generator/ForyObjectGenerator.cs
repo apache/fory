@@ -306,10 +306,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 sb.AppendLine(
                     $"            global::Apache.Fory.DynamicAnyCodec.WriteAny(ref context, {memberAccess}, {refModeExpr}, true, false);");
                 return;
-            case DynamicAnyKind.AnyList:
-                sb.AppendLine(
-                    $"            global::Apache.Fory.DynamicAnyCodec.WriteAnyList(ref context, {memberAccess}, {refModeExpr}, false, true);");
-                return;
             case DynamicAnyKind.None:
                 break;
             default:
@@ -358,10 +354,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             case DynamicAnyKind.AnyValue:
                 sb.AppendLine(
                     $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAny(ref context, {refModeExpr}, true), typeof({typeOfTypeName}))!;");
-                return;
-            case DynamicAnyKind.AnyList:
-                sb.AppendLine(
-                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAnyList(ref context, {refModeExpr}, false), typeof({typeOfTypeName}))!;");
                 return;
             case DynamicAnyKind.None:
                 break;
@@ -418,7 +410,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             string trackRefExpr = member.DynamicAnyKind switch
             {
                 DynamicAnyKind.AnyValue => "(trackRef ? 1 : 0)",
-                DynamicAnyKind.AnyList => "0",
                 _ => member.Classification.IsBuiltIn
                     ? "0"
                     : $"((trackRef && global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().IsReferenceTrackableType) ? 1 : 0)",
@@ -457,8 +448,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         return member.DynamicAnyKind switch
         {
             DynamicAnyKind.AnyValue => $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef)",
-            DynamicAnyKind.AnyList =>
-                $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)",
             _ => member.Classification.IsBuiltIn
                 ? $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)"
                 : $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef && global::Apache.Fory.SerializerRegistry.Get<{member.TypeName}>().IsReferenceTrackableType)",
@@ -1019,26 +1008,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return DynamicAnyKind.AnyValue;
         }
 
-        if (TryGetListElementType(type, out ITypeSymbol? elementType))
-        {
-            (bool _, ITypeSymbol unwrappedElement) = UnwrapNullable(elementType);
-            if (unwrappedElement.SpecialType == SpecialType.System_Object)
-            {
-                return DynamicAnyKind.AnyList;
-            }
-        }
-
-        if (TryGetMapTypeArguments(type, out _, out ITypeSymbol? valueType))
-        {
-            (bool _, ITypeSymbol unwrappedValue) = UnwrapNullable(valueType);
-            if (unwrappedValue.SpecialType != SpecialType.System_Object)
-            {
-                return DynamicAnyKind.None;
-            }
-
-            return DynamicAnyKind.None;
-        }
-
         return DynamicAnyKind.None;
     }
 
@@ -1363,7 +1332,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     {
         None,
         AnyValue,
-        AnyList,
     }
 
     private enum FieldEncoding

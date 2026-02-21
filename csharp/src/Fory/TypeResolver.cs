@@ -257,11 +257,11 @@ public sealed class TypeResolver
             case ForyTypeId.Float64Array:
                 return SerializerRegistry.Get<double[]>().Read(ref context, RefMode.None, false);
             case ForyTypeId.List:
-                return DynamicAnyCodec.ReadAnyList(ref context, RefMode.None, false) ?? [];
+                return DynamicContainerCodec.ReadListPayload(ref context);
             case ForyTypeId.Set:
-                return DynamicAnyCodec.ReadAnySet(ref context, RefMode.None, false) ?? new HashSet<object?>();
+                return DynamicContainerCodec.ReadSetPayload(ref context);
             case ForyTypeId.Map:
-                return DynamicAnyCodec.ReadDynamicAnyMapValue(ref context);
+                return DynamicContainerCodec.ReadMapPayload(ref context);
             case ForyTypeId.Union:
                 return SerializerRegistry.Get<Union>().Read(ref context, RefMode.None, false);
             case ForyTypeId.Struct:

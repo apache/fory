@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections;
+
 namespace Apache.Fory;
 
 internal static class CollectionBits
@@ -25,14 +27,368 @@ internal static class CollectionBits
     public const byte SameType = 0b0000_1000;
 }
 
-internal static class MapBits
+
+internal static class CollectionCodec
 {
-    public const byte TrackingKeyRef = 0b0000_0001;
-    public const byte KeyNull = 0b0000_0010;
-    public const byte DeclaredKeyType = 0b0000_0100;
-    public const byte TrackingValueRef = 0b0000_1000;
-    public const byte ValueNull = 0b0001_0000;
-    public const byte DeclaredValueType = 0b0010_0000;
+    public static void WriteCollectionData<T>(
+        IEnumerable<T> values,
+        Serializer<T> elementSerializer,
+        ref WriteContext context,
+        bool hasGenerics)
+    {
+        List<T> list = values as List<T> ?? [.. values];
+        context.Writer.WriteVarUInt32((uint)list.Count);
+        if (list.Count == 0)
+        {
+            return;
+        }
+
+        bool hasNull = false;
+        if (elementSerializer.IsNullableType)
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (!elementSerializer.IsNoneObject(list[i]))
+                {
+                    continue;
+                }
+
+                hasNull = true;
+                break;
+            }
+        }
+
+        bool trackRef = context.TrackRef && elementSerializer.IsReferenceTrackableType;
+        bool declaredElementType = hasGenerics && !elementSerializer.StaticTypeId.NeedsTypeInfoForField();
+        bool dynamicElementType = elementSerializer.StaticTypeId == ForyTypeId.Unknown;
+
+        byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
+        if (trackRef)
+        {
+            header |= CollectionBits.TrackingRef;
+        }
+
+        if (hasNull)
+        {
+            header |= CollectionBits.HasNull;
+        }
+
+        if (declaredElementType)
+        {
+            header |= CollectionBits.DeclaredElementType;
+        }
+
+        context.Writer.WriteUInt8(header);
+        if (!dynamicElementType && !declaredElementType)
+        {
+            elementSerializer.WriteTypeInfo(ref context);
+        }
+
+        if (dynamicElementType)
+        {
+            RefMode refMode = trackRef ? RefMode.Tracking : hasNull ? RefMode.NullOnly : RefMode.None;
+            foreach (T element in list)
+            {
+                elementSerializer.Write(ref context, element, refMode, true, hasGenerics);
+            }
+
+            return;
+        }
+
+        if (trackRef)
+        {
+            foreach (T element in list)
+            {
+                elementSerializer.Write(ref context, element, RefMode.Tracking, false, hasGenerics);
+            }
+
+            return;
+        }
+
+        if (hasNull)
+        {
+            foreach (T element in list)
+            {
+                if (elementSerializer.IsNoneObject(element))
+                {
+                    context.Writer.WriteInt8((sbyte)RefFlag.Null);
+                }
+                else
+                {
+                    context.Writer.WriteInt8((sbyte)RefFlag.NotNullValue);
+                    elementSerializer.WriteData(ref context, element, hasGenerics);
+                }
+            }
+
+            return;
+        }
+
+        foreach (T element in list)
+        {
+            elementSerializer.WriteData(ref context, element, hasGenerics);
+        }
+    }
+
+    public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ref ReadContext context)
+    {
+        int length = checked((int)context.Reader.ReadVarUInt32());
+        if (length == 0)
+        {
+            return [];
+        }
+
+        byte header = context.Reader.ReadUInt8();
+        bool trackRef = (header & CollectionBits.TrackingRef) != 0;
+        bool hasNull = (header & CollectionBits.HasNull) != 0;
+        bool declared = (header & CollectionBits.DeclaredElementType) != 0;
+        bool sameType = (header & CollectionBits.SameType) != 0;
+        bool canonicalizeElements = context.TrackRef && !trackRef && elementSerializer.IsReferenceTrackableType;
+
+        List<T> values = new(length);
+        if (!sameType)
+        {
+            if (trackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(elementSerializer.Read(ref context, RefMode.Tracking, true));
+                }
+
+                return values;
+            }
+
+            if (hasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values.Add((T)elementSerializer.DefaultObject!);
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values.Add(ReadCollectionElementWithCanonicalization(elementSerializer, ref context, true, canonicalizeElements));
+                    }
+                    else
+                    {
+                        throw new ForyRefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(ReadCollectionElementWithCanonicalization(elementSerializer, ref context, true, canonicalizeElements));
+                }
+            }
+
+            return values;
+        }
+
+        if (!declared)
+        {
+            elementSerializer.ReadTypeInfo(ref context);
+        }
+
+        if (trackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Add(elementSerializer.Read(ref context, RefMode.Tracking, false));
+            }
+
+            if (!declared)
+            {
+                context.ClearDynamicTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (hasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values.Add((T)elementSerializer.DefaultObject!);
+                }
+                else
+                {
+                    values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, ref context, canonicalizeElements));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, ref context, canonicalizeElements));
+            }
+        }
+
+        if (!declared)
+        {
+            context.ClearDynamicTypeInfo(typeof(T));
+        }
+
+        return values;
+    }
+
+    private static T ReadCollectionElementWithCanonicalization<T>(
+        Serializer<T> elementSerializer,
+        ref ReadContext context,
+        bool readTypeInfo,
+        bool canonicalize)
+    {
+        if (!canonicalize)
+        {
+            return elementSerializer.Read(ref context, RefMode.None, readTypeInfo);
+        }
+
+        int start = context.Reader.Cursor;
+        T value = elementSerializer.Read(ref context, RefMode.None, readTypeInfo);
+        int end = context.Reader.Cursor;
+        return context.CanonicalizeNonTrackingReference(value, start, end);
+    }
+
+    private static T ReadCollectionElementDataWithCanonicalization<T>(
+        Serializer<T> elementSerializer,
+        ref ReadContext context,
+        bool canonicalize)
+    {
+        if (!canonicalize)
+        {
+            return elementSerializer.ReadData(ref context);
+        }
+
+        int start = context.Reader.Cursor;
+        T value = elementSerializer.ReadData(ref context);
+        int end = context.Reader.Cursor;
+        return context.CanonicalizeNonTrackingReference(value, start, end);
+    }
+}
+
+internal static class DynamicContainerCodec
+{
+    public static bool TryGetTypeId(object value, out ForyTypeId typeId)
+    {
+        if (value is IDictionary)
+        {
+            typeId = ForyTypeId.Map;
+            return true;
+        }
+
+        Type valueType = value.GetType();
+        if (value is IList && !valueType.IsArray)
+        {
+            typeId = ForyTypeId.List;
+            return true;
+        }
+
+        if (IsSet(valueType))
+        {
+            typeId = ForyTypeId.Set;
+            return true;
+        }
+
+        typeId = default;
+        return false;
+    }
+
+    public static bool TryWritePayload(object value, ref WriteContext context, bool hasGenerics)
+    {
+        if (value is IDictionary dictionary)
+        {
+            ForyMap<object, object?> map = new();
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                map.Add(entry.Key, entry.Value);
+            }
+
+            SerializerRegistry.Get<ForyMap<object, object?>>().WriteData(ref context, map, false);
+            return true;
+        }
+
+        Type valueType = value.GetType();
+        if (value is IList list && !valueType.IsArray)
+        {
+            List<object?> values = new(list.Count);
+            for (int i = 0; i < list.Count; i++)
+            {
+                values.Add(list[i]);
+            }
+
+            SerializerRegistry.Get<List<object?>>().WriteData(ref context, values, hasGenerics);
+            return true;
+        }
+
+        if (!IsSet(valueType))
+        {
+            return false;
+        }
+
+        HashSet<object?> set = [];
+        foreach (object? item in (IEnumerable)value)
+        {
+            set.Add(item);
+        }
+
+        SerializerRegistry.Get<HashSet<object?>>().WriteData(ref context, set, hasGenerics);
+        return true;
+    }
+
+    public static List<object?> ReadListPayload(ref ReadContext context)
+    {
+        return SerializerRegistry.Get<List<object?>>().ReadData(ref context);
+    }
+
+    public static HashSet<object?> ReadSetPayload(ref ReadContext context)
+    {
+        return SerializerRegistry.Get<HashSet<object?>>().ReadData(ref context);
+    }
+
+    public static object ReadMapPayload(ref ReadContext context)
+    {
+        ForyMap<object, object?> map = SerializerRegistry.Get<ForyMap<object, object?>>().ReadData(ref context);
+        if (map.HasNullKey)
+        {
+            return map;
+        }
+
+        return new Dictionary<object, object?>(map.NonNullEntries);
+    }
+
+    private static bool IsSet(Type valueType)
+    {
+        if (!valueType.IsGenericType)
+        {
+            return false;
+        }
+
+        if (valueType.GetGenericTypeDefinition() == typeof(ISet<>))
+        {
+            return true;
+        }
+
+        foreach (Type iface in valueType.GetInterfaces())
+        {
+            if (!iface.IsGenericType)
+            {
+                continue;
+            }
+
+            if (iface.GetGenericTypeDefinition() == typeof(ISet<>))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 internal static class PrimitiveArrayCodec
@@ -400,7 +756,7 @@ public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>
             return;
         }
 
-        DynamicAnyCodec.WriteCollectionData(
+        CollectionCodec.WriteCollectionData(
             safe,
             ElementSerializer,
             ref context,
@@ -414,7 +770,7 @@ public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>
             return PrimitiveArrayCodec.ReadPrimitiveArray<T>(ref context);
         }
 
-        List<T> values = DynamicAnyCodec.ReadCollectionData<T>(ElementSerializer, ref context);
+        List<T> values = CollectionCodec.ReadCollectionData<T>(ElementSerializer, ref context);
         return values.ToArray();
     }
 }
@@ -432,12 +788,12 @@ public readonly struct ListSerializer<T> : IStaticSerializer<ListSerializer<T>, 
     public static void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
     {
         List<T> safe = value ?? [];
-        DynamicAnyCodec.WriteCollectionData(safe, ElementSerializer, ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, ElementSerializer, ref context, hasGenerics);
     }
 
     public static List<T> ReadData(ref ReadContext context)
     {
-        return DynamicAnyCodec.ReadCollectionData(ElementSerializer, ref context);
+        return CollectionCodec.ReadCollectionData(ElementSerializer, ref context);
     }
 }
 
@@ -463,503 +819,3 @@ public readonly struct SetSerializer<T> : IStaticSerializer<SetSerializer<T>, Ha
     }
 }
 
-public readonly struct MapSerializer<TKey, TValue> : IStaticSerializer<MapSerializer<TKey, TValue>, Dictionary<TKey, TValue>>
-    where TKey : notnull
-{
-    private static Serializer<TKey> KeySerializer => SerializerRegistry.Get<TKey>();
-    private static Serializer<TValue> ValueSerializer => SerializerRegistry.Get<TValue>();
-
-    public static ForyTypeId StaticTypeId => ForyTypeId.Map;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static Dictionary<TKey, TValue> DefaultValue => null!;
-    public static bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
-
-    public static void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
-    {
-        Serializer<TKey> keySerializer = KeySerializer;
-        Serializer<TValue> valueSerializer = ValueSerializer;
-        Dictionary<TKey, TValue> map = value ?? [];
-        context.Writer.WriteVarUInt32((uint)map.Count);
-        if (map.Count == 0)
-        {
-            return;
-        }
-
-        bool trackKeyRef = context.TrackRef && keySerializer.IsReferenceTrackableType;
-        bool trackValueRef = context.TrackRef && valueSerializer.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !keySerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
-
-        KeyValuePair<TKey, TValue>[] pairs = [.. map];
-        if (keyDynamicType || valueDynamicType)
-        {
-            WriteDynamicMapPairs(
-                pairs,
-                ref context,
-                hasGenerics,
-                trackKeyRef,
-                trackValueRef,
-                keyDeclared,
-                valueDeclared,
-                keyDynamicType,
-                valueDynamicType,
-                keySerializer,
-                valueSerializer);
-            return;
-        }
-
-        int index = 0;
-        while (index < pairs.Length)
-        {
-            KeyValuePair<TKey, TValue> pair = pairs[index];
-            bool keyIsNull = keySerializer.IsNoneObject(pair.Key);
-            bool valueIsNull = valueSerializer.IsNoneObject(pair.Value);
-            if (keyIsNull || valueIsNull)
-            {
-                byte header = 0;
-                if (trackKeyRef)
-                {
-                    header |= MapBits.TrackingKeyRef;
-                }
-
-                if (trackValueRef)
-                {
-                    header |= MapBits.TrackingValueRef;
-                }
-
-                if (keyIsNull)
-                {
-                    header |= MapBits.KeyNull;
-                }
-
-                if (valueIsNull)
-                {
-                    header |= MapBits.ValueNull;
-                }
-
-                if (!keyIsNull && keyDeclared)
-                {
-                    header |= MapBits.DeclaredKeyType;
-                }
-
-                if (!valueIsNull && valueDeclared)
-                {
-                    header |= MapBits.DeclaredValueType;
-                }
-
-                context.Writer.WriteUInt8(header);
-                if (!keyIsNull)
-                {
-                    if (!keyDeclared)
-                    {
-                        keySerializer.WriteTypeInfo(ref context);
-                    }
-
-                    keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                }
-
-                if (!valueIsNull)
-                {
-                    if (!valueDeclared)
-                    {
-                        valueSerializer.WriteTypeInfo(ref context);
-                    }
-
-                    valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                }
-
-                index += 1;
-                continue;
-            }
-
-            byte blockHeader = 0;
-            if (trackKeyRef)
-            {
-                blockHeader |= MapBits.TrackingKeyRef;
-            }
-
-            if (trackValueRef)
-            {
-                blockHeader |= MapBits.TrackingValueRef;
-            }
-
-            if (keyDeclared)
-            {
-                blockHeader |= MapBits.DeclaredKeyType;
-            }
-
-            if (valueDeclared)
-            {
-                blockHeader |= MapBits.DeclaredValueType;
-            }
-
-            context.Writer.WriteUInt8(blockHeader);
-            int chunkSizeOffset = context.Writer.Count;
-            context.Writer.WriteUInt8(0);
-            if (!keyDeclared)
-            {
-                keySerializer.WriteTypeInfo(ref context);
-            }
-
-            if (!valueDeclared)
-            {
-                valueSerializer.WriteTypeInfo(ref context);
-            }
-
-            byte chunkSize = 0;
-            while (index < pairs.Length && chunkSize < byte.MaxValue)
-            {
-                KeyValuePair<TKey, TValue> current = pairs[index];
-                if (keySerializer.IsNoneObject(current.Key) || valueSerializer.IsNoneObject(current.Value))
-                {
-                    break;
-                }
-
-                keySerializer.Write(ref context, current.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                valueSerializer.Write(ref context, current.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                chunkSize += 1;
-                index += 1;
-            }
-
-            context.Writer.SetByte(chunkSizeOffset, chunkSize);
-        }
-    }
-
-    public static Dictionary<TKey, TValue> ReadData(ref ReadContext context)
-    {
-        Serializer<TKey> keySerializer = KeySerializer;
-        Serializer<TValue> valueSerializer = ValueSerializer;
-        int totalLength = checked((int)context.Reader.ReadVarUInt32());
-        if (totalLength == 0)
-        {
-            return [];
-        }
-
-        Dictionary<TKey, TValue> map = new(totalLength);
-        bool keyDynamicType = keySerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == ForyTypeId.Unknown;
-        bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
-
-        int readCount = 0;
-        while (readCount < totalLength)
-        {
-            byte header = context.Reader.ReadUInt8();
-            bool trackKeyRef = (header & MapBits.TrackingKeyRef) != 0;
-            bool keyNull = (header & MapBits.KeyNull) != 0;
-            bool keyDeclared = (header & MapBits.DeclaredKeyType) != 0;
-            bool trackValueRef = (header & MapBits.TrackingValueRef) != 0;
-            bool valueNull = (header & MapBits.ValueNull) != 0;
-            bool valueDeclared = (header & MapBits.DeclaredValueType) != 0;
-
-            if (keyNull && valueNull)
-            {
-                map[(TKey)keySerializer.DefaultObject!] = (TValue)valueSerializer.DefaultObject!;
-                readCount += 1;
-                continue;
-            }
-
-            if (keyNull)
-            {
-                DynamicTypeInfo? valueDynamicInfo = null;
-                if (!valueDeclared)
-                {
-                    if (valueDynamicType)
-                    {
-                        valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
-                    }
-                    else
-                    {
-                        valueSerializer.ReadTypeInfo(ref context);
-                    }
-                }
-
-                if (valueDynamicInfo is not null)
-                {
-                    context.SetDynamicTypeInfo(typeof(TValue), valueDynamicInfo);
-                }
-
-                TValue value = ReadValueElement(
-                    ref context,
-                    trackValueRef,
-                    false,
-                    canonicalizeValues,
-                    valueSerializer);
-                if (valueDynamicInfo is not null)
-                {
-                    context.ClearDynamicTypeInfo(typeof(TValue));
-                }
-
-                map[(TKey)keySerializer.DefaultObject!] = value;
-                readCount += 1;
-                continue;
-            }
-
-            if (valueNull)
-            {
-                DynamicTypeInfo? keyDynamicInfo = null;
-                if (!keyDeclared)
-                {
-                    if (keyDynamicType)
-                    {
-                        keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
-                    }
-                    else
-                    {
-                        keySerializer.ReadTypeInfo(ref context);
-                    }
-                }
-
-                if (keyDynamicInfo is not null)
-                {
-                    context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
-                }
-
-                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
-                if (keyDynamicInfo is not null)
-                {
-                    context.ClearDynamicTypeInfo(typeof(TKey));
-                }
-
-                map[key] = (TValue)valueSerializer.DefaultObject!;
-                readCount += 1;
-                continue;
-            }
-
-            int chunkSize = context.Reader.ReadUInt8();
-            if (keyDynamicType || valueDynamicType)
-            {
-                for (int i = 0; i < chunkSize; i++)
-                {
-                    DynamicTypeInfo? keyDynamicInfo = null;
-                    DynamicTypeInfo? valueDynamicInfo = null;
-
-                    if (!keyDeclared)
-                    {
-                        if (keyDynamicType)
-                        {
-                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
-                        }
-                        else
-                        {
-                            keySerializer.ReadTypeInfo(ref context);
-                        }
-                    }
-
-                    if (!valueDeclared)
-                    {
-                        if (valueDynamicType)
-                        {
-                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
-                        }
-                        else
-                        {
-                            valueSerializer.ReadTypeInfo(ref context);
-                        }
-                    }
-
-                    if (keyDynamicInfo is not null)
-                    {
-                        context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
-                    }
-
-                    TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
-                    if (keyDynamicInfo is not null)
-                    {
-                        context.ClearDynamicTypeInfo(typeof(TKey));
-                    }
-
-                    if (valueDynamicInfo is not null)
-                    {
-                        context.SetDynamicTypeInfo(typeof(TValue), valueDynamicInfo);
-                    }
-
-                    TValue value = ReadValueElement(
-                        ref context,
-                        trackValueRef,
-                        false,
-                        canonicalizeValues,
-                        valueSerializer);
-                    if (valueDynamicInfo is not null)
-                    {
-                        context.ClearDynamicTypeInfo(typeof(TValue));
-                    }
-
-                    map[key] = value;
-                }
-
-                readCount += chunkSize;
-                continue;
-            }
-
-            if (!keyDeclared)
-            {
-                keySerializer.ReadTypeInfo(ref context);
-            }
-
-            if (!valueDeclared)
-            {
-                valueSerializer.ReadTypeInfo(ref context);
-            }
-
-            for (int i = 0; i < chunkSize; i++)
-            {
-                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
-                TValue value = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
-                map[key] = value;
-            }
-
-            if (!keyDeclared)
-            {
-                context.ClearDynamicTypeInfo(typeof(TKey));
-            }
-
-            if (!valueDeclared)
-            {
-                context.ClearDynamicTypeInfo(typeof(TValue));
-            }
-
-            readCount += chunkSize;
-        }
-
-        return map;
-    }
-
-    private static void WriteDynamicMapPairs(
-        KeyValuePair<TKey, TValue>[] pairs,
-        ref WriteContext context,
-        bool hasGenerics,
-        bool trackKeyRef,
-        bool trackValueRef,
-        bool keyDeclared,
-        bool valueDeclared,
-        bool keyDynamicType,
-        bool valueDynamicType,
-        Serializer<TKey> keySerializer,
-        Serializer<TValue> valueSerializer)
-    {
-        foreach (KeyValuePair<TKey, TValue> pair in pairs)
-        {
-            bool keyIsNull = keySerializer.IsNoneObject(pair.Key);
-            bool valueIsNull = valueSerializer.IsNoneObject(pair.Value);
-            byte header = 0;
-            if (trackKeyRef)
-            {
-                header |= MapBits.TrackingKeyRef;
-            }
-
-            if (trackValueRef)
-            {
-                header |= MapBits.TrackingValueRef;
-            }
-
-            if (keyIsNull)
-            {
-                header |= MapBits.KeyNull;
-            }
-            else if (!keyDynamicType && keyDeclared)
-            {
-                header |= MapBits.DeclaredKeyType;
-            }
-
-            if (valueIsNull)
-            {
-                header |= MapBits.ValueNull;
-            }
-            else if (!valueDynamicType && valueDeclared)
-            {
-                header |= MapBits.DeclaredValueType;
-            }
-
-            context.Writer.WriteUInt8(header);
-            if (keyIsNull && valueIsNull)
-            {
-                continue;
-            }
-
-            if (keyIsNull)
-            {
-                if (!valueDeclared)
-                {
-                    if (valueDynamicType)
-                    {
-                        DynamicAnyCodec.WriteAnyTypeInfo(pair.Value!, ref context);
-                    }
-                    else
-                    {
-                        valueSerializer.WriteTypeInfo(ref context);
-                    }
-                }
-
-                valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                continue;
-            }
-
-            if (valueIsNull)
-            {
-                if (!keyDeclared)
-                {
-                    if (keyDynamicType)
-                    {
-                        DynamicAnyCodec.WriteAnyTypeInfo(pair.Key!, ref context);
-                    }
-                    else
-                    {
-                        keySerializer.WriteTypeInfo(ref context);
-                    }
-                }
-
-                keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                continue;
-            }
-
-            context.Writer.WriteUInt8(1);
-            if (!keyDeclared)
-            {
-                if (keyDynamicType)
-                {
-                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Key!, ref context);
-                }
-                else
-                {
-                    keySerializer.WriteTypeInfo(ref context);
-                }
-            }
-
-            if (!valueDeclared)
-            {
-                if (valueDynamicType)
-                {
-                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Value!, ref context);
-                }
-                else
-                {
-                    valueSerializer.WriteTypeInfo(ref context);
-                }
-            }
-
-            keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-            valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-        }
-    }
-
-    private static TValue ReadValueElement(
-        ref ReadContext context,
-        bool trackValueRef,
-        bool readTypeInfo,
-        bool canonicalizeValues,
-        Serializer<TValue> valueSerializer)
-    {
-        if (trackValueRef || !canonicalizeValues)
-        {
-            return valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
-        }
-
-        int start = context.Reader.Cursor;
-        TValue value = valueSerializer.Read(ref context, RefMode.None, readTypeInfo);
-        int end = context.Reader.Cursor;
-        return context.CanonicalizeNonTrackingReference(value, start, end);
-    }
-}
