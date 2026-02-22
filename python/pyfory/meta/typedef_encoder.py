@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from collections import Counter
 
 from pyfory.meta.typedef import (
     FieldInfo,
