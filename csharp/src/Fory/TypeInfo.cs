@@ -26,7 +26,6 @@ public sealed class TypeInfo
         StaticTypeId = serializer.StaticTypeId;
         IsNullableType = serializer.IsNullableType;
         IsReferenceTrackableType = serializer.IsReferenceTrackableType;
-        DefaultObject = serializer.DefaultObject;
     }
 
     public Type Type { get; }
@@ -38,8 +37,6 @@ public sealed class TypeInfo
     public bool IsNullableType { get; }
 
     public bool IsReferenceTrackableType { get; }
-
-    public object? DefaultObject { get; }
 
     internal RegisteredTypeInfo? RegisteredTypeInfo { get; set; }
 }
