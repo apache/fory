@@ -154,6 +154,11 @@ jobs:
           pip install -r compiler/requirements-dev.txt
           pip install ./compiler
 
+      - name: Disable Windows Defender real-time monitoring (PyInstaller workaround)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+
       # ── Build ───────────────────────────────────────────────────────────────
       # Must run from compiler/ so pathex=['.'] in foryc.spec resolves
       # fory_compiler/__main__.py correctly.
