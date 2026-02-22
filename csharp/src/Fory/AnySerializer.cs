@@ -156,11 +156,18 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
 public static class DynamicAnyCodec
 {
+    private static readonly DateOnly Epoch = new(1970, 1, 1);
+
     internal static void WriteAnyTypeInfo(object value, ref WriteContext context)
     {
         if (DynamicContainerCodec.TryGetTypeId(value, out TypeId containerTypeId))
         {
             context.Writer.WriteUInt8((byte)containerTypeId);
+            return;
+        }
+
+        if (TryWriteKnownTypeInfo(value, ref context))
+        {
             return;
         }
 
@@ -210,7 +217,247 @@ public static class DynamicAnyCodec
             return;
         }
 
+        if (TryWriteKnownPayload(value, ref context))
+        {
+            return;
+        }
+
         Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
         serializer.WriteDataObject(ref context, value, hasGenerics);
+    }
+
+    private static bool TryWriteKnownTypeInfo(object value, ref WriteContext context)
+    {
+        switch (value)
+        {
+            case bool:
+                context.Writer.WriteUInt8((byte)TypeId.Bool);
+                return true;
+            case sbyte:
+                context.Writer.WriteUInt8((byte)TypeId.Int8);
+                return true;
+            case short:
+                context.Writer.WriteUInt8((byte)TypeId.Int16);
+                return true;
+            case int:
+                context.Writer.WriteUInt8((byte)TypeId.VarInt32);
+                return true;
+            case long:
+                context.Writer.WriteUInt8((byte)TypeId.VarInt64);
+                return true;
+            case byte:
+                context.Writer.WriteUInt8((byte)TypeId.UInt8);
+                return true;
+            case ushort:
+                context.Writer.WriteUInt8((byte)TypeId.UInt16);
+                return true;
+            case uint:
+                context.Writer.WriteUInt8((byte)TypeId.VarUInt32);
+                return true;
+            case ulong:
+                context.Writer.WriteUInt8((byte)TypeId.VarUInt64);
+                return true;
+            case float:
+                context.Writer.WriteUInt8((byte)TypeId.Float32);
+                return true;
+            case double:
+                context.Writer.WriteUInt8((byte)TypeId.Float64);
+                return true;
+            case string:
+                context.Writer.WriteUInt8((byte)TypeId.String);
+                return true;
+            case byte[]:
+                context.Writer.WriteUInt8((byte)TypeId.Binary);
+                return true;
+            case bool[]:
+                context.Writer.WriteUInt8((byte)TypeId.BoolArray);
+                return true;
+            case sbyte[]:
+                context.Writer.WriteUInt8((byte)TypeId.Int8Array);
+                return true;
+            case short[]:
+                context.Writer.WriteUInt8((byte)TypeId.Int16Array);
+                return true;
+            case int[]:
+                context.Writer.WriteUInt8((byte)TypeId.Int32Array);
+                return true;
+            case long[]:
+                context.Writer.WriteUInt8((byte)TypeId.Int64Array);
+                return true;
+            case ushort[]:
+                context.Writer.WriteUInt8((byte)TypeId.UInt16Array);
+                return true;
+            case uint[]:
+                context.Writer.WriteUInt8((byte)TypeId.UInt32Array);
+                return true;
+            case ulong[]:
+                context.Writer.WriteUInt8((byte)TypeId.UInt64Array);
+                return true;
+            case float[]:
+                context.Writer.WriteUInt8((byte)TypeId.Float32Array);
+                return true;
+            case double[]:
+                context.Writer.WriteUInt8((byte)TypeId.Float64Array);
+                return true;
+            case DateOnly:
+                context.Writer.WriteUInt8((byte)TypeId.Date);
+                return true;
+            case DateTimeOffset:
+            case DateTime:
+                context.Writer.WriteUInt8((byte)TypeId.Timestamp);
+                return true;
+            case TimeSpan:
+                context.Writer.WriteUInt8((byte)TypeId.Duration);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryWriteKnownPayload(object value, ref WriteContext context)
+    {
+        switch (value)
+        {
+            case bool v:
+                context.Writer.WriteUInt8(v ? (byte)1 : (byte)0);
+                return true;
+            case sbyte v:
+                context.Writer.WriteInt8(v);
+                return true;
+            case short v:
+                context.Writer.WriteInt16(v);
+                return true;
+            case int v:
+                context.Writer.WriteVarInt32(v);
+                return true;
+            case long v:
+                context.Writer.WriteVarInt64(v);
+                return true;
+            case byte v:
+                context.Writer.WriteUInt8(v);
+                return true;
+            case ushort v:
+                context.Writer.WriteUInt16(v);
+                return true;
+            case uint v:
+                context.Writer.WriteVarUInt32(v);
+                return true;
+            case ulong v:
+                context.Writer.WriteVarUInt64(v);
+                return true;
+            case float v:
+                context.Writer.WriteFloat32(v);
+                return true;
+            case double v:
+                context.Writer.WriteFloat64(v);
+                return true;
+            case string v:
+                StringSerializer.WriteString(ref context, v);
+                return true;
+            case DateOnly v:
+                context.Writer.WriteInt32(v.DayNumber - Epoch.DayNumber);
+                return true;
+            case DateTimeOffset v:
+                WriteTimestampPayload(v, ref context);
+                return true;
+            case DateTime v:
+                DateTimeOffset dto = v.Kind switch
+                {
+                    DateTimeKind.Utc => new DateTimeOffset(v, TimeSpan.Zero),
+                    DateTimeKind.Local => v,
+                    _ => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)),
+                };
+                WriteTimestampPayload(dto, ref context);
+                return true;
+            case TimeSpan v:
+                long seconds = v.Ticks / TimeSpan.TicksPerSecond;
+                int nanos = checked((int)((v.Ticks % TimeSpan.TicksPerSecond) * 100));
+                context.Writer.WriteInt64(seconds);
+                context.Writer.WriteInt32(nanos);
+                return true;
+            case byte[] v:
+                context.Writer.WriteVarUInt32((uint)v.Length);
+                context.Writer.WriteBytes(v);
+                return true;
+            case bool[] v:
+                context.Writer.WriteVarUInt32((uint)v.Length);
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteUInt8(v[i] ? (byte)1 : (byte)0);
+                }
+                return true;
+            case sbyte[] v:
+                context.Writer.WriteVarUInt32((uint)v.Length);
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteInt8(v[i]);
+                }
+                return true;
+            case short[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 2));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteInt16(v[i]);
+                }
+                return true;
+            case int[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 4));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteInt32(v[i]);
+                }
+                return true;
+            case long[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 8));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteInt64(v[i]);
+                }
+                return true;
+            case ushort[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 2));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteUInt16(v[i]);
+                }
+                return true;
+            case uint[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 4));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteUInt32(v[i]);
+                }
+                return true;
+            case ulong[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 8));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteUInt64(v[i]);
+                }
+                return true;
+            case float[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 4));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteFloat32(v[i]);
+                }
+                return true;
+            case double[] v:
+                context.Writer.WriteVarUInt32((uint)(v.Length * 8));
+                for (int i = 0; i < v.Length; i++)
+                {
+                    context.Writer.WriteFloat64(v[i]);
+                }
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static void WriteTimestampPayload(in DateTimeOffset value, ref WriteContext context)
+    {
+        ForyTimestamp ts = ForyTimestamp.FromDateTimeOffset(value);
+        context.Writer.WriteInt64(ts.Seconds);
+        context.Writer.WriteUInt32(ts.Nanos);
     }
 }

@@ -45,6 +45,7 @@ internal sealed class TypeReader
 
 public sealed class TypeResolver
 {
+    private static readonly DateOnly Epoch = new(1970, 1, 1);
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
 
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
@@ -469,64 +470,70 @@ public sealed class TypeResolver
         switch (typeInfo.WireTypeId)
         {
             case TypeId.Bool:
-                return GetSerializer<bool>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadUInt8() != 0;
             case TypeId.Int8:
-                return GetSerializer<sbyte>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadInt8();
             case TypeId.Int16:
-                return GetSerializer<short>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadInt16();
             case TypeId.Int32:
-                return GetSerializer<ForyInt32Fixed>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadInt32();
             case TypeId.VarInt32:
-                return GetSerializer<int>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadVarInt32();
             case TypeId.Int64:
-                return GetSerializer<ForyInt64Fixed>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadInt64();
             case TypeId.VarInt64:
-                return GetSerializer<long>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadVarInt64();
             case TypeId.TaggedInt64:
-                return GetSerializer<ForyInt64Tagged>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadTaggedInt64();
             case TypeId.UInt8:
-                return GetSerializer<byte>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadUInt8();
             case TypeId.UInt16:
-                return GetSerializer<ushort>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadUInt16();
             case TypeId.UInt32:
-                return GetSerializer<ForyUInt32Fixed>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadUInt32();
             case TypeId.VarUInt32:
-                return GetSerializer<uint>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadVarUInt32();
             case TypeId.UInt64:
-                return GetSerializer<ForyUInt64Fixed>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadUInt64();
             case TypeId.VarUInt64:
-                return GetSerializer<ulong>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadVarUInt64();
             case TypeId.TaggedUInt64:
-                return GetSerializer<ForyUInt64Tagged>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadTaggedUInt64();
             case TypeId.Float32:
-                return GetSerializer<float>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadFloat32();
             case TypeId.Float64:
-                return GetSerializer<double>().Read(ref context, RefMode.None, false);
+                return context.Reader.ReadFloat64();
             case TypeId.String:
-                return GetSerializer<string>().Read(ref context, RefMode.None, false);
+                return StringSerializer.ReadString(ref context);
+            case TypeId.Date:
+                return ReadDate(ref context);
+            case TypeId.Timestamp:
+                return ReadTimestamp(ref context);
+            case TypeId.Duration:
+                return ReadDuration(ref context);
             case TypeId.Binary:
             case TypeId.UInt8Array:
-                return GetSerializer<byte[]>().Read(ref context, RefMode.None, false);
+                return ReadBinary(ref context);
             case TypeId.BoolArray:
-                return GetSerializer<bool[]>().Read(ref context, RefMode.None, false);
+                return ReadBoolArray(ref context);
             case TypeId.Int8Array:
-                return GetSerializer<sbyte[]>().Read(ref context, RefMode.None, false);
+                return ReadInt8Array(ref context);
             case TypeId.Int16Array:
-                return GetSerializer<short[]>().Read(ref context, RefMode.None, false);
+                return ReadInt16Array(ref context);
             case TypeId.Int32Array:
-                return GetSerializer<int[]>().Read(ref context, RefMode.None, false);
+                return ReadInt32Array(ref context);
             case TypeId.Int64Array:
-                return GetSerializer<long[]>().Read(ref context, RefMode.None, false);
+                return ReadInt64Array(ref context);
             case TypeId.UInt16Array:
-                return GetSerializer<ushort[]>().Read(ref context, RefMode.None, false);
+                return ReadUInt16Array(ref context);
             case TypeId.UInt32Array:
-                return GetSerializer<uint[]>().Read(ref context, RefMode.None, false);
+                return ReadUInt32Array(ref context);
             case TypeId.UInt64Array:
-                return GetSerializer<ulong[]>().Read(ref context, RefMode.None, false);
+                return ReadUInt64Array(ref context);
             case TypeId.Float32Array:
-                return GetSerializer<float[]>().Read(ref context, RefMode.None, false);
+                return ReadFloat32Array(ref context);
             case TypeId.Float64Array:
-                return GetSerializer<double[]>().Read(ref context, RefMode.None, false);
+                return ReadFloat64Array(ref context);
             case TypeId.List:
                 return DynamicContainerCodec.ReadListPayload(ref context);
             case TypeId.Set:
@@ -594,6 +601,192 @@ public sealed class TypeResolver
             default:
                 throw new InvalidDataException($"unsupported dynamic type id {typeInfo.WireTypeId}");
         }
+    }
+
+    private static byte[] ReadBinary(ref ReadContext context)
+    {
+        uint length = context.Reader.ReadVarUInt32();
+        return context.Reader.ReadBytes(checked((int)length));
+    }
+
+    private static bool[] ReadBoolArray(ref ReadContext context)
+    {
+        int count = checked((int)context.Reader.ReadVarUInt32());
+        bool[] values = new bool[count];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadUInt8() != 0;
+        }
+
+        return values;
+    }
+
+    private static sbyte[] ReadInt8Array(ref ReadContext context)
+    {
+        int count = checked((int)context.Reader.ReadVarUInt32());
+        sbyte[] values = new sbyte[count];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadInt8();
+        }
+
+        return values;
+    }
+
+    private static short[] ReadInt16Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 1) != 0)
+        {
+            throw new InvalidDataException("int16 array payload size mismatch");
+        }
+
+        short[] values = new short[payloadSize / 2];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadInt16();
+        }
+
+        return values;
+    }
+
+    private static int[] ReadInt32Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 3) != 0)
+        {
+            throw new InvalidDataException("int32 array payload size mismatch");
+        }
+
+        int[] values = new int[payloadSize / 4];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadInt32();
+        }
+
+        return values;
+    }
+
+    private static long[] ReadInt64Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 7) != 0)
+        {
+            throw new InvalidDataException("int64 array payload size mismatch");
+        }
+
+        long[] values = new long[payloadSize / 8];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadInt64();
+        }
+
+        return values;
+    }
+
+    private static ushort[] ReadUInt16Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 1) != 0)
+        {
+            throw new InvalidDataException("uint16 array payload size mismatch");
+        }
+
+        ushort[] values = new ushort[payloadSize / 2];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadUInt16();
+        }
+
+        return values;
+    }
+
+    private static uint[] ReadUInt32Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 3) != 0)
+        {
+            throw new InvalidDataException("uint32 array payload size mismatch");
+        }
+
+        uint[] values = new uint[payloadSize / 4];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadUInt32();
+        }
+
+        return values;
+    }
+
+    private static ulong[] ReadUInt64Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 7) != 0)
+        {
+            throw new InvalidDataException("uint64 array payload size mismatch");
+        }
+
+        ulong[] values = new ulong[payloadSize / 8];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadUInt64();
+        }
+
+        return values;
+    }
+
+    private static float[] ReadFloat32Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 3) != 0)
+        {
+            throw new InvalidDataException("float32 array payload size mismatch");
+        }
+
+        float[] values = new float[payloadSize / 4];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadFloat32();
+        }
+
+        return values;
+    }
+
+    private static double[] ReadFloat64Array(ref ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((payloadSize & 7) != 0)
+        {
+            throw new InvalidDataException("float64 array payload size mismatch");
+        }
+
+        double[] values = new double[payloadSize / 8];
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = context.Reader.ReadFloat64();
+        }
+
+        return values;
+    }
+
+    private static DateOnly ReadDate(ref ReadContext context)
+    {
+        int days = context.Reader.ReadInt32();
+        return DateOnly.FromDayNumber(Epoch.DayNumber + days);
+    }
+
+    private static DateTimeOffset ReadTimestamp(ref ReadContext context)
+    {
+        long seconds = context.Reader.ReadInt64();
+        uint nanos = context.Reader.ReadUInt32();
+        return new ForyTimestamp(seconds, nanos).ToDateTimeOffset();
+    }
+
+    private static TimeSpan ReadDuration(ref ReadContext context)
+    {
+        long seconds = context.Reader.ReadInt64();
+        int nanos = context.Reader.ReadInt32();
+        return TimeSpan.FromSeconds(seconds) + TimeSpan.FromTicks(nanos / 100);
     }
 
     private void MarkRegistrationMode(TypeId kind, bool registerByName)
@@ -1212,36 +1405,6 @@ public sealed class TypeResolver
         if (type == typeof(Dictionary<ulong, ulong>))
         {
             return new DictionaryULongULongSerializer();
-        }
-
-        if (type == typeof(ForyInt32Fixed))
-        {
-            return new ForyInt32FixedSerializer();
-        }
-
-        if (type == typeof(ForyInt64Fixed))
-        {
-            return new ForyInt64FixedSerializer();
-        }
-
-        if (type == typeof(ForyInt64Tagged))
-        {
-            return new ForyInt64TaggedSerializer();
-        }
-
-        if (type == typeof(ForyUInt32Fixed))
-        {
-            return new ForyUInt32FixedSerializer();
-        }
-
-        if (type == typeof(ForyUInt64Fixed))
-        {
-            return new ForyUInt64FixedSerializer();
-        }
-
-        if (type == typeof(ForyUInt64Tagged))
-        {
-            return new ForyUInt64TaggedSerializer();
         }
 
         if (type == typeof(object))

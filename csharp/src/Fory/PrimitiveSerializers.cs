@@ -24,18 +24,6 @@ internal enum ForyStringEncoding : ulong
     Utf8 = 2,
 }
 
-public readonly record struct ForyInt32Fixed(int RawValue);
-
-public readonly record struct ForyInt64Fixed(long RawValue);
-
-public readonly record struct ForyInt64Tagged(long RawValue);
-
-public readonly record struct ForyUInt32Fixed(uint RawValue);
-
-public readonly record struct ForyUInt64Fixed(ulong RawValue);
-
-public readonly record struct ForyUInt64Tagged(ulong RawValue);
-
 public readonly record struct ForyDate(int DaysSinceEpoch);
 
 public readonly record struct ForyTimestamp(long Seconds, uint Nanos)
@@ -286,114 +274,6 @@ public sealed class BinarySerializer : Serializer<byte[]>
     {
         uint length = context.Reader.ReadVarUInt32();
         return context.Reader.ReadBytes(checked((int)length));
-    }
-}
-
-public sealed class ForyInt32FixedSerializer : Serializer<ForyInt32Fixed>
-{
-    public override TypeId StaticTypeId => TypeId.Int32;
-
-    public override ForyInt32Fixed DefaultValue => new(0);
-
-    public override void WriteData(ref WriteContext context, in ForyInt32Fixed value, bool hasGenerics)
-    {
-        _ = hasGenerics;
-        context.Writer.WriteInt32(value.RawValue);
-    }
-
-    public override ForyInt32Fixed ReadData(ref ReadContext context)
-    {
-        return new ForyInt32Fixed(context.Reader.ReadInt32());
-    }
-}
-
-public sealed class ForyInt64FixedSerializer : Serializer<ForyInt64Fixed>
-{
-    public override TypeId StaticTypeId => TypeId.Int64;
-
-    public override ForyInt64Fixed DefaultValue => new(0);
-
-    public override void WriteData(ref WriteContext context, in ForyInt64Fixed value, bool hasGenerics)
-    {
-        _ = hasGenerics;
-        context.Writer.WriteInt64(value.RawValue);
-    }
-
-    public override ForyInt64Fixed ReadData(ref ReadContext context)
-    {
-        return new ForyInt64Fixed(context.Reader.ReadInt64());
-    }
-}
-
-public sealed class ForyInt64TaggedSerializer : Serializer<ForyInt64Tagged>
-{
-    public override TypeId StaticTypeId => TypeId.TaggedInt64;
-
-    public override ForyInt64Tagged DefaultValue => new(0);
-
-    public override void WriteData(ref WriteContext context, in ForyInt64Tagged value, bool hasGenerics)
-    {
-        _ = hasGenerics;
-        context.Writer.WriteTaggedInt64(value.RawValue);
-    }
-
-    public override ForyInt64Tagged ReadData(ref ReadContext context)
-    {
-        return new ForyInt64Tagged(context.Reader.ReadTaggedInt64());
-    }
-}
-
-public sealed class ForyUInt32FixedSerializer : Serializer<ForyUInt32Fixed>
-{
-    public override TypeId StaticTypeId => TypeId.UInt32;
-
-    public override ForyUInt32Fixed DefaultValue => new(0);
-
-    public override void WriteData(ref WriteContext context, in ForyUInt32Fixed value, bool hasGenerics)
-    {
-        _ = hasGenerics;
-        context.Writer.WriteUInt32(value.RawValue);
-    }
-
-    public override ForyUInt32Fixed ReadData(ref ReadContext context)
-    {
-        return new ForyUInt32Fixed(context.Reader.ReadUInt32());
-    }
-}
-
-public sealed class ForyUInt64FixedSerializer : Serializer<ForyUInt64Fixed>
-{
-    public override TypeId StaticTypeId => TypeId.UInt64;
-
-    public override ForyUInt64Fixed DefaultValue => new(0);
-
-    public override void WriteData(ref WriteContext context, in ForyUInt64Fixed value, bool hasGenerics)
-    {
-        _ = hasGenerics;
-        context.Writer.WriteUInt64(value.RawValue);
-    }
-
-    public override ForyUInt64Fixed ReadData(ref ReadContext context)
-    {
-        return new ForyUInt64Fixed(context.Reader.ReadUInt64());
-    }
-}
-
-public sealed class ForyUInt64TaggedSerializer : Serializer<ForyUInt64Tagged>
-{
-    public override TypeId StaticTypeId => TypeId.TaggedUInt64;
-
-    public override ForyUInt64Tagged DefaultValue => new(0);
-
-    public override void WriteData(ref WriteContext context, in ForyUInt64Tagged value, bool hasGenerics)
-    {
-        _ = hasGenerics;
-        context.Writer.WriteTaggedUInt64(value.RawValue);
-    }
-
-    public override ForyUInt64Tagged ReadData(ref ReadContext context)
-    {
-        return new ForyUInt64Tagged(context.Reader.ReadTaggedUInt64());
     }
 }
 

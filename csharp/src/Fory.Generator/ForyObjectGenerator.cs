@@ -312,30 +312,15 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 throw new InvalidOperationException($"unsupported dynamic any kind {member.DynamicAnyKind}");
         }
 
-        if (member.CustomWrapperTypeName is not null)
-        {
-            string wrappedVarName = compatibleMode
-                ? $"__{member.Name}WrappedCompat"
-                : $"__{member.Name}WrappedSchema";
-            if (member.IsNullableValueType)
-            {
-                sb.AppendLine(
-                    $"            {member.CustomWrapperTypeName}? {wrappedVarName} = {memberAccess}.HasValue ? new {member.CustomWrapperTypeName}({memberAccess}.Value) : null;");
-                sb.AppendLine(
-                    $"            context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}?>().Write(ref context, {wrappedVarName}, {refModeExpr}, false, false);");
-            }
-            else
-            {
-                sb.AppendLine(
-                    $"            context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}>().Write(ref context, new {member.CustomWrapperTypeName}({memberAccess}), {refModeExpr}, false, false);");
-            }
-
-            return;
-        }
-
         if (!member.IsNullable && TryBuildDirectFieldWrite(member, memberAccess, out string? directWriteCode))
         {
             sb.AppendLine($"            {directWriteCode}");
+            return;
+        }
+
+        if (TryBuildNullableFixedTaggedFieldWrite(member, memberAccess, out string? nullableWriteCode))
+        {
+            sb.AppendLine($"            {nullableWriteCode}");
             return;
         }
 
@@ -368,28 +353,15 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 throw new InvalidOperationException($"unsupported dynamic any kind {member.DynamicAnyKind}");
         }
 
-        if (member.CustomWrapperTypeName is not null)
-        {
-            string wrappedVarName = $"__{member.Name}Wrapped{variableSuffix}";
-            if (member.IsNullableValueType)
-            {
-                sb.AppendLine(
-                    $"{indent}{member.CustomWrapperTypeName}? {wrappedVarName} = context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}?>().Read(ref context, {refModeExpr}, false);");
-                sb.AppendLine(
-                    $"{indent}{assignmentTarget} = {wrappedVarName}.HasValue ? {wrappedVarName}.Value.RawValue : ({member.TypeName})null!;");
-            }
-            else
-            {
-                sb.AppendLine(
-                    $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.CustomWrapperTypeName}>().Read(ref context, {refModeExpr}, false).RawValue;");
-            }
-
-            return;
-        }
-
         if (allowDirectRead && !member.IsNullable && TryBuildDirectFieldRead(member, out string? directReadExpr))
         {
             sb.AppendLine($"{indent}{assignmentTarget} = {directReadExpr};");
+            return;
+        }
+
+        if (allowDirectRead && TryBuildNullableFixedTaggedFieldRead(member, assignmentTarget, variableSuffix, indent, out string? nullableReadCode))
+        {
+            sb.AppendLine(nullableReadCode);
             return;
         }
 
@@ -410,47 +382,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return false;
         }
 
-        switch (member.Classification.TypeId)
-        {
-            case 1:
-                writeCode = $"context.Writer.WriteUInt8({memberAccess} ? (byte)1 : (byte)0);";
-                return true;
-            case 2:
-                writeCode = $"context.Writer.WriteInt8({memberAccess});";
-                return true;
-            case 3:
-                writeCode = $"context.Writer.WriteInt16({memberAccess});";
-                return true;
-            case 5:
-                writeCode = $"context.Writer.WriteVarInt32({memberAccess});";
-                return true;
-            case 7:
-                writeCode = $"context.Writer.WriteVarInt64({memberAccess});";
-                return true;
-            case 9:
-                writeCode = $"context.Writer.WriteUInt8({memberAccess});";
-                return true;
-            case 10:
-                writeCode = $"context.Writer.WriteUInt16({memberAccess});";
-                return true;
-            case 12:
-                writeCode = $"context.Writer.WriteVarUInt32({memberAccess});";
-                return true;
-            case 14:
-                writeCode = $"context.Writer.WriteVarUInt64({memberAccess});";
-                return true;
-            case 19:
-                writeCode = $"context.Writer.WriteFloat32({memberAccess});";
-                return true;
-            case 20:
-                writeCode = $"context.Writer.WriteFloat64({memberAccess});";
-                return true;
-            case 21:
-                writeCode = $"global::Apache.Fory.StringSerializer.WriteString(ref context, {memberAccess});";
-                return true;
-            default:
-                return false;
-        }
+        return TryBuildDirectPayloadWrite(member.Classification.TypeId, memberAccess, out writeCode);
     }
 
     private static bool TryBuildDirectFieldRead(MemberModel member, out string? readExpr)
@@ -461,7 +393,133 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return false;
         }
 
-        switch (member.Classification.TypeId)
+        return TryBuildDirectPayloadRead(member.Classification.TypeId, out readExpr);
+    }
+
+    private static bool TryBuildNullableFixedTaggedFieldWrite(MemberModel member, string memberAccess, out string? writeCode)
+    {
+        writeCode = null;
+        if (!member.IsNullableValueType || !IsFixedTaggedTypeId(member.Classification.TypeId))
+        {
+            return false;
+        }
+
+        if (!TryBuildDirectPayloadWrite(member.Classification.TypeId, $"{memberAccess}.Value", out string? payloadWriteCode))
+        {
+            return false;
+        }
+
+        writeCode = $"if (!{memberAccess}.HasValue) {{ context.Writer.WriteInt8((sbyte)global::Apache.Fory.RefFlag.Null); }} else {{ context.Writer.WriteInt8((sbyte)global::Apache.Fory.RefFlag.NotNullValue); {payloadWriteCode} }}";
+        return true;
+    }
+
+    private static bool TryBuildNullableFixedTaggedFieldRead(
+        MemberModel member,
+        string assignmentTarget,
+        string variableSuffix,
+        string indent,
+        out string code)
+    {
+        code = string.Empty;
+        if (!member.IsNullableValueType || !IsFixedTaggedTypeId(member.Classification.TypeId))
+        {
+            return false;
+        }
+
+        if (!TryBuildDirectPayloadRead(member.Classification.TypeId, out string? payloadReadExpr))
+        {
+            return false;
+        }
+
+        string refFlagVar = $"__{member.Name}RefFlag{variableSuffix}";
+        string nestedIndent = indent + "  ";
+        StringBuilder sb = new();
+        sb.AppendLine($"{indent}sbyte {refFlagVar} = context.Reader.ReadInt8();");
+        sb.AppendLine($"{indent}if ({refFlagVar} == (sbyte)global::Apache.Fory.RefFlag.Null)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{nestedIndent}{assignmentTarget} = ({member.TypeName})null!;");
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine($"{indent}else");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{nestedIndent}{assignmentTarget} = {payloadReadExpr};");
+        sb.Append($"{indent}}}");
+        code = sb.ToString();
+        return true;
+    }
+
+    private static bool IsFixedTaggedTypeId(uint typeId)
+    {
+        return typeId is 4 or 6 or 8 or 11 or 13 or 15;
+    }
+
+    private static bool TryBuildDirectPayloadWrite(uint typeId, string valueExpr, out string? writeCode)
+    {
+        writeCode = null;
+        switch (typeId)
+        {
+            case 1:
+                writeCode = $"context.Writer.WriteUInt8({valueExpr} ? (byte)1 : (byte)0);";
+                return true;
+            case 2:
+                writeCode = $"context.Writer.WriteInt8({valueExpr});";
+                return true;
+            case 3:
+                writeCode = $"context.Writer.WriteInt16({valueExpr});";
+                return true;
+            case 4:
+                writeCode = $"context.Writer.WriteInt32({valueExpr});";
+                return true;
+            case 5:
+                writeCode = $"context.Writer.WriteVarInt32({valueExpr});";
+                return true;
+            case 6:
+                writeCode = $"context.Writer.WriteInt64({valueExpr});";
+                return true;
+            case 7:
+                writeCode = $"context.Writer.WriteVarInt64({valueExpr});";
+                return true;
+            case 8:
+                writeCode = $"context.Writer.WriteTaggedInt64({valueExpr});";
+                return true;
+            case 9:
+                writeCode = $"context.Writer.WriteUInt8({valueExpr});";
+                return true;
+            case 10:
+                writeCode = $"context.Writer.WriteUInt16({valueExpr});";
+                return true;
+            case 11:
+                writeCode = $"context.Writer.WriteUInt32({valueExpr});";
+                return true;
+            case 12:
+                writeCode = $"context.Writer.WriteVarUInt32({valueExpr});";
+                return true;
+            case 13:
+                writeCode = $"context.Writer.WriteUInt64({valueExpr});";
+                return true;
+            case 14:
+                writeCode = $"context.Writer.WriteVarUInt64({valueExpr});";
+                return true;
+            case 15:
+                writeCode = $"context.Writer.WriteTaggedUInt64({valueExpr});";
+                return true;
+            case 19:
+                writeCode = $"context.Writer.WriteFloat32({valueExpr});";
+                return true;
+            case 20:
+                writeCode = $"context.Writer.WriteFloat64({valueExpr});";
+                return true;
+            case 21:
+                writeCode = $"global::Apache.Fory.StringSerializer.WriteString(ref context, {valueExpr});";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryBuildDirectPayloadRead(uint typeId, out string? readExpr)
+    {
+        readExpr = null;
+        switch (typeId)
         {
             case 1:
                 readExpr = "context.Reader.ReadUInt8() != 0";
@@ -472,11 +530,20 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             case 3:
                 readExpr = "context.Reader.ReadInt16()";
                 return true;
+            case 4:
+                readExpr = "context.Reader.ReadInt32()";
+                return true;
             case 5:
                 readExpr = "context.Reader.ReadVarInt32()";
                 return true;
+            case 6:
+                readExpr = "context.Reader.ReadInt64()";
+                return true;
             case 7:
                 readExpr = "context.Reader.ReadVarInt64()";
+                return true;
+            case 8:
+                readExpr = "context.Reader.ReadTaggedInt64()";
                 return true;
             case 9:
                 readExpr = "context.Reader.ReadUInt8()";
@@ -484,11 +551,20 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             case 10:
                 readExpr = "context.Reader.ReadUInt16()";
                 return true;
+            case 11:
+                readExpr = "context.Reader.ReadUInt32()";
+                return true;
             case 12:
                 readExpr = "context.Reader.ReadVarUInt32()";
                 return true;
+            case 13:
+                readExpr = "context.Reader.ReadUInt64()";
+                return true;
             case 14:
                 readExpr = "context.Reader.ReadVarUInt64()";
+                return true;
+            case 15:
+                readExpr = "context.Reader.ReadTaggedUInt64()";
                 return true;
             case 19:
                 readExpr = "context.Reader.ReadFloat32()";
@@ -507,7 +583,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static bool CanUseDirectBuiltInFieldAccess(MemberModel member)
     {
         if (member.IsNullable ||
-            member.CustomWrapperTypeName is not null ||
             member.DynamicAnyKind != DynamicAnyKind.None ||
             member.IsCollection ||
             member.Classification.IsMap)
@@ -747,7 +822,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             memberType,
             isOptional,
             dynamicAnyKind,
-            resolution.CustomWrapperTypeName,
             resolution.Classification.TypeId);
 
         return new MemberModel(
@@ -762,7 +836,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             classification,
             group,
             classification.IsCollection || classification.IsMap,
-            resolution.CustomWrapperTypeName,
             dynamicAnyKind == DynamicAnyKind.None ? DynamicAnyKind.None : dynamicAnyKind,
             typeMeta);
     }
@@ -771,7 +844,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         ITypeSymbol memberType,
         bool nullable,
         DynamicAnyKind dynamicAnyKind,
-        string? customWrapperTypeName,
         uint explicitTypeId)
     {
         (bool _, ITypeSymbol unwrapped) = UnwrapNullable(memberType);
@@ -783,7 +855,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 listElementType!,
                 elementNullable,
                 ResolveDynamicAnyKind(UnwrapNullable(listElementType!).Item2),
-                null,
                 0);
             return new TypeMetaFieldTypeModel(
                 "(uint)global::Apache.Fory.TypeId.List",
@@ -799,7 +870,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 setElementType!,
                 elementNullable,
                 ResolveDynamicAnyKind(UnwrapNullable(setElementType!).Item2),
-                null,
                 0);
             return new TypeMetaFieldTypeModel(
                 "(uint)global::Apache.Fory.TypeId.Set",
@@ -816,13 +886,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 keyType!,
                 keyNullable,
                 ResolveDynamicAnyKind(UnwrapNullable(keyType!).Item2),
-                null,
                 0);
             TypeMetaFieldTypeModel value = BuildTypeMetaFieldTypeModel(
                 valueType!,
                 valueNullable,
                 ResolveDynamicAnyKind(UnwrapNullable(valueType!).Item2),
-                null,
                 0);
             return new TypeMetaFieldTypeModel(
                 "(uint)global::Apache.Fory.TypeId.Map",
@@ -831,7 +899,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 ImmutableArray.Create(key, value));
         }
 
-        if (customWrapperTypeName is not null)
+        TypeClassification classification = ClassifyType(unwrapped);
+        if (explicitTypeId != 0 && classification.IsPrimitive && classification.TypeId != explicitTypeId)
         {
             return new TypeMetaFieldTypeModel(
                 explicitTypeId.ToString(),
@@ -867,7 +936,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 ImmutableArray<TypeMetaFieldTypeModel>.Empty);
         }
 
-        TypeClassification classification = ClassifyType(unwrapped);
         return new TypeMetaFieldTypeModel(
             $"(uint){classification.TypeId}",
             nullable,
@@ -949,7 +1017,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         TypeClassification baseType = ClassifyType(type);
         if (encoding == FieldEncoding.None)
         {
-            return new TypeResolution(true, baseType, null);
+            return new TypeResolution(true, baseType);
         }
 
         bool isInt32 = type.SpecialType == SpecialType.System_Int32;
@@ -961,12 +1029,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             return encoding switch
             {
-                FieldEncoding.Varint => new TypeResolution(true, baseType, null),
+                FieldEncoding.Varint => new TypeResolution(true, baseType),
                 FieldEncoding.Fixed => new TypeResolution(
                     true,
-                    new TypeClassification(4, true, true, false, false, false, 4),
-                    "global::Apache.Fory.ForyInt32Fixed"),
-                _ => new TypeResolution(false, baseType, null),
+                    new TypeClassification(4, true, true, false, false, false, 4)),
+                _ => new TypeResolution(false, baseType),
             };
         }
 
@@ -974,12 +1041,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             return encoding switch
             {
-                FieldEncoding.Varint => new TypeResolution(true, baseType, null),
+                FieldEncoding.Varint => new TypeResolution(true, baseType),
                 FieldEncoding.Fixed => new TypeResolution(
                     true,
-                    new TypeClassification(11, true, true, false, false, false, 4),
-                    "global::Apache.Fory.ForyUInt32Fixed"),
-                _ => new TypeResolution(false, baseType, null),
+                    new TypeClassification(11, true, true, false, false, false, 4)),
+                _ => new TypeResolution(false, baseType),
             };
         }
 
@@ -987,16 +1053,14 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             return encoding switch
             {
-                FieldEncoding.Varint => new TypeResolution(true, baseType, null),
+                FieldEncoding.Varint => new TypeResolution(true, baseType),
                 FieldEncoding.Fixed => new TypeResolution(
                     true,
-                    new TypeClassification(6, true, true, false, false, false, 8),
-                    "global::Apache.Fory.ForyInt64Fixed"),
+                    new TypeClassification(6, true, true, false, false, false, 8)),
                 FieldEncoding.Tagged => new TypeResolution(
                     true,
-                    new TypeClassification(8, true, true, false, false, true, 8),
-                    "global::Apache.Fory.ForyInt64Tagged"),
-                _ => new TypeResolution(false, baseType, null),
+                    new TypeClassification(8, true, true, false, false, true, 8)),
+                _ => new TypeResolution(false, baseType),
             };
         }
 
@@ -1004,20 +1068,18 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             return encoding switch
             {
-                FieldEncoding.Varint => new TypeResolution(true, baseType, null),
+                FieldEncoding.Varint => new TypeResolution(true, baseType),
                 FieldEncoding.Fixed => new TypeResolution(
                     true,
-                    new TypeClassification(13, true, true, false, false, false, 8),
-                    "global::Apache.Fory.ForyUInt64Fixed"),
+                    new TypeClassification(13, true, true, false, false, false, 8)),
                 FieldEncoding.Tagged => new TypeResolution(
                     true,
-                    new TypeClassification(15, true, true, false, false, true, 8),
-                    "global::Apache.Fory.ForyUInt64Tagged"),
-                _ => new TypeResolution(false, baseType, null),
+                    new TypeClassification(15, true, true, false, false, true, 8)),
+                _ => new TypeResolution(false, baseType),
             };
         }
 
-        return new TypeResolution(false, baseType, null);
+        return new TypeResolution(false, baseType);
     }
 
     private static TypeClassification ClassifyType(ITypeSymbol type)
@@ -1328,16 +1390,14 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private sealed class TypeResolution
     {
-        public TypeResolution(bool supported, TypeClassification classification, string? customWrapperTypeName)
+        public TypeResolution(bool supported, TypeClassification classification)
         {
             Supported = supported;
             Classification = classification;
-            CustomWrapperTypeName = customWrapperTypeName;
         }
 
         public bool Supported { get; }
         public TypeClassification Classification { get; }
-        public string? CustomWrapperTypeName { get; }
     }
 
     private sealed class TypeClassification
@@ -1425,7 +1485,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             TypeClassification classification,
             int group,
             bool isCollection,
-            string? customWrapperTypeName,
             DynamicAnyKind dynamicAnyKind,
             TypeMetaFieldTypeModel typeMeta)
         {
@@ -1439,7 +1498,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             Classification = classification;
             Group = group;
             IsCollection = isCollection;
-            CustomWrapperTypeName = customWrapperTypeName;
             DynamicAnyKind = dynamicAnyKind;
             TypeMeta = typeMeta;
         }
@@ -1454,7 +1512,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         public TypeClassification Classification { get; }
         public int Group { get; }
         public bool IsCollection { get; }
-        public string? CustomWrapperTypeName { get; }
         public DynamicAnyKind DynamicAnyKind { get; }
         public TypeMetaFieldTypeModel TypeMeta { get; }
     }
