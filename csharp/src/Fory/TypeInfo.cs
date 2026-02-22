@@ -40,4 +40,6 @@ public sealed class TypeInfo
     public bool IsReferenceTrackableType { get; }
 
     public object? DefaultObject { get; }
+
+    internal RegisteredTypeInfo? RegisteredTypeInfo { get; set; }
 }

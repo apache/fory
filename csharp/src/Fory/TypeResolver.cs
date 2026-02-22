@@ -16,7 +16,6 @@
 // under the License.
 
 using System.Collections.Concurrent;
-using System.Linq.Expressions;
 
 namespace Apache.Fory;
 
@@ -48,14 +47,11 @@ public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
 
-    private readonly Dictionary<Type, RegisteredTypeInfo> _byType = [];
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
     private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
-    private readonly Dictionary<Type, Serializer> _serializerBindings = [];
     private readonly Dictionary<Type, TypeInfo> _typeInfos = [];
-    private readonly Dictionary<Type, Func<Serializer>> _serializerConstructors = [];
 
     public static void RegisterGenerated<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
@@ -71,14 +67,7 @@ public sealed class TypeResolver
 
     public TypeInfo GetTypeInfo(Type type)
     {
-        if (_typeInfos.TryGetValue(type, out TypeInfo? typeInfo))
-        {
-            return typeInfo;
-        }
-
-        typeInfo = new TypeInfo(type, GetBinding(type));
-        _typeInfos[type] = typeInfo;
-        return typeInfo;
+        return EnsureTypeInfo(type, null);
     }
 
     public TypeInfo GetTypeInfo<T>()
@@ -86,16 +75,35 @@ public sealed class TypeResolver
         return GetTypeInfo(typeof(T));
     }
 
-    internal Serializer GetBinding(Type type)
+    private TypeInfo EnsureTypeInfo(Type type, Serializer? explicitSerializer)
     {
-        if (_serializerBindings.TryGetValue(type, out Serializer? serializer))
+        if (_typeInfos.TryGetValue(type, out TypeInfo? existing))
         {
-            return serializer;
+            if (explicitSerializer is null || ReferenceEquals(existing.Serializer, explicitSerializer))
+            {
+                return existing;
+            }
+
+            if (existing.RegisteredTypeInfo is not null)
+            {
+                throw new InvalidDataException($"cannot override serializer for registered type {type}");
+            }
         }
 
-        serializer = CreateBindingCore(type);
-        _serializerBindings[type] = serializer;
-        return serializer;
+        Serializer serializer = explicitSerializer ?? CreateBindingCore(type);
+        TypeInfo typeInfo = new(type, serializer);
+        if (_typeInfos.TryGetValue(type, out TypeInfo? previous))
+        {
+            typeInfo.RegisteredTypeInfo = previous.RegisteredTypeInfo;
+        }
+
+        _typeInfos[type] = typeInfo;
+        return typeInfo;
+    }
+
+    internal Serializer GetBinding(Type type)
+    {
+        return EnsureTypeInfo(type, null).Serializer;
     }
 
     internal Serializer RegisterCustom<T, TSerializer>()
@@ -108,13 +116,13 @@ public sealed class TypeResolver
 
     internal void RegisterCustom(Type type, Serializer serializerBinding)
     {
-        _serializerBindings[type] = serializerBinding;
-        _typeInfos.Remove(type);
+        EnsureTypeInfo(type, serializerBinding);
     }
 
     internal void Register(Type type, uint id, Serializer? explicitSerializer = null)
     {
-        Serializer serializer = explicitSerializer ?? GetBinding(type);
+        TypeInfo typeInfo = EnsureTypeInfo(type, explicitSerializer);
+        Serializer serializer = typeInfo.Serializer;
         RegisteredTypeInfo info = new(
             id,
             serializer.StaticTypeId,
@@ -122,7 +130,7 @@ public sealed class TypeResolver
             null,
             MetaString.Empty('$', '_'),
             serializer);
-        _byType[type] = info;
+        typeInfo.RegisteredTypeInfo = info;
         MarkRegistrationMode(info.Kind, false);
         _byUserTypeId[id] = new TypeReader
         {
@@ -138,7 +146,8 @@ public sealed class TypeResolver
 
     internal void Register(Type type, string namespaceName, string typeName, Serializer? explicitSerializer = null)
     {
-        Serializer serializer = explicitSerializer ?? GetBinding(type);
+        TypeInfo typeInfo = EnsureTypeInfo(type, explicitSerializer);
+        Serializer serializer = typeInfo.Serializer;
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
         RegisteredTypeInfo info = new(
@@ -148,7 +157,7 @@ public sealed class TypeResolver
             namespaceMeta,
             typeNameMeta,
             serializer);
-        _byType[type] = info;
+        typeInfo.RegisteredTypeInfo = info;
         MarkRegistrationMode(info.Kind, true);
         _byTypeName[new TypeNameKey(namespaceName, typeName)] = new TypeReader
         {
@@ -164,12 +173,15 @@ public sealed class TypeResolver
 
     internal RegisteredTypeInfo? RegisteredTypeInfo(Type type)
     {
-        return _byType.TryGetValue(type, out RegisteredTypeInfo? info) ? info : null;
+        return _typeInfos.TryGetValue(type, out TypeInfo? typeInfo)
+            ? typeInfo.RegisteredTypeInfo
+            : null;
     }
 
     internal RegisteredTypeInfo RequireRegisteredTypeInfo(Type type)
     {
-        if (_byType.TryGetValue(type, out RegisteredTypeInfo? info))
+        RegisteredTypeInfo? info = RegisteredTypeInfo(type);
+        if (info is not null)
         {
             return info;
         }
@@ -768,7 +780,7 @@ public sealed class TypeResolver
             context.Writer.WriteVarUInt32((uint)(bytes.Length << 1));
             if (bytes.Length > 16)
             {
-                context.Writer.WriteInt64(unchecked((long)JavaMetaStringHash(normalized)));
+                context.Writer.WriteInt64(unchecked((long)MetaStringHash(normalized)));
             }
             else if (bytes.Length > 0)
             {
@@ -835,7 +847,7 @@ public sealed class TypeResolver
         return value;
     }
 
-    private static ulong JavaMetaStringHash(MetaString metaString)
+    private static ulong MetaStringHash(MetaString metaString)
     {
         (ulong h1, _) = MurmurHash3.X64_128(metaString.Bytes, 47);
         long hash = unchecked((long)h1);
@@ -1307,26 +1319,19 @@ public sealed class TypeResolver
             throw new InvalidDataException($"{serializerType} is not a serializer");
         }
 
-        if (!_serializerConstructors.TryGetValue(serializerType, out Func<Serializer>? constructor))
-        {
-            constructor = BuildSerializerConstructor(serializerType);
-            _serializerConstructors[serializerType] = constructor;
-        }
-
-        return constructor();
-    }
-
-    private static Func<Serializer> BuildSerializerConstructor(Type serializerType)
-    {
         try
         {
-            NewExpression body = Expression.New(serializerType);
-            return Expression.Lambda<Func<Serializer>>(body).Compile();
+            if (Activator.CreateInstance(serializerType) is Serializer serializer)
+            {
+                return serializer;
+            }
         }
         catch (Exception ex)
         {
-            throw new InvalidDataException($"failed to build serializer constructor for {serializerType}: {ex.Message}");
+            throw new InvalidDataException($"failed to create serializer for {serializerType}: {ex.Message}");
         }
+
+        throw new InvalidDataException($"{serializerType} is not a serializer");
     }
 
     private static MetaString ReadMetaString(ByteReader reader, MetaStringDecoder decoder, IReadOnlyList<MetaStringEncoding> encodings)
