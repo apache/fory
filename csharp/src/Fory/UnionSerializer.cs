@@ -20,7 +20,7 @@ using System.Reflection;
 
 namespace Apache.Fory;
 
-public sealed class UnionSerializer<TUnion> : TypedSerializer<TUnion>
+public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
     where TUnion : Union
 {
     private static readonly Func<int, object?, TUnion> Factory = BuildFactory();

@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-internal sealed class BoolArraySerializer : TypedSerializer<bool[]>
+internal sealed class BoolArraySerializer : Serializer<bool[]>
 {
     public override TypeId StaticTypeId => TypeId.BoolArray;
 
@@ -53,7 +53,7 @@ internal sealed class BoolArraySerializer : TypedSerializer<bool[]>
     }
 }
 
-internal sealed class Int8ArraySerializer : TypedSerializer<sbyte[]>
+internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 {
     public override TypeId StaticTypeId => TypeId.Int8Array;
 
@@ -89,7 +89,7 @@ internal sealed class Int8ArraySerializer : TypedSerializer<sbyte[]>
     }
 }
 
-internal sealed class Int16ArraySerializer : TypedSerializer<short[]>
+internal sealed class Int16ArraySerializer : Serializer<short[]>
 {
     public override TypeId StaticTypeId => TypeId.Int16Array;
 
@@ -130,7 +130,7 @@ internal sealed class Int16ArraySerializer : TypedSerializer<short[]>
     }
 }
 
-internal sealed class Int32ArraySerializer : TypedSerializer<int[]>
+internal sealed class Int32ArraySerializer : Serializer<int[]>
 {
     public override TypeId StaticTypeId => TypeId.Int32Array;
 
@@ -171,7 +171,7 @@ internal sealed class Int32ArraySerializer : TypedSerializer<int[]>
     }
 }
 
-internal sealed class Int64ArraySerializer : TypedSerializer<long[]>
+internal sealed class Int64ArraySerializer : Serializer<long[]>
 {
     public override TypeId StaticTypeId => TypeId.Int64Array;
 
@@ -212,7 +212,7 @@ internal sealed class Int64ArraySerializer : TypedSerializer<long[]>
     }
 }
 
-internal sealed class UInt16ArraySerializer : TypedSerializer<ushort[]>
+internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 {
     public override TypeId StaticTypeId => TypeId.UInt16Array;
 
@@ -253,7 +253,7 @@ internal sealed class UInt16ArraySerializer : TypedSerializer<ushort[]>
     }
 }
 
-internal sealed class UInt32ArraySerializer : TypedSerializer<uint[]>
+internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 {
     public override TypeId StaticTypeId => TypeId.UInt32Array;
 
@@ -294,7 +294,7 @@ internal sealed class UInt32ArraySerializer : TypedSerializer<uint[]>
     }
 }
 
-internal sealed class UInt64ArraySerializer : TypedSerializer<ulong[]>
+internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 {
     public override TypeId StaticTypeId => TypeId.UInt64Array;
 
@@ -335,7 +335,7 @@ internal sealed class UInt64ArraySerializer : TypedSerializer<ulong[]>
     }
 }
 
-internal sealed class Float32ArraySerializer : TypedSerializer<float[]>
+internal sealed class Float32ArraySerializer : Serializer<float[]>
 {
     public override TypeId StaticTypeId => TypeId.Float32Array;
 
@@ -376,7 +376,7 @@ internal sealed class Float32ArraySerializer : TypedSerializer<float[]>
     }
 }
 
-internal sealed class Float64ArraySerializer : TypedSerializer<double[]>
+internal sealed class Float64ArraySerializer : Serializer<double[]>
 {
     public override TypeId StaticTypeId => TypeId.Float64Array;
 

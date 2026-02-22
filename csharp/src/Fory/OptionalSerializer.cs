@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public sealed class NullableSerializer<T> : TypedSerializer<T?> where T : struct
+public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
 {
     public override TypeId StaticTypeId => TypeResolver.StaticTypeIdOf<T>();
 

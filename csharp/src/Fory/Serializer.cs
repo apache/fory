@@ -17,46 +17,159 @@
 
 namespace Apache.Fory;
 
-public readonly struct Serializer<T>
+public abstract class Serializer
 {
-    private readonly ITypedSerializer<T>? _serializer;
+    public abstract Type Type { get; }
 
-    internal Serializer(ITypedSerializer<T> serializer)
+    public abstract TypeId StaticTypeId { get; }
+
+    public abstract bool IsNullableType { get; }
+
+    public abstract bool IsReferenceTrackableType { get; }
+
+    public abstract object? DefaultObject { get; }
+
+    public abstract bool IsNoneObject(object? value);
+
+    public abstract void WriteDataObject(ref WriteContext context, object? value, bool hasGenerics);
+
+    public abstract object? ReadDataObject(ref ReadContext context);
+
+    public abstract void WriteObject(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics);
+
+    public abstract object? ReadObject(ref ReadContext context, RefMode refMode, bool readTypeInfo);
+
+    public abstract void WriteTypeInfo(ref WriteContext context);
+
+    public abstract void ReadTypeInfo(ref ReadContext context);
+
+    public abstract IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef);
+
+    public abstract Serializer<T> RequireSerializer<T>();
+}
+
+public abstract class Serializer<T> : Serializer
+{
+    public override Type Type => typeof(T);
+
+    public abstract override TypeId StaticTypeId { get; }
+
+    public override bool IsNullableType => false;
+
+    public override bool IsReferenceTrackableType => false;
+
+    public virtual T DefaultValue => default!;
+
+    public override object? DefaultObject => DefaultValue;
+
+    public virtual bool IsNone(in T value)
     {
-        _serializer = serializer;
+        _ = value;
+        return false;
     }
 
-    private ITypedSerializer<T> SerializerImpl
+    public abstract void WriteData(ref WriteContext context, in T value, bool hasGenerics);
+
+    public abstract T ReadData(ref ReadContext context);
+
+    public virtual void Write(ref WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
-        get
+        if (refMode != RefMode.None)
         {
-            if (_serializer is null)
+            bool wroteTrackingRefFlag = false;
+            if (refMode == RefMode.Tracking &&
+                IsReferenceTrackableType &&
+                value is object obj)
             {
-                throw new InvalidDataException($"serializer handle for {typeof(T)} is not initialized");
+                if (context.RefWriter.TryWriteReference(context.Writer, obj))
+                {
+                    return;
+                }
+
+                wroteTrackingRefFlag = true;
             }
 
-            return _serializer;
+            if (!wroteTrackingRefFlag)
+            {
+                if (IsNullableType && IsNone(value))
+                {
+                    context.Writer.WriteInt8((sbyte)RefFlag.Null);
+                    return;
+                }
+
+                context.Writer.WriteInt8((sbyte)RefFlag.NotNullValue);
+            }
         }
+
+        if (writeTypeInfo)
+        {
+            WriteTypeInfo(ref context);
+        }
+
+        WriteData(ref context, value, hasGenerics);
     }
 
-    public Type Type => typeof(T);
-
-    public TypeId StaticTypeId => SerializerImpl.StaticTypeId;
-
-    public bool IsNullableType => SerializerImpl.IsNullableType;
-
-    public bool IsReferenceTrackableType => SerializerImpl.IsReferenceTrackableType;
-
-    public T DefaultValue => SerializerImpl.DefaultValue;
-
-    public object? DefaultObject => SerializerImpl.DefaultValue;
-
-    public bool IsNone(in T value)
+    public virtual T Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return SerializerImpl.IsNone(value);
+        if (refMode != RefMode.None)
+        {
+            sbyte rawFlag = context.Reader.ReadInt8();
+            RefFlag flag = (RefFlag)rawFlag;
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                {
+                    uint refId = context.Reader.ReadVarUInt32();
+                    return context.RefReader.ReadRef<T>(refId);
+                }
+                case RefFlag.RefValue:
+                {
+                    uint reservedRefId = context.RefReader.ReserveRefId();
+                    context.PushPendingReference(reservedRefId);
+                    if (readTypeInfo)
+                    {
+                        ReadTypeInfo(ref context);
+                    }
+
+                    T value = ReadData(ref context);
+                    context.FinishPendingReferenceIfNeeded(value);
+                    context.PopPendingReference();
+                    return value;
+                }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {rawFlag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            ReadTypeInfo(ref context);
+        }
+
+        return ReadData(ref context);
     }
 
-    public bool IsNoneObject(object? value)
+    public override void WriteTypeInfo(ref WriteContext context)
+    {
+        context.TypeResolver.WriteTypeInfo(Type, this, ref context);
+    }
+
+    public override void ReadTypeInfo(ref ReadContext context)
+    {
+        context.TypeResolver.ReadTypeInfo(Type, this, ref context);
+    }
+
+    public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
+    {
+        _ = trackRef;
+        return [];
+    }
+
+    public override bool IsNoneObject(object? value)
     {
         if (value is null)
         {
@@ -66,38 +179,49 @@ public readonly struct Serializer<T>
         return value is T typed && IsNone(typed);
     }
 
-    public void WriteData(ref WriteContext context, in T value, bool hasGenerics)
+    public override void WriteDataObject(ref WriteContext context, object? value, bool hasGenerics)
     {
-        SerializerImpl.WriteData(ref context, value, hasGenerics);
+        WriteData(ref context, CoerceValue(value), hasGenerics);
     }
 
-    public T ReadData(ref ReadContext context)
+    public override object? ReadDataObject(ref ReadContext context)
     {
-        return SerializerImpl.ReadData(ref context);
+        return ReadData(ref context);
     }
 
-    public void Write(ref WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public override void WriteObject(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
-        SerializerImpl.Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
+        Write(ref context, CoerceValue(value), refMode, writeTypeInfo, hasGenerics);
     }
 
-    public T Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public override object? ReadObject(ref ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return SerializerImpl.Read(ref context, refMode, readTypeInfo);
+        return Read(ref context, refMode, readTypeInfo);
     }
 
-    public void WriteTypeInfo(ref WriteContext context)
+    public override Serializer<TCast> RequireSerializer<TCast>()
     {
-        SerializerImpl.WriteTypeInfo(ref context);
+        if (typeof(TCast) == typeof(T))
+        {
+            return (Serializer<TCast>)(object)this;
+        }
+
+        throw new InvalidDataException($"serializer type mismatch for {typeof(TCast)}");
     }
 
-    public void ReadTypeInfo(ref ReadContext context)
+    protected virtual T CoerceValue(object? value)
     {
-        SerializerImpl.ReadTypeInfo(ref context);
-    }
+        if (value is T typed)
+        {
+            return typed;
+        }
 
-    public IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
-    {
-        return SerializerImpl.CompatibleTypeMetaFields(trackRef);
+        if (value is null && IsNullableType)
+        {
+            return DefaultValue;
+        }
+
+        throw new InvalidDataException(
+            $"serializer {GetType().Name} expected value of type {typeof(T)}, got {value?.GetType()}");
     }
 }

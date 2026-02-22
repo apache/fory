@@ -1025,7 +1025,7 @@ public sealed class MyExt
     public int Id { get; set; }
 }
 
-public sealed class MyExtSerializer : TypedSerializer<MyExt>
+public sealed class MyExtSerializer : Serializer<MyExt>
 {
     public override TypeId StaticTypeId => TypeId.Ext;
     public override bool IsNullableType => true;

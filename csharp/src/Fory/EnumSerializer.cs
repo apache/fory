@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public sealed class EnumSerializer<TEnum> : TypedSerializer<TEnum> where TEnum : struct, Enum
+public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : struct, Enum
 {
     public override TypeId StaticTypeId => TypeId.Enum;
     public override TEnum DefaultValue => default;

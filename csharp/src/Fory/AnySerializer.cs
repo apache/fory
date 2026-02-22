@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public sealed class DynamicAnyObjectSerializer : TypedSerializer<object?>
+public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 {
     public override TypeId StaticTypeId => TypeId.Unknown;
     public override bool IsNullableType => true;
@@ -149,7 +149,7 @@ public sealed class DynamicAnyObjectSerializer : TypedSerializer<object?>
 
     private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
     {
-        SerializerBinding serializer = typeResolver.GetBinding(value.GetType());
+        Serializer serializer = typeResolver.GetBinding(value.GetType());
         return serializer.IsReferenceTrackableType;
     }
 }
@@ -164,7 +164,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        SerializerBinding serializer = context.TypeResolver.GetBinding(value.GetType());
+        Serializer serializer = context.TypeResolver.GetBinding(value.GetType());
         serializer.WriteTypeInfo(ref context);
     }
 
@@ -210,7 +210,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        SerializerBinding serializer = context.TypeResolver.GetBinding(value.GetType());
+        Serializer serializer = context.TypeResolver.GetBinding(value.GetType());
         serializer.WriteDataObject(ref context, value, hasGenerics);
     }
 }

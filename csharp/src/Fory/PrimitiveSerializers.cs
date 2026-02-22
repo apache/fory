@@ -66,7 +66,7 @@ public readonly record struct ForyTimestamp(long Seconds, uint Nanos)
     }
 }
 
-public sealed class BoolSerializer : TypedSerializer<bool>
+public sealed class BoolSerializer : Serializer<bool>
 {
     public override TypeId StaticTypeId => TypeId.Bool;
 
@@ -84,7 +84,7 @@ public sealed class BoolSerializer : TypedSerializer<bool>
     }
 }
 
-public sealed class Int8Serializer : TypedSerializer<sbyte>
+public sealed class Int8Serializer : Serializer<sbyte>
 {
     public override TypeId StaticTypeId => TypeId.Int8;
 
@@ -102,7 +102,7 @@ public sealed class Int8Serializer : TypedSerializer<sbyte>
     }
 }
 
-public sealed class Int16Serializer : TypedSerializer<short>
+public sealed class Int16Serializer : Serializer<short>
 {
     public override TypeId StaticTypeId => TypeId.Int16;
 
@@ -120,7 +120,7 @@ public sealed class Int16Serializer : TypedSerializer<short>
     }
 }
 
-public sealed class Int32Serializer : TypedSerializer<int>
+public sealed class Int32Serializer : Serializer<int>
 {
     public override TypeId StaticTypeId => TypeId.VarInt32;
 
@@ -138,7 +138,7 @@ public sealed class Int32Serializer : TypedSerializer<int>
     }
 }
 
-public sealed class Int64Serializer : TypedSerializer<long>
+public sealed class Int64Serializer : Serializer<long>
 {
     public override TypeId StaticTypeId => TypeId.VarInt64;
 
@@ -156,7 +156,7 @@ public sealed class Int64Serializer : TypedSerializer<long>
     }
 }
 
-public sealed class UInt8Serializer : TypedSerializer<byte>
+public sealed class UInt8Serializer : Serializer<byte>
 {
     public override TypeId StaticTypeId => TypeId.UInt8;
 
@@ -174,7 +174,7 @@ public sealed class UInt8Serializer : TypedSerializer<byte>
     }
 }
 
-public sealed class UInt16Serializer : TypedSerializer<ushort>
+public sealed class UInt16Serializer : Serializer<ushort>
 {
     public override TypeId StaticTypeId => TypeId.UInt16;
 
@@ -192,7 +192,7 @@ public sealed class UInt16Serializer : TypedSerializer<ushort>
     }
 }
 
-public sealed class UInt32Serializer : TypedSerializer<uint>
+public sealed class UInt32Serializer : Serializer<uint>
 {
     public override TypeId StaticTypeId => TypeId.VarUInt32;
 
@@ -210,7 +210,7 @@ public sealed class UInt32Serializer : TypedSerializer<uint>
     }
 }
 
-public sealed class UInt64Serializer : TypedSerializer<ulong>
+public sealed class UInt64Serializer : Serializer<ulong>
 {
     public override TypeId StaticTypeId => TypeId.VarUInt64;
 
@@ -228,7 +228,7 @@ public sealed class UInt64Serializer : TypedSerializer<ulong>
     }
 }
 
-public sealed class Float32Serializer : TypedSerializer<float>
+public sealed class Float32Serializer : Serializer<float>
 {
     public override TypeId StaticTypeId => TypeId.Float32;
 
@@ -246,7 +246,7 @@ public sealed class Float32Serializer : TypedSerializer<float>
     }
 }
 
-public sealed class Float64Serializer : TypedSerializer<double>
+public sealed class Float64Serializer : Serializer<double>
 {
     public override TypeId StaticTypeId => TypeId.Float64;
 
@@ -264,7 +264,7 @@ public sealed class Float64Serializer : TypedSerializer<double>
     }
 }
 
-public sealed class BinarySerializer : TypedSerializer<byte[]>
+public sealed class BinarySerializer : Serializer<byte[]>
 {
     public override TypeId StaticTypeId => TypeId.Binary;
 
@@ -289,7 +289,7 @@ public sealed class BinarySerializer : TypedSerializer<byte[]>
     }
 }
 
-public sealed class ForyInt32FixedSerializer : TypedSerializer<ForyInt32Fixed>
+public sealed class ForyInt32FixedSerializer : Serializer<ForyInt32Fixed>
 {
     public override TypeId StaticTypeId => TypeId.Int32;
 
@@ -307,7 +307,7 @@ public sealed class ForyInt32FixedSerializer : TypedSerializer<ForyInt32Fixed>
     }
 }
 
-public sealed class ForyInt64FixedSerializer : TypedSerializer<ForyInt64Fixed>
+public sealed class ForyInt64FixedSerializer : Serializer<ForyInt64Fixed>
 {
     public override TypeId StaticTypeId => TypeId.Int64;
 
@@ -325,7 +325,7 @@ public sealed class ForyInt64FixedSerializer : TypedSerializer<ForyInt64Fixed>
     }
 }
 
-public sealed class ForyInt64TaggedSerializer : TypedSerializer<ForyInt64Tagged>
+public sealed class ForyInt64TaggedSerializer : Serializer<ForyInt64Tagged>
 {
     public override TypeId StaticTypeId => TypeId.TaggedInt64;
 
@@ -343,7 +343,7 @@ public sealed class ForyInt64TaggedSerializer : TypedSerializer<ForyInt64Tagged>
     }
 }
 
-public sealed class ForyUInt32FixedSerializer : TypedSerializer<ForyUInt32Fixed>
+public sealed class ForyUInt32FixedSerializer : Serializer<ForyUInt32Fixed>
 {
     public override TypeId StaticTypeId => TypeId.UInt32;
 
@@ -361,7 +361,7 @@ public sealed class ForyUInt32FixedSerializer : TypedSerializer<ForyUInt32Fixed>
     }
 }
 
-public sealed class ForyUInt64FixedSerializer : TypedSerializer<ForyUInt64Fixed>
+public sealed class ForyUInt64FixedSerializer : Serializer<ForyUInt64Fixed>
 {
     public override TypeId StaticTypeId => TypeId.UInt64;
 
@@ -379,7 +379,7 @@ public sealed class ForyUInt64FixedSerializer : TypedSerializer<ForyUInt64Fixed>
     }
 }
 
-public sealed class ForyUInt64TaggedSerializer : TypedSerializer<ForyUInt64Tagged>
+public sealed class ForyUInt64TaggedSerializer : Serializer<ForyUInt64Tagged>
 {
     public override TypeId StaticTypeId => TypeId.TaggedUInt64;
 
@@ -397,7 +397,7 @@ public sealed class ForyUInt64TaggedSerializer : TypedSerializer<ForyUInt64Tagge
     }
 }
 
-public sealed class DateOnlySerializer : TypedSerializer<DateOnly>
+public sealed class DateOnlySerializer : Serializer<DateOnly>
 {
     private static readonly DateOnly Epoch = new(1970, 1, 1);
 
@@ -419,7 +419,7 @@ public sealed class DateOnlySerializer : TypedSerializer<DateOnly>
     }
 }
 
-public sealed class DateTimeOffsetSerializer : TypedSerializer<DateTimeOffset>
+public sealed class DateTimeOffsetSerializer : Serializer<DateTimeOffset>
 {
     public override TypeId StaticTypeId => TypeId.Timestamp;
 
@@ -441,7 +441,7 @@ public sealed class DateTimeOffsetSerializer : TypedSerializer<DateTimeOffset>
     }
 }
 
-public sealed class DateTimeSerializer : TypedSerializer<DateTime>
+public sealed class DateTimeSerializer : Serializer<DateTime>
 {
     public override TypeId StaticTypeId => TypeId.Timestamp;
 
@@ -469,7 +469,7 @@ public sealed class DateTimeSerializer : TypedSerializer<DateTime>
     }
 }
 
-public sealed class TimeSpanSerializer : TypedSerializer<TimeSpan>
+public sealed class TimeSpanSerializer : Serializer<TimeSpan>
 {
     public override TypeId StaticTypeId => TypeId.Duration;
 

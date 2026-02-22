@@ -391,7 +391,7 @@ internal static class DynamicContainerCodec
     }
 }
 
-public sealed class ArraySerializer<T> : TypedSerializer<T[]>
+public sealed class ArraySerializer<T> : Serializer<T[]>
 {
     public override TypeId StaticTypeId => TypeId.List;
     public override bool IsNullableType => true;
@@ -416,7 +416,7 @@ public sealed class ArraySerializer<T> : TypedSerializer<T[]>
     }
 }
 
-public class ListSerializer<T> : TypedSerializer<List<T>>
+public class ListSerializer<T> : Serializer<List<T>>
 {
     public override TypeId StaticTypeId => TypeId.List;
     public override bool IsNullableType => true;
@@ -436,7 +436,7 @@ public class ListSerializer<T> : TypedSerializer<List<T>>
     }
 }
 
-public sealed class SetSerializer<T> : TypedSerializer<HashSet<T>> where T : notnull
+public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 {
     public override TypeId StaticTypeId => TypeId.Set;
     public override bool IsNullableType => true;

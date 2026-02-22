@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 
 namespace Apache.Fory;
 
@@ -25,7 +26,7 @@ internal sealed record RegisteredTypeInfo(
     bool RegisterByName,
     MetaString? NamespaceName,
     MetaString TypeName,
-    SerializerBinding Serializer);
+    Serializer Serializer);
 
 internal enum DynamicRegistrationMode
 {
@@ -45,8 +46,9 @@ internal sealed class TypeReader
 
 public sealed class TypeResolver
 {
-    private static readonly ConcurrentDictionary<Type, Func<SerializerBinding>> GeneratedFactories = new();
-    private static readonly ConcurrentDictionary<Type, SerializerBinding> SharedBindings = new();
+    private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
+    private static readonly ConcurrentDictionary<Type, Func<Serializer>> SerializerConstructors = new();
+    private static readonly ConcurrentDictionary<Type, Serializer> SharedBindings = new();
     private static readonly ConcurrentDictionary<Type, TypeInfo> SharedTypeInfos = new();
     private static int _sharedCacheVersion;
 
@@ -55,7 +57,7 @@ public sealed class TypeResolver
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
     private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
-    private readonly ConcurrentDictionary<Type, SerializerBinding> _serializerBindings = new();
+    private readonly ConcurrentDictionary<Type, Serializer> _serializerBindings = new();
     private readonly ConcurrentDictionary<Type, TypeInfo> _typeInfos = new();
     private int _cacheVersion;
 
@@ -76,14 +78,14 @@ public sealed class TypeResolver
     {
         public static int Version = -1;
         public static TypeResolver? Resolver;
-        public static ITypedSerializer<T>? Cached;
+        public static Serializer<T>? Cached;
     }
 
     public static void RegisterGenerated<T, TSerializer>()
-        where TSerializer : TypedSerializer<T>, new()
+        where TSerializer : Serializer<T>, new()
     {
         Type type = typeof(T);
-        GeneratedFactories[type] = SerializerFactory.Create<TSerializer>;
+        GeneratedFactories[type] = CreateSerializer<TSerializer>;
         SharedBindings.TryRemove(type, out _);
         SharedTypeInfos.TryRemove(type, out _);
         unchecked
@@ -127,14 +129,14 @@ public sealed class TypeResolver
             ReferenceEquals(SerializerCache<T>.Resolver, this) &&
             SerializerCache<T>.Cached is not null)
         {
-            return new Serializer<T>(SerializerCache<T>.Cached);
+            return SerializerCache<T>.Cached;
         }
 
-        ITypedSerializer<T> typedSerializer = GetTypeInfo<T>().Serializer.RequireTypedSerializer<T>();
+        Serializer<T> typedSerializer = GetTypeInfo<T>().Serializer.RequireSerializer<T>();
         SerializerCache<T>.Resolver = this;
         SerializerCache<T>.Version = _cacheVersion;
         SerializerCache<T>.Cached = typedSerializer;
-        return new Serializer<T>(typedSerializer);
+        return typedSerializer;
     }
 
     public TypeInfo GetTypeInfo(Type type)
@@ -158,20 +160,20 @@ public sealed class TypeResolver
         return typeInfo;
     }
 
-    internal SerializerBinding GetBinding(Type type)
+    internal Serializer GetBinding(Type type)
     {
         return _serializerBindings.GetOrAdd(type, CreateBindingCore);
     }
 
-    internal SerializerBinding RegisterCustom<T, TSerializer>()
-        where TSerializer : TypedSerializer<T>, new()
+    internal Serializer RegisterCustom<T, TSerializer>()
+        where TSerializer : Serializer<T>, new()
     {
-        SerializerBinding serializerBinding = SerializerFactory.Create<TSerializer>();
+        Serializer serializerBinding = CreateSerializer<TSerializer>();
         RegisterCustom(typeof(T), serializerBinding);
         return serializerBinding;
     }
 
-    internal void RegisterCustom(Type type, SerializerBinding serializerBinding)
+    internal void RegisterCustom(Type type, Serializer serializerBinding)
     {
         _serializerBindings[type] = serializerBinding;
         _typeInfos.TryRemove(type, out _);
@@ -181,9 +183,9 @@ public sealed class TypeResolver
         }
     }
 
-    internal void Register(Type type, uint id, SerializerBinding? explicitSerializer = null)
+    internal void Register(Type type, uint id, Serializer? explicitSerializer = null)
     {
-        SerializerBinding serializer = explicitSerializer ?? GetBinding(type);
+        Serializer serializer = explicitSerializer ?? GetBinding(type);
         RegisteredTypeInfo info = new(
             id,
             serializer.StaticTypeId,
@@ -205,9 +207,9 @@ public sealed class TypeResolver
         };
     }
 
-    internal void Register(Type type, string namespaceName, string typeName, SerializerBinding? explicitSerializer = null)
+    internal void Register(Type type, string namespaceName, string typeName, Serializer? explicitSerializer = null)
     {
-        SerializerBinding serializer = explicitSerializer ?? GetBinding(type);
+        Serializer serializer = explicitSerializer ?? GetBinding(type);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
         RegisteredTypeInfo info = new(
@@ -246,7 +248,7 @@ public sealed class TypeResolver
         throw new TypeNotRegisteredException($"{type} is not registered");
     }
 
-    internal void WriteTypeInfo(Type type, SerializerBinding serializer, ref WriteContext context)
+    internal void WriteTypeInfo(Type type, Serializer serializer, ref WriteContext context)
     {
         TypeId staticTypeId = serializer.StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
@@ -313,7 +315,7 @@ public sealed class TypeResolver
         }
     }
 
-    internal void ReadTypeInfo(Type type, SerializerBinding serializer, ref ReadContext context)
+    internal void ReadTypeInfo(Type type, Serializer serializer, ref ReadContext context)
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
@@ -924,7 +926,7 @@ public sealed class TypeResolver
         return result;
     }
 
-    private static SerializerBinding GetSharedBinding(Type type)
+    private static Serializer GetSharedBinding(Type type)
     {
         return SharedBindings.GetOrAdd(type, CreateBindingCore);
     }
@@ -934,9 +936,9 @@ public sealed class TypeResolver
         return SharedTypeInfos.GetOrAdd(type, t => new TypeInfo(t, GetSharedBinding(t)));
     }
 
-    private static SerializerBinding CreateBindingCore(Type type)
+    private static Serializer CreateBindingCore(Type type)
     {
-        if (GeneratedFactories.TryGetValue(type, out Func<SerializerBinding>? generatedFactory))
+        if (GeneratedFactories.TryGetValue(type, out Func<Serializer>? generatedFactory))
         {
             return generatedFactory();
         }
@@ -1189,20 +1191,20 @@ public sealed class TypeResolver
         if (typeof(Union).IsAssignableFrom(type))
         {
             Type serializerType = typeof(UnionSerializer<>).MakeGenericType(type);
-            return SerializerFactory.Create(serializerType);
+            return CreateSerializer(serializerType);
         }
 
         if (type.IsEnum)
         {
             Type serializerType = typeof(EnumSerializer<>).MakeGenericType(type);
-            return SerializerFactory.Create(serializerType);
+            return CreateSerializer(serializerType);
         }
 
         if (type.IsArray)
         {
             Type elementType = type.GetElementType()!;
             Type serializerType = typeof(ArraySerializer<>).MakeGenericType(elementType);
-            return SerializerFactory.Create(serializerType);
+            return CreateSerializer(serializerType);
         }
 
         if (type.IsGenericType)
@@ -1212,35 +1214,64 @@ public sealed class TypeResolver
             if (genericType == typeof(Nullable<>))
             {
                 Type serializerType = typeof(NullableSerializer<>).MakeGenericType(genericArgs[0]);
-                return SerializerFactory.Create(serializerType);
+                return CreateSerializer(serializerType);
             }
 
             if (genericType == typeof(List<>))
             {
                 Type serializerType = typeof(ListSerializer<>).MakeGenericType(genericArgs[0]);
-                return SerializerFactory.Create(serializerType);
+                return CreateSerializer(serializerType);
             }
 
             if (genericType == typeof(HashSet<>))
             {
                 Type serializerType = typeof(SetSerializer<>).MakeGenericType(genericArgs[0]);
-                return SerializerFactory.Create(serializerType);
+                return CreateSerializer(serializerType);
             }
 
             if (genericType == typeof(Dictionary<,>))
             {
                 Type serializerType = typeof(DictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return SerializerFactory.Create(serializerType);
+                return CreateSerializer(serializerType);
             }
 
             if (genericType == typeof(NullableKeyDictionary<,>))
             {
                 Type serializerType = typeof(NullableKeyDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return SerializerFactory.Create(serializerType);
+                return CreateSerializer(serializerType);
             }
         }
 
         throw new TypeNotRegisteredException($"No serializer available for {type}");
+    }
+
+    private static Serializer CreateSerializer<TSerializer>()
+        where TSerializer : Serializer, new()
+    {
+        return new TSerializer();
+    }
+
+    private static Serializer CreateSerializer(Type serializerType)
+    {
+        if (!typeof(Serializer).IsAssignableFrom(serializerType))
+        {
+            throw new InvalidDataException($"{serializerType} is not a serializer");
+        }
+
+        return SerializerConstructors.GetOrAdd(serializerType, BuildSerializerConstructor)();
+    }
+
+    private static Func<Serializer> BuildSerializerConstructor(Type serializerType)
+    {
+        try
+        {
+            NewExpression body = Expression.New(serializerType);
+            return Expression.Lambda<Func<Serializer>>(body).Compile();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidDataException($"failed to build serializer constructor for {serializerType}: {ex.Message}");
+        }
     }
 
     private static MetaString ReadMetaString(ByteReader reader, MetaStringDecoder decoder, IReadOnlyList<MetaStringEncoding> encodings)

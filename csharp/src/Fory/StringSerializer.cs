@@ -19,7 +19,7 @@ using System.Text;
 
 namespace Apache.Fory;
 
-public sealed class StringSerializer : TypedSerializer<string>
+public sealed class StringSerializer : Serializer<string>
 {
     public override TypeId StaticTypeId => TypeId.String;
 

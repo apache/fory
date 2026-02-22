@@ -27,7 +27,7 @@ internal static class DictionaryBits
     public const byte DeclaredValueType = 0b0010_0000;
 }
 
-public class DictionarySerializer<TKey, TValue> : TypedSerializer<Dictionary<TKey, TValue>>
+public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TValue>>
     where TKey : notnull
 {
     public override TypeId StaticTypeId => TypeId.Map;

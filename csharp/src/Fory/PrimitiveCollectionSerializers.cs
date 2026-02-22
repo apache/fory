@@ -65,7 +65,7 @@ internal static class PrimitiveCollectionHeader
     }
 }
 
-internal sealed class ListBoolSerializer : TypedSerializer<List<bool>>
+internal sealed class ListBoolSerializer : Serializer<List<bool>>
 {
     private static readonly ListSerializer<bool> Fallback = new();
 
@@ -95,7 +95,7 @@ internal sealed class ListBoolSerializer : TypedSerializer<List<bool>>
     }
 }
 
-internal sealed class ListIntSerializer : TypedSerializer<List<int>>
+internal sealed class ListIntSerializer : Serializer<List<int>>
 {
     private static readonly ListSerializer<int> Fallback = new();
 
@@ -125,7 +125,7 @@ internal sealed class ListIntSerializer : TypedSerializer<List<int>>
     }
 }
 
-internal sealed class ListLongSerializer : TypedSerializer<List<long>>
+internal sealed class ListLongSerializer : Serializer<List<long>>
 {
     private static readonly ListSerializer<long> Fallback = new();
 
@@ -155,7 +155,7 @@ internal sealed class ListLongSerializer : TypedSerializer<List<long>>
     }
 }
 
-internal sealed class ListStringSerializer : TypedSerializer<List<string>>
+internal sealed class ListStringSerializer : Serializer<List<string>>
 {
     private static readonly ListSerializer<string> Fallback = new();
 
@@ -213,7 +213,7 @@ internal sealed class ListStringSerializer : TypedSerializer<List<string>>
     }
 }
 
-internal sealed class ListDateOnlySerializer : TypedSerializer<List<DateOnly>>
+internal sealed class ListDateOnlySerializer : Serializer<List<DateOnly>>
 {
     private static readonly ListSerializer<DateOnly> Fallback = new();
     private static readonly DateOnly Epoch = new(1970, 1, 1);
@@ -244,7 +244,7 @@ internal sealed class ListDateOnlySerializer : TypedSerializer<List<DateOnly>>
     }
 }
 
-internal sealed class ListDateTimeOffsetSerializer : TypedSerializer<List<DateTimeOffset>>
+internal sealed class ListDateTimeOffsetSerializer : Serializer<List<DateTimeOffset>>
 {
     private static readonly ListSerializer<DateTimeOffset> Fallback = new();
 
@@ -276,7 +276,7 @@ internal sealed class ListDateTimeOffsetSerializer : TypedSerializer<List<DateTi
     }
 }
 
-internal sealed class ListDateTimeSerializer : TypedSerializer<List<DateTime>>
+internal sealed class ListDateTimeSerializer : Serializer<List<DateTime>>
 {
     private static readonly ListSerializer<DateTime> Fallback = new();
 
@@ -314,7 +314,7 @@ internal sealed class ListDateTimeSerializer : TypedSerializer<List<DateTime>>
     }
 }
 
-internal sealed class ListTimeSpanSerializer : TypedSerializer<List<TimeSpan>>
+internal sealed class ListTimeSpanSerializer : Serializer<List<TimeSpan>>
 {
     private static readonly ListSerializer<TimeSpan> Fallback = new();
 
@@ -347,7 +347,7 @@ internal sealed class ListTimeSpanSerializer : TypedSerializer<List<TimeSpan>>
     }
 }
 
-internal sealed class DictionaryStringStringSerializer : TypedSerializer<Dictionary<string, string>>
+internal sealed class DictionaryStringStringSerializer : Serializer<Dictionary<string, string>>
 {
     private static readonly DictionarySerializer<string, string> Fallback = new();
 
@@ -432,7 +432,7 @@ internal sealed class DictionaryStringStringSerializer : TypedSerializer<Diction
     }
 }
 
-internal sealed class DictionaryStringIntSerializer : TypedSerializer<Dictionary<string, int>>
+internal sealed class DictionaryStringIntSerializer : Serializer<Dictionary<string, int>>
 {
     private static readonly DictionarySerializer<string, int> Fallback = new();
 
@@ -463,7 +463,7 @@ internal sealed class DictionaryStringIntSerializer : TypedSerializer<Dictionary
     }
 }
 
-internal sealed class DictionaryStringLongSerializer : TypedSerializer<Dictionary<string, long>>
+internal sealed class DictionaryStringLongSerializer : Serializer<Dictionary<string, long>>
 {
     private static readonly DictionarySerializer<string, long> Fallback = new();
 
@@ -494,7 +494,7 @@ internal sealed class DictionaryStringLongSerializer : TypedSerializer<Dictionar
     }
 }
 
-internal sealed class DictionaryStringBoolSerializer : TypedSerializer<Dictionary<string, bool>>
+internal sealed class DictionaryStringBoolSerializer : Serializer<Dictionary<string, bool>>
 {
     private static readonly DictionarySerializer<string, bool> Fallback = new();
 
@@ -525,7 +525,7 @@ internal sealed class DictionaryStringBoolSerializer : TypedSerializer<Dictionar
     }
 }
 
-internal sealed class DictionaryStringDoubleSerializer : TypedSerializer<Dictionary<string, double>>
+internal sealed class DictionaryStringDoubleSerializer : Serializer<Dictionary<string, double>>
 {
     private static readonly DictionarySerializer<string, double> Fallback = new();
 
@@ -556,7 +556,7 @@ internal sealed class DictionaryStringDoubleSerializer : TypedSerializer<Diction
     }
 }
 
-internal sealed class DictionaryIntIntSerializer : TypedSerializer<Dictionary<int, int>>
+internal sealed class DictionaryIntIntSerializer : Serializer<Dictionary<int, int>>
 {
     private static readonly DictionarySerializer<int, int> Fallback = new();
 
@@ -589,7 +589,7 @@ internal sealed class DictionaryIntIntSerializer : TypedSerializer<Dictionary<in
     }
 }
 
-internal sealed class DictionaryLongLongSerializer : TypedSerializer<Dictionary<long, long>>
+internal sealed class DictionaryLongLongSerializer : Serializer<Dictionary<long, long>>
 {
     private static readonly DictionarySerializer<long, long> Fallback = new();
 

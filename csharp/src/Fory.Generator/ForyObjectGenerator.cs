@@ -135,7 +135,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
-        sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.TypedSerializer<{model.TypeName}>");
+        sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
         sb.AppendLine("{");
         sb.AppendLine("    private static global::Apache.Fory.RefMode __ForyRefMode(bool nullable, bool trackRef)");
         sb.AppendLine("    {");

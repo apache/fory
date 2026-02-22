@@ -388,7 +388,7 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
     }
 }
 
-public sealed class NullableKeyDictionarySerializer<TKey, TValue> : TypedSerializer<NullableKeyDictionary<TKey, TValue>>
+public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
     public override TypeId StaticTypeId => TypeId.Map;
     public override bool IsNullableType => true;

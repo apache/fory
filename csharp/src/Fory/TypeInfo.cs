@@ -19,7 +19,7 @@ namespace Apache.Fory;
 
 public sealed class TypeInfo
 {
-    internal TypeInfo(Type type, SerializerBinding serializer)
+    internal TypeInfo(Type type, Serializer serializer)
     {
         Type = type;
         Serializer = serializer;
@@ -31,7 +31,7 @@ public sealed class TypeInfo
 
     public Type Type { get; }
 
-    internal SerializerBinding Serializer { get; }
+    internal Serializer Serializer { get; }
 
     public TypeId StaticTypeId { get; }
 
