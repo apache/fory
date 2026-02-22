@@ -1273,6 +1273,16 @@ public sealed class TypeResolver
             return new DictionaryLongLongSerializer();
         }
 
+        if (type == typeof(Dictionary<uint, uint>))
+        {
+            return new DictionaryUIntUIntSerializer();
+        }
+
+        if (type == typeof(Dictionary<ulong, ulong>))
+        {
+            return new DictionaryULongULongSerializer();
+        }
+
         if (type == typeof(ForyInt32Fixed))
         {
             return new ForyInt32FixedSerializer();

@@ -229,6 +229,26 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void PrimitiveUnsignedDictionaryRoundTrip()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        static void AssertMapRoundTrip<TKey, TValue>(ForyRuntime runtime, Dictionary<TKey, TValue> source)
+            where TKey : notnull
+        {
+            Dictionary<TKey, TValue> decoded = runtime.Deserialize<Dictionary<TKey, TValue>>(runtime.Serialize(source));
+            Assert.Equal(source.Count, decoded.Count);
+            foreach ((TKey key, TValue value) in source)
+            {
+                Assert.Equal(value, decoded[key]);
+            }
+        }
+
+        AssertMapRoundTrip(fory, new Dictionary<uint, uint> { [1] = 7, [2] = 4_000_000_000 });
+        AssertMapRoundTrip(fory, new Dictionary<ulong, ulong> { [1] = 7, [2] = 12_000_000_000 });
+    }
+
+    [Fact]
     public void StreamDeserializeConsumesSingleFrame()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();

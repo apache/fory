@@ -539,67 +539,41 @@ internal class PrimitiveStringKeyDictionarySerializer<TValue, TValueCodec>
 {
 }
 
-internal sealed class DictionaryStringStringSerializer
-    : PrimitiveDictionarySerializer<string, string, StringPrimitiveDictionaryCodec, StringPrimitiveDictionaryCodec>
+internal class PrimitiveSameTypeDictionarySerializer<TValue, TValueCodec>
+    : PrimitiveDictionarySerializer<TValue, TValue, TValueCodec, TValueCodec>
+    where TValue : notnull
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
 }
 
-internal sealed class DictionaryStringIntSerializer
-    : PrimitiveStringKeyDictionarySerializer<int, Int32PrimitiveDictionaryCodec>
-{
-}
+// String-key primitive dictionary serializers.
+internal sealed class DictionaryStringBoolSerializer : PrimitiveStringKeyDictionarySerializer<bool, BoolPrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringLongSerializer
-    : PrimitiveStringKeyDictionarySerializer<long, Int64PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringDoubleSerializer : PrimitiveStringKeyDictionarySerializer<double, Float64PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringBoolSerializer
-    : PrimitiveStringKeyDictionarySerializer<bool, BoolPrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringFloatSerializer : PrimitiveStringKeyDictionarySerializer<float, Float32PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringFloatSerializer
-    : PrimitiveStringKeyDictionarySerializer<float, Float32PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringInt8Serializer : PrimitiveStringKeyDictionarySerializer<sbyte, Int8PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringDoubleSerializer
-    : PrimitiveStringKeyDictionarySerializer<double, Float64PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringInt16Serializer : PrimitiveStringKeyDictionarySerializer<short, Int16PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringUIntSerializer
-    : PrimitiveStringKeyDictionarySerializer<uint, UInt32PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringIntSerializer : PrimitiveStringKeyDictionarySerializer<int, Int32PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringULongSerializer
-    : PrimitiveStringKeyDictionarySerializer<ulong, UInt64PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringLongSerializer : PrimitiveStringKeyDictionarySerializer<long, Int64PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringInt8Serializer
-    : PrimitiveStringKeyDictionarySerializer<sbyte, Int8PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringStringSerializer : PrimitiveStringKeyDictionarySerializer<string, StringPrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringInt16Serializer
-    : PrimitiveStringKeyDictionarySerializer<short, Int16PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringUInt16Serializer : PrimitiveStringKeyDictionarySerializer<ushort, UInt16PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryStringUInt16Serializer
-    : PrimitiveStringKeyDictionarySerializer<ushort, UInt16PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringUIntSerializer : PrimitiveStringKeyDictionarySerializer<uint, UInt32PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryIntIntSerializer
-    : PrimitiveDictionarySerializer<int, int, Int32PrimitiveDictionaryCodec, Int32PrimitiveDictionaryCodec>
-{
-}
+internal sealed class DictionaryStringULongSerializer : PrimitiveStringKeyDictionarySerializer<ulong, UInt64PrimitiveDictionaryCodec> { }
 
-internal sealed class DictionaryLongLongSerializer
-    : PrimitiveDictionarySerializer<long, long, Int64PrimitiveDictionaryCodec, Int64PrimitiveDictionaryCodec>
-{
-}
+// Same-type primitive dictionary serializers.
+internal sealed class DictionaryIntIntSerializer : PrimitiveSameTypeDictionarySerializer<int, Int32PrimitiveDictionaryCodec> { }
+
+internal sealed class DictionaryLongLongSerializer : PrimitiveSameTypeDictionarySerializer<long, Int64PrimitiveDictionaryCodec> { }
+
+internal sealed class DictionaryUIntUIntSerializer : PrimitiveSameTypeDictionarySerializer<uint, UInt32PrimitiveDictionaryCodec> { }
+
+internal sealed class DictionaryULongULongSerializer : PrimitiveSameTypeDictionarySerializer<ulong, UInt64PrimitiveDictionaryCodec> { }
