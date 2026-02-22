@@ -96,7 +96,7 @@ a = Analysis(
     excludes=[
         'unittest', 'doctest', 'pdb', 'pydoc', 'py_compile', 'profile',
         'distutils', 'setuptools', 'pkg_resources',
-        'email', 'html', 'http', 'urllib', 'xmlrpc',
+        'email', 'html', 'http', 'xmlrpc',
         'xml.etree', 'xml.dom', 'xml.sax',
         'tkinter', '_tkinter',
         'curses', '_curses', 'readline',
