@@ -38,337 +38,261 @@ internal static class PrimitiveDictionaryHeader
     }
 }
 
-internal sealed class DictionaryStringStringSerializer : Serializer<Dictionary<string, string>>
+internal interface IPrimitiveDictionaryCodec<T>
 {
-    private static readonly DictionarySerializer<string, string> Fallback = new();
+    static abstract TypeId WireTypeId { get; }
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    static abstract bool IsNullable { get; }
 
-    public override bool IsNullableType => true;
+    static abstract T DefaultValue { get; }
 
-    public override bool IsReferenceTrackableType => true;
+    static abstract bool IsNone(T value);
 
-    public override Dictionary<string, string> DefaultValue => null!;
+    static abstract void Write(ref WriteContext context, T value);
 
-    public override bool IsNone(in Dictionary<string, string> value) => value is null;
+    static abstract T Read(ref ReadContext context);
+}
 
-    public override void WriteData(ref WriteContext context, in Dictionary<string, string> value, bool hasGenerics)
+internal readonly struct StringPrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<string>
+{
+    public static TypeId WireTypeId => TypeId.String;
+
+    public static bool IsNullable => true;
+
+    public static string DefaultValue => null!;
+
+    public static bool IsNone(string value) => value is null;
+
+    public static void Write(ref WriteContext context, string value)
     {
-        Dictionary<string, string> map = value ?? [];
-        if (ContainsNull(map))
-        {
-            Fallback.WriteData(ref context, map, hasGenerics);
-            return;
-        }
-
-        WriteMapStringString(ref context, map, hasGenerics);
+        StringSerializer.WriteString(ref context, value ?? string.Empty);
     }
 
-    public override Dictionary<string, string> ReadData(ref ReadContext context)
+    public static string Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
-    }
-
-    private static bool ContainsNull(Dictionary<string, string> map)
-    {
-        foreach (KeyValuePair<string, string> pair in map)
-        {
-            if (pair.Key is null || pair.Value is null)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static void WriteMapStringString(ref WriteContext context, Dictionary<string, string> map, bool hasGenerics)
-    {
-        KeyValuePair<string, string>[] pairs = [.. map];
-        context.Writer.WriteVarUInt32((uint)pairs.Length);
-        if (pairs.Length == 0)
-        {
-            return;
-        }
-
-        bool keyDeclared = hasGenerics && !TypeId.String.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !TypeId.String.NeedsTypeInfoForField();
-        int index = 0;
-        while (index < pairs.Length)
-        {
-            int chunkSize = Math.Min(byte.MaxValue, pairs.Length - index);
-            byte header = 0;
-            if (keyDeclared)
-            {
-                header |= DictionaryBits.DeclaredKeyType;
-            }
-
-            if (valueDeclared)
-            {
-                header |= DictionaryBits.DeclaredValueType;
-            }
-
-            context.Writer.WriteUInt8(header);
-            context.Writer.WriteUInt8((byte)chunkSize);
-            PrimitiveDictionaryHeader.WriteMapChunkTypeInfo(ref context, keyDeclared, valueDeclared, TypeId.String, TypeId.String);
-            for (int i = 0; i < chunkSize; i++)
-            {
-                KeyValuePair<string, string> pair = pairs[index + i];
-                StringSerializer.WriteString(ref context, pair.Key);
-                StringSerializer.WriteString(ref context, pair.Value);
-            }
-
-            index += chunkSize;
-        }
+        return StringSerializer.ReadString(ref context);
     }
 }
 
-internal sealed class DictionaryStringIntSerializer : Serializer<Dictionary<string, int>>
+internal readonly struct BoolPrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<bool>
 {
-    private static readonly DictionarySerializer<string, int> Fallback = new();
+    public static TypeId WireTypeId => TypeId.Bool;
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    public static bool IsNullable => false;
 
-    public override bool IsNullableType => true;
+    public static bool DefaultValue => false;
 
-    public override bool IsReferenceTrackableType => true;
+    public static bool IsNone(bool value) => false;
 
-    public override Dictionary<string, int> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<string, int> value) => value is null;
-
-    public override void WriteData(ref WriteContext context, in Dictionary<string, int> value, bool hasGenerics)
+    public static void Write(ref WriteContext context, bool value)
     {
-        Dictionary<string, int> map = value ?? [];
-        PrimitiveDictionaryWriter.WriteMapStringValue(
-            ref context,
-            map,
-            hasGenerics,
-            TypeId.VarInt32,
-            static (writer, valueItem) => writer.WriteVarInt32(valueItem));
+        context.Writer.WriteUInt8(value ? (byte)1 : (byte)0);
     }
 
-    public override Dictionary<string, int> ReadData(ref ReadContext context)
+    public static bool Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return context.Reader.ReadUInt8() != 0;
     }
 }
 
-internal sealed class DictionaryStringLongSerializer : Serializer<Dictionary<string, long>>
+internal readonly struct Int8PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<sbyte>
 {
-    private static readonly DictionarySerializer<string, long> Fallback = new();
+    public static TypeId WireTypeId => TypeId.Int8;
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    public static bool IsNullable => false;
 
-    public override bool IsNullableType => true;
+    public static sbyte DefaultValue => 0;
 
-    public override bool IsReferenceTrackableType => true;
+    public static bool IsNone(sbyte value) => false;
 
-    public override Dictionary<string, long> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<string, long> value) => value is null;
-
-    public override void WriteData(ref WriteContext context, in Dictionary<string, long> value, bool hasGenerics)
+    public static void Write(ref WriteContext context, sbyte value)
     {
-        Dictionary<string, long> map = value ?? [];
-        PrimitiveDictionaryWriter.WriteMapStringValue(
-            ref context,
-            map,
-            hasGenerics,
-            TypeId.VarInt64,
-            static (writer, valueItem) => writer.WriteVarInt64(valueItem));
+        context.Writer.WriteInt8(value);
     }
 
-    public override Dictionary<string, long> ReadData(ref ReadContext context)
+    public static sbyte Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return context.Reader.ReadInt8();
     }
 }
 
-internal sealed class DictionaryStringBoolSerializer : Serializer<Dictionary<string, bool>>
+internal readonly struct Int16PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<short>
 {
-    private static readonly DictionarySerializer<string, bool> Fallback = new();
+    public static TypeId WireTypeId => TypeId.Int16;
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    public static bool IsNullable => false;
 
-    public override bool IsNullableType => true;
+    public static short DefaultValue => 0;
 
-    public override bool IsReferenceTrackableType => true;
+    public static bool IsNone(short value) => false;
 
-    public override Dictionary<string, bool> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<string, bool> value) => value is null;
-
-    public override void WriteData(ref WriteContext context, in Dictionary<string, bool> value, bool hasGenerics)
+    public static void Write(ref WriteContext context, short value)
     {
-        Dictionary<string, bool> map = value ?? [];
-        PrimitiveDictionaryWriter.WriteMapStringValue(
-            ref context,
-            map,
-            hasGenerics,
-            TypeId.Bool,
-            static (writer, valueItem) => writer.WriteUInt8(valueItem ? (byte)1 : (byte)0));
+        context.Writer.WriteInt16(value);
     }
 
-    public override Dictionary<string, bool> ReadData(ref ReadContext context)
+    public static short Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return context.Reader.ReadInt16();
     }
 }
 
-internal sealed class DictionaryStringDoubleSerializer : Serializer<Dictionary<string, double>>
+internal readonly struct Int32PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<int>
 {
-    private static readonly DictionarySerializer<string, double> Fallback = new();
+    public static TypeId WireTypeId => TypeId.VarInt32;
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    public static bool IsNullable => false;
 
-    public override bool IsNullableType => true;
+    public static int DefaultValue => 0;
 
-    public override bool IsReferenceTrackableType => true;
+    public static bool IsNone(int value) => false;
 
-    public override Dictionary<string, double> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<string, double> value) => value is null;
-
-    public override void WriteData(ref WriteContext context, in Dictionary<string, double> value, bool hasGenerics)
+    public static void Write(ref WriteContext context, int value)
     {
-        Dictionary<string, double> map = value ?? [];
-        PrimitiveDictionaryWriter.WriteMapStringValue(
-            ref context,
-            map,
-            hasGenerics,
-            TypeId.Float64,
-            static (writer, valueItem) => writer.WriteFloat64(valueItem));
+        context.Writer.WriteVarInt32(value);
     }
 
-    public override Dictionary<string, double> ReadData(ref ReadContext context)
+    public static int Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return context.Reader.ReadVarInt32();
     }
 }
 
-internal sealed class DictionaryIntIntSerializer : Serializer<Dictionary<int, int>>
+internal readonly struct Int64PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<long>
 {
-    private static readonly DictionarySerializer<int, int> Fallback = new();
+    public static TypeId WireTypeId => TypeId.VarInt64;
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    public static bool IsNullable => false;
 
-    public override bool IsNullableType => true;
+    public static long DefaultValue => 0;
 
-    public override bool IsReferenceTrackableType => true;
+    public static bool IsNone(long value) => false;
 
-    public override Dictionary<int, int> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<int, int> value) => value is null;
-
-    public override void WriteData(ref WriteContext context, in Dictionary<int, int> value, bool hasGenerics)
+    public static void Write(ref WriteContext context, long value)
     {
-        Dictionary<int, int> map = value ?? [];
-        PrimitiveDictionaryWriter.WriteMap(
-            ref context,
-            map,
-            hasGenerics,
-            TypeId.VarInt32,
-            static (writer, key) => writer.WriteVarInt32(key),
-            TypeId.VarInt32,
-            static (writer, valueItem) => writer.WriteVarInt32(valueItem));
+        context.Writer.WriteVarInt64(value);
     }
 
-    public override Dictionary<int, int> ReadData(ref ReadContext context)
+    public static long Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return context.Reader.ReadVarInt64();
     }
 }
 
-internal sealed class DictionaryLongLongSerializer : Serializer<Dictionary<long, long>>
+internal readonly struct UInt16PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<ushort>
 {
-    private static readonly DictionarySerializer<long, long> Fallback = new();
+    public static TypeId WireTypeId => TypeId.UInt16;
 
-    public override TypeId StaticTypeId => TypeId.Map;
+    public static bool IsNullable => false;
 
-    public override bool IsNullableType => true;
+    public static ushort DefaultValue => 0;
 
-    public override bool IsReferenceTrackableType => true;
+    public static bool IsNone(ushort value) => false;
 
-    public override Dictionary<long, long> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<long, long> value) => value is null;
-
-    public override void WriteData(ref WriteContext context, in Dictionary<long, long> value, bool hasGenerics)
+    public static void Write(ref WriteContext context, ushort value)
     {
-        Dictionary<long, long> map = value ?? [];
-        PrimitiveDictionaryWriter.WriteMap(
-            ref context,
-            map,
-            hasGenerics,
-            TypeId.VarInt64,
-            static (writer, key) => writer.WriteVarInt64(key),
-            TypeId.VarInt64,
-            static (writer, valueItem) => writer.WriteVarInt64(valueItem));
+        context.Writer.WriteUInt16(value);
     }
 
-    public override Dictionary<long, long> ReadData(ref ReadContext context)
+    public static ushort Read(ref ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return context.Reader.ReadUInt16();
     }
 }
 
-internal static class PrimitiveDictionaryWriter
+internal readonly struct UInt32PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<uint>
 {
-    public static void WriteMapStringValue<TValue>(
-        ref WriteContext context,
-        Dictionary<string, TValue> map,
-        bool hasGenerics,
-        TypeId valueTypeId,
-        Action<ByteWriter, TValue> writeValue)
+    public static TypeId WireTypeId => TypeId.VarUInt32;
+
+    public static bool IsNullable => false;
+
+    public static uint DefaultValue => 0;
+
+    public static bool IsNone(uint value) => false;
+
+    public static void Write(ref WriteContext context, uint value)
     {
-        KeyValuePair<string, TValue>[] pairs = [.. map];
-        context.Writer.WriteVarUInt32((uint)pairs.Length);
-        if (pairs.Length == 0)
-        {
-            return;
-        }
-
-        bool keyDeclared = hasGenerics && !TypeId.String.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueTypeId.NeedsTypeInfoForField();
-        int index = 0;
-        while (index < pairs.Length)
-        {
-            int chunkSize = Math.Min(byte.MaxValue, pairs.Length - index);
-            byte header = 0;
-            if (keyDeclared)
-            {
-                header |= DictionaryBits.DeclaredKeyType;
-            }
-
-            if (valueDeclared)
-            {
-                header |= DictionaryBits.DeclaredValueType;
-            }
-
-            context.Writer.WriteUInt8(header);
-            context.Writer.WriteUInt8((byte)chunkSize);
-            PrimitiveDictionaryHeader.WriteMapChunkTypeInfo(ref context, keyDeclared, valueDeclared, TypeId.String, valueTypeId);
-            for (int i = 0; i < chunkSize; i++)
-            {
-                KeyValuePair<string, TValue> pair = pairs[index + i];
-                StringSerializer.WriteString(ref context, pair.Key);
-                writeValue(context.Writer, pair.Value);
-            }
-
-            index += chunkSize;
-        }
+        context.Writer.WriteVarUInt32(value);
     }
 
-    public static void WriteMap<TKey, TValue>(
+    public static uint Read(ref ReadContext context)
+    {
+        return context.Reader.ReadVarUInt32();
+    }
+}
+
+internal readonly struct UInt64PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<ulong>
+{
+    public static TypeId WireTypeId => TypeId.VarUInt64;
+
+    public static bool IsNullable => false;
+
+    public static ulong DefaultValue => 0;
+
+    public static bool IsNone(ulong value) => false;
+
+    public static void Write(ref WriteContext context, ulong value)
+    {
+        context.Writer.WriteVarUInt64(value);
+    }
+
+    public static ulong Read(ref ReadContext context)
+    {
+        return context.Reader.ReadVarUInt64();
+    }
+}
+
+internal readonly struct Float32PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<float>
+{
+    public static TypeId WireTypeId => TypeId.Float32;
+
+    public static bool IsNullable => false;
+
+    public static float DefaultValue => 0;
+
+    public static bool IsNone(float value) => false;
+
+    public static void Write(ref WriteContext context, float value)
+    {
+        context.Writer.WriteFloat32(value);
+    }
+
+    public static float Read(ref ReadContext context)
+    {
+        return context.Reader.ReadFloat32();
+    }
+}
+
+internal readonly struct Float64PrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<double>
+{
+    public static TypeId WireTypeId => TypeId.Float64;
+
+    public static bool IsNullable => false;
+
+    public static double DefaultValue => 0;
+
+    public static bool IsNone(double value) => false;
+
+    public static void Write(ref WriteContext context, double value)
+    {
+        context.Writer.WriteFloat64(value);
+    }
+
+    public static double Read(ref ReadContext context)
+    {
+        return context.Reader.ReadFloat64();
+    }
+}
+
+internal static class PrimitiveDictionaryCodecWriter
+{
+    public static void WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(
         ref WriteContext context,
         Dictionary<TKey, TValue> map,
-        bool hasGenerics,
-        TypeId keyTypeId,
-        Action<ByteWriter, TKey> writeKey,
-        TypeId valueTypeId,
-        Action<ByteWriter, TValue> writeValue)
+        bool hasGenerics)
         where TKey : notnull
+        where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+        where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
     {
         KeyValuePair<TKey, TValue>[] pairs = [.. map];
         context.Writer.WriteVarUInt32((uint)pairs.Length);
@@ -377,34 +301,305 @@ internal static class PrimitiveDictionaryWriter
             return;
         }
 
+        TypeId keyTypeId = TKeyCodec.WireTypeId;
+        TypeId valueTypeId = TValueCodec.WireTypeId;
         bool keyDeclared = hasGenerics && !keyTypeId.NeedsTypeInfoForField();
         bool valueDeclared = hasGenerics && !valueTypeId.NeedsTypeInfoForField();
+        bool keyNullable = TKeyCodec.IsNullable;
+        bool valueNullable = TValueCodec.IsNullable;
+
         int index = 0;
         while (index < pairs.Length)
         {
-            int chunkSize = Math.Min(byte.MaxValue, pairs.Length - index);
-            byte header = 0;
+            KeyValuePair<TKey, TValue> pair = pairs[index];
+            bool keyNull = keyNullable && TKeyCodec.IsNone(pair.Key);
+            bool valueNull = valueNullable && TValueCodec.IsNone(pair.Value);
+            if (keyNull || valueNull)
+            {
+                byte header = 0;
+                if (keyNull)
+                {
+                    header |= DictionaryBits.KeyNull;
+                }
+                else if (keyDeclared)
+                {
+                    header |= DictionaryBits.DeclaredKeyType;
+                }
+
+                if (valueNull)
+                {
+                    header |= DictionaryBits.ValueNull;
+                }
+                else if (valueDeclared)
+                {
+                    header |= DictionaryBits.DeclaredValueType;
+                }
+
+                context.Writer.WriteUInt8(header);
+                if (!keyNull)
+                {
+                    if (!keyDeclared)
+                    {
+                        context.Writer.WriteUInt8((byte)keyTypeId);
+                    }
+
+                    TKeyCodec.Write(ref context, pair.Key);
+                }
+
+                if (!valueNull)
+                {
+                    if (!valueDeclared)
+                    {
+                        context.Writer.WriteUInt8((byte)valueTypeId);
+                    }
+
+                    TValueCodec.Write(ref context, pair.Value);
+                }
+
+                index += 1;
+                continue;
+            }
+
+            byte blockHeader = 0;
             if (keyDeclared)
             {
-                header |= DictionaryBits.DeclaredKeyType;
+                blockHeader |= DictionaryBits.DeclaredKeyType;
             }
 
             if (valueDeclared)
             {
-                header |= DictionaryBits.DeclaredValueType;
+                blockHeader |= DictionaryBits.DeclaredValueType;
             }
 
-            context.Writer.WriteUInt8(header);
-            context.Writer.WriteUInt8((byte)chunkSize);
+            context.Writer.WriteUInt8(blockHeader);
+            int chunkSizeOffset = context.Writer.Count;
+            context.Writer.WriteUInt8(0);
             PrimitiveDictionaryHeader.WriteMapChunkTypeInfo(ref context, keyDeclared, valueDeclared, keyTypeId, valueTypeId);
-            for (int i = 0; i < chunkSize; i++)
+
+            byte chunkSize = 0;
+            while (index < pairs.Length && chunkSize < byte.MaxValue)
             {
-                KeyValuePair<TKey, TValue> pair = pairs[index + i];
-                writeKey(context.Writer, pair.Key);
-                writeValue(context.Writer, pair.Value);
+                pair = pairs[index];
+                keyNull = keyNullable && TKeyCodec.IsNone(pair.Key);
+                valueNull = valueNullable && TValueCodec.IsNone(pair.Value);
+                if (keyNull || valueNull)
+                {
+                    break;
+                }
+
+                TKeyCodec.Write(ref context, pair.Key);
+                TValueCodec.Write(ref context, pair.Value);
+                index += 1;
+                chunkSize += 1;
             }
 
-            index += chunkSize;
+            context.Writer.SetByte(chunkSizeOffset, chunkSize);
         }
     }
+}
+
+internal static class PrimitiveDictionaryCodecReader
+{
+    public static Dictionary<TKey, TValue> ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref ReadContext context)
+        where TKey : notnull
+        where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+        where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+    {
+        int totalLength = checked((int)context.Reader.ReadVarUInt32());
+        if (totalLength == 0)
+        {
+            return [];
+        }
+
+        TypeId keyTypeId = TKeyCodec.WireTypeId;
+        TypeId valueTypeId = TValueCodec.WireTypeId;
+        bool keyNullable = TKeyCodec.IsNullable;
+        Dictionary<TKey, TValue> map = new(totalLength);
+
+        int readCount = 0;
+        while (readCount < totalLength)
+        {
+            byte header = context.Reader.ReadUInt8();
+            bool trackKeyRef = (header & DictionaryBits.TrackingKeyRef) != 0;
+            bool keyNull = (header & DictionaryBits.KeyNull) != 0;
+            bool keyDeclared = (header & DictionaryBits.DeclaredKeyType) != 0;
+            bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
+            bool valueNull = (header & DictionaryBits.ValueNull) != 0;
+            bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
+            if (trackKeyRef || trackValueRef)
+            {
+                throw new InvalidDataException("primitive dictionary codecs do not support reference-tracking flags");
+            }
+
+            if (keyNull && !keyNullable)
+            {
+                throw new InvalidDataException("non-nullable primitive dictionary key cannot be null");
+            }
+
+            if (keyNull && valueNull)
+            {
+                readCount += 1;
+                continue;
+            }
+
+            if (keyNull)
+            {
+                if (!valueDeclared)
+                {
+                    ReadAndValidateTypeInfo(ref context, valueTypeId);
+                }
+
+                _ = TValueCodec.Read(ref context);
+                readCount += 1;
+                continue;
+            }
+
+            if (valueNull)
+            {
+                if (!keyDeclared)
+                {
+                    ReadAndValidateTypeInfo(ref context, keyTypeId);
+                }
+
+                TKey key = TKeyCodec.Read(ref context);
+                map[key] = TValueCodec.DefaultValue;
+                readCount += 1;
+                continue;
+            }
+
+            int chunkSize = context.Reader.ReadUInt8();
+            if (chunkSize == 0)
+            {
+                throw new InvalidDataException("invalid primitive map chunk size 0");
+            }
+
+            if (!keyDeclared)
+            {
+                ReadAndValidateTypeInfo(ref context, keyTypeId);
+            }
+
+            if (!valueDeclared)
+            {
+                ReadAndValidateTypeInfo(ref context, valueTypeId);
+            }
+
+            for (int i = 0; i < chunkSize; i++)
+            {
+                TKey key = TKeyCodec.Read(ref context);
+                TValue value = TValueCodec.Read(ref context);
+                map[key] = value;
+            }
+
+            readCount += chunkSize;
+        }
+
+        return map;
+    }
+
+    private static void ReadAndValidateTypeInfo(ref ReadContext context, TypeId expectedTypeId)
+    {
+        uint actualTypeId = context.Reader.ReadVarUInt32();
+        if (actualTypeId != (uint)expectedTypeId)
+        {
+            throw new TypeMismatchException((uint)expectedTypeId, actualTypeId);
+        }
+    }
+}
+
+internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCodec> : Serializer<Dictionary<TKey, TValue>>
+    where TKey : notnull
+    where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+    public override TypeId StaticTypeId => TypeId.Map;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override Dictionary<TKey, TValue> DefaultValue => null!;
+
+    public override bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+    {
+        Dictionary<TKey, TValue> map = value ?? [];
+        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, map, hasGenerics);
+    }
+
+    public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
+    {
+        return PrimitiveDictionaryCodecReader.ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context);
+    }
+}
+
+internal class PrimitiveStringKeyDictionarySerializer<TValue, TValueCodec>
+    : PrimitiveDictionarySerializer<string, TValue, StringPrimitiveDictionaryCodec, TValueCodec>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal sealed class DictionaryStringStringSerializer
+    : PrimitiveDictionarySerializer<string, string, StringPrimitiveDictionaryCodec, StringPrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringIntSerializer
+    : PrimitiveStringKeyDictionarySerializer<int, Int32PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringLongSerializer
+    : PrimitiveStringKeyDictionarySerializer<long, Int64PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringBoolSerializer
+    : PrimitiveStringKeyDictionarySerializer<bool, BoolPrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringFloatSerializer
+    : PrimitiveStringKeyDictionarySerializer<float, Float32PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringDoubleSerializer
+    : PrimitiveStringKeyDictionarySerializer<double, Float64PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringUIntSerializer
+    : PrimitiveStringKeyDictionarySerializer<uint, UInt32PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringULongSerializer
+    : PrimitiveStringKeyDictionarySerializer<ulong, UInt64PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringInt8Serializer
+    : PrimitiveStringKeyDictionarySerializer<sbyte, Int8PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringInt16Serializer
+    : PrimitiveStringKeyDictionarySerializer<short, Int16PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryStringUInt16Serializer
+    : PrimitiveStringKeyDictionarySerializer<ushort, UInt16PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryIntIntSerializer
+    : PrimitiveDictionarySerializer<int, int, Int32PrimitiveDictionaryCodec, Int32PrimitiveDictionaryCodec>
+{
+}
+
+internal sealed class DictionaryLongLongSerializer
+    : PrimitiveDictionarySerializer<long, long, Int64PrimitiveDictionaryCodec, Int64PrimitiveDictionaryCodec>
+{
 }

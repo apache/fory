@@ -1233,6 +1233,36 @@ public sealed class TypeResolver
             return new DictionaryStringDoubleSerializer();
         }
 
+        if (type == typeof(Dictionary<string, float>))
+        {
+            return new DictionaryStringFloatSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, uint>))
+        {
+            return new DictionaryStringUIntSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, ulong>))
+        {
+            return new DictionaryStringULongSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, sbyte>))
+        {
+            return new DictionaryStringInt8Serializer();
+        }
+
+        if (type == typeof(Dictionary<string, short>))
+        {
+            return new DictionaryStringInt16Serializer();
+        }
+
+        if (type == typeof(Dictionary<string, ushort>))
+        {
+            return new DictionaryStringUInt16Serializer();
+        }
+
         if (type == typeof(Dictionary<int, int>))
         {
             return new DictionaryIntIntSerializer();
