@@ -43,10 +43,21 @@ public sealed class StringSerializer : Serializer<string>
     public static void WriteString(ref WriteContext context, string value)
     {
         string safe = value ?? string.Empty;
-        byte[] utf8 = Encoding.UTF8.GetBytes(safe);
-        ulong header = ((ulong)utf8.Length << 2) | (ulong)ForyStringEncoding.Utf8;
-        context.Writer.WriteVarUInt36Small(header);
-        context.Writer.WriteBytes(utf8);
+        ForyStringEncoding encoding = SelectEncoding(safe);
+        switch (encoding)
+        {
+            case ForyStringEncoding.Latin1:
+                WriteLatin1(ref context, safe);
+                break;
+            case ForyStringEncoding.Utf8:
+                WriteUtf8(ref context, safe);
+                break;
+            case ForyStringEncoding.Utf16:
+                WriteUtf16(ref context, safe);
+                break;
+            default:
+                throw new EncodingException($"unsupported string encoding {encoding}");
+        }
     }
 
     public static string ReadString(ref ReadContext context)
@@ -83,5 +94,76 @@ public sealed class StringSerializer : Serializer<string>
         }
 
         return Encoding.Unicode.GetString(bytes);
+    }
+
+    private static ForyStringEncoding SelectEncoding(string value)
+    {
+        int numChars = value.Length;
+        int sampleNum = Math.Min(64, numChars);
+        int asciiCount = 0;
+        int latin1Count = 0;
+        for (int i = 0; i < sampleNum; i++)
+        {
+            char c = value[i];
+            if (c < 0x80)
+            {
+                asciiCount++;
+                latin1Count++;
+            }
+            else if (c <= 0xFF)
+            {
+                latin1Count++;
+            }
+        }
+
+        if (latin1Count == numChars || (latin1Count == sampleNum && IsLatin(value, sampleNum)))
+        {
+            return ForyStringEncoding.Latin1;
+        }
+
+        return asciiCount * 2 >= sampleNum ? ForyStringEncoding.Utf8 : ForyStringEncoding.Utf16;
+    }
+
+    private static bool IsLatin(string value, int start)
+    {
+        for (int i = start; i < value.Length; i++)
+        {
+            if (value[i] > 0xFF)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void WriteLatin1(ref WriteContext context, string value)
+    {
+        byte[] latin1 = new byte[value.Length];
+        for (int i = 0; i < value.Length; i++)
+        {
+            latin1[i] = unchecked((byte)value[i]);
+        }
+
+        WriteEncodedBytes(ref context, latin1, ForyStringEncoding.Latin1);
+    }
+
+    private static void WriteUtf8(ref WriteContext context, string value)
+    {
+        byte[] utf8 = Encoding.UTF8.GetBytes(value);
+        WriteEncodedBytes(ref context, utf8, ForyStringEncoding.Utf8);
+    }
+
+    private static void WriteUtf16(ref WriteContext context, string value)
+    {
+        byte[] utf16 = Encoding.Unicode.GetBytes(value);
+        WriteEncodedBytes(ref context, utf16, ForyStringEncoding.Utf16);
+    }
+
+    private static void WriteEncodedBytes(ref WriteContext context, byte[] bytes, ForyStringEncoding encoding)
+    {
+        ulong header = ((ulong)bytes.Length << 2) | (ulong)encoding;
+        context.Writer.WriteVarUInt36Small(header);
+        context.Writer.WriteBytes(bytes);
     }
 }

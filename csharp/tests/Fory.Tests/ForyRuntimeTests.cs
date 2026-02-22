@@ -118,6 +118,10 @@ public sealed class DynamicAnyHolder
 
 public sealed class ForyRuntimeTests
 {
+    private const ulong StringEncodingLatin1 = 0;
+    private const ulong StringEncodingUtf16 = 1;
+    private const ulong StringEncodingUtf8 = 2;
+
     [Fact]
     public void PrimitiveRoundTrip()
     {
@@ -509,5 +513,58 @@ public sealed class ForyRuntimeTests
         List<object?> nested = Assert.IsType<List<object?>>(decoded.AnyMap[99]);
         Assert.Equal("n", nested[0]);
         Assert.Equal(1, nested[1]);
+    }
+
+    [Fact]
+    public void StringSerializerUsesLatin1WhenAllCharsAreLatin1()
+    {
+        (ulong encoding, string decoded) = WriteAndReadString("Hello\u00E9\u00FF");
+        Assert.Equal(StringEncodingLatin1, encoding);
+        Assert.Equal("Hello\u00E9\u00FF", decoded);
+    }
+
+    [Fact]
+    public void StringSerializerUsesUtf8WhenAsciiRatioIsHigh()
+    {
+        (ulong encoding, string decoded) = WriteAndReadString("abc\u4E16\u754C");
+        Assert.Equal(StringEncodingUtf8, encoding);
+        Assert.Equal("abc\u4E16\u754C", decoded);
+    }
+
+    [Fact]
+    public void StringSerializerUsesUtf16WhenAsciiRatioIsLow()
+    {
+        (ulong encoding, string decoded) = WriteAndReadString("\u4F60\u597D\u4E16\u754Ca");
+        Assert.Equal(StringEncodingUtf16, encoding);
+        Assert.Equal("\u4F60\u597D\u4E16\u754Ca", decoded);
+    }
+
+    [Fact]
+    public void StringSerializerValidatesBeyondSampleForLatin1()
+    {
+        string value = new string('a', 64) + "\u4E16";
+        (ulong encoding, string decoded) = WriteAndReadString(value);
+        Assert.Equal(StringEncodingUtf8, encoding);
+        Assert.Equal(value, decoded);
+    }
+
+    private static (ulong Encoding, string Decoded) WriteAndReadString(string value)
+    {
+        ByteWriter writer = new();
+        TypeResolver resolver = new();
+        WriteContext writeContext = new(writer, resolver, trackRef: false, compatible: false);
+        StringSerializer.WriteString(ref writeContext, value);
+
+        byte[] payload = writer.ToArray();
+        ByteReader headerReader = new(payload);
+        ulong header = headerReader.ReadVarUInt36Small();
+        ulong encoding = header & 0x03;
+        int byteLength = checked((int)(header >> 2));
+        Assert.Equal(payload.Length - headerReader.Cursor, byteLength);
+
+        ReadContext readContext = new(new ByteReader(payload), resolver, trackRef: false, compatible: false);
+        string decoded = StringSerializer.ReadString(ref readContext);
+        Assert.Equal(0, readContext.Reader.Remaining);
+        return (encoding, decoded);
     }
 }
