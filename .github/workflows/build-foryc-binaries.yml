@@ -38,7 +38,7 @@ permissions:
   contents: read
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD JOB
@@ -92,7 +92,7 @@ jobs:
             artifact_name: foryc-macos-x86_64
             binary_path: compiler/dist/foryc
             binary_name: foryc
-            use_upx: true
+            use_upx: false
             codesign: false
 
           - target: macos-aarch64
@@ -100,7 +100,7 @@ jobs:
             artifact_name: foryc-macos-aarch64
             binary_path: compiler/dist/foryc
             binary_name: foryc
-            use_upx: true
+            use_upx: false
             codesign: true
 
           - target: windows-x86_64
