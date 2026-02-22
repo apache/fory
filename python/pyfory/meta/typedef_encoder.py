@@ -61,12 +61,6 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
     """
     if include_fields:
         field_infos = build_field_infos(type_resolver, cls)
-        # Check for duplicate field names
-        field_names = [field_info.name for field_info in field_infos]
-        duplicate_field_names = [name for name, count in Counter(field_names).items() if count > 1]
-        if duplicate_field_names:
-            # TODO: handle duplicate field names for inheritance in future
-            raise ValueError(f"Duplicate field names: {duplicate_field_names}")
     else:
         field_infos = []
 

@@ -455,10 +455,20 @@ def build_field_infos(type_resolver, cls):
     # Extract field metadata from dataclass fields if available
     field_metas = {}
     if dataclasses.is_dataclass(cls):
-        for dc_field in dataclasses.fields(cls):
-            meta = extract_field_meta(dc_field)
-            if meta is not None:
-                field_metas[dc_field.name] = meta
+        for klass in cls.__mro__[::-1]:
+            if dataclasses.is_dataclass(klass):
+                for dc_field in dataclasses.fields(klass):
+                    meta = extract_field_meta(dc_field)
+                    if meta is not None:
+                        field_metas[dc_field.name] = meta
+
+    seen_fields = {}
+    unique_field_names = []
+    for field_name in field_names:
+        if field_name not in seen_fields:
+            seen_fields[field_name] = True
+            unique_field_names.append(field_name)
+    field_names = unique_field_names
 
     field_infos = []
     nullable_map = {}
