@@ -104,7 +104,7 @@ jobs:
             codesign: true
 
           - target: windows-x86_64
-            os: windows-2022
+            os: windows-2019
             artifact_name: foryc-windows-x86_64
             binary_path: compiler/dist/foryc.exe
             binary_name: foryc.exe
