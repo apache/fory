@@ -185,12 +185,12 @@ public abstract class TypedSerializer<T> : SerializerBinding, ITypedSerializer<T
 
     public override void WriteTypeInfo(ref WriteContext context)
     {
-        SerializerTypeInfo.WriteTypeInfo(Type, this, ref context);
+        context.TypeResolver.WriteTypeInfo(Type, this, ref context);
     }
 
     public override void ReadTypeInfo(ref ReadContext context)
     {
-        SerializerTypeInfo.ReadTypeInfo(Type, this, ref context);
+        context.TypeResolver.ReadTypeInfo(Type, this, ref context);
     }
 
     public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
