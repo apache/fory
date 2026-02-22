@@ -27,16 +27,16 @@ internal static class DictionaryBits
     public const byte DeclaredValueType = 0b0010_0000;
 }
 
-public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<DictionarySerializer<TKey, TValue>, Dictionary<TKey, TValue>>
+public class DictionarySerializer<TKey, TValue> : TypedSerializer<Dictionary<TKey, TValue>>
     where TKey : notnull
 {
-    public static TypeId StaticTypeId => TypeId.Map;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static Dictionary<TKey, TValue> DefaultValue => null!;
-    public static bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
+    public override TypeId StaticTypeId => TypeId.Map;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override Dictionary<TKey, TValue> DefaultValue => null!;
+    public override bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
@@ -189,7 +189,7 @@ public readonly struct DictionarySerializer<TKey, TValue> : IStaticSerializer<Di
         }
     }
 
-    public static Dictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();

@@ -17,27 +17,27 @@
 
 namespace Apache.Fory;
 
-public sealed class EnumSerializer<TEnum> : TypedSerializer<TEnum> where TEnum : struct, Enum
+public sealed class TypeInfo
 {
-    public override TypeId StaticTypeId => TypeId.Enum;
-    public override TEnum DefaultValue => default;
-
-    public override void WriteData(ref WriteContext context, in TEnum value, bool hasGenerics)
+    internal TypeInfo(Type type, SerializerBinding serializer)
     {
-        _ = hasGenerics;
-        uint ordinal = Convert.ToUInt32(value);
-        context.Writer.WriteVarUInt32(ordinal);
+        Type = type;
+        Serializer = serializer;
+        StaticTypeId = serializer.StaticTypeId;
+        IsNullableType = serializer.IsNullableType;
+        IsReferenceTrackableType = serializer.IsReferenceTrackableType;
+        DefaultObject = serializer.DefaultObject;
     }
 
-    public override TEnum ReadData(ref ReadContext context)
-    {
-        uint ordinal = context.Reader.ReadVarUInt32();
-        TEnum value = (TEnum)Enum.ToObject(typeof(TEnum), ordinal);
-        if (!Enum.IsDefined(typeof(TEnum), value))
-        {
-            throw new InvalidDataException($"unknown enum ordinal {ordinal}");
-        }
+    public Type Type { get; }
 
-        return value;
-    }
+    internal SerializerBinding Serializer { get; }
+
+    public TypeId StaticTypeId { get; }
+
+    public bool IsNullableType { get; }
+
+    public bool IsReferenceTrackableType { get; }
+
+    public object? DefaultObject { get; }
 }

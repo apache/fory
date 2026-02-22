@@ -388,15 +388,15 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
     }
 }
 
-public readonly struct NullableKeyDictionarySerializer<TKey, TValue> : IStaticSerializer<NullableKeyDictionarySerializer<TKey, TValue>, NullableKeyDictionary<TKey, TValue>>
+public sealed class NullableKeyDictionarySerializer<TKey, TValue> : TypedSerializer<NullableKeyDictionary<TKey, TValue>>
 {
-    public static TypeId StaticTypeId => TypeId.Map;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
-    public static bool IsNone(in NullableKeyDictionary<TKey, TValue> value) => value is null;
+    public override TypeId StaticTypeId => TypeId.Map;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
+    public override bool IsNone(in NullableKeyDictionary<TKey, TValue> value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
@@ -528,7 +528,7 @@ public readonly struct NullableKeyDictionarySerializer<TKey, TValue> : IStaticSe
         }
     }
 
-    public static NullableKeyDictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override NullableKeyDictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();

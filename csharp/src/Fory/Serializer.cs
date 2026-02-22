@@ -17,160 +17,43 @@
 
 namespace Apache.Fory;
 
-public interface IStaticSerializer<TSerializer, T>
-    where TSerializer : IStaticSerializer<TSerializer, T>
-{
-    static abstract TypeId StaticTypeId { get; }
-
-    static virtual bool IsNullableType => false;
-
-    static virtual bool IsReferenceTrackableType => false;
-
-    static virtual T DefaultValue => default!;
-
-    static virtual bool IsNone(in T value)
-    {
-        _ = value;
-        return false;
-    }
-
-    static abstract void WriteData(ref WriteContext context, in T value, bool hasGenerics);
-
-    static abstract T ReadData(ref ReadContext context);
-
-    static virtual IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
-    {
-        _ = trackRef;
-        return [];
-    }
-
-    static virtual void WriteTypeInfo(ref WriteContext context)
-    {
-        SerializerTypeInfo.WriteTypeInfo<T, TSerializer>(ref context);
-    }
-
-    static virtual void ReadTypeInfo(ref ReadContext context)
-    {
-        SerializerTypeInfo.ReadTypeInfo<T, TSerializer>(ref context);
-    }
-
-    static virtual void Write(ref WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
-    {
-        if (refMode != RefMode.None)
-        {
-            bool wroteTrackingRefFlag = false;
-            if (refMode == RefMode.Tracking &&
-                TSerializer.IsReferenceTrackableType &&
-                value is object obj)
-            {
-                if (context.RefWriter.TryWriteReference(context.Writer, obj))
-                {
-                    return;
-                }
-
-                wroteTrackingRefFlag = true;
-            }
-
-            if (!wroteTrackingRefFlag)
-            {
-                if (TSerializer.IsNullableType && TSerializer.IsNone(value))
-                {
-                    context.Writer.WriteInt8((sbyte)RefFlag.Null);
-                    return;
-                }
-
-                context.Writer.WriteInt8((sbyte)RefFlag.NotNullValue);
-            }
-        }
-
-        if (writeTypeInfo)
-        {
-            TSerializer.WriteTypeInfo(ref context);
-        }
-
-        TSerializer.WriteData(ref context, value, hasGenerics);
-    }
-
-    static virtual T Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
-    {
-        if (refMode != RefMode.None)
-        {
-            sbyte rawFlag = context.Reader.ReadInt8();
-            RefFlag flag = (RefFlag)rawFlag;
-            switch (flag)
-            {
-                case RefFlag.Null:
-                    return TSerializer.DefaultValue;
-                case RefFlag.Ref:
-                    uint refId = context.Reader.ReadVarUInt32();
-                    return context.RefReader.ReadRef<T>(refId);
-                case RefFlag.RefValue:
-                {
-                    uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.PushPendingReference(reservedRefId);
-                    if (readTypeInfo)
-                    {
-                        TSerializer.ReadTypeInfo(ref context);
-                    }
-
-                    T value = TSerializer.ReadData(ref context);
-                    context.FinishPendingReferenceIfNeeded(value);
-                    context.PopPendingReference();
-                    return value;
-                }
-                case RefFlag.NotNullValue:
-                    break;
-                default:
-                    throw new RefException($"invalid ref flag {rawFlag}");
-            }
-        }
-
-        if (readTypeInfo)
-        {
-            TSerializer.ReadTypeInfo(ref context);
-        }
-
-        return TSerializer.ReadData(ref context);
-    }
-}
-
 public readonly struct Serializer<T>
 {
-    private readonly TypedSerializerBinding<T>? _binding;
+    private readonly ITypedSerializer<T>? _serializer;
 
-    internal Serializer(TypedSerializerBinding<T> binding)
+    internal Serializer(ITypedSerializer<T> serializer)
     {
-        _binding = binding;
+        _serializer = serializer;
     }
 
-    private TypedSerializerBinding<T> Binding
+    private ITypedSerializer<T> SerializerImpl
     {
         get
         {
-            if (_binding is null)
+            if (_serializer is null)
             {
                 throw new InvalidDataException($"serializer handle for {typeof(T)} is not initialized");
             }
 
-            return _binding;
+            return _serializer;
         }
     }
 
     public Type Type => typeof(T);
 
-    public TypeId StaticTypeId => Binding.StaticTypeId;
+    public TypeId StaticTypeId => SerializerImpl.StaticTypeId;
 
-    public bool IsNullableType => Binding.IsNullableType;
+    public bool IsNullableType => SerializerImpl.IsNullableType;
 
-    public bool IsReferenceTrackableType => Binding.IsReferenceTrackableType;
+    public bool IsReferenceTrackableType => SerializerImpl.IsReferenceTrackableType;
 
-    public T DefaultValue => Binding.DefaultValue;
+    public T DefaultValue => SerializerImpl.DefaultValue;
 
-    public object? DefaultObject => Binding.DefaultValue;
+    public object? DefaultObject => SerializerImpl.DefaultValue;
 
     public bool IsNone(in T value)
     {
-        return Binding.IsNone(value);
+        return SerializerImpl.IsNone(value);
     }
 
     public bool IsNoneObject(object? value)
@@ -185,53 +68,51 @@ public readonly struct Serializer<T>
 
     public void WriteData(ref WriteContext context, in T value, bool hasGenerics)
     {
-        Binding.WriteData(ref context, value, hasGenerics);
+        SerializerImpl.WriteData(ref context, value, hasGenerics);
     }
 
     public T ReadData(ref ReadContext context)
     {
-        return Binding.ReadData(ref context);
+        return SerializerImpl.ReadData(ref context);
     }
 
     public void Write(ref WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
-        Binding.Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
+        SerializerImpl.Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
     }
 
     public T Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return Binding.Read(ref context, refMode, readTypeInfo);
+        return SerializerImpl.Read(ref context, refMode, readTypeInfo);
     }
 
     public void WriteTypeInfo(ref WriteContext context)
     {
-        Binding.WriteTypeInfo(ref context);
+        SerializerImpl.WriteTypeInfo(ref context);
     }
 
     public void ReadTypeInfo(ref ReadContext context)
     {
-        Binding.ReadTypeInfo(ref context);
+        SerializerImpl.ReadTypeInfo(ref context);
     }
 
     public IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
     {
-        return Binding.CompatibleTypeMetaFields(trackRef);
+        return SerializerImpl.CompatibleTypeMetaFields(trackRef);
     }
 }
 
 internal static class SerializerTypeInfo
 {
-    public static void WriteTypeInfo<T, TSerializer>(ref WriteContext context)
-        where TSerializer : IStaticSerializer<TSerializer, T>
+    public static void WriteTypeInfo(Type type, SerializerBinding serializer, ref WriteContext context)
     {
-        TypeId staticTypeId = TSerializer.StaticTypeId;
+        TypeId staticTypeId = serializer.StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
         {
             context.Writer.WriteUInt8((byte)staticTypeId);
             return;
         }
 
-        Type type = typeof(T);
         RegisteredTypeInfo info = context.TypeResolver.RequireRegisteredTypeInfo(type);
         TypeId wireTypeId = ResolveWireTypeId(info.Kind, info.RegisterByName, context.Compatible);
         context.Writer.WriteUInt8((byte)wireTypeId);
@@ -240,7 +121,7 @@ internal static class SerializerTypeInfo
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
             {
-                TypeMeta typeMeta = BuildCompatibleTypeMeta<T, TSerializer>(info, wireTypeId, context.TrackRef);
+                TypeMeta typeMeta = BuildCompatibleTypeMeta(info, wireTypeId, context.TrackRef);
                 context.WriteCompatibleTypeMeta(type, typeMeta);
                 return;
             }
@@ -251,7 +132,7 @@ internal static class SerializerTypeInfo
             {
                 if (context.Compatible)
                 {
-                    TypeMeta typeMeta = BuildCompatibleTypeMeta<T, TSerializer>(info, wireTypeId, context.TrackRef);
+                    TypeMeta typeMeta = BuildCompatibleTypeMeta(info, wireTypeId, context.TrackRef);
                     context.WriteCompatibleTypeMeta(type, typeMeta);
                 }
                 else
@@ -290,8 +171,7 @@ internal static class SerializerTypeInfo
         }
     }
 
-    public static void ReadTypeInfo<T, TSerializer>(ref ReadContext context)
-        where TSerializer : IStaticSerializer<TSerializer, T>
+    public static void ReadTypeInfo(Type type, SerializerBinding serializer, ref ReadContext context)
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
@@ -300,7 +180,7 @@ internal static class SerializerTypeInfo
         }
 
         TypeId typeId = (TypeId)rawTypeId;
-        TypeId staticTypeId = TSerializer.StaticTypeId;
+        TypeId staticTypeId = serializer.StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
         {
             if (typeId != staticTypeId)
@@ -311,7 +191,6 @@ internal static class SerializerTypeInfo
             return;
         }
 
-        Type type = typeof(T);
         RegisteredTypeInfo info = context.TypeResolver.RequireRegisteredTypeInfo(type);
         HashSet<TypeId> allowed = AllowedWireTypeIds(info.Kind, info.RegisterByName, context.Compatible);
         if (!allowed.Contains(typeId))
@@ -452,13 +331,12 @@ internal static class SerializerTypeInfo
         return typeId is TypeId.Enum or TypeId.Struct or TypeId.Ext or TypeId.TypedUnion;
     }
 
-    private static TypeMeta BuildCompatibleTypeMeta<T, TSerializer>(
+    private static TypeMeta BuildCompatibleTypeMeta(
         RegisteredTypeInfo info,
         TypeId wireTypeId,
         bool trackRef)
-        where TSerializer : IStaticSerializer<TSerializer, T>
     {
-        IReadOnlyList<TypeMetaFieldInfo> fields = TSerializer.CompatibleTypeMetaFields(trackRef);
+        IReadOnlyList<TypeMetaFieldInfo> fields = info.Serializer.CompatibleTypeMetaFields(trackRef);
         bool hasFieldsMeta = fields.Count > 0;
         if (info.RegisterByName)
         {

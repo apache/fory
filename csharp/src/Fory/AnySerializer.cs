@@ -17,15 +17,15 @@
 
 namespace Apache.Fory;
 
-public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAnyObjectSerializer, object?>
+public sealed class DynamicAnyObjectSerializer : TypedSerializer<object?>
 {
-    public static TypeId StaticTypeId => TypeId.Unknown;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static object? DefaultValue => null;
-    public static bool IsNone(in object? value) => value is null;
+    public override TypeId StaticTypeId => TypeId.Unknown;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override object? DefaultValue => null;
+    public override bool IsNone(in object? value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in object? value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in object? value, bool hasGenerics)
     {
         if (IsNone(value))
         {
@@ -35,7 +35,7 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
         DynamicAnyCodec.WriteAnyPayload(value!, ref context, hasGenerics);
     }
 
-    public static object? ReadData(ref ReadContext context)
+    public override object? ReadData(ref ReadContext context)
     {
         DynamicTypeInfo? dynamicTypeInfo = context.DynamicTypeInfo(typeof(object));
         if (dynamicTypeInfo is null)
@@ -46,18 +46,18 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
         return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, ref context);
     }
 
-    public static void WriteTypeInfo(ref WriteContext context)
+    public override void WriteTypeInfo(ref WriteContext context)
     {
         throw new InvalidDataException("dynamic Any value type info is runtime-only");
     }
 
-    public static void ReadTypeInfo(ref ReadContext context)
+    public override void ReadTypeInfo(ref ReadContext context)
     {
         DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
         context.SetDynamicTypeInfo(typeof(object), typeInfo);
     }
 
-    public static void Write(ref WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public override void Write(ref WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         if (refMode != RefMode.None)
         {
@@ -92,7 +92,7 @@ public readonly struct DynamicAnyObjectSerializer : IStaticSerializer<DynamicAny
         WriteData(ref context, value, hasGenerics);
     }
 
-    public static object? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public override object? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         if (refMode != RefMode.None)
         {
@@ -211,6 +211,6 @@ public static class DynamicAnyCodec
         }
 
         SerializerBinding serializer = context.TypeResolver.GetBinding(value.GetType());
-        serializer.WriteData(ref context, value, hasGenerics);
+        serializer.WriteDataObject(ref context, value, hasGenerics);
     }
 }

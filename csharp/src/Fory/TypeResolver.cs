@@ -46,7 +46,9 @@ internal sealed class TypeReader
 public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<SerializerBinding>> GeneratedFactories = new();
-    private static readonly ConcurrentDictionary<Type, SerializerBinding> SharedStaticBindings = new();
+    private static readonly ConcurrentDictionary<Type, SerializerBinding> SharedBindings = new();
+    private static readonly ConcurrentDictionary<Type, TypeInfo> SharedTypeInfos = new();
+    private static int _sharedCacheVersion;
 
     private readonly Dictionary<Type, RegisteredTypeInfo> _byType = [];
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
@@ -54,42 +56,106 @@ public sealed class TypeResolver
     private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
     private readonly ConcurrentDictionary<Type, SerializerBinding> _serializerBindings = new();
-    private readonly ConcurrentDictionary<Type, object> _typedBindings = new();
+    private readonly ConcurrentDictionary<Type, TypeInfo> _typeInfos = new();
+    private int _cacheVersion;
+
+    private static class SharedTypeInfoCache<T>
+    {
+        public static int Version = -1;
+        public static TypeInfo? Cached;
+    }
+
+    private static class TypeInfoCache<T>
+    {
+        public static int Version = -1;
+        public static TypeResolver? Resolver;
+        public static TypeInfo? Cached;
+    }
+
+    private static class SerializerCache<T>
+    {
+        public static int Version = -1;
+        public static TypeResolver? Resolver;
+        public static ITypedSerializer<T>? Cached;
+    }
 
     public static void RegisterGenerated<T, TSerializer>()
-        where TSerializer : IStaticSerializer<TSerializer, T>
+        where TSerializer : TypedSerializer<T>, new()
     {
         Type type = typeof(T);
-        GeneratedFactories[type] = StaticSerializerBindingFactory.Create<T, TSerializer>;
-        SharedStaticBindings.TryRemove(type, out _);
+        GeneratedFactories[type] = SerializerFactory.Create<TSerializer>;
+        SharedBindings.TryRemove(type, out _);
+        SharedTypeInfos.TryRemove(type, out _);
+        unchecked
+        {
+            _sharedCacheVersion += 1;
+        }
     }
 
     public static TypeId StaticTypeIdOf<T>()
     {
-        return GetSharedStaticBinding(typeof(T)).RequireTypedBinding<T>().StaticTypeId;
+        return StaticTypeInfoOf<T>().StaticTypeId;
     }
 
     public static bool IsReferenceTrackableTypeOf<T>()
     {
-        return GetSharedStaticBinding(typeof(T)).RequireTypedBinding<T>().IsReferenceTrackableType;
+        return StaticTypeInfoOf<T>().IsReferenceTrackableType;
     }
 
     public static IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFieldsOf<T>(bool trackRef)
     {
-        return GetSharedStaticBinding(typeof(T)).RequireTypedBinding<T>().CompatibleTypeMetaFields(trackRef);
+        return StaticTypeInfoOf<T>().Serializer.CompatibleTypeMetaFields(trackRef);
+    }
+
+    public static TypeInfo StaticTypeInfoOf<T>()
+    {
+        if (SharedTypeInfoCache<T>.Version == _sharedCacheVersion &&
+            SharedTypeInfoCache<T>.Cached is not null)
+        {
+            return SharedTypeInfoCache<T>.Cached;
+        }
+
+        TypeInfo typeInfo = GetSharedTypeInfo(typeof(T));
+        SharedTypeInfoCache<T>.Cached = typeInfo;
+        SharedTypeInfoCache<T>.Version = _sharedCacheVersion;
+        return typeInfo;
     }
 
     public Serializer<T> GetSerializer<T>()
     {
-        Type type = typeof(T);
-        if (_typedBindings.TryGetValue(type, out object? cachedTypedBinding))
+        if (SerializerCache<T>.Version == _cacheVersion &&
+            ReferenceEquals(SerializerCache<T>.Resolver, this) &&
+            SerializerCache<T>.Cached is not null)
         {
-            return new Serializer<T>((TypedSerializerBinding<T>)cachedTypedBinding);
+            return new Serializer<T>(SerializerCache<T>.Cached);
         }
 
-        TypedSerializerBinding<T> typedBinding = GetBinding(type).RequireTypedBinding<T>();
-        object typedObject = _typedBindings.GetOrAdd(type, typedBinding);
-        return new Serializer<T>((TypedSerializerBinding<T>)typedObject);
+        ITypedSerializer<T> typedSerializer = GetTypeInfo<T>().Serializer.RequireTypedSerializer<T>();
+        SerializerCache<T>.Resolver = this;
+        SerializerCache<T>.Version = _cacheVersion;
+        SerializerCache<T>.Cached = typedSerializer;
+        return new Serializer<T>(typedSerializer);
+    }
+
+    public TypeInfo GetTypeInfo(Type type)
+    {
+        return _typeInfos.GetOrAdd(type, t => new TypeInfo(t, GetBinding(t)));
+    }
+
+    public TypeInfo GetTypeInfo<T>()
+    {
+        if (TypeInfoCache<T>.Version == _cacheVersion &&
+            ReferenceEquals(TypeInfoCache<T>.Resolver, this) &&
+            TypeInfoCache<T>.Cached is not null)
+        {
+            return TypeInfoCache<T>.Cached;
+        }
+
+        TypeInfo typeInfo = GetTypeInfo(typeof(T));
+        TypeInfoCache<T>.Resolver = this;
+        TypeInfoCache<T>.Version = _cacheVersion;
+        TypeInfoCache<T>.Cached = typeInfo;
+        return typeInfo;
     }
 
     internal SerializerBinding GetBinding(Type type)
@@ -98,9 +164,9 @@ public sealed class TypeResolver
     }
 
     internal SerializerBinding RegisterCustom<T, TSerializer>()
-        where TSerializer : IStaticSerializer<TSerializer, T>
+        where TSerializer : TypedSerializer<T>, new()
     {
-        SerializerBinding serializerBinding = StaticSerializerBindingFactory.Create<T, TSerializer>();
+        SerializerBinding serializerBinding = SerializerFactory.Create<TSerializer>();
         RegisterCustom(typeof(T), serializerBinding);
         return serializerBinding;
     }
@@ -108,7 +174,11 @@ public sealed class TypeResolver
     internal void RegisterCustom(Type type, SerializerBinding serializerBinding)
     {
         _serializerBindings[type] = serializerBinding;
-        _typedBindings.TryRemove(type, out _);
+        _typeInfos.TryRemove(type, out _);
+        unchecked
+        {
+            _cacheVersion += 1;
+        }
     }
 
     internal void Register(Type type, uint id, SerializerBinding? explicitSerializer = null)
@@ -126,11 +196,11 @@ public sealed class TypeResolver
         _byUserTypeId[id] = new TypeReader
         {
             Kind = serializer.StaticTypeId,
-            Reader = context => serializer.Read(ref context, RefMode.None, false),
+            Reader = context => serializer.ReadObject(ref context, RefMode.None, false),
             CompatibleReader = (context, typeMeta) =>
             {
                 context.PushCompatibleTypeMeta(type, typeMeta);
-                return serializer.Read(ref context, RefMode.None, false);
+                return serializer.ReadObject(ref context, RefMode.None, false);
             },
         };
     }
@@ -152,11 +222,11 @@ public sealed class TypeResolver
         _byTypeName[new TypeNameKey(namespaceName, typeName)] = new TypeReader
         {
             Kind = serializer.StaticTypeId,
-            Reader = context => serializer.Read(ref context, RefMode.None, false),
+            Reader = context => serializer.ReadObject(ref context, RefMode.None, false),
             CompatibleReader = (context, typeMeta) =>
             {
                 context.PushCompatibleTypeMeta(type, typeMeta);
-                return serializer.Read(ref context, RefMode.None, false);
+                return serializer.ReadObject(ref context, RefMode.None, false);
             },
         };
     }
@@ -413,9 +483,14 @@ public sealed class TypeResolver
         throw new TypeNotRegisteredException($"no dynamic registration mode for kind {kind}");
     }
 
-    private static SerializerBinding GetSharedStaticBinding(Type type)
+    private static SerializerBinding GetSharedBinding(Type type)
     {
-        return SharedStaticBindings.GetOrAdd(type, CreateBindingCore);
+        return SharedBindings.GetOrAdd(type, CreateBindingCore);
+    }
+
+    private static TypeInfo GetSharedTypeInfo(Type type)
+    {
+        return SharedTypeInfos.GetOrAdd(type, t => new TypeInfo(t, GetSharedBinding(t)));
     }
 
     private static SerializerBinding CreateBindingCore(Type type)
@@ -427,141 +502,216 @@ public sealed class TypeResolver
 
         if (type == typeof(bool))
         {
-            return StaticSerializerBindingFactory.Create<bool, BoolSerializer>();
+            return new BoolSerializer();
         }
 
         if (type == typeof(sbyte))
         {
-            return StaticSerializerBindingFactory.Create<sbyte, Int8Serializer>();
+            return new Int8Serializer();
         }
 
         if (type == typeof(short))
         {
-            return StaticSerializerBindingFactory.Create<short, Int16Serializer>();
+            return new Int16Serializer();
         }
 
         if (type == typeof(int))
         {
-            return StaticSerializerBindingFactory.Create<int, Int32Serializer>();
+            return new Int32Serializer();
         }
 
         if (type == typeof(long))
         {
-            return StaticSerializerBindingFactory.Create<long, Int64Serializer>();
+            return new Int64Serializer();
         }
 
         if (type == typeof(byte))
         {
-            return StaticSerializerBindingFactory.Create<byte, UInt8Serializer>();
+            return new UInt8Serializer();
         }
 
         if (type == typeof(ushort))
         {
-            return StaticSerializerBindingFactory.Create<ushort, UInt16Serializer>();
+            return new UInt16Serializer();
         }
 
         if (type == typeof(uint))
         {
-            return StaticSerializerBindingFactory.Create<uint, UInt32Serializer>();
+            return new UInt32Serializer();
         }
 
         if (type == typeof(ulong))
         {
-            return StaticSerializerBindingFactory.Create<ulong, UInt64Serializer>();
+            return new UInt64Serializer();
         }
 
         if (type == typeof(float))
         {
-            return StaticSerializerBindingFactory.Create<float, Float32Serializer>();
+            return new Float32Serializer();
         }
 
         if (type == typeof(double))
         {
-            return StaticSerializerBindingFactory.Create<double, Float64Serializer>();
+            return new Float64Serializer();
         }
 
         if (type == typeof(string))
         {
-            return StaticSerializerBindingFactory.Create<string, StringSerializer>();
+            return new StringSerializer();
         }
 
         if (type == typeof(byte[]))
         {
-            return StaticSerializerBindingFactory.Create<byte[], BinarySerializer>();
+            return new BinarySerializer();
         }
 
         if (type == typeof(DateOnly))
         {
-            return StaticSerializerBindingFactory.Create<DateOnly, DateOnlySerializer>();
+            return new DateOnlySerializer();
         }
 
         if (type == typeof(DateTimeOffset))
         {
-            return StaticSerializerBindingFactory.Create<DateTimeOffset, DateTimeOffsetSerializer>();
+            return new DateTimeOffsetSerializer();
         }
 
         if (type == typeof(DateTime))
         {
-            return StaticSerializerBindingFactory.Create<DateTime, DateTimeSerializer>();
+            return new DateTimeSerializer();
         }
 
         if (type == typeof(TimeSpan))
         {
-            return StaticSerializerBindingFactory.Create<TimeSpan, TimeSpanSerializer>();
+            return new TimeSpanSerializer();
+        }
+
+        if (type == typeof(List<bool>))
+        {
+            return new ListBoolSerializer();
+        }
+
+        if (type == typeof(List<int>))
+        {
+            return new ListIntSerializer();
+        }
+
+        if (type == typeof(List<long>))
+        {
+            return new ListLongSerializer();
+        }
+
+        if (type == typeof(List<string>))
+        {
+            return new ListStringSerializer();
+        }
+
+        if (type == typeof(List<DateOnly>))
+        {
+            return new ListDateOnlySerializer();
+        }
+
+        if (type == typeof(List<DateTimeOffset>))
+        {
+            return new ListDateTimeOffsetSerializer();
+        }
+
+        if (type == typeof(List<DateTime>))
+        {
+            return new ListDateTimeSerializer();
+        }
+
+        if (type == typeof(List<TimeSpan>))
+        {
+            return new ListTimeSpanSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, string>))
+        {
+            return new DictionaryStringStringSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, int>))
+        {
+            return new DictionaryStringIntSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, long>))
+        {
+            return new DictionaryStringLongSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, bool>))
+        {
+            return new DictionaryStringBoolSerializer();
+        }
+
+        if (type == typeof(Dictionary<string, double>))
+        {
+            return new DictionaryStringDoubleSerializer();
+        }
+
+        if (type == typeof(Dictionary<int, int>))
+        {
+            return new DictionaryIntIntSerializer();
+        }
+
+        if (type == typeof(Dictionary<long, long>))
+        {
+            return new DictionaryLongLongSerializer();
         }
 
         if (type == typeof(ForyInt32Fixed))
         {
-            return StaticSerializerBindingFactory.Create<ForyInt32Fixed, ForyInt32FixedSerializer>();
+            return new ForyInt32FixedSerializer();
         }
 
         if (type == typeof(ForyInt64Fixed))
         {
-            return StaticSerializerBindingFactory.Create<ForyInt64Fixed, ForyInt64FixedSerializer>();
+            return new ForyInt64FixedSerializer();
         }
 
         if (type == typeof(ForyInt64Tagged))
         {
-            return StaticSerializerBindingFactory.Create<ForyInt64Tagged, ForyInt64TaggedSerializer>();
+            return new ForyInt64TaggedSerializer();
         }
 
         if (type == typeof(ForyUInt32Fixed))
         {
-            return StaticSerializerBindingFactory.Create<ForyUInt32Fixed, ForyUInt32FixedSerializer>();
+            return new ForyUInt32FixedSerializer();
         }
 
         if (type == typeof(ForyUInt64Fixed))
         {
-            return StaticSerializerBindingFactory.Create<ForyUInt64Fixed, ForyUInt64FixedSerializer>();
+            return new ForyUInt64FixedSerializer();
         }
 
         if (type == typeof(ForyUInt64Tagged))
         {
-            return StaticSerializerBindingFactory.Create<ForyUInt64Tagged, ForyUInt64TaggedSerializer>();
+            return new ForyUInt64TaggedSerializer();
         }
 
         if (type == typeof(object))
         {
-            return StaticSerializerBindingFactory.Create<object?, DynamicAnyObjectSerializer>();
+            return new DynamicAnyObjectSerializer();
         }
 
         if (typeof(Union).IsAssignableFrom(type))
         {
             Type serializerType = typeof(UnionSerializer<>).MakeGenericType(type);
-            return StaticSerializerBindingFactory.Create(type, serializerType);
+            return SerializerFactory.Create(serializerType);
         }
 
         if (type.IsEnum)
         {
             Type serializerType = typeof(EnumSerializer<>).MakeGenericType(type);
-            return StaticSerializerBindingFactory.Create(type, serializerType);
+            return SerializerFactory.Create(serializerType);
         }
 
         if (type.IsArray)
         {
             Type elementType = type.GetElementType()!;
             Type serializerType = typeof(ArraySerializer<>).MakeGenericType(elementType);
-            return StaticSerializerBindingFactory.Create(type, serializerType);
+            return SerializerFactory.Create(serializerType);
         }
 
         if (type.IsGenericType)
@@ -571,31 +721,31 @@ public sealed class TypeResolver
             if (genericType == typeof(Nullable<>))
             {
                 Type serializerType = typeof(NullableSerializer<>).MakeGenericType(genericArgs[0]);
-                return StaticSerializerBindingFactory.Create(type, serializerType);
+                return SerializerFactory.Create(serializerType);
             }
 
             if (genericType == typeof(List<>))
             {
                 Type serializerType = typeof(ListSerializer<>).MakeGenericType(genericArgs[0]);
-                return StaticSerializerBindingFactory.Create(type, serializerType);
+                return SerializerFactory.Create(serializerType);
             }
 
             if (genericType == typeof(HashSet<>))
             {
                 Type serializerType = typeof(SetSerializer<>).MakeGenericType(genericArgs[0]);
-                return StaticSerializerBindingFactory.Create(type, serializerType);
+                return SerializerFactory.Create(serializerType);
             }
 
             if (genericType == typeof(Dictionary<,>))
             {
                 Type serializerType = typeof(DictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return StaticSerializerBindingFactory.Create(type, serializerType);
+                return SerializerFactory.Create(serializerType);
             }
 
             if (genericType == typeof(NullableKeyDictionary<,>))
             {
                 Type serializerType = typeof(NullableKeyDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return StaticSerializerBindingFactory.Create(type, serializerType);
+                return SerializerFactory.Create(serializerType);
             }
         }
 

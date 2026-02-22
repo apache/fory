@@ -736,17 +736,17 @@ internal static class PrimitiveArrayCodec
     }
 }
 
-public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>, T[]>
+public sealed class ArraySerializer<T> : TypedSerializer<T[]>
 {
     private static readonly TypeId? PrimitiveArrayTypeId = PrimitiveArrayCodec.PrimitiveArrayTypeId(typeof(T));
 
-    public static TypeId StaticTypeId => PrimitiveArrayTypeId ?? TypeId.List;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static T[] DefaultValue => null!;
-    public static bool IsNone(in T[] value) => value is null;
+    public override TypeId StaticTypeId => PrimitiveArrayTypeId ?? TypeId.List;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override T[] DefaultValue => null!;
+    public override bool IsNone(in T[] value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in T[] value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in T[] value, bool hasGenerics)
     {
         T[] safe = value ?? [];
         if (PrimitiveArrayTypeId is not null)
@@ -762,7 +762,7 @@ public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>
             hasGenerics);
     }
 
-    public static T[] ReadData(ref ReadContext context)
+    public override T[] ReadData(ref ReadContext context)
     {
         if (PrimitiveArrayTypeId is not null)
         {
@@ -774,41 +774,41 @@ public readonly struct ArraySerializer<T> : IStaticSerializer<ArraySerializer<T>
     }
 }
 
-public readonly struct ListSerializer<T> : IStaticSerializer<ListSerializer<T>, List<T>>
+public class ListSerializer<T> : TypedSerializer<List<T>>
 {
-    public static TypeId StaticTypeId => TypeId.List;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static List<T> DefaultValue => null!;
-    public static bool IsNone(in List<T> value) => value is null;
+    public override TypeId StaticTypeId => TypeId.List;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override List<T> DefaultValue => null!;
+    public override bool IsNone(in List<T> value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
     {
         List<T> safe = value ?? [];
         CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
     }
 
-    public static List<T> ReadData(ref ReadContext context)
+    public override List<T> ReadData(ref ReadContext context)
     {
         return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
     }
 }
 
-public readonly struct SetSerializer<T> : IStaticSerializer<SetSerializer<T>, HashSet<T>> where T : notnull
+public sealed class SetSerializer<T> : TypedSerializer<HashSet<T>> where T : notnull
 {
-    public static TypeId StaticTypeId => TypeId.Set;
-    public static bool IsNullableType => true;
-    public static bool IsReferenceTrackableType => true;
-    public static HashSet<T> DefaultValue => null!;
-    public static bool IsNone(in HashSet<T> value) => value is null;
+    public override TypeId StaticTypeId => TypeId.Set;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override HashSet<T> DefaultValue => null!;
+    public override bool IsNone(in HashSet<T> value) => value is null;
 
-    public static void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
         List<T> list = value is null ? [] : [.. value];
         context.TypeResolver.GetSerializer<List<T>>().WriteData(ref context, list, hasGenerics);
     }
 
-    public static HashSet<T> ReadData(ref ReadContext context)
+    public override HashSet<T> ReadData(ref ReadContext context)
     {
         return [.. context.TypeResolver.GetSerializer<List<T>>().ReadData(ref context)];
     }

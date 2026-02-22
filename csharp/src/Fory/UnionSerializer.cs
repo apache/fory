@@ -20,25 +20,25 @@ using System.Reflection;
 
 namespace Apache.Fory;
 
-public readonly struct UnionSerializer<TUnion> : IStaticSerializer<UnionSerializer<TUnion>, TUnion>
+public sealed class UnionSerializer<TUnion> : TypedSerializer<TUnion>
     where TUnion : Union
 {
     private static readonly Func<int, object?, TUnion> Factory = BuildFactory();
 
-    public static TypeId StaticTypeId => TypeId.TypedUnion;
+    public override TypeId StaticTypeId => TypeId.TypedUnion;
 
-    public static bool IsNullableType => true;
+    public override bool IsNullableType => true;
 
-    public static bool IsReferenceTrackableType => true;
+    public override bool IsReferenceTrackableType => true;
 
-    public static TUnion DefaultValue => null!;
+    public override TUnion DefaultValue => null!;
 
-    public static bool IsNone(in TUnion value)
+    public override bool IsNone(in TUnion value)
     {
         return value is null;
     }
 
-    public static void WriteData(ref WriteContext context, in TUnion value, bool hasGenerics)
+    public override void WriteData(ref WriteContext context, in TUnion value, bool hasGenerics)
     {
         _ = hasGenerics;
         if (value is null)
@@ -50,7 +50,7 @@ public readonly struct UnionSerializer<TUnion> : IStaticSerializer<UnionSerializ
         DynamicAnyCodec.WriteAny(ref context, value.Value, RefMode.Tracking, true, false);
     }
 
-    public static TUnion ReadData(ref ReadContext context)
+    public override TUnion ReadData(ref ReadContext context)
     {
         uint rawCaseId = context.Reader.ReadVarUInt32();
         if (rawCaseId > int.MaxValue)

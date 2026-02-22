@@ -135,7 +135,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
-        sb.AppendLine($"file readonly struct {model.SerializerName} : global::Apache.Fory.IStaticSerializer<{model.SerializerName}, {model.TypeName}>");
+        sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.TypedSerializer<{model.TypeName}>");
         sb.AppendLine("{");
         sb.AppendLine("    private static global::Apache.Fory.RefMode __ForyRefMode(bool nullable, bool trackRef)");
         sb.AppendLine("    {");
@@ -169,21 +169,21 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine(");");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    public static global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
+        sb.AppendLine("    public override global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("    public static bool IsNullableType => true;");
-            sb.AppendLine("    public static bool IsReferenceTrackableType => true;");
-            sb.AppendLine($"    public static {model.TypeName} DefaultValue => null!;");
-            sb.AppendLine($"    public static bool IsNone(in {model.TypeName} value) => value is null;");
+            sb.AppendLine("    public override bool IsNullableType => true;");
+            sb.AppendLine("    public override bool IsReferenceTrackableType => true;");
+            sb.AppendLine($"    public override {model.TypeName} DefaultValue => null!;");
+            sb.AppendLine($"    public override bool IsNone(in {model.TypeName} value) => value is null;");
         }
         else
         {
-            sb.AppendLine($"    public static {model.TypeName} DefaultValue => new {model.TypeName}();");
+            sb.AppendLine($"    public override {model.TypeName} DefaultValue => new {model.TypeName}();");
         }
 
         sb.AppendLine();
-        sb.AppendLine("    public static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
+        sb.AppendLine("    public override global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
         if (model.SortedMembers.Length == 0)
         {
@@ -205,7 +205,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            $"    public static void WriteData(ref global::Apache.Fory.WriteContext context, in {model.TypeName} value, bool hasGenerics)");
+            $"    public override void WriteData(ref global::Apache.Fory.WriteContext context, in {model.TypeName} value, bool hasGenerics)");
         sb.AppendLine("    {");
         sb.AppendLine("        _ = hasGenerics;");
         sb.AppendLine("        if (context.Compatible)");
@@ -234,7 +234,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    public static {model.TypeName} ReadData(ref global::Apache.Fory.ReadContext context)");
+        sb.AppendLine($"    public override {model.TypeName} ReadData(ref global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");
@@ -255,7 +255,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             sb.AppendLine($"                    case \"{EscapeString(member.FieldIdentifier)}\":");
             sb.AppendLine("                        {");
-            EmitReadMemberAssignment(sb, member, "remoteRefMode", "remoteReadTypeInfo", "value", "Compat", 7);
+            EmitReadMemberAssignment(sb, member, "remoteRefMode", "remoteReadTypeInfo", "value", "Compat", 7, false);
             sb.AppendLine("                            break;");
             sb.AppendLine("                        }");
         }
@@ -283,7 +283,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         foreach (MemberModel member in model.SortedMembers)
         {
-            EmitReadMemberAssignment(sb, member, BuildWriteRefModeExpression(member), "false", "valueSchema", "Schema", 2);
+            EmitReadMemberAssignment(sb, member, BuildWriteRefModeExpression(member), "false", "valueSchema", "Schema", 2, true);
         }
 
         sb.AppendLine("        return valueSchema;");
@@ -297,7 +297,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string memberAccess = $"value.{member.Name}";
         string hasGenerics = member.IsCollection ? "true" : "false";
         string writeTypeInfo = compatibleMode
-            ? $"__ForyNeedsTypeInfoForField(context.TypeResolver.GetSerializer<{member.TypeName}>().StaticTypeId)"
+            ? $"__ForyNeedsTypeInfoForField(context.TypeResolver.GetTypeInfo<{member.TypeName}>().StaticTypeId)"
             : "false";
 
         switch (member.DynamicAnyKind)
@@ -333,6 +333,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return;
         }
 
+        if (!member.IsNullable && TryBuildDirectFieldWrite(member, memberAccess, out string? directWriteCode))
+        {
+            sb.AppendLine($"            {directWriteCode}");
+            return;
+        }
+
         sb.AppendLine(
             $"            context.TypeResolver.GetSerializer<{member.TypeName}>().Write(ref context, {memberAccess}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
     }
@@ -344,7 +350,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string readTypeInfoExpr,
         string valueVar,
         string variableSuffix,
-        int indentLevel)
+        int indentLevel,
+        bool allowDirectRead)
     {
         string indent = new(' ', indentLevel * 2);
         string assignmentTarget = $"{valueVar}.{member.Name}";
@@ -380,6 +387,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return;
         }
 
+        if (allowDirectRead && !member.IsNullable && TryBuildDirectFieldRead(member, out string? directReadExpr))
+        {
+            sb.AppendLine($"{indent}{assignmentTarget} = {directReadExpr};");
+            return;
+        }
+
         sb.AppendLine(
             $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(ref context, {refModeExpr}, {readTypeInfoExpr});");
     }
@@ -387,6 +400,122 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static string StripNullableForTypeOf(string typeName)
     {
         return typeName.Replace("?", string.Empty);
+    }
+
+    private static bool TryBuildDirectFieldWrite(MemberModel member, string memberAccess, out string? writeCode)
+    {
+        writeCode = null;
+        if (!CanUseDirectBuiltInFieldAccess(member))
+        {
+            return false;
+        }
+
+        switch (member.Classification.TypeId)
+        {
+            case 1:
+                writeCode = $"context.Writer.WriteUInt8({memberAccess} ? (byte)1 : (byte)0);";
+                return true;
+            case 2:
+                writeCode = $"context.Writer.WriteInt8({memberAccess});";
+                return true;
+            case 3:
+                writeCode = $"context.Writer.WriteInt16({memberAccess});";
+                return true;
+            case 5:
+                writeCode = $"context.Writer.WriteVarInt32({memberAccess});";
+                return true;
+            case 7:
+                writeCode = $"context.Writer.WriteVarInt64({memberAccess});";
+                return true;
+            case 9:
+                writeCode = $"context.Writer.WriteUInt8({memberAccess});";
+                return true;
+            case 10:
+                writeCode = $"context.Writer.WriteUInt16({memberAccess});";
+                return true;
+            case 12:
+                writeCode = $"context.Writer.WriteVarUInt32({memberAccess});";
+                return true;
+            case 14:
+                writeCode = $"context.Writer.WriteVarUInt64({memberAccess});";
+                return true;
+            case 19:
+                writeCode = $"context.Writer.WriteFloat32({memberAccess});";
+                return true;
+            case 20:
+                writeCode = $"context.Writer.WriteFloat64({memberAccess});";
+                return true;
+            case 21:
+                writeCode = $"global::Apache.Fory.StringSerializer.WriteString(ref context, {memberAccess});";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryBuildDirectFieldRead(MemberModel member, out string? readExpr)
+    {
+        readExpr = null;
+        if (!CanUseDirectBuiltInFieldAccess(member))
+        {
+            return false;
+        }
+
+        switch (member.Classification.TypeId)
+        {
+            case 1:
+                readExpr = "context.Reader.ReadUInt8() != 0";
+                return true;
+            case 2:
+                readExpr = "context.Reader.ReadInt8()";
+                return true;
+            case 3:
+                readExpr = "context.Reader.ReadInt16()";
+                return true;
+            case 5:
+                readExpr = "context.Reader.ReadVarInt32()";
+                return true;
+            case 7:
+                readExpr = "context.Reader.ReadVarInt64()";
+                return true;
+            case 9:
+                readExpr = "context.Reader.ReadUInt8()";
+                return true;
+            case 10:
+                readExpr = "context.Reader.ReadUInt16()";
+                return true;
+            case 12:
+                readExpr = "context.Reader.ReadVarUInt32()";
+                return true;
+            case 14:
+                readExpr = "context.Reader.ReadVarUInt64()";
+                return true;
+            case 19:
+                readExpr = "context.Reader.ReadFloat32()";
+                return true;
+            case 20:
+                readExpr = "context.Reader.ReadFloat64()";
+                return true;
+            case 21:
+                readExpr = "global::Apache.Fory.StringSerializer.ReadString(ref context)";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool CanUseDirectBuiltInFieldAccess(MemberModel member)
+    {
+        if (member.IsNullable ||
+            member.CustomWrapperTypeName is not null ||
+            member.DynamicAnyKind != DynamicAnyKind.None ||
+            member.IsCollection ||
+            member.Classification.IsMap)
+        {
+            return false;
+        }
+
+        return member.Classification.IsPrimitive || member.Classification.TypeId == 21;
     }
 
     private static string BuildSchemaFingerprintExpression(ImmutableArray<MemberModel> members)
@@ -412,7 +541,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 DynamicAnyKind.AnyValue => "(trackRef ? 1 : 0)",
                 _ => member.Classification.IsBuiltIn
                     ? "0"
-                    : $"((trackRef && typeResolver.GetSerializer<{member.TypeName}>().IsReferenceTrackableType) ? 1 : 0)",
+                    : $"((trackRef && typeResolver.GetTypeInfo<{member.TypeName}>().IsReferenceTrackableType) ? 1 : 0)",
             };
             string nullable = member.IsNullable ? "1" : "0";
             string piece = $"\"{EscapeString(member.FieldIdentifier)},{fingerprintTypeId},\" + {trackRefExpr} + \",{nullable};\"";
@@ -450,7 +579,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             DynamicAnyKind.AnyValue => $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef)",
             _ => member.Classification.IsBuiltIn
                 ? $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)"
-                : $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef && context.TypeResolver.GetSerializer<{member.TypeName}>().IsReferenceTrackableType)",
+                : $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef && context.TypeResolver.GetTypeInfo<{member.TypeName}>().IsReferenceTrackableType)",
         };
     }
 
