@@ -1,0 +1,404 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Build foryc Binaries
+
+on:
+  workflow_dispatch:
+
+  workflow_call:
+    outputs:
+      artifacts_ready:
+        description: "True if all 5 foryc binaries built and validated."
+        value: ${{ jobs.build-complete.outputs.ready }}
+
+  push:
+    tags: ["v*"]
+
+  pull_request:
+    paths:
+      - "compiler/**"
+      - ".github/workflows/build-foryc-binaries.yml"
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BUILD JOB
+# Produces one standalone foryc binary per target platform.
+#
+# Runner notes (matched to repo convention in build-native-pr.yml):
+#   linux-x86_64  : ubuntu-22.04
+#   linux-aarch64 : ubuntu-24.04-arm  (native GitHub ARM64 runner)
+#   macos-x86_64  : macos-15-intel
+#   macos-aarch64 : macos-15          (native Apple Silicon)
+#   windows-x86_64: windows-latest
+#
+# UPX notes:
+#   All platforms get UPX --best --lzma compression.
+#   macOS aarch64 MUST be re-signed with codesign after UPX.
+#   Apple Silicon requires a valid code signature on all executables.
+#   Without re-signing, the binary runs fine in CI but silently fails
+#   for end users on macOS 12+ with SIP enabled.
+#
+# 10 MB constraint:
+#   Each binary must remain under 10 MB after UPX compression.
+#   This is a hard gate for crates.io embedding in Phase 2.
+#   Enforced with an explicit assertion step in each build job.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    name: build / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-22.04
+            artifact_name: foryc-linux-x86_64
+            binary_path: compiler/dist/foryc
+            binary_name: foryc
+            use_upx: true
+            codesign: false
+
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact_name: foryc-linux-aarch64
+            binary_path: compiler/dist/foryc
+            binary_name: foryc
+            use_upx: true
+            codesign: false
+
+          - target: macos-x86_64
+            os: macos-15-intel
+            artifact_name: foryc-macos-x86_64
+            binary_path: compiler/dist/foryc
+            binary_name: foryc
+            use_upx: true
+            codesign: false
+
+          - target: macos-aarch64
+            os: macos-15
+            artifact_name: foryc-macos-aarch64
+            binary_path: compiler/dist/foryc
+            binary_name: foryc
+            use_upx: true
+            codesign: true
+
+          - target: windows-x86_64
+            os: windows-latest
+            artifact_name: foryc-windows-x86_64
+            binary_path: compiler/dist/foryc.exe
+            binary_name: foryc.exe
+            use_upx: true
+            codesign: false
+
+    steps:
+      # Full checkout required: needs compiler/foryc.spec,
+      # compiler/requirements-dev.txt, and the full compiler/ package
+      # for pip install and pyinstaller to work.
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ── Install UPX ─────────────────────────────────────────────────────────
+      - name: Install UPX (Linux)
+        if: runner.os == 'Linux' && matrix.use_upx
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y upx-ucl
+          upx --version
+
+      - name: Install UPX (macOS)
+        if: runner.os == 'macOS' && matrix.use_upx
+        run: |
+          brew install upx
+          upx --version
+
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows' && matrix.use_upx
+        shell: pwsh
+        run: |
+          choco install upx --yes --no-progress
+          upx --version
+
+      # ── Install build dependencies ──────────────────────────────────────────
+      # pyinstaller version is pinned in requirements-dev.txt.
+      # fory_compiler is installed from source so PyInstaller's import
+      # tracer can walk the actual installed package tree.
+      - name: Install PyInstaller and fory_compiler
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r compiler/requirements-dev.txt
+          pip install ./compiler
+
+      # ── Build ───────────────────────────────────────────────────────────────
+      # Must run from compiler/ so pathex=['.'] in foryc.spec resolves
+      # fory_compiler/__main__.py correctly.
+      - name: Build standalone binary with PyInstaller
+        working-directory: compiler
+        run: pyinstaller foryc.spec
+
+      # ── Pre-compression smoke test ──────────────────────────────────────────
+      # Confirms the binary is functional before UPX touches it.
+      # A broken binary here gives a cleaner error than post-UPX.
+      - name: Smoke test (pre-UPX)
+        shell: bash
+        run: |
+          echo "=== Pre-UPX binary size ==="
+          python -c "
+          import os
+          p = '${{ matrix.binary_path }}'
+          s = os.path.getsize(p)
+          print(f'Size: {s:,} bytes ({s/1024/1024:.2f} MB)')
+          "
+          "${{ matrix.binary_path }}" --help
+
+      # ── UPX compression ─────────────────────────────────────────────────────
+      # --best --lzma: maximum compression, ~10% better ratio than default.
+      # UPX on PyInstaller --onefile binaries is well-supported.
+      # The PyInstaller bootloader survives UPX compression intact.
+      - name: Compress with UPX
+        if: matrix.use_upx
+        shell: bash
+        run: |
+          upx --best --lzma "${{ matrix.binary_path }}"
+          echo "=== Post-UPX binary size ==="
+          python -c "
+          import os
+          p = '${{ matrix.binary_path }}'
+          s = os.path.getsize(p)
+          print(f'Size: {s:,} bytes ({s/1024/1024:.2f} MB)')
+          "
+
+      # ── macOS aarch64: re-sign after UPX ────────────────────────────────────
+      # UPX modifies the Mach-O binary, invalidating its code signature.
+      # Apple Silicon refuses to execute binaries with invalid signatures.
+      # --sign - creates an ad-hoc signature; no Apple Developer ID required.
+      # Ad-hoc signatures are sufficient for binaries distributed via crates.io
+      # since they are not quarantined (not downloaded from the internet at runtime).
+      - name: Re-sign binary after UPX (macOS aarch64 only)
+        if: matrix.codesign
+        run: |
+          codesign --force --deep --sign - "${{ matrix.binary_path }}"
+          codesign --verify --verbose "${{ matrix.binary_path }}"
+
+      # ── Post-compression smoke test ─────────────────────────────────────────
+      # Critical test: the UPX-compressed (and re-signed) binary must execute.
+      # Failure here means UPX broke the binary on this platform.
+      - name: Smoke test (post-UPX)
+        shell: bash
+        run: |
+          "${{ matrix.binary_path }}" --help
+
+      # ── crates.io 10 MB size gate ────────────────────────────────────────────
+      # Each per-platform foryc-bin-* crate (Phase 2) embeds exactly one binary.
+      # crates.io hard limit is 10 MB per crate.
+      # If this assertion fails: add more entries to excludes[] in foryc.spec,
+      # investigate why binary grew, or reconsider distribution strategy.
+      - name: Assert binary is under 10 MB (crates.io hard limit)
+        shell: bash
+        run: |
+          python -c "
+          import os, sys
+          path = '${{ matrix.binary_path }}'
+          size = os.path.getsize(path)
+          limit = 10 * 1024 * 1024
+          print(f'Final size: {size:,} bytes ({size/1024/1024:.2f} MB)')
+          print(f'Limit:      {limit:,} bytes (10.00 MB)')
+          if size > limit:
+              print()
+              print('FAIL: Binary exceeds 10 MB crates.io per-crate limit.')
+              print('Add exclusions to compiler/foryc.spec or investigate UPX options.')
+              sys.exit(1)
+          print('PASS')
+          "
+
+      # ── Upload artifact ─────────────────────────────────────────────────────
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_path }}
+          retention-days: 30
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # VALIDATE JOB
+  # Downloads each binary onto its native runner and runs:
+  #   1. --help sanity check
+  #      Python is NOT set up in this job — binary must be fully self-contained.
+  #   2. End-to-end compile of compiler/examples/demo.fdl to Rust output.
+  #      demo.fdl exercises: enum, optional, list, map, ref (cross-message
+  #      reference using the 'ref' keyword), primitive arrays, type IDs,
+  #      and name-based registration. It is the repo's own known-good fixture.
+  # ─────────────────────────────────────────────────────────────────────────────
+  validate:
+    name: validate / ${{ matrix.target }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-22.04
+            artifact_name: foryc-linux-x86_64
+            binary_name: foryc
+
+          - target: linux-aarch64
+            os: ubuntu-24.04-arm
+            artifact_name: foryc-linux-aarch64
+            binary_name: foryc
+
+          - target: macos-x86_64
+            os: macos-15-intel
+            artifact_name: foryc-macos-x86_64
+            binary_name: foryc
+
+          - target: macos-aarch64
+            os: macos-15
+            artifact_name: foryc-macos-aarch64
+            binary_name: foryc
+
+          - target: windows-x86_64
+            os: windows-latest
+            artifact_name: foryc-windows-x86_64
+            binary_name: foryc.exe
+
+    steps:
+      # Sparse checkout: only compiler/examples/ needed for demo.fdl.
+      # Python is deliberately NOT set up — the binary must run standalone.
+      - name: Checkout (sparse — compiler/examples only)
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: compiler/examples
+          sparse-checkout-cone-mode: true
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ./artifact
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x ./artifact/${{ matrix.binary_name }}
+
+      # ── Test 1: --help ───────────────────────────────────────────────────────
+      - name: Validate --help output
+        shell: bash
+        run: |
+          OUTPUT=$(./artifact/${{ matrix.binary_name }} --help 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -iE "(fory|usage|compile|idl|lang)" || {
+            echo "ERROR: --help output missing expected keywords"
+            exit 1
+          }
+
+      # ── Test 2: End-to-end FDL → Rust ────────────────────────────────────────
+      # Uses compiler/examples/demo.fdl from the sparse checkout.
+      # Correct invocation: --rust_out sets output dir; no --lang needed.
+      - name: End-to-end compile demo.fdl to Rust
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-out"
+          mkdir -p "${OUT_DIR}"
+
+          echo "=== Compiling compiler/examples/demo.fdl → Rust ==="
+          ./artifact/${{ matrix.binary_name }} \
+            --rust_out "${OUT_DIR}" \
+            compiler/examples/demo.fdl
+
+          echo "=== Output files ==="
+          ls -la "${OUT_DIR}/"
+
+          FILE_COUNT=$(ls "${OUT_DIR}" | wc -l)
+          if [ "${FILE_COUNT}" -eq 0 ]; then
+            echo "ERROR: foryc produced no output files"
+            exit 1
+          fi
+          echo "PASS: ${FILE_COUNT} file(s) generated"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SUMMARY JOB
+  # Single required status check for branch protection rules.
+  # The Phase 4 release pipeline reads this job's output via workflow_call.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-complete:
+    name: foryc / all binaries ready
+    needs: [build, validate]
+    runs-on: ubuntu-latest
+    if: always()
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Evaluate results
+        id: check
+        run: |
+          BUILD="${{ needs.build.result }}"
+          VALIDATE="${{ needs.validate.result }}"
+          echo "build:    ${BUILD}"
+          echo "validate: ${VALIDATE}"
+          if [[ "${BUILD}" == "success" && "${VALIDATE}" == "success" ]]; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            exit 1
+          fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FALLBACK: If ubuntu-24.04-arm runner is unavailable in your fork,
+# replace the linux-aarch64 matrix entry with:
+#
+#   - target: linux-aarch64
+#     os: ubuntu-22.04
+#     artifact_name: foryc-linux-aarch64
+#     binary_path: compiler/dist/foryc
+#     binary_name: foryc
+#     use_upx: true
+#     codesign: false
+#
+# Then add these two steps before "Install PyInstaller":
+#
+#   - name: Set up QEMU
+#     uses: docker/setup-qemu-action@v3
+#     with:
+#       platforms: arm64
+#
+#   - name: Build via Docker (linux-aarch64)
+#     if: matrix.target == 'linux-aarch64'
+#     uses: addnab/docker-run-action@v3
+#     with:
+#       image: python:3.11-slim-bookworm
+#       options: --platform linux/arm64 -v ${{ github.workspace }}:/ws
+#       run: |
+#         apt-get update -qq && apt-get install -y upx-ucl binutils
+#         pip install -r /ws/compiler/requirements-dev.txt
+#         pip install /ws/compiler
+#         cd /ws/compiler && pyinstaller foryc.spec
+#
+# QEMU builds are 10-20x slower than native. Expect 20-30 min per run.
+# ─────────────────────────────────────────────────────────────────────────────

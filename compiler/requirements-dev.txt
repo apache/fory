@@ -1,0 +1,15 @@
+# Development dependencies for building the standalone foryc binary.
+# NOT part of the published fory-compiler package on PyPI.
+# This file intentionally kept separate from pyproject.toml.
+#
+# Usage (from repo root):
+#   pip install -r compiler/requirements-dev.txt
+#   pip install ./compiler
+#   cd compiler && pyinstaller foryc.spec
+#
+# UPX must be installed separately as a system binary:
+#   Linux:   sudo apt-get install upx-ucl
+#   macOS:   brew install upx
+#   Windows: choco install upx
+
+pyinstaller>=6.0,<7.0
