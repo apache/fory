@@ -67,7 +67,7 @@ public sealed class TypeResolver
 
     public TypeInfo GetTypeInfo(Type type)
     {
-        return EnsureTypeInfo(type, null);
+        return GetOrCreateTypeInfo(type, null);
     }
 
     public TypeInfo GetTypeInfo<T>()
@@ -75,7 +75,7 @@ public sealed class TypeResolver
         return GetTypeInfo(typeof(T));
     }
 
-    private TypeInfo EnsureTypeInfo(Type type, Serializer? explicitSerializer)
+    private TypeInfo GetOrCreateTypeInfo(Type type, Serializer? explicitSerializer)
     {
         if (_typeInfos.TryGetValue(type, out TypeInfo? existing))
         {
@@ -101,27 +101,27 @@ public sealed class TypeResolver
         return typeInfo;
     }
 
-    internal Serializer GetBinding(Type type)
+    internal Serializer GetSerializer(Type type)
     {
-        return EnsureTypeInfo(type, null).Serializer;
+        return GetOrCreateTypeInfo(type, null).Serializer;
     }
 
-    internal Serializer RegisterCustom<T, TSerializer>()
+    internal Serializer RegisterSerializer<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
     {
         Serializer serializerBinding = CreateSerializer<TSerializer>();
-        RegisterCustom(typeof(T), serializerBinding);
+        RegisterSerializer(typeof(T), serializerBinding);
         return serializerBinding;
     }
 
-    internal void RegisterCustom(Type type, Serializer serializerBinding)
+    internal void RegisterSerializer(Type type, Serializer serializerBinding)
     {
-        EnsureTypeInfo(type, serializerBinding);
+        GetOrCreateTypeInfo(type, serializerBinding);
     }
 
     internal void Register(Type type, uint id, Serializer? explicitSerializer = null)
     {
-        TypeInfo typeInfo = EnsureTypeInfo(type, explicitSerializer);
+        TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitSerializer);
         Serializer serializer = typeInfo.Serializer;
         RegisteredTypeInfo info = new(
             id,
@@ -146,7 +146,7 @@ public sealed class TypeResolver
 
     internal void Register(Type type, string namespaceName, string typeName, Serializer? explicitSerializer = null)
     {
-        TypeInfo typeInfo = EnsureTypeInfo(type, explicitSerializer);
+        TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitSerializer);
         Serializer serializer = typeInfo.Serializer;
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
@@ -171,7 +171,7 @@ public sealed class TypeResolver
         };
     }
 
-    internal RegisteredTypeInfo? RegisteredTypeInfo(Type type)
+    internal RegisteredTypeInfo? GetRegisteredTypeInfo(Type type)
     {
         return _typeInfos.TryGetValue(type, out TypeInfo? typeInfo)
             ? typeInfo.RegisteredTypeInfo
@@ -180,7 +180,7 @@ public sealed class TypeResolver
 
     internal RegisteredTypeInfo RequireRegisteredTypeInfo(Type type)
     {
-        RegisteredTypeInfo? info = RegisteredTypeInfo(type);
+        RegisteredTypeInfo? info = GetRegisteredTypeInfo(type);
         if (info is not null)
         {
             return info;
