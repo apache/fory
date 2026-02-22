@@ -235,12 +235,8 @@ def test_shadowing_with_different_type():
 
     typedef = encode_typedef(resolver, Child)
 
-    field = next(f for f in typedef.fields if f.name == "value")
-
-    child_typedef = encode_typedef(resolver, Child)
-
     # just ensure only one exists
-    assert sum(f.name == "value" for f in child_typedef.fields) == 1
+    assert sum(f.name == "value" for f in typedef.fields) == 1
 
 
 def test_shadowing_uses_child_definition():
