@@ -82,11 +82,23 @@ public class FieldGroups {
   public static FieldGroups buildFieldInfos(Fory fory, DescriptorGrouper grouper) {
     // When a type is both Collection/Map and final, add it to collection/map fields to keep
     // consistent with jit.
-    Collection<Descriptor> primitives = grouper.getPrimitiveDescriptors();
-    Collection<Descriptor> boxed = grouper.getBoxedDescriptors();
+    List<Descriptor> primitives = new ArrayList<>(grouper.getPrimitiveDescriptors());
+    List<Descriptor> boxed = new ArrayList<>(grouper.getBoxedDescriptors());
     Collection<Descriptor> buildIn = grouper.getBuildInDescriptors();
+    List<Descriptor> regularBuildIn = new ArrayList<>(buildIn.size());
+    for (Descriptor d : buildIn) {
+      if (DispatchId.getDispatchId(fory, d) == DispatchId.FLOAT16) {
+        if (d.isNullable()) {
+          boxed.add(d);
+        } else {
+          primitives.add(d);
+        }
+      } else {
+        regularBuildIn.add(d);
+      }
+    }
     SerializationFieldInfo[] allBuildIn =
-        new SerializationFieldInfo[primitives.size() + boxed.size() + buildIn.size()];
+        new SerializationFieldInfo[primitives.size() + boxed.size() + regularBuildIn.size()];
     int cnt = 0;
     for (Descriptor d : primitives) {
       allBuildIn[cnt++] = new SerializationFieldInfo(fory, d);
@@ -94,7 +106,7 @@ public class FieldGroups {
     for (Descriptor d : boxed) {
       allBuildIn[cnt++] = new SerializationFieldInfo(fory, d);
     }
-    for (Descriptor d : buildIn) {
+    for (Descriptor d : regularBuildIn) {
       allBuildIn[cnt++] = new SerializationFieldInfo(fory, d);
     }
     cnt = 0;

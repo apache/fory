@@ -449,7 +449,7 @@ public class Types {
         return Long.class;
       case FLOAT8:
       case FLOAT16:
-      case BFLOAT16:
+        return Float16.class;
       case FLOAT32:
         return Float.class;
       case FLOAT64:
