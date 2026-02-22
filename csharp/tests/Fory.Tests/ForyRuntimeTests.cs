@@ -178,6 +178,34 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void NumericListSetRoundTrip()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        Assert.Equal((List<sbyte>)[-5, 0, 12], fory.Deserialize<List<sbyte>>(fory.Serialize((List<sbyte>)[-5, 0, 12])));
+        Assert.Equal((List<short>)[-1200, 0, 32000], fory.Deserialize<List<short>>(fory.Serialize((List<short>)[-1200, 0, 32000])));
+        Assert.Equal((List<int>)[-200_000, 0, 500_000], fory.Deserialize<List<int>>(fory.Serialize((List<int>)[-200_000, 0, 500_000])));
+        Assert.Equal((List<long>)[-9_000_000_000, 0, 9_000_000_000], fory.Deserialize<List<long>>(fory.Serialize((List<long>)[-9_000_000_000, 0, 9_000_000_000])));
+        Assert.Equal((List<byte>)[0, 1, 200], fory.Deserialize<List<byte>>(fory.Serialize((List<byte>)[0, 1, 200])));
+        Assert.Equal((List<ushort>)[0, 1, 65000], fory.Deserialize<List<ushort>>(fory.Serialize((List<ushort>)[0, 1, 65000])));
+        Assert.Equal((List<uint>)[0, 1, 4_000_000_000], fory.Deserialize<List<uint>>(fory.Serialize((List<uint>)[0, 1, 4_000_000_000])));
+        Assert.Equal((List<ulong>)[0, 1, 12_000_000_000], fory.Deserialize<List<ulong>>(fory.Serialize((List<ulong>)[0, 1, 12_000_000_000])));
+        Assert.Equal((List<float>)[-2.5f, 0f, 7.25f], fory.Deserialize<List<float>>(fory.Serialize((List<float>)[-2.5f, 0f, 7.25f])));
+        Assert.Equal((List<double>)[-2.5, 0d, 7.25], fory.Deserialize<List<double>>(fory.Serialize((List<double>)[-2.5, 0d, 7.25])));
+
+        Assert.Equal((HashSet<sbyte>)[-5, 0, 12], fory.Deserialize<HashSet<sbyte>>(fory.Serialize((HashSet<sbyte>)[-5, 0, 12])));
+        Assert.Equal((HashSet<short>)[-1200, 0, 32000], fory.Deserialize<HashSet<short>>(fory.Serialize((HashSet<short>)[-1200, 0, 32000])));
+        Assert.Equal((HashSet<int>)[-200_000, 0, 500_000], fory.Deserialize<HashSet<int>>(fory.Serialize((HashSet<int>)[-200_000, 0, 500_000])));
+        Assert.Equal((HashSet<long>)[-9_000_000_000, 0, 9_000_000_000], fory.Deserialize<HashSet<long>>(fory.Serialize((HashSet<long>)[-9_000_000_000, 0, 9_000_000_000])));
+        Assert.Equal((HashSet<byte>)[0, 1, 200], fory.Deserialize<HashSet<byte>>(fory.Serialize((HashSet<byte>)[0, 1, 200])));
+        Assert.Equal((HashSet<ushort>)[0, 1, 65000], fory.Deserialize<HashSet<ushort>>(fory.Serialize((HashSet<ushort>)[0, 1, 65000])));
+        Assert.Equal((HashSet<uint>)[0, 1, 4_000_000_000], fory.Deserialize<HashSet<uint>>(fory.Serialize((HashSet<uint>)[0, 1, 4_000_000_000])));
+        Assert.Equal((HashSet<ulong>)[0, 1, 12_000_000_000], fory.Deserialize<HashSet<ulong>>(fory.Serialize((HashSet<ulong>)[0, 1, 12_000_000_000])));
+        Assert.Equal((HashSet<float>)[-2.5f, 0f, 7.25f], fory.Deserialize<HashSet<float>>(fory.Serialize((HashSet<float>)[-2.5f, 0f, 7.25f])));
+        Assert.Equal((HashSet<double>)[-2.5, 0d, 7.25], fory.Deserialize<HashSet<double>>(fory.Serialize((HashSet<double>)[-2.5, 0d, 7.25])));
+    }
+
+    [Fact]
     public void StreamDeserializeConsumesSingleFrame()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();

@@ -77,6 +77,66 @@ internal sealed class ListBoolSerializer : Serializer<List<bool>>
     }
 }
 
+internal sealed class ListInt8Serializer : Serializer<List<sbyte>>
+{
+    private static readonly ListSerializer<sbyte> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<sbyte> DefaultValue => null!;
+
+    public override bool IsNone(in List<sbyte> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<sbyte> value, bool hasGenerics)
+    {
+        List<sbyte> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Int8, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteInt8(list[i]);
+        }
+    }
+
+    public override List<sbyte> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListInt16Serializer : Serializer<List<short>>
+{
+    private static readonly ListSerializer<short> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<short> DefaultValue => null!;
+
+    public override bool IsNone(in List<short> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<short> value, bool hasGenerics)
+    {
+        List<short> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Int16, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteInt16(list[i]);
+        }
+    }
+
+    public override List<short> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
 internal sealed class ListIntSerializer : Serializer<List<int>>
 {
     private static readonly ListSerializer<int> Fallback = new();
@@ -132,6 +192,186 @@ internal sealed class ListLongSerializer : Serializer<List<long>>
     }
 
     public override List<long> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListUInt8Serializer : Serializer<List<byte>>
+{
+    private static readonly ListSerializer<byte> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<byte> DefaultValue => null!;
+
+    public override bool IsNone(in List<byte> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<byte> value, bool hasGenerics)
+    {
+        List<byte> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.UInt8, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteUInt8(list[i]);
+        }
+    }
+
+    public override List<byte> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListUInt16Serializer : Serializer<List<ushort>>
+{
+    private static readonly ListSerializer<ushort> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<ushort> DefaultValue => null!;
+
+    public override bool IsNone(in List<ushort> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<ushort> value, bool hasGenerics)
+    {
+        List<ushort> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.UInt16, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteUInt16(list[i]);
+        }
+    }
+
+    public override List<ushort> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListUIntSerializer : Serializer<List<uint>>
+{
+    private static readonly ListSerializer<uint> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<uint> DefaultValue => null!;
+
+    public override bool IsNone(in List<uint> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<uint> value, bool hasGenerics)
+    {
+        List<uint> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.VarUInt32, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteVarUInt32(list[i]);
+        }
+    }
+
+    public override List<uint> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListULongSerializer : Serializer<List<ulong>>
+{
+    private static readonly ListSerializer<ulong> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<ulong> DefaultValue => null!;
+
+    public override bool IsNone(in List<ulong> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<ulong> value, bool hasGenerics)
+    {
+        List<ulong> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.VarUInt64, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteVarUInt64(list[i]);
+        }
+    }
+
+    public override List<ulong> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListFloatSerializer : Serializer<List<float>>
+{
+    private static readonly ListSerializer<float> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<float> DefaultValue => null!;
+
+    public override bool IsNone(in List<float> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<float> value, bool hasGenerics)
+    {
+        List<float> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Float32, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteFloat32(list[i]);
+        }
+    }
+
+    public override List<float> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class ListDoubleSerializer : Serializer<List<double>>
+{
+    private static readonly ListSerializer<double> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override List<double> DefaultValue => null!;
+
+    public override bool IsNone(in List<double> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in List<double> value, bool hasGenerics)
+    {
+        List<double> list = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Float64, false);
+        for (int i = 0; i < list.Count; i++)
+        {
+            context.Writer.WriteFloat64(list[i]);
+        }
+    }
+
+    public override List<double> ReadData(ref ReadContext context)
     {
         return Fallback.ReadData(ref context);
     }
@@ -324,6 +564,306 @@ internal sealed class ListTimeSpanSerializer : Serializer<List<TimeSpan>>
     }
 
     public override List<TimeSpan> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetInt8Serializer : Serializer<HashSet<sbyte>>
+{
+    private static readonly SetSerializer<sbyte> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<sbyte> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<sbyte> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<sbyte> value, bool hasGenerics)
+    {
+        HashSet<sbyte> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.Int8, false);
+        foreach (sbyte item in set)
+        {
+            context.Writer.WriteInt8(item);
+        }
+    }
+
+    public override HashSet<sbyte> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetInt16Serializer : Serializer<HashSet<short>>
+{
+    private static readonly SetSerializer<short> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<short> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<short> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<short> value, bool hasGenerics)
+    {
+        HashSet<short> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.Int16, false);
+        foreach (short item in set)
+        {
+            context.Writer.WriteInt16(item);
+        }
+    }
+
+    public override HashSet<short> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetIntSerializer : Serializer<HashSet<int>>
+{
+    private static readonly SetSerializer<int> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<int> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<int> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<int> value, bool hasGenerics)
+    {
+        HashSet<int> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.VarInt32, false);
+        foreach (int item in set)
+        {
+            context.Writer.WriteVarInt32(item);
+        }
+    }
+
+    public override HashSet<int> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetLongSerializer : Serializer<HashSet<long>>
+{
+    private static readonly SetSerializer<long> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<long> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<long> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<long> value, bool hasGenerics)
+    {
+        HashSet<long> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.VarInt64, false);
+        foreach (long item in set)
+        {
+            context.Writer.WriteVarInt64(item);
+        }
+    }
+
+    public override HashSet<long> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetUInt8Serializer : Serializer<HashSet<byte>>
+{
+    private static readonly SetSerializer<byte> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<byte> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<byte> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<byte> value, bool hasGenerics)
+    {
+        HashSet<byte> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.UInt8, false);
+        foreach (byte item in set)
+        {
+            context.Writer.WriteUInt8(item);
+        }
+    }
+
+    public override HashSet<byte> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetUInt16Serializer : Serializer<HashSet<ushort>>
+{
+    private static readonly SetSerializer<ushort> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<ushort> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<ushort> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<ushort> value, bool hasGenerics)
+    {
+        HashSet<ushort> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.UInt16, false);
+        foreach (ushort item in set)
+        {
+            context.Writer.WriteUInt16(item);
+        }
+    }
+
+    public override HashSet<ushort> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetUIntSerializer : Serializer<HashSet<uint>>
+{
+    private static readonly SetSerializer<uint> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<uint> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<uint> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<uint> value, bool hasGenerics)
+    {
+        HashSet<uint> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.VarUInt32, false);
+        foreach (uint item in set)
+        {
+            context.Writer.WriteVarUInt32(item);
+        }
+    }
+
+    public override HashSet<uint> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetULongSerializer : Serializer<HashSet<ulong>>
+{
+    private static readonly SetSerializer<ulong> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<ulong> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<ulong> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<ulong> value, bool hasGenerics)
+    {
+        HashSet<ulong> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.VarUInt64, false);
+        foreach (ulong item in set)
+        {
+            context.Writer.WriteVarUInt64(item);
+        }
+    }
+
+    public override HashSet<ulong> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetFloatSerializer : Serializer<HashSet<float>>
+{
+    private static readonly SetSerializer<float> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<float> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<float> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<float> value, bool hasGenerics)
+    {
+        HashSet<float> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.Float32, false);
+        foreach (float item in set)
+        {
+            context.Writer.WriteFloat32(item);
+        }
+    }
+
+    public override HashSet<float> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal sealed class SetDoubleSerializer : Serializer<HashSet<double>>
+{
+    private static readonly SetSerializer<double> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override HashSet<double> DefaultValue => null!;
+
+    public override bool IsNone(in HashSet<double> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in HashSet<double> value, bool hasGenerics)
+    {
+        HashSet<double> set = value ?? [];
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TypeId.Float64, false);
+        foreach (double item in set)
+        {
+            context.Writer.WriteFloat64(item);
+        }
+    }
+
+    public override HashSet<double> ReadData(ref ReadContext context)
     {
         return Fallback.ReadData(ref context);
     }

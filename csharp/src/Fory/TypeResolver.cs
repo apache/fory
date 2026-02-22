@@ -1083,6 +1083,16 @@ public sealed class TypeResolver
             return new ListBoolSerializer();
         }
 
+        if (type == typeof(List<sbyte>))
+        {
+            return new ListInt8Serializer();
+        }
+
+        if (type == typeof(List<short>))
+        {
+            return new ListInt16Serializer();
+        }
+
         if (type == typeof(List<int>))
         {
             return new ListIntSerializer();
@@ -1091,6 +1101,36 @@ public sealed class TypeResolver
         if (type == typeof(List<long>))
         {
             return new ListLongSerializer();
+        }
+
+        if (type == typeof(List<byte>))
+        {
+            return new ListUInt8Serializer();
+        }
+
+        if (type == typeof(List<ushort>))
+        {
+            return new ListUInt16Serializer();
+        }
+
+        if (type == typeof(List<uint>))
+        {
+            return new ListUIntSerializer();
+        }
+
+        if (type == typeof(List<ulong>))
+        {
+            return new ListULongSerializer();
+        }
+
+        if (type == typeof(List<float>))
+        {
+            return new ListFloatSerializer();
+        }
+
+        if (type == typeof(List<double>))
+        {
+            return new ListDoubleSerializer();
         }
 
         if (type == typeof(List<string>))
@@ -1116,6 +1156,56 @@ public sealed class TypeResolver
         if (type == typeof(List<TimeSpan>))
         {
             return new ListTimeSpanSerializer();
+        }
+
+        if (type == typeof(HashSet<sbyte>))
+        {
+            return new SetInt8Serializer();
+        }
+
+        if (type == typeof(HashSet<short>))
+        {
+            return new SetInt16Serializer();
+        }
+
+        if (type == typeof(HashSet<int>))
+        {
+            return new SetIntSerializer();
+        }
+
+        if (type == typeof(HashSet<long>))
+        {
+            return new SetLongSerializer();
+        }
+
+        if (type == typeof(HashSet<byte>))
+        {
+            return new SetUInt8Serializer();
+        }
+
+        if (type == typeof(HashSet<ushort>))
+        {
+            return new SetUInt16Serializer();
+        }
+
+        if (type == typeof(HashSet<uint>))
+        {
+            return new SetUIntSerializer();
+        }
+
+        if (type == typeof(HashSet<ulong>))
+        {
+            return new SetULongSerializer();
+        }
+
+        if (type == typeof(HashSet<float>))
+        {
+            return new SetFloatSerializer();
+        }
+
+        if (type == typeof(HashSet<double>))
+        {
+            return new SetDoubleSerializer();
         }
 
         if (type == typeof(Dictionary<string, string>))
