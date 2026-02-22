@@ -16,7 +16,7 @@
 # under the License.
 
 """
-Tests for xlang TypeDef implementation.
+Tests for inheritance in TypeDef implementation.
 """
 
 from dataclasses import dataclass
