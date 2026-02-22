@@ -25,6 +25,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.collection.Float16List;
 import org.apache.fory.config.Language;
 import org.apache.fory.type.Float16;
 import org.testng.annotations.Test;
@@ -171,6 +172,35 @@ public class Float16SerializerTest extends ForyTestBase {
     }
   }
 
+  @Data
+  @AllArgsConstructor
+  public static class StructWithFloat16List {
+    Float16List f16List;
+  }
+
+  @Test
+  public void testStructWithFloat16ListField() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory.register(StructWithFloat16List.class);
+
+    StructWithFloat16List obj = new StructWithFloat16List(buildFloat16List());
+    byte[] bytes = fory.serialize(obj);
+    StructWithFloat16List result = (StructWithFloat16List) fory.deserialize(bytes);
+
+    assertFloat16ListBits(obj.f16List, result.f16List);
+  }
+
+  @Test
+  public void testFloat16ListTopLevelSerialization() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+
+    Float16List list = buildFloat16List();
+    byte[] bytes = fory.serialize(list);
+    Float16List result = (Float16List) fory.deserialize(bytes);
+
+    assertFloat16ListBits(list, result);
+  }
+
   @Test
   public void testFloat16WithNullableField() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
@@ -258,6 +288,26 @@ public class Float16SerializerTest extends ForyTestBase {
             result.toBits(),
             "Bit pattern should be preserved for 0x" + Integer.toHexString(bits & 0xFFFF));
       }
+    }
+  }
+
+  private static Float16List buildFloat16List() {
+    return new Float16List(
+        new short[] {
+          Float16.ZERO.toBits(),
+          Float16.ONE.toBits(),
+          Float16.valueOf(2.5f).toBits(),
+          Float16.valueOf(-3.25f).toBits(),
+          Float16.NaN.toBits(),
+          Float16.POSITIVE_INFINITY.toBits(),
+          Float16.NEGATIVE_ZERO.toBits()
+        });
+  }
+
+  private static void assertFloat16ListBits(Float16List expected, Float16List actual) {
+    assertEquals(expected.size(), actual.size());
+    for (int i = 0; i < expected.size(); i++) {
+      assertEquals(expected.getShort(i), actual.getShort(i), "Index " + i + " should match");
     }
   }
 }

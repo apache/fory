@@ -63,6 +63,9 @@ public class DispatchId {
   public static int getDispatchId(Fory fory, Descriptor d) {
     int typeId = Types.getDescriptorTypeId(fory, d);
     Class<?> rawType = d.getTypeRef().getRawType();
+    if (rawType == Float16.class) {
+      return FLOAT16;
+    }
     if (fory.isCrossLanguage()) {
       return adjustUnsignedDispatchId(typeId, rawType, xlangTypeIdToDispatchId(typeId));
     } else {
