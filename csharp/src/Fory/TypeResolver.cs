@@ -45,7 +45,6 @@ internal sealed class TypeReader
 
 public sealed class TypeResolver
 {
-    private static readonly DateOnly Epoch = new(1970, 1, 1);
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
 
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
@@ -506,11 +505,11 @@ public sealed class TypeResolver
             case TypeId.String:
                 return StringSerializer.ReadString(ref context);
             case TypeId.Date:
-                return ReadDate(ref context);
+                return TimeCodec.ReadDate(ref context);
             case TypeId.Timestamp:
-                return ReadTimestamp(ref context);
+                return TimeCodec.ReadTimestamp(ref context);
             case TypeId.Duration:
-                return ReadDuration(ref context);
+                return TimeCodec.ReadDuration(ref context);
             case TypeId.Binary:
             case TypeId.UInt8Array:
                 return ReadBinary(ref context);
@@ -767,26 +766,6 @@ public sealed class TypeResolver
         }
 
         return values;
-    }
-
-    private static DateOnly ReadDate(ref ReadContext context)
-    {
-        int days = context.Reader.ReadInt32();
-        return DateOnly.FromDayNumber(Epoch.DayNumber + days);
-    }
-
-    private static DateTimeOffset ReadTimestamp(ref ReadContext context)
-    {
-        long seconds = context.Reader.ReadInt64();
-        uint nanos = context.Reader.ReadUInt32();
-        return new ForyTimestamp(seconds, nanos).ToDateTimeOffset();
-    }
-
-    private static TimeSpan ReadDuration(ref ReadContext context)
-    {
-        long seconds = context.Reader.ReadInt64();
-        int nanos = context.Reader.ReadInt32();
-        return TimeSpan.FromSeconds(seconds) + TimeSpan.FromTicks(nanos / 100);
     }
 
     private void MarkRegistrationMode(TypeId kind, bool registerByName)

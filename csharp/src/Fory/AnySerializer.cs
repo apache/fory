@@ -156,8 +156,6 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
 public static class DynamicAnyCodec
 {
-    private static readonly DateOnly Epoch = new(1970, 1, 1);
-
     internal static void WriteAnyTypeInfo(object value, ref WriteContext context)
     {
         if (DynamicContainerCodec.TryGetTypeId(value, out TypeId containerTypeId))
@@ -355,25 +353,16 @@ public static class DynamicAnyCodec
                 StringSerializer.WriteString(ref context, v);
                 return true;
             case DateOnly v:
-                context.Writer.WriteInt32(v.DayNumber - Epoch.DayNumber);
+                TimeCodec.WriteDate(ref context, v);
                 return true;
             case DateTimeOffset v:
-                WriteTimestampPayload(v, ref context);
+                TimeCodec.WriteTimestamp(ref context, v);
                 return true;
             case DateTime v:
-                DateTimeOffset dto = v.Kind switch
-                {
-                    DateTimeKind.Utc => new DateTimeOffset(v, TimeSpan.Zero),
-                    DateTimeKind.Local => v,
-                    _ => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)),
-                };
-                WriteTimestampPayload(dto, ref context);
+                TimeCodec.WriteTimestamp(ref context, TimeCodec.ToDateTimeOffset(v));
                 return true;
             case TimeSpan v:
-                long seconds = v.Ticks / TimeSpan.TicksPerSecond;
-                int nanos = checked((int)((v.Ticks % TimeSpan.TicksPerSecond) * 100));
-                context.Writer.WriteInt64(seconds);
-                context.Writer.WriteInt32(nanos);
+                TimeCodec.WriteDuration(ref context, v);
                 return true;
             case byte[] v:
                 context.Writer.WriteVarUInt32((uint)v.Length);
@@ -452,12 +441,5 @@ public static class DynamicAnyCodec
             default:
                 return false;
         }
-    }
-
-    private static void WriteTimestampPayload(in DateTimeOffset value, ref WriteContext context)
-    {
-        ForyTimestamp ts = ForyTimestamp.FromDateTimeOffset(value);
-        context.Writer.WriteInt64(ts.Seconds);
-        context.Writer.WriteUInt32(ts.Nanos);
     }
 }
