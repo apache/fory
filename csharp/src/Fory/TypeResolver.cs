@@ -47,122 +47,55 @@ internal sealed class TypeReader
 public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
-    private static readonly ConcurrentDictionary<Type, Func<Serializer>> SerializerConstructors = new();
-    private static readonly ConcurrentDictionary<Type, Serializer> SharedBindings = new();
-    private static readonly ConcurrentDictionary<Type, TypeInfo> SharedTypeInfos = new();
-    private static int _sharedCacheVersion;
 
     private readonly Dictionary<Type, RegisteredTypeInfo> _byType = [];
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
     private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
-    private readonly ConcurrentDictionary<Type, Serializer> _serializerBindings = new();
-    private readonly ConcurrentDictionary<Type, TypeInfo> _typeInfos = new();
-    private int _cacheVersion;
-
-    private static class SharedTypeInfoCache<T>
-    {
-        public static int Version = -1;
-        public static TypeInfo? Cached;
-    }
-
-    private static class TypeInfoCache<T>
-    {
-        public static int Version = -1;
-        public static TypeResolver? Resolver;
-        public static TypeInfo? Cached;
-    }
-
-    private static class SerializerCache<T>
-    {
-        public static int Version = -1;
-        public static TypeResolver? Resolver;
-        public static Serializer<T>? Cached;
-    }
+    private readonly Dictionary<Type, Serializer> _serializerBindings = [];
+    private readonly Dictionary<Type, TypeInfo> _typeInfos = [];
+    private readonly Dictionary<Type, Func<Serializer>> _serializerConstructors = [];
 
     public static void RegisterGenerated<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
     {
         Type type = typeof(T);
         GeneratedFactories[type] = CreateSerializer<TSerializer>;
-        SharedBindings.TryRemove(type, out _);
-        SharedTypeInfos.TryRemove(type, out _);
-        unchecked
-        {
-            _sharedCacheVersion += 1;
-        }
-    }
-
-    public static TypeId StaticTypeIdOf<T>()
-    {
-        return StaticTypeInfoOf<T>().StaticTypeId;
-    }
-
-    public static bool IsReferenceTrackableTypeOf<T>()
-    {
-        return StaticTypeInfoOf<T>().IsReferenceTrackableType;
-    }
-
-    public static IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFieldsOf<T>(bool trackRef)
-    {
-        return StaticTypeInfoOf<T>().Serializer.CompatibleTypeMetaFields(trackRef);
-    }
-
-    public static TypeInfo StaticTypeInfoOf<T>()
-    {
-        if (SharedTypeInfoCache<T>.Version == _sharedCacheVersion &&
-            SharedTypeInfoCache<T>.Cached is not null)
-        {
-            return SharedTypeInfoCache<T>.Cached;
-        }
-
-        TypeInfo typeInfo = GetSharedTypeInfo(typeof(T));
-        SharedTypeInfoCache<T>.Cached = typeInfo;
-        SharedTypeInfoCache<T>.Version = _sharedCacheVersion;
-        return typeInfo;
     }
 
     public Serializer<T> GetSerializer<T>()
     {
-        if (SerializerCache<T>.Version == _cacheVersion &&
-            ReferenceEquals(SerializerCache<T>.Resolver, this) &&
-            SerializerCache<T>.Cached is not null)
-        {
-            return SerializerCache<T>.Cached;
-        }
-
-        Serializer<T> typedSerializer = GetTypeInfo<T>().Serializer.RequireSerializer<T>();
-        SerializerCache<T>.Resolver = this;
-        SerializerCache<T>.Version = _cacheVersion;
-        SerializerCache<T>.Cached = typedSerializer;
-        return typedSerializer;
+        return GetTypeInfo<T>().Serializer.RequireSerializer<T>();
     }
 
     public TypeInfo GetTypeInfo(Type type)
     {
-        return _typeInfos.GetOrAdd(type, t => new TypeInfo(t, GetBinding(t)));
+        if (_typeInfos.TryGetValue(type, out TypeInfo? typeInfo))
+        {
+            return typeInfo;
+        }
+
+        typeInfo = new TypeInfo(type, GetBinding(type));
+        _typeInfos[type] = typeInfo;
+        return typeInfo;
     }
 
     public TypeInfo GetTypeInfo<T>()
     {
-        if (TypeInfoCache<T>.Version == _cacheVersion &&
-            ReferenceEquals(TypeInfoCache<T>.Resolver, this) &&
-            TypeInfoCache<T>.Cached is not null)
-        {
-            return TypeInfoCache<T>.Cached;
-        }
-
-        TypeInfo typeInfo = GetTypeInfo(typeof(T));
-        TypeInfoCache<T>.Resolver = this;
-        TypeInfoCache<T>.Version = _cacheVersion;
-        TypeInfoCache<T>.Cached = typeInfo;
-        return typeInfo;
+        return GetTypeInfo(typeof(T));
     }
 
     internal Serializer GetBinding(Type type)
     {
-        return _serializerBindings.GetOrAdd(type, CreateBindingCore);
+        if (_serializerBindings.TryGetValue(type, out Serializer? serializer))
+        {
+            return serializer;
+        }
+
+        serializer = CreateBindingCore(type);
+        _serializerBindings[type] = serializer;
+        return serializer;
     }
 
     internal Serializer RegisterCustom<T, TSerializer>()
@@ -176,11 +109,7 @@ public sealed class TypeResolver
     internal void RegisterCustom(Type type, Serializer serializerBinding)
     {
         _serializerBindings[type] = serializerBinding;
-        _typeInfos.TryRemove(type, out _);
-        unchecked
-        {
-            _cacheVersion += 1;
-        }
+        _typeInfos.Remove(type);
     }
 
     internal void Register(Type type, uint id, Serializer? explicitSerializer = null)
@@ -926,17 +855,7 @@ public sealed class TypeResolver
         return result;
     }
 
-    private static Serializer GetSharedBinding(Type type)
-    {
-        return SharedBindings.GetOrAdd(type, CreateBindingCore);
-    }
-
-    private static TypeInfo GetSharedTypeInfo(Type type)
-    {
-        return SharedTypeInfos.GetOrAdd(type, t => new TypeInfo(t, GetSharedBinding(t)));
-    }
-
-    private static Serializer CreateBindingCore(Type type)
+    private Serializer CreateBindingCore(Type type)
     {
         if (GeneratedFactories.TryGetValue(type, out Func<Serializer>? generatedFactory))
         {
@@ -1381,14 +1300,20 @@ public sealed class TypeResolver
         return new TSerializer();
     }
 
-    private static Serializer CreateSerializer(Type serializerType)
+    private Serializer CreateSerializer(Type serializerType)
     {
         if (!typeof(Serializer).IsAssignableFrom(serializerType))
         {
             throw new InvalidDataException($"{serializerType} is not a serializer");
         }
 
-        return SerializerConstructors.GetOrAdd(serializerType, BuildSerializerConstructor)();
+        if (!_serializerConstructors.TryGetValue(serializerType, out Func<Serializer>? constructor))
+        {
+            constructor = BuildSerializerConstructor(serializerType);
+            _serializerConstructors[serializerType] = constructor;
+        }
+
+        return constructor();
     }
 
     private static Func<Serializer> BuildSerializerConstructor(Type serializerType)

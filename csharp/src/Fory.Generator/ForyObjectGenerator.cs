@@ -858,10 +858,18 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 ImmutableArray<TypeMetaFieldTypeModel>.Empty);
         }
 
-        string typeName = memberType.ToDisplayString(FullNameFormat);
+        if (unwrapped.TypeKind == TypeKind.Enum)
+        {
+            return new TypeMetaFieldTypeModel(
+                "(uint)global::Apache.Fory.TypeId.Enum",
+                nullable,
+                false,
+                ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+        }
+
         TypeClassification classification = ClassifyType(unwrapped);
         return new TypeMetaFieldTypeModel(
-            $"(uint)global::Apache.Fory.TypeResolver.StaticTypeIdOf<{typeName}>()",
+            $"(uint){classification.TypeId}",
             nullable,
             !classification.IsBuiltIn && unwrapped.TypeKind != TypeKind.Enum,
             ImmutableArray<TypeMetaFieldTypeModel>.Empty);
