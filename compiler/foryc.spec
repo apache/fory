@@ -22,11 +22,18 @@
 # Run from the compiler/ directory:
 #   cd compiler && pyinstaller foryc.spec
 #
-# Output: compiler/dist/foryc  (foryc.exe on Windows)
+# Output: compiler/dist/foryc/foryc  (foryc.exe on Windows)
+#
+# --onedir mode is used instead of --onefile.
+# --onefile extracts Python DLLs to %TEMP% at runtime, which Windows Defender
+# intercepts at the memory-mapping level (PYI-xxxx: LoadLibrary: Invalid access
+# to memory location / ERROR_NOACCESS). This cannot be suppressed on GitHub's
+# hardened Windows Server 2022 runners even with DisableRealtimeMonitoring.
+# --onedir pre-extracts everything during the build step; no runtime extraction
+# occurs, so Defender is never triggered.
 #
 # UPX compression is intentionally NOT applied here.
-# The CI workflow applies UPX manually per-platform for precise control
-# (macOS aarch64 requires codesign after UPX; Windows needs a separate UPX path).
+# The CI workflow applies UPX manually per-platform for precise control.
 
 a = Analysis(
     ['fory_compiler/__main__.py'],
@@ -36,7 +43,6 @@ a = Analysis(
     # fory_compiler has zero third-party pip dependencies.
     # All frontends use hand-written lexers/parsers (pure stdlib).
     # All generators are explicitly statically imported in generators/__init__.py.
-    # PyInstaller's import tracer catches everything automatically.
     # This list is a complete belt-and-suspenders safety net — every module
     # in the fory_compiler package is enumerated here to prevent any future
     # refactoring from silently dropping a module from the binary.
@@ -45,7 +51,7 @@ a = Analysis(
         'fory_compiler',
         'fory_compiler.cli',
 
-        # IR layer — all 5 modules
+        # IR layer — all 6 modules
         'fory_compiler.ir',
         'fory_compiler.ir.ast',
         'fory_compiler.ir.emitter',
@@ -92,7 +98,7 @@ a = Analysis(
     # foryc uses: argparse, copy, os, sys, pathlib, typing, dataclasses,
     # enum, re, abc, io, collections, functools, itertools.
     # Everything below is confirmed unused — aggressively excluded to
-    # reduce pre-UPX binary size.
+    # reduce binary size.
     excludes=[
         'unittest', 'doctest', 'pdb', 'pydoc', 'py_compile', 'profile',
         'distutils', 'setuptools', 'pkg_resources',
@@ -109,24 +115,36 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data)
 
+# --onedir mode: exclude_binaries=True keeps EXE as a stub only.
+# COLLECT below pulls the exe + all DLLs + stdlib into dist/foryc/ directory.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='foryc',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,
     upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+# COLLECT bundles everything into dist/foryc/
+# strip=False here — stripping shared libraries/DLLs breaks them.
+# Only the executable stub (above) is stripped.
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='foryc',
 )

@@ -42,32 +42,35 @@ env:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD JOB
-# Produces one standalone foryc binary per target platform.
+# Produces one standalone foryc binary directory per target platform.
 #
-# Runner notes (matched to repo convention in build-native-pr.yml):
+# Runner notes:
 #   linux-x86_64  : ubuntu-22.04
-#   linux-aarch64 : ubuntu-24.04-arm  (native GitHub ARM64 runner)
+#   linux-aarch64 : ubuntu-24.04-arm
 #   macos-x86_64  : macos-15-intel
-#   macos-aarch64 : macos-15          (native Apple Silicon)
-#   windows-x86_64: windows-latest    (Server 2022)
+#   macos-aarch64 : macos-15
+#   windows-x86_64: windows-latest (Server 2022)
+#
+# --onedir mode:
+#   PyInstaller --onefile extracts DLLs to %TEMP% at runtime. Windows Defender
+#   on GitHub's hardened runners intercepts LoadLibrary at the memory-mapping
+#   level (PYI-xxxx ERROR_NOACCESS) even with DisableRealtimeMonitoring $true.
+#   --onedir pre-extracts everything at build time. No runtime extraction means
+#   no Defender interception. No Defender workaround needed anywhere.
+#
+# Output per target: compiler/dist/foryc/ directory
+#   Unix:    compiler/dist/foryc/foryc
+#   Windows: compiler/dist/foryc/foryc.exe
 #
 # UPX notes:
-#   Linux and Windows targets use UPX --best --lzma compression.
-#   macOS targets skip UPX entirely — UPX 4.x+ dropped macOS Mach-O support.
-#   macOS aarch64 requires ad-hoc codesigning for Apple Silicon.
+#   UPX is applied to the executable inside dist/foryc/ only, not the dir.
+#   macOS skips UPX — UPX 4.x+ dropped Mach-O support entirely.
 #
-# 10 MB constraint:
-#   Each binary must remain under 10 MB after UPX compression.
-#   This is a hard gate for crates.io embedding in Phase 2.
-#   macOS binaries are uncompressed but remain under 10 MB because
-#   fory_compiler has zero third-party pip dependencies (pure stdlib only).
-#
-# Windows Defender note:
-#   Set-MpPreference -DisableRealtimeMonitoring $true is required in BOTH
-#   the build and validate jobs. Add-MpPreference -ExclusionPath is NOT
-#   sufficient — it only excludes file system scans, not the memory-level
-#   LoadLibrary interception that causes PYI-3104 / ERROR_NOACCESS failures
-#   when PyInstaller extracts and maps python311.dll at runtime.
+# Phase 2 distribution note:
+#   The onedir package is 20-40 MB total (python311.dll + stdlib .pyc files).
+#   This exceeds the 10 MB crates.io per-crate limit from --onefile planning.
+#   foryc-bin will distribute via zip archive or download-on-first-install,
+#   not direct binary embedding in a single crate.
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
   build:
@@ -80,7 +83,7 @@ jobs:
           - target: linux-x86_64
             os: ubuntu-22.04
             artifact_name: foryc-linux-x86_64
-            binary_path: compiler/dist/foryc
+            binary_path: compiler/dist/foryc/foryc
             binary_name: foryc
             use_upx: true
             codesign: false
@@ -88,7 +91,7 @@ jobs:
           - target: linux-aarch64
             os: ubuntu-24.04-arm
             artifact_name: foryc-linux-aarch64
-            binary_path: compiler/dist/foryc
+            binary_path: compiler/dist/foryc/foryc
             binary_name: foryc
             use_upx: true
             codesign: false
@@ -96,7 +99,7 @@ jobs:
           - target: macos-x86_64
             os: macos-15-intel
             artifact_name: foryc-macos-x86_64
-            binary_path: compiler/dist/foryc
+            binary_path: compiler/dist/foryc/foryc
             binary_name: foryc
             use_upx: false
             codesign: false
@@ -104,7 +107,7 @@ jobs:
           - target: macos-aarch64
             os: macos-15
             artifact_name: foryc-macos-aarch64
-            binary_path: compiler/dist/foryc
+            binary_path: compiler/dist/foryc/foryc
             binary_name: foryc
             use_upx: false
             codesign: true
@@ -112,7 +115,7 @@ jobs:
           - target: windows-x86_64
             os: windows-latest
             artifact_name: foryc-windows-x86_64
-            binary_path: compiler/dist/foryc.exe
+            binary_path: compiler/dist/foryc/foryc.exe
             binary_name: foryc.exe
             use_upx: true
             codesign: false
@@ -138,12 +141,6 @@ jobs:
           sudo apt-get install -y upx-ucl
           upx --version
 
-      - name: Install UPX (macOS)
-        if: runner.os == 'macOS' && matrix.use_upx
-        run: |
-          brew install upx
-          upx --version
-
       - name: Install UPX (Windows)
         if: runner.os == 'Windows' && matrix.use_upx
         shell: pwsh
@@ -152,6 +149,9 @@ jobs:
           upx --version
 
       # ── Install build dependencies ──────────────────────────────────────────
+      # pyinstaller version is pinned in requirements-dev.txt.
+      # fory_compiler installed from source so PyInstaller's import tracer
+      # can walk the actual installed package tree.
       - name: Install PyInstaller and fory_compiler
         run: |
           python -m pip install --upgrade pip
@@ -160,8 +160,8 @@ jobs:
 
       # ── Verify all hiddenimports are importable ─────────────────────────────
       # PyInstaller silently ignores nonexistent hiddenimports entries.
-      # This step catches renamed or removed modules before they silently
-      # disappear from the binary.
+      # This step catches renamed or removed modules before PyInstaller runs,
+      # giving a clean ImportError instead of a silently broken binary.
       - name: Verify all hiddenimports are importable
         working-directory: compiler
         run: |
@@ -192,24 +192,15 @@ jobs:
           print('All hiddenimports verified.')
           "
 
-      # ── Windows Defender (build job) ────────────────────────────────────────
-      # Full real-time monitoring disable is required — not just path exclusions.
-      # Add-MpPreference -ExclusionPath only covers filesystem scans.
-      # The PYI-3104 / LoadLibrary: Invalid access to memory location error
-      # is caused by Defender intercepting the memory-mapping of python311.dll
-      # during PyInstaller bootloader execution. Only DisableRealtimeMonitoring
-      # stops that interception.
-      - name: Disable Windows Defender real-time monitoring (PyInstaller workaround)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
-
       # ── Build ───────────────────────────────────────────────────────────────
+      # Must run from compiler/ so pathex=['.'] in foryc.spec resolves
+      # fory_compiler/__main__.py correctly.
       - name: Build standalone binary with PyInstaller
         working-directory: compiler
         run: pyinstaller foryc.spec
 
       # ── Pre-compression smoke test ──────────────────────────────────────────
+      # Confirms the binary is functional before UPX touches it.
       - name: Smoke test (pre-UPX)
         shell: bash
         env:
@@ -225,6 +216,8 @@ jobs:
           "$BINARY_PATH" --help
 
       # ── UPX compression ─────────────────────────────────────────────────────
+      # Applied to the executable stub only, not the entire dist/foryc/ dir.
+      # macOS skipped — UPX 4.x+ dropped Mach-O support.
       - name: Compress with UPX
         if: matrix.use_upx
         shell: bash
@@ -241,13 +234,17 @@ jobs:
           "
 
       # ── macOS aarch64: ad-hoc codesign ───────────────────────────────────────
-      # PyInstaller-built Apple Silicon binaries require valid code signatures.
-      # UPX is disabled for macOS — this step runs regardless of UPX.
+      # Apple Silicon requires valid code signatures on the exe AND all .dylib/.so
+      # files in the onedir package. --deep only traverses .app/.framework bundles,
+      # not flat directories, so we sign dylibs explicitly first.
       # --sign - creates an ad-hoc signature; no Apple Developer ID required.
       - name: Ad-hoc codesign binary (macOS aarch64, required for Apple Silicon)
         if: matrix.codesign
         run: |
-          codesign --force --deep --sign - "${{ matrix.binary_path }}"
+          find "$(dirname '${{ matrix.binary_path }}')" \
+            \( -name "*.dylib" -o -name "*.so" \) \
+            -exec codesign --force --sign - {} \;
+          codesign --force --sign - "${{ matrix.binary_path }}"
           codesign --verify --verbose "${{ matrix.binary_path }}"
 
       # ── Post-compression smoke test ─────────────────────────────────────────
@@ -256,44 +253,50 @@ jobs:
         run: |
           "${{ matrix.binary_path }}" --help
 
-      # ── crates.io 10 MB size gate ────────────────────────────────────────────
-      - name: Assert binary is under 10 MB (crates.io hard limit)
+      # ── Onedir package size report ───────────────────────────────────────────
+      # In --onedir mode the executable is a ~1 MB bootloader stub.
+      # The actual payload (python311.dll + stdlib .pyc files) is 20-40 MB total.
+      # The 10 MB crates.io gate from --onefile does not apply here.
+      # Phase 2 foryc-bin will distribute via zip archive or download-on-install,
+      # NOT direct binary embedding in a single crate.
+      # This step reports both sizes and fails only on a 50 MB sanity limit.
+      - name: Report onedir package size
         shell: bash
         env:
           BINARY_PATH: ${{ matrix.binary_path }}
         run: |
           python -c "
-          import os, sys
-          path = os.environ['BINARY_PATH']
-          size = os.path.getsize(path)
-          limit = 10 * 1024 * 1024
-          print(f'Final size: {size:,} bytes ({size/1024/1024:.2f} MB)')
-          print(f'Limit:      {limit:,} bytes (10.00 MB)')
-          if size > limit:
-              print()
-              print('FAIL: Binary exceeds 10 MB crates.io per-crate limit.')
-              print('Add exclusions to compiler/foryc.spec or investigate UPX options.')
+          import os, sys, pathlib
+          binary = pathlib.Path(os.environ['BINARY_PATH'])
+          dist_dir = binary.parent
+          total = sum(f.stat().st_size for f in dist_dir.rglob('*') if f.is_file())
+          exe_size = binary.stat().st_size
+          print(f'Executable: {exe_size:,} bytes ({exe_size/1024/1024:.2f} MB)')
+          print(f'Total dir:  {total:,} bytes ({total/1024/1024:.2f} MB)')
+          if total > 50 * 1024 * 1024:
+              print('FAIL: onedir package exceeds 50 MB sanity limit.')
               sys.exit(1)
           print('PASS')
           "
 
-      # ── Upload artifact ─────────────────────────────────────────────────────
+      # ── Upload artifact (entire onedir directory) ────────────────────────────
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.binary_path }}
+          path: compiler/dist/foryc/
           retention-days: 30
           if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────────────────────
   # VALIDATE JOB
-  # Downloads each binary onto its native runner and runs:
+  # Downloads each binary directory onto its native runner and runs:
   #   1. --help sanity check
-  #      Python is NOT set up in this job — binary must be fully self-contained.
-  #   2. End-to-end compile of compiler/examples/demo.fdl to Rust output.
-  #   3. End-to-end compile of compiler/examples/demo.fdl to Java output.
-  #      Validates that all 5 language generators are correctly embedded.
+  #   2. End-to-end compile of compiler/examples/demo.fdl to Rust output
+  #   3. End-to-end compile of compiler/examples/demo.fdl to Java output
+  #
+  # No Defender workaround needed — onedir has no runtime extraction at all.
+  # Python is NOT set up — binary must be fully self-contained.
   # ─────────────────────────────────────────────────────────────────────────────
   validate:
     name: validate / ${{ matrix.target }}
@@ -330,7 +333,7 @@ jobs:
 
     steps:
       # Sparse checkout: only compiler/examples/ needed for demo.fdl.
-      # Python is deliberately NOT set up — the binary must run standalone.
+      # Python deliberately NOT set up — binary must run standalone.
       - name: Checkout (sparse — compiler/examples only)
         uses: actions/checkout@v5
         with:
@@ -343,23 +346,12 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ./artifact
 
-      # ── Windows Defender (validate job) ────────────────────────────────────
-      # MUST appear before the binary is executed — not just before the build.
-      # PyInstaller onefile extracts python311.dll to RUNNER_TEMP on first run.
-      # Defender intercepts the LoadLibrary call at the memory level, causing
-      # PYI-3104: Invalid access to memory location.
-      # Path exclusions (Add-MpPreference) do NOT fix this — full real-time
-      # monitoring disable is required in this job exactly as in the build job.
-      - name: Disable Windows Defender real-time monitoring (PyInstaller extraction workaround)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
-
       - name: Make executable (Unix)
         if: runner.os != 'Windows'
         run: chmod +x ./artifact/${{ matrix.binary_name }}
 
       # ── Test 1: --help ───────────────────────────────────────────────────────
+      # Requires argparse usage line. Crash tracebacks won't match ^usage:.*foryc.
       - name: Validate --help output
         shell: bash
         run: |
@@ -392,7 +384,7 @@ jobs:
           fi
           echo "PASS: ${RS_COUNT} .rs file(s) generated"
 
-      # ── Test 3: End-to-end FDL → Java ─────────────────────────────────────────
+      # ── Test 3: End-to-end FDL → Java ────────────────────────────────────────
       - name: End-to-end compile demo.fdl to Java
         shell: bash
         run: |
@@ -448,7 +440,7 @@ jobs:
 #   - target: linux-aarch64
 #     os: ubuntu-22.04
 #     artifact_name: foryc-linux-aarch64
-#     binary_path: compiler/dist/foryc
+#     binary_path: compiler/dist/foryc/foryc
 #     binary_name: foryc
 #     use_upx: true
 #     codesign: false
