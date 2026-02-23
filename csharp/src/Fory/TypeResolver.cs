@@ -46,6 +46,28 @@ internal sealed class TypeReader
 public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
+    private static readonly Dictionary<Type, Type> PrimitiveStringKeyDictionaryCodecs = new()
+    {
+        [typeof(string)] = typeof(StringPrimitiveDictionaryCodec),
+        [typeof(int)] = typeof(Int32PrimitiveDictionaryCodec),
+        [typeof(long)] = typeof(Int64PrimitiveDictionaryCodec),
+        [typeof(bool)] = typeof(BoolPrimitiveDictionaryCodec),
+        [typeof(double)] = typeof(Float64PrimitiveDictionaryCodec),
+        [typeof(float)] = typeof(Float32PrimitiveDictionaryCodec),
+        [typeof(uint)] = typeof(UInt32PrimitiveDictionaryCodec),
+        [typeof(ulong)] = typeof(UInt64PrimitiveDictionaryCodec),
+        [typeof(sbyte)] = typeof(Int8PrimitiveDictionaryCodec),
+        [typeof(short)] = typeof(Int16PrimitiveDictionaryCodec),
+        [typeof(ushort)] = typeof(UInt16PrimitiveDictionaryCodec),
+    };
+
+    private static readonly Dictionary<Type, Type> PrimitiveSameTypeDictionaryCodecs = new()
+    {
+        [typeof(int)] = typeof(Int32PrimitiveDictionaryCodec),
+        [typeof(long)] = typeof(Int64PrimitiveDictionaryCodec),
+        [typeof(uint)] = typeof(UInt32PrimitiveDictionaryCodec),
+        [typeof(ulong)] = typeof(UInt64PrimitiveDictionaryCodec),
+    };
 
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
     private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
@@ -1311,79 +1333,10 @@ public sealed class TypeResolver
             return new SetDoubleSerializer();
         }
 
-        if (type == typeof(Dictionary<string, string>))
+        Serializer? primitiveDictionarySerializer = TryCreatePrimitiveDictionarySerializer(type);
+        if (primitiveDictionarySerializer is not null)
         {
-            return new DictionaryStringStringSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, int>))
-        {
-            return new DictionaryStringIntSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, long>))
-        {
-            return new DictionaryStringLongSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, bool>))
-        {
-            return new DictionaryStringBoolSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, double>))
-        {
-            return new DictionaryStringDoubleSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, float>))
-        {
-            return new DictionaryStringFloatSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, uint>))
-        {
-            return new DictionaryStringUIntSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, ulong>))
-        {
-            return new DictionaryStringULongSerializer();
-        }
-
-        if (type == typeof(Dictionary<string, sbyte>))
-        {
-            return new DictionaryStringInt8Serializer();
-        }
-
-        if (type == typeof(Dictionary<string, short>))
-        {
-            return new DictionaryStringInt16Serializer();
-        }
-
-        if (type == typeof(Dictionary<string, ushort>))
-        {
-            return new DictionaryStringUInt16Serializer();
-        }
-
-        if (type == typeof(Dictionary<int, int>))
-        {
-            return new DictionaryIntIntSerializer();
-        }
-
-        if (type == typeof(Dictionary<long, long>))
-        {
-            return new DictionaryLongLongSerializer();
-        }
-
-        if (type == typeof(Dictionary<uint, uint>))
-        {
-            return new DictionaryUIntUIntSerializer();
-        }
-
-        if (type == typeof(Dictionary<ulong, ulong>))
-        {
-            return new DictionaryULongULongSerializer();
+            return primitiveDictionarySerializer;
         }
 
         if (type == typeof(object))
@@ -1438,6 +1391,18 @@ public sealed class TypeResolver
                 return CreateSerializer(serializerType);
             }
 
+            if (genericType == typeof(SortedDictionary<,>))
+            {
+                Type serializerType = typeof(SortedDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                return CreateSerializer(serializerType);
+            }
+
+            if (genericType == typeof(ConcurrentDictionary<,>))
+            {
+                Type serializerType = typeof(ConcurrentDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                return CreateSerializer(serializerType);
+            }
+
             if (genericType == typeof(NullableKeyDictionary<,>))
             {
                 Type serializerType = typeof(NullableKeyDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
@@ -1446,6 +1411,50 @@ public sealed class TypeResolver
         }
 
         throw new TypeNotRegisteredException($"No serializer available for {type}");
+    }
+
+    private Serializer? TryCreatePrimitiveDictionarySerializer(Type type)
+    {
+        if (!type.IsGenericType)
+        {
+            return null;
+        }
+
+        Type genericType = type.GetGenericTypeDefinition();
+        if (genericType != typeof(Dictionary<,>) &&
+            genericType != typeof(SortedDictionary<,>) &&
+            genericType != typeof(ConcurrentDictionary<,>))
+        {
+            return null;
+        }
+
+        Type[] genericArgs = type.GetGenericArguments();
+        Type keyType = genericArgs[0];
+        Type valueType = genericArgs[1];
+
+        if (keyType == typeof(string) &&
+            PrimitiveStringKeyDictionaryCodecs.TryGetValue(valueType, out Type? valueCodecType))
+        {
+            Type serializerType = genericType == typeof(Dictionary<,>)
+                ? typeof(PrimitiveStringKeyDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType)
+                : genericType == typeof(SortedDictionary<,>)
+                    ? typeof(PrimitiveStringKeySortedDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType)
+                    : typeof(PrimitiveStringKeyConcurrentDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType);
+            return CreateSerializer(serializerType);
+        }
+
+        if (keyType == valueType &&
+            PrimitiveSameTypeDictionaryCodecs.TryGetValue(valueType, out Type? sameTypeCodec))
+        {
+            Type serializerType = genericType == typeof(Dictionary<,>)
+                ? typeof(PrimitiveSameTypeDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec)
+                : genericType == typeof(SortedDictionary<,>)
+                    ? typeof(PrimitiveSameTypeSortedDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec)
+                    : typeof(PrimitiveSameTypeConcurrentDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec);
+            return CreateSerializer(serializerType);
+        }
+
+        return null;
     }
 
     private static Serializer CreateSerializer<TSerializer>()

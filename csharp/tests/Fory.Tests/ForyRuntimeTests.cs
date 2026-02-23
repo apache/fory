@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Buffers;
+using System.Collections.Concurrent;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
 
@@ -114,6 +115,14 @@ public sealed class DynamicAnyHolder
     public object? AnyValue { get; set; }
     public HashSet<object> AnySet { get; set; } = [];
     public Dictionary<object, object?> AnyMap { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class DictionaryContainerHolder
+{
+    public Dictionary<string, int> DictionaryField { get; set; } = [];
+    public SortedDictionary<string, int> SortedField { get; set; } = new();
+    public ConcurrentDictionary<string, int> ConcurrentField { get; set; } = new();
 }
 
 public sealed class ForyRuntimeTests
@@ -246,6 +255,82 @@ public sealed class ForyRuntimeTests
 
         AssertMapRoundTrip(fory, new Dictionary<uint, uint> { [1] = 7, [2] = 4_000_000_000 });
         AssertMapRoundTrip(fory, new Dictionary<ulong, ulong> { [1] = 7, [2] = 12_000_000_000 });
+    }
+
+    [Fact]
+    public void SortedAndConcurrentDictionaryRoundTrip()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        SortedDictionary<string, int> sorted = new()
+        {
+            ["b"] = 2,
+            ["a"] = 1,
+        };
+        SortedDictionary<string, int> sortedDecoded =
+            fory.Deserialize<SortedDictionary<string, int>>(fory.Serialize(sorted));
+        Assert.Equal(sorted.Count, sortedDecoded.Count);
+        foreach ((string key, int value) in sorted)
+        {
+            Assert.Equal(value, sortedDecoded[key]);
+        }
+
+        ConcurrentDictionary<string, int> concurrent = new();
+        concurrent["x"] = 7;
+        concurrent["y"] = 9;
+        ConcurrentDictionary<string, int> concurrentDecoded =
+            fory.Deserialize<ConcurrentDictionary<string, int>>(fory.Serialize(concurrent));
+        Assert.Equal(concurrent.Count, concurrentDecoded.Count);
+        foreach ((string key, int value) in concurrent)
+        {
+            Assert.Equal(value, concurrentDecoded[key]);
+        }
+    }
+
+    [Fact]
+    public void GeneratedSerializerSupportsSortedAndConcurrentDictionaryFields()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<DictionaryContainerHolder>(450);
+
+        DictionaryContainerHolder source = new()
+        {
+            DictionaryField = new Dictionary<string, int>
+            {
+                ["d1"] = 1,
+                ["d2"] = 2,
+            },
+            SortedField = new SortedDictionary<string, int>
+            {
+                ["s1"] = 10,
+                ["s2"] = 20,
+            },
+            ConcurrentField = new ConcurrentDictionary<string, int>(
+                new Dictionary<string, int>
+                {
+                    ["c1"] = 100,
+                    ["c2"] = 200,
+                }),
+        };
+
+        DictionaryContainerHolder decoded = fory.Deserialize<DictionaryContainerHolder>(fory.Serialize(source));
+        Assert.Equal(source.DictionaryField.Count, decoded.DictionaryField.Count);
+        Assert.Equal(source.SortedField.Count, decoded.SortedField.Count);
+        Assert.Equal(source.ConcurrentField.Count, decoded.ConcurrentField.Count);
+        foreach ((string key, int value) in source.DictionaryField)
+        {
+            Assert.Equal(value, decoded.DictionaryField[key]);
+        }
+
+        foreach ((string key, int value) in source.SortedField)
+        {
+            Assert.Equal(value, decoded.SortedField[key]);
+        }
+
+        foreach ((string key, int value) in source.ConcurrentField)
+        {
+            Assert.Equal(value, decoded.ConcurrentField[key]);
+        }
     }
 
     [Fact]

@@ -38,5 +38,10 @@ public sealed class TypeInfo
 
     public bool IsReferenceTrackableType { get; }
 
+    public void WriteObject(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    {
+        Serializer.WriteObject(ref context, value, refMode, writeTypeInfo, hasGenerics);
+    }
+
     internal RegisteredTypeInfo? RegisteredTypeInfo { get; set; }
 }

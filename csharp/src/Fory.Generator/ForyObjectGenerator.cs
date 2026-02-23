@@ -137,6 +137,18 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     {
         sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
         sb.AppendLine("{");
+        foreach (MemberModel member in model.Members.Where(m => m.UseDictionaryTypeInfoCache))
+        {
+            string cacheId = Sanitize(member.Name);
+            sb.AppendLine($"    private global::System.Type? __Fory{cacheId}DictRuntimeType;");
+            sb.AppendLine($"    private global::Apache.Fory.TypeInfo? __Fory{cacheId}DictTypeInfo;");
+        }
+
+        if (model.Members.Any(m => m.UseDictionaryTypeInfoCache))
+        {
+            sb.AppendLine();
+        }
+
         sb.AppendLine("    private static global::Apache.Fory.RefMode __ForyRefMode(bool nullable, bool trackRef)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (trackRef)");
@@ -312,6 +324,19 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 throw new InvalidOperationException($"unsupported dynamic any kind {member.DynamicAnyKind}");
         }
 
+        if (member.UseDictionaryTypeInfoCache)
+        {
+            EmitWriteDictionaryWithTypeInfoCache(
+                sb,
+                member,
+                memberAccess,
+                refModeExpr,
+                writeTypeInfo,
+                hasGenerics,
+                compatibleMode);
+            return;
+        }
+
         if (!member.IsNullable && TryBuildDirectFieldWrite(member, memberAccess, out string? directWriteCode))
         {
             sb.AppendLine($"            {directWriteCode}");
@@ -326,6 +351,44 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine(
             $"            context.TypeResolver.GetSerializer<{member.TypeName}>().Write(ref context, {memberAccess}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+    }
+
+    private static void EmitWriteDictionaryWithTypeInfoCache(
+        StringBuilder sb,
+        MemberModel member,
+        string memberAccess,
+        string refModeExpr,
+        string writeTypeInfo,
+        string hasGenerics,
+        bool compatibleMode)
+    {
+        string cacheId = Sanitize(member.Name);
+        string modeSuffix = compatibleMode ? "Compat" : "Schema";
+        string fieldValueVar = $"__{cacheId}DictValue{modeSuffix}";
+        string runtimeTypeVar = $"__{cacheId}DictRuntimeType{modeSuffix}";
+        string typeInfoVar = $"__{cacheId}DictTypeInfo{modeSuffix}";
+        sb.AppendLine($"            {member.TypeName} {fieldValueVar} = {memberAccess};");
+        sb.AppendLine($"            if ({fieldValueVar} is null)");
+        sb.AppendLine("            {");
+        sb.AppendLine(
+            $"                context.TypeResolver.GetSerializer<{member.TypeName}>().Write(ref context, ({member.TypeName})null!, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+        sb.AppendLine("            }");
+        sb.AppendLine("            else");
+        sb.AppendLine("            {");
+        sb.AppendLine($"                global::System.Type {runtimeTypeVar} = {fieldValueVar}.GetType();");
+        sb.AppendLine($"                global::Apache.Fory.TypeInfo {typeInfoVar};");
+        sb.AppendLine($"                if (__Fory{cacheId}DictRuntimeType == {runtimeTypeVar} && __Fory{cacheId}DictTypeInfo is not null)");
+        sb.AppendLine("                {");
+            sb.AppendLine($"                    {typeInfoVar} = __Fory{cacheId}DictTypeInfo;");
+        sb.AppendLine("                }");
+        sb.AppendLine("                else");
+        sb.AppendLine("                {");
+        sb.AppendLine($"                    {typeInfoVar} = context.TypeResolver.GetTypeInfo({runtimeTypeVar});");
+        sb.AppendLine($"                    __Fory{cacheId}DictRuntimeType = {runtimeTypeVar};");
+        sb.AppendLine($"                    __Fory{cacheId}DictTypeInfo = {typeInfoVar};");
+        sb.AppendLine("                }");
+        sb.AppendLine($"                {typeInfoVar}.WriteObject(ref context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+        sb.AppendLine("            }");
     }
 
     private static void EmitReadMemberAssignment(
@@ -836,6 +899,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             classification,
             group,
             classification.IsCollection || classification.IsMap,
+            classification.IsMap && !IsTypeSealed(unwrappedType),
             dynamicAnyKind == DynamicAnyKind.None ? DynamicAnyKind.None : dynamicAnyKind,
             typeMeta);
     }
@@ -1251,6 +1315,16 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         return false;
     }
 
+    private static bool IsTypeSealed(ITypeSymbol symbol)
+    {
+        if (symbol.TypeKind == TypeKind.TypeParameter)
+        {
+            return false;
+        }
+
+        return symbol.IsSealed;
+    }
+
     private static bool TryGetListElementType(ITypeSymbol type, out ITypeSymbol? elementType)
     {
         elementType = null;
@@ -1311,6 +1385,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string genericName = named.ConstructedFrom.ToDisplayString();
         if (genericName is
             "System.Collections.Generic.Dictionary<TKey, TValue>" or
+            "System.Collections.Generic.SortedDictionary<TKey, TValue>" or
+            "System.Collections.Concurrent.ConcurrentDictionary<TKey, TValue>" or
             "System.Collections.Generic.IDictionary<TKey, TValue>" or
             "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>" or
             "Apache.Fory.NullableKeyDictionary<TKey, TValue>")
@@ -1485,6 +1561,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             TypeClassification classification,
             int group,
             bool isCollection,
+            bool useDictionaryTypeInfoCache,
             DynamicAnyKind dynamicAnyKind,
             TypeMetaFieldTypeModel typeMeta)
         {
@@ -1498,6 +1575,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             Classification = classification;
             Group = group;
             IsCollection = isCollection;
+            UseDictionaryTypeInfoCache = useDictionaryTypeInfoCache;
             DynamicAnyKind = dynamicAnyKind;
             TypeMeta = typeMeta;
         }
@@ -1512,6 +1590,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         public TypeClassification Classification { get; }
         public int Group { get; }
         public bool IsCollection { get; }
+        public bool UseDictionaryTypeInfoCache { get; }
         public DynamicAnyKind DynamicAnyKind { get; }
         public TypeMetaFieldTypeModel TypeMeta { get; }
     }

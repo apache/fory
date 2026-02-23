@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections.Concurrent;
+
 namespace Apache.Fory;
 
 internal static class PrimitiveDictionaryHeader
@@ -288,13 +290,12 @@ internal static class PrimitiveDictionaryCodecWriter
 {
     public static void WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(
         ref WriteContext context,
-        Dictionary<TKey, TValue> map,
+        KeyValuePair<TKey, TValue>[] pairs,
         bool hasGenerics)
         where TKey : notnull
         where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
         where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
     {
-        KeyValuePair<TKey, TValue>[] pairs = [.. map];
         context.Writer.WriteVarUInt32((uint)pairs.Length);
         if (pairs.Length == 0)
         {
@@ -521,10 +522,10 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
 
     public override bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
         Dictionary<TKey, TValue> map = value ?? [];
-        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, map, hasGenerics);
+        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, [.. map], hasGenerics);
     }
 
     public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
@@ -541,6 +542,88 @@ internal class PrimitiveStringKeyDictionarySerializer<TValue, TValueCodec>
 
 internal class PrimitiveSameTypeDictionarySerializer<TValue, TValueCodec>
     : PrimitiveDictionarySerializer<TValue, TValue, TValueCodec, TValueCodec>
+    where TValue : notnull
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TValueCodec> : Serializer<SortedDictionary<TKey, TValue>>
+    where TKey : notnull
+    where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+    public override TypeId StaticTypeId => TypeId.Map;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override SortedDictionary<TKey, TValue> DefaultValue => null!;
+
+    public override bool IsNone(in SortedDictionary<TKey, TValue> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in SortedDictionary<TKey, TValue> value, bool hasGenerics)
+    {
+        SortedDictionary<TKey, TValue> map = value ?? new SortedDictionary<TKey, TValue>();
+        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, [.. map], hasGenerics);
+    }
+
+    public override SortedDictionary<TKey, TValue> ReadData(ref ReadContext context)
+    {
+        Dictionary<TKey, TValue> map = PrimitiveDictionaryCodecReader.ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context);
+        return new SortedDictionary<TKey, TValue>(map);
+    }
+}
+
+internal class PrimitiveStringKeySortedDictionarySerializer<TValue, TValueCodec>
+    : PrimitiveSortedDictionarySerializer<string, TValue, StringPrimitiveDictionaryCodec, TValueCodec>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal class PrimitiveSameTypeSortedDictionarySerializer<TValue, TValueCodec>
+    : PrimitiveSortedDictionarySerializer<TValue, TValue, TValueCodec, TValueCodec>
+    where TValue : notnull
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, TValueCodec> : Serializer<ConcurrentDictionary<TKey, TValue>>
+    where TKey : notnull
+    where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+    public override TypeId StaticTypeId => TypeId.Map;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override ConcurrentDictionary<TKey, TValue> DefaultValue => null!;
+
+    public override bool IsNone(in ConcurrentDictionary<TKey, TValue> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in ConcurrentDictionary<TKey, TValue> value, bool hasGenerics)
+    {
+        ConcurrentDictionary<TKey, TValue> map = value ?? new ConcurrentDictionary<TKey, TValue>();
+        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, map.ToArray(), hasGenerics);
+    }
+
+    public override ConcurrentDictionary<TKey, TValue> ReadData(ref ReadContext context)
+    {
+        Dictionary<TKey, TValue> map = PrimitiveDictionaryCodecReader.ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context);
+        return new ConcurrentDictionary<TKey, TValue>(map);
+    }
+}
+
+internal class PrimitiveStringKeyConcurrentDictionarySerializer<TValue, TValueCodec>
+    : PrimitiveConcurrentDictionarySerializer<string, TValue, StringPrimitiveDictionaryCodec, TValueCodec>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal class PrimitiveSameTypeConcurrentDictionarySerializer<TValue, TValueCodec>
+    : PrimitiveConcurrentDictionarySerializer<TValue, TValue, TValueCodec, TValueCodec>
     where TValue : notnull
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {

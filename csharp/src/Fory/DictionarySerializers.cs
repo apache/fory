@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections.Concurrent;
+
 namespace Apache.Fory;
 
 internal static class DictionaryBits
@@ -27,20 +29,33 @@ internal static class DictionaryBits
     public const byte DeclaredValueType = 0b0010_0000;
 }
 
-public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TValue>>
+public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Serializer<TDictionary>
+    where TDictionary : class, IDictionary<TKey, TValue>
     where TKey : notnull
 {
     public override TypeId StaticTypeId => TypeId.Map;
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
-    public override Dictionary<TKey, TValue> DefaultValue => null!;
-    public override bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
+    public override TDictionary DefaultValue => null!;
+    public override bool IsNone(in TDictionary value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+    protected abstract TDictionary CreateMap(int capacity);
+
+    protected virtual KeyValuePair<TKey, TValue>[] SnapshotPairs(TDictionary map)
+    {
+        return [.. map];
+    }
+
+    protected virtual void SetValue(TDictionary map, TKey key, TValue value)
+    {
+        map[key] = value;
+    }
+
+    public override void WriteData(ref WriteContext context, in TDictionary value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
-        Dictionary<TKey, TValue> map = value ?? [];
+        TDictionary map = value ?? CreateMap(0);
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
         {
@@ -54,7 +69,7 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
         bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
 
-        KeyValuePair<TKey, TValue>[] pairs = [.. map];
+        KeyValuePair<TKey, TValue>[] pairs = SnapshotPairs(map);
         if (keyDynamicType || valueDynamicType)
         {
             WriteDynamicMapPairs(
@@ -189,17 +204,17 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         }
     }
 
-    public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override TDictionary ReadData(ref ReadContext context)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
-            return [];
+            return CreateMap(0);
         }
 
-        Dictionary<TKey, TValue> map = new(totalLength);
+        TDictionary map = CreateMap(totalLength);
         bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
         bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
         bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
@@ -217,7 +232,7 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
 
             if (keyNull && valueNull)
             {
-                // Dictionary<TKey, TValue> cannot represent a null key.
+                // Dictionary-like containers cannot represent a null key.
                 // Drop this entry instead of mapping it to default(TKey), which would corrupt key semantics.
                 readCount += 1;
                 continue;
@@ -225,7 +240,7 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
 
             if (keyNull)
             {
-                TValue value = ReadValueElement(
+                _ = ReadValueElement(
                     ref context,
                     trackValueRef,
                     !valueDeclared,
@@ -233,7 +248,6 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                     valueSerializer);
 
                 // Preserve stream/reference state by reading value payload, then skip null-key entry.
-                // This avoids injecting a fake default(TKey) key into Dictionary.
                 readCount += 1;
                 continue;
             }
@@ -245,7 +259,7 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     !keyDeclared);
 
-                map[key] = (TValue)valueSerializer.DefaultObject!;
+                SetValue(map, key, (TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
                 continue;
             }
@@ -309,7 +323,7 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
                         context.ClearDynamicTypeInfo(typeof(TValue));
                     }
 
-                    map[key] = value;
+                    SetValue(map, key, value);
                 }
 
                 readCount += chunkSize;
@@ -330,7 +344,7 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
             {
                 TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
                 TValue value = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
-                map[key] = value;
+                SetValue(map, key, value);
             }
 
             if (!keyDeclared)
@@ -469,5 +483,39 @@ public class DictionarySerializer<TKey, TValue> : Serializer<Dictionary<TKey, TV
         TValue value = valueSerializer.Read(ref context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
+    }
+}
+
+public class DictionarySerializer<TKey, TValue> : DictionaryLikeSerializer<Dictionary<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    protected override Dictionary<TKey, TValue> CreateMap(int capacity)
+    {
+        return new Dictionary<TKey, TValue>(capacity);
+    }
+}
+
+public class SortedDictionarySerializer<TKey, TValue> : DictionaryLikeSerializer<SortedDictionary<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    protected override SortedDictionary<TKey, TValue> CreateMap(int capacity)
+    {
+        _ = capacity;
+        return new SortedDictionary<TKey, TValue>();
+    }
+}
+
+public class ConcurrentDictionarySerializer<TKey, TValue> : DictionaryLikeSerializer<ConcurrentDictionary<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    protected override ConcurrentDictionary<TKey, TValue> CreateMap(int capacity)
+    {
+        int initialCapacity = Math.Max(capacity, 1);
+        return new ConcurrentDictionary<TKey, TValue>(Environment.ProcessorCount, initialCapacity);
+    }
+
+    protected override KeyValuePair<TKey, TValue>[] SnapshotPairs(ConcurrentDictionary<TKey, TValue> map)
+    {
+        return map.ToArray();
     }
 }
