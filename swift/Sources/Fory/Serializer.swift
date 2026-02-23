@@ -17,6 +17,25 @@
 
 import Foundation
 
+private struct CompatibleTypeMetaCacheKey: Hashable {
+    let swiftType: ObjectIdentifier
+    let wireTypeID: ForyTypeId
+    let trackRef: Bool
+    let registerByName: Bool
+    let userTypeID: UInt32?
+    let namespace: MetaString?
+    let typeName: MetaString
+}
+
+private struct CompatibleTypeMetaCacheEntry {
+    let encodedTypeMeta: [UInt8]
+}
+
+private enum CompatibleTypeMetaCache {
+    nonisolated(unsafe) static var values: [CompatibleTypeMetaCacheKey: CompatibleTypeMetaCacheEntry] = [:]
+    static let lock = NSLock()
+}
+
 public protocol Serializer {
     static func foryDefault() -> Self
     static var staticTypeId: ForyTypeId { get }
@@ -49,20 +68,26 @@ public protocol Serializer {
 }
 
 public extension Serializer {
+    @inlinable
     static var isNullableType: Bool { false }
 
+    @inlinable
     static var isReferenceTrackableType: Bool { false }
 
+    @inlinable
     var foryIsNone: Bool { false }
 
+    @inlinable
     static func foryCompatibleTypeMetaFields(trackRef _: Bool) -> [TypeMetaFieldInfo] {
         []
     }
 
+    @inlinable
     func foryWriteTypeInfo(_ context: WriteContext) throws {
         try Self.foryWriteTypeInfo(context)
     }
 
+    @inlinable
     func foryWrite(
         _ context: WriteContext,
         refMode: RefMode,
@@ -86,6 +111,7 @@ public extension Serializer {
         try foryWriteData(context, hasGenerics: hasGenerics)
     }
 
+    @inlinable
     static func foryRead(
         _ context: ReadContext,
         refMode: RefMode,
@@ -139,20 +165,26 @@ public extension Serializer {
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: wireTypeID.rawValue))
         switch wireTypeID {
         case .compatibleStruct, .namedCompatibleStruct:
-            let typeMeta = try buildCompatibleTypeMeta(
+            let cachedTypeMeta = try compatibleTypeMetaEntry(
                 info: info,
                 wireTypeID: wireTypeID,
                 trackRef: context.trackRef
             )
-            try context.writeCompatibleTypeMeta(for: Self.self, typeMeta: typeMeta)
+            try context.writeCompatibleTypeMeta(
+                for: Self.self,
+                encodedTypeMeta: cachedTypeMeta.encodedTypeMeta
+            )
         case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if context.compatible {
-                let typeMeta = try buildCompatibleTypeMeta(
+                let cachedTypeMeta = try compatibleTypeMetaEntry(
                     info: info,
                     wireTypeID: wireTypeID,
                     trackRef: context.trackRef
                 )
-                try context.writeCompatibleTypeMeta(for: Self.self, typeMeta: typeMeta)
+                try context.writeCompatibleTypeMeta(
+                    for: Self.self,
+                    encodedTypeMeta: cachedTypeMeta.encodedTypeMeta
+                )
             } else {
                 guard let namespace = info.namespace else {
                     throw ForyError.invalidData("missing namespace metadata for name-registered type")
@@ -344,6 +376,47 @@ public extension Serializer {
         default:
             return false
         }
+    }
+
+    private static func compatibleTypeMetaEntry(
+        info: RegisteredTypeInfo,
+        wireTypeID: ForyTypeId,
+        trackRef: Bool
+    ) throws -> CompatibleTypeMetaCacheEntry {
+        let cacheKey = CompatibleTypeMetaCacheKey(
+            swiftType: ObjectIdentifier(Self.self),
+            wireTypeID: wireTypeID,
+            trackRef: trackRef,
+            registerByName: info.registerByName,
+            userTypeID: info.userTypeID,
+            namespace: info.namespace,
+            typeName: info.typeName
+        )
+
+        CompatibleTypeMetaCache.lock.lock()
+        if let cached = CompatibleTypeMetaCache.values[cacheKey] {
+            CompatibleTypeMetaCache.lock.unlock()
+            return cached
+        }
+        CompatibleTypeMetaCache.lock.unlock()
+
+        let typeMeta = try buildCompatibleTypeMeta(
+            info: info,
+            wireTypeID: wireTypeID,
+            trackRef: trackRef
+        )
+        let cacheEntry = CompatibleTypeMetaCacheEntry(
+            encodedTypeMeta: try typeMeta.encode()
+        )
+
+        CompatibleTypeMetaCache.lock.lock()
+        if let cached = CompatibleTypeMetaCache.values[cacheKey] {
+            CompatibleTypeMetaCache.lock.unlock()
+            return cached
+        }
+        CompatibleTypeMetaCache.values[cacheKey] = cacheEntry
+        CompatibleTypeMetaCache.lock.unlock()
+        return cacheEntry
     }
 
     private static func buildCompatibleTypeMeta(

@@ -38,8 +38,12 @@ public final class CompatibleTypeDefWriteState {
     }
 
     public func reset() {
-        typeIndexBySwiftType.removeAll(keepingCapacity: true)
-        nextIndex = 0
+        if !typeIndexBySwiftType.isEmpty {
+            typeIndexBySwiftType.removeAll(keepingCapacity: true)
+        }
+        if nextIndex != 0 {
+            nextIndex = 0
+        }
     }
 }
 
@@ -73,7 +77,9 @@ public final class CompatibleTypeDefReadState {
     }
 
     public func reset() {
-        typeMetas.removeAll(keepingCapacity: true)
+        if !typeMetas.isEmpty {
+            typeMetas.removeAll(keepingCapacity: true)
+        }
     }
 }
 
@@ -116,8 +122,12 @@ public final class MetaStringWriteState {
     }
 
     public func reset() {
-        stringIndexByKey.removeAll(keepingCapacity: true)
-        nextIndex = 0
+        if !stringIndexByKey.isEmpty {
+            stringIndexByKey.removeAll(keepingCapacity: true)
+        }
+        if nextIndex != 0 {
+            nextIndex = 0
+        }
     }
 }
 
@@ -138,7 +148,9 @@ public final class MetaStringReadState {
     }
 
     public func reset() {
-        values.removeAll(keepingCapacity: true)
+        if !values.isEmpty {
+            values.removeAll(keepingCapacity: true)
+        }
     }
 }
 
@@ -194,11 +206,21 @@ public final class WriteContext {
         for type: T.Type,
         typeMeta: TypeMeta
     ) throws {
+        try writeCompatibleTypeMeta(
+            for: type,
+            encodedTypeMeta: typeMeta.encode()
+        )
+    }
+
+    public func writeCompatibleTypeMeta<T: Serializer>(
+        for type: T.Type,
+        encodedTypeMeta: [UInt8]
+    ) throws {
         let typeID = ObjectIdentifier(type)
         let assignment = compatibleTypeDefState.assignIndexIfAbsent(for: typeID)
         if assignment.isNew {
             buffer.writeVarUInt32(assignment.index << 1)
-            buffer.writeBytes(try typeMeta.encode())
+            buffer.writeBytes(encodedTypeMeta)
         } else {
             buffer.writeVarUInt32((assignment.index << 1) | 1)
         }
@@ -359,10 +381,18 @@ public final class ReadContext {
 
     public func resetObjectState() {
         refReader.reset()
-        pendingRefStack.removeAll(keepingCapacity: true)
-        pendingCompatibleTypeMeta.removeAll(keepingCapacity: true)
-        pendingDynamicTypeInfo.removeAll(keepingCapacity: true)
-        canonicalReferenceCache.removeAll(keepingCapacity: true)
+        if !pendingRefStack.isEmpty {
+            pendingRefStack.removeAll(keepingCapacity: true)
+        }
+        if !pendingCompatibleTypeMeta.isEmpty {
+            pendingCompatibleTypeMeta.removeAll(keepingCapacity: true)
+        }
+        if !pendingDynamicTypeInfo.isEmpty {
+            pendingDynamicTypeInfo.removeAll(keepingCapacity: true)
+        }
+        if !canonicalReferenceCache.isEmpty {
+            canonicalReferenceCache.removeAll(keepingCapacity: true)
+        }
     }
 
     public func reset() {

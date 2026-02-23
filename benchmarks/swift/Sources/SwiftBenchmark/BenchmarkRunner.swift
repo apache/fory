@@ -68,7 +68,7 @@ final class BenchmarkSuite {
 
     init(config: BenchmarkConfig) {
         self.config = config
-        self.fory = Fory(xlang: true, trackRef: false, compatible: true)
+        self.fory = Fory(xlang: false, trackRef: false, compatible: false)
         registerTypes()
     }
 
@@ -187,7 +187,7 @@ final class BenchmarkSuite {
                     operation: .deserialize,
                     bytes: foryBytes.count
                 ) {
-                    let decoded: T = try self.fory.deserialize(foryBytes)
+                    let decoded: T = try self.fory.deserialize(foryBytes, as: T.self)
                     withExtendedLifetime(decoded) {}
                     return foryBytes.count
                 }
