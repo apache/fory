@@ -181,6 +181,7 @@ public final class WriteContext {
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
+    public let checkClassVersion: Bool
     public let refWriter: RefWriter
     public let compatibleTypeDefState: CompatibleTypeDefWriteState
     public let metaStringWriteState: MetaStringWriteState
@@ -190,6 +191,7 @@ public final class WriteContext {
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
+        checkClassVersion: Bool = true,
         compatibleTypeDefState: CompatibleTypeDefWriteState = CompatibleTypeDefWriteState(),
         metaStringWriteState: MetaStringWriteState = MetaStringWriteState()
     ) {
@@ -197,6 +199,7 @@ public final class WriteContext {
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
+        self.checkClassVersion = checkClassVersion
         self.refWriter = RefWriter()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringWriteState = metaStringWriteState
@@ -247,6 +250,7 @@ public final class ReadContext {
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
+    public let checkClassVersion: Bool
     public let refReader: RefReader
     public let compatibleTypeDefState: CompatibleTypeDefReadState
     public let metaStringReadState: MetaStringReadState
@@ -261,6 +265,7 @@ public final class ReadContext {
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
+        checkClassVersion: Bool = true,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
@@ -268,6 +273,7 @@ public final class ReadContext {
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
+        self.checkClassVersion = checkClassVersion
         self.refReader = RefReader()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringReadState = metaStringReadState

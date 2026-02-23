@@ -49,16 +49,24 @@ private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> F
     return nil
 }
 
+private let hostIsLittleEndian = Int(littleEndian: 1) == 1
+
+@inline(__always)
+private func uncheckedArrayCast<From, To>(_ array: [From], to _: To.Type) -> [To] {
+    assert(From.self == To.self)
+    return unsafeBitCast(array, to: [To].self)
+}
+
 private func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
     if Element.self == UInt8.self {
-        let bytes = value as! [UInt8]
+        let bytes = uncheckedArrayCast(value, to: UInt8.self)
         context.buffer.writeVarUInt32(UInt32(bytes.count))
         context.buffer.writeBytes(bytes)
         return
     }
 
     if Element.self == Bool.self {
-        let bools = value as! [Bool]
+        let bools = uncheckedArrayCast(value, to: Bool.self)
         context.buffer.writeVarUInt32(UInt32(bools.count))
         for item in bools {
             context.buffer.writeUInt8(item ? 1 : 0)
@@ -67,81 +75,129 @@ private func writePrimitiveArray<Element: Serializer>(_ value: [Element], contex
     }
 
     if Element.self == Int8.self {
-        let values = value as! [Int8]
+        let values = uncheckedArrayCast(value, to: Int8.self)
         context.buffer.writeVarUInt32(UInt32(values.count))
-        for item in values {
-            context.buffer.writeInt8(item)
+        values.withUnsafeBytes { rawBytes in
+            context.buffer.writeBytes(rawBytes)
         }
         return
     }
 
     if Element.self == Int16.self {
-        let values = value as! [Int16]
+        let values = uncheckedArrayCast(value, to: Int16.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 2))
-        for item in values {
-            context.buffer.writeInt16(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeInt16(item)
+            }
         }
         return
     }
 
     if Element.self == Int32.self {
-        let values = value as! [Int32]
+        let values = uncheckedArrayCast(value, to: Int32.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 4))
-        for item in values {
-            context.buffer.writeInt32(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeInt32(item)
+            }
         }
         return
     }
 
     if Element.self == UInt32.self {
-        let values = value as! [UInt32]
+        let values = uncheckedArrayCast(value, to: UInt32.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 4))
-        for item in values {
-            context.buffer.writeUInt32(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeUInt32(item)
+            }
         }
         return
     }
 
     if Element.self == Int64.self {
-        let values = value as! [Int64]
+        let values = uncheckedArrayCast(value, to: Int64.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 8))
-        for item in values {
-            context.buffer.writeInt64(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeInt64(item)
+            }
         }
         return
     }
 
     if Element.self == UInt64.self {
-        let values = value as! [UInt64]
+        let values = uncheckedArrayCast(value, to: UInt64.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 8))
-        for item in values {
-            context.buffer.writeUInt64(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeUInt64(item)
+            }
         }
         return
     }
 
     if Element.self == UInt16.self {
-        let values = value as! [UInt16]
+        let values = uncheckedArrayCast(value, to: UInt16.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 2))
-        for item in values {
-            context.buffer.writeUInt16(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeUInt16(item)
+            }
         }
         return
     }
 
     if Element.self == Float.self {
-        let values = value as! [Float]
+        let values = uncheckedArrayCast(value, to: Float.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 4))
-        for item in values {
-            context.buffer.writeFloat32(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeFloat32(item)
+            }
         }
         return
     }
 
-    let values = value as! [Double]
+    let values = uncheckedArrayCast(value, to: Double.self)
     context.buffer.writeVarUInt32(UInt32(values.count * 8))
-    for item in values {
-        context.buffer.writeFloat64(item)
+    if hostIsLittleEndian {
+        values.withUnsafeBytes { rawBytes in
+            context.buffer.writeBytes(rawBytes)
+        }
+    } else {
+        for item in values {
+            context.buffer.writeFloat64(item)
+        }
     }
 }
 
@@ -150,7 +206,7 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
 
     if Element.self == UInt8.self {
         let bytes = try context.buffer.readBytes(count: payloadSize)
-        return bytes as! [Element]
+        return uncheckedArrayCast(bytes, to: Element.self)
     }
 
     if Element.self == Bool.self {
@@ -159,95 +215,158 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         for _ in 0..<payloadSize {
             out.append(try context.buffer.readUInt8() != 0)
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int8.self {
-        var out: [Int8] = []
-        out.reserveCapacity(payloadSize)
-        for _ in 0..<payloadSize {
-            out.append(try context.buffer.readInt8())
+        let bytes = try context.buffer.readBytes(count: payloadSize)
+        let out: [Int8] = bytes.withUnsafeBytes { rawBytes in
+            Array(rawBytes.bindMemory(to: Int8.self))
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int16.self {
         if payloadSize % 2 != 0 { throw ForyError.invalidData("int16 array payload size mismatch") }
+        let count = payloadSize / 2
+        if hostIsLittleEndian {
+            var out = Array(repeating: Int16(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [Int16] = []
-        out.reserveCapacity(payloadSize / 2)
-        for _ in 0..<(payloadSize / 2) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readInt16())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int32.self {
         if payloadSize % 4 != 0 { throw ForyError.invalidData("int32 array payload size mismatch") }
+        let count = payloadSize / 4
+        if hostIsLittleEndian {
+            var out = Array(repeating: Int32(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [Int32] = []
-        out.reserveCapacity(payloadSize / 4)
-        for _ in 0..<(payloadSize / 4) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readInt32())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == UInt32.self {
         if payloadSize % 4 != 0 { throw ForyError.invalidData("uint32 array payload size mismatch") }
+        let count = payloadSize / 4
+        if hostIsLittleEndian {
+            var out = Array(repeating: UInt32(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [UInt32] = []
-        out.reserveCapacity(payloadSize / 4)
-        for _ in 0..<(payloadSize / 4) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readUInt32())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int64.self {
         if payloadSize % 8 != 0 { throw ForyError.invalidData("int64 array payload size mismatch") }
+        let count = payloadSize / 8
+        if hostIsLittleEndian {
+            var out = Array(repeating: Int64(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [Int64] = []
-        out.reserveCapacity(payloadSize / 8)
-        for _ in 0..<(payloadSize / 8) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readInt64())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == UInt64.self {
         if payloadSize % 8 != 0 { throw ForyError.invalidData("uint64 array payload size mismatch") }
+        let count = payloadSize / 8
+        if hostIsLittleEndian {
+            var out = Array(repeating: UInt64(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [UInt64] = []
-        out.reserveCapacity(payloadSize / 8)
-        for _ in 0..<(payloadSize / 8) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readUInt64())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == UInt16.self {
         if payloadSize % 2 != 0 { throw ForyError.invalidData("uint16 array payload size mismatch") }
+        let count = payloadSize / 2
+        if hostIsLittleEndian {
+            var out = Array(repeating: UInt16(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [UInt16] = []
-        out.reserveCapacity(payloadSize / 2)
-        for _ in 0..<(payloadSize / 2) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readUInt16())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Float.self {
         if payloadSize % 4 != 0 { throw ForyError.invalidData("float32 array payload size mismatch") }
+        let count = payloadSize / 4
+        if hostIsLittleEndian {
+            var out = Array(repeating: Float(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
+        }
         var out: [Float] = []
-        out.reserveCapacity(payloadSize / 4)
-        for _ in 0..<(payloadSize / 4) {
+        out.reserveCapacity(count)
+        for _ in 0..<count {
             out.append(try context.buffer.readFloat32())
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if payloadSize % 8 != 0 { throw ForyError.invalidData("float64 array payload size mismatch") }
+    let count = payloadSize / 8
+    if hostIsLittleEndian {
+        var out = Array(repeating: Double(0), count: count)
+        try out.withUnsafeMutableBytes { rawBytes in
+            try context.buffer.readBytes(into: rawBytes)
+        }
+        return uncheckedArrayCast(out, to: Element.self)
+    }
     var out: [Double] = []
-    out.reserveCapacity(payloadSize / 8)
-    for _ in 0..<(payloadSize / 8) {
+    out.reserveCapacity(count)
+    for _ in 0..<count {
         out.append(try context.buffer.readFloat64())
     }
-    return out as! [Element]
+    return uncheckedArrayCast(out, to: Element.self)
 }
 
 extension Array: Serializer where Element: Serializer {
@@ -256,6 +375,7 @@ extension Array: Serializer where Element: Serializer {
     }
 
     public static var staticTypeId: ForyTypeId {
+        // Primitive Swift arrays must use ARRAY ids in protocol, not LIST.
         primitiveArrayTypeID(for: Element.self) ?? .list
     }
 

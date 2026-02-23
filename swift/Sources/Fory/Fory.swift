@@ -21,11 +21,18 @@ public struct ForyConfig {
     public var xlang: Bool
     public var trackRef: Bool
     public var compatible: Bool
+    public var checkClassVersion: Bool
 
-    public init(xlang: Bool = true, trackRef: Bool = false, compatible: Bool = false) {
+    public init(
+        xlang: Bool = true,
+        trackRef: Bool = false,
+        compatible: Bool = false,
+        checkClassVersion: Bool = true
+    ) {
         self.xlang = xlang
         self.trackRef = trackRef
         self.compatible = compatible
+        self.checkClassVersion = checkClassVersion
     }
 }
 
@@ -45,6 +52,7 @@ private final class ForyRuntimeContext {
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
             compatibleTypeDefState: CompatibleTypeDefWriteState(),
             metaStringWriteState: MetaStringWriteState()
         )
@@ -55,6 +63,7 @@ private final class ForyRuntimeContext {
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
             compatibleTypeDefState: CompatibleTypeDefReadState(),
             metaStringReadState: MetaStringReadState()
         )
@@ -83,28 +92,69 @@ private final class ForyThreadContextCache {
     }
 }
 
+private final class ForyThreadContextStore: @unchecked Sendable {
+    private let key: pthread_key_t
+
+    init() {
+        var localKey = pthread_key_t()
+        let createResult = pthread_key_create(&localKey) { rawPointer in
+            Unmanaged<ForyThreadContextCache>.fromOpaque(rawPointer).release()
+        }
+        precondition(createResult == 0, "failed to create pthread TLS key")
+        key = localKey
+    }
+
+    deinit {
+        pthread_key_delete(key)
+    }
+
+    @inline(__always)
+    func get() -> ForyThreadContextCache {
+        if let rawPointer = pthread_getspecific(key) {
+            return Unmanaged<ForyThreadContextCache>.fromOpaque(rawPointer).takeUnretainedValue()
+        }
+
+        let cache = ForyThreadContextCache()
+        let setResult = pthread_setspecific(key, Unmanaged.passRetained(cache).toOpaque())
+        precondition(setResult == 0, "failed to set pthread TLS value")
+        return cache
+    }
+}
+
 public final class Fory {
     public let config: ForyConfig
     public let typeResolver: TypeResolver
 
     private let instanceID: UInt64
 
-    private static let threadContextCacheKey = "org.apache.fory.swift.thread-context-cache"
+    private static let threadContextStore = ForyThreadContextStore()
     private static let instanceIDLock = NSLock()
     nonisolated(unsafe) private static var nextInstanceID: UInt64 = 0
 
     public init(
         xlang: Bool = true,
         trackRef: Bool = false,
-        compatible: Bool = false
+        compatible: Bool = false,
+        checkClassVersion: Bool? = nil
     ) {
-        self.config = ForyConfig(xlang: xlang, trackRef: trackRef, compatible: compatible)
+        let effectiveCheckClassVersion = checkClassVersion ?? (xlang && !compatible)
+        self.config = ForyConfig(
+            xlang: xlang,
+            trackRef: trackRef,
+            compatible: compatible,
+            checkClassVersion: effectiveCheckClassVersion
+        )
         self.typeResolver = TypeResolver()
         self.instanceID = Self.allocateInstanceID()
     }
 
     public convenience init(config: ForyConfig) {
-        self.init(xlang: config.xlang, trackRef: config.trackRef, compatible: config.compatible)
+        self.init(
+            xlang: config.xlang,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion
+        )
     }
 
     public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
@@ -121,7 +171,11 @@ public final class Fory {
 
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
         try serializeRoot(isNone: value.foryIsNone) { context in
-            try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
+            if useRootDataFastPath {
+                try value.foryWriteData(context, hasGenerics: false)
+            } else {
+                try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
+            }
         }
     }
 
@@ -130,13 +184,20 @@ public final class Fory {
             data: data,
             nilValue: T.foryDefault()
         ) { context in
-            try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
+            if useRootDataFastPath {
+                return try T.foryReadData(context)
+            }
+            return try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
         }
     }
 
     public func serialize<T: Serializer>(_ value: T, to buffer: inout Data) throws {
         try appendSerializedRoot(to: &buffer, isNone: value.foryIsNone) { context in
-            try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
+            if useRootDataFastPath {
+                try value.foryWriteData(context, hasGenerics: false)
+            } else {
+                try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
+            }
         }
     }
 
@@ -145,7 +206,10 @@ public final class Fory {
             from: buffer,
             nilValue: T.foryDefault()
         ) { context in
-            try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
+            if useRootDataFastPath {
+                return try T.foryReadData(context)
+            }
+            return try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
         }
     }
 
@@ -455,12 +519,18 @@ public final class Fory {
     }
 
     @inline(__always)
+    private var useRootDataFastPath: Bool {
+        !shouldWriteRootTypeInfo && rootRefMode == .none
+    }
+
+    @inline(__always)
     private func makeWriteContext(buffer: ByteBuffer) -> WriteContext {
         WriteContext(
             buffer: buffer,
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
             compatibleTypeDefState: CompatibleTypeDefWriteState(),
             metaStringWriteState: MetaStringWriteState()
         )
@@ -473,6 +543,7 @@ public final class Fory {
             typeResolver: typeResolver,
             trackRef: config.trackRef,
             compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
             compatibleTypeDefState: CompatibleTypeDefReadState(),
             metaStringReadState: MetaStringReadState()
         )
@@ -488,13 +559,7 @@ public final class Fory {
 
     @inline(__always)
     private func threadContextCache() -> ForyThreadContextCache {
-        let dictionary = Thread.current.threadDictionary
-        if let cache = dictionary[Self.threadContextCacheKey] as? ForyThreadContextCache {
-            return cache
-        }
-        let cache = ForyThreadContextCache()
-        dictionary[Self.threadContextCacheKey] = cache
-        return cache
+        Self.threadContextStore.get()
     }
 
     @inline(__always)

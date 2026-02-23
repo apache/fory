@@ -81,8 +81,20 @@ public final class ByteBuffer {
 
     @inlinable
     public func replace(with data: Data) {
-        storage.removeAll(keepingCapacity: true)
-        storage.append(contentsOf: data)
+        let dataCount = data.count
+        if storage.count < dataCount {
+            storage.append(contentsOf: repeatElement(0, count: dataCount - storage.count))
+        } else if storage.count > dataCount {
+            storage.removeLast(storage.count - dataCount)
+        }
+
+        if dataCount > 0 {
+            data.withUnsafeBytes { source in
+                storage.withUnsafeMutableBytes { destination in
+                    destination.copyBytes(from: source)
+                }
+            }
+        }
         cursor = 0
     }
 
@@ -375,6 +387,11 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    public func writeBytes(_ bytes: UnsafeRawBufferPointer) {
+        storage.append(contentsOf: bytes)
+    }
+
+    @inlinable
     public func writeData(_ data: Data) {
         storage.append(contentsOf: data)
     }
@@ -398,6 +415,15 @@ public final class ByteBuffer {
         if cursor + need > storage.count {
             throw ForyError.outOfBounds(cursor: cursor, need: need, length: storage.count)
         }
+    }
+
+    @inlinable
+    public func readBytes(into destination: UnsafeMutableRawBufferPointer) throws {
+        try checkBound(destination.count)
+        storage.withUnsafeBytes { rawBytes in
+            destination.copyBytes(from: UnsafeRawBufferPointer(rebasing: rawBytes[cursor..<(cursor + destination.count)]))
+        }
+        cursor += destination.count
     }
 
     @inlinable

@@ -945,7 +945,11 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let compatibleLines = sortedFields.map { field in
         compatibleWriteLine(for: field)
     }
-    var schemaBodyLines = ["context.buffer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))"]
+    var schemaBodyLines = [
+        "if context.checkClassVersion {",
+        "    context.buffer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))",
+        "}"
+    ]
     if schemaFieldLines.isEmpty {
         schemaBodyLines.append("_ = hasGenerics")
     } else {
@@ -1051,10 +1055,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                 }
                 return value
             }
-            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
-            let __expectedHash = Self.__forySchemaHash(context.trackRef)
-            if __schemaHash != __expectedHash {
-                throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+            if context.checkClassVersion {
+                let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
+                let __expectedHash = Self.__forySchemaHash(context.trackRef)
+                if __schemaHash != __expectedHash {
+                    throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+                }
             }
             let value = Self.init()
             context.bindPendingReference(value)
@@ -1074,10 +1080,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                 }
                 return Self()
             }
-            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
-            let __expectedHash = Self.__forySchemaHash(context.trackRef)
-            if __schemaHash != __expectedHash {
-                throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+            if context.checkClassVersion {
+                let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
+                let __expectedHash = Self.__forySchemaHash(context.trackRef)
+                if __schemaHash != __expectedHash {
+                    throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+                }
             }
             return Self()
         }
@@ -1127,10 +1135,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                     \(ctorArgs)
                 )
             }
-        let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
-        let __expectedHash = Self.__forySchemaHash(context.trackRef)
-        if __schemaHash != __expectedHash {
-            throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+        if context.checkClassVersion {
+            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
+            let __expectedHash = Self.__forySchemaHash(context.trackRef)
+            if __schemaHash != __expectedHash {
+                throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+            }
         }
         \(readLines)
         return Self(
