@@ -35,15 +35,6 @@ internal enum DynamicRegistrationMode
     Mixed,
 }
 
-internal readonly record struct TypeNameKey(string NamespaceName, string TypeName);
-
-internal sealed class TypeReader
-{
-    public required TypeId Kind { get; init; }
-    public required Func<ReadContext, object?> Reader { get; init; }
-    public required Func<ReadContext, TypeMeta, object?> CompatibleReader { get; init; }
-}
-
 public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
@@ -97,8 +88,8 @@ public sealed class TypeResolver
         [typeof(double)] = typeof(Float64PrimitiveDictionaryCodec),
     };
 
-    private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
-    private readonly Dictionary<TypeNameKey, TypeReader> _byTypeName = [];
+    private readonly Dictionary<uint, TypeInfo> _byUserTypeId = [];
+    private readonly Dictionary<(string NamespaceName, string TypeName), TypeInfo> _byTypeName = [];
     private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
     private readonly Dictionary<Type, TypeInfo> _typeInfos = [];
@@ -159,14 +150,14 @@ public sealed class TypeResolver
     internal Serializer RegisterSerializer<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
     {
-        Serializer serializerBinding = CreateSerializer<TSerializer>();
-        RegisterSerializer(typeof(T), serializerBinding);
-        return serializerBinding;
+        Serializer serializer = CreateSerializer<TSerializer>();
+        RegisterSerializer(typeof(T), serializer);
+        return serializer;
     }
 
-    internal void RegisterSerializer(Type type, Serializer serializerBinding)
+    internal void RegisterSerializer(Type type, Serializer serializer)
     {
-        GetOrCreateTypeInfo(type, serializerBinding);
+        GetOrCreateTypeInfo(type, serializer);
     }
 
     internal void Register(Type type, uint id, Serializer? explicitSerializer = null)
@@ -182,16 +173,7 @@ public sealed class TypeResolver
             serializer);
         typeInfo.RegisteredTypeInfo = info;
         MarkRegistrationMode(info.Kind, false);
-        _byUserTypeId[id] = new TypeReader
-        {
-            Kind = serializer.StaticTypeId,
-            Reader = context => serializer.ReadObject(context, RefMode.None, false),
-            CompatibleReader = (context, typeMeta) =>
-            {
-                context.PushCompatibleTypeMeta(type, typeMeta);
-                return serializer.ReadObject(context, RefMode.None, false);
-            },
-        };
+        _byUserTypeId[id] = typeInfo;
     }
 
     internal void Register(Type type, string namespaceName, string typeName, Serializer? explicitSerializer = null)
@@ -209,16 +191,7 @@ public sealed class TypeResolver
             serializer);
         typeInfo.RegisteredTypeInfo = info;
         MarkRegistrationMode(info.Kind, true);
-        _byTypeName[new TypeNameKey(namespaceName, typeName)] = new TypeReader
-        {
-            Kind = serializer.StaticTypeId,
-            Reader = context => serializer.ReadObject(context, RefMode.None, false),
-            CompatibleReader = (context, typeMeta) =>
-            {
-                context.PushCompatibleTypeMeta(type, typeMeta);
-                return serializer.ReadObject(context, RefMode.None, false);
-            },
-        };
+        _byTypeName[(namespaceName, typeName)] = typeInfo;
     }
 
     internal RegisteredTypeInfo? GetRegisteredTypeInfo(Type type)
@@ -436,26 +409,32 @@ public sealed class TypeResolver
 
     public object? ReadByUserTypeId(uint userTypeId, ReadContext context, TypeMeta? compatibleTypeMeta = null)
     {
-        if (!_byUserTypeId.TryGetValue(userTypeId, out TypeReader? entry))
+        if (!_byUserTypeId.TryGetValue(userTypeId, out TypeInfo? typeInfo))
         {
             throw new TypeNotRegisteredException($"user_type_id={userTypeId}");
         }
 
-        return compatibleTypeMeta is null
-            ? entry.Reader(context)
-            : entry.CompatibleReader(context, compatibleTypeMeta);
+        return ReadRegisteredValue(typeInfo, context, compatibleTypeMeta);
     }
 
     public object? ReadByTypeName(string namespaceName, string typeName, ReadContext context, TypeMeta? compatibleTypeMeta = null)
     {
-        if (!_byTypeName.TryGetValue(new TypeNameKey(namespaceName, typeName), out TypeReader? entry))
+        if (!_byTypeName.TryGetValue((namespaceName, typeName), out TypeInfo? typeInfo))
         {
             throw new TypeNotRegisteredException($"namespace={namespaceName}, type={typeName}");
         }
 
-        return compatibleTypeMeta is null
-            ? entry.Reader(context)
-            : entry.CompatibleReader(context, compatibleTypeMeta);
+        return ReadRegisteredValue(typeInfo, context, compatibleTypeMeta);
+    }
+
+    private static object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? compatibleTypeMeta)
+    {
+        if (compatibleTypeMeta is not null)
+        {
+            context.PushCompatibleTypeMeta(typeInfo.Type, compatibleTypeMeta);
+        }
+
+        return typeInfo.Serializer.ReadObject(context, RefMode.None, false);
     }
 
     public DynamicTypeInfo ReadDynamicTypeInfo(ReadContext context)

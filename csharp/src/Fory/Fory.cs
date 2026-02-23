@@ -78,30 +78,30 @@ public sealed class Fory
     public Fory Register<T, TSerializer>(uint typeId)
         where TSerializer : Serializer<T>, new()
     {
-        Serializer serializerBinding = _typeResolver.RegisterSerializer<T, TSerializer>();
-        _typeResolver.Register(typeof(T), typeId, serializerBinding);
+        Serializer serializer = _typeResolver.RegisterSerializer<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeId, serializer);
         return this;
     }
 
     public Fory Register<T, TSerializer>(string typeNamespace, string typeName)
         where TSerializer : Serializer<T>, new()
     {
-        Serializer serializerBinding = _typeResolver.RegisterSerializer<T, TSerializer>();
-        _typeResolver.Register(typeof(T), typeNamespace, typeName, serializerBinding);
+        Serializer serializer = _typeResolver.RegisterSerializer<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeNamespace, typeName, serializer);
         return this;
     }
 
     public byte[] Serialize<T>(in T value)
     {
         ByteWriter writer = new();
-        Serializer<T> binding = _typeResolver.GetSerializer<T>();
-        bool isNone = binding.IsNone(value);
+        Serializer<T> serializer = _typeResolver.GetSerializer<T>();
+        bool isNone = serializer.IsNone(value);
         WriteHead(writer, isNone);
         if (!isNone)
         {
             _writeContext.ResetFor(writer);
             RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-            binding.Write(_writeContext, value, refMode, true, false);
+            serializer.Write(_writeContext, value, refMode, true, false);
             _writeContext.ResetObjectState();
         }
 
@@ -209,15 +209,15 @@ public sealed class Fory
     private T DeserializeFromReader<T>(ByteReader reader)
     {
         bool isNone = ReadHead(reader);
-        Serializer<T> binding = _typeResolver.GetSerializer<T>();
+        Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         if (isNone)
         {
-            return binding.DefaultValue;
+            return serializer.DefaultValue;
         }
 
         _readContext.ResetFor(reader);
         RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-        T value = binding.Read(_readContext, refMode, true);
+        T value = serializer.Read(_readContext, refMode, true);
         _readContext.ResetObjectState();
         return value;
     }
