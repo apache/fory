@@ -142,7 +142,7 @@ public sealed record DynamicTypeInfo(
     MetaString? TypeName,
     TypeMeta? CompatibleTypeMeta);
 
-public readonly struct WriteContext
+public sealed class WriteContext
 {
     public WriteContext(
         ByteWriter writer,
@@ -161,7 +161,7 @@ public readonly struct WriteContext
         MetaStringWriteState = metaStringWriteState ?? new MetaStringWriteState();
     }
 
-    public ByteWriter Writer { get; }
+    public ByteWriter Writer { get; private set; }
 
     public TypeResolver TypeResolver { get; }
 
@@ -174,6 +174,12 @@ public readonly struct WriteContext
     public CompatibleTypeDefWriteState CompatibleTypeDefState { get; }
 
     public MetaStringWriteState MetaStringWriteState { get; }
+
+    public void ResetFor(ByteWriter writer)
+    {
+        Writer = writer;
+        Reset();
+    }
 
     public void WriteCompatibleTypeMeta(Type type, TypeMeta typeMeta)
     {
@@ -240,7 +246,7 @@ public sealed class ReadContext
         MetaStringReadState = metaStringReadState ?? new MetaStringReadState();
     }
 
-    public ByteReader Reader { get; }
+    public ByteReader Reader { get; private set; }
 
     public TypeResolver TypeResolver { get; }
 
@@ -253,6 +259,12 @@ public sealed class ReadContext
     public CompatibleTypeDefReadState CompatibleTypeDefState { get; }
 
     public MetaStringReadState MetaStringReadState { get; }
+
+    public void ResetFor(ByteReader reader)
+    {
+        Reader = reader;
+        Reset();
+    }
 
     public void PushPendingReference(uint refId)
     {
@@ -394,4 +406,3 @@ public sealed class ReadContext
         MetaStringReadState.Reset();
     }
 }
-

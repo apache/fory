@@ -22,14 +22,14 @@ public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : stru
     public override TypeId StaticTypeId => TypeId.Enum;
     public override TEnum DefaultValue => default;
 
-    public override void WriteData(ref WriteContext context, in TEnum value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in TEnum value, bool hasGenerics)
     {
         _ = hasGenerics;
         uint ordinal = Convert.ToUInt32(value);
         context.Writer.WriteVarUInt32(ordinal);
     }
 
-    public override TEnum ReadData(ref ReadContext context)
+    public override TEnum ReadData(ReadContext context)
     {
         uint ordinal = context.Reader.ReadVarUInt32();
         TEnum value = (TEnum)Enum.ToObject(typeof(TEnum), ordinal);

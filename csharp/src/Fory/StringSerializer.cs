@@ -29,38 +29,38 @@ public sealed class StringSerializer : Serializer<string>
 
     public override bool IsNone(in string value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in string value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in string value, bool hasGenerics)
     {
         _ = hasGenerics;
-        WriteString(ref context, value ?? string.Empty);
+        WriteString(context, value ?? string.Empty);
     }
 
-    public override string ReadData(ref ReadContext context)
+    public override string ReadData(ReadContext context)
     {
-        return ReadString(ref context);
+        return ReadString(context);
     }
 
-    public static void WriteString(ref WriteContext context, string value)
+    public static void WriteString(WriteContext context, string value)
     {
         string safe = value ?? string.Empty;
         ForyStringEncoding encoding = SelectEncoding(safe);
         switch (encoding)
         {
             case ForyStringEncoding.Latin1:
-                WriteLatin1(ref context, safe);
+                WriteLatin1(context, safe);
                 break;
             case ForyStringEncoding.Utf8:
-                WriteUtf8(ref context, safe);
+                WriteUtf8(context, safe);
                 break;
             case ForyStringEncoding.Utf16:
-                WriteUtf16(ref context, safe);
+                WriteUtf16(context, safe);
                 break;
             default:
                 throw new EncodingException($"unsupported string encoding {encoding}");
         }
     }
 
-    public static string ReadString(ref ReadContext context)
+    public static string ReadString(ReadContext context)
     {
         ulong header = context.Reader.ReadVarUInt36Small();
         ulong encoding = header & 0x03;
@@ -137,7 +137,7 @@ public sealed class StringSerializer : Serializer<string>
         return true;
     }
 
-    private static void WriteLatin1(ref WriteContext context, string value)
+    private static void WriteLatin1(WriteContext context, string value)
     {
         byte[] latin1 = new byte[value.Length];
         for (int i = 0; i < value.Length; i++)
@@ -145,22 +145,22 @@ public sealed class StringSerializer : Serializer<string>
             latin1[i] = unchecked((byte)value[i]);
         }
 
-        WriteEncodedBytes(ref context, latin1, ForyStringEncoding.Latin1);
+        WriteEncodedBytes(context, latin1, ForyStringEncoding.Latin1);
     }
 
-    private static void WriteUtf8(ref WriteContext context, string value)
+    private static void WriteUtf8(WriteContext context, string value)
     {
         byte[] utf8 = Encoding.UTF8.GetBytes(value);
-        WriteEncodedBytes(ref context, utf8, ForyStringEncoding.Utf8);
+        WriteEncodedBytes(context, utf8, ForyStringEncoding.Utf8);
     }
 
-    private static void WriteUtf16(ref WriteContext context, string value)
+    private static void WriteUtf16(WriteContext context, string value)
     {
         byte[] utf16 = Encoding.Unicode.GetBytes(value);
-        WriteEncodedBytes(ref context, utf16, ForyStringEncoding.Utf16);
+        WriteEncodedBytes(context, utf16, ForyStringEncoding.Utf16);
     }
 
-    private static void WriteEncodedBytes(ref WriteContext context, byte[] bytes, ForyStringEncoding encoding)
+    private static void WriteEncodedBytes(WriteContext context, byte[] bytes, ForyStringEncoding encoding)
     {
         ulong header = ((ulong)bytes.Length << 2) | (ulong)encoding;
         context.Writer.WriteVarUInt36Small(header);

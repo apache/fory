@@ -21,12 +21,12 @@ internal static class TimeCodec
 {
     private static readonly DateOnly Epoch = new(1970, 1, 1);
 
-    public static void WriteDate(ref WriteContext context, in DateOnly value)
+    public static void WriteDate(WriteContext context, in DateOnly value)
     {
         context.Writer.WriteInt32(value.DayNumber - Epoch.DayNumber);
     }
 
-    public static DateOnly ReadDate(ref ReadContext context)
+    public static DateOnly ReadDate(ReadContext context)
     {
         int days = context.Reader.ReadInt32();
         return DateOnly.FromDayNumber(Epoch.DayNumber + days);
@@ -42,21 +42,21 @@ internal static class TimeCodec
         };
     }
 
-    public static void WriteTimestamp(ref WriteContext context, in DateTimeOffset value)
+    public static void WriteTimestamp(WriteContext context, in DateTimeOffset value)
     {
         (long seconds, uint nanos) = ToTimestampParts(value);
         context.Writer.WriteInt64(seconds);
         context.Writer.WriteUInt32(nanos);
     }
 
-    public static DateTimeOffset ReadTimestamp(ref ReadContext context)
+    public static DateTimeOffset ReadTimestamp(ReadContext context)
     {
         long seconds = context.Reader.ReadInt64();
         uint nanos = context.Reader.ReadUInt32();
         return DateTimeOffset.FromUnixTimeSeconds(seconds).AddTicks(nanos / 100);
     }
 
-    public static void WriteDuration(ref WriteContext context, in TimeSpan value)
+    public static void WriteDuration(WriteContext context, in TimeSpan value)
     {
         long seconds = value.Ticks / TimeSpan.TicksPerSecond;
         int nanos = checked((int)((value.Ticks % TimeSpan.TicksPerSecond) * 100));
@@ -64,7 +64,7 @@ internal static class TimeCodec
         context.Writer.WriteInt32(nanos);
     }
 
-    public static TimeSpan ReadDuration(ref ReadContext context)
+    public static TimeSpan ReadDuration(ReadContext context)
     {
         long seconds = context.Reader.ReadInt64();
         int nanos = context.Reader.ReadInt32();
@@ -93,15 +93,15 @@ public sealed class DateOnlySerializer : Serializer<DateOnly>
 
     public override DateOnly DefaultValue => new(1970, 1, 1);
 
-    public override void WriteData(ref WriteContext context, in DateOnly value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in DateOnly value, bool hasGenerics)
     {
         _ = hasGenerics;
-        TimeCodec.WriteDate(ref context, value);
+        TimeCodec.WriteDate(context, value);
     }
 
-    public override DateOnly ReadData(ref ReadContext context)
+    public override DateOnly ReadData(ReadContext context)
     {
-        return TimeCodec.ReadDate(ref context);
+        return TimeCodec.ReadDate(context);
     }
 }
 
@@ -111,15 +111,15 @@ public sealed class DateTimeOffsetSerializer : Serializer<DateTimeOffset>
 
     public override DateTimeOffset DefaultValue => DateTimeOffset.UnixEpoch;
 
-    public override void WriteData(ref WriteContext context, in DateTimeOffset value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in DateTimeOffset value, bool hasGenerics)
     {
         _ = hasGenerics;
-        TimeCodec.WriteTimestamp(ref context, value);
+        TimeCodec.WriteTimestamp(context, value);
     }
 
-    public override DateTimeOffset ReadData(ref ReadContext context)
+    public override DateTimeOffset ReadData(ReadContext context)
     {
-        return TimeCodec.ReadTimestamp(ref context);
+        return TimeCodec.ReadTimestamp(context);
     }
 }
 
@@ -129,16 +129,16 @@ public sealed class DateTimeSerializer : Serializer<DateTime>
 
     public override DateTime DefaultValue => DateTime.UnixEpoch;
 
-    public override void WriteData(ref WriteContext context, in DateTime value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in DateTime value, bool hasGenerics)
     {
         _ = hasGenerics;
         DateTimeOffset dto = TimeCodec.ToDateTimeOffset(value);
-        TimeCodec.WriteTimestamp(ref context, dto);
+        TimeCodec.WriteTimestamp(context, dto);
     }
 
-    public override DateTime ReadData(ref ReadContext context)
+    public override DateTime ReadData(ReadContext context)
     {
-        return TimeCodec.ReadTimestamp(ref context).UtcDateTime;
+        return TimeCodec.ReadTimestamp(context).UtcDateTime;
     }
 }
 
@@ -148,15 +148,15 @@ public sealed class TimeSpanSerializer : Serializer<TimeSpan>
 
     public override TimeSpan DefaultValue => TimeSpan.Zero;
 
-    public override void WriteData(ref WriteContext context, in TimeSpan value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in TimeSpan value, bool hasGenerics)
     {
         _ = hasGenerics;
-        TimeCodec.WriteDuration(ref context, value);
+        TimeCodec.WriteDuration(context, value);
     }
 
-    public override TimeSpan ReadData(ref ReadContext context)
+    public override TimeSpan ReadData(ReadContext context)
     {
-        return TimeCodec.ReadDuration(ref context);
+        return TimeCodec.ReadDuration(context);
     }
 }
 
@@ -174,19 +174,19 @@ internal sealed class ListDateOnlySerializer : Serializer<List<DateOnly>>
 
     public override bool IsNone(in List<DateOnly> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in List<DateOnly> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in List<DateOnly> value, bool hasGenerics)
     {
         List<DateOnly> list = value ?? [];
-        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Date, false);
+        PrimitiveCollectionHeader.WriteListHeader(context, list.Count, hasGenerics, TypeId.Date, false);
         for (int i = 0; i < list.Count; i++)
         {
-            TimeCodec.WriteDate(ref context, list[i]);
+            TimeCodec.WriteDate(context, list[i]);
         }
     }
 
-    public override List<DateOnly> ReadData(ref ReadContext context)
+    public override List<DateOnly> ReadData(ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return Fallback.ReadData(context);
     }
 }
 
@@ -204,19 +204,19 @@ internal sealed class ListDateTimeOffsetSerializer : Serializer<List<DateTimeOff
 
     public override bool IsNone(in List<DateTimeOffset> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in List<DateTimeOffset> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in List<DateTimeOffset> value, bool hasGenerics)
     {
         List<DateTimeOffset> list = value ?? [];
-        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Timestamp, false);
+        PrimitiveCollectionHeader.WriteListHeader(context, list.Count, hasGenerics, TypeId.Timestamp, false);
         for (int i = 0; i < list.Count; i++)
         {
-            TimeCodec.WriteTimestamp(ref context, list[i]);
+            TimeCodec.WriteTimestamp(context, list[i]);
         }
     }
 
-    public override List<DateTimeOffset> ReadData(ref ReadContext context)
+    public override List<DateTimeOffset> ReadData(ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return Fallback.ReadData(context);
     }
 }
 
@@ -234,20 +234,20 @@ internal sealed class ListDateTimeSerializer : Serializer<List<DateTime>>
 
     public override bool IsNone(in List<DateTime> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in List<DateTime> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in List<DateTime> value, bool hasGenerics)
     {
         List<DateTime> list = value ?? [];
-        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Timestamp, false);
+        PrimitiveCollectionHeader.WriteListHeader(context, list.Count, hasGenerics, TypeId.Timestamp, false);
         for (int i = 0; i < list.Count; i++)
         {
             DateTimeOffset dto = TimeCodec.ToDateTimeOffset(list[i]);
-            TimeCodec.WriteTimestamp(ref context, dto);
+            TimeCodec.WriteTimestamp(context, dto);
         }
     }
 
-    public override List<DateTime> ReadData(ref ReadContext context)
+    public override List<DateTime> ReadData(ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return Fallback.ReadData(context);
     }
 }
 
@@ -265,18 +265,18 @@ internal sealed class ListTimeSpanSerializer : Serializer<List<TimeSpan>>
 
     public override bool IsNone(in List<TimeSpan> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in List<TimeSpan> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in List<TimeSpan> value, bool hasGenerics)
     {
         List<TimeSpan> list = value ?? [];
-        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TypeId.Duration, false);
+        PrimitiveCollectionHeader.WriteListHeader(context, list.Count, hasGenerics, TypeId.Duration, false);
         for (int i = 0; i < list.Count; i++)
         {
-            TimeCodec.WriteDuration(ref context, list[i]);
+            TimeCodec.WriteDuration(context, list[i]);
         }
     }
 
-    public override List<TimeSpan> ReadData(ref ReadContext context)
+    public override List<TimeSpan> ReadData(ReadContext context)
     {
-        return Fallback.ReadData(ref context);
+        return Fallback.ReadData(context);
     }
 }

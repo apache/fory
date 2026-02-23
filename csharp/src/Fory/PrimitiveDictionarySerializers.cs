@@ -23,7 +23,7 @@ namespace Apache.Fory;
 internal static class PrimitiveDictionaryHeader
 {
     public static void WriteMapChunkTypeInfo(
-        ref WriteContext context,
+        WriteContext context,
         bool keyDeclared,
         bool valueDeclared,
         TypeId keyTypeId,
@@ -51,9 +51,9 @@ internal interface IPrimitiveDictionaryCodec<T>
 
     static abstract bool IsNone(T value);
 
-    static abstract void Write(ref WriteContext context, T value);
+    static abstract void Write(WriteContext context, T value);
 
-    static abstract T Read(ref ReadContext context);
+    static abstract T Read(ReadContext context);
 }
 
 internal readonly struct StringPrimitiveDictionaryCodec : IPrimitiveDictionaryCodec<string>
@@ -66,14 +66,14 @@ internal readonly struct StringPrimitiveDictionaryCodec : IPrimitiveDictionaryCo
 
     public static bool IsNone(string value) => value is null;
 
-    public static void Write(ref WriteContext context, string value)
+    public static void Write(WriteContext context, string value)
     {
-        StringSerializer.WriteString(ref context, value ?? string.Empty);
+        StringSerializer.WriteString(context, value ?? string.Empty);
     }
 
-    public static string Read(ref ReadContext context)
+    public static string Read(ReadContext context)
     {
-        return StringSerializer.ReadString(ref context);
+        return StringSerializer.ReadString(context);
     }
 }
 
@@ -87,12 +87,12 @@ internal readonly struct BoolPrimitiveDictionaryCodec : IPrimitiveDictionaryCode
 
     public static bool IsNone(bool value) => false;
 
-    public static void Write(ref WriteContext context, bool value)
+    public static void Write(WriteContext context, bool value)
     {
         context.Writer.WriteUInt8(value ? (byte)1 : (byte)0);
     }
 
-    public static bool Read(ref ReadContext context)
+    public static bool Read(ReadContext context)
     {
         return context.Reader.ReadUInt8() != 0;
     }
@@ -108,12 +108,12 @@ internal readonly struct Int8PrimitiveDictionaryCodec : IPrimitiveDictionaryCode
 
     public static bool IsNone(sbyte value) => false;
 
-    public static void Write(ref WriteContext context, sbyte value)
+    public static void Write(WriteContext context, sbyte value)
     {
         context.Writer.WriteInt8(value);
     }
 
-    public static sbyte Read(ref ReadContext context)
+    public static sbyte Read(ReadContext context)
     {
         return context.Reader.ReadInt8();
     }
@@ -129,12 +129,12 @@ internal readonly struct Int16PrimitiveDictionaryCodec : IPrimitiveDictionaryCod
 
     public static bool IsNone(short value) => false;
 
-    public static void Write(ref WriteContext context, short value)
+    public static void Write(WriteContext context, short value)
     {
         context.Writer.WriteInt16(value);
     }
 
-    public static short Read(ref ReadContext context)
+    public static short Read(ReadContext context)
     {
         return context.Reader.ReadInt16();
     }
@@ -150,12 +150,12 @@ internal readonly struct Int32PrimitiveDictionaryCodec : IPrimitiveDictionaryCod
 
     public static bool IsNone(int value) => false;
 
-    public static void Write(ref WriteContext context, int value)
+    public static void Write(WriteContext context, int value)
     {
         context.Writer.WriteVarInt32(value);
     }
 
-    public static int Read(ref ReadContext context)
+    public static int Read(ReadContext context)
     {
         return context.Reader.ReadVarInt32();
     }
@@ -171,12 +171,12 @@ internal readonly struct Int64PrimitiveDictionaryCodec : IPrimitiveDictionaryCod
 
     public static bool IsNone(long value) => false;
 
-    public static void Write(ref WriteContext context, long value)
+    public static void Write(WriteContext context, long value)
     {
         context.Writer.WriteVarInt64(value);
     }
 
-    public static long Read(ref ReadContext context)
+    public static long Read(ReadContext context)
     {
         return context.Reader.ReadVarInt64();
     }
@@ -192,12 +192,12 @@ internal readonly struct UInt16PrimitiveDictionaryCodec : IPrimitiveDictionaryCo
 
     public static bool IsNone(ushort value) => false;
 
-    public static void Write(ref WriteContext context, ushort value)
+    public static void Write(WriteContext context, ushort value)
     {
         context.Writer.WriteUInt16(value);
     }
 
-    public static ushort Read(ref ReadContext context)
+    public static ushort Read(ReadContext context)
     {
         return context.Reader.ReadUInt16();
     }
@@ -213,12 +213,12 @@ internal readonly struct UInt32PrimitiveDictionaryCodec : IPrimitiveDictionaryCo
 
     public static bool IsNone(uint value) => false;
 
-    public static void Write(ref WriteContext context, uint value)
+    public static void Write(WriteContext context, uint value)
     {
         context.Writer.WriteVarUInt32(value);
     }
 
-    public static uint Read(ref ReadContext context)
+    public static uint Read(ReadContext context)
     {
         return context.Reader.ReadVarUInt32();
     }
@@ -234,12 +234,12 @@ internal readonly struct UInt64PrimitiveDictionaryCodec : IPrimitiveDictionaryCo
 
     public static bool IsNone(ulong value) => false;
 
-    public static void Write(ref WriteContext context, ulong value)
+    public static void Write(WriteContext context, ulong value)
     {
         context.Writer.WriteVarUInt64(value);
     }
 
-    public static ulong Read(ref ReadContext context)
+    public static ulong Read(ReadContext context)
     {
         return context.Reader.ReadVarUInt64();
     }
@@ -255,12 +255,12 @@ internal readonly struct Float32PrimitiveDictionaryCodec : IPrimitiveDictionaryC
 
     public static bool IsNone(float value) => false;
 
-    public static void Write(ref WriteContext context, float value)
+    public static void Write(WriteContext context, float value)
     {
         context.Writer.WriteFloat32(value);
     }
 
-    public static float Read(ref ReadContext context)
+    public static float Read(ReadContext context)
     {
         return context.Reader.ReadFloat32();
     }
@@ -276,12 +276,12 @@ internal readonly struct Float64PrimitiveDictionaryCodec : IPrimitiveDictionaryC
 
     public static bool IsNone(double value) => false;
 
-    public static void Write(ref WriteContext context, double value)
+    public static void Write(WriteContext context, double value)
     {
         context.Writer.WriteFloat64(value);
     }
 
-    public static double Read(ref ReadContext context)
+    public static double Read(ReadContext context)
     {
         return context.Reader.ReadFloat64();
     }
@@ -461,7 +461,7 @@ internal readonly struct ArrayPrimitiveMapWriteOps<TKey, TValue>
 internal static class PrimitiveDictionaryCodecWriter
 {
     public static void WriteMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps, TEnumerator>(
-        ref WriteContext context,
+        WriteContext context,
         TMap map,
         bool hasGenerics)
         where TKey : notnull
@@ -526,7 +526,7 @@ internal static class PrimitiveDictionaryCodecWriter
                         context.Writer.WriteUInt8((byte)keyTypeId);
                     }
 
-                    TKeyCodec.Write(ref context, pair.Key);
+                    TKeyCodec.Write(context, pair.Key);
                 }
 
                 if (!valueNull)
@@ -536,7 +536,7 @@ internal static class PrimitiveDictionaryCodecWriter
                         context.Writer.WriteUInt8((byte)valueTypeId);
                     }
 
-                    TValueCodec.Write(ref context, pair.Value);
+                    TValueCodec.Write(context, pair.Value);
                 }
 
                 writtenCount += 1;
@@ -568,13 +568,13 @@ internal static class PrimitiveDictionaryCodecWriter
             context.Writer.WriteUInt8(blockHeader);
             int chunkSizeOffset = context.Writer.Count;
             context.Writer.WriteUInt8(0);
-            PrimitiveDictionaryHeader.WriteMapChunkTypeInfo(ref context, keyDeclared, valueDeclared, keyTypeId, valueTypeId);
+            PrimitiveDictionaryHeader.WriteMapChunkTypeInfo(context, keyDeclared, valueDeclared, keyTypeId, valueTypeId);
 
             byte chunkSize = 0;
             while (true)
             {
-                TKeyCodec.Write(ref context, pair.Key);
-                TValueCodec.Write(ref context, pair.Value);
+                TKeyCodec.Write(context, pair.Key);
+                TValueCodec.Write(context, pair.Value);
                 chunkSize += 1;
                 writtenCount += 1;
                 if (writtenCount > totalLength)
@@ -621,7 +621,7 @@ internal static class PrimitiveDictionaryCodecWriter
 
 internal static class PrimitiveDictionaryCodecReader
 {
-    public static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(ref ReadContext context)
+    public static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(ReadContext context)
         where TKey : notnull
         where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
         where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
@@ -667,10 +667,10 @@ internal static class PrimitiveDictionaryCodecReader
             {
                 if (!valueDeclared)
                 {
-                    ReadAndValidateTypeInfo(ref context, valueTypeId);
+                    ReadAndValidateTypeInfo(context, valueTypeId);
                 }
 
-                _ = TValueCodec.Read(ref context);
+                _ = TValueCodec.Read(context);
                 readCount += 1;
                 continue;
             }
@@ -679,10 +679,10 @@ internal static class PrimitiveDictionaryCodecReader
             {
                 if (!keyDeclared)
                 {
-                    ReadAndValidateTypeInfo(ref context, keyTypeId);
+                    ReadAndValidateTypeInfo(context, keyTypeId);
                 }
 
-                TKey key = TKeyCodec.Read(ref context);
+                TKey key = TKeyCodec.Read(context);
                 TMapOps.Put(map, key, TValueCodec.DefaultValue);
                 readCount += 1;
                 continue;
@@ -696,18 +696,18 @@ internal static class PrimitiveDictionaryCodecReader
 
             if (!keyDeclared)
             {
-                ReadAndValidateTypeInfo(ref context, keyTypeId);
+                ReadAndValidateTypeInfo(context, keyTypeId);
             }
 
             if (!valueDeclared)
             {
-                ReadAndValidateTypeInfo(ref context, valueTypeId);
+                ReadAndValidateTypeInfo(context, valueTypeId);
             }
 
             for (int i = 0; i < chunkSize; i++)
             {
-                TKey key = TKeyCodec.Read(ref context);
-                TValue value = TValueCodec.Read(ref context);
+                TKey key = TKeyCodec.Read(context);
+                TValue value = TValueCodec.Read(context);
                 TMapOps.Put(map, key, value);
             }
 
@@ -717,7 +717,7 @@ internal static class PrimitiveDictionaryCodecReader
         return map;
     }
 
-    private static void ReadAndValidateTypeInfo(ref ReadContext context, TypeId expectedTypeId)
+    private static void ReadAndValidateTypeInfo(ReadContext context, TypeId expectedTypeId)
     {
         uint actualTypeId = context.Reader.ReadVarUInt32();
         if (actualTypeId != (uint)expectedTypeId)
@@ -742,7 +742,7 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
 
     public override bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
 
-public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+public override void WriteData(WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
         Dictionary<TKey, TValue> map = value ?? [];
         PrimitiveDictionaryCodecWriter.WriteMap<
@@ -752,10 +752,10 @@ public override void WriteData(ref WriteContext context, in Dictionary<TKey, TVa
             TKeyCodec,
             TValueCodec,
             DictionaryPrimitiveMapOps<TKey, TValue>,
-            Dictionary<TKey, TValue>.Enumerator>(ref context, map, hasGenerics);
+            Dictionary<TKey, TValue>.Enumerator>(context, map, hasGenerics);
     }
 
-    public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override Dictionary<TKey, TValue> ReadData(ReadContext context)
     {
         return PrimitiveDictionaryCodecReader.ReadMap<
             Dictionary<TKey, TValue>,
@@ -763,7 +763,7 @@ public override void WriteData(ref WriteContext context, in Dictionary<TKey, TVa
             TValue,
             TKeyCodec,
             TValueCodec,
-            DictionaryPrimitiveMapOps<TKey, TValue>>(ref context);
+            DictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
 }
 
@@ -795,7 +795,7 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
 
     public override bool IsNone(in SortedDictionary<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in SortedDictionary<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in SortedDictionary<TKey, TValue> value, bool hasGenerics)
     {
         SortedDictionary<TKey, TValue> map = value ?? new SortedDictionary<TKey, TValue>();
         PrimitiveDictionaryCodecWriter.WriteMap<
@@ -805,10 +805,10 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
             TKeyCodec,
             TValueCodec,
             SortedDictionaryPrimitiveMapOps<TKey, TValue>,
-            SortedDictionary<TKey, TValue>.Enumerator>(ref context, map, hasGenerics);
+            SortedDictionary<TKey, TValue>.Enumerator>(context, map, hasGenerics);
     }
 
-    public override SortedDictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override SortedDictionary<TKey, TValue> ReadData(ReadContext context)
     {
         return PrimitiveDictionaryCodecReader.ReadMap<
             SortedDictionary<TKey, TValue>,
@@ -816,7 +816,7 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
             TValue,
             TKeyCodec,
             TValueCodec,
-            SortedDictionaryPrimitiveMapOps<TKey, TValue>>(ref context);
+            SortedDictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
 }
 
@@ -848,7 +848,7 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
 
     public override bool IsNone(in SortedList<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in SortedList<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in SortedList<TKey, TValue> value, bool hasGenerics)
     {
         SortedList<TKey, TValue> map = value ?? new SortedList<TKey, TValue>();
         PrimitiveDictionaryCodecWriter.WriteMap<
@@ -858,10 +858,10 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
             TKeyCodec,
             TValueCodec,
             SortedListPrimitiveMapOps<TKey, TValue>,
-            SortedListPrimitiveEnumerator<TKey, TValue>>(ref context, map, hasGenerics);
+            SortedListPrimitiveEnumerator<TKey, TValue>>(context, map, hasGenerics);
     }
 
-    public override SortedList<TKey, TValue> ReadData(ref ReadContext context)
+    public override SortedList<TKey, TValue> ReadData(ReadContext context)
     {
         return PrimitiveDictionaryCodecReader.ReadMap<
             SortedList<TKey, TValue>,
@@ -869,7 +869,7 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
             TValue,
             TKeyCodec,
             TValueCodec,
-            SortedListPrimitiveMapOps<TKey, TValue>>(ref context);
+            SortedListPrimitiveMapOps<TKey, TValue>>(context);
     }
 }
 
@@ -901,7 +901,7 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
 
     public override bool IsNone(in ConcurrentDictionary<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in ConcurrentDictionary<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in ConcurrentDictionary<TKey, TValue> value, bool hasGenerics)
     {
         ConcurrentDictionary<TKey, TValue> map = value ?? new ConcurrentDictionary<TKey, TValue>();
         // Use snapshot to keep count and entry enumeration stable under concurrent mutation.
@@ -912,10 +912,10 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
             TKeyCodec,
             TValueCodec,
             ArrayPrimitiveMapWriteOps<TKey, TValue>,
-            KeyValuePairArrayEnumerator<TKey, TValue>>(ref context, map.ToArray(), hasGenerics);
+            KeyValuePairArrayEnumerator<TKey, TValue>>(context, map.ToArray(), hasGenerics);
     }
 
-    public override ConcurrentDictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override ConcurrentDictionary<TKey, TValue> ReadData(ReadContext context)
     {
         return PrimitiveDictionaryCodecReader.ReadMap<
             ConcurrentDictionary<TKey, TValue>,
@@ -923,7 +923,7 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
             TValue,
             TKeyCodec,
             TValueCodec,
-            ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(ref context);
+            ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
 }
 

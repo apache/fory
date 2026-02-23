@@ -75,16 +75,30 @@ public sealed class ForyBuilder
         return this;
     }
 
+    private Config BuildConfig()
+    {
+        return new Config(
+            Xlang: _xlang,
+            TrackRef: _trackRef,
+            Compatible: _compatible,
+            CheckStructVersion: _checkStructVersion,
+            EnableReflectionFallback: _enableReflectionFallback,
+            MaxDepth: _maxDepth);
+    }
+
+    /// <summary>
+    /// Builds a single-thread <see cref="Fory"/> instance.
+    /// </summary>
     public Fory Build()
     {
-        return new Fory(
-            new Config(
-                Xlang: _xlang,
-                TrackRef: _trackRef,
-                Compatible: _compatible,
-                CheckStructVersion: _checkStructVersion,
-                EnableReflectionFallback: _enableReflectionFallback,
-                MaxDepth: _maxDepth));
+        return new Fory(BuildConfig());
+    }
+
+    /// <summary>
+    /// Builds a multi-thread-safe wrapper that keeps one <see cref="Fory"/> per thread.
+    /// </summary>
+    public ThreadSafeFory BuildThreadSafe()
+    {
+        return new ThreadSafeFory(BuildConfig());
     }
 }
-

@@ -29,7 +29,7 @@ internal sealed class BoolArraySerializer : Serializer<bool[]>
 
     public override bool IsNone(in bool[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in bool[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in bool[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         bool[] safe = value ?? [];
@@ -40,7 +40,7 @@ internal sealed class BoolArraySerializer : Serializer<bool[]>
         }
     }
 
-    public override bool[] ReadData(ref ReadContext context)
+    public override bool[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         bool[] values = new bool[payloadSize];
@@ -65,7 +65,7 @@ internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 
     public override bool IsNone(in sbyte[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in sbyte[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in sbyte[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         sbyte[] safe = value ?? [];
@@ -76,7 +76,7 @@ internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
         }
     }
 
-    public override sbyte[] ReadData(ref ReadContext context)
+    public override sbyte[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         sbyte[] values = new sbyte[payloadSize];
@@ -101,7 +101,7 @@ internal sealed class Int16ArraySerializer : Serializer<short[]>
 
     public override bool IsNone(in short[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in short[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in short[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         short[] safe = value ?? [];
@@ -112,7 +112,7 @@ internal sealed class Int16ArraySerializer : Serializer<short[]>
         }
     }
 
-    public override short[] ReadData(ref ReadContext context)
+    public override short[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 1) != 0)
@@ -142,7 +142,7 @@ internal sealed class Int32ArraySerializer : Serializer<int[]>
 
     public override bool IsNone(in int[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in int[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in int[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         int[] safe = value ?? [];
@@ -153,7 +153,7 @@ internal sealed class Int32ArraySerializer : Serializer<int[]>
         }
     }
 
-    public override int[] ReadData(ref ReadContext context)
+    public override int[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 3) != 0)
@@ -183,7 +183,7 @@ internal sealed class Int64ArraySerializer : Serializer<long[]>
 
     public override bool IsNone(in long[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in long[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in long[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         long[] safe = value ?? [];
@@ -194,7 +194,7 @@ internal sealed class Int64ArraySerializer : Serializer<long[]>
         }
     }
 
-    public override long[] ReadData(ref ReadContext context)
+    public override long[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 7) != 0)
@@ -224,7 +224,7 @@ internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 
     public override bool IsNone(in ushort[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in ushort[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in ushort[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         ushort[] safe = value ?? [];
@@ -235,7 +235,7 @@ internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
         }
     }
 
-    public override ushort[] ReadData(ref ReadContext context)
+    public override ushort[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 1) != 0)
@@ -265,7 +265,7 @@ internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 
     public override bool IsNone(in uint[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in uint[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in uint[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         uint[] safe = value ?? [];
@@ -276,7 +276,7 @@ internal sealed class UInt32ArraySerializer : Serializer<uint[]>
         }
     }
 
-    public override uint[] ReadData(ref ReadContext context)
+    public override uint[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 3) != 0)
@@ -306,7 +306,7 @@ internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 
     public override bool IsNone(in ulong[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in ulong[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in ulong[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         ulong[] safe = value ?? [];
@@ -317,7 +317,7 @@ internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
         }
     }
 
-    public override ulong[] ReadData(ref ReadContext context)
+    public override ulong[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 7) != 0)
@@ -347,7 +347,7 @@ internal sealed class Float32ArraySerializer : Serializer<float[]>
 
     public override bool IsNone(in float[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in float[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in float[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         float[] safe = value ?? [];
@@ -358,7 +358,7 @@ internal sealed class Float32ArraySerializer : Serializer<float[]>
         }
     }
 
-    public override float[] ReadData(ref ReadContext context)
+    public override float[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 3) != 0)
@@ -388,7 +388,7 @@ internal sealed class Float64ArraySerializer : Serializer<double[]>
 
     public override bool IsNone(in double[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in double[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in double[] value, bool hasGenerics)
     {
         _ = hasGenerics;
         double[] safe = value ?? [];
@@ -399,7 +399,7 @@ internal sealed class Float64ArraySerializer : Serializer<double[]>
         }
     }
 
-    public override double[] ReadData(ref ReadContext context)
+    public override double[] ReadData(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 7) != 0)

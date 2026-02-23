@@ -185,11 +185,11 @@ public sealed class TypeResolver
         _byUserTypeId[id] = new TypeReader
         {
             Kind = serializer.StaticTypeId,
-            Reader = context => serializer.ReadObject(ref context, RefMode.None, false),
+            Reader = context => serializer.ReadObject(context, RefMode.None, false),
             CompatibleReader = (context, typeMeta) =>
             {
                 context.PushCompatibleTypeMeta(type, typeMeta);
-                return serializer.ReadObject(ref context, RefMode.None, false);
+                return serializer.ReadObject(context, RefMode.None, false);
             },
         };
     }
@@ -212,11 +212,11 @@ public sealed class TypeResolver
         _byTypeName[new TypeNameKey(namespaceName, typeName)] = new TypeReader
         {
             Kind = serializer.StaticTypeId,
-            Reader = context => serializer.ReadObject(ref context, RefMode.None, false),
+            Reader = context => serializer.ReadObject(context, RefMode.None, false),
             CompatibleReader = (context, typeMeta) =>
             {
                 context.PushCompatibleTypeMeta(type, typeMeta);
-                return serializer.ReadObject(ref context, RefMode.None, false);
+                return serializer.ReadObject(context, RefMode.None, false);
             },
         };
     }
@@ -239,7 +239,7 @@ public sealed class TypeResolver
         throw new TypeNotRegisteredException($"{type} is not registered");
     }
 
-    internal void WriteTypeInfo(Type type, Serializer serializer, ref WriteContext context)
+    internal void WriteTypeInfo(Type type, Serializer serializer, WriteContext context)
     {
         TypeId staticTypeId = serializer.StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
@@ -278,12 +278,12 @@ public sealed class TypeResolver
                     }
 
                     WriteMetaString(
-                        ref context,
+                        context,
                         info.NamespaceName.Value,
                         TypeMetaEncodings.NamespaceMetaStringEncodings,
                         MetaStringEncoder.Namespace);
                     WriteMetaString(
-                        ref context,
+                        context,
                         info.TypeName,
                         TypeMetaEncodings.TypeNameMetaStringEncodings,
                         MetaStringEncoder.TypeName);
@@ -306,7 +306,7 @@ public sealed class TypeResolver
         }
     }
 
-    internal void ReadTypeInfo(Type type, Serializer serializer, ref ReadContext context)
+    internal void ReadTypeInfo(Type type, Serializer serializer, ReadContext context)
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
@@ -367,11 +367,11 @@ public sealed class TypeResolver
                 else
                 {
                     MetaString namespaceName = ReadMetaString(
-                        ref context,
+                        context,
                         MetaStringDecoder.Namespace,
                         TypeMetaEncodings.NamespaceMetaStringEncodings);
                     MetaString typeName = ReadMetaString(
-                        ref context,
+                        context,
                         MetaStringDecoder.TypeName,
                         TypeMetaEncodings.TypeNameMetaStringEncodings);
                     if (!info.RegisterByName || info.NamespaceName is null)
@@ -434,7 +434,7 @@ public sealed class TypeResolver
         return allowed;
     }
 
-    public object? ReadByUserTypeId(uint userTypeId, ref ReadContext context, TypeMeta? compatibleTypeMeta = null)
+    public object? ReadByUserTypeId(uint userTypeId, ReadContext context, TypeMeta? compatibleTypeMeta = null)
     {
         if (!_byUserTypeId.TryGetValue(userTypeId, out TypeReader? entry))
         {
@@ -446,7 +446,7 @@ public sealed class TypeResolver
             : entry.CompatibleReader(context, compatibleTypeMeta);
     }
 
-    public object? ReadByTypeName(string namespaceName, string typeName, ref ReadContext context, TypeMeta? compatibleTypeMeta = null)
+    public object? ReadByTypeName(string namespaceName, string typeName, ReadContext context, TypeMeta? compatibleTypeMeta = null)
     {
         if (!_byTypeName.TryGetValue(new TypeNameKey(namespaceName, typeName), out TypeReader? entry))
         {
@@ -458,7 +458,7 @@ public sealed class TypeResolver
             : entry.CompatibleReader(context, compatibleTypeMeta);
     }
 
-    public DynamicTypeInfo ReadDynamicTypeInfo(ref ReadContext context)
+    public DynamicTypeInfo ReadDynamicTypeInfo(ReadContext context)
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
@@ -514,7 +514,7 @@ public sealed class TypeResolver
         }
     }
 
-    public object? ReadDynamicValue(DynamicTypeInfo typeInfo, ref ReadContext context)
+    public object? ReadDynamicValue(DynamicTypeInfo typeInfo, ReadContext context)
     {
         switch (typeInfo.WireTypeId)
         {
@@ -553,44 +553,44 @@ public sealed class TypeResolver
             case TypeId.Float64:
                 return context.Reader.ReadFloat64();
             case TypeId.String:
-                return StringSerializer.ReadString(ref context);
+                return StringSerializer.ReadString(context);
             case TypeId.Date:
-                return TimeCodec.ReadDate(ref context);
+                return TimeCodec.ReadDate(context);
             case TypeId.Timestamp:
-                return TimeCodec.ReadTimestamp(ref context);
+                return TimeCodec.ReadTimestamp(context);
             case TypeId.Duration:
-                return TimeCodec.ReadDuration(ref context);
+                return TimeCodec.ReadDuration(context);
             case TypeId.Binary:
             case TypeId.UInt8Array:
-                return ReadBinary(ref context);
+                return ReadBinary(context);
             case TypeId.BoolArray:
-                return ReadBoolArray(ref context);
+                return ReadBoolArray(context);
             case TypeId.Int8Array:
-                return ReadInt8Array(ref context);
+                return ReadInt8Array(context);
             case TypeId.Int16Array:
-                return ReadInt16Array(ref context);
+                return ReadInt16Array(context);
             case TypeId.Int32Array:
-                return ReadInt32Array(ref context);
+                return ReadInt32Array(context);
             case TypeId.Int64Array:
-                return ReadInt64Array(ref context);
+                return ReadInt64Array(context);
             case TypeId.UInt16Array:
-                return ReadUInt16Array(ref context);
+                return ReadUInt16Array(context);
             case TypeId.UInt32Array:
-                return ReadUInt32Array(ref context);
+                return ReadUInt32Array(context);
             case TypeId.UInt64Array:
-                return ReadUInt64Array(ref context);
+                return ReadUInt64Array(context);
             case TypeId.Float32Array:
-                return ReadFloat32Array(ref context);
+                return ReadFloat32Array(context);
             case TypeId.Float64Array:
-                return ReadFloat64Array(ref context);
+                return ReadFloat64Array(context);
             case TypeId.List:
-                return DynamicContainerCodec.ReadListPayload(ref context);
+                return DynamicContainerCodec.ReadListPayload(context);
             case TypeId.Set:
-                return DynamicContainerCodec.ReadSetPayload(ref context);
+                return DynamicContainerCodec.ReadSetPayload(context);
             case TypeId.Map:
-                return DynamicContainerCodec.ReadMapPayload(ref context);
+                return DynamicContainerCodec.ReadMapPayload(context);
             case TypeId.Union:
-                return GetSerializer<Union>().Read(ref context, RefMode.None, false);
+                return GetSerializer<Union>().Read(context, RefMode.None, false);
             case TypeId.Struct:
             case TypeId.Enum:
             case TypeId.Ext:
@@ -598,12 +598,12 @@ public sealed class TypeResolver
             {
                 if (typeInfo.UserTypeId.HasValue)
                 {
-                    return ReadByUserTypeId(typeInfo.UserTypeId.Value, ref context);
+                    return ReadByUserTypeId(typeInfo.UserTypeId.Value, context);
                 }
 
                 if (typeInfo.NamespaceName.HasValue && typeInfo.TypeName.HasValue)
                 {
-                    return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, ref context);
+                    return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, context);
                 }
 
                 throw new InvalidDataException($"missing dynamic registration info for {typeInfo.WireTypeId}");
@@ -618,7 +618,7 @@ public sealed class TypeResolver
                     throw new InvalidDataException($"missing dynamic type name for {typeInfo.WireTypeId}");
                 }
 
-                return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, ref context);
+                return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, context);
             }
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
@@ -634,7 +634,7 @@ public sealed class TypeResolver
                     return ReadByTypeName(
                         compatibleTypeMeta.NamespaceName.Value,
                         compatibleTypeMeta.TypeName.Value,
-                        ref context,
+                        context,
                         compatibleTypeMeta);
                 }
 
@@ -643,7 +643,7 @@ public sealed class TypeResolver
                     throw new InvalidDataException("missing user type id in compatible dynamic type meta");
                 }
 
-                return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, ref context, compatibleTypeMeta);
+                return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, context, compatibleTypeMeta);
             }
             case TypeId.None:
                 return null;
@@ -652,13 +652,13 @@ public sealed class TypeResolver
         }
     }
 
-    private static byte[] ReadBinary(ref ReadContext context)
+    private static byte[] ReadBinary(ReadContext context)
     {
         uint length = context.Reader.ReadVarUInt32();
         return context.Reader.ReadBytes(checked((int)length));
     }
 
-    private static bool[] ReadBoolArray(ref ReadContext context)
+    private static bool[] ReadBoolArray(ReadContext context)
     {
         int count = checked((int)context.Reader.ReadVarUInt32());
         bool[] values = new bool[count];
@@ -670,7 +670,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static sbyte[] ReadInt8Array(ref ReadContext context)
+    private static sbyte[] ReadInt8Array(ReadContext context)
     {
         int count = checked((int)context.Reader.ReadVarUInt32());
         sbyte[] values = new sbyte[count];
@@ -682,7 +682,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static short[] ReadInt16Array(ref ReadContext context)
+    private static short[] ReadInt16Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 1) != 0)
@@ -699,7 +699,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static int[] ReadInt32Array(ref ReadContext context)
+    private static int[] ReadInt32Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 3) != 0)
@@ -716,7 +716,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static long[] ReadInt64Array(ref ReadContext context)
+    private static long[] ReadInt64Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 7) != 0)
@@ -733,7 +733,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static ushort[] ReadUInt16Array(ref ReadContext context)
+    private static ushort[] ReadUInt16Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 1) != 0)
@@ -750,7 +750,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static uint[] ReadUInt32Array(ref ReadContext context)
+    private static uint[] ReadUInt32Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 3) != 0)
@@ -767,7 +767,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static ulong[] ReadUInt64Array(ref ReadContext context)
+    private static ulong[] ReadUInt64Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 7) != 0)
@@ -784,7 +784,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static float[] ReadFloat32Array(ref ReadContext context)
+    private static float[] ReadFloat32Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 3) != 0)
@@ -801,7 +801,7 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static double[] ReadFloat64Array(ref ReadContext context)
+    private static double[] ReadFloat64Array(ReadContext context)
     {
         int payloadSize = checked((int)context.Reader.ReadVarUInt32());
         if ((payloadSize & 7) != 0)
@@ -982,7 +982,7 @@ public sealed class TypeResolver
     }
 
     private static void WriteMetaString(
-        ref WriteContext context,
+        WriteContext context,
         MetaString value,
         IReadOnlyList<MetaStringEncoding> encodings,
         MetaStringEncoder encoder)
@@ -1018,7 +1018,7 @@ public sealed class TypeResolver
     }
 
     private static MetaString ReadMetaString(
-        ref ReadContext context,
+        ReadContext context,
         MetaStringDecoder decoder,
         IReadOnlyList<MetaStringEncoding> encodings)
     {

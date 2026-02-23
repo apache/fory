@@ -34,7 +34,7 @@ internal static class CollectionCodec
     public static void WriteCollectionData<T>(
         IEnumerable<T> values,
         Serializer<T> elementSerializer,
-        ref WriteContext context,
+        WriteContext context,
         bool hasGenerics)
     {
         List<T> list = values as List<T> ?? [.. values];
@@ -82,7 +82,7 @@ internal static class CollectionCodec
         context.Writer.WriteUInt8(header);
         if (!dynamicElementType && !declaredElementType)
         {
-            elementSerializer.WriteTypeInfo(ref context);
+            elementSerializer.WriteTypeInfo(context);
         }
 
         if (dynamicElementType)
@@ -90,7 +90,7 @@ internal static class CollectionCodec
             RefMode refMode = trackRef ? RefMode.Tracking : hasNull ? RefMode.NullOnly : RefMode.None;
             foreach (T element in list)
             {
-                elementSerializer.Write(ref context, element, refMode, true, hasGenerics);
+                elementSerializer.Write(context, element, refMode, true, hasGenerics);
             }
 
             return;
@@ -100,7 +100,7 @@ internal static class CollectionCodec
         {
             foreach (T element in list)
             {
-                elementSerializer.Write(ref context, element, RefMode.Tracking, false, hasGenerics);
+                elementSerializer.Write(context, element, RefMode.Tracking, false, hasGenerics);
             }
 
             return;
@@ -117,7 +117,7 @@ internal static class CollectionCodec
                 else
                 {
                     context.Writer.WriteInt8((sbyte)RefFlag.NotNullValue);
-                    elementSerializer.WriteData(ref context, element, hasGenerics);
+                    elementSerializer.WriteData(context, element, hasGenerics);
                 }
             }
 
@@ -126,11 +126,11 @@ internal static class CollectionCodec
 
         foreach (T element in list)
         {
-            elementSerializer.WriteData(ref context, element, hasGenerics);
+            elementSerializer.WriteData(context, element, hasGenerics);
         }
     }
 
-    public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ref ReadContext context)
+    public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
         int length = checked((int)context.Reader.ReadVarUInt32());
         if (length == 0)
@@ -152,7 +152,7 @@ internal static class CollectionCodec
             {
                 for (int i = 0; i < length; i++)
                 {
-                    values.Add(elementSerializer.Read(ref context, RefMode.Tracking, true));
+                    values.Add(elementSerializer.Read(context, RefMode.Tracking, true));
                 }
 
                 return values;
@@ -169,7 +169,7 @@ internal static class CollectionCodec
                     }
                     else if (refFlag == (sbyte)RefFlag.NotNullValue)
                     {
-                        values.Add(ReadCollectionElementWithCanonicalization(elementSerializer, ref context, true, canonicalizeElements));
+                        values.Add(ReadCollectionElementWithCanonicalization(elementSerializer, context, true, canonicalizeElements));
                     }
                     else
                     {
@@ -181,7 +181,7 @@ internal static class CollectionCodec
             {
                 for (int i = 0; i < length; i++)
                 {
-                    values.Add(ReadCollectionElementWithCanonicalization(elementSerializer, ref context, true, canonicalizeElements));
+                    values.Add(ReadCollectionElementWithCanonicalization(elementSerializer, context, true, canonicalizeElements));
                 }
             }
 
@@ -190,14 +190,14 @@ internal static class CollectionCodec
 
         if (!declared)
         {
-            elementSerializer.ReadTypeInfo(ref context);
+            elementSerializer.ReadTypeInfo(context);
         }
 
         if (trackRef)
         {
             for (int i = 0; i < length; i++)
             {
-                values.Add(elementSerializer.Read(ref context, RefMode.Tracking, false));
+                values.Add(elementSerializer.Read(context, RefMode.Tracking, false));
             }
 
             if (!declared)
@@ -219,7 +219,7 @@ internal static class CollectionCodec
                 }
                 else
                 {
-                    values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, ref context, canonicalizeElements));
+                    values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, context, canonicalizeElements));
                 }
             }
         }
@@ -227,7 +227,7 @@ internal static class CollectionCodec
         {
             for (int i = 0; i < length; i++)
             {
-                values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, ref context, canonicalizeElements));
+                values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, context, canonicalizeElements));
             }
         }
 
@@ -241,33 +241,33 @@ internal static class CollectionCodec
 
     private static T ReadCollectionElementWithCanonicalization<T>(
         Serializer<T> elementSerializer,
-        ref ReadContext context,
+        ReadContext context,
         bool readTypeInfo,
         bool canonicalize)
     {
         if (!canonicalize)
         {
-            return elementSerializer.Read(ref context, RefMode.None, readTypeInfo);
+            return elementSerializer.Read(context, RefMode.None, readTypeInfo);
         }
 
         int start = context.Reader.Cursor;
-        T value = elementSerializer.Read(ref context, RefMode.None, readTypeInfo);
+        T value = elementSerializer.Read(context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }
 
     private static T ReadCollectionElementDataWithCanonicalization<T>(
         Serializer<T> elementSerializer,
-        ref ReadContext context,
+        ReadContext context,
         bool canonicalize)
     {
         if (!canonicalize)
         {
-            return elementSerializer.ReadData(ref context);
+            return elementSerializer.ReadData(context);
         }
 
         int start = context.Reader.Cursor;
-        T value = elementSerializer.ReadData(ref context);
+        T value = elementSerializer.ReadData(context);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }
@@ -300,7 +300,7 @@ internal static class DynamicContainerCodec
         return false;
     }
 
-    public static bool TryWritePayload(object value, ref WriteContext context, bool hasGenerics)
+    public static bool TryWritePayload(object value, WriteContext context, bool hasGenerics)
     {
         if (value is IDictionary dictionary)
         {
@@ -310,7 +310,7 @@ internal static class DynamicContainerCodec
                 map.Add(entry.Key, entry.Value);
             }
 
-            context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().WriteData(ref context, map, false);
+            context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().WriteData(context, map, false);
             return true;
         }
 
@@ -323,7 +323,7 @@ internal static class DynamicContainerCodec
                 values.Add(item);
             }
 
-            context.TypeResolver.GetSerializer<List<object?>>().WriteData(ref context, values, hasGenerics);
+            context.TypeResolver.GetSerializer<List<object?>>().WriteData(context, values, hasGenerics);
             return true;
         }
 
@@ -338,23 +338,23 @@ internal static class DynamicContainerCodec
             set.Add(item);
         }
 
-        context.TypeResolver.GetSerializer<HashSet<object?>>().WriteData(ref context, set, hasGenerics);
+        context.TypeResolver.GetSerializer<HashSet<object?>>().WriteData(context, set, hasGenerics);
         return true;
     }
 
-    public static List<object?> ReadListPayload(ref ReadContext context)
+    public static List<object?> ReadListPayload(ReadContext context)
     {
-        return context.TypeResolver.GetSerializer<List<object?>>().ReadData(ref context);
+        return context.TypeResolver.GetSerializer<List<object?>>().ReadData(context);
     }
 
-    public static HashSet<object?> ReadSetPayload(ref ReadContext context)
+    public static HashSet<object?> ReadSetPayload(ReadContext context)
     {
-        return context.TypeResolver.GetSerializer<HashSet<object?>>().ReadData(ref context);
+        return context.TypeResolver.GetSerializer<HashSet<object?>>().ReadData(context);
     }
 
-    public static object ReadMapPayload(ref ReadContext context)
+    public static object ReadMapPayload(ReadContext context)
     {
-        NullableKeyDictionary<object, object?> map = context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().ReadData(ref context);
+        NullableKeyDictionary<object, object?> map = context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().ReadData(context);
         if (map.HasNullKey)
         {
             return map;
@@ -477,19 +477,19 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
     public override T[] DefaultValue => null!;
     public override bool IsNone(in T[] value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in T[] value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in T[] value, bool hasGenerics)
     {
         T[] safe = value ?? [];
         CollectionCodec.WriteCollectionData(
             safe,
             context.TypeResolver.GetSerializer<T>(),
-            ref context,
+            context,
             hasGenerics);
     }
 
-    public override T[] ReadData(ref ReadContext context)
+    public override T[] ReadData(ReadContext context)
     {
-        List<T> values = CollectionCodec.ReadCollectionData<T>(context.TypeResolver.GetSerializer<T>(), ref context);
+        List<T> values = CollectionCodec.ReadCollectionData<T>(context.TypeResolver.GetSerializer<T>(), context);
         return values.ToArray();
     }
 }
@@ -502,15 +502,15 @@ public class ListSerializer<T> : Serializer<List<T>>
     public override List<T> DefaultValue => null!;
     public override bool IsNone(in List<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in List<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in List<T> value, bool hasGenerics)
     {
         List<T> safe = value ?? [];
-        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override List<T> ReadData(ref ReadContext context)
+    public override List<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
+        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
     }
 }
 
@@ -522,15 +522,15 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
     public override HashSet<T> DefaultValue => null!;
     public override bool IsNone(in HashSet<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
         HashSet<T> safe = value ?? [];
-        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override HashSet<T> ReadData(ref ReadContext context)
+    public override HashSet<T> ReadData(ReadContext context)
     {
-        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context)];
+        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context)];
     }
 }
 
@@ -542,15 +542,15 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
     public override SortedSet<T> DefaultValue => null!;
     public override bool IsNone(in SortedSet<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in SortedSet<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in SortedSet<T> value, bool hasGenerics)
     {
         SortedSet<T> safe = value ?? new SortedSet<T>();
-        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override SortedSet<T> ReadData(ref ReadContext context)
+    public override SortedSet<T> ReadData(ReadContext context)
     {
-        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context)];
+        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context)];
     }
 }
 
@@ -562,15 +562,15 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
     public override ImmutableHashSet<T> DefaultValue => null!;
     public override bool IsNone(in ImmutableHashSet<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
     {
         ImmutableHashSet<T> safe = value ?? ImmutableHashSet<T>.Empty;
-        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override ImmutableHashSet<T> ReadData(ref ReadContext context)
+    public override ImmutableHashSet<T> ReadData(ReadContext context)
     {
-        return ImmutableHashSet.CreateRange(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context));
+        return ImmutableHashSet.CreateRange(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context));
     }
 }
 
@@ -582,15 +582,15 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
     public override LinkedList<T> DefaultValue => null!;
     public override bool IsNone(in LinkedList<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in LinkedList<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in LinkedList<T> value, bool hasGenerics)
     {
         LinkedList<T> safe = value ?? new LinkedList<T>();
-        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override LinkedList<T> ReadData(ref ReadContext context)
+    public override LinkedList<T> ReadData(ReadContext context)
     {
-        return new LinkedList<T>(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context));
+        return new LinkedList<T>(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context));
     }
 }
 
@@ -602,15 +602,15 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
     public override Queue<T> DefaultValue => null!;
     public override bool IsNone(in Queue<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in Queue<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in Queue<T> value, bool hasGenerics)
     {
         Queue<T> safe = value ?? new Queue<T>();
-        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override Queue<T> ReadData(ref ReadContext context)
+    public override Queue<T> ReadData(ReadContext context)
     {
-        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
         Queue<T> queue = new(values.Count);
         for (int i = 0; i < values.Count; i++)
         {
@@ -629,12 +629,12 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
     public override Stack<T> DefaultValue => null!;
     public override bool IsNone(in Stack<T> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in Stack<T> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in Stack<T> value, bool hasGenerics)
     {
         Stack<T> safe = value ?? new Stack<T>();
         if (safe.Count == 0)
         {
-            CollectionCodec.WriteCollectionData(Array.Empty<T>(), context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+            CollectionCodec.WriteCollectionData(Array.Empty<T>(), context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
             return;
         }
 
@@ -645,12 +645,12 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
             bottomToTop.Add(topToBottom[i]);
         }
 
-        CollectionCodec.WriteCollectionData(bottomToTop, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+        CollectionCodec.WriteCollectionData(bottomToTop, context.TypeResolver.GetSerializer<T>(), context, hasGenerics);
     }
 
-    public override Stack<T> ReadData(ref ReadContext context)
+    public override Stack<T> ReadData(ReadContext context)
     {
-        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
         Stack<T> stack = new(values.Count);
         for (int i = 0; i < values.Count; i++)
         {

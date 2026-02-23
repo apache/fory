@@ -19,14 +19,35 @@ using System.Buffers;
 
 namespace Apache.Fory;
 
+/// <summary>
+/// Core serializer runtime.
+/// This type is optimized for single-threaded reuse and must not be shared concurrently across threads.
+/// Use <see cref="ThreadSafeFory"/> for concurrent access.
+/// </summary>
 public sealed class Fory
 {
     private readonly TypeResolver _typeResolver;
+    private WriteContext _writeContext;
+    private ReadContext _readContext;
 
     internal Fory(Config config)
     {
         Config = config;
         _typeResolver = new TypeResolver();
+        _writeContext = new WriteContext(
+            new ByteWriter(),
+            _typeResolver,
+            Config.TrackRef,
+            Config.Compatible,
+            new CompatibleTypeDefWriteState(),
+            new MetaStringWriteState());
+        _readContext = new ReadContext(
+            new ByteReader(Array.Empty<byte>()),
+            _typeResolver,
+            Config.TrackRef,
+            Config.Compatible,
+            new CompatibleTypeDefReadState(),
+            new MetaStringReadState());
     }
 
     public Config Config { get; }
@@ -78,16 +99,10 @@ public sealed class Fory
         WriteHead(writer, isNone);
         if (!isNone)
         {
-            WriteContext context = new(
-                writer,
-                _typeResolver,
-                Config.TrackRef,
-                Config.Compatible,
-                new CompatibleTypeDefWriteState(),
-                new MetaStringWriteState());
+            _writeContext.ResetFor(writer);
             RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-            binding.Write(ref context, value, refMode, true, false);
-            context.ResetObjectState();
+            binding.Write(_writeContext, value, refMode, true, false);
+            _writeContext.ResetObjectState();
         }
 
         return writer.ToArray();
@@ -127,16 +142,10 @@ public sealed class Fory
         WriteHead(writer, isNone);
         if (!isNone)
         {
-            WriteContext context = new(
-                writer,
-                _typeResolver,
-                Config.TrackRef,
-                Config.Compatible,
-                new CompatibleTypeDefWriteState(),
-                new MetaStringWriteState());
+            _writeContext.ResetFor(writer);
             RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-            DynamicAnyCodec.WriteAny(ref context, value, refMode, true, false);
-            context.ResetObjectState();
+            DynamicAnyCodec.WriteAny(_writeContext, value, refMode, true, false);
+            _writeContext.ResetObjectState();
         }
 
         return writer.ToArray();
@@ -206,16 +215,10 @@ public sealed class Fory
             return binding.DefaultValue;
         }
 
-        ReadContext context = new(
-            reader,
-            _typeResolver,
-            Config.TrackRef,
-            Config.Compatible,
-            new CompatibleTypeDefReadState(),
-            new MetaStringReadState());
+        _readContext.ResetFor(reader);
         RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-        T value = binding.Read(ref context, refMode, true);
-        context.ResetObjectState();
+        T value = binding.Read(_readContext, refMode, true);
+        _readContext.ResetObjectState();
         return value;
     }
 
@@ -227,16 +230,10 @@ public sealed class Fory
             return null;
         }
 
-        ReadContext context = new(
-            reader,
-            _typeResolver,
-            Config.TrackRef,
-            Config.Compatible,
-            new CompatibleTypeDefReadState(),
-            new MetaStringReadState());
+        _readContext.ResetFor(reader);
         RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-        object? value = DynamicAnyCodec.ReadAny(ref context, refMode, true);
-        context.ResetObjectState();
+        object? value = DynamicAnyCodec.ReadAny(_readContext, refMode, true);
+        _readContext.ResetObjectState();
         return value;
     }
 }

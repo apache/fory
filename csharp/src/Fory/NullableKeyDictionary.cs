@@ -396,7 +396,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
     public override bool IsNone(in NullableKeyDictionary<TKey, TValue> value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
@@ -418,7 +418,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         {
             WriteDynamicMapPairs(
                 pairs,
-                ref context,
+                context,
                 hasGenerics,
                 trackKeyRef,
                 trackValueRef,
@@ -474,11 +474,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             {
                 if (!valueDeclared)
                 {
-                    valueSerializer.WriteTypeInfo(ref context);
+                    valueSerializer.WriteTypeInfo(context);
                 }
 
                 valueSerializer.Write(
-                    ref context,
+                    context,
                     entry.Value,
                     trackValueRef ? RefMode.Tracking : RefMode.None,
                     false,
@@ -490,11 +490,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             {
                 if (!keyDeclared)
                 {
-                    keySerializer.WriteTypeInfo(ref context);
+                    keySerializer.WriteTypeInfo(context);
                 }
 
                 keySerializer.Write(
-                    ref context,
+                    context,
                     entry.Key!,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     false,
@@ -505,22 +505,22 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             context.Writer.WriteUInt8(1);
             if (!keyDeclared)
             {
-                keySerializer.WriteTypeInfo(ref context);
+                keySerializer.WriteTypeInfo(context);
             }
 
             if (!valueDeclared)
             {
-                valueSerializer.WriteTypeInfo(ref context);
+                valueSerializer.WriteTypeInfo(context);
             }
 
             keySerializer.Write(
-                ref context,
+                context,
                 entry.Key!,
                 trackKeyRef ? RefMode.Tracking : RefMode.None,
                 false,
                 hasGenerics);
             valueSerializer.Write(
-                ref context,
+                context,
                 entry.Value,
                 trackValueRef ? RefMode.Tracking : RefMode.None,
                 false,
@@ -528,7 +528,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         }
     }
 
-    public override NullableKeyDictionary<TKey, TValue> ReadData(ref ReadContext context)
+    public override NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
@@ -564,7 +564,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             if (keyNull)
             {
                 TValue valueRead = ReadValueElement(
-                    ref context,
+                    context,
                     trackValueRef,
                     !valueDeclared,
                     canonicalizeValues,
@@ -578,7 +578,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             if (valueNull)
             {
                 TKey key = keySerializer.Read(
-                    ref context,
+                    context,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     !keyDeclared);
 
@@ -599,11 +599,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                     {
                         if (keyDynamicType)
                         {
-                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
                         }
                         else
                         {
-                            keySerializer.ReadTypeInfo(ref context);
+                            keySerializer.ReadTypeInfo(context);
                         }
                     }
 
@@ -611,11 +611,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                     {
                         if (valueDynamicType)
                         {
-                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
                         }
                         else
                         {
-                            valueSerializer.ReadTypeInfo(ref context);
+                            valueSerializer.ReadTypeInfo(context);
                         }
                     }
 
@@ -624,7 +624,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                         context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
                     }
 
-                    TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                    TKey key = keySerializer.Read(context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
                     if (keyDynamicInfo is not null)
                     {
                         context.ClearDynamicTypeInfo(typeof(TKey));
@@ -636,7 +636,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                     }
 
                     TValue valueRead = ReadValueElement(
-                        ref context,
+                        context,
                         trackValueRef,
                         false,
                         canonicalizeValues,
@@ -655,18 +655,18 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
             if (!keyDeclared)
             {
-                keySerializer.ReadTypeInfo(ref context);
+                keySerializer.ReadTypeInfo(context);
             }
 
             if (!valueDeclared)
             {
-                valueSerializer.ReadTypeInfo(ref context);
+                valueSerializer.ReadTypeInfo(context);
             }
 
             for (int i = 0; i < chunkSize; i++)
             {
-                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
-                TValue valueRead = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
+                TKey key = keySerializer.Read(context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                TValue valueRead = ReadValueElement(context, trackValueRef, false, canonicalizeValues, valueSerializer);
                 map[key] = valueRead;
             }
 
@@ -688,7 +688,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
     private static void WriteDynamicMapPairs(
         KeyValuePair<TKey, TValue>[] pairs,
-        ref WriteContext context,
+        WriteContext context,
         bool hasGenerics,
         bool trackKeyRef,
         bool trackValueRef,
@@ -741,7 +741,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             if (keyIsNull)
             {
                 valueSerializer.Write(
-                    ref context,
+                    context,
                     pair.Value,
                     trackValueRef ? RefMode.Tracking : RefMode.None,
                     !valueDeclared,
@@ -752,7 +752,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             if (valueIsNull)
             {
                 keySerializer.Write(
-                    ref context,
+                    context,
                     pair.Key!,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     !keyDeclared,
@@ -765,11 +765,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             {
                 if (keyDynamicType)
                 {
-                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Key!, ref context);
+                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Key!, context);
                 }
                 else
                 {
-                    keySerializer.WriteTypeInfo(ref context);
+                    keySerializer.WriteTypeInfo(context);
                 }
             }
 
@@ -777,22 +777,22 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             {
                 if (valueDynamicType)
                 {
-                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Value!, ref context);
+                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Value!, context);
                 }
                 else
                 {
-                    valueSerializer.WriteTypeInfo(ref context);
+                    valueSerializer.WriteTypeInfo(context);
                 }
             }
 
             keySerializer.Write(
-                ref context,
+                context,
                 pair.Key!,
                 trackKeyRef ? RefMode.Tracking : RefMode.None,
                 false,
                 hasGenerics);
             valueSerializer.Write(
-                ref context,
+                context,
                 pair.Value,
                 trackValueRef ? RefMode.Tracking : RefMode.None,
                 false,
@@ -801,7 +801,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
     }
 
     private static TValue ReadValueElement(
-        ref ReadContext context,
+        ReadContext context,
         bool trackValueRef,
         bool readTypeInfo,
         bool canonicalizeValues,
@@ -809,11 +809,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
     {
         if (trackValueRef || !canonicalizeValues)
         {
-            return valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
+            return valueSerializer.Read(context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
         }
 
         int start = context.Reader.Cursor;
-        TValue value = valueSerializer.Read(ref context, RefMode.None, readTypeInfo);
+        TValue value = valueSerializer.Read(context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }

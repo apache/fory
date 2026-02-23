@@ -18,6 +18,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Threading.Tasks;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
 
@@ -170,6 +171,68 @@ public sealed class ForyRuntimeTests
         string? absent = null;
         Assert.Equal("present", fory.Deserialize<string?>(fory.Serialize(present)));
         Assert.Null(fory.Deserialize<string?>(fory.Serialize(absent)));
+    }
+
+    [Fact]
+    public void ForyReusedContextsHandleSequentialCalls()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Compatible(true).Build();
+        fory.Register<Node>(950);
+
+        for (int i = 0; i < 32; i++)
+        {
+            Node source = new() { Value = i };
+            source.Next = source;
+
+            Node decoded = fory.Deserialize<Node>(fory.Serialize(source));
+            Assert.Equal(i, decoded.Value);
+            Assert.NotNull(decoded.Next);
+            Assert.Same(decoded, decoded.Next);
+        }
+    }
+
+    [Fact]
+    public void ThreadSafeForySupportsParallelPrimitiveRoundTrip()
+    {
+        using ThreadSafeFory fory = ForyRuntime.Builder().BuildThreadSafe();
+        Parallel.For(0, 512, i =>
+        {
+            byte[] payload = fory.Serialize(i);
+            int decoded = fory.Deserialize<int>(payload);
+            Assert.Equal(i, decoded);
+        });
+    }
+
+    [Fact]
+    public void ThreadSafeForyPropagatesRegistrationsToThreads()
+    {
+        using ThreadSafeFory fory = ForyRuntime.Builder().TrackRef(true).BuildThreadSafe();
+        fory.Register<Node>(951);
+
+        Parallel.For(0, 128, i =>
+        {
+            Node source = new() { Value = i };
+            source.Next = source;
+            Node decoded = fory.Deserialize<Node>(fory.Serialize(source));
+            Assert.Equal(i, decoded.Value);
+            Assert.NotNull(decoded.Next);
+            Assert.Same(decoded, decoded.Next);
+        });
+    }
+
+    [Fact]
+    public void ThreadSafeForyRegistrationAppliesToInitializedThreadLocalInstance()
+    {
+        using ThreadSafeFory fory = ForyRuntime.Builder().TrackRef(true).BuildThreadSafe();
+        _ = fory.Serialize(1);
+        fory.Register<Node>(952);
+
+        Node source = new() { Value = 7 };
+        source.Next = source;
+        Node decoded = fory.Deserialize<Node>(fory.Serialize(source));
+        Assert.Equal(7, decoded.Value);
+        Assert.NotNull(decoded.Next);
+        Assert.Same(decoded, decoded.Next);
     }
 
     [Fact]
@@ -616,7 +679,7 @@ public sealed class ForyRuntimeTests
         long second = reader.ReadVarInt64();
         int third = reader.ReadVarInt32();
         ReadContext tailContext = new(reader, new TypeResolver(), false, false);
-        string fourth = tailContext.TypeResolver.GetSerializer<string>().ReadData(ref tailContext);
+        string fourth = tailContext.TypeResolver.GetSerializer<string>().ReadData(tailContext);
 
         Assert.Equal(value.B, first);
         Assert.Equal(value.A, second);
@@ -835,7 +898,7 @@ public sealed class ForyRuntimeTests
         ByteWriter writer = new();
         TypeResolver resolver = new();
         WriteContext writeContext = new(writer, resolver, trackRef: false, compatible: false);
-        StringSerializer.WriteString(ref writeContext, value);
+        StringSerializer.WriteString(writeContext, value);
 
         byte[] payload = writer.ToArray();
         ByteReader headerReader = new(payload);
@@ -845,7 +908,7 @@ public sealed class ForyRuntimeTests
         Assert.Equal(payload.Length - headerReader.Cursor, byteLength);
 
         ReadContext readContext = new(new ByteReader(payload), resolver, trackRef: false, compatible: false);
-        string decoded = StringSerializer.ReadString(ref readContext);
+        string decoded = StringSerializer.ReadString(readContext);
         Assert.Equal(0, readContext.Reader.Remaining);
         return (encoding, decoded);
     }

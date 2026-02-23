@@ -25,17 +25,17 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
     public override object? DefaultValue => null;
     public override bool IsNone(in object? value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in object? value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in object? value, bool hasGenerics)
     {
         if (IsNone(value))
         {
             return;
         }
 
-        DynamicAnyCodec.WriteAnyPayload(value!, ref context, hasGenerics);
+        DynamicAnyCodec.WriteAnyPayload(value!, context, hasGenerics);
     }
 
-    public override object? ReadData(ref ReadContext context)
+    public override object? ReadData(ReadContext context)
     {
         DynamicTypeInfo? dynamicTypeInfo = context.DynamicTypeInfo(typeof(object));
         if (dynamicTypeInfo is null)
@@ -43,21 +43,21 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
             throw new InvalidDataException("dynamic Any value requires type info");
         }
 
-        return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, ref context);
+        return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, context);
     }
 
-    public override void WriteTypeInfo(ref WriteContext context)
+    public override void WriteTypeInfo(WriteContext context)
     {
         throw new InvalidDataException("dynamic Any value type info is runtime-only");
     }
 
-    public override void ReadTypeInfo(ref ReadContext context)
+    public override void ReadTypeInfo(ReadContext context)
     {
-        DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+        DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
         context.SetDynamicTypeInfo(typeof(object), typeInfo);
     }
 
-    public override void Write(ref WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public override void Write(WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         if (refMode != RefMode.None)
         {
@@ -86,13 +86,13 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
         if (writeTypeInfo)
         {
-            DynamicAnyCodec.WriteAnyTypeInfo(value!, ref context);
+            DynamicAnyCodec.WriteAnyTypeInfo(value!, context);
         }
 
-        WriteData(ref context, value, hasGenerics);
+        WriteData(context, value, hasGenerics);
     }
 
-    public override object? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public override object? Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         if (refMode != RefMode.None)
         {
@@ -113,10 +113,10 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                     context.PushPendingReference(reservedRefId);
                     if (readTypeInfo)
                     {
-                        ReadTypeInfo(ref context);
+                        ReadTypeInfo(context);
                     }
 
-                    object? value = ReadData(ref context);
+                    object? value = ReadData(context);
                     if (readTypeInfo)
                     {
                         context.ClearDynamicTypeInfo(typeof(object));
@@ -135,10 +135,10 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
         if (readTypeInfo)
         {
-            ReadTypeInfo(ref context);
+            ReadTypeInfo(context);
         }
 
-        object? result = ReadData(ref context);
+        object? result = ReadData(context);
         if (readTypeInfo)
         {
             context.ClearDynamicTypeInfo(typeof(object));
@@ -156,7 +156,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
 public static class DynamicAnyCodec
 {
-    internal static void WriteAnyTypeInfo(object value, ref WriteContext context)
+    internal static void WriteAnyTypeInfo(object value, WriteContext context)
     {
         if (DynamicContainerCodec.TryGetTypeId(value, out TypeId containerTypeId))
         {
@@ -164,13 +164,13 @@ public static class DynamicAnyCodec
             return;
         }
 
-        if (TryWriteKnownTypeInfo(value, ref context))
+        if (TryWriteKnownTypeInfo(value, context))
         {
             return;
         }
 
         Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
-        serializer.WriteTypeInfo(ref context);
+        serializer.WriteTypeInfo(context);
     }
 
     public static object? CastAnyDynamicValue(object? value, Type targetType)
@@ -198,33 +198,33 @@ public static class DynamicAnyCodec
         throw new InvalidDataException($"cannot cast dynamic Any value to {targetType}");
     }
 
-    public static void WriteAny(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo = true, bool hasGenerics = false)
+    public static void WriteAny(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo = true, bool hasGenerics = false)
     {
-        context.TypeResolver.GetSerializer<object?>().Write(ref context, value, refMode, writeTypeInfo, hasGenerics);
+        context.TypeResolver.GetSerializer<object?>().Write(context, value, refMode, writeTypeInfo, hasGenerics);
     }
 
-    public static object? ReadAny(ref ReadContext context, RefMode refMode, bool readTypeInfo = true)
+    public static object? ReadAny(ReadContext context, RefMode refMode, bool readTypeInfo = true)
     {
-        return context.TypeResolver.GetSerializer<object?>().Read(ref context, refMode, readTypeInfo);
+        return context.TypeResolver.GetSerializer<object?>().Read(context, refMode, readTypeInfo);
     }
 
-    public static void WriteAnyPayload(object value, ref WriteContext context, bool hasGenerics)
+    public static void WriteAnyPayload(object value, WriteContext context, bool hasGenerics)
     {
-        if (DynamicContainerCodec.TryWritePayload(value, ref context, hasGenerics))
+        if (DynamicContainerCodec.TryWritePayload(value, context, hasGenerics))
         {
             return;
         }
 
-        if (TryWriteKnownPayload(value, ref context))
+        if (TryWriteKnownPayload(value, context))
         {
             return;
         }
 
         Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
-        serializer.WriteDataObject(ref context, value, hasGenerics);
+        serializer.WriteDataObject(context, value, hasGenerics);
     }
 
-    private static bool TryWriteKnownTypeInfo(object value, ref WriteContext context)
+    private static bool TryWriteKnownTypeInfo(object value, WriteContext context)
     {
         switch (value)
         {
@@ -312,7 +312,7 @@ public static class DynamicAnyCodec
         }
     }
 
-    private static bool TryWriteKnownPayload(object value, ref WriteContext context)
+    private static bool TryWriteKnownPayload(object value, WriteContext context)
     {
         switch (value)
         {
@@ -350,19 +350,19 @@ public static class DynamicAnyCodec
                 context.Writer.WriteFloat64(v);
                 return true;
             case string v:
-                StringSerializer.WriteString(ref context, v);
+                StringSerializer.WriteString(context, v);
                 return true;
             case DateOnly v:
-                TimeCodec.WriteDate(ref context, v);
+                TimeCodec.WriteDate(context, v);
                 return true;
             case DateTimeOffset v:
-                TimeCodec.WriteTimestamp(ref context, v);
+                TimeCodec.WriteTimestamp(context, v);
                 return true;
             case DateTime v:
-                TimeCodec.WriteTimestamp(ref context, TimeCodec.ToDateTimeOffset(v));
+                TimeCodec.WriteTimestamp(context, TimeCodec.ToDateTimeOffset(v));
                 return true;
             case TimeSpan v:
-                TimeCodec.WriteDuration(ref context, v);
+                TimeCodec.WriteDuration(context, v);
                 return true;
             case byte[] v:
                 context.Writer.WriteVarUInt32((uint)v.Length);

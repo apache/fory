@@ -200,7 +200,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        };");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    private static object __ForyReadCompatiblePrimitivePayload(global::Apache.Fory.TypeId typeId, ref global::Apache.Fory.ReadContext context)");
+        sb.AppendLine("    private static object __ForyReadCompatiblePrimitivePayload(global::Apache.Fory.TypeId typeId, global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         sb.AppendLine("        return typeId switch");
         sb.AppendLine("        {");
@@ -221,13 +221,13 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("            global::Apache.Fory.TypeId.TaggedUInt64 => context.Reader.ReadTaggedUInt64(),");
         sb.AppendLine("            global::Apache.Fory.TypeId.Float32 => context.Reader.ReadFloat32(),");
         sb.AppendLine("            global::Apache.Fory.TypeId.Float64 => context.Reader.ReadFloat64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.String => global::Apache.Fory.StringSerializer.ReadString(ref context),");
+        sb.AppendLine("            global::Apache.Fory.TypeId.String => global::Apache.Fory.StringSerializer.ReadString(context),");
         sb.AppendLine("            _ => throw new global::Apache.Fory.InvalidDataException($\"unsupported compatible primitive type id {typeId}\"),");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    private static T __ForyReadCompatibleField<T>(");
-        sb.AppendLine("        ref global::Apache.Fory.ReadContext context,");
+        sb.AppendLine("        global::Apache.Fory.ReadContext context,");
         sb.AppendLine("        global::Apache.Fory.TypeMetaFieldType fieldType,");
         sb.AppendLine("        global::Apache.Fory.RefMode refMode,");
         sb.AppendLine("        bool readTypeInfo)");
@@ -239,7 +239,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("            switch (refMode)");
         sb.AppendLine("            {");
         sb.AppendLine("                case global::Apache.Fory.RefMode.None:");
-        sb.AppendLine("                    value = __ForyReadCompatiblePrimitivePayload(typeId, ref context);");
+        sb.AppendLine("                    value = __ForyReadCompatiblePrimitivePayload(typeId, context);");
         sb.AppendLine("                    break;");
         sb.AppendLine("                case global::Apache.Fory.RefMode.NullOnly:");
         sb.AppendLine("                {");
@@ -250,7 +250,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("                    }");
         sb.AppendLine("                    else if (refFlag == (sbyte)global::Apache.Fory.RefFlag.NotNullValue)");
         sb.AppendLine("                    {");
-        sb.AppendLine("                        value = __ForyReadCompatiblePrimitivePayload(typeId, ref context);");
+        sb.AppendLine("                        value = __ForyReadCompatiblePrimitivePayload(typeId, context);");
         sb.AppendLine("                    }");
         sb.AppendLine("                    else");
         sb.AppendLine("                    {");
@@ -260,7 +260,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("                    break;");
         sb.AppendLine("                }");
         sb.AppendLine("                default:");
-        sb.AppendLine("                    return context.TypeResolver.GetSerializer<T>().Read(ref context, refMode, readTypeInfo);");
+        sb.AppendLine("                    return context.TypeResolver.GetSerializer<T>().Read(context, refMode, readTypeInfo);");
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            if (value is null)");
@@ -283,7 +283,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        return context.TypeResolver.GetSerializer<T>().Read(ref context, refMode, readTypeInfo);");
+        sb.AppendLine("        return context.TypeResolver.GetSerializer<T>().Read(context, refMode, readTypeInfo);");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    private static uint __ForySchemaHash(bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
@@ -329,7 +329,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            $"    public override void WriteData(ref global::Apache.Fory.WriteContext context, in {model.TypeName} value, bool hasGenerics)");
+            $"    public override void WriteData(global::Apache.Fory.WriteContext context, in {model.TypeName} value, bool hasGenerics)");
         sb.AppendLine("    {");
         sb.AppendLine("        _ = hasGenerics;");
         sb.AppendLine("        if (context.Compatible)");
@@ -358,7 +358,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    public override {model.TypeName} ReadData(ref global::Apache.Fory.ReadContext context)");
+        sb.AppendLine($"    public override {model.TypeName} ReadData(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");
@@ -385,7 +385,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("                    default:");
-        sb.AppendLine("                        global::Apache.Fory.FieldSkipper.SkipFieldValue(ref context, remoteField.FieldType);");
+        sb.AppendLine("                        global::Apache.Fory.FieldSkipper.SkipFieldValue(context, remoteField.FieldType);");
         sb.AppendLine("                        break;");
         sb.AppendLine("                }");
         sb.AppendLine("            }");
@@ -428,7 +428,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             case DynamicAnyKind.AnyValue:
                 sb.AppendLine(
-                    $"            global::Apache.Fory.DynamicAnyCodec.WriteAny(ref context, {memberAccess}, {refModeExpr}, true, false);");
+                    $"            global::Apache.Fory.DynamicAnyCodec.WriteAny(context, {memberAccess}, {refModeExpr}, true, false);");
                 return;
             case DynamicAnyKind.None:
                 break;
@@ -462,7 +462,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine(
-            $"            context.TypeResolver.GetSerializer<{member.TypeName}>().Write(ref context, {memberAccess}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+            $"            context.TypeResolver.GetSerializer<{member.TypeName}>().Write(context, {memberAccess}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
     }
 
     private static void EmitWriteDictionaryWithTypeInfoCache(
@@ -483,7 +483,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"            if ({fieldValueVar} is null)");
         sb.AppendLine("            {");
         sb.AppendLine(
-            $"                context.TypeResolver.GetSerializer<{member.TypeName}>().Write(ref context, ({member.TypeName})null!, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+            $"                context.TypeResolver.GetSerializer<{member.TypeName}>().Write(context, ({member.TypeName})null!, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
         sb.AppendLine("            }");
         sb.AppendLine("            else");
         sb.AppendLine("            {");
@@ -499,7 +499,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"                    __Fory{cacheId}DictRuntimeType = {runtimeTypeVar};");
         sb.AppendLine($"                    __Fory{cacheId}DictTypeInfo = {typeInfoVar};");
         sb.AppendLine("                }");
-        sb.AppendLine($"                {typeInfoVar}.WriteObject(ref context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+        sb.AppendLine($"                {typeInfoVar}.WriteObject(context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
         sb.AppendLine("            }");
     }
 
@@ -520,7 +520,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             case DynamicAnyKind.AnyValue:
                 sb.AppendLine(
-                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAny(ref context, {refModeExpr}, true), typeof({typeOfTypeName}))!;");
+                    $"{indent}{assignmentTarget} = ({member.TypeName})global::Apache.Fory.DynamicAnyCodec.CastAnyDynamicValue(global::Apache.Fory.DynamicAnyCodec.ReadAny(context, {refModeExpr}, true), typeof({typeOfTypeName}))!;");
                 return;
             case DynamicAnyKind.None:
                 break;
@@ -543,12 +543,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         if (variableSuffix == "Compat")
         {
             sb.AppendLine(
-                $"{indent}{assignmentTarget} = __ForyReadCompatibleField<{member.TypeName}>(ref context, remoteField.FieldType, {refModeExpr}, {readTypeInfoExpr});");
+                $"{indent}{assignmentTarget} = __ForyReadCompatibleField<{member.TypeName}>(context, remoteField.FieldType, {refModeExpr}, {readTypeInfoExpr});");
             return;
         }
 
         sb.AppendLine(
-            $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(ref context, {refModeExpr}, {readTypeInfoExpr});");
+            $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
     }
 
     private static string StripNullableForTypeOf(string typeName)
@@ -691,7 +691,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 writeCode = $"context.Writer.WriteFloat64({valueExpr});";
                 return true;
             case 21:
-                writeCode = $"global::Apache.Fory.StringSerializer.WriteString(ref context, {valueExpr});";
+                writeCode = $"global::Apache.Fory.StringSerializer.WriteString(context, {valueExpr});";
                 return true;
             default:
                 return false;
@@ -755,7 +755,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 readExpr = "context.Reader.ReadFloat64()";
                 return true;
             case 21:
-                readExpr = "global::Apache.Fory.StringSerializer.ReadString(ref context)";
+                readExpr = "global::Apache.Fory.StringSerializer.ReadString(context)";
                 return true;
             default:
                 return false;

@@ -38,7 +38,7 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
         return value is null;
     }
 
-    public override void WriteData(ref WriteContext context, in TUnion value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in TUnion value, bool hasGenerics)
     {
         _ = hasGenerics;
         if (value is null)
@@ -47,10 +47,10 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
         }
 
         context.Writer.WriteVarUInt32((uint)value.Index);
-        DynamicAnyCodec.WriteAny(ref context, value.Value, RefMode.Tracking, true, false);
+        DynamicAnyCodec.WriteAny(context, value.Value, RefMode.Tracking, true, false);
     }
 
-    public override TUnion ReadData(ref ReadContext context)
+    public override TUnion ReadData(ReadContext context)
     {
         uint rawCaseId = context.Reader.ReadVarUInt32();
         if (rawCaseId > int.MaxValue)
@@ -58,7 +58,7 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
             throw new InvalidDataException($"union case id out of range: {rawCaseId}");
         }
 
-        object? caseValue = DynamicAnyCodec.ReadAny(ref context, RefMode.Tracking, true);
+        object? caseValue = DynamicAnyCodec.ReadAny(context, RefMode.Tracking, true);
         return Factory((int)rawCaseId, caseValue);
     }
 

@@ -1033,13 +1033,13 @@ public sealed class MyExtSerializer : Serializer<MyExt>
     public override MyExt DefaultValue => null!;
     public override bool IsNone(in MyExt value) => value is null;
 
-    public override void WriteData(ref WriteContext context, in MyExt value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in MyExt value, bool hasGenerics)
     {
         _ = hasGenerics;
         context.Writer.WriteVarInt32((value ?? new MyExt()).Id);
     }
 
-    public override MyExt ReadData(ref ReadContext context)
+    public override MyExt ReadData(ReadContext context)
     {
         return new MyExt { Id = context.Reader.ReadVarInt32() };
     }

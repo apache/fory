@@ -31,17 +31,17 @@ public abstract class Serializer
 
     public abstract bool IsNoneObject(object? value);
 
-    public abstract void WriteDataObject(ref WriteContext context, object? value, bool hasGenerics);
+    public abstract void WriteDataObject(WriteContext context, object? value, bool hasGenerics);
 
-    public abstract object? ReadDataObject(ref ReadContext context);
+    public abstract object? ReadDataObject(ReadContext context);
 
-    public abstract void WriteObject(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics);
+    public abstract void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics);
 
-    public abstract object? ReadObject(ref ReadContext context, RefMode refMode, bool readTypeInfo);
+    public abstract object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo);
 
-    public abstract void WriteTypeInfo(ref WriteContext context);
+    public abstract void WriteTypeInfo(WriteContext context);
 
-    public abstract void ReadTypeInfo(ref ReadContext context);
+    public abstract void ReadTypeInfo(ReadContext context);
 
     public abstract IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef);
 
@@ -68,11 +68,11 @@ public abstract class Serializer<T> : Serializer
         return false;
     }
 
-    public abstract void WriteData(ref WriteContext context, in T value, bool hasGenerics);
+    public abstract void WriteData(WriteContext context, in T value, bool hasGenerics);
 
-    public abstract T ReadData(ref ReadContext context);
+    public abstract T ReadData(ReadContext context);
 
-    public virtual void Write(ref WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public virtual void Write(WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         if (refMode != RefMode.None)
         {
@@ -103,13 +103,13 @@ public abstract class Serializer<T> : Serializer
 
         if (writeTypeInfo)
         {
-            WriteTypeInfo(ref context);
+            WriteTypeInfo(context);
         }
 
-        WriteData(ref context, value, hasGenerics);
+        WriteData(context, value, hasGenerics);
     }
 
-    public virtual T Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public virtual T Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         if (refMode != RefMode.None)
         {
@@ -130,10 +130,10 @@ public abstract class Serializer<T> : Serializer
                     context.PushPendingReference(reservedRefId);
                     if (readTypeInfo)
                     {
-                        ReadTypeInfo(ref context);
+                        ReadTypeInfo(context);
                     }
 
-                    T value = ReadData(ref context);
+                    T value = ReadData(context);
                     context.FinishPendingReferenceIfNeeded(value);
                     context.PopPendingReference();
                     return value;
@@ -147,20 +147,20 @@ public abstract class Serializer<T> : Serializer
 
         if (readTypeInfo)
         {
-            ReadTypeInfo(ref context);
+            ReadTypeInfo(context);
         }
 
-        return ReadData(ref context);
+        return ReadData(context);
     }
 
-    public override void WriteTypeInfo(ref WriteContext context)
+    public override void WriteTypeInfo(WriteContext context)
     {
-        context.TypeResolver.WriteTypeInfo(Type, this, ref context);
+        context.TypeResolver.WriteTypeInfo(Type, this, context);
     }
 
-    public override void ReadTypeInfo(ref ReadContext context)
+    public override void ReadTypeInfo(ReadContext context)
     {
-        context.TypeResolver.ReadTypeInfo(Type, this, ref context);
+        context.TypeResolver.ReadTypeInfo(Type, this, context);
     }
 
     public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
@@ -179,24 +179,24 @@ public abstract class Serializer<T> : Serializer
         return value is T typed && IsNone(typed);
     }
 
-    public override void WriteDataObject(ref WriteContext context, object? value, bool hasGenerics)
+    public override void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
     {
-        WriteData(ref context, CoerceValue(value), hasGenerics);
+        WriteData(context, CoerceValue(value), hasGenerics);
     }
 
-    public override object? ReadDataObject(ref ReadContext context)
+    public override object? ReadDataObject(ReadContext context)
     {
-        return ReadData(ref context);
+        return ReadData(context);
     }
 
-    public override void WriteObject(ref WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public override void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
-        Write(ref context, CoerceValue(value), refMode, writeTypeInfo, hasGenerics);
+        Write(context, CoerceValue(value), refMode, writeTypeInfo, hasGenerics);
     }
 
-    public override object? ReadObject(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public override object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return Read(ref context, refMode, readTypeInfo);
+        return Read(context, refMode, readTypeInfo);
     }
 
     public override Serializer<TCast> RequireSerializer<TCast>()

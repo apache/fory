@@ -34,7 +34,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
         return !value.HasValue;
     }
 
-    public override void WriteData(ref WriteContext context, in T? value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in T? value, bool hasGenerics)
     {
         if (!value.HasValue)
         {
@@ -43,25 +43,25 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
 
         T wrapped = value.Value;
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
-        wrappedSerializer.WriteData(ref context, wrapped, hasGenerics);
+        wrappedSerializer.WriteData(context, wrapped, hasGenerics);
     }
 
-    public override T? ReadData(ref ReadContext context)
+    public override T? ReadData(ReadContext context)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
-        return wrappedSerializer.ReadData(ref context);
+        return wrappedSerializer.ReadData(context);
     }
 
-    public override void WriteTypeInfo(ref WriteContext context)
+    public override void WriteTypeInfo(WriteContext context)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
-        wrappedSerializer.WriteTypeInfo(ref context);
+        wrappedSerializer.WriteTypeInfo(context);
     }
 
-    public override void ReadTypeInfo(ref ReadContext context)
+    public override void ReadTypeInfo(ReadContext context)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
-        wrappedSerializer.ReadTypeInfo(ref context);
+        wrappedSerializer.ReadTypeInfo(context);
     }
 
     public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
@@ -69,7 +69,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
         return _defaultWrappedSerializer.CompatibleTypeMetaFields(trackRef);
     }
 
-    public override void Write(ref WriteContext context, in T? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    public override void Write(WriteContext context, in T? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
         switch (refMode)
@@ -81,7 +81,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                 }
 
                 T wrapped = value.Value;
-                wrappedSerializer.Write(ref context, wrapped, RefMode.None, writeTypeInfo, hasGenerics);
+                wrappedSerializer.Write(context, wrapped, RefMode.None, writeTypeInfo, hasGenerics);
                 break;
             case RefMode.NullOnly:
                 if (!value.HasValue)
@@ -91,7 +91,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                 }
 
                 context.Writer.WriteInt8((sbyte)RefFlag.NotNullValue);
-                wrappedSerializer.Write(ref context, value.Value, RefMode.None, writeTypeInfo, hasGenerics);
+                wrappedSerializer.Write(context, value.Value, RefMode.None, writeTypeInfo, hasGenerics);
                 break;
             case RefMode.Tracking:
                 if (!value.HasValue)
@@ -100,20 +100,20 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                     return;
                 }
 
-                wrappedSerializer.Write(ref context, value.Value, RefMode.Tracking, writeTypeInfo, hasGenerics);
+                wrappedSerializer.Write(context, value.Value, RefMode.Tracking, writeTypeInfo, hasGenerics);
                 break;
             default:
                 throw new InvalidDataException($"unsupported ref mode {refMode}");
         }
     }
 
-    public override T? Read(ref ReadContext context, RefMode refMode, bool readTypeInfo)
+    public override T? Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
         switch (refMode)
         {
             case RefMode.None:
-                return wrappedSerializer.Read(ref context, RefMode.None, readTypeInfo);
+                return wrappedSerializer.Read(context, RefMode.None, readTypeInfo);
             case RefMode.NullOnly:
             {
                 sbyte refFlag = context.Reader.ReadInt8();
@@ -122,7 +122,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                     return null;
                 }
 
-                return wrappedSerializer.Read(ref context, RefMode.None, readTypeInfo);
+                return wrappedSerializer.Read(context, RefMode.None, readTypeInfo);
             }
             case RefMode.Tracking:
             {
@@ -133,7 +133,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
                 }
 
                 context.Reader.MoveBack(1);
-                return wrappedSerializer.Read(ref context, RefMode.Tracking, readTypeInfo);
+                return wrappedSerializer.Read(context, RefMode.Tracking, readTypeInfo);
             }
             default:
                 throw new InvalidDataException($"unsupported ref mode {refMode}");

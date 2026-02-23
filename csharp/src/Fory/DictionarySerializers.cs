@@ -51,7 +51,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         map[key] = value;
     }
 
-    public override void WriteData(ref WriteContext context, in TDictionary value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in TDictionary value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
@@ -74,7 +74,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         {
             WriteDynamicMapPairs(
                 pairs,
-                ref context,
+                context,
                 hasGenerics,
                 trackKeyRef,
                 trackValueRef,
@@ -131,20 +131,20 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 {
                     if (!keyDeclared)
                     {
-                        keySerializer.WriteTypeInfo(ref context);
+                        keySerializer.WriteTypeInfo(context);
                     }
 
-                    keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                    keySerializer.Write(context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 }
 
                 if (!valueIsNull)
                 {
                     if (!valueDeclared)
                     {
-                        valueSerializer.WriteTypeInfo(ref context);
+                        valueSerializer.WriteTypeInfo(context);
                     }
 
-                    valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                    valueSerializer.Write(context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 }
 
                 index += 1;
@@ -177,12 +177,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             context.Writer.WriteUInt8(0);
             if (!keyDeclared)
             {
-                keySerializer.WriteTypeInfo(ref context);
+                keySerializer.WriteTypeInfo(context);
             }
 
             if (!valueDeclared)
             {
-                valueSerializer.WriteTypeInfo(ref context);
+                valueSerializer.WriteTypeInfo(context);
             }
 
             byte chunkSize = 0;
@@ -194,8 +194,8 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                     break;
                 }
 
-                keySerializer.Write(ref context, current.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-                valueSerializer.Write(ref context, current.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                keySerializer.Write(context, current.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+                valueSerializer.Write(context, current.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
                 chunkSize += 1;
                 index += 1;
             }
@@ -204,7 +204,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         }
     }
 
-    public override TDictionary ReadData(ref ReadContext context)
+    public override TDictionary ReadData(ReadContext context)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
@@ -241,7 +241,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             if (keyNull)
             {
                 _ = ReadValueElement(
-                    ref context,
+                    context,
                     trackValueRef,
                     !valueDeclared,
                     canonicalizeValues,
@@ -255,7 +255,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             if (valueNull)
             {
                 TKey key = keySerializer.Read(
-                    ref context,
+                    context,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     !keyDeclared);
 
@@ -276,11 +276,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                     {
                         if (keyDynamicType)
                         {
-                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
                         }
                         else
                         {
-                            keySerializer.ReadTypeInfo(ref context);
+                            keySerializer.ReadTypeInfo(context);
                         }
                     }
 
@@ -288,11 +288,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                     {
                         if (valueDynamicType)
                         {
-                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(ref context);
+                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
                         }
                         else
                         {
-                            valueSerializer.ReadTypeInfo(ref context);
+                            valueSerializer.ReadTypeInfo(context);
                         }
                     }
 
@@ -301,7 +301,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                         context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
                     }
 
-                    TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                    TKey key = keySerializer.Read(context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
                     if (keyDynamicInfo is not null)
                     {
                         context.ClearDynamicTypeInfo(typeof(TKey));
@@ -313,7 +313,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                     }
 
                     TValue value = ReadValueElement(
-                        ref context,
+                        context,
                         trackValueRef,
                         false,
                         canonicalizeValues,
@@ -332,18 +332,18 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
             if (!keyDeclared)
             {
-                keySerializer.ReadTypeInfo(ref context);
+                keySerializer.ReadTypeInfo(context);
             }
 
             if (!valueDeclared)
             {
-                valueSerializer.ReadTypeInfo(ref context);
+                valueSerializer.ReadTypeInfo(context);
             }
 
             for (int i = 0; i < chunkSize; i++)
             {
-                TKey key = keySerializer.Read(ref context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
-                TValue value = ReadValueElement(ref context, trackValueRef, false, canonicalizeValues, valueSerializer);
+                TKey key = keySerializer.Read(context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
+                TValue value = ReadValueElement(context, trackValueRef, false, canonicalizeValues, valueSerializer);
                 SetValue(map, key, value);
             }
 
@@ -365,7 +365,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
     private static void WriteDynamicMapPairs(
         KeyValuePair<TKey, TValue>[] pairs,
-        ref WriteContext context,
+        WriteContext context,
         bool hasGenerics,
         bool trackKeyRef,
         bool trackValueRef,
@@ -418,7 +418,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             if (keyIsNull)
             {
                 valueSerializer.Write(
-                    ref context,
+                    context,
                     pair.Value,
                     trackValueRef ? RefMode.Tracking : RefMode.None,
                     !valueDeclared,
@@ -429,7 +429,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             if (valueIsNull)
             {
                 keySerializer.Write(
-                    ref context,
+                    context,
                     pair.Key,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
                     !keyDeclared,
@@ -442,11 +442,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             {
                 if (keyDynamicType)
                 {
-                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Key!, ref context);
+                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Key!, context);
                 }
                 else
                 {
-                    keySerializer.WriteTypeInfo(ref context);
+                    keySerializer.WriteTypeInfo(context);
                 }
             }
 
@@ -454,21 +454,21 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             {
                 if (valueDynamicType)
                 {
-                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Value!, ref context);
+                    DynamicAnyCodec.WriteAnyTypeInfo(pair.Value!, context);
                 }
                 else
                 {
-                    valueSerializer.WriteTypeInfo(ref context);
+                    valueSerializer.WriteTypeInfo(context);
                 }
             }
 
-            keySerializer.Write(ref context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
-            valueSerializer.Write(ref context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+            keySerializer.Write(context, pair.Key, trackKeyRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
+            valueSerializer.Write(context, pair.Value, trackValueRef ? RefMode.Tracking : RefMode.None, false, hasGenerics);
         }
     }
 
     private static TValue ReadValueElement(
-        ref ReadContext context,
+        ReadContext context,
         bool trackValueRef,
         bool readTypeInfo,
         bool canonicalizeValues,
@@ -476,11 +476,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     {
         if (trackValueRef || !canonicalizeValues)
         {
-            return valueSerializer.Read(ref context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
+            return valueSerializer.Read(context, trackValueRef ? RefMode.Tracking : RefMode.None, readTypeInfo);
         }
 
         int start = context.Reader.Cursor;
-        TValue value = valueSerializer.Read(ref context, RefMode.None, readTypeInfo);
+        TValue value = valueSerializer.Read(context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
         return context.CanonicalizeNonTrackingReference(value, start, end);
     }
