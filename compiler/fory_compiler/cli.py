@@ -344,6 +344,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--typescript_out",
+        type=Path,
+        default=None,
+        metavar="DST_DIR",
+        help="Generate TypeScript code in DST_DIR",
+    )
+
+    parser.add_argument(
         "--go_nested_type_style",
         type=str,
         default=None,
@@ -629,6 +637,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
         "go": args.go_out,
         "rust": args.rust_out,
         "csharp": args.csharp_out,
+        "typescript": args.typescript_out,
     }
 
     # Determine which languages to generate
