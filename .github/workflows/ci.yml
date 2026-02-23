@@ -142,6 +142,72 @@ jobs:
         shell: bash
         run: python ./ci/run_ci.py java --version windows_java21
 
+  csharp:
+    name: C# CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            csharp/**/*.csproj
+            csharp/Fory.sln
+      - name: Restore C# dependencies
+        run: |
+          cd csharp
+          dotnet restore Fory.sln
+      - name: Build C# solution
+        run: |
+          cd csharp
+          dotnet build Fory.sln -c Release --no-restore
+      - name: Run C# tests
+        run: |
+          cd csharp
+          dotnet test tests/Fory.Tests/Fory.Tests.csproj -c Release --no-build
+
+  csharp_xlang:
+    name: C# Xlang Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            csharp/**/*.csproj
+            csharp/Fory.sln
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Restore and build C# xlang peer
+        run: |
+          cd csharp
+          dotnet restore tests/Fory.XlangPeer/Fory.XlangPeer.csproj
+          dotnet build tests/Fory.XlangPeer/Fory.XlangPeer.csproj -c Debug --no-restore
+      - name: Run C# Xlang Test
+        env:
+          FORY_CSHARP_JAVA_CI: "1"
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests
+          cd fory-core
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CSharpXlangTest
+
   swift:
     name: Swift CI
     runs-on: macos-latest
