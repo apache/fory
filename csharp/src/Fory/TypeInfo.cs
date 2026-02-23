@@ -43,5 +43,40 @@ public sealed class TypeInfo
         Serializer.WriteObject(context, value, refMode, writeTypeInfo, hasGenerics);
     }
 
-    internal RegisteredTypeInfo? RegisteredTypeInfo { get; set; }
+    internal bool IsRegistered { get; private set; }
+
+    internal uint? UserTypeId { get; private set; }
+
+    internal bool RegisterByName { get; private set; }
+
+    internal MetaString? NamespaceName { get; private set; }
+
+    internal MetaString? TypeName { get; private set; }
+
+    internal void RegisterByTypeId(uint userTypeId)
+    {
+        IsRegistered = true;
+        UserTypeId = userTypeId;
+        RegisterByName = false;
+        NamespaceName = null;
+        TypeName = null;
+    }
+
+    internal void RegisterByTypeName(MetaString namespaceName, MetaString typeName)
+    {
+        IsRegistered = true;
+        UserTypeId = null;
+        RegisterByName = true;
+        NamespaceName = namespaceName;
+        TypeName = typeName;
+    }
+
+    internal void CopyRegistrationFrom(TypeInfo source)
+    {
+        IsRegistered = source.IsRegistered;
+        UserTypeId = source.UserTypeId;
+        RegisterByName = source.RegisterByName;
+        NamespaceName = source.NamespaceName;
+        TypeName = source.TypeName;
+    }
 }
