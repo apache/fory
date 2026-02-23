@@ -19,6 +19,7 @@
 
 #include <benchmark/benchmark.h>
 #include <cstdint>
+#include <msgpack.hpp>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,7 @@ struct NumericStruct {
            f4 == other.f4 && f5 == other.f5 && f6 == other.f6 &&
            f7 == other.f7 && f8 == other.f8;
   }
+  MSGPACK_DEFINE_MAP(f1, f2, f3, f4, f5, f6, f7, f8);
 };
 FORY_STRUCT(NumericStruct, f1, f2, f3, f4, f5, f6, f7, f8);
 FORY_FIELD_TAGS(NumericStruct, (f1, 1), (f2, 2), (f3, 3), (f4, 4), (f5, 5),
@@ -94,6 +96,12 @@ struct Sample {
            short_array == other.short_array && char_array == other.char_array &&
            boolean_array == other.boolean_array && string == other.string;
   }
+  MSGPACK_DEFINE_MAP(int_value, long_value, float_value, double_value,
+                     short_value, char_value, boolean_value, int_value_boxed,
+                     long_value_boxed, float_value_boxed, double_value_boxed,
+                     short_value_boxed, char_value_boxed, boolean_value_boxed,
+                     int_array, long_array, float_array, double_array,
+                     short_array, char_array, boolean_array, string);
 };
 FORY_STRUCT(Sample, int_value, long_value, float_value, double_value,
             short_value, char_value, boolean_value, int_value_boxed,
@@ -112,8 +120,10 @@ FORY_FIELD_TAGS(Sample, (int_value, 1), (long_value, 2), (float_value, 3),
 
 // Enums for MediaContent benchmark
 enum class Player : int32_t { JAVA = 0, FLASH = 1 };
+MSGPACK_ADD_ENUM(Player);
 
 enum class Size : int32_t { SMALL = 0, LARGE = 1 };
+MSGPACK_ADD_ENUM(Size);
 
 struct Media {
   std::string uri;
@@ -137,6 +147,8 @@ struct Media {
            persons == other.persons && player == other.player &&
            copyright == other.copyright;
   }
+  MSGPACK_DEFINE_MAP(uri, title, width, height, format, duration, size, bitrate,
+                     has_bitrate, persons, player, copyright);
 };
 FORY_STRUCT(Media, uri, title, width, height, format, duration, size, bitrate,
             has_bitrate, persons, player, copyright);
@@ -155,6 +167,7 @@ struct Image {
     return uri == other.uri && title == other.title && width == other.width &&
            height == other.height && size == other.size;
   }
+  MSGPACK_DEFINE_MAP(uri, title, width, height, size);
 };
 FORY_STRUCT(Image, uri, title, width, height, size);
 FORY_FIELD_TAGS(Image, (uri, 1), (title, 2), (width, 3), (height, 4),
@@ -167,6 +180,7 @@ struct MediaContent {
   bool operator==(const MediaContent &other) const {
     return media == other.media && images == other.images;
   }
+  MSGPACK_DEFINE_MAP(media, images);
 };
 FORY_STRUCT(MediaContent, media, images);
 FORY_FIELD_TAGS(MediaContent, (media, 1), (images, 2));
@@ -177,6 +191,7 @@ struct StructList {
   bool operator==(const StructList &other) const {
     return struct_list == other.struct_list;
   }
+  MSGPACK_DEFINE_MAP(struct_list);
 };
 FORY_STRUCT(StructList, struct_list);
 FORY_FIELD_TAGS(StructList, (struct_list, 1));
@@ -187,6 +202,7 @@ struct SampleList {
   bool operator==(const SampleList &other) const {
     return sample_list == other.sample_list;
   }
+  MSGPACK_DEFINE_MAP(sample_list);
 };
 FORY_STRUCT(SampleList, sample_list);
 FORY_FIELD_TAGS(SampleList, (sample_list, 1));
@@ -197,6 +213,7 @@ struct MediaContentList {
   bool operator==(const MediaContentList &other) const {
     return media_content_list == other.media_content_list;
   }
+  MSGPACK_DEFINE_MAP(media_content_list);
 };
 FORY_STRUCT(MediaContentList, media_content_list);
 FORY_FIELD_TAGS(MediaContentList, (media_content_list, 1));
@@ -596,6 +613,55 @@ void register_fory_types(fory::serialization::Fory &fory) {
   fory.register_struct<SampleList>(7);
   fory.register_struct<MediaContentList>(8);
 }
+
+template <typename T, typename Factory>
+void run_msgpack_serialize_benchmark(benchmark::State &state, Factory factory) {
+  T obj = factory();
+  msgpack::sbuffer output;
+
+  for (auto _ : state) {
+    output.clear();
+    msgpack::pack(output, obj);
+    benchmark::DoNotOptimize(output.data());
+    benchmark::DoNotOptimize(output.size());
+  }
+}
+
+template <typename T, typename Factory>
+void run_msgpack_deserialize_benchmark(benchmark::State &state,
+                                       Factory factory) {
+  T obj = factory();
+  msgpack::sbuffer output;
+  msgpack::pack(output, obj);
+
+  for (auto _ : state) {
+    msgpack::object_handle handle =
+        msgpack::unpack(output.data(), output.size());
+    T result;
+    handle.get().convert(result);
+    benchmark::DoNotOptimize(result);
+  }
+}
+
+#define DEFINE_MSGPACK_BENCHMARKS(name, type, create_fn)                       \
+  static void BM_Msgpack_##name##_Serialize(benchmark::State &state) {         \
+    run_msgpack_serialize_benchmark<type>(state, create_fn);                   \
+  }                                                                            \
+  BENCHMARK(BM_Msgpack_##name##_Serialize);                                    \
+  static void BM_Msgpack_##name##_Deserialize(benchmark::State &state) {       \
+    run_msgpack_deserialize_benchmark<type>(state, create_fn);                 \
+  }                                                                            \
+  BENCHMARK(BM_Msgpack_##name##_Deserialize)
+
+DEFINE_MSGPACK_BENCHMARKS(Struct, NumericStruct, create_numeric_struct);
+DEFINE_MSGPACK_BENCHMARKS(Sample, Sample, create_sample);
+DEFINE_MSGPACK_BENCHMARKS(MediaContent, MediaContent, create_media_content);
+DEFINE_MSGPACK_BENCHMARKS(StructList, StructList, create_struct_list);
+DEFINE_MSGPACK_BENCHMARKS(SampleList, SampleList, create_sample_list);
+DEFINE_MSGPACK_BENCHMARKS(MediaContentList, MediaContentList,
+                          create_media_content_list);
+
+#undef DEFINE_MSGPACK_BENCHMARKS
 
 // ============================================================================
 // Struct benchmarks (simple object with 8 int32 fields)
@@ -1096,12 +1162,14 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
                   .track_ref(false)
                   .build();
   register_fory_types(fory);
+
   NumericStruct fory_struct = create_numeric_struct();
   Sample fory_sample = create_sample();
   MediaContent fory_media = create_media_content();
   StructList fory_struct_list = create_struct_list();
   SampleList fory_sample_list = create_sample_list();
   MediaContentList fory_media_list = create_media_content_list();
+
   auto fory_struct_bytes = fory.serialize(fory_struct).value();
   auto fory_sample_bytes = fory.serialize(fory_sample).value();
   auto fory_media_bytes = fory.serialize(fory_media).value();
@@ -1126,21 +1194,45 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
   proto_sample_list.SerializeToString(&proto_sample_list_bytes);
   proto_media_list.SerializeToString(&proto_media_list_bytes);
 
+  auto msgpack_size = [](const auto &obj) -> size_t {
+    msgpack::sbuffer output;
+    msgpack::pack(output, obj);
+    return output.size();
+  };
+
+  auto msgpack_struct_size = msgpack_size(fory_struct);
+  auto msgpack_sample_size = msgpack_size(fory_sample);
+  auto msgpack_media_size = msgpack_size(fory_media);
+  auto msgpack_struct_list_size = msgpack_size(fory_struct_list);
+  auto msgpack_sample_list_size = msgpack_size(fory_sample_list);
+  auto msgpack_media_list_size = msgpack_size(fory_media_list);
+
   for (auto _ : state) {
     // Just run once to print sizes
   }
 
   state.counters["fory_struct_size"] = fory_struct_bytes.size();
-  state.counters["proto_struct_size"] = proto_struct_bytes.size();
+  state.counters["protobuf_struct_size"] = proto_struct_bytes.size();
+  state.counters["msgpack_struct_size"] = msgpack_struct_size;
+
   state.counters["fory_sample_size"] = fory_sample_bytes.size();
-  state.counters["proto_sample_size"] = proto_sample_bytes.size();
+  state.counters["protobuf_sample_size"] = proto_sample_bytes.size();
+  state.counters["msgpack_sample_size"] = msgpack_sample_size;
+
   state.counters["fory_media_size"] = fory_media_bytes.size();
-  state.counters["proto_media_size"] = proto_media_bytes.size();
+  state.counters["protobuf_media_size"] = proto_media_bytes.size();
+  state.counters["msgpack_media_size"] = msgpack_media_size;
+
   state.counters["fory_struct_list_size"] = fory_struct_list_bytes.size();
-  state.counters["proto_struct_list_size"] = proto_struct_list_bytes.size();
+  state.counters["protobuf_struct_list_size"] = proto_struct_list_bytes.size();
+  state.counters["msgpack_struct_list_size"] = msgpack_struct_list_size;
+
   state.counters["fory_sample_list_size"] = fory_sample_list_bytes.size();
-  state.counters["proto_sample_list_size"] = proto_sample_list_bytes.size();
+  state.counters["protobuf_sample_list_size"] = proto_sample_list_bytes.size();
+  state.counters["msgpack_sample_list_size"] = msgpack_sample_list_size;
+
   state.counters["fory_media_list_size"] = fory_media_list_bytes.size();
-  state.counters["proto_media_list_size"] = proto_media_list_bytes.size();
+  state.counters["protobuf_media_list_size"] = proto_media_list_bytes.size();
+  state.counters["msgpack_media_list_size"] = msgpack_media_list_size;
 }
 BENCHMARK(BM_PrintSerializedSizes)->Iterations(1);

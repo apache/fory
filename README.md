@@ -67,12 +67,9 @@ All protocol families share the same optimized codebase, allowing improvements i
 
 ## Benchmarks
 
-> **Note**: Different serialization frameworks excel in different scenarios. Benchmark results are for reference only.
-> For your specific use case, conduct benchmarks with appropriate configurations and workloads.
-
 ### Java Serialization Performance
 
-The following benchmarks compare Fory against popular Java serialization frameworks. Charts labeled **"compatible"** show schema evolution mode with forward/backward compatibility enabled, while others show schema consistent mode where class schemas must match.
+Charts labeled **"compatible"** show schema evolution mode with forward/backward compatibility enabled, while others show schema consistent mode where class schemas must match.
 
 **Serialization Throughput**:
 
@@ -86,9 +83,7 @@ The following benchmarks compare Fory against popular Java serialization framewo
 <img src="docs/benchmarks/java/java_repo_deserialization_throughput.png" width="95%" alt="Java Deserialization Throughput">
 </p>
 
-**Important**: Fory's runtime code generation requires proper warm-up for performance measurement:
-
-For additional benchmarks covering type forward/backward compatibility, off-heap support, and zero-copy serialization, see [Java Benchmarks](docs/benchmarks/java).
+See [Java Benchmarks](docs/benchmarks/java) for more details.
 
 ### Rust Serialization Performance
 

@@ -24,7 +24,7 @@ Swift reference tracking is controlled by `ForyConfig.trackRef`.
 ## Enable Reference Tracking
 
 ```swift
-let fory = Fory(config: .init(xlang: true, trackRef: true, compatible: false))
+let fory = Fory(xlang: true, trackRef: true, compatible: false)
 ```
 
 When enabled, reference-trackable types preserve identity and cycles.
@@ -58,7 +58,7 @@ final class AnimalPair {
     }
 }
 
-let fory = Fory(config: .init(xlang: true, trackRef: true))
+let fory = Fory(xlang: true, trackRef: true)
 fory.register(Animal.self, id: 200)
 fory.register(AnimalPair.self, id: 201)
 
@@ -92,7 +92,7 @@ final class Node {
     }
 }
 
-let fory = Fory(config: .init(xlang: true, trackRef: true))
+let fory = Fory(xlang: true, trackRef: true)
 fory.register(Node.self, id: 300)
 
 let node = Node(value: 7)

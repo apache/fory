@@ -186,6 +186,10 @@ pub(crate) fn declare_var(source_fields: &[SourceField<'_>]) -> Vec<TokenStream>
                         quote! {
                             let mut #var_name: Option<#ty> = None;
                         }
+                    } else if extract_type_name(&field.ty) == "float16" {
+                        quote! {
+                            let mut #var_name: fory_core::float16::float16 = fory_core::float16::float16::ZERO;
+                        }
                     } else if extract_type_name(&field.ty) == "bool" {
                         quote! {
                             let mut #var_name: bool = false;

@@ -17,9 +17,13 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
+
 project(fory_cpp_benchmark
     VERSION 0.16.0
-    DESCRIPTION "C++ Benchmark comparing Fory and Protobuf serialization"
+    DESCRIPTION "C++ Benchmark comparing Fory, Protobuf, and Msgpack serialization"
     LANGUAGES CXX
 )
 
@@ -71,6 +75,23 @@ set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(benchmark)
 
+# msgpack-c (header-only)
+FetchContent_Declare(
+    msgpack
+    GIT_REPOSITORY https://github.com/msgpack/msgpack-c.git
+    GIT_TAG cpp-6.1.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(msgpack)
+if(NOT msgpack_POPULATED)
+    FetchContent_Populate(msgpack)
+endif()
+
+add_library(msgpack-cxx INTERFACE)
+target_include_directories(msgpack-cxx INTERFACE
+    ${msgpack_SOURCE_DIR}/include
+)
+
 # =============================================================================
 # Proto file compilation
 # =============================================================================
@@ -114,12 +135,16 @@ add_executable(fory_benchmark
 target_include_directories(fory_benchmark PRIVATE
     ${PROTO_OUT_DIR}
 )
+target_compile_definitions(fory_benchmark PRIVATE
+    MSGPACK_NO_BOOST
+)
 
 target_link_libraries(fory_benchmark PRIVATE
     fory::serialization
     bench_proto
     benchmark::benchmark
     benchmark::benchmark_main
+    msgpack-cxx
 )
 
 # Compiler optimizations for benchmarks

@@ -49,7 +49,7 @@ Controls cross-language protocol mode.
 - `false`: Use Swift-native mode
 
 ```swift
-let fory = Fory(config: .init(xlang: true))
+let fory = Fory(xlang: true)
 ```
 
 ### `trackRef`
@@ -60,7 +60,7 @@ Enables shared/circular reference tracking for reference-trackable types.
 - `true`: Preserve object identity for class/reference graphs
 
 ```swift
-let fory = Fory(config: .init(xlang: true, trackRef: true))
+let fory = Fory(xlang: true, trackRef: true)
 ```
 
 ### `compatible`
@@ -71,7 +71,7 @@ Enables compatible schema mode for evolution across versions.
 - `true`: Compatible mode (supports add/remove/reorder fields)
 
 ```swift
-let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+let fory = Fory(xlang: true, trackRef: false, compatible: true)
 ```
 
 ## Recommended Presets
@@ -79,17 +79,17 @@ let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
 ### Local, strict schema
 
 ```swift
-let fory = Fory(config: .init(xlang: false, trackRef: false, compatible: false))
+let fory = Fory(xlang: false, trackRef: false, compatible: false)
 ```
 
 ### Cross-language service payloads
 
 ```swift
-let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+let fory = Fory(xlang: true, trackRef: false, compatible: true)
 ```
 
 ### Graph/object identity workloads
 
 ```swift
-let fory = Fory(config: .init(xlang: true, trackRef: true, compatible: true))
+let fory = Fory(xlang: true, trackRef: true, compatible: true)
 ```
