@@ -342,6 +342,61 @@ internal readonly struct SortedDictionaryPrimitiveMapOps<TKey, TValue>
     }
 }
 
+internal readonly struct SortedListPrimitiveMapOps<TKey, TValue>
+    : IPrimitiveMapWriteOps<SortedList<TKey, TValue>, TKey, TValue, SortedListPrimitiveEnumerator<TKey, TValue>>,
+      IPrimitiveMapReadOps<SortedList<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    public static int Count(SortedList<TKey, TValue> map) => map.Count;
+
+    public static SortedListPrimitiveEnumerator<TKey, TValue> GetEnumerator(SortedList<TKey, TValue> map) => new(map);
+
+    public static SortedList<TKey, TValue> Create(int capacity) => new(capacity);
+
+    public static void Put(SortedList<TKey, TValue> map, TKey key, TValue value)
+    {
+        map[key] = value;
+    }
+}
+
+internal struct SortedListPrimitiveEnumerator<TKey, TValue> : IEnumerator<KeyValuePair<TKey, TValue>>
+    where TKey : notnull
+{
+    private readonly SortedList<TKey, TValue> _map;
+    private int _index;
+
+    public SortedListPrimitiveEnumerator(SortedList<TKey, TValue> map)
+    {
+        _map = map;
+        _index = -1;
+    }
+
+    public KeyValuePair<TKey, TValue> Current => new(_map.Keys[_index], _map.Values[_index]);
+
+    object IEnumerator.Current => Current;
+
+    public bool MoveNext()
+    {
+        int next = _index + 1;
+        if (next >= _map.Count)
+        {
+            return false;
+        }
+
+        _index = next;
+        return true;
+    }
+
+    public void Reset()
+    {
+        _index = -1;
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
 internal readonly struct ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>
     : IPrimitiveMapReadOps<ConcurrentDictionary<TKey, TValue>, TKey, TValue>
     where TKey : notnull
@@ -773,6 +828,59 @@ internal class PrimitiveStringKeySortedDictionarySerializer<TValue, TValueCodec>
 
 internal class PrimitiveSameTypeSortedDictionarySerializer<TValue, TValueCodec>
     : PrimitiveSortedDictionarySerializer<TValue, TValue, TValueCodec, TValueCodec>
+    where TValue : notnull
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCodec> : Serializer<SortedList<TKey, TValue>>
+    where TKey : notnull
+    where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+    public override TypeId StaticTypeId => TypeId.Map;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override SortedList<TKey, TValue> DefaultValue => null!;
+
+    public override bool IsNone(in SortedList<TKey, TValue> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in SortedList<TKey, TValue> value, bool hasGenerics)
+    {
+        SortedList<TKey, TValue> map = value ?? new SortedList<TKey, TValue>();
+        PrimitiveDictionaryCodecWriter.WriteMap<
+            SortedList<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            SortedListPrimitiveMapOps<TKey, TValue>,
+            SortedListPrimitiveEnumerator<TKey, TValue>>(ref context, map, hasGenerics);
+    }
+
+    public override SortedList<TKey, TValue> ReadData(ref ReadContext context)
+    {
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            SortedList<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            SortedListPrimitiveMapOps<TKey, TValue>>(ref context);
+    }
+}
+
+internal class PrimitiveStringKeySortedListSerializer<TValue, TValueCodec>
+    : PrimitiveSortedListSerializer<string, TValue, StringPrimitiveDictionaryCodec, TValueCodec>
+    where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+{
+}
+
+internal class PrimitiveSameTypeSortedListSerializer<TValue, TValueCodec>
+    : PrimitiveSortedListSerializer<TValue, TValue, TValueCodec, TValueCodec>
     where TValue : notnull
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {

@@ -505,6 +505,15 @@ public class SortedDictionarySerializer<TKey, TValue> : DictionaryLikeSerializer
     }
 }
 
+public class SortedListSerializer<TKey, TValue> : DictionaryLikeSerializer<SortedList<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    protected override SortedList<TKey, TValue> CreateMap(int capacity)
+    {
+        return new SortedList<TKey, TValue>(capacity);
+    }
+}
+
 public class ConcurrentDictionarySerializer<TKey, TValue> : DictionaryLikeSerializer<ConcurrentDictionary<TKey, TValue>, TKey, TValue>
     where TKey : notnull
 {

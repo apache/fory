@@ -1397,6 +1397,12 @@ public sealed class TypeResolver
                 return CreateSerializer(serializerType);
             }
 
+            if (genericType == typeof(SortedList<,>))
+            {
+                Type serializerType = typeof(SortedListSerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
+                return CreateSerializer(serializerType);
+            }
+
             if (genericType == typeof(ConcurrentDictionary<,>))
             {
                 Type serializerType = typeof(ConcurrentDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
@@ -1423,6 +1429,7 @@ public sealed class TypeResolver
         Type genericType = type.GetGenericTypeDefinition();
         if (genericType != typeof(Dictionary<,>) &&
             genericType != typeof(SortedDictionary<,>) &&
+            genericType != typeof(SortedList<,>) &&
             genericType != typeof(ConcurrentDictionary<,>))
         {
             return null;
@@ -1439,7 +1446,9 @@ public sealed class TypeResolver
                 ? typeof(PrimitiveStringKeyDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType)
                 : genericType == typeof(SortedDictionary<,>)
                     ? typeof(PrimitiveStringKeySortedDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType)
-                    : typeof(PrimitiveStringKeyConcurrentDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType);
+                    : genericType == typeof(SortedList<,>)
+                        ? typeof(PrimitiveStringKeySortedListSerializer<,>).MakeGenericType(valueType, valueCodecType)
+                        : typeof(PrimitiveStringKeyConcurrentDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType);
             return CreateSerializer(serializerType);
         }
 
@@ -1450,7 +1459,9 @@ public sealed class TypeResolver
                 ? typeof(PrimitiveSameTypeDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec)
                 : genericType == typeof(SortedDictionary<,>)
                     ? typeof(PrimitiveSameTypeSortedDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec)
-                    : typeof(PrimitiveSameTypeConcurrentDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec);
+                    : genericType == typeof(SortedList<,>)
+                        ? typeof(PrimitiveSameTypeSortedListSerializer<,>).MakeGenericType(valueType, sameTypeCodec)
+                        : typeof(PrimitiveSameTypeConcurrentDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec);
             return CreateSerializer(serializerType);
         }
 

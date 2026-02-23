@@ -1505,6 +1505,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         if (genericName is
             "System.Collections.Generic.Dictionary<TKey, TValue>" or
             "System.Collections.Generic.SortedDictionary<TKey, TValue>" or
+            "System.Collections.Generic.SortedList<TKey, TValue>" or
             "System.Collections.Concurrent.ConcurrentDictionary<TKey, TValue>" or
             "System.Collections.Generic.IDictionary<TKey, TValue>" or
             "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>" or

@@ -122,6 +122,7 @@ public sealed class DictionaryContainerHolder
 {
     public Dictionary<string, int> DictionaryField { get; set; } = [];
     public SortedDictionary<string, int> SortedField { get; set; } = new();
+    public SortedList<string, int> SortedListField { get; set; } = new();
     public ConcurrentDictionary<string, int> ConcurrentField { get; set; } = new();
 }
 
@@ -275,6 +276,19 @@ public sealed class ForyRuntimeTests
             Assert.Equal(value, sortedDecoded[key]);
         }
 
+        SortedList<string, int> sortedList = new()
+        {
+            ["b"] = 2,
+            ["a"] = 1,
+        };
+        SortedList<string, int> sortedListDecoded =
+            fory.Deserialize<SortedList<string, int>>(fory.Serialize(sortedList));
+        Assert.Equal(sortedList.Count, sortedListDecoded.Count);
+        foreach ((string key, int value) in sortedList)
+        {
+            Assert.Equal(value, sortedListDecoded[key]);
+        }
+
         ConcurrentDictionary<string, int> concurrent = new();
         concurrent["x"] = 7;
         concurrent["y"] = 9;
@@ -305,6 +319,11 @@ public sealed class ForyRuntimeTests
                 ["s1"] = 10,
                 ["s2"] = 20,
             },
+            SortedListField = new SortedList<string, int>
+            {
+                ["sl1"] = 1000,
+                ["sl2"] = 2000,
+            },
             ConcurrentField = new ConcurrentDictionary<string, int>(
                 new Dictionary<string, int>
                 {
@@ -316,6 +335,7 @@ public sealed class ForyRuntimeTests
         DictionaryContainerHolder decoded = fory.Deserialize<DictionaryContainerHolder>(fory.Serialize(source));
         Assert.Equal(source.DictionaryField.Count, decoded.DictionaryField.Count);
         Assert.Equal(source.SortedField.Count, decoded.SortedField.Count);
+        Assert.Equal(source.SortedListField.Count, decoded.SortedListField.Count);
         Assert.Equal(source.ConcurrentField.Count, decoded.ConcurrentField.Count);
         foreach ((string key, int value) in source.DictionaryField)
         {
@@ -325,6 +345,11 @@ public sealed class ForyRuntimeTests
         foreach ((string key, int value) in source.SortedField)
         {
             Assert.Equal(value, decoded.SortedField[key]);
+        }
+
+        foreach ((string key, int value) in source.SortedListField)
+        {
+            Assert.Equal(value, decoded.SortedListField[key]);
         }
 
         foreach ((string key, int value) in source.ConcurrentField)
