@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 
 namespace Apache.Fory;
 
@@ -67,6 +68,33 @@ public sealed class TypeResolver
         [typeof(long)] = typeof(Int64PrimitiveDictionaryCodec),
         [typeof(uint)] = typeof(UInt32PrimitiveDictionaryCodec),
         [typeof(ulong)] = typeof(UInt64PrimitiveDictionaryCodec),
+    };
+
+    private static readonly Dictionary<Type, Type> PrimitiveListLikeCollectionCodecs = new()
+    {
+        [typeof(bool)] = typeof(BoolPrimitiveDictionaryCodec),
+        [typeof(sbyte)] = typeof(Int8PrimitiveDictionaryCodec),
+        [typeof(short)] = typeof(Int16PrimitiveDictionaryCodec),
+        [typeof(int)] = typeof(Int32PrimitiveDictionaryCodec),
+        [typeof(long)] = typeof(Int64PrimitiveDictionaryCodec),
+        [typeof(ushort)] = typeof(UInt16PrimitiveDictionaryCodec),
+        [typeof(uint)] = typeof(UInt32PrimitiveDictionaryCodec),
+        [typeof(ulong)] = typeof(UInt64PrimitiveDictionaryCodec),
+        [typeof(float)] = typeof(Float32PrimitiveDictionaryCodec),
+        [typeof(double)] = typeof(Float64PrimitiveDictionaryCodec),
+    };
+
+    private static readonly Dictionary<Type, Type> PrimitiveSetCollectionCodecs = new()
+    {
+        [typeof(sbyte)] = typeof(Int8PrimitiveDictionaryCodec),
+        [typeof(short)] = typeof(Int16PrimitiveDictionaryCodec),
+        [typeof(int)] = typeof(Int32PrimitiveDictionaryCodec),
+        [typeof(long)] = typeof(Int64PrimitiveDictionaryCodec),
+        [typeof(ushort)] = typeof(UInt16PrimitiveDictionaryCodec),
+        [typeof(uint)] = typeof(UInt32PrimitiveDictionaryCodec),
+        [typeof(ulong)] = typeof(UInt64PrimitiveDictionaryCodec),
+        [typeof(float)] = typeof(Float32PrimitiveDictionaryCodec),
+        [typeof(double)] = typeof(Float64PrimitiveDictionaryCodec),
     };
 
     private readonly Dictionary<uint, TypeReader> _byUserTypeId = [];
@@ -1333,6 +1361,12 @@ public sealed class TypeResolver
             return new SetDoubleSerializer();
         }
 
+        Serializer? primitiveCollectionSerializer = TryCreatePrimitiveCollectionSerializer(type);
+        if (primitiveCollectionSerializer is not null)
+        {
+            return primitiveCollectionSerializer;
+        }
+
         Serializer? primitiveDictionarySerializer = TryCreatePrimitiveDictionarySerializer(type);
         if (primitiveDictionarySerializer is not null)
         {
@@ -1385,6 +1419,36 @@ public sealed class TypeResolver
                 return CreateSerializer(serializerType);
             }
 
+            if (genericType == typeof(SortedSet<>))
+            {
+                Type serializerType = typeof(SortedSetSerializer<>).MakeGenericType(genericArgs[0]);
+                return CreateSerializer(serializerType);
+            }
+
+            if (genericType == typeof(ImmutableHashSet<>))
+            {
+                Type serializerType = typeof(ImmutableHashSetSerializer<>).MakeGenericType(genericArgs[0]);
+                return CreateSerializer(serializerType);
+            }
+
+            if (genericType == typeof(LinkedList<>))
+            {
+                Type serializerType = typeof(LinkedListSerializer<>).MakeGenericType(genericArgs[0]);
+                return CreateSerializer(serializerType);
+            }
+
+            if (genericType == typeof(Queue<>))
+            {
+                Type serializerType = typeof(QueueSerializer<>).MakeGenericType(genericArgs[0]);
+                return CreateSerializer(serializerType);
+            }
+
+            if (genericType == typeof(Stack<>))
+            {
+                Type serializerType = typeof(StackSerializer<>).MakeGenericType(genericArgs[0]);
+                return CreateSerializer(serializerType);
+            }
+
             if (genericType == typeof(Dictionary<,>))
             {
                 Type serializerType = typeof(DictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
@@ -1417,6 +1481,41 @@ public sealed class TypeResolver
         }
 
         throw new TypeNotRegisteredException($"No serializer available for {type}");
+    }
+
+    private Serializer? TryCreatePrimitiveCollectionSerializer(Type type)
+    {
+        if (!type.IsGenericType)
+        {
+            return null;
+        }
+
+        Type genericType = type.GetGenericTypeDefinition();
+        Type elementType = type.GetGenericArguments()[0];
+        if ((genericType == typeof(LinkedList<>) ||
+             genericType == typeof(Queue<>) ||
+             genericType == typeof(Stack<>)) &&
+            PrimitiveListLikeCollectionCodecs.TryGetValue(elementType, out Type? listLikeCodec))
+        {
+            Type serializerType = genericType == typeof(LinkedList<>)
+                ? typeof(PrimitiveLinkedListSerializer<,>).MakeGenericType(elementType, listLikeCodec)
+                : genericType == typeof(Queue<>)
+                    ? typeof(PrimitiveQueueSerializer<,>).MakeGenericType(elementType, listLikeCodec)
+                    : typeof(PrimitiveStackSerializer<,>).MakeGenericType(elementType, listLikeCodec);
+            return CreateSerializer(serializerType);
+        }
+
+        if ((genericType == typeof(SortedSet<>) ||
+             genericType == typeof(ImmutableHashSet<>)) &&
+            PrimitiveSetCollectionCodecs.TryGetValue(elementType, out Type? setCodec))
+        {
+            Type serializerType = genericType == typeof(SortedSet<>)
+                ? typeof(PrimitiveSortedSetSerializer<,>).MakeGenericType(elementType, setCodec)
+                : typeof(PrimitiveImmutableHashSetSerializer<,>).MakeGenericType(elementType, setCodec);
+            return CreateSerializer(serializerType);
+        }
+
+        return null;
     }
 
     private Serializer? TryCreatePrimitiveDictionarySerializer(Type type)

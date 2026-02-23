@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections;
+using System.Collections.Immutable;
 
 namespace Apache.Fory;
 
@@ -283,7 +284,7 @@ internal static class DynamicContainerCodec
         }
 
         Type valueType = value.GetType();
-        if (value is IList && !valueType.IsArray)
+        if (IsListLike(value, valueType))
         {
             typeId = TypeId.List;
             return true;
@@ -314,12 +315,12 @@ internal static class DynamicContainerCodec
         }
 
         Type valueType = value.GetType();
-        if (value is IList list && !valueType.IsArray)
+        if (TryGetListLikeEnumerable(value, valueType, out IEnumerable? listLike, out int countHint))
         {
-            List<object?> values = new(list.Count);
-            for (int i = 0; i < list.Count; i++)
+            List<object?> values = countHint >= 0 ? new List<object?>(countHint) : [];
+            foreach (object? item in listLike!)
             {
-                values.Add(list[i]);
+                values.Add(item);
             }
 
             context.TypeResolver.GetSerializer<List<object?>>().WriteData(ref context, values, hasGenerics);
@@ -362,6 +363,72 @@ internal static class DynamicContainerCodec
         return new Dictionary<object, object?>(map.NonNullEntries);
     }
 
+    private static bool TryGetListLikeEnumerable(
+        object value,
+        Type valueType,
+        out IEnumerable? enumerable,
+        out int countHint)
+    {
+        if (valueType.IsArray)
+        {
+            enumerable = null;
+            countHint = 0;
+            return false;
+        }
+
+        if (value is IList list)
+        {
+            enumerable = list;
+            countHint = list.Count;
+            return true;
+        }
+
+        if (!IsListLike(value, valueType))
+        {
+            enumerable = null;
+            countHint = 0;
+            return false;
+        }
+
+        if (value is ICollection collection)
+        {
+            enumerable = collection;
+            countHint = collection.Count;
+            return true;
+        }
+
+        if (value is IEnumerable genericEnumerable)
+        {
+            enumerable = genericEnumerable;
+            countHint = -1;
+            return true;
+        }
+
+        enumerable = null;
+        countHint = 0;
+        return false;
+    }
+
+    private static bool IsListLike(object value, Type valueType)
+    {
+        if (value is IList && !valueType.IsArray)
+        {
+            return true;
+        }
+
+        if (!valueType.IsGenericType)
+        {
+            return false;
+        }
+
+        return HasGenericDefinition(valueType, static def =>
+            def == typeof(LinkedList<>) ||
+            def == typeof(Queue<>) ||
+            def == typeof(Stack<>) ||
+            def == typeof(IList<>) ||
+            def == typeof(IReadOnlyList<>));
+    }
+
     private static bool IsSet(Type valueType)
     {
         if (!valueType.IsGenericType)
@@ -369,7 +436,18 @@ internal static class DynamicContainerCodec
             return false;
         }
 
-        if (valueType.GetGenericTypeDefinition() == typeof(ISet<>))
+        return HasGenericDefinition(valueType, static def =>
+            def == typeof(ISet<>) ||
+            def == typeof(IReadOnlySet<>) ||
+            def == typeof(IImmutableSet<>) ||
+            def == typeof(HashSet<>) ||
+            def == typeof(SortedSet<>) ||
+            def == typeof(ImmutableHashSet<>));
+    }
+
+    private static bool HasGenericDefinition(Type valueType, Func<Type, bool> definitionPredicate)
+    {
+        if (valueType.IsGenericType && definitionPredicate(valueType.GetGenericTypeDefinition()))
         {
             return true;
         }
@@ -381,7 +459,7 @@ internal static class DynamicContainerCodec
                 continue;
             }
 
-            if (iface.GetGenericTypeDefinition() == typeof(ISet<>))
+            if (definitionPredicate(iface.GetGenericTypeDefinition()))
             {
                 return true;
             }
@@ -446,12 +524,139 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 
     public override void WriteData(ref WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
-        List<T> list = value is null ? [] : [.. value];
-        context.TypeResolver.GetSerializer<List<T>>().WriteData(ref context, list, hasGenerics);
+        HashSet<T> safe = value ?? [];
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
     }
 
     public override HashSet<T> ReadData(ref ReadContext context)
     {
-        return [.. context.TypeResolver.GetSerializer<List<T>>().ReadData(ref context)];
+        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context)];
+    }
+}
+
+public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : notnull
+{
+    public override TypeId StaticTypeId => TypeId.Set;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override SortedSet<T> DefaultValue => null!;
+    public override bool IsNone(in SortedSet<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in SortedSet<T> value, bool hasGenerics)
+    {
+        SortedSet<T> safe = value ?? new SortedSet<T>();
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+    }
+
+    public override SortedSet<T> ReadData(ref ReadContext context)
+    {
+        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context)];
+    }
+}
+
+public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<T>> where T : notnull
+{
+    public override TypeId StaticTypeId => TypeId.Set;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override ImmutableHashSet<T> DefaultValue => null!;
+    public override bool IsNone(in ImmutableHashSet<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
+    {
+        ImmutableHashSet<T> safe = value ?? ImmutableHashSet<T>.Empty;
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+    }
+
+    public override ImmutableHashSet<T> ReadData(ref ReadContext context)
+    {
+        return ImmutableHashSet.CreateRange(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context));
+    }
+}
+
+public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
+{
+    public override TypeId StaticTypeId => TypeId.List;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override LinkedList<T> DefaultValue => null!;
+    public override bool IsNone(in LinkedList<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in LinkedList<T> value, bool hasGenerics)
+    {
+        LinkedList<T> safe = value ?? new LinkedList<T>();
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+    }
+
+    public override LinkedList<T> ReadData(ref ReadContext context)
+    {
+        return new LinkedList<T>(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context));
+    }
+}
+
+public sealed class QueueSerializer<T> : Serializer<Queue<T>>
+{
+    public override TypeId StaticTypeId => TypeId.List;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override Queue<T> DefaultValue => null!;
+    public override bool IsNone(in Queue<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in Queue<T> value, bool hasGenerics)
+    {
+        Queue<T> safe = value ?? new Queue<T>();
+        CollectionCodec.WriteCollectionData(safe, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+    }
+
+    public override Queue<T> ReadData(ref ReadContext context)
+    {
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
+        Queue<T> queue = new(values.Count);
+        for (int i = 0; i < values.Count; i++)
+        {
+            queue.Enqueue(values[i]);
+        }
+
+        return queue;
+    }
+}
+
+public sealed class StackSerializer<T> : Serializer<Stack<T>>
+{
+    public override TypeId StaticTypeId => TypeId.List;
+    public override bool IsNullableType => true;
+    public override bool IsReferenceTrackableType => true;
+    public override Stack<T> DefaultValue => null!;
+    public override bool IsNone(in Stack<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in Stack<T> value, bool hasGenerics)
+    {
+        Stack<T> safe = value ?? new Stack<T>();
+        if (safe.Count == 0)
+        {
+            CollectionCodec.WriteCollectionData(Array.Empty<T>(), context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+            return;
+        }
+
+        T[] topToBottom = safe.ToArray();
+        List<T> bottomToTop = new(topToBottom.Length);
+        for (int i = topToBottom.Length - 1; i >= 0; i--)
+        {
+            bottomToTop.Add(topToBottom[i]);
+        }
+
+        CollectionCodec.WriteCollectionData(bottomToTop, context.TypeResolver.GetSerializer<T>(), ref context, hasGenerics);
+    }
+
+    public override Stack<T> ReadData(ref ReadContext context)
+    {
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), ref context);
+        Stack<T> stack = new(values.Count);
+        for (int i = 0; i < values.Count; i++)
+        {
+            stack.Push(values[i]);
+        }
+
+        return stack;
     }
 }

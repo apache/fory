@@ -1461,6 +1461,9 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string genericName = named.ConstructedFrom.ToDisplayString();
         if (genericName is
             "System.Collections.Generic.List<T>" or
+            "System.Collections.Generic.LinkedList<T>" or
+            "System.Collections.Generic.Queue<T>" or
+            "System.Collections.Generic.Stack<T>" or
             "System.Collections.Generic.IList<T>" or
             "System.Collections.Generic.IReadOnlyList<T>")
         {
@@ -1482,8 +1485,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string genericName = named.ConstructedFrom.ToDisplayString();
         if (genericName is
             "System.Collections.Generic.HashSet<T>" or
+            "System.Collections.Generic.SortedSet<T>" or
+            "System.Collections.Immutable.ImmutableHashSet<T>" or
             "System.Collections.Generic.ISet<T>" or
-            "System.Collections.Generic.IReadOnlySet<T>")
+            "System.Collections.Generic.IReadOnlySet<T>" or
+            "System.Collections.Immutable.IImmutableSet<T>")
         {
             elementType = named.TypeArguments[0];
             return true;

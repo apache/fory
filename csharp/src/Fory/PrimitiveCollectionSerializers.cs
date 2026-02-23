@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections.Immutable;
+
 namespace Apache.Fory;
 
 internal static class PrimitiveCollectionHeader
@@ -730,6 +732,194 @@ internal sealed class SetDoubleSerializer : Serializer<HashSet<double>>
     }
 
     public override HashSet<double> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal class PrimitiveLinkedListSerializer<T, TCodec> : Serializer<LinkedList<T>>
+    where TCodec : struct, IPrimitiveDictionaryCodec<T>
+{
+    private static readonly LinkedListSerializer<T> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override LinkedList<T> DefaultValue => null!;
+
+    public override bool IsNone(in LinkedList<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in LinkedList<T> value, bool hasGenerics)
+    {
+        if (TCodec.IsNullable)
+        {
+            throw new InvalidDataException("nullable primitive codecs are not supported for linked-list fast path");
+        }
+
+        LinkedList<T> list = value ?? new LinkedList<T>();
+        PrimitiveCollectionHeader.WriteListHeader(ref context, list.Count, hasGenerics, TCodec.WireTypeId, false);
+        foreach (T item in list)
+        {
+            TCodec.Write(ref context, item);
+        }
+    }
+
+    public override LinkedList<T> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal class PrimitiveQueueSerializer<T, TCodec> : Serializer<Queue<T>>
+    where TCodec : struct, IPrimitiveDictionaryCodec<T>
+{
+    private static readonly QueueSerializer<T> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override Queue<T> DefaultValue => null!;
+
+    public override bool IsNone(in Queue<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in Queue<T> value, bool hasGenerics)
+    {
+        if (TCodec.IsNullable)
+        {
+            throw new InvalidDataException("nullable primitive codecs are not supported for queue fast path");
+        }
+
+        Queue<T> queue = value ?? new Queue<T>();
+        PrimitiveCollectionHeader.WriteListHeader(ref context, queue.Count, hasGenerics, TCodec.WireTypeId, false);
+        foreach (T item in queue)
+        {
+            TCodec.Write(ref context, item);
+        }
+    }
+
+    public override Queue<T> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal class PrimitiveStackSerializer<T, TCodec> : Serializer<Stack<T>>
+    where TCodec : struct, IPrimitiveDictionaryCodec<T>
+{
+    private static readonly StackSerializer<T> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.List;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override Stack<T> DefaultValue => null!;
+
+    public override bool IsNone(in Stack<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in Stack<T> value, bool hasGenerics)
+    {
+        if (TCodec.IsNullable)
+        {
+            throw new InvalidDataException("nullable primitive codecs are not supported for stack fast path");
+        }
+
+        Stack<T> stack = value ?? new Stack<T>();
+        PrimitiveCollectionHeader.WriteListHeader(ref context, stack.Count, hasGenerics, TCodec.WireTypeId, false);
+        if (stack.Count == 0)
+        {
+            return;
+        }
+
+        T[] topToBottom = stack.ToArray();
+        for (int i = topToBottom.Length - 1; i >= 0; i--)
+        {
+            TCodec.Write(ref context, topToBottom[i]);
+        }
+    }
+
+    public override Stack<T> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal class PrimitiveSortedSetSerializer<T, TCodec> : Serializer<SortedSet<T>>
+    where T : notnull
+    where TCodec : struct, IPrimitiveDictionaryCodec<T>
+{
+    private static readonly SortedSetSerializer<T> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override SortedSet<T> DefaultValue => null!;
+
+    public override bool IsNone(in SortedSet<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in SortedSet<T> value, bool hasGenerics)
+    {
+        if (TCodec.IsNullable)
+        {
+            throw new InvalidDataException("nullable primitive codecs are not supported for sorted-set fast path");
+        }
+
+        SortedSet<T> set = value ?? new SortedSet<T>();
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TCodec.WireTypeId, false);
+        foreach (T item in set)
+        {
+            TCodec.Write(ref context, item);
+        }
+    }
+
+    public override SortedSet<T> ReadData(ref ReadContext context)
+    {
+        return Fallback.ReadData(ref context);
+    }
+}
+
+internal class PrimitiveImmutableHashSetSerializer<T, TCodec> : Serializer<ImmutableHashSet<T>>
+    where T : notnull
+    where TCodec : struct, IPrimitiveDictionaryCodec<T>
+{
+    private static readonly ImmutableHashSetSerializer<T> Fallback = new();
+
+    public override TypeId StaticTypeId => TypeId.Set;
+
+    public override bool IsNullableType => true;
+
+    public override bool IsReferenceTrackableType => true;
+
+    public override ImmutableHashSet<T> DefaultValue => null!;
+
+    public override bool IsNone(in ImmutableHashSet<T> value) => value is null;
+
+    public override void WriteData(ref WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
+    {
+        if (TCodec.IsNullable)
+        {
+            throw new InvalidDataException("nullable primitive codecs are not supported for immutable-hash-set fast path");
+        }
+
+        ImmutableHashSet<T> set = value ?? ImmutableHashSet<T>.Empty;
+        PrimitiveCollectionHeader.WriteListHeader(ref context, set.Count, hasGenerics, TCodec.WireTypeId, false);
+        foreach (T item in set)
+        {
+            TCodec.Write(ref context, item);
+        }
+    }
+
+    public override ImmutableHashSet<T> ReadData(ref ReadContext context)
     {
         return Fallback.ReadData(ref context);
     }

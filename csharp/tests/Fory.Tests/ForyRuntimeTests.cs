@@ -17,6 +17,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
 
@@ -124,6 +125,16 @@ public sealed class DictionaryContainerHolder
     public SortedDictionary<string, int> SortedField { get; set; } = new();
     public SortedList<string, int> SortedListField { get; set; } = new();
     public ConcurrentDictionary<string, int> ConcurrentField { get; set; } = new();
+}
+
+[ForyObject]
+public sealed class CollectionContainerHolder
+{
+    public LinkedList<int> LinkedListField { get; set; } = new();
+    public SortedSet<int> SortedSetField { get; set; } = new();
+    public ImmutableHashSet<int> ImmutableHashSetField { get; set; } = ImmutableHashSet<int>.Empty;
+    public Queue<int> QueueField { get; set; } = new();
+    public Stack<int> StackField { get; set; } = new();
 }
 
 public sealed class ForyRuntimeTests
@@ -302,6 +313,39 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void AdditionalCollectionsRoundTrip()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        LinkedList<int> linkedList = new(new[] { 1, 2, 3 });
+        LinkedList<int> linkedListDecoded = fory.Deserialize<LinkedList<int>>(fory.Serialize(linkedList));
+        Assert.Equal(linkedList.ToArray(), linkedListDecoded.ToArray());
+
+        SortedSet<int> sortedSet = [3, 1, 2];
+        SortedSet<int> sortedSetDecoded = fory.Deserialize<SortedSet<int>>(fory.Serialize(sortedSet));
+        Assert.True(sortedSetDecoded.SetEquals(sortedSet));
+
+        ImmutableHashSet<int> immutableHashSet = ImmutableHashSet.Create(4, 5, 6);
+        ImmutableHashSet<int> immutableHashSetDecoded =
+            fory.Deserialize<ImmutableHashSet<int>>(fory.Serialize(immutableHashSet));
+        Assert.True(immutableHashSetDecoded.SetEquals(immutableHashSet));
+
+        Queue<int> queue = new();
+        queue.Enqueue(10);
+        queue.Enqueue(20);
+        queue.Enqueue(30);
+        Queue<int> queueDecoded = fory.Deserialize<Queue<int>>(fory.Serialize(queue));
+        Assert.Equal(queue.ToArray(), queueDecoded.ToArray());
+
+        Stack<int> stack = new();
+        stack.Push(100);
+        stack.Push(200);
+        stack.Push(300);
+        Stack<int> stackDecoded = fory.Deserialize<Stack<int>>(fory.Serialize(stack));
+        Assert.Equal(stack.ToArray(), stackDecoded.ToArray());
+    }
+
+    [Fact]
     public void GeneratedSerializerSupportsSortedAndConcurrentDictionaryFields()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
@@ -356,6 +400,33 @@ public sealed class ForyRuntimeTests
         {
             Assert.Equal(value, decoded.ConcurrentField[key]);
         }
+    }
+
+    [Fact]
+    public void GeneratedSerializerSupportsAdditionalCollectionFields()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<CollectionContainerHolder>(451);
+
+        CollectionContainerHolder source = new()
+        {
+            LinkedListField = new LinkedList<int>(new[] { 1, 2, 3 }),
+            SortedSetField = new SortedSet<int> { 11, 7, 9 },
+            ImmutableHashSetField = ImmutableHashSet.Create(21, 22, 23),
+        };
+        source.QueueField.Enqueue(31);
+        source.QueueField.Enqueue(32);
+        source.QueueField.Enqueue(33);
+        source.StackField.Push(41);
+        source.StackField.Push(42);
+        source.StackField.Push(43);
+
+        CollectionContainerHolder decoded = fory.Deserialize<CollectionContainerHolder>(fory.Serialize(source));
+        Assert.Equal(source.LinkedListField.ToArray(), decoded.LinkedListField.ToArray());
+        Assert.True(decoded.SortedSetField.SetEquals(source.SortedSetField));
+        Assert.True(decoded.ImmutableHashSetField.SetEquals(source.ImmutableHashSetField));
+        Assert.Equal(source.QueueField.ToArray(), decoded.QueueField.ToArray());
+        Assert.Equal(source.StackField.ToArray(), decoded.StackField.ToArray());
     }
 
     [Fact]
@@ -658,6 +729,36 @@ public sealed class ForyRuntimeTests
         Assert.Contains("a", setDecoded);
         Assert.Contains(7, setDecoded);
         Assert.Contains(false, setDecoded);
+    }
+
+    [Fact]
+    public void DynamicObjectSupportsExtendedCollectionContainers()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        Queue<object?> queue = new();
+        queue.Enqueue("q1");
+        queue.Enqueue(7);
+        queue.Enqueue(null);
+        List<object?> queueDecoded = Assert.IsType<List<object?>>(fory.DeserializeObject(fory.SerializeObject(queue)));
+        Assert.Equal(new object?[] { "q1", 7, null }, queueDecoded.ToArray());
+
+        Stack<object?> stack = new();
+        stack.Push("s1");
+        stack.Push(9);
+        List<object?> stackDecoded = Assert.IsType<List<object?>>(fory.DeserializeObject(fory.SerializeObject(stack)));
+        Assert.Equal(new object?[] { 9, "s1" }, stackDecoded.ToArray());
+
+        LinkedList<object?> linkedList = new(new object?[] { "l1", 3, null });
+        List<object?> linkedListDecoded = Assert.IsType<List<object?>>(fory.DeserializeObject(fory.SerializeObject(linkedList)));
+        Assert.Equal(new object?[] { "l1", 3, null }, linkedListDecoded.ToArray());
+
+        ImmutableHashSet<object?> immutableSet = ImmutableHashSet.Create<object?>("i1", 5);
+        HashSet<object?> immutableSetDecoded =
+            Assert.IsType<HashSet<object?>>(fory.DeserializeObject(fory.SerializeObject(immutableSet)));
+        Assert.Equal(2, immutableSetDecoded.Count);
+        Assert.Contains("i1", immutableSetDecoded);
+        Assert.Contains(5, immutableSetDecoded);
     }
 
     [Fact]
