@@ -26,7 +26,6 @@ on:
         description: "True if all 5 foryc binaries built and validated."
         value: ${{ jobs.build-complete.outputs.ready }}
 
-  # FIX 7: Narrowed from "v*" to "foryc-v*" to avoid triggering on Java/Rust/Go release tags
   push:
     tags: ["foryc-v*"]
 
@@ -60,9 +59,15 @@ env:
 # 10 MB constraint:
 #   Each binary must remain under 10 MB after UPX compression.
 #   This is a hard gate for crates.io embedding in Phase 2.
-#   Enforced with an explicit assertion step in each build job.
 #   macOS binaries are uncompressed but remain under 10 MB because
 #   fory_compiler has zero third-party pip dependencies (pure stdlib only).
+#
+# Windows Defender note:
+#   Set-MpPreference -DisableRealtimeMonitoring $true is required in BOTH
+#   the build and validate jobs. Add-MpPreference -ExclusionPath is NOT
+#   sufficient — it only excludes file system scans, not the memory-level
+#   LoadLibrary interception that causes PYI-3104 / ERROR_NOACCESS failures
+#   when PyInstaller extracts and maps python311.dll at runtime.
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
   build:
@@ -104,10 +109,6 @@ jobs:
             use_upx: false
             codesign: true
 
-          # LATEST FIX: windows-2019 is deprecated and runners no longer provision.
-          # windows-latest (Server 2022) works correctly when combined with the
-          # Defender exclusion step below. The DLL issue was always caused by
-          # Defender scanning PyInstaller's extracted temp files, not the runner version.
           - target: windows-x86_64
             os: windows-latest
             artifact_name: foryc-windows-x86_64
@@ -117,13 +118,9 @@ jobs:
             codesign: false
 
     steps:
-      # Full checkout required: needs compiler/foryc.spec,
-      # compiler/requirements-dev.txt, and the full compiler/ package
-      # for pip install and pyinstaller to work.
       - name: Checkout
         uses: actions/checkout@v5
 
-      # FIX 8: Added pip cache to avoid cold installs on every run (~60-120s saved per target)
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
@@ -155,19 +152,16 @@ jobs:
           upx --version
 
       # ── Install build dependencies ──────────────────────────────────────────
-      # pyinstaller version is pinned in requirements-dev.txt.
-      # fory_compiler is installed from source so PyInstaller's import
-      # tracer can walk the actual installed package tree.
       - name: Install PyInstaller and fory_compiler
         run: |
           python -m pip install --upgrade pip
           pip install -r compiler/requirements-dev.txt
           pip install ./compiler
 
-      # FIX 9: Verify all hiddenimports are importable before PyInstaller runs.
-      # PyInstaller silently ignores nonexistent hiddenimports — this step
-      # catches renamed or removed modules before they silently disappear
-      # from the binary.
+      # ── Verify all hiddenimports are importable ─────────────────────────────
+      # PyInstaller silently ignores nonexistent hiddenimports entries.
+      # This step catches renamed or removed modules before they silently
+      # disappear from the binary.
       - name: Verify all hiddenimports are importable
         working-directory: compiler
         run: |
@@ -198,30 +192,24 @@ jobs:
           print('All hiddenimports verified.')
           "
 
-      # LATEST FIX (build job): Defender exclusions instead of full disable.
-      # Targets GITHUB_WORKSPACE and RUNNER_TEMP — the two paths PyInstaller
-      # writes to during build and extraction. This is sufficient and more
-      # targeted than disabling real-time monitoring globally.
-      - name: Disable Windows Defender for PyInstaller paths
+      # ── Windows Defender (build job) ────────────────────────────────────────
+      # Full real-time monitoring disable is required — not just path exclusions.
+      # Add-MpPreference -ExclusionPath only covers filesystem scans.
+      # The PYI-3104 / LoadLibrary: Invalid access to memory location error
+      # is caused by Defender intercepting the memory-mapping of python311.dll
+      # during PyInstaller bootloader execution. Only DisableRealtimeMonitoring
+      # stops that interception.
+      - name: Disable Windows Defender real-time monitoring (PyInstaller workaround)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
-          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
-          Add-MpPreference -ExclusionProcess "foryc.exe"
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       # ── Build ───────────────────────────────────────────────────────────────
-      # Must run from compiler/ so pathex=['.'] in foryc.spec resolves
-      # fory_compiler/__main__.py correctly.
       - name: Build standalone binary with PyInstaller
         working-directory: compiler
         run: pyinstaller foryc.spec
 
-      # FIX 3 (occurrence 1/3): Use BINARY_PATH env var instead of inline matrix
-      # expression inside Python string — safe against paths with spaces or quotes.
       # ── Pre-compression smoke test ──────────────────────────────────────────
-      # Confirms the binary is functional before UPX touches it.
-      # A broken binary here gives a cleaner error than post-UPX.
       - name: Smoke test (pre-UPX)
         shell: bash
         env:
@@ -236,11 +224,7 @@ jobs:
           "
           "$BINARY_PATH" --help
 
-      # FIX 3 (occurrence 2/3): Same env var fix.
       # ── UPX compression ─────────────────────────────────────────────────────
-      # --best --lzma: maximum compression, ~10% better ratio than default.
-      # UPX on PyInstaller --onefile binaries is well-supported on Linux/Windows.
-      # macOS is excluded entirely (UPX 4.x+ dropped Mach-O support).
       - name: Compress with UPX
         if: matrix.use_upx
         shell: bash
@@ -256,10 +240,10 @@ jobs:
           print(f'Size: {s:,} bytes ({s/1024/1024:.2f} MB)')
           "
 
-      # FIX 2: Renamed step — UPX is disabled for macOS targets so "after UPX"
-      # was misleading. PyInstaller-built Apple Silicon binaries require a valid
-      # code signature regardless of UPX. Ad-hoc signing requires no Developer ID
-      # and is sufficient for binaries distributed via crates.io (not quarantined).
+      # ── macOS aarch64: ad-hoc codesign ───────────────────────────────────────
+      # PyInstaller-built Apple Silicon binaries require valid code signatures.
+      # UPX is disabled for macOS — this step runs regardless of UPX.
+      # --sign - creates an ad-hoc signature; no Apple Developer ID required.
       - name: Ad-hoc codesign binary (macOS aarch64, required for Apple Silicon)
         if: matrix.codesign
         run: |
@@ -267,19 +251,12 @@ jobs:
           codesign --verify --verbose "${{ matrix.binary_path }}"
 
       # ── Post-compression smoke test ─────────────────────────────────────────
-      # Critical test: the UPX-compressed (and re-signed) binary must execute.
-      # Failure here means UPX broke the binary on this platform.
       - name: Smoke test (post-UPX)
         shell: bash
         run: |
           "${{ matrix.binary_path }}" --help
 
-      # FIX 3 (occurrence 3/3): Same env var fix.
       # ── crates.io 10 MB size gate ────────────────────────────────────────────
-      # Each per-platform foryc-bin-* crate (Phase 2) embeds exactly one binary.
-      # crates.io hard limit is 10 MB per crate.
-      # If this assertion fails: add more entries to excludes[] in foryc.spec,
-      # investigate why binary grew, or reconsider distribution strategy.
       - name: Assert binary is under 10 MB (crates.io hard limit)
         shell: bash
         env:
@@ -316,7 +293,7 @@ jobs:
   #      Python is NOT set up in this job — binary must be fully self-contained.
   #   2. End-to-end compile of compiler/examples/demo.fdl to Rust output.
   #   3. End-to-end compile of compiler/examples/demo.fdl to Java output.
-  #      Validates that all 5 language generators are correctly embedded in binary.
+  #      Validates that all 5 language generators are correctly embedded.
   # ─────────────────────────────────────────────────────────────────────────────
   validate:
     name: validate / ${{ matrix.target }}
@@ -346,12 +323,6 @@ jobs:
             artifact_name: foryc-macos-aarch64
             binary_name: foryc
 
-          # windows-latest (Server 2022) — intentionally different from
-          # build runner (windows-2019 was deprecated). Binary built on
-          # Server 2022 and validated on Server 2022 for consistency.
-          # Defender exclusions below are required for PyInstaller onefile
-          # extraction — without them, DLL load fails as Defender quarantines
-          # files extracted to RUNNER_TEMP mid-execution.
           - target: windows-x86_64
             os: windows-latest
             artifact_name: foryc-windows-x86_64
@@ -366,35 +337,28 @@ jobs:
           sparse-checkout: compiler/examples
           sparse-checkout-cone-mode: true
 
-      # FIX 1: Changed from download-artifact@v5 to @v4.
-      # upload-artifact@v4 and download-artifact@v5 use incompatible artifact
-      # storage APIs — mismatched versions cause artifact-not-found failures.
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ./artifact
 
-      # FIX 10 (NEW): Defender exclusions in validate job.
-      # The original PR had Defender disable only in the build job.
-      # PyInstaller onefile binaries extract their payload to RUNNER_TEMP on
-      # first run. Without Defender exclusions, real-time scanning quarantines
-      # the extracted DLLs mid-execution, causing DLL load failed errors.
-      # This was the actual root cause of the "windows DLL failure" — not the
-      # runner version.
-      - name: Disable Windows Defender for PyInstaller extraction paths
+      # ── Windows Defender (validate job) ────────────────────────────────────
+      # MUST appear before the binary is executed — not just before the build.
+      # PyInstaller onefile extracts python311.dll to RUNNER_TEMP on first run.
+      # Defender intercepts the LoadLibrary call at the memory level, causing
+      # PYI-3104: Invalid access to memory location.
+      # Path exclusions (Add-MpPreference) do NOT fix this — full real-time
+      # monitoring disable is required in this job exactly as in the build job.
+      - name: Disable Windows Defender real-time monitoring (PyInstaller extraction workaround)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
-          Add-MpPreference -ExclusionProcess "foryc.exe"
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
 
       - name: Make executable (Unix)
         if: runner.os != 'Windows'
         run: chmod +x ./artifact/${{ matrix.binary_name }}
 
-      # FIX 4: Tightened from broad keyword grep to specific usage line check.
-      # Previous pattern matched "fory" anywhere including crash tracebacks.
       # ── Test 1: --help ───────────────────────────────────────────────────────
       - name: Validate --help output
         shell: bash
@@ -406,8 +370,6 @@ jobs:
             exit 1
           }
 
-      # FIX 5: Changed from file count check to non-empty .rs file check.
-      # Previous check passed if foryc produced a 0-byte file or an error log.
       # ── Test 2: End-to-end FDL → Rust ────────────────────────────────────────
       - name: End-to-end compile demo.fdl to Rust
         shell: bash
@@ -430,11 +392,7 @@ jobs:
           fi
           echo "PASS: ${RS_COUNT} .rs file(s) generated"
 
-      # FIX 6: Added Java generator validation.
-      # The foryc.spec embeds all 5 language backends (java, python, cpp, rust, go).
-      # Without this test, a silent module drop in any non-Rust generator would
-      # be invisible and the broken binary would be promoted to Phase 2 crates.
-      # ── Test 3: End-to-end FDL → Java ────────────────────────────────────────
+      # ── Test 3: End-to-end FDL → Java ─────────────────────────────────────────
       - name: End-to-end compile demo.fdl to Java
         shell: bash
         run: |
