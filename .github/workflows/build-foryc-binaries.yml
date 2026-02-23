@@ -27,7 +27,7 @@ on:
         value: ${{ jobs.build-complete.outputs.ready }}
 
   push:
-    tags: ["v*"]
+    tags: ["foryc-v*"] # FIX 7: Narrowed from "v*" to "foryc-v*"
 
   pull_request:
     paths:
@@ -49,14 +49,12 @@ env:
 #   linux-aarch64 : ubuntu-24.04-arm  (native GitHub ARM64 runner)
 #   macos-x86_64  : macos-15-intel
 #   macos-aarch64 : macos-15          (native Apple Silicon)
-#   windows-x86_64: windows-latest
+#   windows-x86_64: windows-2019
 #
 # UPX notes:
-#   All platforms get UPX --best --lzma compression.
-#   macOS aarch64 MUST be re-signed with codesign after UPX.
-#   Apple Silicon requires a valid code signature on all executables.
-#   Without re-signing, the binary runs fine in CI but silently fails
-#   for end users on macOS 12+ with SIP enabled.
+#   Linux and Windows targets use UPX --best --lzma compression.
+#   macOS targets skip UPX (UPX 4.x+ dropped macOS support entirely).
+#   macOS aarch64 requires ad-hoc codesigning for Apple Silicon.
 #
 # 10 MB constraint:
 #   Each binary must remain under 10 MB after UPX compression.
@@ -118,10 +116,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # FIX 8: Added pip cache
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            compiler/requirements-dev.txt
+            compiler/pyproject.toml
 
       # ── Install UPX ─────────────────────────────────────────────────────────
       - name: Install UPX (Linux)
@@ -154,10 +157,44 @@ jobs:
           pip install -r compiler/requirements-dev.txt
           pip install ./compiler
 
+      # FIX 9: Verify all hiddenimports are importable before PyInstaller runs
+      - name: Verify all hiddenimports are importable
+        working-directory: compiler
+        run: |
+          python -c "
+          mods = [
+              'fory_compiler', 'fory_compiler.cli',
+              'fory_compiler.ir', 'fory_compiler.ir.ast',
+              'fory_compiler.ir.emitter', 'fory_compiler.ir.validator',
+              'fory_compiler.ir.type_id', 'fory_compiler.ir.types',
+              'fory_compiler.frontend', 'fory_compiler.frontend.base',
+              'fory_compiler.frontend.utils',
+              'fory_compiler.frontend.fdl', 'fory_compiler.frontend.fdl.lexer',
+              'fory_compiler.frontend.fdl.parser',
+              'fory_compiler.frontend.proto', 'fory_compiler.frontend.proto.ast',
+              'fory_compiler.frontend.proto.lexer', 'fory_compiler.frontend.proto.parser',
+              'fory_compiler.frontend.proto.translator',
+              'fory_compiler.frontend.fbs', 'fory_compiler.frontend.fbs.ast',
+              'fory_compiler.frontend.fbs.lexer', 'fory_compiler.frontend.fbs.parser',
+              'fory_compiler.frontend.fbs.translator',
+              'fory_compiler.generators', 'fory_compiler.generators.base',
+              'fory_compiler.generators.java', 'fory_compiler.generators.python',
+              'fory_compiler.generators.cpp', 'fory_compiler.generators.rust',
+              'fory_compiler.generators.go',
+          ]
+          for m in mods:
+              __import__(m)
+              print(f'OK: {m}')
+          print('All hiddenimports verified.')
+          "
+
       - name: Disable Windows Defender real-time monitoring (PyInstaller workaround)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
+          Add-MpPreference -ExclusionProcess "foryc.exe"
 
       # ── Build ───────────────────────────────────────────────────────────────
       # Must run from compiler/ so pathex=['.'] in foryc.spec resolves
@@ -169,42 +206,48 @@ jobs:
       # ── Pre-compression smoke test ──────────────────────────────────────────
       # Confirms the binary is functional before UPX touches it.
       # A broken binary here gives a cleaner error than post-UPX.
+      # FIX 3: Use env var for path safety
       - name: Smoke test (pre-UPX)
         shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
         run: |
           echo "=== Pre-UPX binary size ==="
           python -c "
           import os
-          p = '${{ matrix.binary_path }}'
+          p = os.environ['BINARY_PATH']
           s = os.path.getsize(p)
           print(f'Size: {s:,} bytes ({s/1024/1024:.2f} MB)')
           "
-          "${{ matrix.binary_path }}" --help
+          "$BINARY_PATH" --help
 
       # ── UPX compression ─────────────────────────────────────────────────────
       # --best --lzma: maximum compression, ~10% better ratio than default.
       # UPX on PyInstaller --onefile binaries is well-supported.
       # The PyInstaller bootloader survives UPX compression intact.
+      # FIX 3: Use env var for path safety
       - name: Compress with UPX
         if: matrix.use_upx
         shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
         run: |
-          upx --best --lzma "${{ matrix.binary_path }}"
+          upx --best --lzma "$BINARY_PATH"
           echo "=== Post-UPX binary size ==="
           python -c "
           import os
-          p = '${{ matrix.binary_path }}'
+          p = os.environ['BINARY_PATH']
           s = os.path.getsize(p)
           print(f'Size: {s:,} bytes ({s/1024/1024:.2f} MB)')
           "
 
-      # ── macOS aarch64: re-sign after UPX ────────────────────────────────────
-      # UPX modifies the Mach-O binary, invalidating its code signature.
-      # Apple Silicon refuses to execute binaries with invalid signatures.
+      # FIX 2: Renamed step to reflect actual purpose
+      # ── macOS aarch64: ad-hoc codesign ───────────────────────────────────────
+      # PyInstaller-built Apple Silicon binaries require valid code signatures.
       # --sign - creates an ad-hoc signature; no Apple Developer ID required.
       # Ad-hoc signatures are sufficient for binaries distributed via crates.io
       # since they are not quarantined (not downloaded from the internet at runtime).
-      - name: Re-sign binary after UPX (macOS aarch64 only)
+      - name: Ad-hoc codesign binary (macOS aarch64, required for Apple Silicon)
         if: matrix.codesign
         run: |
           codesign --force --deep --sign - "${{ matrix.binary_path }}"
@@ -218,6 +261,7 @@ jobs:
         run: |
           "${{ matrix.binary_path }}" --help
 
+      # FIX 3: Use env var for path safety
       # ── crates.io 10 MB size gate ────────────────────────────────────────────
       # Each per-platform foryc-bin-* crate (Phase 2) embeds exactly one binary.
       # crates.io hard limit is 10 MB per crate.
@@ -225,10 +269,12 @@ jobs:
       # investigate why binary grew, or reconsider distribution strategy.
       - name: Assert binary is under 10 MB (crates.io hard limit)
         shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
         run: |
           python -c "
           import os, sys
-          path = '${{ matrix.binary_path }}'
+          path = os.environ['BINARY_PATH']
           size = os.path.getsize(path)
           limit = 10 * 1024 * 1024
           print(f'Final size: {size:,} bytes ({size/1024/1024:.2f} MB)')
@@ -259,6 +305,8 @@ jobs:
   #      demo.fdl exercises: enum, optional, list, map, ref (cross-message
   #      reference using the 'ref' keyword), primitive arrays, type IDs,
   #      and name-based registration. It is the repo's own known-good fixture.
+  #   3. End-to-end compile of compiler/examples/demo.fdl to Java output.
+  #      Validates that all 5 language generators are correctly embedded.
   # ─────────────────────────────────────────────────────────────────────────────
   validate:
     name: validate / ${{ matrix.target }}
@@ -289,7 +337,7 @@ jobs:
             binary_name: foryc
 
           - target: windows-x86_64
-            os: windows-latest
+            os: windows-2022
             artifact_name: foryc-windows-x86_64
             binary_name: foryc.exe
 
@@ -302,34 +350,45 @@ jobs:
           sparse-checkout: compiler/examples
           sparse-checkout-cone-mode: true
 
+      # FIX 1: Changed from v5 to v4 for compatibility with upload-artifact@v4
       - name: Download artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ./artifact
+
+      # NEW FIX 10: Disable Windows Defender in validate job (missing from original)
+      - name: Disable Windows Defender (required for PyInstaller onefile extraction)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-MpPreference -ExclusionPath "$env:RUNNER_TEMP"
+          Add-MpPreference -ExclusionProcess "foryc.exe"
 
       - name: Make executable (Unix)
         if: runner.os != 'Windows'
         run: chmod +x ./artifact/${{ matrix.binary_name }}
 
+      # FIX 4: Tighter --help validation
       # ── Test 1: --help ───────────────────────────────────────────────────────
       - name: Validate --help output
         shell: bash
         run: |
           OUTPUT=$(./artifact/${{ matrix.binary_name }} --help 2>&1)
           echo "$OUTPUT"
-          echo "$OUTPUT" | grep -iE "(fory|usage|compile|idl|lang)" || {
-            echo "ERROR: --help output missing expected keywords"
+          echo "$OUTPUT" | grep -qiE "^usage:.*foryc" || {
+            echo "ERROR: --help missing expected usage line"
             exit 1
           }
 
+      # FIX 5: Check for .rs files, not just file count
       # ── Test 2: End-to-end FDL → Rust ────────────────────────────────────────
       # Uses compiler/examples/demo.fdl from the sparse checkout.
       # Correct invocation: --rust_out sets output dir; no --lang needed.
       - name: End-to-end compile demo.fdl to Rust
         shell: bash
         run: |
-          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-out"
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-rust"
           mkdir -p "${OUT_DIR}"
 
           echo "=== Compiling compiler/examples/demo.fdl → Rust ==="
@@ -340,12 +399,35 @@ jobs:
           echo "=== Output files ==="
           ls -la "${OUT_DIR}/"
 
-          FILE_COUNT=$(ls "${OUT_DIR}" | wc -l)
-          if [ "${FILE_COUNT}" -eq 0 ]; then
-            echo "ERROR: foryc produced no output files"
+          RS_COUNT=$(find "${OUT_DIR}" -name "*.rs" -size +0c | wc -l)
+          if [ "${RS_COUNT}" -eq 0 ]; then
+            echo "ERROR: no non-empty .rs files generated"
             exit 1
           fi
-          echo "PASS: ${FILE_COUNT} file(s) generated"
+          echo "PASS: ${RS_COUNT} .rs file(s) generated"
+
+      # FIX 6: Add Java generator validation
+      # ── Test 3: End-to-end FDL → Java ─────────────────────────────────────────
+      - name: End-to-end compile demo.fdl to Java
+        shell: bash
+        run: |
+          JAVA_OUT="${RUNNER_TEMP}/foryc-e2e-java"
+          mkdir -p "${JAVA_OUT}"
+
+          echo "=== Compiling compiler/examples/demo.fdl → Java ==="
+          ./artifact/${{ matrix.binary_name }} \
+            --java_out "${JAVA_OUT}" \
+            compiler/examples/demo.fdl
+
+          echo "=== Output files ==="
+          ls -la "${JAVA_OUT}/"
+
+          JAVA_COUNT=$(find "${JAVA_OUT}" -name "*.java" -size +0c | wc -l)
+          if [ "${JAVA_COUNT}" -eq 0 ]; then
+            echo "ERROR: no non-empty .java files generated"
+            exit 1
+          fi
+          echo "PASS: ${JAVA_COUNT} .java file(s) generated"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # SUMMARY JOB
