@@ -20,13 +20,6 @@ using System.Collections.Immutable;
 
 namespace Apache.Fory;
 
-internal enum DynamicRegistrationMode
-{
-    IdOnly,
-    NameOnly,
-    Mixed,
-}
-
 public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
@@ -82,7 +75,6 @@ public sealed class TypeResolver
 
     private readonly Dictionary<uint, TypeInfo> _byUserTypeId = [];
     private readonly Dictionary<(string NamespaceName, string TypeName), TypeInfo> _byTypeName = [];
-    private readonly Dictionary<TypeId, DynamicRegistrationMode> _registrationModeByKind = [];
 
     private readonly Dictionary<Type, TypeInfo> _typeInfos = [];
 
@@ -156,7 +148,6 @@ public sealed class TypeResolver
     {
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitSerializer);
         typeInfo.RegisterByTypeId(id);
-        MarkRegistrationMode(typeInfo.StaticTypeId, false);
         _byUserTypeId[id] = typeInfo;
     }
 
@@ -166,7 +157,6 @@ public sealed class TypeResolver
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
         typeInfo.RegisterByTypeName(namespaceMeta, typeNameMeta);
-        MarkRegistrationMode(typeInfo.StaticTypeId, true);
         _byTypeName[(namespaceName, typeName)] = typeInfo;
     }
 
@@ -452,20 +442,7 @@ public sealed class TypeResolver
             case TypeId.Ext:
             case TypeId.TypedUnion:
             {
-                DynamicRegistrationMode mode = DynamicRegistrationModeFor(wireTypeId);
-                if (mode == DynamicRegistrationMode.IdOnly)
-                {
-                    return new DynamicTypeInfo(wireTypeId, context.Reader.ReadVarUInt32(), null, null, null);
-                }
-
-                if (mode == DynamicRegistrationMode.NameOnly)
-                {
-                    MetaString namespaceName = ReadMetaString(context.Reader, MetaStringDecoder.Namespace, TypeMetaEncodings.NamespaceMetaStringEncodings);
-                    MetaString typeName = ReadMetaString(context.Reader, MetaStringDecoder.TypeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
-                    return new DynamicTypeInfo(wireTypeId, null, namespaceName, typeName, null);
-                }
-
-                throw new InvalidDataException($"ambiguous dynamic type registration mode for {wireTypeId}");
+                return new DynamicTypeInfo(wireTypeId, context.Reader.ReadVarUInt32(), null, null, null);
             }
             default:
                 return new DynamicTypeInfo(wireTypeId, null, null, null, null);
@@ -554,17 +531,12 @@ public sealed class TypeResolver
             case TypeId.Ext:
             case TypeId.TypedUnion:
             {
-                if (typeInfo.UserTypeId.HasValue)
+                if (!typeInfo.UserTypeId.HasValue)
                 {
-                    return ReadByUserTypeId(typeInfo.UserTypeId.Value, context);
+                    throw new InvalidDataException($"missing dynamic user type id for {typeInfo.WireTypeId}");
                 }
 
-                if (typeInfo.NamespaceName.HasValue && typeInfo.TypeName.HasValue)
-                {
-                    return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, context);
-                }
-
-                throw new InvalidDataException($"missing dynamic registration info for {typeInfo.WireTypeId}");
+                return ReadByUserTypeId(typeInfo.UserTypeId.Value, context);
             }
             case TypeId.NamedStruct:
             case TypeId.NamedEnum:
@@ -774,31 +746,6 @@ public sealed class TypeResolver
         }
 
         return values;
-    }
-
-    private void MarkRegistrationMode(TypeId kind, bool registerByName)
-    {
-        DynamicRegistrationMode mode = registerByName ? DynamicRegistrationMode.NameOnly : DynamicRegistrationMode.IdOnly;
-        if (!_registrationModeByKind.TryGetValue(kind, out DynamicRegistrationMode existing))
-        {
-            _registrationModeByKind[kind] = mode;
-            return;
-        }
-
-        if (existing != mode)
-        {
-            _registrationModeByKind[kind] = DynamicRegistrationMode.Mixed;
-        }
-    }
-
-    private DynamicRegistrationMode DynamicRegistrationModeFor(TypeId kind)
-    {
-        if (_registrationModeByKind.TryGetValue(kind, out DynamicRegistrationMode mode))
-        {
-            return mode;
-        }
-
-        throw new TypeNotRegisteredException($"no dynamic registration mode for kind {kind}");
     }
 
     private static TypeId NormalizeBaseKind(TypeId kind)
