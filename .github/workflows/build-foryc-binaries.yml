@@ -65,6 +65,8 @@ env:
 # UPX notes:
 #   UPX is applied to the executable inside dist/foryc/ only, not the dir.
 #   macOS skips UPX — UPX 4.x+ dropped Mach-O support entirely.
+#   Windows skips UPX — the onedir bootloader stub's PE layout is
+#   incompatible with UPX --best --lzma (exit code 1, no output).
 #
 # Phase 2 distribution note:
 #   The onedir package is 20-40 MB total (python311.dll + stdlib .pyc files).
@@ -117,7 +119,7 @@ jobs:
             artifact_name: foryc-windows-x86_64
             binary_path: compiler/dist/foryc/foryc.exe
             binary_name: foryc.exe
-            use_upx: true
+            use_upx: false
             codesign: false
 
     steps:
