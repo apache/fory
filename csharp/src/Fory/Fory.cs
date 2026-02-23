@@ -93,14 +93,17 @@ public sealed class Fory
 
     public byte[] Serialize<T>(in T value)
     {
-        ByteWriter writer = new();
+        ByteWriter writer = _writeContext.Writer;
+        writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         bool isNone = serializer.IsNone(value);
         WriteHead(writer, isNone);
         if (!isNone)
         {
             _writeContext.ResetFor(writer);
-            RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+            RefMode refMode = Config.TrackRef
+                ? RefMode.Tracking
+                : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
             serializer.Write(_writeContext, value, refMode, true, false);
             _writeContext.ResetObjectState();
         }
@@ -116,7 +119,21 @@ public sealed class Fory
 
     public T Deserialize<T>(ReadOnlySpan<byte> payload)
     {
-        ByteReader reader = new(payload);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
+        T value = DeserializeFromReader<T>(reader);
+        if (reader.Remaining != 0)
+        {
+            throw new InvalidDataException($"unexpected trailing bytes after deserializing {typeof(T)}");
+        }
+
+        return value;
+    }
+
+    public T Deserialize<T>(byte[] payload)
+    {
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -129,7 +146,8 @@ public sealed class Fory
     public T Deserialize<T>(ref ReadOnlySequence<byte> payload)
     {
         byte[] bytes = payload.ToArray();
-        ByteReader reader = new(bytes);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(bytes);
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;
@@ -137,13 +155,16 @@ public sealed class Fory
 
     public byte[] SerializeObject(object? value)
     {
-        ByteWriter writer = new();
+        ByteWriter writer = _writeContext.Writer;
+        writer.Reset();
         bool isNone = value is null;
         WriteHead(writer, isNone);
         if (!isNone)
         {
             _writeContext.ResetFor(writer);
-            RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+            RefMode refMode = Config.TrackRef
+                ? RefMode.Tracking
+                : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
             DynamicAnyCodec.WriteAny(_writeContext, value, refMode, true, false);
             _writeContext.ResetObjectState();
         }
@@ -159,7 +180,21 @@ public sealed class Fory
 
     public object? DeserializeObject(ReadOnlySpan<byte> payload)
     {
-        ByteReader reader = new(payload);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
+        object? value = DeserializeObjectFromReader(reader);
+        if (reader.Remaining != 0)
+        {
+            throw new InvalidDataException("unexpected trailing bytes after deserializing dynamic object");
+        }
+
+        return value;
+    }
+
+    public object? DeserializeObject(byte[] payload)
+    {
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
         object? value = DeserializeObjectFromReader(reader);
         if (reader.Remaining != 0)
         {
@@ -172,7 +207,8 @@ public sealed class Fory
     public object? DeserializeObject(ref ReadOnlySequence<byte> payload)
     {
         byte[] bytes = payload.ToArray();
-        ByteReader reader = new(bytes);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(bytes);
         object? value = DeserializeObjectFromReader(reader);
         payload = payload.Slice(reader.Cursor);
         return value;
@@ -216,7 +252,9 @@ public sealed class Fory
         }
 
         _readContext.ResetFor(reader);
-        RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+        RefMode refMode = Config.TrackRef
+            ? RefMode.Tracking
+            : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
         T value = serializer.Read(_readContext, refMode, true);
         _readContext.ResetObjectState();
         return value;
@@ -231,7 +269,9 @@ public sealed class Fory
         }
 
         _readContext.ResetFor(reader);
-        RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+        RefMode refMode = Config.TrackRef
+            ? RefMode.Tracking
+            : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
         object? value = DynamicAnyCodec.ReadAny(_readContext, refMode, true);
         _readContext.ResetObjectState();
         return value;

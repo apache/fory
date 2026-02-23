@@ -20,6 +20,7 @@ namespace Apache.Fory;
 public sealed record Config(
     bool Xlang = true,
     bool TrackRef = false,
+    bool SkipRootRefFlag = false,
     bool Compatible = false,
     bool CheckStructVersion = false,
     bool EnableReflectionFallback = false,
@@ -29,6 +30,7 @@ public sealed class ForyBuilder
 {
     private bool _xlang = true;
     private bool _trackRef;
+    private bool _skipRootRefFlag;
     private bool _compatible;
     private bool _checkStructVersion;
     private bool _enableReflectionFallback;
@@ -43,6 +45,12 @@ public sealed class ForyBuilder
     public ForyBuilder TrackRef(bool enabled = false)
     {
         _trackRef = enabled;
+        return this;
+    }
+
+    public ForyBuilder SkipRootRefFlag(bool enabled = false)
+    {
+        _skipRootRefFlag = enabled;
         return this;
     }
 
@@ -80,6 +88,7 @@ public sealed class ForyBuilder
         return new Config(
             Xlang: _xlang,
             TrackRef: _trackRef,
+            SkipRootRefFlag: _skipRootRefFlag,
             Compatible: _compatible,
             CheckStructVersion: _checkStructVersion,
             EnableReflectionFallback: _enableReflectionFallback,
