@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections;
 using System.Collections.Concurrent;
 
 namespace Apache.Fory;
@@ -286,18 +287,137 @@ internal readonly struct Float64PrimitiveDictionaryCodec : IPrimitiveDictionaryC
     }
 }
 
+internal interface IPrimitiveMapWriteOps<TMap, TKey, TValue, TEnumerator>
+    where TKey : notnull
+    where TEnumerator : struct, IEnumerator<KeyValuePair<TKey, TValue>>
+{
+    static abstract int Count(TMap map);
+
+    static abstract TEnumerator GetEnumerator(TMap map);
+}
+
+internal interface IPrimitiveMapReadOps<TMap, TKey, TValue>
+    where TKey : notnull
+{
+    static abstract TMap Create(int capacity);
+
+    static abstract void Put(TMap map, TKey key, TValue value);
+}
+
+internal readonly struct DictionaryPrimitiveMapOps<TKey, TValue>
+    : IPrimitiveMapWriteOps<Dictionary<TKey, TValue>, TKey, TValue, Dictionary<TKey, TValue>.Enumerator>,
+      IPrimitiveMapReadOps<Dictionary<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    public static int Count(Dictionary<TKey, TValue> map) => map.Count;
+
+    public static Dictionary<TKey, TValue>.Enumerator GetEnumerator(Dictionary<TKey, TValue> map) => map.GetEnumerator();
+
+    public static Dictionary<TKey, TValue> Create(int capacity) => new(capacity);
+
+    public static void Put(Dictionary<TKey, TValue> map, TKey key, TValue value)
+    {
+        map[key] = value;
+    }
+}
+
+internal readonly struct SortedDictionaryPrimitiveMapOps<TKey, TValue>
+    : IPrimitiveMapWriteOps<SortedDictionary<TKey, TValue>, TKey, TValue, SortedDictionary<TKey, TValue>.Enumerator>,
+      IPrimitiveMapReadOps<SortedDictionary<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    public static int Count(SortedDictionary<TKey, TValue> map) => map.Count;
+
+    public static SortedDictionary<TKey, TValue>.Enumerator GetEnumerator(SortedDictionary<TKey, TValue> map) => map.GetEnumerator();
+
+    public static SortedDictionary<TKey, TValue> Create(int capacity)
+    {
+        _ = capacity;
+        return new SortedDictionary<TKey, TValue>();
+    }
+
+    public static void Put(SortedDictionary<TKey, TValue> map, TKey key, TValue value)
+    {
+        map[key] = value;
+    }
+}
+
+internal readonly struct ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>
+    : IPrimitiveMapReadOps<ConcurrentDictionary<TKey, TValue>, TKey, TValue>
+    where TKey : notnull
+{
+    public static ConcurrentDictionary<TKey, TValue> Create(int capacity)
+    {
+        return new ConcurrentDictionary<TKey, TValue>(Environment.ProcessorCount, capacity);
+    }
+
+    public static void Put(ConcurrentDictionary<TKey, TValue> map, TKey key, TValue value)
+    {
+        map[key] = value;
+    }
+}
+
+internal struct KeyValuePairArrayEnumerator<TKey, TValue> : IEnumerator<KeyValuePair<TKey, TValue>>
+{
+    private readonly KeyValuePair<TKey, TValue>[] _array;
+    private int _index;
+
+    public KeyValuePairArrayEnumerator(KeyValuePair<TKey, TValue>[] array)
+    {
+        _array = array;
+        _index = -1;
+    }
+
+    public KeyValuePair<TKey, TValue> Current => _array[_index];
+
+    object IEnumerator.Current => Current;
+
+    public bool MoveNext()
+    {
+        int next = _index + 1;
+        if (next >= _array.Length)
+        {
+            return false;
+        }
+
+        _index = next;
+        return true;
+    }
+
+    public void Reset()
+    {
+        _index = -1;
+    }
+
+    public void Dispose()
+    {
+    }
+}
+
+internal readonly struct ArrayPrimitiveMapWriteOps<TKey, TValue>
+    : IPrimitiveMapWriteOps<KeyValuePair<TKey, TValue>[], TKey, TValue, KeyValuePairArrayEnumerator<TKey, TValue>>
+    where TKey : notnull
+{
+    public static int Count(KeyValuePair<TKey, TValue>[] map) => map.Length;
+
+    public static KeyValuePairArrayEnumerator<TKey, TValue> GetEnumerator(KeyValuePair<TKey, TValue>[] map) => new(map);
+}
+
 internal static class PrimitiveDictionaryCodecWriter
 {
-    public static void WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(
+    public static void WriteMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps, TEnumerator>(
         ref WriteContext context,
-        KeyValuePair<TKey, TValue>[] pairs,
+        TMap map,
         bool hasGenerics)
         where TKey : notnull
         where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
         where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+        where TMapOps : struct, IPrimitiveMapWriteOps<TMap, TKey, TValue, TEnumerator>
+        where TEnumerator : struct, IEnumerator<KeyValuePair<TKey, TValue>>
     {
-        context.Writer.WriteVarUInt32((uint)pairs.Length);
-        if (pairs.Length == 0)
+        int totalLength = map is null ? 0 : TMapOps.Count(map);
+        context.Writer.WriteVarUInt32((uint)totalLength);
+        if (totalLength == 0)
         {
             return;
         }
@@ -309,10 +429,17 @@ internal static class PrimitiveDictionaryCodecWriter
         bool keyNullable = TKeyCodec.IsNullable;
         bool valueNullable = TValueCodec.IsNullable;
 
-        int index = 0;
-        while (index < pairs.Length)
+        int writtenCount = 0;
+        using TEnumerator enumerator = TMapOps.GetEnumerator(map);
+        if (!enumerator.MoveNext())
         {
-            KeyValuePair<TKey, TValue> pair = pairs[index];
+            throw new InvalidDataException($"primitive map enumerator yielded zero entries while count={totalLength}");
+        }
+
+        KeyValuePair<TKey, TValue> pair = enumerator.Current;
+        bool hasCurrent = true;
+        while (hasCurrent)
+        {
             bool keyNull = keyNullable && TKeyCodec.IsNone(pair.Key);
             bool valueNull = valueNullable && TValueCodec.IsNone(pair.Value);
             if (keyNull || valueNull)
@@ -357,7 +484,18 @@ internal static class PrimitiveDictionaryCodecWriter
                     TValueCodec.Write(ref context, pair.Value);
                 }
 
-                index += 1;
+                writtenCount += 1;
+                if (writtenCount > totalLength)
+                {
+                    throw new InvalidDataException($"primitive map count mismatch: expected {totalLength}, wrote at least {writtenCount}");
+                }
+
+                hasCurrent = enumerator.MoveNext();
+                if (hasCurrent)
+                {
+                    pair = enumerator.Current;
+                }
+
                 continue;
             }
 
@@ -378,45 +516,72 @@ internal static class PrimitiveDictionaryCodecWriter
             PrimitiveDictionaryHeader.WriteMapChunkTypeInfo(ref context, keyDeclared, valueDeclared, keyTypeId, valueTypeId);
 
             byte chunkSize = 0;
-            while (index < pairs.Length && chunkSize < byte.MaxValue)
+            while (true)
             {
-                pair = pairs[index];
+                TKeyCodec.Write(ref context, pair.Key);
+                TValueCodec.Write(ref context, pair.Value);
+                chunkSize += 1;
+                writtenCount += 1;
+                if (writtenCount > totalLength)
+                {
+                    throw new InvalidDataException($"primitive map count mismatch: expected {totalLength}, wrote at least {writtenCount}");
+                }
+
+                if (chunkSize == byte.MaxValue)
+                {
+                    hasCurrent = enumerator.MoveNext();
+                    if (hasCurrent)
+                    {
+                        pair = enumerator.Current;
+                    }
+
+                    break;
+                }
+
+                if (!enumerator.MoveNext())
+                {
+                    hasCurrent = false;
+                    break;
+                }
+
+                pair = enumerator.Current;
                 keyNull = keyNullable && TKeyCodec.IsNone(pair.Key);
                 valueNull = valueNullable && TValueCodec.IsNone(pair.Value);
                 if (keyNull || valueNull)
                 {
+                    hasCurrent = true;
                     break;
                 }
-
-                TKeyCodec.Write(ref context, pair.Key);
-                TValueCodec.Write(ref context, pair.Value);
-                index += 1;
-                chunkSize += 1;
             }
 
             context.Writer.SetByte(chunkSizeOffset, chunkSize);
+        }
+
+        if (writtenCount != totalLength)
+        {
+            throw new InvalidDataException($"primitive map count mismatch: expected {totalLength}, wrote {writtenCount}");
         }
     }
 }
 
 internal static class PrimitiveDictionaryCodecReader
 {
-    public static Dictionary<TKey, TValue> ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref ReadContext context)
+    public static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(ref ReadContext context)
         where TKey : notnull
         where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
         where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+        where TMapOps : struct, IPrimitiveMapReadOps<TMap, TKey, TValue>
     {
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
+        TMap map = TMapOps.Create(totalLength);
         if (totalLength == 0)
         {
-            return [];
+            return map;
         }
 
         TypeId keyTypeId = TKeyCodec.WireTypeId;
         TypeId valueTypeId = TValueCodec.WireTypeId;
         bool keyNullable = TKeyCodec.IsNullable;
-        Dictionary<TKey, TValue> map = new(totalLength);
-
         int readCount = 0;
         while (readCount < totalLength)
         {
@@ -463,7 +628,7 @@ internal static class PrimitiveDictionaryCodecReader
                 }
 
                 TKey key = TKeyCodec.Read(ref context);
-                map[key] = TValueCodec.DefaultValue;
+                TMapOps.Put(map, key, TValueCodec.DefaultValue);
                 readCount += 1;
                 continue;
             }
@@ -488,7 +653,7 @@ internal static class PrimitiveDictionaryCodecReader
             {
                 TKey key = TKeyCodec.Read(ref context);
                 TValue value = TValueCodec.Read(ref context);
-                map[key] = value;
+                TMapOps.Put(map, key, value);
             }
 
             readCount += chunkSize;
@@ -525,12 +690,25 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
 public override void WriteData(ref WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
         Dictionary<TKey, TValue> map = value ?? [];
-        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, [.. map], hasGenerics);
+        PrimitiveDictionaryCodecWriter.WriteMap<
+            Dictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            DictionaryPrimitiveMapOps<TKey, TValue>,
+            Dictionary<TKey, TValue>.Enumerator>(ref context, map, hasGenerics);
     }
 
     public override Dictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
-        return PrimitiveDictionaryCodecReader.ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context);
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            Dictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            DictionaryPrimitiveMapOps<TKey, TValue>>(ref context);
     }
 }
 
@@ -565,13 +743,25 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
     public override void WriteData(ref WriteContext context, in SortedDictionary<TKey, TValue> value, bool hasGenerics)
     {
         SortedDictionary<TKey, TValue> map = value ?? new SortedDictionary<TKey, TValue>();
-        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, [.. map], hasGenerics);
+        PrimitiveDictionaryCodecWriter.WriteMap<
+            SortedDictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            SortedDictionaryPrimitiveMapOps<TKey, TValue>,
+            SortedDictionary<TKey, TValue>.Enumerator>(ref context, map, hasGenerics);
     }
 
     public override SortedDictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
-        Dictionary<TKey, TValue> map = PrimitiveDictionaryCodecReader.ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context);
-        return new SortedDictionary<TKey, TValue>(map);
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            SortedDictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            SortedDictionaryPrimitiveMapOps<TKey, TValue>>(ref context);
     }
 }
 
@@ -606,13 +796,26 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
     public override void WriteData(ref WriteContext context, in ConcurrentDictionary<TKey, TValue> value, bool hasGenerics)
     {
         ConcurrentDictionary<TKey, TValue> map = value ?? new ConcurrentDictionary<TKey, TValue>();
-        PrimitiveDictionaryCodecWriter.WriteMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context, map.ToArray(), hasGenerics);
+        // Use snapshot to keep count and entry enumeration stable under concurrent mutation.
+        PrimitiveDictionaryCodecWriter.WriteMap<
+            KeyValuePair<TKey, TValue>[],
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            ArrayPrimitiveMapWriteOps<TKey, TValue>,
+            KeyValuePairArrayEnumerator<TKey, TValue>>(ref context, map.ToArray(), hasGenerics);
     }
 
     public override ConcurrentDictionary<TKey, TValue> ReadData(ref ReadContext context)
     {
-        Dictionary<TKey, TValue> map = PrimitiveDictionaryCodecReader.ReadMap<TKey, TValue, TKeyCodec, TValueCodec>(ref context);
-        return new ConcurrentDictionary<TKey, TValue>(map);
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            ConcurrentDictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(ref context);
     }
 }
 
