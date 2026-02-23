@@ -17,29 +17,5 @@
  * under the License.
  */
 
-import {
-  TypeInfo,
-  Type,
-  Dynamic,
-} from "./lib/typeInfo";
-import { Serializer, Mode } from "./lib/type";
-import Fory from "./lib/fory";
-import { BinaryReader } from "./lib/reader";
-import { BinaryWriter } from "./lib/writer";
-import { BFloat16, BFloat16Array } from "./lib/bfloat16";
-import * as Codegen from "./lib/codegen";
-
-export {
-  Serializer,
-  TypeInfo,
-  Type,
-  Mode,
-  BinaryWriter,
-  Dynamic,
-  BinaryReader,
-  BFloat16,
-  BFloat16Array,
-  Codegen,
-};
-
-export default Fory;
+export * from "./idlParser";
+export * from "./codeGenerator";
