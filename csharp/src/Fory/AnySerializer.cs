@@ -110,7 +110,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 case RefFlag.RefValue:
                 {
                     uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.PushPendingReference(reservedRefId);
+                    context.RefReader.PushPendingReference(reservedRefId);
                     if (readTypeInfo)
                     {
                         ReadTypeInfo(context);
@@ -122,8 +122,8 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                         context.ClearDynamicTypeInfo(typeof(object));
                     }
 
-                    context.FinishPendingReferenceIfNeeded(value);
-                    context.PopPendingReference();
+                    context.RefReader.FinishPendingReferenceIfNeeded(value);
+                    context.RefReader.PopPendingReference();
                     return value;
                 }
                 case RefFlag.NotNullValue:

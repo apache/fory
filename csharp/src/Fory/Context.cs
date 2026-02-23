@@ -208,8 +208,6 @@ public sealed class WriteContext
     }
 }
 
-internal readonly record struct PendingRefSlot(uint RefId, bool Bound);
-
 internal readonly record struct CanonicalReferenceSignature(
     Type Type,
     ulong HashLo,
@@ -224,7 +222,6 @@ internal sealed class CanonicalReferenceEntry
 
 public sealed class ReadContext
 {
-    private readonly List<PendingRefSlot> _pendingRefStack = [];
     private readonly Dictionary<Type, List<TypeMeta>> _pendingCompatibleTypeMeta = [];
     private readonly Dictionary<Type, DynamicTypeInfo> _pendingDynamicTypeInfo = [];
     private readonly Dictionary<CanonicalReferenceSignature, List<CanonicalReferenceEntry>> _canonicalReferenceCache = [];
@@ -264,46 +261,6 @@ public sealed class ReadContext
     {
         Reader = reader;
         Reset();
-    }
-
-    public void PushPendingReference(uint refId)
-    {
-        _pendingRefStack.Add(new PendingRefSlot(refId, false));
-    }
-
-    public void BindPendingReference(object? value)
-    {
-        if (_pendingRefStack.Count == 0)
-        {
-            return;
-        }
-
-        PendingRefSlot last = _pendingRefStack[^1];
-        _pendingRefStack.RemoveAt(_pendingRefStack.Count - 1);
-        _pendingRefStack.Add(last with { Bound = true });
-        RefReader.StoreRef(value, last.RefId);
-    }
-
-    public void FinishPendingReferenceIfNeeded(object? value)
-    {
-        if (_pendingRefStack.Count == 0)
-        {
-            return;
-        }
-
-        PendingRefSlot last = _pendingRefStack[^1];
-        if (!last.Bound)
-        {
-            RefReader.StoreRef(value, last.RefId);
-        }
-    }
-
-    public void PopPendingReference()
-    {
-        if (_pendingRefStack.Count > 0)
-        {
-            _pendingRefStack.RemoveAt(_pendingRefStack.Count - 1);
-        }
     }
 
     public TypeMeta ReadCompatibleTypeMeta()
@@ -393,7 +350,6 @@ public sealed class ReadContext
     public void ResetObjectState()
     {
         RefReader.Reset();
-        _pendingRefStack.Clear();
         _pendingCompatibleTypeMeta.Clear();
         _pendingDynamicTypeInfo.Clear();
         _canonicalReferenceCache.Clear();

@@ -17,6 +17,8 @@
 
 namespace Apache.Fory;
 
+internal readonly record struct PendingRefSlot(uint RefId, bool Bound);
+
 public sealed class RefWriter
 {
     private readonly Dictionary<object, uint> _refs = new(ReferenceEqualityComparer.Instance);
@@ -54,6 +56,7 @@ public sealed class RefWriter
 public sealed class RefReader
 {
     private readonly List<object?> _refs = [];
+    private readonly List<PendingRefSlot> _pendingRefStack = [];
 
     public uint ReserveRefId()
     {
@@ -66,6 +69,46 @@ public sealed class RefReader
     {
         int index = checked((int)refId);
         _refs[index] = value;
+    }
+
+    public void PushPendingReference(uint refId)
+    {
+        _pendingRefStack.Add(new PendingRefSlot(refId, false));
+    }
+
+    public void BindPendingReference(object? value)
+    {
+        if (_pendingRefStack.Count == 0)
+        {
+            return;
+        }
+
+        PendingRefSlot last = _pendingRefStack[^1];
+        _pendingRefStack.RemoveAt(_pendingRefStack.Count - 1);
+        _pendingRefStack.Add(last with { Bound = true });
+        StoreRef(value, last.RefId);
+    }
+
+    public void FinishPendingReferenceIfNeeded(object? value)
+    {
+        if (_pendingRefStack.Count == 0)
+        {
+            return;
+        }
+
+        PendingRefSlot last = _pendingRefStack[^1];
+        if (!last.Bound)
+        {
+            StoreRef(value, last.RefId);
+        }
+    }
+
+    public void PopPendingReference()
+    {
+        if (_pendingRefStack.Count > 0)
+        {
+            _pendingRefStack.RemoveAt(_pendingRefStack.Count - 1);
+        }
     }
 
     public T ReadRef<T>(uint refId)
@@ -98,6 +141,6 @@ public sealed class RefReader
     public void Reset()
     {
         _refs.Clear();
+        _pendingRefStack.Clear();
     }
 }
-

@@ -366,7 +366,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("            context.BindPendingReference(value);");
+            sb.AppendLine("            context.RefReader.BindPendingReference(value);");
         }
 
         sb.AppendLine("            foreach (global::Apache.Fory.TypeMetaFieldInfo remoteField in typeMeta.Fields)");
@@ -402,7 +402,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("        context.BindPendingReference(valueSchema);");
+            sb.AppendLine("        context.RefReader.BindPendingReference(valueSchema);");
         }
 
         foreach (MemberModel member in model.SortedMembers)
