@@ -297,7 +297,7 @@ export class CodeGenerator {
     const unionName = this.toPascalCase(name);
 
     if (this.options.language === "typescript") {
-      const unionDef = members.map((m) => `{ type: '${m}'; value: ${m} }`).join(" | ");
+      const unionDef = members.map(m => `{ type: '${m}'; value: ${m} }`).join(" | ");
       return `${spaces}export type ${unionName} = ${unionDef};`;
     } else {
       return `${spaces}const ${unionName} = Symbol('${name}');`;
@@ -357,7 +357,7 @@ export class CodeGenerator {
    */
   private toPascalCase(str: string): string {
     if (!str) return "";
-    
+
     // If string has delimiters, split and capitalize each part
     if (/[._-]/.test(str)) {
       return str
@@ -368,12 +368,12 @@ export class CodeGenerator {
         })
         .join("");
     }
-    
+
     // If already appears to be PascalCase, return as-is
     if (/^[A-Z]/.test(str)) {
       return str;
     }
-    
+
     // Otherwise capitalize first letter
     return str.charAt(0).toUpperCase() + str.slice(1);
   }

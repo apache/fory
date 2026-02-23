@@ -74,7 +74,7 @@ export interface ProtoFile {
 
 export class IDLParser {
   private input: string;
-  private pos: number = 0;
+  private pos = 0;
 
   constructor(input: string) {
     this.input = input;
@@ -121,7 +121,7 @@ export class IDLParser {
     // syntax = "proto3";
     this.consume("=", "Expected '=' after syntax");
     const quote = this.peek();
-    if (quote === '"' || quote === "'") {
+    if (quote === "\"" || quote === "'") {
       this.advance();
       const syntax = this.readUntil(quote);
       this.advance(); // consume closing quote
@@ -133,7 +133,7 @@ export class IDLParser {
 
   private parsePackage(): string {
     // package com.example.foo;
-    let pkg = this.readIdentifier();
+    const pkg = this.readIdentifier();
     this.consume(";", "Expected ';' after package");
     return pkg;
   }
@@ -141,7 +141,7 @@ export class IDLParser {
   private parseImport(): string {
     // import "google/protobuf/empty.proto";
     const quote = this.peek();
-    if (quote === '"' || quote === "'") {
+    if (quote === "\"" || quote === "'") {
       this.advance();
       const path = this.readUntil(quote);
       this.advance();
@@ -432,12 +432,12 @@ export class IDLParser {
 
   private readIdentifier(): string {
     this.skipWhitespaceAndComments();
-    
+
     // Check if next character is actually part of an identifier
     if (!/[a-zA-Z_]/.test(this.peek())) {
       return ""; // Return empty string for incomplete identifiers
     }
-    
+
     let result = "";
     while (!this.isAtEnd() && /[a-zA-Z0-9_]/.test(this.peek())) {
       result += this.peek();
