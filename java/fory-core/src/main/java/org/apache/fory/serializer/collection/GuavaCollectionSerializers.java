@@ -50,11 +50,6 @@ public class GuavaCollectionSerializers {
       fory.getClassResolver().setSerializer(cls, this);
     }
 
-    @Override
-    public T read(MemoryBuffer buffer) {
-      return super.read(buffer);
-    }
-
     protected abstract T xnewInstance(Collection collection);
   }
 

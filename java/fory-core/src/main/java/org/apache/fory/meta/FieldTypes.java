@@ -1013,16 +1013,6 @@ public class FieldTypes {
     }
 
     @Override
-    public boolean equals(Object o) {
-      return super.equals(o);
-    }
-
-    @Override
-    public int hashCode() {
-      return super.hashCode();
-    }
-
-    @Override
     public String toString() {
       return "ObjectFieldType{"
           + "typeId="
@@ -1051,16 +1041,6 @@ public class FieldTypes {
       // Fallback to base Union class if no declared type
       return TypeRef.of(
           org.apache.fory.type.union.Union.class, new TypeExtMeta(typeId, nullable, trackingRef));
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      return super.equals(o);
-    }
-
-    @Override
-    public int hashCode() {
-      return super.hashCode();
     }
 
     @Override
