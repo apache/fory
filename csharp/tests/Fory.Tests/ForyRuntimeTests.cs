@@ -767,6 +767,18 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void EnumRoundTripPreservesUndefinedValue()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<TestColor>(100);
+
+        TestColor value = (TestColor)12345;
+        TestColor decoded = fory.Deserialize<TestColor>(fory.Serialize(value));
+        Assert.Equal(value, decoded);
+        Assert.Equal(12345u, Convert.ToUInt32(decoded));
+    }
+
+    [Fact]
     public void DynamicObjectSupportsObjectKeyMapAndSet()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();

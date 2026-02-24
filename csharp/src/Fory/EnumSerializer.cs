@@ -39,12 +39,12 @@ public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : stru
     public override TEnum ReadData(ReadContext context)
     {
         uint ordinal = context.Reader.ReadVarUInt32();
-        if (!DefinedOrdinalToValue.TryGetValue(ordinal, out TEnum value))
+        if (DefinedOrdinalToValue.TryGetValue(ordinal, out TEnum value))
         {
-            throw new InvalidDataException($"unknown enum ordinal {ordinal}");
+            return value;
         }
 
-        return value;
+        return (TEnum)Enum.ToObject(typeof(TEnum), ordinal);
     }
 
     private static Dictionary<TEnum, uint> BuildValueToOrdinalMap()
