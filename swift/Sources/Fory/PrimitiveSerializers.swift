@@ -336,7 +336,7 @@ extension String: Serializer {
     public static func foryDefault() -> String { "" }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        let utf8Bytes = Array(self.utf8)
+        let utf8Bytes = self.utf8
         let header = (UInt64(utf8Bytes.count) << 2) | StringEncoding.utf8.rawValue
         context.buffer.writeVarUInt36Small(header)
         context.buffer.writeBytes(utf8Bytes)
@@ -346,14 +346,15 @@ extension String: Serializer {
         let header = try context.buffer.readVarUInt36Small()
         let encoding = header & 0x03
         let byteLength = Int(header >> 2)
-        let bytes = try context.buffer.readBytes(count: byteLength)
 
         switch encoding {
         case StringEncoding.utf8.rawValue:
-            return String(decoding: bytes, as: UTF8.self)
+            return try context.buffer.readUTF8String(count: byteLength)
         case StringEncoding.latin1.rawValue:
+            let bytes = try context.buffer.readBytes(count: byteLength)
             return decodeLatin1(bytes)
         case StringEncoding.utf16.rawValue:
+            let bytes = try context.buffer.readBytes(count: byteLength)
             if (byteLength & 1) != 0 {
                 throw ForyError.encodingError("utf16 byte length is not even")
             }

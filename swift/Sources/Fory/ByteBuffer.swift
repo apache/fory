@@ -844,6 +844,21 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
+    public func readUTF8String(count: Int) throws -> String {
+        try checkBound(count)
+        let start = cursor
+        let end = start + count
+        cursor = end
+        return storage.withUnsafeBufferPointer { buffer in
+            String(
+                decoding: UnsafeBufferPointer(rebasing: buffer[start..<end]),
+                as: UTF8.self
+            )
+        }
+    }
+
+    @inlinable
     public func skip(_ count: Int) throws {
         try checkBound(count)
         cursor += count
