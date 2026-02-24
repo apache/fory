@@ -187,6 +187,27 @@ public sealed class ByteWriter
         _count += bytes.Length;
     }
 
+    public Span<byte> GetSpan(int size)
+    {
+        if (size < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size));
+        }
+
+        EnsureCapacity(size);
+        return _storage.AsSpan(_count, size);
+    }
+
+    public void Advance(int count)
+    {
+        if (count < 0 || _count + count > _storage.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count));
+        }
+
+        _count += count;
+    }
+
     public void SetByte(int index, byte value)
     {
         if ((uint)index >= (uint)_count)

@@ -65,28 +65,22 @@ public sealed class StringSerializer : Serializer<string>
         ulong header = context.Reader.ReadVarUInt36Small();
         ulong encoding = header & 0x03;
         int byteLength = checked((int)(header >> 2));
-        byte[] bytes = context.Reader.ReadBytes(byteLength);
+        ReadOnlySpan<byte> bytes = context.Reader.ReadSpan(byteLength);
         return encoding switch
-        {
-            (ulong)ForyStringEncoding.Utf8 => Encoding.UTF8.GetString(bytes),
-            (ulong)ForyStringEncoding.Latin1 => DecodeLatin1(bytes),
+            {
+                (ulong)ForyStringEncoding.Utf8 => Encoding.UTF8.GetString(bytes),
+                (ulong)ForyStringEncoding.Latin1 => DecodeLatin1(bytes),
             (ulong)ForyStringEncoding.Utf16 => DecodeUtf16(bytes),
             _ => throw new EncodingException($"unsupported string encoding {encoding}"),
         };
     }
 
-    private static string DecodeLatin1(byte[] bytes)
+    private static string DecodeLatin1(ReadOnlySpan<byte> bytes)
     {
-        return string.Create(bytes.Length, bytes, static (span, b) =>
-        {
-            for (int i = 0; i < b.Length; i++)
-            {
-                span[i] = (char)b[i];
-            }
-        });
+        return Encoding.Latin1.GetString(bytes);
     }
 
-    private static string DecodeUtf16(byte[] bytes)
+    private static string DecodeUtf16(ReadOnlySpan<byte> bytes)
     {
         if ((bytes.Length & 1) != 0)
         {
@@ -139,31 +133,34 @@ public sealed class StringSerializer : Serializer<string>
 
     private static void WriteLatin1(WriteContext context, string value)
     {
-        byte[] latin1 = new byte[value.Length];
+        int byteLength = value.Length;
+        ulong header = ((ulong)byteLength << 2) | (ulong)ForyStringEncoding.Latin1;
+        context.Writer.WriteVarUInt36Small(header);
+        Span<byte> latin1 = context.Writer.GetSpan(byteLength);
         for (int i = 0; i < value.Length; i++)
         {
             latin1[i] = unchecked((byte)value[i]);
         }
-
-        WriteEncodedBytes(context, latin1, ForyStringEncoding.Latin1);
+        context.Writer.Advance(byteLength);
     }
 
     private static void WriteUtf8(WriteContext context, string value)
     {
-        byte[] utf8 = Encoding.UTF8.GetBytes(value);
-        WriteEncodedBytes(context, utf8, ForyStringEncoding.Utf8);
+        int byteLength = Encoding.UTF8.GetByteCount(value);
+        ulong header = ((ulong)byteLength << 2) | (ulong)ForyStringEncoding.Utf8;
+        context.Writer.WriteVarUInt36Small(header);
+        Span<byte> utf8 = context.Writer.GetSpan(byteLength);
+        int written = Encoding.UTF8.GetBytes(value, utf8);
+        context.Writer.Advance(written);
     }
 
     private static void WriteUtf16(WriteContext context, string value)
     {
-        byte[] utf16 = Encoding.Unicode.GetBytes(value);
-        WriteEncodedBytes(context, utf16, ForyStringEncoding.Utf16);
-    }
-
-    private static void WriteEncodedBytes(WriteContext context, byte[] bytes, ForyStringEncoding encoding)
-    {
-        ulong header = ((ulong)bytes.Length << 2) | (ulong)encoding;
+        int byteLength = Encoding.Unicode.GetByteCount(value);
+        ulong header = ((ulong)byteLength << 2) | (ulong)ForyStringEncoding.Utf16;
         context.Writer.WriteVarUInt36Small(header);
-        context.Writer.WriteBytes(bytes);
+        Span<byte> utf16 = context.Writer.GetSpan(byteLength);
+        int written = Encoding.Unicode.GetBytes(value, utf16);
+        context.Writer.Advance(written);
     }
 }

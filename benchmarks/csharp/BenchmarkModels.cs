@@ -22,46 +22,46 @@ using ProtoBuf;
 namespace Apache.Fory.Benchmarks.CSharp;
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class NumericStruct
 {
-    [ProtoMember(1)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(1)]
     public int F1 { get; set; }
 
-    [ProtoMember(2)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(2)]
     public int F2 { get; set; }
 
-    [ProtoMember(3)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(3)]
     public int F3 { get; set; }
 
-    [ProtoMember(4)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(4)]
     public int F4 { get; set; }
 
-    [ProtoMember(5)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(5)]
     public int F5 { get; set; }
 
-    [ProtoMember(6)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(6)]
     public int F6 { get; set; }
 
-    [ProtoMember(7)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(7)]
     public int F7 { get; set; }
 
-    [ProtoMember(8)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(8)]
     public int F8 { get; set; }
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class StructList
 {
     [ProtoMember(1)]
@@ -69,16 +69,16 @@ public sealed class StructList
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class Sample
 {
-    [ProtoMember(1)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(1)]
     public int IntValue { get; set; }
 
-    [ProtoMember(2)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(2)]
     public long LongValue { get; set; }
 
     [ProtoMember(3)]
@@ -87,23 +87,23 @@ public sealed class Sample
     [ProtoMember(4)]
     public double DoubleValue { get; set; }
 
-    [ProtoMember(5)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(5)]
     public int ShortValue { get; set; }
 
-    [ProtoMember(6)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(6)]
     public int CharValue { get; set; }
 
     [ProtoMember(7)]
     public bool BooleanValue { get; set; }
 
-    [ProtoMember(8)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(8)]
     public int IntValueBoxed { get; set; }
 
-    [ProtoMember(9)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(9)]
     public long LongValueBoxed { get; set; }
 
     [ProtoMember(10)]
@@ -112,12 +112,12 @@ public sealed class Sample
     [ProtoMember(11)]
     public double DoubleValueBoxed { get; set; }
 
-    [ProtoMember(12)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(12)]
     public int ShortValueBoxed { get; set; }
 
-    [ProtoMember(13)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(13)]
     public int CharValueBoxed { get; set; }
 
     [ProtoMember(14)]
@@ -149,8 +149,8 @@ public sealed class Sample
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class SampleList
 {
     [ProtoMember(1)]
@@ -158,22 +158,28 @@ public sealed class SampleList
 }
 
 [ForyObject]
+[ProtoContract]
 public enum Player
 {
+    [ProtoEnum]
     Java,
+    [ProtoEnum]
     Flash,
 }
 
 [ForyObject]
+[ProtoContract]
 public enum MediaSize
 {
+    [ProtoEnum]
     Small,
+    [ProtoEnum]
     Large,
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class Media
 {
     [ProtoMember(1)]
@@ -182,27 +188,27 @@ public sealed class Media
     [ProtoMember(2)]
     public string Title { get; set; } = string.Empty;
 
-    [ProtoMember(3)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(3)]
     public int Width { get; set; }
 
-    [ProtoMember(4)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(4)]
     public int Height { get; set; }
 
     [ProtoMember(5)]
     public string Format { get; set; } = string.Empty;
 
-    [ProtoMember(6)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(6)]
     public long Duration { get; set; }
 
-    [ProtoMember(7)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(7)]
     public long Size { get; set; }
 
-    [ProtoMember(8)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(8)]
     public int Bitrate { get; set; }
 
     [ProtoMember(9)]
@@ -219,8 +225,8 @@ public sealed class Media
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class Image
 {
     [ProtoMember(1)]
@@ -229,12 +235,12 @@ public sealed class Image
     [ProtoMember(2)]
     public string Title { get; set; } = string.Empty;
 
-    [ProtoMember(3)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(3)]
     public int Width { get; set; }
 
-    [ProtoMember(4)]
     [Field(Encoding = FieldEncoding.Fixed)]
+    [ProtoMember(4)]
     public int Height { get; set; }
 
     [ProtoMember(5)]
@@ -242,8 +248,8 @@ public sealed class Image
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class MediaContent
 {
     [ProtoMember(1)]
@@ -254,8 +260,8 @@ public sealed class MediaContent
 }
 
 [ForyObject]
-[ProtoContract]
 [MessagePackObject(keyAsPropertyName: true)]
+[ProtoContract]
 public sealed class MediaContentList
 {
     [ProtoMember(1)]

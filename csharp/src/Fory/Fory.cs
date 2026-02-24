@@ -39,6 +39,7 @@ public sealed class Fory
             _typeResolver,
             Config.TrackRef,
             Config.Compatible,
+            Config.CheckStructVersion,
             new CompatibleTypeDefWriteState(),
             new MetaStringWriteState());
         _readContext = new ReadContext(
@@ -46,6 +47,7 @@ public sealed class Fory
             _typeResolver,
             Config.TrackRef,
             Config.Compatible,
+            Config.CheckStructVersion,
             new CompatibleTypeDefReadState(),
             new MetaStringReadState());
     }
@@ -104,7 +106,7 @@ public sealed class Fory
             RefMode refMode = Config.TrackRef
                 ? RefMode.Tracking
                 : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
-            serializer.Write(_writeContext, value, refMode, true, false);
+            serializer.Write(_writeContext, value, refMode, !Config.SkipRootTypeInfo, false);
             _writeContext.ResetObjectState();
         }
 
@@ -255,7 +257,7 @@ public sealed class Fory
         RefMode refMode = Config.TrackRef
             ? RefMode.Tracking
             : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
-        T value = serializer.Read(_readContext, refMode, true);
+        T value = serializer.Read(_readContext, refMode, !Config.SkipRootTypeInfo);
         _readContext.ResetObjectState();
         return value;
     }

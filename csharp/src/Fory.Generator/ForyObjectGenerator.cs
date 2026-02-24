@@ -286,11 +286,24 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        return context.TypeResolver.GetSerializer<T>().Read(context, refMode, readTypeInfo);");
         sb.AppendLine("    }");
         sb.AppendLine();
+        sb.AppendLine("    private static uint? __ForySchemaHashNoTrackRef;");
+        sb.AppendLine();
         sb.AppendLine("    private static uint __ForySchemaHash(bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
-        sb.Append("        return global::Apache.Fory.SchemaHash.StructHash32(");
+        sb.AppendLine("        if (!trackRef && __ForySchemaHashNoTrackRef.HasValue)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            return __ForySchemaHashNoTrackRef.Value;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.Append("        uint value = global::Apache.Fory.SchemaHash.StructHash32(");
         sb.Append(BuildSchemaFingerprintExpression(model.Members));
         sb.AppendLine(");");
+        sb.AppendLine("        if (!trackRef)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            __ForySchemaHashNoTrackRef = value;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+        sb.AppendLine("        return value;");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    public override global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
@@ -350,7 +363,10 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        context.Writer.WriteInt32(unchecked((int)__ForySchemaHash(context.TrackRef, context.TypeResolver)));");
+        sb.AppendLine("        if (context.CheckStructVersion)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            context.Writer.WriteInt32(unchecked((int)__ForySchemaHash(context.TrackRef, context.TypeResolver)));");
+        sb.AppendLine("        }");
         foreach (MemberModel member in model.SortedMembers)
         {
             EmitWriteMember(sb, member, false);
@@ -392,11 +408,14 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("            return value;");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        uint schemaHash = unchecked((uint)context.Reader.ReadInt32());");
-        sb.AppendLine("        uint expectedHash = __ForySchemaHash(context.TrackRef, context.TypeResolver);");
-        sb.AppendLine("        if (schemaHash != expectedHash)");
+        sb.AppendLine("        if (context.CheckStructVersion)");
         sb.AppendLine("        {");
-        sb.AppendLine("            throw new global::Apache.Fory.InvalidDataException($\"class version hash mismatch: expected {expectedHash}, got {schemaHash}\");");
+        sb.AppendLine("            uint schemaHash = unchecked((uint)context.Reader.ReadInt32());");
+        sb.AppendLine("            uint expectedHash = __ForySchemaHash(context.TrackRef, context.TypeResolver);");
+        sb.AppendLine("            if (schemaHash != expectedHash)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                throw new global::Apache.Fory.InvalidDataException($\"class version hash mismatch: expected {expectedHash}, got {schemaHash}\");");
+        sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
