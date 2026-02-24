@@ -23,8 +23,14 @@ from collections import defaultdict
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate markdown report from C# benchmark JSON output")
-    parser.add_argument("--json-file", default="benchmark_results.json", help="Benchmark JSON output file")
+    parser = argparse.ArgumentParser(
+        description="Generate markdown report from C# benchmark JSON output"
+    )
+    parser.add_argument(
+        "--json-file",
+        default="benchmark_results.json",
+        help="Benchmark JSON output file",
+    )
     parser.add_argument("--output-dir", default="report", help="Output directory")
     return parser.parse_args()
 
@@ -83,7 +89,9 @@ def build_report(data: dict) -> str:
 
     for key in sorted(grouped.keys()):
         data_type, operation = key
-        rows = sorted(grouped[key], key=lambda item: item["OperationsPerSecond"], reverse=True)
+        rows = sorted(
+            grouped[key], key=lambda item: item["OperationsPerSecond"], reverse=True
+        )
         best = rows[0]
 
         lines.append(f"### `{data_type}` / `{operation}`")
@@ -130,8 +138,12 @@ def build_report(data: dict) -> str:
         "samplelist",
         "mediacontentlist",
     ]
-    remaining = sorted(key for key in size_by_data_type.keys() if key not in preferred_order)
-    data_type_order = [key for key in preferred_order if key in size_by_data_type] + remaining
+    remaining = sorted(
+        key for key in size_by_data_type.keys() if key not in preferred_order
+    )
+    data_type_order = [
+        key for key in preferred_order if key in size_by_data_type
+    ] + remaining
     serializers = ["fory", "protobuf", "msgpack"]
     for data_type in data_type_order:
         cells = [format_datatype_name(data_type)]

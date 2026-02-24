@@ -363,10 +363,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        if (context.CheckStructVersion)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            context.Writer.WriteInt32(unchecked((int)__ForySchemaHash(context.TrackRef, context.TypeResolver)));");
-        sb.AppendLine("        }");
+        sb.AppendLine("        uint schemaHash = __ForySchemaHash(context.TrackRef, context.TypeResolver);");
+        sb.AppendLine("        context.Writer.WriteInt32(unchecked((int)schemaHash));");
         foreach (MemberModel member in model.SortedMembers)
         {
             EmitWriteMember(sb, member, false);
@@ -408,9 +406,9 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("            return value;");
         sb.AppendLine("        }");
         sb.AppendLine();
+        sb.AppendLine("        uint schemaHash = unchecked((uint)context.Reader.ReadInt32());");
         sb.AppendLine("        if (context.CheckStructVersion)");
         sb.AppendLine("        {");
-        sb.AppendLine("            uint schemaHash = unchecked((uint)context.Reader.ReadInt32());");
         sb.AppendLine("            uint expectedHash = __ForySchemaHash(context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (schemaHash != expectedHash)");
         sb.AppendLine("            {");
