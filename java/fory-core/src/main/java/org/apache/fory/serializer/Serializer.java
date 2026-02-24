@@ -97,9 +97,7 @@ public abstract class Serializer<T> {
    * Write value to buffer, this method do not write ref/null flags and the passed value must not be
    * null.
    */
-  public void write(MemoryBuffer buffer, T value) {
-    throw new UnsupportedOperationException("Please implement serialization for " + type);
-  }
+  public abstract void write(MemoryBuffer buffer, T value);
 
   /**
    * Read value from buffer, this method may read ref/null flags based passed {@code refMode}, and
@@ -131,9 +129,7 @@ public abstract class Serializer<T> {
   /**
    * Read value from buffer, this method wont read ref/null flags and the read value won't be null.
    */
-  public T read(MemoryBuffer buffer) {
-    throw new UnsupportedOperationException("Please implement serialization for " + type);
-  }
+  public abstract T read(MemoryBuffer buffer);
 
   public T copy(T value) {
     if (isImmutable()) {
