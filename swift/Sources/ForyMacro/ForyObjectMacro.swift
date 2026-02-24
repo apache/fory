@@ -958,6 +958,13 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
         "    context.buffer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))",
         "}"
     ]
+    let primitiveReserveBytes = schemaPrimitiveReserveBytes(sortedFields)
+    if primitiveReserveBytes > 0 {
+        schemaBodyLines.insert(
+            "context.buffer.reserve(\(primitiveReserveBytes) + (context.checkClassVersion ? 4 : 0))",
+            at: 0
+        )
+    }
     if schemaFieldLines.isEmpty {
         schemaBodyLines.append("_ = hasGenerics")
     } else {
@@ -978,6 +985,51 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
         \(schemaBody)
     }
     """
+}
+
+private func schemaPrimitiveReserveBytes(_ fields: [ParsedField]) -> Int {
+    fields.reduce(0) { partial, field in
+        partial + schemaPrimitiveReserveBytes(for: field)
+    }
+}
+
+private func schemaPrimitiveReserveBytes(for field: ParsedField) -> Int {
+    guard !field.isOptional else {
+        return 0
+    }
+    guard field.dynamicAnyCodec == nil, field.typeID != 27 else {
+        return 0
+    }
+
+    if let customCodecType = field.customCodecType {
+        switch customCodecType {
+        case "ForyInt32Fixed", "ForyUInt32Fixed":
+            return 4
+        case "ForyInt64Fixed", "ForyUInt64Fixed":
+            return 8
+        case "ForyInt64Tagged", "ForyUInt64Tagged":
+            return 9
+        default:
+            return 0
+        }
+    }
+
+    switch trimType(field.typeText) {
+    case "Bool", "Int8", "UInt8":
+        return 1
+    case "Int16", "UInt16":
+        return 2
+    case "Float":
+        return 4
+    case "Double":
+        return 8
+    case "Int32", "UInt32":
+        return 5
+    case "Int64", "UInt64", "Int", "UInt":
+        return 10
+    default:
+        return 0
+    }
 }
 
 private func schemaWriteLine(for field: ParsedField) -> String {
