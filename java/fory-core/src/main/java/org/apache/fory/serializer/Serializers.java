@@ -194,7 +194,6 @@ public class Serializers {
         Fory fory, Class<T> cls, boolean needToWriteRef, boolean immutable) {
       super(fory, cls, needToWriteRef, immutable);
     }
-
   }
 
   private static final ToIntFunction GET_CODER;
@@ -550,7 +549,6 @@ public class Serializers {
     public Object read(MemoryBuffer buffer) {
       return new Object();
     }
-
   }
 
   public static void registerDefaultSerializers(Fory fory) {

@@ -1069,7 +1069,8 @@ public final class Fory implements BaseFory {
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
-      Object o = readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer, classInfoHolder));
+      Object o =
+          readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer, classInfoHolder));
       refResolver.setReadObject(nextReadRefId, o);
       return o;
     } else {

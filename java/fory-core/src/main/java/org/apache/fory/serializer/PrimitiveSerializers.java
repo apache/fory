@@ -177,7 +177,6 @@ public class PrimitiveSerializers {
     public Integer read(MemoryBuffer buffer) {
       return buffer.readVarUint32();
     }
-
   }
 
   public static final class LongSerializer extends CrossLanguageCompatibleSerializer<Long> {
@@ -249,7 +248,6 @@ public class PrimitiveSerializers {
           throw new UnsupportedOperationException("Unsupported long encoding " + longEncoding);
       }
     }
-
   }
 
   public static final class VarUint64Serializer extends Serializer<Long> {
@@ -267,7 +265,6 @@ public class PrimitiveSerializers {
     public Long read(MemoryBuffer buffer) {
       return buffer.readVarUint64();
     }
-
   }
 
   public static final class FloatSerializer extends CrossLanguageCompatibleSerializer<Float> {

@@ -26,8 +26,8 @@ import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
-import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.RefMode;
+import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
@@ -621,5 +621,4 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       }
     }
   }
-
 }

@@ -85,7 +85,8 @@ public class ArraySerializers {
       if (!isJava) {
         int len = arr.length;
         buffer.writeVarUint32Small7(len);
-        // TODO(chaokunyang) use generics by creating component serializers to multi-dimension array.
+        // TODO(chaokunyang) use generics by creating component serializers to multi-dimension
+        // array.
         for (T t : arr) {
           fory.writeRef(buffer, t);
         }

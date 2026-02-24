@@ -155,7 +155,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (refMode == RefMode.TRACKING) {
       int nextReadRefId = refResolver.tryPreserveRefId(buffer);
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-        Object value = typeResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().read(buffer);
+        Object value =
+            typeResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().read(buffer);
         refResolver.setReadObject(nextReadRefId, value);
         return value;
       }
@@ -478,10 +479,12 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
     generics.pushGenericType(fieldInfo.genericType);
     if (fory.isCrossLanguage() && fieldInfo.useDeclaredTypeInfo) {
-      TypeInfo typeInfo = typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
+      TypeInfo typeInfo =
+          typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
       fory.writeData(buffer, typeInfo, fieldValue);
     } else if (fieldInfo.useDeclaredTypeInfo) {
-      TypeInfo typeInfo = typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
+      TypeInfo typeInfo =
+          typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
       fory.writeNonRef(buffer, fieldValue, typeInfo);
     } else {
       fory.writeNonRef(buffer, fieldValue, fieldInfo.classInfoHolder);
@@ -933,7 +936,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         return;
       default:
         // Use RefMode.NONE because null flag was already handled by caller
-        Object fieldValue = readField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer);
+        Object fieldValue =
+            readField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer);
         fieldAccessor.putObject(targetObject, fieldValue);
     }
   }

@@ -257,7 +257,6 @@ public class TimeSerializers {
       int nanos = buffer.readInt32();
       return Instant.ofEpochSecond(seconds, nanos);
     }
-
   }
 
   public static class DurationSerializer extends ImmutableTimeSerializer<Duration> {

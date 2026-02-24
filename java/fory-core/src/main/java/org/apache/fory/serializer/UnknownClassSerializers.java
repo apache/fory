@@ -253,7 +253,6 @@ public final class UnknownClassSerializers {
       obj.setEntries(entries);
       return obj;
     }
-
   }
 
   public static final class UnknownEnumSerializer extends CrossLanguageCompatibleSerializer {
