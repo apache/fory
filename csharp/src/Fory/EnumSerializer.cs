@@ -19,25 +19,53 @@ namespace Apache.Fory;
 
 public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : struct, Enum
 {
+    private static readonly Dictionary<TEnum, uint> DefinedValueToOrdinal = BuildValueToOrdinalMap();
+    private static readonly Dictionary<uint, TEnum> DefinedOrdinalToValue = BuildOrdinalToValueMap(DefinedValueToOrdinal);
+
     public override TypeId StaticTypeId => TypeId.Enum;
     public override TEnum DefaultValue => default;
 
     public override void WriteData(WriteContext context, in TEnum value, bool hasGenerics)
     {
         _ = hasGenerics;
-        uint ordinal = Convert.ToUInt32(value);
+        if (!DefinedValueToOrdinal.TryGetValue(value, out uint ordinal))
+        {
+            ordinal = Convert.ToUInt32(value);
+        }
+
         context.Writer.WriteVarUInt32(ordinal);
     }
 
     public override TEnum ReadData(ReadContext context)
     {
         uint ordinal = context.Reader.ReadVarUInt32();
-        TEnum value = (TEnum)Enum.ToObject(typeof(TEnum), ordinal);
-        if (!Enum.IsDefined(typeof(TEnum), value))
+        if (!DefinedOrdinalToValue.TryGetValue(ordinal, out TEnum value))
         {
             throw new InvalidDataException($"unknown enum ordinal {ordinal}");
         }
 
         return value;
+    }
+
+    private static Dictionary<TEnum, uint> BuildValueToOrdinalMap()
+    {
+        Dictionary<TEnum, uint> values = [];
+        foreach (TEnum value in Enum.GetValues<TEnum>())
+        {
+            values[value] = Convert.ToUInt32(value);
+        }
+
+        return values;
+    }
+
+    private static Dictionary<uint, TEnum> BuildOrdinalToValueMap(Dictionary<TEnum, uint> valueToOrdinal)
+    {
+        Dictionary<uint, TEnum> ordinalToValue = [];
+        foreach (KeyValuePair<TEnum, uint> pair in valueToOrdinal)
+        {
+            ordinalToValue[pair.Value] = pair.Key;
+        }
+
+        return ordinalToValue;
     }
 }

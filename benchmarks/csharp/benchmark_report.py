@@ -42,6 +42,22 @@ def format_ns(value: float) -> str:
     return f"{value:,.1f}"
 
 
+def format_size(value: float) -> str:
+    return str(int(round(value)))
+
+
+def format_datatype_name(value: str) -> str:
+    mapping = {
+        "struct": "Struct",
+        "sample": "Sample",
+        "mediacontent": "MediaContent",
+        "structlist": "StructList",
+        "samplelist": "SampleList",
+        "mediacontentlist": "MediaContentList",
+    }
+    return mapping.get(value, value)
+
+
 def build_report(data: dict) -> str:
     lines: list[str] = []
     lines.append("# Fory C# Benchmark Report")
@@ -72,8 +88,8 @@ def build_report(data: dict) -> str:
 
         lines.append(f"### `{data_type}` / `{operation}`")
         lines.append("")
-        lines.append("| Serializer | Ops/sec | ns/op | Size (bytes) | Relative to best |")
-        lines.append("| ---------- | ------: | ----: | -----------: | ---------------: |")
+        lines.append("| Serializer | Ops/sec | ns/op | Relative to best |")
+        lines.append("| ---------- | ------: | ----: | ---------------: |")
 
         for row in rows:
             relative = best["OperationsPerSecond"] / row["OperationsPerSecond"]
@@ -85,13 +101,46 @@ def build_report(data: dict) -> str:
                 " | "
                 f"{format_ns(row['AverageNanoseconds'])}"
                 " | "
-                f"{row['SerializedSize']}"
-                " | "
                 f"{relative:.2f}x"
                 " |"
             )
 
         lines.append("")
+
+    size_totals: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for row in data["Results"]:
+        size_totals[(row["DataType"], row["Serializer"])].append(row["SerializedSize"])
+
+    lines.append("## Size Comparison")
+    lines.append("")
+    lines.append("### Serialized Data Sizes (bytes)")
+    lines.append("")
+    lines.append("| Datatype | fory | protobuf | msgpack |")
+    lines.append("| -------- | ---- | -------- | ------- |")
+
+    size_by_data_type: dict[str, dict[str, float]] = defaultdict(dict)
+    for (data_type, serializer), values in size_totals.items():
+        size_by_data_type[data_type][serializer] = sum(values) / len(values)
+
+    preferred_order = [
+        "struct",
+        "sample",
+        "mediacontent",
+        "structlist",
+        "samplelist",
+        "mediacontentlist",
+    ]
+    remaining = sorted(key for key in size_by_data_type.keys() if key not in preferred_order)
+    data_type_order = [key for key in preferred_order if key in size_by_data_type] + remaining
+    serializers = ["fory", "protobuf", "msgpack"]
+    for data_type in data_type_order:
+        cells = [format_datatype_name(data_type)]
+        for serializer in serializers:
+            size = size_by_data_type[data_type].get(serializer)
+            cells.append("-" if size is None else format_size(size))
+        lines.append(f"| {cells[0]} | {cells[1]} | {cells[2]} | {cells[3]} |")
+
+    lines.append("")
 
     serializer_totals: dict[str, list[float]] = defaultdict(list)
     for row in data["Results"]:
