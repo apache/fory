@@ -17,13 +17,22 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Reflection;
 
 namespace Apache.Fory;
 
 public sealed class TypeResolver
 {
-    private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
+    private static readonly ConcurrentDictionary<Type, Func<TypeResolver, TypeInfo>> GeneratedFactories = new();
     private static readonly ConcurrentDictionary<TypeId, HashSet<TypeId>> SingleAllowedWireTypes = new();
+    private static readonly MethodInfo CreateTypeInfoFromSerializerTypedMethod =
+        typeof(TypeResolver).GetMethod(
+            nameof(CreateTypeInfoFromSerializerTyped),
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+    private static readonly MethodInfo CreateNullableSerializerTypeInfoMethod =
+        typeof(TypeResolver).GetMethod(
+            nameof(CreateNullableSerializerTypeInfo),
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly HashSet<TypeId> CompatibleStructAllowedWireTypes =
     [
         TypeId.Struct,
@@ -90,12 +99,12 @@ public sealed class TypeResolver
         where TSerializer : Serializer<T>, new()
     {
         Type type = typeof(T);
-        GeneratedFactories[type] = CreateSerializer<TSerializer>;
+        GeneratedFactories[type] = static _ => TypeInfo.Create(typeof(T), new TSerializer());
     }
 
     public Serializer<T> GetSerializer<T>()
     {
-        return GetTypeInfo<T>().Serializer.RequireSerializer<T>();
+        return GetTypeInfo<T>().RequireSerializer<T>();
     }
 
     public TypeInfo GetTypeInfo(Type type)
@@ -108,11 +117,63 @@ public sealed class TypeResolver
         return GetTypeInfo(typeof(T));
     }
 
-    private TypeInfo GetOrCreateTypeInfo(Type type, Serializer? explicitSerializer)
+    internal bool IsNoneObject(TypeInfo typeInfo, object? value)
+    {
+        return typeInfo.IsNullableType && value is null;
+    }
+
+    internal void WriteDataObject(TypeInfo typeInfo, WriteContext context, object? value, bool hasGenerics)
+    {
+        typeInfo.WriteDataObject(context, value, hasGenerics);
+    }
+
+    internal object? ReadDataObject(TypeInfo typeInfo, ReadContext context)
+    {
+        return typeInfo.ReadDataObject(context);
+    }
+
+    public void WriteObject(
+        TypeInfo typeInfo,
+        WriteContext context,
+        object? value,
+        RefMode refMode,
+        bool writeTypeInfo,
+        bool hasGenerics)
+    {
+        typeInfo.WriteObject(context, value, refMode, writeTypeInfo, hasGenerics);
+    }
+
+    internal object? ReadObject(TypeInfo typeInfo, ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        return typeInfo.ReadObject(context, refMode, readTypeInfo);
+    }
+
+    internal void WriteTypeInfo(TypeInfo typeInfo, WriteContext context)
+    {
+        WriteTypeInfoCore(typeInfo.Type, typeInfo, context);
+    }
+
+    internal void ReadTypeInfo(TypeInfo typeInfo, ReadContext context)
+    {
+        ReadTypeInfoCore(typeInfo.Type, typeInfo, context);
+    }
+
+    internal IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(TypeInfo typeInfo, bool trackRef)
+    {
+        Type? nullableType = Nullable.GetUnderlyingType(typeInfo.Type);
+        if (nullableType is not null)
+        {
+            return CompatibleTypeMetaFields(GetTypeInfo(nullableType), trackRef);
+        }
+
+        return typeInfo.CompatibleTypeMetaFields(trackRef);
+    }
+
+    private TypeInfo GetOrCreateTypeInfo(Type type, TypeInfo? explicitTypeInfo)
     {
         if (_typeInfos.TryGetValue(type, out TypeInfo? existing))
         {
-            if (explicitSerializer is null || ReferenceEquals(existing.Serializer, explicitSerializer))
+            if (explicitTypeInfo is null || ReferenceEquals(existing, explicitTypeInfo))
             {
                 return existing;
             }
@@ -123,8 +184,12 @@ public sealed class TypeResolver
             }
         }
 
-        Serializer serializer = explicitSerializer ?? CreateBindingCore(type);
-        TypeInfo typeInfo = new(type, serializer);
+        TypeInfo typeInfo = explicitTypeInfo ?? CreateBindingCore(type);
+        if (typeInfo.Type != type)
+        {
+            throw new InvalidDataException($"serializer type mismatch for {type}, got {typeInfo.Type}");
+        }
+
         if (_typeInfos.TryGetValue(type, out TypeInfo? previous))
         {
             typeInfo.CopyRegistrationFrom(previous);
@@ -134,34 +199,29 @@ public sealed class TypeResolver
         return typeInfo;
     }
 
-    internal Serializer GetSerializer(Type type)
-    {
-        return GetOrCreateTypeInfo(type, null).Serializer;
-    }
-
-    internal Serializer RegisterSerializer<T, TSerializer>()
+    internal TypeInfo RegisterSerializer<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
     {
-        Serializer serializer = CreateSerializer<TSerializer>();
-        RegisterSerializer(typeof(T), serializer);
-        return serializer;
+        TypeInfo typeInfo = TypeInfo.Create(typeof(T), new TSerializer());
+        RegisterSerializer(typeof(T), typeInfo);
+        return typeInfo;
     }
 
-    internal void RegisterSerializer(Type type, Serializer serializer)
+    internal void RegisterSerializer(Type type, TypeInfo typeInfo)
     {
-        GetOrCreateTypeInfo(type, serializer);
+        GetOrCreateTypeInfo(type, typeInfo);
     }
 
-    internal void Register(Type type, uint id, Serializer? explicitSerializer = null)
+    internal void Register(Type type, uint id, TypeInfo? explicitTypeInfo = null)
     {
-        TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitSerializer);
+        TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo);
         typeInfo.RegisterByTypeId(id);
         _byUserTypeId[id] = typeInfo;
     }
 
-    internal void Register(Type type, string namespaceName, string typeName, Serializer? explicitSerializer = null)
+    internal void Register(Type type, string namespaceName, string typeName, TypeInfo? explicitTypeInfo = null)
     {
-        TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitSerializer);
+        TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
         typeInfo.RegisterByTypeName(namespaceMeta, typeNameMeta);
@@ -189,17 +249,45 @@ public sealed class TypeResolver
         throw new TypeNotRegisteredException($"{type} is not registered");
     }
 
-    internal void WriteTypeInfo(Type type, Serializer serializer, WriteContext context)
+    internal void WriteTypeInfo<T>(Serializer<T> serializer, WriteContext context)
     {
-        TypeId staticTypeId = serializer.StaticTypeId;
-        if (!staticTypeId.IsUserTypeKind())
+        Type type = typeof(T);
+        if (type == typeof(object))
         {
-            context.Writer.WriteUInt8((byte)staticTypeId);
+            throw new InvalidDataException("dynamic Any value type info is runtime-only");
+        }
+
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType is not null)
+        {
+            WriteTypeInfoCore(nullableType, GetTypeInfo(nullableType), context);
             return;
         }
 
+        TypeInfo typeInfo = GetTypeInfo<T>();
+        WriteTypeInfoCore(type, typeInfo, context);
+    }
+
+    private void WriteTypeInfoCore(Type type, TypeInfo typeInfo, WriteContext context)
+    {
+        if (typeInfo.BuiltInTypeId.HasValue)
+        {
+            context.Writer.WriteUInt8((byte)typeInfo.BuiltInTypeId.Value);
+            return;
+        }
+
+        if (!typeInfo.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"type {type} has runtime-only type info");
+        }
+
         TypeInfo info = RequireRegisteredTypeInfo(type);
-        TypeId wireTypeId = ResolveWireTypeId(info.StaticTypeId, info.RegisterByName, context.Compatible);
+        if (!info.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"registered type {type} is not a user type");
+        }
+
+        TypeId wireTypeId = ResolveWireTypeId(info.UserTypeKind.Value, info.RegisterByName, context.Compatible);
         context.Writer.WriteUInt8((byte)wireTypeId);
         switch (wireTypeId)
         {
@@ -256,7 +344,28 @@ public sealed class TypeResolver
         }
     }
 
-    internal void ReadTypeInfo(Type type, Serializer serializer, ReadContext context)
+    internal void ReadTypeInfo<T>(Serializer<T> serializer, ReadContext context)
+    {
+        Type type = typeof(T);
+        if (type == typeof(object))
+        {
+            DynamicTypeInfo dynamicTypeInfo = ReadDynamicTypeInfo(context);
+            context.SetDynamicTypeInfo(type, dynamicTypeInfo);
+            return;
+        }
+
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType is not null)
+        {
+            ReadTypeInfoCore(nullableType, GetTypeInfo(nullableType), context);
+            return;
+        }
+
+        TypeInfo typeInfo = GetTypeInfo<T>();
+        ReadTypeInfoCore(type, typeInfo, context);
+    }
+
+    private void ReadTypeInfoCore(Type type, TypeInfo typeInfo, ReadContext context)
     {
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
@@ -265,19 +374,28 @@ public sealed class TypeResolver
         }
 
         TypeId typeId = (TypeId)rawTypeId;
-        TypeId staticTypeId = serializer.StaticTypeId;
-        if (!staticTypeId.IsUserTypeKind())
+        if (typeInfo.BuiltInTypeId.HasValue)
         {
-            if (typeId != staticTypeId)
+            if (typeId != typeInfo.BuiltInTypeId.Value)
             {
-                throw new TypeMismatchException((uint)staticTypeId, rawTypeId);
+                throw new TypeMismatchException((uint)typeInfo.BuiltInTypeId.Value, rawTypeId);
             }
 
             return;
         }
 
+        if (!typeInfo.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"type {type} has runtime-only type info");
+        }
+
         TypeInfo info = RequireRegisteredTypeInfo(type);
-        HashSet<TypeId> allowed = AllowedWireTypeIds(info.StaticTypeId, info.RegisterByName, context.Compatible);
+        if (!info.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"registered type {type} is not a user type");
+        }
+
+        HashSet<TypeId> allowed = AllowedWireTypeIds(info.UserTypeKind.Value, info.RegisterByName, context.Compatible);
         if (!allowed.Contains(typeId))
         {
             uint expected = 0;
@@ -357,21 +475,33 @@ public sealed class TypeResolver
         }
     }
 
-    internal static TypeId ResolveWireTypeId(TypeId declaredKind, bool registerByName, bool compatible)
+    internal static TypeId ResolveWireTypeId(UserTypeKind declaredKind, bool registerByName, bool compatible)
     {
-        TypeId baseKind = NormalizeBaseKind(declaredKind);
         if (registerByName)
         {
-            return NamedKind(baseKind, compatible);
+            return declaredKind switch
+            {
+                UserTypeKind.Struct => compatible ? TypeId.NamedCompatibleStruct : TypeId.NamedStruct,
+                UserTypeKind.Enum => TypeId.NamedEnum,
+                UserTypeKind.Ext => TypeId.NamedExt,
+                UserTypeKind.TypedUnion => TypeId.NamedUnion,
+                _ => throw new InvalidDataException($"unknown user type kind {declaredKind}"),
+            };
         }
 
-        return IdKind(baseKind, compatible);
+        return declaredKind switch
+        {
+            UserTypeKind.Struct => compatible ? TypeId.CompatibleStruct : TypeId.Struct,
+            UserTypeKind.Enum => TypeId.Enum,
+            UserTypeKind.Ext => TypeId.Ext,
+            UserTypeKind.TypedUnion => TypeId.TypedUnion,
+            _ => throw new InvalidDataException($"unknown user type kind {declaredKind}"),
+        };
     }
 
-    internal static HashSet<TypeId> AllowedWireTypeIds(TypeId declaredKind, bool registerByName, bool compatible)
+    internal static HashSet<TypeId> AllowedWireTypeIds(UserTypeKind declaredKind, bool registerByName, bool compatible)
     {
-        TypeId baseKind = NormalizeBaseKind(declaredKind);
-        if (baseKind == TypeId.Struct && compatible)
+        if (declaredKind == UserTypeKind.Struct && compatible)
         {
             return CompatibleStructAllowedWireTypes;
         }
@@ -400,14 +530,14 @@ public sealed class TypeResolver
         return ReadRegisteredValue(typeInfo, context, compatibleTypeMeta);
     }
 
-    private static object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? compatibleTypeMeta)
+    private object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? compatibleTypeMeta)
     {
         if (compatibleTypeMeta is not null)
         {
             context.PushCompatibleTypeMeta(typeInfo.Type, compatibleTypeMeta);
         }
 
-        return typeInfo.Serializer.ReadObject(context, RefMode.None, false);
+        return ReadObject(typeInfo, context, RefMode.None, false);
     }
 
     public DynamicTypeInfo ReadDynamicTypeInfo(ReadContext context)
@@ -752,50 +882,17 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static TypeId NormalizeBaseKind(TypeId kind)
-    {
-        return kind switch
-        {
-            TypeId.NamedEnum => TypeId.Enum,
-            TypeId.CompatibleStruct or TypeId.NamedCompatibleStruct or TypeId.NamedStruct => TypeId.Struct,
-            TypeId.NamedExt => TypeId.Ext,
-            TypeId.NamedUnion => TypeId.TypedUnion,
-            _ => kind,
-        };
-    }
-
-    private static TypeId NamedKind(TypeId baseKind, bool compatible)
-    {
-        return baseKind switch
-        {
-            TypeId.Struct => compatible ? TypeId.NamedCompatibleStruct : TypeId.NamedStruct,
-            TypeId.Enum => TypeId.NamedEnum,
-            TypeId.Ext => TypeId.NamedExt,
-            TypeId.TypedUnion => TypeId.NamedUnion,
-            _ => baseKind,
-        };
-    }
-
-    private static TypeId IdKind(TypeId baseKind, bool compatible)
-    {
-        return baseKind switch
-        {
-            TypeId.Struct => compatible ? TypeId.CompatibleStruct : TypeId.Struct,
-            _ => baseKind,
-        };
-    }
-
     private static bool WireTypeNeedsUserTypeId(TypeId typeId)
     {
         return typeId is TypeId.Enum or TypeId.Struct or TypeId.Ext or TypeId.TypedUnion;
     }
 
-    private static TypeMeta BuildCompatibleTypeMeta(
+    private TypeMeta BuildCompatibleTypeMeta(
         TypeInfo info,
         TypeId wireTypeId,
         bool trackRef)
     {
-        IReadOnlyList<TypeMetaFieldInfo> fields = info.Serializer.CompatibleTypeMetaFields(trackRef);
+        IReadOnlyList<TypeMetaFieldInfo> fields = CompatibleTypeMetaFields(info, trackRef);
         bool hasFieldsMeta = fields.Count > 0;
         if (info.RegisterByName)
         {
@@ -998,312 +1095,312 @@ public sealed class TypeResolver
         return result;
     }
 
-    private Serializer CreateBindingCore(Type type)
+    private TypeInfo CreateBindingCore(Type type)
     {
-        if (GeneratedFactories.TryGetValue(type, out Func<Serializer>? generatedFactory))
+        if (GeneratedFactories.TryGetValue(type, out Func<TypeResolver, TypeInfo>? generatedFactory))
         {
-            return generatedFactory();
+            return generatedFactory(this);
         }
 
         if (type == typeof(bool))
         {
-            return new BoolSerializer();
+            return TypeInfo.Create(type, new BoolSerializer());
         }
 
         if (type == typeof(sbyte))
         {
-            return new Int8Serializer();
+            return TypeInfo.Create(type, new Int8Serializer());
         }
 
         if (type == typeof(short))
         {
-            return new Int16Serializer();
+            return TypeInfo.Create(type, new Int16Serializer());
         }
 
         if (type == typeof(int))
         {
-            return new Int32Serializer();
+            return TypeInfo.Create(type, new Int32Serializer());
         }
 
         if (type == typeof(long))
         {
-            return new Int64Serializer();
+            return TypeInfo.Create(type, new Int64Serializer());
         }
 
         if (type == typeof(byte))
         {
-            return new UInt8Serializer();
+            return TypeInfo.Create(type, new UInt8Serializer());
         }
 
         if (type == typeof(ushort))
         {
-            return new UInt16Serializer();
+            return TypeInfo.Create(type, new UInt16Serializer());
         }
 
         if (type == typeof(uint))
         {
-            return new UInt32Serializer();
+            return TypeInfo.Create(type, new UInt32Serializer());
         }
 
         if (type == typeof(ulong))
         {
-            return new UInt64Serializer();
+            return TypeInfo.Create(type, new UInt64Serializer());
         }
 
         if (type == typeof(float))
         {
-            return new Float32Serializer();
+            return TypeInfo.Create(type, new Float32Serializer());
         }
 
         if (type == typeof(double))
         {
-            return new Float64Serializer();
+            return TypeInfo.Create(type, new Float64Serializer());
         }
 
         if (type == typeof(string))
         {
-            return new StringSerializer();
+            return TypeInfo.Create(type, new StringSerializer());
         }
 
         if (type == typeof(byte[]))
         {
-            return new BinarySerializer();
+            return TypeInfo.Create(type, new BinarySerializer());
         }
 
         if (type == typeof(bool[]))
         {
-            return new BoolArraySerializer();
+            return TypeInfo.Create(type, new BoolArraySerializer());
         }
 
         if (type == typeof(sbyte[]))
         {
-            return new Int8ArraySerializer();
+            return TypeInfo.Create(type, new Int8ArraySerializer());
         }
 
         if (type == typeof(short[]))
         {
-            return new Int16ArraySerializer();
+            return TypeInfo.Create(type, new Int16ArraySerializer());
         }
 
         if (type == typeof(int[]))
         {
-            return new Int32ArraySerializer();
+            return TypeInfo.Create(type, new Int32ArraySerializer());
         }
 
         if (type == typeof(long[]))
         {
-            return new Int64ArraySerializer();
+            return TypeInfo.Create(type, new Int64ArraySerializer());
         }
 
         if (type == typeof(ushort[]))
         {
-            return new UInt16ArraySerializer();
+            return TypeInfo.Create(type, new UInt16ArraySerializer());
         }
 
         if (type == typeof(uint[]))
         {
-            return new UInt32ArraySerializer();
+            return TypeInfo.Create(type, new UInt32ArraySerializer());
         }
 
         if (type == typeof(ulong[]))
         {
-            return new UInt64ArraySerializer();
+            return TypeInfo.Create(type, new UInt64ArraySerializer());
         }
 
         if (type == typeof(float[]))
         {
-            return new Float32ArraySerializer();
+            return TypeInfo.Create(type, new Float32ArraySerializer());
         }
 
         if (type == typeof(double[]))
         {
-            return new Float64ArraySerializer();
+            return TypeInfo.Create(type, new Float64ArraySerializer());
         }
 
         if (type == typeof(DateOnly))
         {
-            return new DateOnlySerializer();
+            return TypeInfo.Create(type, new DateOnlySerializer());
         }
 
         if (type == typeof(DateTimeOffset))
         {
-            return new DateTimeOffsetSerializer();
+            return TypeInfo.Create(type, new DateTimeOffsetSerializer());
         }
 
         if (type == typeof(DateTime))
         {
-            return new DateTimeSerializer();
+            return TypeInfo.Create(type, new DateTimeSerializer());
         }
 
         if (type == typeof(TimeSpan))
         {
-            return new TimeSpanSerializer();
+            return TypeInfo.Create(type, new TimeSpanSerializer());
         }
 
         if (type == typeof(List<bool>))
         {
-            return new ListBoolSerializer();
+            return TypeInfo.Create(type, new ListBoolSerializer());
         }
 
         if (type == typeof(List<sbyte>))
         {
-            return new ListInt8Serializer();
+            return TypeInfo.Create(type, new ListInt8Serializer());
         }
 
         if (type == typeof(List<short>))
         {
-            return new ListInt16Serializer();
+            return TypeInfo.Create(type, new ListInt16Serializer());
         }
 
         if (type == typeof(List<int>))
         {
-            return new ListIntSerializer();
+            return TypeInfo.Create(type, new ListIntSerializer());
         }
 
         if (type == typeof(List<long>))
         {
-            return new ListLongSerializer();
+            return TypeInfo.Create(type, new ListLongSerializer());
         }
 
         if (type == typeof(List<byte>))
         {
-            return new ListUInt8Serializer();
+            return TypeInfo.Create(type, new ListUInt8Serializer());
         }
 
         if (type == typeof(List<ushort>))
         {
-            return new ListUInt16Serializer();
+            return TypeInfo.Create(type, new ListUInt16Serializer());
         }
 
         if (type == typeof(List<uint>))
         {
-            return new ListUIntSerializer();
+            return TypeInfo.Create(type, new ListUIntSerializer());
         }
 
         if (type == typeof(List<ulong>))
         {
-            return new ListULongSerializer();
+            return TypeInfo.Create(type, new ListULongSerializer());
         }
 
         if (type == typeof(List<float>))
         {
-            return new ListFloatSerializer();
+            return TypeInfo.Create(type, new ListFloatSerializer());
         }
 
         if (type == typeof(List<double>))
         {
-            return new ListDoubleSerializer();
+            return TypeInfo.Create(type, new ListDoubleSerializer());
         }
 
         if (type == typeof(List<string>))
         {
-            return new ListStringSerializer();
+            return TypeInfo.Create(type, new ListStringSerializer());
         }
 
         if (type == typeof(List<DateOnly>))
         {
-            return new ListDateOnlySerializer();
+            return TypeInfo.Create(type, new ListDateOnlySerializer());
         }
 
         if (type == typeof(List<DateTimeOffset>))
         {
-            return new ListDateTimeOffsetSerializer();
+            return TypeInfo.Create(type, new ListDateTimeOffsetSerializer());
         }
 
         if (type == typeof(List<DateTime>))
         {
-            return new ListDateTimeSerializer();
+            return TypeInfo.Create(type, new ListDateTimeSerializer());
         }
 
         if (type == typeof(List<TimeSpan>))
         {
-            return new ListTimeSpanSerializer();
+            return TypeInfo.Create(type, new ListTimeSpanSerializer());
         }
 
         if (type == typeof(HashSet<sbyte>))
         {
-            return new SetInt8Serializer();
+            return TypeInfo.Create(type, new SetInt8Serializer());
         }
 
         if (type == typeof(HashSet<short>))
         {
-            return new SetInt16Serializer();
+            return TypeInfo.Create(type, new SetInt16Serializer());
         }
 
         if (type == typeof(HashSet<int>))
         {
-            return new SetIntSerializer();
+            return TypeInfo.Create(type, new SetIntSerializer());
         }
 
         if (type == typeof(HashSet<long>))
         {
-            return new SetLongSerializer();
+            return TypeInfo.Create(type, new SetLongSerializer());
         }
 
         if (type == typeof(HashSet<byte>))
         {
-            return new SetUInt8Serializer();
+            return TypeInfo.Create(type, new SetUInt8Serializer());
         }
 
         if (type == typeof(HashSet<ushort>))
         {
-            return new SetUInt16Serializer();
+            return TypeInfo.Create(type, new SetUInt16Serializer());
         }
 
         if (type == typeof(HashSet<uint>))
         {
-            return new SetUIntSerializer();
+            return TypeInfo.Create(type, new SetUIntSerializer());
         }
 
         if (type == typeof(HashSet<ulong>))
         {
-            return new SetULongSerializer();
+            return TypeInfo.Create(type, new SetULongSerializer());
         }
 
         if (type == typeof(HashSet<float>))
         {
-            return new SetFloatSerializer();
+            return TypeInfo.Create(type, new SetFloatSerializer());
         }
 
         if (type == typeof(HashSet<double>))
         {
-            return new SetDoubleSerializer();
+            return TypeInfo.Create(type, new SetDoubleSerializer());
         }
 
-        Serializer? primitiveCollectionSerializer = TryCreatePrimitiveCollectionSerializer(type);
-        if (primitiveCollectionSerializer is not null)
+        TypeInfo? primitiveCollectionTypeInfo = TryCreatePrimitiveCollectionTypeInfo(type);
+        if (primitiveCollectionTypeInfo is not null)
         {
-            return primitiveCollectionSerializer;
+            return primitiveCollectionTypeInfo;
         }
 
-        Serializer? primitiveDictionarySerializer = TryCreatePrimitiveDictionarySerializer(type);
-        if (primitiveDictionarySerializer is not null)
+        TypeInfo? primitiveDictionaryTypeInfo = TryCreatePrimitiveDictionaryTypeInfo(type);
+        if (primitiveDictionaryTypeInfo is not null)
         {
-            return primitiveDictionarySerializer;
+            return primitiveDictionaryTypeInfo;
         }
 
         if (type == typeof(object))
         {
-            return new DynamicAnyObjectSerializer();
+            return TypeInfo.Create(type, new DynamicAnyObjectSerializer());
         }
 
         if (typeof(Union).IsAssignableFrom(type))
         {
             Type serializerType = typeof(UnionSerializer<>).MakeGenericType(type);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         if (type.IsEnum)
         {
             Type serializerType = typeof(EnumSerializer<>).MakeGenericType(type);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         if (type.IsArray)
         {
             Type elementType = type.GetElementType()!;
             Type serializerType = typeof(ArraySerializer<>).MakeGenericType(elementType);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         if (type.IsGenericType)
@@ -1312,87 +1409,86 @@ public sealed class TypeResolver
             Type[] genericArgs = type.GetGenericArguments();
             if (genericType == typeof(Nullable<>))
             {
-                Type serializerType = typeof(NullableSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateNullableTypeInfo(genericArgs[0]);
             }
 
             if (genericType == typeof(List<>))
             {
                 Type serializerType = typeof(ListSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(HashSet<>))
             {
                 Type serializerType = typeof(SetSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(SortedSet<>))
             {
                 Type serializerType = typeof(SortedSetSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(ImmutableHashSet<>))
             {
                 Type serializerType = typeof(ImmutableHashSetSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(LinkedList<>))
             {
                 Type serializerType = typeof(LinkedListSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(Queue<>))
             {
                 Type serializerType = typeof(QueueSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(Stack<>))
             {
                 Type serializerType = typeof(StackSerializer<>).MakeGenericType(genericArgs[0]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(Dictionary<,>))
             {
                 Type serializerType = typeof(DictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(SortedDictionary<,>))
             {
                 Type serializerType = typeof(SortedDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(SortedList<,>))
             {
                 Type serializerType = typeof(SortedListSerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(ConcurrentDictionary<,>))
             {
                 Type serializerType = typeof(ConcurrentDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
 
             if (genericType == typeof(NullableKeyDictionary<,>))
             {
                 Type serializerType = typeof(NullableKeyDictionarySerializer<,>).MakeGenericType(genericArgs[0], genericArgs[1]);
-                return CreateSerializer(serializerType);
+                return CreateTypeInfo(type, serializerType);
             }
         }
 
         throw new TypeNotRegisteredException($"No serializer available for {type}");
     }
 
-    private Serializer? TryCreatePrimitiveCollectionSerializer(Type type)
+    private TypeInfo? TryCreatePrimitiveCollectionTypeInfo(Type type)
     {
         if (!type.IsGenericType)
         {
@@ -1411,7 +1507,7 @@ public sealed class TypeResolver
                 : genericType == typeof(Queue<>)
                     ? typeof(PrimitiveQueueSerializer<,>).MakeGenericType(elementType, listLikeCodec)
                     : typeof(PrimitiveStackSerializer<,>).MakeGenericType(elementType, listLikeCodec);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         if ((genericType == typeof(SortedSet<>) ||
@@ -1421,13 +1517,13 @@ public sealed class TypeResolver
             Type serializerType = genericType == typeof(SortedSet<>)
                 ? typeof(PrimitiveSortedSetSerializer<,>).MakeGenericType(elementType, setCodec)
                 : typeof(PrimitiveImmutableHashSetSerializer<,>).MakeGenericType(elementType, setCodec);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         return null;
     }
 
-    private Serializer? TryCreatePrimitiveDictionarySerializer(Type type)
+    private TypeInfo? TryCreatePrimitiveDictionaryTypeInfo(Type type)
     {
         if (!type.IsGenericType)
         {
@@ -1457,7 +1553,7 @@ public sealed class TypeResolver
                     : genericType == typeof(SortedList<,>)
                         ? typeof(PrimitiveStringKeySortedListSerializer<,>).MakeGenericType(valueType, valueCodecType)
                         : typeof(PrimitiveStringKeyConcurrentDictionarySerializer<,>).MakeGenericType(valueType, valueCodecType);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         if (keyType == valueType &&
@@ -1470,38 +1566,80 @@ public sealed class TypeResolver
                     : genericType == typeof(SortedList<,>)
                         ? typeof(PrimitiveSameTypeSortedListSerializer<,>).MakeGenericType(valueType, sameTypeCodec)
                         : typeof(PrimitiveSameTypeConcurrentDictionarySerializer<,>).MakeGenericType(valueType, sameTypeCodec);
-            return CreateSerializer(serializerType);
+            return CreateTypeInfo(type, serializerType);
         }
 
         return null;
     }
 
-    private static Serializer CreateSerializer<TSerializer>()
-        where TSerializer : Serializer, new()
+    private TypeInfo CreateTypeInfo(Type expectedType, Type serializerType)
     {
-        return new TSerializer();
-    }
-
-    private Serializer CreateSerializer(Type serializerType)
-    {
-        if (!typeof(Serializer).IsAssignableFrom(serializerType))
-        {
-            throw new InvalidDataException($"{serializerType} is not a serializer");
-        }
-
+        object serializer;
         try
         {
-            if (Activator.CreateInstance(serializerType) is Serializer serializer)
-            {
-                return serializer;
-            }
+            serializer = Activator.CreateInstance(serializerType)
+                ?? throw new InvalidDataException($"failed to create serializer for {serializerType}");
         }
         catch (Exception ex)
         {
             throw new InvalidDataException($"failed to create serializer for {serializerType}: {ex.Message}");
         }
 
-        throw new InvalidDataException($"{serializerType} is not a serializer");
+        return CreateTypeInfo(expectedType, serializer);
+    }
+
+    private static TypeInfo CreateTypeInfo(Type expectedType, object serializer)
+    {
+        Type? valueType = ResolveSerializerValueType(serializer.GetType());
+        if (valueType is null)
+        {
+            throw new InvalidDataException($"{serializer.GetType()} is not a serializer");
+        }
+
+        if (valueType != expectedType)
+        {
+            throw new InvalidDataException($"serializer type mismatch for {expectedType}, got {valueType}");
+        }
+
+        MethodInfo createMethod = CreateTypeInfoFromSerializerTypedMethod.MakeGenericMethod(valueType);
+        return (TypeInfo)createMethod.Invoke(null, [serializer])!;
+    }
+
+    private static TypeInfo CreateTypeInfoFromSerializerTyped<T>(object serializerObject)
+    {
+        if (serializerObject is not Serializer<T> serializer)
+        {
+            throw new InvalidDataException($"serializer type mismatch for {typeof(T)}");
+        }
+
+        return TypeInfo.Create(typeof(T), serializer);
+    }
+
+    private TypeInfo CreateNullableTypeInfo(Type valueType)
+    {
+        MethodInfo createMethod = CreateNullableSerializerTypeInfoMethod.MakeGenericMethod(valueType);
+        return (TypeInfo)createMethod.Invoke(this, null)!;
+    }
+
+    private TypeInfo CreateNullableSerializerTypeInfo<T>() where T : struct
+    {
+        return TypeInfo.Create(typeof(T?), new NullableSerializer<T>());
+    }
+
+    private static Type? ResolveSerializerValueType(Type serializerType)
+    {
+        Type? current = serializerType;
+        while (current is not null)
+        {
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(Serializer<>))
+            {
+                return current.GetGenericArguments()[0];
+            }
+
+            current = current.BaseType;
+        }
+
+        return null;
     }
 
     private static MetaString ReadMetaString(ByteReader reader, MetaStringDecoder decoder, IReadOnlyList<MetaStringEncoding> encodings)

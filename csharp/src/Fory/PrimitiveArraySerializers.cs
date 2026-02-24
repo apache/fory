@@ -19,15 +19,10 @@ namespace Apache.Fory;
 
 internal sealed class BoolArraySerializer : Serializer<bool[]>
 {
-    public override TypeId StaticTypeId => TypeId.BoolArray;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override bool[] DefaultValue => null!;
-
-    public override bool IsNone(in bool[] value) => value is null;
 
     public override void WriteData(WriteContext context, in bool[] value, bool hasGenerics)
     {
@@ -55,15 +50,10 @@ internal sealed class BoolArraySerializer : Serializer<bool[]>
 
 internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int8Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override sbyte[] DefaultValue => null!;
-
-    public override bool IsNone(in sbyte[] value) => value is null;
 
     public override void WriteData(WriteContext context, in sbyte[] value, bool hasGenerics)
     {
@@ -91,15 +81,10 @@ internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 
 internal sealed class Int16ArraySerializer : Serializer<short[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int16Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override short[] DefaultValue => null!;
-
-    public override bool IsNone(in short[] value) => value is null;
 
     public override void WriteData(WriteContext context, in short[] value, bool hasGenerics)
     {
@@ -132,15 +117,10 @@ internal sealed class Int16ArraySerializer : Serializer<short[]>
 
 internal sealed class Int32ArraySerializer : Serializer<int[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int32Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override int[] DefaultValue => null!;
-
-    public override bool IsNone(in int[] value) => value is null;
 
     public override void WriteData(WriteContext context, in int[] value, bool hasGenerics)
     {
@@ -173,15 +153,10 @@ internal sealed class Int32ArraySerializer : Serializer<int[]>
 
 internal sealed class Int64ArraySerializer : Serializer<long[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int64Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override long[] DefaultValue => null!;
-
-    public override bool IsNone(in long[] value) => value is null;
 
     public override void WriteData(WriteContext context, in long[] value, bool hasGenerics)
     {
@@ -214,15 +189,10 @@ internal sealed class Int64ArraySerializer : Serializer<long[]>
 
 internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 {
-    public override TypeId StaticTypeId => TypeId.UInt16Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override ushort[] DefaultValue => null!;
-
-    public override bool IsNone(in ushort[] value) => value is null;
 
     public override void WriteData(WriteContext context, in ushort[] value, bool hasGenerics)
     {
@@ -255,15 +225,10 @@ internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 
 internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 {
-    public override TypeId StaticTypeId => TypeId.UInt32Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override uint[] DefaultValue => null!;
-
-    public override bool IsNone(in uint[] value) => value is null;
 
     public override void WriteData(WriteContext context, in uint[] value, bool hasGenerics)
     {
@@ -296,15 +261,10 @@ internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 
 internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 {
-    public override TypeId StaticTypeId => TypeId.UInt64Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override ulong[] DefaultValue => null!;
-
-    public override bool IsNone(in ulong[] value) => value is null;
 
     public override void WriteData(WriteContext context, in ulong[] value, bool hasGenerics)
     {
@@ -337,15 +297,10 @@ internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 
 internal sealed class Float32ArraySerializer : Serializer<float[]>
 {
-    public override TypeId StaticTypeId => TypeId.Float32Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override float[] DefaultValue => null!;
-
-    public override bool IsNone(in float[] value) => value is null;
 
     public override void WriteData(WriteContext context, in float[] value, bool hasGenerics)
     {
@@ -378,15 +333,10 @@ internal sealed class Float32ArraySerializer : Serializer<float[]>
 
 internal sealed class Float64ArraySerializer : Serializer<double[]>
 {
-    public override TypeId StaticTypeId => TypeId.Float64Array;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override double[] DefaultValue => null!;
-
-    public override bool IsNone(in double[] value) => value is null;
 
     public override void WriteData(WriteContext context, in double[] value, bool hasGenerics)
     {

@@ -31,9 +31,14 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
-    private static bool CanDeclareElementType<T>(TypeId staticTypeId)
+    private static bool CanDeclareElementType<T>(TypeInfo typeInfo)
     {
-        if (!staticTypeId.NeedsTypeInfoForField())
+        if (typeInfo.IsBuiltinType)
+        {
+            return true;
+        }
+
+        if (!typeInfo.NeedsTypeInfoForField())
         {
             return true;
         }
@@ -47,6 +52,7 @@ internal static class CollectionCodec
         WriteContext context,
         bool hasGenerics)
     {
+        TypeInfo elementTypeInfo = context.TypeResolver.GetTypeInfo<T>();
         List<T> list = values as List<T> ?? [.. values];
         context.Writer.WriteVarUInt32((uint)list.Count);
         if (list.Count == 0)
@@ -55,11 +61,11 @@ internal static class CollectionCodec
         }
 
         bool hasNull = false;
-        if (elementSerializer.IsNullableType)
+        if (elementTypeInfo.IsNullableType)
         {
             for (int i = 0; i < list.Count; i++)
             {
-                if (!elementSerializer.IsNoneObject(list[i]))
+                if (!context.TypeResolver.IsNoneObject(elementTypeInfo, list[i]))
                 {
                     continue;
                 }
@@ -69,9 +75,9 @@ internal static class CollectionCodec
             }
         }
 
-        bool trackRef = context.TrackRef && elementSerializer.IsReferenceTrackableType;
-        bool declaredElementType = hasGenerics && CanDeclareElementType<T>(elementSerializer.StaticTypeId);
-        bool dynamicElementType = elementSerializer.StaticTypeId == TypeId.Unknown;
+        bool trackRef = context.TrackRef && elementTypeInfo.IsReferenceTrackableType;
+        bool declaredElementType = hasGenerics && CanDeclareElementType<T>(elementTypeInfo);
+        bool dynamicElementType = elementTypeInfo.IsDynamicType;
 
         byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
         if (trackRef)
@@ -92,7 +98,7 @@ internal static class CollectionCodec
         context.Writer.WriteUInt8(header);
         if (!dynamicElementType && !declaredElementType)
         {
-            elementSerializer.WriteTypeInfo(context);
+            context.TypeResolver.WriteTypeInfo(elementSerializer, context);
         }
 
         if (dynamicElementType)
@@ -120,7 +126,7 @@ internal static class CollectionCodec
         {
             foreach (T element in list)
             {
-                if (elementSerializer.IsNoneObject(element))
+                if (context.TypeResolver.IsNoneObject(elementTypeInfo, element))
                 {
                     context.Writer.WriteInt8((sbyte)RefFlag.Null);
                 }
@@ -142,6 +148,7 @@ internal static class CollectionCodec
 
     public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
+        TypeInfo elementTypeInfo = context.TypeResolver.GetTypeInfo<T>();
         int length = checked((int)context.Reader.ReadVarUInt32());
         if (length == 0)
         {
@@ -153,7 +160,7 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
-        bool canonicalizeElements = context.TrackRef && !trackRef && elementSerializer.IsReferenceTrackableType;
+        bool canonicalizeElements = context.TrackRef && !trackRef && elementTypeInfo.IsReferenceTrackableType;
 
         List<T> values = new(length);
         if (!sameType)
@@ -200,7 +207,7 @@ internal static class CollectionCodec
 
         if (!declared)
         {
-            elementSerializer.ReadTypeInfo(context);
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
         }
 
         if (trackRef)
@@ -481,11 +488,7 @@ internal static class DynamicContainerCodec
 
 public sealed class ArraySerializer<T> : Serializer<T[]>
 {
-    public override TypeId StaticTypeId => TypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override T[] DefaultValue => null!;
-    public override bool IsNone(in T[] value) => value is null;
 
     public override void WriteData(WriteContext context, in T[] value, bool hasGenerics)
     {
@@ -506,11 +509,7 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
 
 public class ListSerializer<T> : Serializer<List<T>>
 {
-    public override TypeId StaticTypeId => TypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override List<T> DefaultValue => null!;
-    public override bool IsNone(in List<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<T> value, bool hasGenerics)
     {
@@ -526,11 +525,7 @@ public class ListSerializer<T> : Serializer<List<T>>
 
 public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 {
-    public override TypeId StaticTypeId => TypeId.Set;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override HashSet<T> DefaultValue => null!;
-    public override bool IsNone(in HashSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
@@ -546,11 +541,7 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 
 public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : notnull
 {
-    public override TypeId StaticTypeId => TypeId.Set;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override SortedSet<T> DefaultValue => null!;
-    public override bool IsNone(in SortedSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in SortedSet<T> value, bool hasGenerics)
     {
@@ -566,11 +557,7 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
 
 public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<T>> where T : notnull
 {
-    public override TypeId StaticTypeId => TypeId.Set;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override ImmutableHashSet<T> DefaultValue => null!;
-    public override bool IsNone(in ImmutableHashSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
     {
@@ -586,11 +573,7 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
 
 public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
 {
-    public override TypeId StaticTypeId => TypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override LinkedList<T> DefaultValue => null!;
-    public override bool IsNone(in LinkedList<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in LinkedList<T> value, bool hasGenerics)
     {
@@ -606,11 +589,7 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
 
 public sealed class QueueSerializer<T> : Serializer<Queue<T>>
 {
-    public override TypeId StaticTypeId => TypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override Queue<T> DefaultValue => null!;
-    public override bool IsNone(in Queue<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in Queue<T> value, bool hasGenerics)
     {
@@ -633,11 +612,7 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
 
 public sealed class StackSerializer<T> : Serializer<Stack<T>>
 {
-    public override TypeId StaticTypeId => TypeId.List;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override Stack<T> DefaultValue => null!;
-    public override bool IsNone(in Stack<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in Stack<T> value, bool hasGenerics)
     {

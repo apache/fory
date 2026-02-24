@@ -21,13 +21,9 @@ namespace Apache.Fory;
 
 public sealed class StringSerializer : Serializer<string>
 {
-    public override TypeId StaticTypeId => TypeId.String;
 
-    public override bool IsNullableType => true;
 
     public override string DefaultValue => null!;
-
-    public override bool IsNone(in string value) => value is null;
 
     public override void WriteData(WriteContext context, in string value, bool hasGenerics)
     {

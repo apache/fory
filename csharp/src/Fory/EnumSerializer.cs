@@ -22,7 +22,6 @@ public sealed class EnumSerializer<TEnum> : Serializer<TEnum> where TEnum : stru
     private static readonly Dictionary<TEnum, uint> DefinedValueToOrdinal = BuildValueToOrdinalMap();
     private static readonly Dictionary<uint, TEnum> DefinedOrdinalToValue = BuildOrdinalToValueMap(DefinedValueToOrdinal);
 
-    public override TypeId StaticTypeId => TypeId.Enum;
     public override TEnum DefaultValue => default;
 
     public override void WriteData(WriteContext context, in TEnum value, bool hasGenerics)

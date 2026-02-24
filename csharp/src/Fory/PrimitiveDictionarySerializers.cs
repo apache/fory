@@ -732,15 +732,10 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override Dictionary<TKey, TValue> DefaultValue => null!;
-
-    public override bool IsNone(in Dictionary<TKey, TValue> value) => value is null;
 
 public override void WriteData(WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
@@ -785,15 +780,10 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override SortedDictionary<TKey, TValue> DefaultValue => null!;
-
-    public override bool IsNone(in SortedDictionary<TKey, TValue> value) => value is null;
 
     public override void WriteData(WriteContext context, in SortedDictionary<TKey, TValue> value, bool hasGenerics)
     {
@@ -838,15 +828,10 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override SortedList<TKey, TValue> DefaultValue => null!;
-
-    public override bool IsNone(in SortedList<TKey, TValue> value) => value is null;
 
     public override void WriteData(WriteContext context, in SortedList<TKey, TValue> value, bool hasGenerics)
     {
@@ -891,15 +876,10 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override ConcurrentDictionary<TKey, TValue> DefaultValue => null!;
-
-    public override bool IsNone(in ConcurrentDictionary<TKey, TValue> value) => value is null;
 
     public override void WriteData(WriteContext context, in ConcurrentDictionary<TKey, TValue> value, bool hasGenerics)
     {
