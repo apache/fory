@@ -45,6 +45,9 @@ private final class ForyRuntimeContext {
     var writeInUse = false
     var readInUse = false
 
+    var lastReadDataAddress: UnsafeRawPointer?
+    var lastReadDataCount: Int = -1
+
     init(typeResolver: TypeResolver, config: ForyConfig) {
         writeBuffer = ByteBuffer()
         writeContext = WriteContext(
@@ -599,7 +602,21 @@ public final class Fory {
         }
 
         runtimeContext.readInUse = true
-        runtimeContext.readBuffer.replace(with: data)
+        let shouldReplace = data.withUnsafeBytes { rawBytes in
+            if rawBytes.count != runtimeContext.lastReadDataCount {
+                return true
+            }
+            return rawBytes.baseAddress != runtimeContext.lastReadDataAddress
+        }
+        if shouldReplace {
+            runtimeContext.readBuffer.replace(with: data)
+            data.withUnsafeBytes { rawBytes in
+                runtimeContext.lastReadDataAddress = rawBytes.baseAddress
+                runtimeContext.lastReadDataCount = rawBytes.count
+            }
+        } else {
+            runtimeContext.readBuffer.setCursor(0)
+        }
         defer {
             runtimeContext.readContext.reset()
             runtimeContext.readInUse = false

@@ -490,6 +490,48 @@ public final class ByteBuffer {
 
     @inlinable
     public func readVarUInt32() throws -> UInt32 {
+        let available = storage.count - cursor
+        if available >= 5 {
+            let offset = cursor
+            let b0 = storage[offset]
+            if b0 < 0x80 {
+                cursor = offset + 1
+                return UInt32(b0)
+            }
+
+            let b1 = storage[offset + 1]
+            if b1 < 0x80 {
+                cursor = offset + 2
+                return UInt32(b0 & 0x7F) | (UInt32(b1) << 7)
+            }
+
+            let b2 = storage[offset + 2]
+            if b2 < 0x80 {
+                cursor = offset + 3
+                return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2) << 14)
+            }
+
+            let b3 = storage[offset + 3]
+            if b3 < 0x80 {
+                cursor = offset + 4
+                return UInt32(b0 & 0x7F) |
+                    (UInt32(b1 & 0x7F) << 7) |
+                    (UInt32(b2 & 0x7F) << 14) |
+                    (UInt32(b3) << 21)
+            }
+
+            let b4 = storage[offset + 4]
+            if b4 >= 0x80 {
+                throw ForyError.encodingError("varuint32 overflow")
+            }
+            cursor = offset + 5
+            return UInt32(b0 & 0x7F) |
+                (UInt32(b1 & 0x7F) << 7) |
+                (UInt32(b2 & 0x7F) << 14) |
+                (UInt32(b3 & 0x7F) << 21) |
+                (UInt32(b4) << 28)
+        }
+
         try checkBound(1)
         let b0 = storage[cursor]
         if b0 < 0x80 {
@@ -536,6 +578,97 @@ public final class ByteBuffer {
 
     @inlinable
     public func readVarUInt64() throws -> UInt64 {
+        let available = storage.count - cursor
+        if available >= 9 {
+            let offset = cursor
+            let b0 = storage[offset]
+            if b0 < 0x80 {
+                cursor = offset + 1
+                return UInt64(b0)
+            }
+
+            let b1 = storage[offset + 1]
+            if b1 < 0x80 {
+                cursor = offset + 2
+                return UInt64(b0 & 0x7F) | (UInt64(b1) << 7)
+            }
+
+            let b2 = storage[offset + 2]
+            if b2 < 0x80 {
+                cursor = offset + 3
+                return UInt64(b0 & 0x7F) |
+                    (UInt64(b1 & 0x7F) << 7) |
+                    (UInt64(b2) << 14)
+            }
+
+            let b3 = storage[offset + 3]
+            if b3 < 0x80 {
+                cursor = offset + 4
+                return UInt64(b0 & 0x7F) |
+                    (UInt64(b1 & 0x7F) << 7) |
+                    (UInt64(b2 & 0x7F) << 14) |
+                    (UInt64(b3) << 21)
+            }
+
+            let b4 = storage[offset + 4]
+            if b4 < 0x80 {
+                cursor = offset + 5
+                return UInt64(b0 & 0x7F) |
+                    (UInt64(b1 & 0x7F) << 7) |
+                    (UInt64(b2 & 0x7F) << 14) |
+                    (UInt64(b3 & 0x7F) << 21) |
+                    (UInt64(b4) << 28)
+            }
+
+            let b5 = storage[offset + 5]
+            if b5 < 0x80 {
+                cursor = offset + 6
+                return UInt64(b0 & 0x7F) |
+                    (UInt64(b1 & 0x7F) << 7) |
+                    (UInt64(b2 & 0x7F) << 14) |
+                    (UInt64(b3 & 0x7F) << 21) |
+                    (UInt64(b4 & 0x7F) << 28) |
+                    (UInt64(b5) << 35)
+            }
+
+            let b6 = storage[offset + 6]
+            if b6 < 0x80 {
+                cursor = offset + 7
+                return UInt64(b0 & 0x7F) |
+                    (UInt64(b1 & 0x7F) << 7) |
+                    (UInt64(b2 & 0x7F) << 14) |
+                    (UInt64(b3 & 0x7F) << 21) |
+                    (UInt64(b4 & 0x7F) << 28) |
+                    (UInt64(b5 & 0x7F) << 35) |
+                    (UInt64(b6) << 42)
+            }
+
+            let b7 = storage[offset + 7]
+            if b7 < 0x80 {
+                cursor = offset + 8
+                return UInt64(b0 & 0x7F) |
+                    (UInt64(b1 & 0x7F) << 7) |
+                    (UInt64(b2 & 0x7F) << 14) |
+                    (UInt64(b3 & 0x7F) << 21) |
+                    (UInt64(b4 & 0x7F) << 28) |
+                    (UInt64(b5 & 0x7F) << 35) |
+                    (UInt64(b6 & 0x7F) << 42) |
+                    (UInt64(b7) << 49)
+            }
+
+            let b8 = storage[offset + 8]
+            cursor = offset + 9
+            return UInt64(b0 & 0x7F) |
+                (UInt64(b1 & 0x7F) << 7) |
+                (UInt64(b2 & 0x7F) << 14) |
+                (UInt64(b3 & 0x7F) << 21) |
+                (UInt64(b4 & 0x7F) << 28) |
+                (UInt64(b5 & 0x7F) << 35) |
+                (UInt64(b6 & 0x7F) << 42) |
+                (UInt64(b7 & 0x7F) << 49) |
+                (UInt64(b8) << 56)
+        }
+
         try checkBound(1)
         let b0 = storage[cursor]
         if b0 < 0x80 {
