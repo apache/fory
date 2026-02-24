@@ -662,7 +662,7 @@ public sealed class ForyRuntimeTests
     [Fact]
     public void MacroFieldOrderFollowsForyRules()
     {
-        ForyRuntime fory = ForyRuntime.Builder().Build();
+        ForyRuntime fory = ForyRuntime.Builder().CheckStructVersion(true).Build();
         fory.Register<FieldOrder>(300);
 
         FieldOrder value = new() { Z = "tail", A = 123_456_789, B = 17, C = 99 };
@@ -724,10 +724,10 @@ public sealed class ForyRuntimeTests
     [Fact]
     public void SchemaVersionMismatchThrows()
     {
-        ForyRuntime writer = ForyRuntime.Builder().Compatible(false).Build();
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(false).CheckStructVersion(true).Build();
         writer.Register<OneStringField>(200);
 
-        ForyRuntime reader = ForyRuntime.Builder().Compatible(false).Build();
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(false).CheckStructVersion(true).Build();
         reader.Register<TwoStringField>(200);
 
         byte[] payload = writer.Serialize(new OneStringField { F1 = "hello" });
@@ -764,6 +764,18 @@ public sealed class ForyRuntimeTests
         Assert.Equal(value.Name, decoded.Name);
         Assert.Equal(value.Color, decoded.Color);
         Assert.Equal(value.Value, decoded.Value);
+    }
+
+    [Fact]
+    public void EnumRoundTripPreservesUndefinedValue()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<TestColor>(100);
+
+        TestColor value = (TestColor)12345;
+        TestColor decoded = fory.Deserialize<TestColor>(fory.Serialize(value));
+        Assert.Equal(value, decoded);
+        Assert.Equal(12345u, Convert.ToUInt32(decoded));
     }
 
     [Fact]

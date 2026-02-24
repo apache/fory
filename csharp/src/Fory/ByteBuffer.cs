@@ -21,37 +21,41 @@ namespace Apache.Fory;
 
 public sealed class ByteWriter
 {
-    private readonly List<byte> _storage;
+    private byte[] _storage;
+    private int _count;
 
     public ByteWriter(int capacity = 256)
     {
-        _storage = new List<byte>(capacity);
+        _storage = new byte[Math.Max(1, capacity)];
+        _count = 0;
     }
 
-    public int Count => _storage.Count;
+    public int Count => _count;
 
-    public IReadOnlyList<byte> Storage => _storage;
+    public IReadOnlyList<byte> Storage => new ArraySegment<byte>(_storage, 0, _count);
 
     public void Reserve(int additional)
     {
-        _storage.Capacity = Math.Max(_storage.Capacity, _storage.Count + additional);
+        EnsureCapacity(additional);
     }
 
     public void WriteUInt8(byte value)
     {
-        _storage.Add(value);
+        EnsureCapacity(1);
+        _storage[_count] = value;
+        _count += 1;
     }
 
     public void WriteInt8(sbyte value)
     {
-        _storage.Add(unchecked((byte)value));
+        WriteUInt8(unchecked((byte)value));
     }
 
     public void WriteUInt16(ushort value)
     {
-        Span<byte> tmp = stackalloc byte[2];
-        BinaryPrimitives.WriteUInt16LittleEndian(tmp, value);
-        WriteBytes(tmp);
+        EnsureCapacity(2);
+        BinaryPrimitives.WriteUInt16LittleEndian(_storage.AsSpan(_count, 2), value);
+        _count += 2;
     }
 
     public void WriteInt16(short value)
@@ -61,9 +65,9 @@ public sealed class ByteWriter
 
     public void WriteUInt32(uint value)
     {
-        Span<byte> tmp = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32LittleEndian(tmp, value);
-        WriteBytes(tmp);
+        EnsureCapacity(4);
+        BinaryPrimitives.WriteUInt32LittleEndian(_storage.AsSpan(_count, 4), value);
+        _count += 4;
     }
 
     public void WriteInt32(int value)
@@ -73,9 +77,9 @@ public sealed class ByteWriter
 
     public void WriteUInt64(ulong value)
     {
-        Span<byte> tmp = stackalloc byte[8];
-        BinaryPrimitives.WriteUInt64LittleEndian(tmp, value);
-        WriteBytes(tmp);
+        EnsureCapacity(8);
+        BinaryPrimitives.WriteUInt64LittleEndian(_storage.AsSpan(_count, 8), value);
+        _count += 8;
     }
 
     public void WriteInt64(long value)
@@ -85,32 +89,39 @@ public sealed class ByteWriter
 
     public void WriteVarUInt32(uint value)
     {
+        EnsureCapacity(5);
         uint remaining = value;
         while (remaining >= 0x80)
         {
-            WriteUInt8((byte)((remaining & 0x7F) | 0x80));
+            _storage[_count] = (byte)((remaining & 0x7F) | 0x80);
+            _count += 1;
             remaining >>= 7;
         }
 
-        WriteUInt8((byte)remaining);
+        _storage[_count] = (byte)remaining;
+        _count += 1;
     }
 
     public void WriteVarUInt64(ulong value)
     {
+        EnsureCapacity(10);
         ulong remaining = value;
         for (var i = 0; i < 8; i++)
         {
             if (remaining < 0x80)
             {
-                WriteUInt8((byte)remaining);
+                _storage[_count] = (byte)remaining;
+                _count += 1;
                 return;
             }
 
-            WriteUInt8((byte)((remaining & 0x7F) | 0x80));
+            _storage[_count] = (byte)((remaining & 0x7F) | 0x80);
+            _count += 1;
             remaining >>= 7;
         }
 
-        WriteUInt8((byte)(remaining & 0xFF));
+        _storage[_count] = (byte)(remaining & 0xFF);
+        _count += 1;
     }
 
     public void WriteVarUInt36Small(ulong value)
@@ -171,50 +182,99 @@ public sealed class ByteWriter
 
     public void WriteBytes(ReadOnlySpan<byte> bytes)
     {
-        for (int i = 0; i < bytes.Length; i++)
+        EnsureCapacity(bytes.Length);
+        bytes.CopyTo(_storage.AsSpan(_count));
+        _count += bytes.Length;
+    }
+
+    public Span<byte> GetSpan(int size)
+    {
+        if (size < 0)
         {
-            _storage.Add(bytes[i]);
+            throw new ArgumentOutOfRangeException(nameof(size));
         }
+
+        EnsureCapacity(size);
+        return _storage.AsSpan(_count, size);
+    }
+
+    public void Advance(int count)
+    {
+        if (count < 0 || _count + count > _storage.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count));
+        }
+
+        _count += count;
     }
 
     public void SetByte(int index, byte value)
     {
+        if ((uint)index >= (uint)_count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
         _storage[index] = value;
     }
 
     public void SetBytes(int index, ReadOnlySpan<byte> bytes)
     {
-        for (var i = 0; i < bytes.Length; i++)
+        if (index < 0 || index + bytes.Length > _count)
         {
-            _storage[index + i] = bytes[i];
+            throw new ArgumentOutOfRangeException(nameof(index));
         }
+
+        bytes.CopyTo(_storage.AsSpan(index));
     }
 
     public byte[] ToArray()
     {
-        return _storage.ToArray();
+        byte[] result = new byte[_count];
+        Array.Copy(_storage, 0, result, 0, _count);
+        return result;
     }
 
     public void Reset()
     {
-        _storage.Clear();
+        _count = 0;
+    }
+
+    private void EnsureCapacity(int additional)
+    {
+        int required = _count + additional;
+        if (required <= _storage.Length)
+        {
+            return;
+        }
+
+        int next = _storage.Length * 2;
+        if (next < required)
+        {
+            next = required;
+        }
+
+        Array.Resize(ref _storage, next);
     }
 }
 
 public sealed class ByteReader
 {
-    private readonly byte[] _storage;
+    private byte[] _storage;
+    private int _length;
     private int _cursor;
 
     public ByteReader(ReadOnlySpan<byte> data)
     {
         _storage = data.ToArray();
+        _length = _storage.Length;
         _cursor = 0;
     }
 
     public ByteReader(byte[] bytes)
     {
         _storage = bytes;
+        _length = bytes.Length;
         _cursor = 0;
     }
 
@@ -222,7 +282,21 @@ public sealed class ByteReader
 
     public int Cursor => _cursor;
 
-    public int Remaining => _storage.Length - _cursor;
+    public int Remaining => _length - _cursor;
+
+    public void Reset(ReadOnlySpan<byte> data)
+    {
+        _storage = data.ToArray();
+        _length = _storage.Length;
+        _cursor = 0;
+    }
+
+    public void Reset(byte[] bytes)
+    {
+        _storage = bytes;
+        _length = bytes.Length;
+        _cursor = 0;
+    }
 
     public void SetCursor(int value)
     {
@@ -236,9 +310,9 @@ public sealed class ByteReader
 
     public void CheckBound(int need)
     {
-        if (_cursor + need > _storage.Length)
+        if (_cursor + need > _length)
         {
-            throw new OutOfBoundsException(_cursor, need, _storage.Length);
+            throw new OutOfBoundsException(_cursor, need, _length);
         }
     }
 
@@ -296,14 +370,24 @@ public sealed class ByteReader
 
     public uint ReadVarUInt32()
     {
+        byte[] storage = _storage;
+        int cursor = _cursor;
+        int length = _length;
         uint result = 0;
-        var shift = 0;
+        int shift = 0;
         while (true)
         {
-            byte b = ReadUInt8();
+            if (cursor >= length)
+            {
+                throw new OutOfBoundsException(cursor, 1, length);
+            }
+
+            byte b = storage[cursor];
+            cursor += 1;
             result |= (uint)(b & 0x7F) << shift;
             if ((b & 0x80) == 0)
             {
+                _cursor = cursor;
                 return result;
             }
 
@@ -317,22 +401,39 @@ public sealed class ByteReader
 
     public ulong ReadVarUInt64()
     {
+        byte[] storage = _storage;
+        int cursor = _cursor;
+        int length = _length;
         ulong result = 0;
-        var shift = 0;
+        int shift = 0;
         for (var i = 0; i < 8; i++)
         {
-            byte b = ReadUInt8();
+            if (cursor >= length)
+            {
+                throw new OutOfBoundsException(cursor, 1, length);
+            }
+
+            byte b = storage[cursor];
+            cursor += 1;
             result |= (ulong)(b & 0x7F) << shift;
             if ((b & 0x80) == 0)
             {
+                _cursor = cursor;
                 return result;
             }
 
             shift += 7;
         }
 
-        byte last = ReadUInt8();
+        if (cursor >= length)
+        {
+            throw new OutOfBoundsException(cursor, 1, length);
+        }
+
+        byte last = storage[cursor];
+        cursor += 1;
         result |= (ulong)last << 56;
+        _cursor = cursor;
         return result;
     }
 

@@ -39,6 +39,7 @@ public sealed class Fory
             _typeResolver,
             Config.TrackRef,
             Config.Compatible,
+            Config.CheckStructVersion,
             new CompatibleTypeDefWriteState(),
             new MetaStringWriteState());
         _readContext = new ReadContext(
@@ -46,6 +47,7 @@ public sealed class Fory
             _typeResolver,
             Config.TrackRef,
             Config.Compatible,
+            Config.CheckStructVersion,
             new CompatibleTypeDefReadState(),
             new MetaStringReadState());
     }
@@ -93,7 +95,8 @@ public sealed class Fory
 
     public byte[] Serialize<T>(in T value)
     {
-        ByteWriter writer = new();
+        ByteWriter writer = _writeContext.Writer;
+        writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         bool isNone = serializer.IsNone(value);
         WriteHead(writer, isNone);
@@ -116,7 +119,21 @@ public sealed class Fory
 
     public T Deserialize<T>(ReadOnlySpan<byte> payload)
     {
-        ByteReader reader = new(payload);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
+        T value = DeserializeFromReader<T>(reader);
+        if (reader.Remaining != 0)
+        {
+            throw new InvalidDataException($"unexpected trailing bytes after deserializing {typeof(T)}");
+        }
+
+        return value;
+    }
+
+    public T Deserialize<T>(byte[] payload)
+    {
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -129,7 +146,8 @@ public sealed class Fory
     public T Deserialize<T>(ref ReadOnlySequence<byte> payload)
     {
         byte[] bytes = payload.ToArray();
-        ByteReader reader = new(bytes);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(bytes);
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;
@@ -137,7 +155,8 @@ public sealed class Fory
 
     public byte[] SerializeObject(object? value)
     {
-        ByteWriter writer = new();
+        ByteWriter writer = _writeContext.Writer;
+        writer.Reset();
         bool isNone = value is null;
         WriteHead(writer, isNone);
         if (!isNone)
@@ -159,7 +178,21 @@ public sealed class Fory
 
     public object? DeserializeObject(ReadOnlySpan<byte> payload)
     {
-        ByteReader reader = new(payload);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
+        object? value = DeserializeObjectFromReader(reader);
+        if (reader.Remaining != 0)
+        {
+            throw new InvalidDataException("unexpected trailing bytes after deserializing dynamic object");
+        }
+
+        return value;
+    }
+
+    public object? DeserializeObject(byte[] payload)
+    {
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(payload);
         object? value = DeserializeObjectFromReader(reader);
         if (reader.Remaining != 0)
         {
@@ -172,7 +205,8 @@ public sealed class Fory
     public object? DeserializeObject(ref ReadOnlySequence<byte> payload)
     {
         byte[] bytes = payload.ToArray();
-        ByteReader reader = new(bytes);
+        ByteReader reader = _readContext.Reader;
+        reader.Reset(bytes);
         object? value = DeserializeObjectFromReader(reader);
         payload = payload.Slice(reader.Cursor);
         return value;

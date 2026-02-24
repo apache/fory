@@ -22,8 +22,7 @@ public sealed record Config(
     bool TrackRef = false,
     bool Compatible = false,
     bool CheckStructVersion = false,
-    bool EnableReflectionFallback = false,
-    int MaxDepth = 512);
+    int MaxDepth = 20);
 
 public sealed class ForyBuilder
 {
@@ -31,8 +30,7 @@ public sealed class ForyBuilder
     private bool _trackRef;
     private bool _compatible;
     private bool _checkStructVersion;
-    private bool _enableReflectionFallback;
-    private int _maxDepth = 512;
+    private int _maxDepth = 20;
 
     public ForyBuilder Xlang(bool enabled = true)
     {
@@ -58,12 +56,6 @@ public sealed class ForyBuilder
         return this;
     }
 
-    public ForyBuilder EnableReflectionFallback(bool enabled = false)
-    {
-        _enableReflectionFallback = enabled;
-        return this;
-    }
-
     public ForyBuilder MaxDepth(int value)
     {
         if (value <= 0)
@@ -82,7 +74,6 @@ public sealed class ForyBuilder
             TrackRef: _trackRef,
             Compatible: _compatible,
             CheckStructVersion: _checkStructVersion,
-            EnableReflectionFallback: _enableReflectionFallback,
             MaxDepth: _maxDepth);
     }
 

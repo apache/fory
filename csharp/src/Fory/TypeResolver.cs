@@ -23,6 +23,14 @@ namespace Apache.Fory;
 public sealed class TypeResolver
 {
     private static readonly ConcurrentDictionary<Type, Func<Serializer>> GeneratedFactories = new();
+    private static readonly ConcurrentDictionary<TypeId, HashSet<TypeId>> SingleAllowedWireTypes = new();
+    private static readonly HashSet<TypeId> CompatibleStructAllowedWireTypes =
+    [
+        TypeId.Struct,
+        TypeId.NamedStruct,
+        TypeId.CompatibleStruct,
+        TypeId.NamedCompatibleStruct,
+    ];
     private static readonly Dictionary<Type, Type> PrimitiveStringKeyDictionaryCodecs = new()
     {
         [typeof(string)] = typeof(StringPrimitiveDictionaryCodec),
@@ -363,17 +371,13 @@ public sealed class TypeResolver
     internal static HashSet<TypeId> AllowedWireTypeIds(TypeId declaredKind, bool registerByName, bool compatible)
     {
         TypeId baseKind = NormalizeBaseKind(declaredKind);
-        TypeId expected = ResolveWireTypeId(declaredKind, registerByName, compatible);
-        HashSet<TypeId> allowed = [expected];
         if (baseKind == TypeId.Struct && compatible)
         {
-            allowed.Add(TypeId.CompatibleStruct);
-            allowed.Add(TypeId.NamedCompatibleStruct);
-            allowed.Add(TypeId.Struct);
-            allowed.Add(TypeId.NamedStruct);
+            return CompatibleStructAllowedWireTypes;
         }
 
-        return allowed;
+        TypeId expected = ResolveWireTypeId(declaredKind, registerByName, compatible);
+        return SingleAllowedWireTypes.GetOrAdd(expected, static typeId => [typeId]);
     }
 
     public object? ReadByUserTypeId(uint userTypeId, ReadContext context, TypeMeta? compatibleTypeMeta = null)

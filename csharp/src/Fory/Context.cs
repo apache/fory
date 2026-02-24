@@ -149,6 +149,7 @@ public sealed class WriteContext
         TypeResolver typeResolver,
         bool trackRef,
         bool compatible = false,
+        bool checkStructVersion = false,
         CompatibleTypeDefWriteState? compatibleTypeDefState = null,
         MetaStringWriteState? metaStringWriteState = null)
     {
@@ -156,6 +157,7 @@ public sealed class WriteContext
         TypeResolver = typeResolver;
         TrackRef = trackRef;
         Compatible = compatible;
+        CheckStructVersion = checkStructVersion;
         RefWriter = new RefWriter();
         CompatibleTypeDefState = compatibleTypeDefState ?? new CompatibleTypeDefWriteState();
         MetaStringWriteState = metaStringWriteState ?? new MetaStringWriteState();
@@ -168,6 +170,8 @@ public sealed class WriteContext
     public bool TrackRef { get; }
 
     public bool Compatible { get; }
+
+    public bool CheckStructVersion { get; }
 
     public RefWriter RefWriter { get; }
 
@@ -231,6 +235,7 @@ public sealed class ReadContext
         TypeResolver typeResolver,
         bool trackRef,
         bool compatible = false,
+        bool checkStructVersion = false,
         CompatibleTypeDefReadState? compatibleTypeDefState = null,
         MetaStringReadState? metaStringReadState = null)
     {
@@ -238,6 +243,7 @@ public sealed class ReadContext
         TypeResolver = typeResolver;
         TrackRef = trackRef;
         Compatible = compatible;
+        CheckStructVersion = checkStructVersion;
         RefReader = new RefReader();
         CompatibleTypeDefState = compatibleTypeDefState ?? new CompatibleTypeDefReadState();
         MetaStringReadState = metaStringReadState ?? new MetaStringReadState();
@@ -250,6 +256,8 @@ public sealed class ReadContext
     public bool TrackRef { get; }
 
     public bool Compatible { get; }
+
+    public bool CheckStructVersion { get; }
 
     public RefReader RefReader { get; }
 

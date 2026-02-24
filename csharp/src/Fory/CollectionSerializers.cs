@@ -31,6 +31,16 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
+    private static bool CanDeclareElementType<T>(TypeId staticTypeId)
+    {
+        if (!staticTypeId.NeedsTypeInfoForField())
+        {
+            return true;
+        }
+
+        return typeof(T).IsSealed;
+    }
+
     public static void WriteCollectionData<T>(
         IEnumerable<T> values,
         Serializer<T> elementSerializer,
@@ -60,7 +70,7 @@ internal static class CollectionCodec
         }
 
         bool trackRef = context.TrackRef && elementSerializer.IsReferenceTrackableType;
-        bool declaredElementType = hasGenerics && !elementSerializer.StaticTypeId.NeedsTypeInfoForField();
+        bool declaredElementType = hasGenerics && CanDeclareElementType<T>(elementSerializer.StaticTypeId);
         bool dynamicElementType = elementSerializer.StaticTypeId == TypeId.Unknown;
 
         byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
