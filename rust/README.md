@@ -627,7 +627,7 @@ Apache Fory™ Rust is designed for maximum performance:
 Run benchmarks:
 
 ```bash
-cd benchmarks/rust_benchmark
+cd benchmarks/rust
 cargo bench
 ```
 

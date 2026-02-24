@@ -18,7 +18,7 @@
 package benchmark
 
 import (
-	pb "github.com/apache/fory/benchmarks/go_benchmark/proto"
+	pb "github.com/apache/fory/benchmarks/go/proto"
 )
 
 // ToPbStruct converts NumericStruct to protobuf Struct

@@ -97,7 +97,7 @@ Fory Rust demonstrates competitive performance compared to other Rust serializat
 <img src="docs/benchmarks/rust/system_data.png" width="90%">
 </p>
 
-For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust_benchmark).
+For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust).
 
 ### C++ Serialization Performance
 
@@ -107,7 +107,7 @@ Fory C++ demonstrates competitive performance compared to protobuf c++ serializa
 <img src="docs/benchmarks/cpp/throughput.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp_benchmark).
+For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp).
 
 ### Go Serialization Performance
 
@@ -117,7 +117,7 @@ Fory Go demonstrates excellent performance compared to other go serialization fr
 <img src="docs/benchmarks/go/benchmark_combined.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go_benchmark).
+For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go).
 
 ## Installation
 

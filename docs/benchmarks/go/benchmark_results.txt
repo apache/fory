@@ -140,7 +140,7 @@ MediaContentList:
 ============================================
 goos: darwin
 goarch: arm64
-pkg: github.com/apache/fory/benchmarks/go_benchmark
+pkg: github.com/apache/fory/benchmarks/go
 cpu: Apple M4 Pro
 BenchmarkFory_Struct_Serialize-12                    	18441836	        65.29 ns/op	       0 B/op	       0 allocs/op
 BenchmarkFory_Struct_Serialize-12                    	18408471	        65.41 ns/op	       0 B/op	       0 allocs/op
@@ -323,4 +323,4 @@ BenchmarkMsgpack_MediaContentList_Deserialize-12     	   44185	     27271 ns/op	
 BenchmarkMsgpack_MediaContentList_Deserialize-12     	   43345	     27499 ns/op	   20058 B/op	     307 allocs/op
 BenchmarkMsgpack_MediaContentList_Deserialize-12     	   43718	     27975 ns/op	   20058 B/op	     307 allocs/op
 PASS
-ok  	github.com/apache/fory/benchmarks/go_benchmark	256.707s
+ok  	github.com/apache/fory/benchmarks/go	256.707s

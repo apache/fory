@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"testing"
 
-	pb "github.com/apache/fory/benchmarks/go_benchmark/proto"
+	pb "github.com/apache/fory/benchmarks/go/proto"
 	"github.com/apache/fory/go/fory"
 	"github.com/vmihailenco/msgpack/v5"
 	"google.golang.org/protobuf/proto"
