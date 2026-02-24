@@ -18,21 +18,18 @@
 """TypeScript/JavaScript code generator."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
-from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
     Enum,
     Union,
-    Field,
     FieldType,
     PrimitiveType,
     NamedType,
     ListType,
     MapType,
-    Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -77,7 +74,7 @@ class TypeScriptGenerator(BaseGenerator):
     def is_imported_type(self, type_def: object) -> bool:
         """Return True if a type definition comes from an imported IDL file."""
         schema_file = self.schema.source_file
-        
+
         # If there's no source file set, all types are local (not imported)
         if not schema_file:
             return False
@@ -92,9 +89,7 @@ class TypeScriptGenerator(BaseGenerator):
 
         # Otherwise, try to resolve paths and compare
         try:
-            return (
-                Path(location.file).resolve() != Path(schema_file).resolve()
-            )
+            return Path(location.file).resolve() != Path(schema_file).resolve()
         except Exception:
             # If Path resolution fails, compare as strings
             return location.file != schema_file
@@ -130,8 +125,8 @@ class TypeScriptGenerator(BaseGenerator):
             primitive_name = field_type.name.lower()
             # Map common shorthand names to primitive kinds
             shorthand_map = {
-                'float': PrimitiveKind.FLOAT32,
-                'double': PrimitiveKind.FLOAT64,
+                "float": PrimitiveKind.FLOAT32,
+                "double": PrimitiveKind.FLOAT64,
             }
             if primitive_name in shorthand_map:
                 type_str = self.PRIMITIVE_MAP.get(shorthand_map[primitive_name], "any")
@@ -304,7 +299,6 @@ class TypeScriptGenerator(BaseGenerator):
         union_cases = []
         for field in union.fields:
             field_type_str = self.generate_type(field.field_type)
-            field_name_camel = self.to_camel_case(field.name)
             case_value = self.to_upper_snake_case(field.name)
             union_cases.append(
                 f"{ind}{self.indent_str}| ( {{ case: {case_enum_name}.{case_value}; value: {field_type_str} }} )"
@@ -319,7 +313,9 @@ class TypeScriptGenerator(BaseGenerator):
     def generate_registration(self) -> List[str]:
         """Generate a registration function."""
         lines = []
-        registration_name = f"register{self.to_pascal_case(self.get_module_name())}Types"
+        registration_name = (
+            f"register{self.to_pascal_case(self.get_module_name())}Types"
+        )
 
         lines.append("// Registration helper")
         lines.append(f"export function {registration_name}(fory: any): void {{")
@@ -330,9 +326,7 @@ class TypeScriptGenerator(BaseGenerator):
                 continue
             if self.should_register_by_id(enum):
                 type_id = enum.type_id
-                lines.append(
-                    f"  fory.register({enum.name}, {type_id});"
-                )
+                lines.append(f"  fory.register({enum.name}, {type_id});")
 
         # Register messages
         for message in self.schema.messages:
