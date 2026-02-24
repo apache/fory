@@ -34,6 +34,12 @@ on:
       - "compiler/**"
       - ".github/workflows/build-foryc-binaries.yml"
 
+# Cancel in-progress runs on the same PR to avoid wasting CI minutes on
+# force-pushes. Does NOT cancel tagged or dispatch runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -41,42 +47,158 @@ env:
   PYTHON_VERSION: "3.11"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# BUILD JOB
-# Produces one standalone foryc binary directory per target platform.
+# ACTION SHA PINS — verified live against GitHub commit graph 2026-02-24
 #
-# Runner notes:
-#   linux-x86_64  : ubuntu-22.04
-#   linux-aarch64 : ubuntu-24.04-arm
-#   macos-x86_64  : macos-15-intel
-#   macos-aarch64 : macos-15
-#   windows-x86_64: windows-latest (Server 2022)
+#   actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd        # v6.0.2
+#   actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405    # v6.2.0
+#   actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+#   actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
 #
-# --onedir mode:
-#   PyInstaller --onefile extracts DLLs to %TEMP% at runtime. Windows Defender
-#   on GitHub's hardened runners intercepts LoadLibrary at the memory-mapping
-#   level (PYI-xxxx ERROR_NOACCESS) even with DisableRealtimeMonitoring $true.
-#   --onedir pre-extracts everything at build time. No runtime extraction means
-#   no Defender interception. No Defender workaround needed anywhere.
+# Node.js 24 runner requirement:
+#   setup-python v6, upload-artifact v6, and download-artifact v7 all run on
+#   Node.js 24 (runs.using: node24) and require Actions runner >= v2.327.1.
+#   GitHub-hosted runners (ubuntu-22.04, macos-15, windows-latest) are
+#   auto-updated and satisfy this requirement automatically.
+#   Self-hosted runners MUST be upgraded to >= v2.327.1 before using this
+#   workflow, otherwise setup-python, upload-artifact, and download-artifact
+#   will refuse to execute.
 #
-# Output per target: compiler/dist/foryc/ directory
-#   Unix:    compiler/dist/foryc/foryc
-#   Windows: compiler/dist/foryc/foryc.exe
+# Re-verify SHAs at each Fory release:
+#   https://github.com/actions/checkout/releases
+#   https://github.com/actions/setup-python/releases
+#   https://github.com/actions/upload-artifact/releases
+#   https://github.com/actions/download-artifact/releases
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPEC-CHECK JOB  (pull_request only — lightweight, no binary build)
 #
-# UPX notes:
-#   UPX is applied to the executable inside dist/foryc/ only, not the dir.
-#   macOS skips UPX — UPX 4.x+ dropped Mach-O support entirely.
-#   Windows skips UPX — the onedir bootloader stub's PE layout is
-#   incompatible with UPX --best --lzma (exit code 1, no output).
+# Full 5-platform binary builds on every compiler PR cost ~25 CI-minutes.
+# On PRs we run a fast spec-check instead:
+#   1. Verify all fory_compiler modules are importable via importlib.import_module
+#      (same pkgutil discovery as foryc.spec — single source of truth)
+#   2. AST-parse foryc.spec to catch Python syntax errors without executing it
+#      (executing the spec requires PyInstaller-injected Analysis/PYZ/EXE/COLLECT
+#       globals absent in a plain interpreter; ast.parse validates syntax only)
 #
-# Phase 2 distribution note:
-#   The onedir package is 20-40 MB total (python311.dll + stdlib .pyc files).
-#   This exceeds the 10 MB crates.io per-crate limit from --onefile planning.
-#   foryc-bin will distribute via zip archive or download-on-first-install,
-#   not direct binary embedding in a single crate.
+# Full builds run on: workflow_dispatch, workflow_call, push tags foryc-v*
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
+  spec-check:
+    name: spec / import-check (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            compiler/requirements-dev.txt
+            compiler/pyproject.toml
+
+      - name: Install fory_compiler (no pyinstaller needed for spec-check)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./compiler
+
+      # importlib.import_module CONTRACT:
+      #   Unlike __import__, importlib.import_module('fory_compiler.ir.ast')
+      #   explicitly loads the named submodule, not just its parent chain.
+      #   This catches broken submodules that a parent __init__.py would mask.
+      #
+      #   onerror collects ALL failures before raising so every broken package
+      #   is reported in one pass, not just the first one encountered.
+      - name: Verify all fory_compiler modules are importable
+        working-directory: compiler
+        run: |
+          python -c "
+          import importlib, pkgutil, fory_compiler
+
+          walk_errors = []
+          def onerror(name):
+              walk_errors.append(name)
+
+          mods = ['fory_compiler'] + [
+              m.name for m in pkgutil.walk_packages(
+                  path=fory_compiler.__path__,
+                  prefix=fory_compiler.__name__ + '.',
+                  onerror=onerror,
+              )
+          ]
+          if walk_errors:
+              raise ImportError(
+                  'walk_packages failed to recurse into: ' + str(walk_errors) +
+                  '\nFix import errors in these packages before building.'
+              )
+          import_errors = []
+          for m in mods:
+              try:
+                  importlib.import_module(m)
+                  print(f'OK: {m}')
+              except Exception as e:
+                  import_errors.append(f'{m}: {e}')
+          if import_errors:
+              raise ImportError(
+                  'Failed to import:\n' + '\n'.join(import_errors)
+              )
+          print(f'All {len(mods)} module(s) verified.')
+          "
+
+      # ast.parse validates Python syntax without executing the spec.
+      # Executing foryc.spec directly fails because Analysis/PYZ/EXE/COLLECT
+      # are PyInstaller-injected globals absent in a plain interpreter.
+      - name: Syntax-check foryc.spec (AST parse)
+        run: |
+          python -c "
+          import ast
+          with open('compiler/foryc.spec', encoding='utf-8') as f:
+              src = f.read()
+          tree = ast.parse(src, filename='foryc.spec')
+          print(f'foryc.spec: syntax OK ({len(list(ast.walk(tree)))} AST nodes)')
+          "
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # BUILD JOB  (tags / workflow_dispatch / workflow_call only — NOT pull_request)
+  #
+  # Runner notes:
+  #   linux-x86_64  : ubuntu-22.04
+  #   linux-aarch64 : ubuntu-24.04-arm  (native ARM64 runner — no QEMU)
+  #   macos-x86_64  : macos-15-intel
+  #   macos-aarch64 : macos-15
+  #   windows-x86_64: windows-latest (Server 2022)
+  #
+  # --onedir mode (not --onefile):
+  #   --onefile extracts DLLs to %TEMP% at runtime. Windows Defender on GitHub's
+  #   hardened runners intercepts LoadLibrary at the memory-mapping level
+  #   (PYI-xxxx ERROR_NOACCESS) even with DisableRealtimeMonitoring $true.
+  #   --onedir pre-extracts at build time; no runtime extraction, no interception.
+  #
+  # UPX notes:
+  #   Applied to the exe stub only, not the entire dist/foryc/ directory.
+  #   macOS: skipped — UPX 4.x+ dropped Mach-O support entirely.
+  #   Windows: skipped — onedir bootloader stub PE layout incompatible with
+  #   UPX --best --lzma (exits code 1, produces no output).
+  #
+  # Phase 2 distribution note:
+  #   --onedir produces 20-40 MB total (python311.dll + stdlib .pyc files).
+  #   This exceeds the 10 MB crates.io per-crate limit.
+  #   foryc-bin will distribute via zip archive or download-on-first-install.
+  #   foryc_path in foryc-build Config must resolve to a DIRECTORY, not a
+  #   single file — Phase 2 implementors must account for this.
+  #
+  # windows-aarch64:
+  #   Not included in this PR. Tracked in issue #3292.
+  #   GitHub Actions windows-11-arm runners are now available but PyInstaller
+  #   aarch64 Windows support requires validation. Targeted for Phase 2.
+  # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: build / ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -124,10 +246,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -150,48 +272,69 @@ jobs:
           choco install upx --yes --no-progress
           upx --version
 
+      # ── macOS: pin deployment target ─────────────────────────────────────────
+      # Without MACOSX_DEPLOYMENT_TARGET, binaries built on macOS 15 embed
+      # LC_BUILD_VERSION minos=15.0 and silently fail on macOS ≤14 with:
+      #   dyld: Symbol not found / incompatible library version
+      # 13.0 rationale:
+      #   - Covers all active Apple Silicon + Intel users
+      #   - Python 3.11 minimum is 10.9; 13.0 is safe
+      #   - macOS 13 (Ventura) is the oldest release still receiving security
+      #     patches as of 2026
+      - name: Set macOS deployment target
+        if: runner.os == 'macOS'
+        run: echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> "$GITHUB_ENV"
+
       # ── Install build dependencies ──────────────────────────────────────────
-      # pyinstaller version is pinned in requirements-dev.txt.
+      # pyinstaller is pinned in requirements-dev.txt (>=6.0,<7.0).
       # fory_compiler installed from source so PyInstaller's import tracer
-      # can walk the actual installed package tree.
+      # walks the actual installed package tree, matching pkgutil.walk_packages
+      # in foryc.spec.
       - name: Install PyInstaller and fory_compiler
         run: |
           python -m pip install --upgrade pip
           pip install -r compiler/requirements-dev.txt
           pip install ./compiler
 
-      # ── Verify all hiddenimports are importable ─────────────────────────────
-      # PyInstaller silently ignores nonexistent hiddenimports entries.
-      # This step catches renamed or removed modules before PyInstaller runs,
-      # giving a clean ImportError instead of a silently broken binary.
-      - name: Verify all hiddenimports are importable
+      # ── Verify all fory_compiler modules are importable ─────────────────────
+      # Same pkgutil discovery as foryc.spec — single source of truth.
+      # importlib.import_module guarantees each named submodule is independently
+      # loaded, not just its parent chain.
+      # onerror collects ALL failing packages before raising.
+      - name: Verify all fory_compiler modules are importable
         working-directory: compiler
         run: |
           python -c "
-          mods = [
-              'fory_compiler', 'fory_compiler.cli',
-              'fory_compiler.ir', 'fory_compiler.ir.ast',
-              'fory_compiler.ir.emitter', 'fory_compiler.ir.validator',
-              'fory_compiler.ir.type_id', 'fory_compiler.ir.types',
-              'fory_compiler.frontend', 'fory_compiler.frontend.base',
-              'fory_compiler.frontend.utils',
-              'fory_compiler.frontend.fdl', 'fory_compiler.frontend.fdl.lexer',
-              'fory_compiler.frontend.fdl.parser',
-              'fory_compiler.frontend.proto', 'fory_compiler.frontend.proto.ast',
-              'fory_compiler.frontend.proto.lexer', 'fory_compiler.frontend.proto.parser',
-              'fory_compiler.frontend.proto.translator',
-              'fory_compiler.frontend.fbs', 'fory_compiler.frontend.fbs.ast',
-              'fory_compiler.frontend.fbs.lexer', 'fory_compiler.frontend.fbs.parser',
-              'fory_compiler.frontend.fbs.translator',
-              'fory_compiler.generators', 'fory_compiler.generators.base',
-              'fory_compiler.generators.java', 'fory_compiler.generators.python',
-              'fory_compiler.generators.cpp', 'fory_compiler.generators.rust',
-              'fory_compiler.generators.go',
+          import importlib, pkgutil, fory_compiler
+
+          walk_errors = []
+          def onerror(name):
+              walk_errors.append(name)
+
+          mods = ['fory_compiler'] + [
+              m.name for m in pkgutil.walk_packages(
+                  path=fory_compiler.__path__,
+                  prefix=fory_compiler.__name__ + '.',
+                  onerror=onerror,
+              )
           ]
+          if walk_errors:
+              raise ImportError(
+                  'walk_packages failed to recurse into: ' + str(walk_errors) +
+                  '\nFix import errors in these packages before building.'
+              )
+          import_errors = []
           for m in mods:
-              __import__(m)
-              print(f'OK: {m}')
-          print('All hiddenimports verified.')
+              try:
+                  importlib.import_module(m)
+                  print(f'OK: {m}')
+              except Exception as e:
+                  import_errors.append(f'{m}: {e}')
+          if import_errors:
+              raise ImportError(
+                  'Failed to import:\n' + '\n'.join(import_errors)
+              )
+          print(f'All {len(mods)} module(s) verified.')
           "
 
       # ── Build ───────────────────────────────────────────────────────────────
@@ -201,8 +344,46 @@ jobs:
         working-directory: compiler
         run: pyinstaller foryc.spec
 
+      # ── Verify macOS deployment target ───────────────────────────────────────
+      # Asserts minos <= 13.x. Fails hard if minos cannot be parsed — a
+      # WARNING-and-pass would allow a minos=15.0 binary through silently.
+      - name: Verify macOS deployment target (minos ≤ 13.x)
+        if: runner.os == 'macOS'
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          echo "=== otool LC_BUILD_VERSION ==="
+          otool -l "${BINARY_PATH}" | grep -A4 LC_BUILD_VERSION \
+            || otool -l "${BINARY_PATH}" | grep -A3 LC_VERSION_MIN_MACOSX \
+            || true
+
+          MINOS=$(otool -l "${BINARY_PATH}" \
+            | grep -A4 LC_BUILD_VERSION \
+            | awk '/minos/{print $2}' \
+            | head -1)
+
+          if [ -z "${MINOS}" ]; then
+            MINOS=$(otool -l "${BINARY_PATH}" \
+              | grep -A3 LC_VERSION_MIN_MACOSX \
+              | awk '/version/{print $2}' \
+              | head -1)
+          fi
+
+          if [ -z "${MINOS}" ]; then
+            echo "ERROR: could not parse minos from otool output."
+            echo "       Verify MACOSX_DEPLOYMENT_TARGET=13.0 was set during build."
+            exit 1
+          fi
+
+          MAJOR=$(echo "${MINOS}" | cut -d. -f1)
+          if [ "${MAJOR}" -gt 13 ]; then
+            echo "FAIL: minos=${MINOS} — binary requires macOS ${MAJOR}+ and will"
+            echo "      not launch on macOS ≤13."
+            exit 1
+          fi
+          echo "PASS: minos=${MINOS} (≤ 13.x — compatible with all active macOS releases)"
+
       # ── Pre-compression smoke test ──────────────────────────────────────────
-      # Confirms the binary is functional before UPX touches it.
       - name: Smoke test (pre-UPX)
         shell: bash
         env:
@@ -215,18 +396,16 @@ jobs:
           s = os.path.getsize(p)
           print(f'Size: {s:,} bytes ({s/1024/1024:.2f} MB)')
           "
-          "$BINARY_PATH" --help
+          "${BINARY_PATH}" --help
 
       # ── UPX compression ─────────────────────────────────────────────────────
-      # Applied to the executable stub only, not the entire dist/foryc/ dir.
-      # macOS skipped — UPX 4.x+ dropped Mach-O support.
       - name: Compress with UPX
         if: matrix.use_upx
         shell: bash
         env:
           BINARY_PATH: ${{ matrix.binary_path }}
         run: |
-          upx --best --lzma "$BINARY_PATH"
+          upx --best --lzma "${BINARY_PATH}"
           echo "=== Post-UPX binary size ==="
           python -c "
           import os
@@ -236,32 +415,56 @@ jobs:
           "
 
       # ── macOS aarch64: ad-hoc codesign ───────────────────────────────────────
-      # Apple Silicon requires valid code signatures on the exe AND all .dylib/.so
-      # files in the onedir package. --deep only traverses .app/.framework bundles,
-      # not flat directories, so we sign dylibs explicitly first.
-      # --sign - creates an ad-hoc signature; no Apple Developer ID required.
-      - name: Ad-hoc codesign binary (macOS aarch64, required for Apple Silicon)
+      # Apple Silicon requires valid signatures on the exe AND every .dylib/.so
+      # in the --onedir package. codesign --deep does NOT traverse flat
+      # directories (only .app/.framework bundles).
+      # BINARY_PATH via env prevents quoting failures on paths with spaces.
+      # Verify loop covers all dylibs — an unsigned dylib causes DYLD_LIBRARY_PATH
+      # resolution failure at runtime even if the main exe is correctly signed.
+      - name: Ad-hoc codesign (macOS aarch64 — Apple Silicon requirement)
         if: matrix.codesign
-        run: |
-          find "$(dirname '${{ matrix.binary_path }}')" \
-            \( -name "*.dylib" -o -name "*.so" \) \
-            -exec codesign --force --sign - {} \;
-          codesign --force --sign - "${{ matrix.binary_path }}"
-          codesign --verify --verbose "${{ matrix.binary_path }}"
-
-      # ── Post-compression smoke test ─────────────────────────────────────────
-      - name: Smoke test (post-UPX)
         shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
         run: |
-          "${{ matrix.binary_path }}" --help
+          DIST_DIR="$(dirname "${BINARY_PATH}")"
+
+          echo "=== Signing all .dylib and .so files in ${DIST_DIR} ==="
+          find "${DIST_DIR}" \( -name "*.dylib" -o -name "*.so" \) \
+            -exec codesign --force --sign - {} \;
+
+          echo "=== Signing main executable ==="
+          codesign --force --sign - "${BINARY_PATH}"
+
+          echo "=== Verifying all .dylib and .so signatures ==="
+          VERIFY_FAILURES=0
+          while IFS= read -r -d '' lib; do
+            if ! codesign --verify --verbose "${lib}" 2>&1; then
+              echo "FAIL: signature verification failed for ${lib}"
+              VERIFY_FAILURES=$((VERIFY_FAILURES + 1))
+            fi
+          done < <(find "${DIST_DIR}" \( -name "*.dylib" -o -name "*.so" \) -print0)
+
+          echo "=== Verifying main executable signature ==="
+          codesign --verify --verbose "${BINARY_PATH}"
+
+          if [ "${VERIFY_FAILURES}" -gt 0 ]; then
+            echo "FAIL: ${VERIFY_FAILURES} library signature verification(s) failed."
+            exit 1
+          fi
+          echo "PASS: all signatures verified."
+
+      # ── Final smoke test ─────────────────────────────────────────────────────
+      # Named "final" not "post-UPX" — UPX is skipped on 3 of 5 targets.
+      # Runs after all transformations (UPX, codesign) are complete.
+      - name: Smoke test (final)
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          "${BINARY_PATH}" --help
 
       # ── Onedir package size report ───────────────────────────────────────────
-      # In --onedir mode the executable is a ~1 MB bootloader stub.
-      # The actual payload (python311.dll + stdlib .pyc files) is 20-40 MB total.
-      # The 10 MB crates.io gate from --onefile does not apply here.
-      # Phase 2 foryc-bin will distribute via zip archive or download-on-install,
-      # NOT direct binary embedding in a single crate.
-      # This step reports both sizes and fails only on a 50 MB sanity limit.
       - name: Report onedir package size
         shell: bash
         env:
@@ -281,27 +484,55 @@ jobs:
           print('PASS')
           "
 
-      # ── Upload artifact (entire onedir directory) ────────────────────────────
+      # ── SHA-256 checksums ────────────────────────────────────────────────────
+      # Generates SHA256SUMS.txt for Phase 2 foryc-build integrity verification.
+      # Python used for cross-platform consistency (sha256sum/shasum/certutil
+      # are all platform-specific; Python's hashlib is not).
+      # chr(92) == backslash — normalises Windows paths in the output file.
+      - name: Generate SHA-256 checksums
+        shell: bash
+        env:
+          BINARY_PATH: ${{ matrix.binary_path }}
+        run: |
+          python -c "
+          import hashlib, os, pathlib
+          binary = pathlib.Path(os.environ['BINARY_PATH'])
+          dist_dir = binary.parent
+          lines = []
+          for f in sorted(dist_dir.rglob('*')):
+              if f.is_file() and f.name != 'SHA256SUMS.txt':
+                  digest = hashlib.sha256(f.read_bytes()).hexdigest()
+                  rel = str(f.relative_to(dist_dir)).replace(chr(92), '/')
+                  lines.append(f'{digest}  {rel}')
+                  print(f'{digest}  {rel}')
+          (dist_dir / 'SHA256SUMS.txt').write_text(
+              '\n'.join(lines) + '\n', encoding='utf-8'
+          )
+          print(f'Wrote {len(lines)} checksums to SHA256SUMS.txt')
+          "
+
+      # ── Upload artifact ──────────────────────────────────────────────────────
+      # retention-days: tagged releases → 90 days (Phase 2 runway)
+      #                 all other builds → 30 days
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ matrix.artifact_name }}
           path: compiler/dist/foryc/
-          retention-days: 30
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 90 || 30 }}
           if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # VALIDATE JOB
-  # Downloads each binary directory onto its native runner and runs:
-  #   1. --help sanity check
-  #   2. End-to-end compile of compiler/examples/demo.fdl to Rust output
-  #   3. End-to-end compile of compiler/examples/demo.fdl to Java output
+  # VALIDATE JOB  (tags / workflow_dispatch / workflow_call only)
   #
-  # No Defender workaround needed — onedir has no runtime extraction at all.
+  # All 5 generator backends validated — a generator can be correctly included
+  # in hiddenimports at build time but silently fail at runtime (e.g. a
+  # conditional import inside the generator that PyInstaller missed).
   # Python is NOT set up — binary must be fully self-contained.
   # ─────────────────────────────────────────────────────────────────────────────
   validate:
     name: validate / ${{ matrix.target }}
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ${{ matrix.os }}
     strategy:
@@ -334,16 +565,14 @@ jobs:
             binary_name: foryc.exe
 
     steps:
-      # Sparse checkout: only compiler/examples/ needed for demo.fdl.
-      # Python deliberately NOT set up — binary must run standalone.
       - name: Checkout (sparse — compiler/examples only)
-        uses: actions/checkout@v5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           sparse-checkout: compiler/examples
           sparse-checkout-cone-mode: true
 
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ${{ matrix.artifact_name }}
           path: ./artifact
@@ -352,70 +581,107 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x ./artifact/${{ matrix.binary_name }}
 
+      # Pre-flight: clear error message instead of confusing foryc exit code.
+      - name: Assert compiler/examples/demo.fdl exists
+        shell: bash
+        run: |
+          if [ ! -f compiler/examples/demo.fdl ]; then
+            echo "ERROR: compiler/examples/demo.fdl not found."
+            echo "       This file must exist in the repository for E2E validation."
+            exit 1
+          fi
+          echo "PASS: compiler/examples/demo.fdl found."
+
       # ── Test 1: --help ───────────────────────────────────────────────────────
-      # Requires argparse usage line. Crash tracebacks won't match ^usage:.*foryc.
       - name: Validate --help output
         shell: bash
         run: |
           OUTPUT=$(./artifact/${{ matrix.binary_name }} --help 2>&1)
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -qiE "^usage:.*foryc" || {
-            echo "ERROR: --help missing expected usage line"
+            echo "ERROR: --help output missing expected 'usage: ... foryc' line."
             exit 1
           }
 
-      # ── Test 2: End-to-end FDL → Rust ────────────────────────────────────────
-      - name: End-to-end compile demo.fdl to Rust
+      # ── Test 2: FDL → Rust ───────────────────────────────────────────────────
+      - name: End-to-end compile demo.fdl → Rust
         shell: bash
         run: |
           OUT_DIR="${RUNNER_TEMP}/foryc-e2e-rust"
           mkdir -p "${OUT_DIR}"
-
-          echo "=== Compiling compiler/examples/demo.fdl → Rust ==="
-          ./artifact/${{ matrix.binary_name }} \
-            --rust_out "${OUT_DIR}" \
-            compiler/examples/demo.fdl
-
-          echo "=== Output files ==="
+          ./artifact/${{ matrix.binary_name }} --rust_out "${OUT_DIR}" compiler/examples/demo.fdl
           ls -la "${OUT_DIR}/"
-
           RS_COUNT=$(find "${OUT_DIR}" -name "*.rs" -size +0c | wc -l)
-          if [ "${RS_COUNT}" -eq 0 ]; then
-            echo "ERROR: no non-empty .rs files generated"
-            exit 1
-          fi
+          [ "${RS_COUNT}" -gt 0 ] || { echo "ERROR: no .rs files generated"; exit 1; }
           echo "PASS: ${RS_COUNT} .rs file(s) generated"
 
-      # ── Test 3: End-to-end FDL → Java ────────────────────────────────────────
-      - name: End-to-end compile demo.fdl to Java
+      # ── Test 3: FDL → Java ───────────────────────────────────────────────────
+      - name: End-to-end compile demo.fdl → Java
         shell: bash
         run: |
-          JAVA_OUT="${RUNNER_TEMP}/foryc-e2e-java"
-          mkdir -p "${JAVA_OUT}"
-
-          echo "=== Compiling compiler/examples/demo.fdl → Java ==="
-          ./artifact/${{ matrix.binary_name }} \
-            --java_out "${JAVA_OUT}" \
-            compiler/examples/demo.fdl
-
-          echo "=== Output files ==="
-          ls -la "${JAVA_OUT}/"
-
-          JAVA_COUNT=$(find "${JAVA_OUT}" -name "*.java" -size +0c | wc -l)
-          if [ "${JAVA_COUNT}" -eq 0 ]; then
-            echo "ERROR: no non-empty .java files generated"
-            exit 1
-          fi
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-java"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --java_out "${OUT_DIR}" compiler/examples/demo.fdl
+          ls -la "${OUT_DIR}/"
+          JAVA_COUNT=$(find "${OUT_DIR}" -name "*.java" -size +0c | wc -l)
+          [ "${JAVA_COUNT}" -gt 0 ] || { echo "ERROR: no .java files generated"; exit 1; }
           echo "PASS: ${JAVA_COUNT} .java file(s) generated"
+
+      # ── Test 4: FDL → Python ─────────────────────────────────────────────────
+      - name: End-to-end compile demo.fdl → Python
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-python"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --python_out "${OUT_DIR}" compiler/examples/demo.fdl
+          ls -la "${OUT_DIR}/"
+          PY_COUNT=$(find "${OUT_DIR}" -name "*.py" -size +0c | wc -l)
+          [ "${PY_COUNT}" -gt 0 ] || { echo "ERROR: no .py files generated"; exit 1; }
+          echo "PASS: ${PY_COUNT} .py file(s) generated"
+
+      # ── Test 5: FDL → C++ ────────────────────────────────────────────────────
+      - name: End-to-end compile demo.fdl → C++
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-cpp"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --cpp_out "${OUT_DIR}" compiler/examples/demo.fdl
+          ls -la "${OUT_DIR}/"
+          CPP_COUNT=$(find "${OUT_DIR}" \
+            \( -name "*.h" -o -name "*.cc" -o -name "*.cpp" \) -size +0c | wc -l)
+          [ "${CPP_COUNT}" -gt 0 ] || { echo "ERROR: no C++ files generated"; exit 1; }
+          echo "PASS: ${CPP_COUNT} C++ file(s) generated"
+
+      # ── Test 6: FDL → Go ─────────────────────────────────────────────────────
+      # Go output may be nested in subdirs based on go_package schema option.
+      - name: End-to-end compile demo.fdl → Go
+        shell: bash
+        run: |
+          OUT_DIR="${RUNNER_TEMP}/foryc-e2e-go"
+          mkdir -p "${OUT_DIR}"
+          ./artifact/${{ matrix.binary_name }} --go_out "${OUT_DIR}" compiler/examples/demo.fdl
+          find "${OUT_DIR}" -type f | sort
+          GO_COUNT=$(find "${OUT_DIR}" -name "*.go" -size +0c | wc -l)
+          [ "${GO_COUNT}" -gt 0 ] || { echo "ERROR: no .go files generated"; exit 1; }
+          echo "PASS: ${GO_COUNT} .go file(s) generated"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # SUMMARY JOB
   # Single required status check for branch protection rules.
-  # The Phase 4 release pipeline reads this job's output via workflow_call.
+  # Phase 4 release pipeline reads artifacts_ready via workflow_call.
+  #
+  # GitHub Actions result values for a conditionally skipped job (if: false):
+  #   needs.<job>.result == "skipped"  — documented, always "skipped" not "".
+  #
+  # Three valid terminal states:
+  #   1. Tagged/dispatch: BUILD+VALIDATE success → ready=true,  exit 0
+  #      SPEC_CHECK = "skipped" on these events — State 1 does not check it.
+  #   2. PR: SPEC_CHECK success, BUILD+VALIDATE skipped → ready=false, exit 0
+  #   3. Any actual failure → ready=false, exit 1
   # ─────────────────────────────────────────────────────────────────────────────
   build-complete:
     name: foryc / all binaries ready
-    needs: [build, validate]
+    needs: [spec-check, build, validate]
     runs-on: ubuntu-latest
     if: always()
     outputs:
@@ -424,16 +690,32 @@ jobs:
       - name: Evaluate results
         id: check
         run: |
+          SPEC_CHECK="${{ needs.spec-check.result }}"
           BUILD="${{ needs.build.result }}"
           VALIDATE="${{ needs.validate.result }}"
-          echo "build:    ${BUILD}"
-          echo "validate: ${VALIDATE}"
+          echo "spec-check: ${SPEC_CHECK}"
+          echo "build:      ${BUILD}"
+          echo "validate:   ${VALIDATE}"
+
+          # State 1: Full build (tag / workflow_dispatch / workflow_call)
           if [[ "${BUILD}" == "success" && "${VALIDATE}" == "success" ]]; then
             echo "ready=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "ready=false" >> "${GITHUB_OUTPUT}"
-            exit 1
+            echo "PASS: full binary build and validation succeeded."
+            exit 0
           fi
+
+          # State 2: PR — build+validate skipped by design, spec-check ran
+          if [[ "${BUILD}" == "skipped" && "${VALIDATE}" == "skipped" \
+                && "${SPEC_CHECK}" == "success" ]]; then
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "PASS: PR spec-check succeeded. Full build skipped by design."
+            exit 0
+          fi
+
+          # State 3: Failure
+          echo "ready=false" >> "${GITHUB_OUTPUT}"
+          echo "FAIL: spec-check=${SPEC_CHECK} build=${BUILD} validate=${VALIDATE}"
+          exit 1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FALLBACK: If ubuntu-24.04-arm runner is unavailable in your fork,
@@ -447,16 +729,24 @@ jobs:
 #     use_upx: true
 #     codesign: false
 #
-# Then add these two steps before "Install PyInstaller":
+# Add `if: matrix.target != 'linux-aarch64'` to these three steps:
+#   "Install PyInstaller and fory_compiler"
+#   "Verify all fory_compiler modules are importable"
+#   "Build standalone binary with PyInstaller"
 #
-#   - name: Set up QEMU
+# Then add these two steps BEFORE "Install PyInstaller and fory_compiler":
+#
+#   - name: Set up QEMU (linux-aarch64 fallback only)
+#     if: matrix.target == 'linux-aarch64'
 #     uses: docker/setup-qemu-action@v3
+#     # Pin to full SHA: https://github.com/docker/setup-qemu-action/releases
 #     with:
 #       platforms: arm64
 #
-#   - name: Build via Docker (linux-aarch64)
+#   - name: Build via Docker (linux-aarch64 QEMU fallback)
 #     if: matrix.target == 'linux-aarch64'
 #     uses: addnab/docker-run-action@v3
+#     # Pin to full SHA: https://github.com/addnab/docker-run-action/releases
 #     with:
 #       image: python:3.11-slim-bookworm
 #       options: --platform linux/arm64 -v ${{ github.workspace }}:/ws

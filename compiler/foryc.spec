@@ -35,63 +35,49 @@
 # UPX compression is intentionally NOT applied here.
 # The CI workflow applies UPX manually per-platform for precise control.
 
+# ── Auto-discover all fory_compiler submodules ──────────────────────────────
+# pkgutil.walk_packages walks the installed package tree at spec-evaluation
+# time, so this list stays correct automatically when new submodules are added.
+# This eliminates the dual-maintenance problem between foryc.spec and the
+# CI verify step — both derive from the same source of truth: the installed
+# fory_compiler package tree. Adding a new generator (e.g. generators/kotlin.py)
+# is automatically picked up by both the spec and the CI verify step.
+#
+# onerror CONTRACT (critical):
+#   walk_packages calls onerror(pkg_name) when it cannot import a package in
+#   order to recurse into it. Using `onerror=lambda name: None` silently drops
+#   the entire subtree — the binary builds successfully but crashes at runtime
+#   when any generator in that subtree is invoked.
+#   _walk_onerror raises immediately so the BUILD fails loudly, not silently.
+import pkgutil
+import fory_compiler as _fc
+
+
+def _walk_onerror(pkg_name: str) -> None:
+    raise ImportError(
+        f"pkgutil.walk_packages failed to recurse into {pkg_name!r}. "
+        f"This package cannot be imported at spec-evaluation time. "
+        f"Fix the import error in {pkg_name!r} before building the binary. "
+        f"Hint: run `python -c \"import {pkg_name}\"` in the compiler/ venv "
+        f"to reproduce the error."
+    )
+
+
+hiddenimports = ["fory_compiler"] + [
+    m.name
+    for m in pkgutil.walk_packages(
+        path=_fc.__path__,
+        prefix=_fc.__name__ + ".",
+        onerror=_walk_onerror,  # fail loudly — never silently drop a subtree
+    )
+]
+
 a = Analysis(
     ['fory_compiler/__main__.py'],
     pathex=['.'],
     binaries=[],
     datas=[],
-    # fory_compiler has zero third-party pip dependencies.
-    # All frontends use hand-written lexers/parsers (pure stdlib).
-    # All generators are explicitly statically imported in generators/__init__.py.
-    # This list is a complete belt-and-suspenders safety net — every module
-    # in the fory_compiler package is enumerated here to prevent any future
-    # refactoring from silently dropping a module from the binary.
-    hiddenimports=[
-        # Entry point chain
-        'fory_compiler',
-        'fory_compiler.cli',
-
-        # IR layer — all 6 modules
-        'fory_compiler.ir',
-        'fory_compiler.ir.ast',
-        'fory_compiler.ir.emitter',
-        'fory_compiler.ir.validator',
-        'fory_compiler.ir.type_id',
-        'fory_compiler.ir.types',
-
-        # Frontend base utilities
-        'fory_compiler.frontend',
-        'fory_compiler.frontend.base',
-        'fory_compiler.frontend.utils',
-
-        # FDL frontend — hand-written lexer/parser
-        'fory_compiler.frontend.fdl',
-        'fory_compiler.frontend.fdl.lexer',
-        'fory_compiler.frontend.fdl.parser',
-
-        # Proto frontend — hand-written lexer/parser/translator
-        'fory_compiler.frontend.proto',
-        'fory_compiler.frontend.proto.ast',
-        'fory_compiler.frontend.proto.lexer',
-        'fory_compiler.frontend.proto.parser',
-        'fory_compiler.frontend.proto.translator',
-
-        # FBS (FlatBuffers schema) frontend — all 4 submodules
-        'fory_compiler.frontend.fbs',
-        'fory_compiler.frontend.fbs.ast',
-        'fory_compiler.frontend.fbs.lexer',
-        'fory_compiler.frontend.fbs.parser',
-        'fory_compiler.frontend.fbs.translator',
-
-        # Generators — all 5 language backends
-        'fory_compiler.generators',
-        'fory_compiler.generators.base',
-        'fory_compiler.generators.java',
-        'fory_compiler.generators.python',
-        'fory_compiler.generators.cpp',
-        'fory_compiler.generators.rust',
-        'fory_compiler.generators.go',
-    ],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -116,7 +102,7 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data)
 
 # --onedir mode: exclude_binaries=True keeps EXE as a stub only.
-# COLLECT below pulls the exe + all DLLs + stdlib into dist/foryc/ directory.
+# COLLECT below pulls exe + all DLLs + stdlib into dist/foryc/ directory.
 exe = EXE(
     pyz,
     a.scripts,
