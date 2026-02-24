@@ -211,16 +211,16 @@ def test_typescript_primitive_types():
     )
     output = generate_typescript(source)
 
-    # Check type mappings
-    assert "f_bool: boolean;" in output
-    assert "f_int32: number;" in output
-    assert "f_int64: bigint | number;" in output
-    assert "f_uint32: number;" in output
-    assert "f_uint64: bigint | number;" in output
-    assert "f_float: number;" in output
-    assert "f_double: number;" in output
-    assert "f_string: string;" in output
-    assert "f_bytes: Uint8Array;" in output
+    # Check type mappings (field names are converted to camelCase)
+    assert "fBool: boolean;" in output
+    assert "fInt32: number;" in output
+    assert "fInt64: bigint | number;" in output
+    assert "fUint32: number;" in output
+    assert "fUint64: bigint | number;" in output
+    assert "fFloat: number;" in output
+    assert "fDouble: number;" in output
+    assert "fString: string;" in output
+    assert "fBytes: Uint8Array;" in output
 
 
 def test_typescript_file_structure():
@@ -259,8 +259,8 @@ def test_typescript_file_structure():
     assert "// Unions" in output
     assert "// Registration helper" in output
 
-    # Check registration function
-    assert "export function registerExampleV1Types" in output
+    # Check registration function (uses last segment of package name)
+    assert "export function registerV1Types" in output
 
 
 def test_typescript_field_naming():

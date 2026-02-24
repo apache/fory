@@ -126,7 +126,24 @@ class TypeScriptGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             type_str = self.PRIMITIVE_MAP.get(field_type.kind, "any")
         elif isinstance(field_type, NamedType):
-            type_str = self.to_pascal_case(field_type.name)
+            # Check if this NamedType matches a primitive type name
+            primitive_name = field_type.name.lower()
+            # Map common shorthand names to primitive kinds
+            shorthand_map = {
+                'float': PrimitiveKind.FLOAT32,
+                'double': PrimitiveKind.FLOAT64,
+            }
+            if primitive_name in shorthand_map:
+                type_str = self.PRIMITIVE_MAP.get(shorthand_map[primitive_name], "any")
+            else:
+                # Check if it matches any primitive kind directly
+                for primitive_kind, ts_type in self.PRIMITIVE_MAP.items():
+                    if primitive_kind.value == primitive_name:
+                        type_str = ts_type
+                        break
+                if not type_str:
+                    # If not a primitive, treat as a message/enum type
+                    type_str = self.to_pascal_case(field_type.name)
         elif isinstance(field_type, ListType):
             element_type = self.generate_type(field_type.element_type)
             type_str = f"{element_type}[]"
