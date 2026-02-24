@@ -109,7 +109,9 @@ def collect_results(payload: dict) -> dict:
     return results
 
 
-def plot_group(ax, results: dict, datatypes: list[str], operation: str, title: str) -> None:
+def plot_group(
+    ax, results: dict, datatypes: list[str], operation: str, title: str
+) -> None:
     if not datatypes:
         ax.set_title(f"{title}\nNo Data")
         ax.axis("off")
@@ -118,7 +120,10 @@ def plot_group(ax, results: dict, datatypes: list[str], operation: str, title: s
     available_serializers = [
         serializer
         for serializer in SERIALIZER_ORDER
-        if any(results.get(dt, {}).get(operation, {}).get(serializer, 0.0) > 0 for dt in datatypes)
+        if any(
+            results.get(dt, {}).get(operation, {}).get(serializer, 0.0) > 0
+            for dt in datatypes
+        )
     ]
     if not available_serializers:
         ax.set_title(f"{title}\nNo Data")
@@ -128,7 +133,10 @@ def plot_group(ax, results: dict, datatypes: list[str], operation: str, title: s
     x = np.arange(len(datatypes))
     width = 0.8 / len(available_serializers)
     for index, serializer in enumerate(available_serializers):
-        values = [results.get(dt, {}).get(operation, {}).get(serializer, 0.0) for dt in datatypes]
+        values = [
+            results.get(dt, {}).get(operation, {}).get(serializer, 0.0)
+            for dt in datatypes
+        ]
         offset = (index - (len(available_serializers) - 1) / 2) * width
         ax.bar(
             x + offset,
@@ -148,7 +156,9 @@ def plot_group(ax, results: dict, datatypes: list[str], operation: str, title: s
 
 
 def render_plot(results: dict, output_dir: str) -> str:
-    non_list = [dt for dt in DATATYPE_ORDER if dt in results and not dt.endswith("list")]
+    non_list = [
+        dt for dt in DATATYPE_ORDER if dt in results and not dt.endswith("list")
+    ]
     list_only = [dt for dt in DATATYPE_ORDER if dt in results and dt.endswith("list")]
 
     fig, axes = plt.subplots(1, 4, figsize=(28, 6))
@@ -191,7 +201,9 @@ def render_plot(results: dict, output_dir: str) -> str:
 
 
 def winner_cell(throughputs: dict) -> str:
-    rows = [(serializer, value) for serializer, value in throughputs.items() if value > 0]
+    rows = [
+        (serializer, value) for serializer, value in throughputs.items() if value > 0
+    ]
     if not rows:
         return "-"
     rows.sort(key=lambda pair: pair[1], reverse=True)
@@ -224,14 +236,14 @@ def write_report(
     lines.append("")
     lines.append("| Key | Value |")
     lines.append("| --- | --- |")
-    lines.append(f"| Timestamp | {context.get('timestamp', '-') } |")
-    lines.append(f"| OS | {context.get('os', '-') } |")
-    lines.append(f"| Host | {context.get('host', '-') } |")
-    lines.append(f"| CPU Cores (Logical) | {context.get('cpuCoresLogical', '-') } |")
+    lines.append(f"| Timestamp | {context.get('timestamp', '-')} |")
+    lines.append(f"| OS | {context.get('os', '-')} |")
+    lines.append(f"| Host | {context.get('host', '-')} |")
+    lines.append(f"| CPU Cores (Logical) | {context.get('cpuCoresLogical', '-')} |")
     memory = context.get("memoryGB")
     memory_str = f"{memory:.2f}" if isinstance(memory, (int, float)) else "-"
     lines.append(f"| Memory (GB) | {memory_str} |")
-    lines.append(f"| Duration per case (s) | {context.get('durationSeconds', '-') } |")
+    lines.append(f"| Duration per case (s) | {context.get('durationSeconds', '-')} |")
     lines.append("")
     lines.append("## Throughput Results")
     lines.append("")
@@ -244,7 +256,9 @@ def write_report(
     lines.append(f'<img src="{image_path}" width="95%">')
     lines.append("</p>")
     lines.append("")
-    lines.append("| Datatype | Operation | Fory TPS | Protobuf TPS | Msgpack TPS | Fastest |")
+    lines.append(
+        "| Datatype | Operation | Fory TPS | Protobuf TPS | Msgpack TPS | Fastest |"
+    )
     lines.append("| --- | --- | ---: | ---: | ---: | --- |")
 
     for datatype in DATATYPE_ORDER:
@@ -289,7 +303,9 @@ def main() -> int:
     payload = load_json(args.json_file)
     results = collect_results(payload)
     throughput_plot = render_plot(results, args.output_dir)
-    report = write_report(payload, results, throughput_plot, args.output_dir, args.plot_prefix)
+    report = write_report(
+        payload, results, throughput_plot, args.output_dir, args.plot_prefix
+    )
 
     print(f"Generated report: {report}")
     print(f"Generated plot: {throughput_plot}")
@@ -298,4 +314,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -702,15 +702,16 @@ public final class ByteBuffer {
 
             let b8 = storage[offset + 8]
             cursor = offset + 9
-            return UInt64(b0 & 0x7F) |
+            let low = UInt64(b0 & 0x7F) |
                 (UInt64(b1 & 0x7F) << 7) |
                 (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
+                (UInt64(b3 & 0x7F) << 21)
+            let high = (UInt64(b4 & 0x7F) << 28) |
                 (UInt64(b5 & 0x7F) << 35) |
                 (UInt64(b6 & 0x7F) << 42) |
                 (UInt64(b7 & 0x7F) << 49) |
                 (UInt64(b8) << 56)
+            return low | high
         }
 
         try checkBound(1)
@@ -799,15 +800,16 @@ public final class ByteBuffer {
         try checkBound(9)
         let b8 = storage[cursor + 8]
         cursor += 9
-        return UInt64(b0 & 0x7F) |
+        let low = UInt64(b0 & 0x7F) |
             (UInt64(b1 & 0x7F) << 7) |
             (UInt64(b2 & 0x7F) << 14) |
-            (UInt64(b3 & 0x7F) << 21) |
-            (UInt64(b4 & 0x7F) << 28) |
+            (UInt64(b3 & 0x7F) << 21)
+        let high = (UInt64(b4 & 0x7F) << 28) |
             (UInt64(b5 & 0x7F) << 35) |
             (UInt64(b6 & 0x7F) << 42) |
             (UInt64(b7 & 0x7F) << 49) |
             (UInt64(b8) << 56)
+        return low | high
     }
 
     @inlinable
