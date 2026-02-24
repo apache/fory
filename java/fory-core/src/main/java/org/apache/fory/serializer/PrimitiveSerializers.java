@@ -139,29 +139,25 @@ public class PrimitiveSerializers {
 
     public IntSerializer(Fory fory, Class<?> cls) {
       super(fory, (Class) cls, false, true);
-      compressNumber = fory.compressInt();
+      // Cross-language encoding always uses varint; Java mode follows compressInt config.
+      compressNumber = !isJava || fory.compressInt();
     }
 
     @Override
     public void write(MemoryBuffer buffer, Integer value) {
-      if (isJava && compressNumber) {
+      if (compressNumber) {
         buffer.writeVarInt32(value);
-      } else if (isJava) {
-        buffer.writeInt32(value);
       } else {
-        // TODO support varint in cross-language serialization
-        buffer.writeVarInt32(value);
+        buffer.writeInt32(value);
       }
     }
 
     @Override
     public Integer read(MemoryBuffer buffer) {
-      if (isJava && compressNumber) {
+      if (compressNumber) {
         return buffer.readVarInt32();
-      } else if (isJava) {
-        return buffer.readInt32();
       } else {
-        return buffer.readVarInt32();
+        return buffer.readInt32();
       }
     }
   }
@@ -189,26 +185,17 @@ public class PrimitiveSerializers {
 
     public LongSerializer(Fory fory, Class<?> cls) {
       super(fory, (Class) cls, false, true);
-      longEncoding = fory.longEncoding();
+      longEncoding = isJava ? fory.longEncoding() : LongEncoding.VARINT;
     }
 
     @Override
     public void write(MemoryBuffer buffer, Long value) {
-      if (isJava) {
-        writeInt64(buffer, value, longEncoding);
-      } else {
-        // TODO(chaokunyang) support var long in cross-language serialization
-        buffer.writeVarInt64(value);
-      }
+      writeInt64(buffer, value, longEncoding);
     }
 
     @Override
     public Long read(MemoryBuffer buffer) {
-      if (isJava) {
-        return readInt64(buffer, longEncoding);
-      } else {
-        return buffer.readVarInt64();
-      }
+      return readInt64(buffer, longEncoding);
     }
 
     public static Expression writeInt64(
