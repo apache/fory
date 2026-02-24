@@ -57,6 +57,19 @@ private func uncheckedArrayCast<From, To>(_ array: [From], to _: To.Type) -> [To
     return unsafeBitCast(array, to: [To].self)
 }
 
+@inline(__always)
+private func readArrayUninitialized<Element>(
+    count: Int,
+    _ initializer: (UnsafeMutablePointer<Element>) throws -> Void
+) rethrows -> [Element] {
+    try Array<Element>(unsafeUninitializedCapacity: count) { destination, initializedCount in
+        if count > 0 {
+            try initializer(destination.baseAddress!)
+        }
+        initializedCount = count
+    }
+}
+
 private func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
     if Element.self == UInt8.self {
         let bytes = uncheckedArrayCast(value, to: UInt8.self)
@@ -210,18 +223,18 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
     }
 
     if Element.self == Bool.self {
-        var out: [Bool] = []
-        out.reserveCapacity(payloadSize)
-        for _ in 0..<payloadSize {
-            out.append(try context.buffer.readUInt8() != 0)
+        let out = try readArrayUninitialized(count: payloadSize) { destination in
+            for index in 0..<payloadSize {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt8() != 0)
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int8.self {
-        let bytes = try context.buffer.readBytes(count: payloadSize)
-        let out: [Int8] = bytes.withUnsafeBytes { rawBytes in
-            Array(rawBytes.bindMemory(to: Int8.self))
+        var out = Array(repeating: Int8(0), count: payloadSize)
+        try out.withUnsafeMutableBytes { rawBytes in
+            try context.buffer.readBytes(into: rawBytes)
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -236,10 +249,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [Int16] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readInt16())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readInt16())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -254,10 +267,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [Int32] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readInt32())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readInt32())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -272,10 +285,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [UInt32] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readUInt32())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt32())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -290,10 +303,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [Int64] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readInt64())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readInt64())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -308,10 +321,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [UInt64] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readUInt64())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt64())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -326,10 +339,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [UInt16] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readUInt16())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt16())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -344,10 +357,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
             }
             return uncheckedArrayCast(out, to: Element.self)
         }
-        var out: [Float] = []
-        out.reserveCapacity(count)
-        for _ in 0..<count {
-            out.append(try context.buffer.readFloat32())
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readFloat32())
+            }
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
@@ -361,10 +374,10 @@ private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) thr
         }
         return uncheckedArrayCast(out, to: Element.self)
     }
-    var out: [Double] = []
-    out.reserveCapacity(count)
-    for _ in 0..<count {
-        out.append(try context.buffer.readFloat64())
+    let out = try readArrayUninitialized(count: count) { destination in
+        for index in 0..<count {
+            destination.advanced(by: index).initialize(to: try context.buffer.readFloat64())
+        }
     }
     return uncheckedArrayCast(out, to: Element.self)
 }
@@ -385,7 +398,8 @@ extension Array: Serializer where Element: Serializer {
             return
         }
 
-        context.buffer.writeVarUInt32(UInt32(self.count))
+        let buffer = context.buffer
+        buffer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
             return
         }
@@ -406,7 +420,7 @@ extension Array: Serializer where Element: Serializer {
             header |= CollectionHeader.declaredElementType
         }
 
-        context.buffer.writeUInt8(header)
+        buffer.writeUInt8(header)
         if !dynamicElementType && !declaredElementType {
             try Element.foryWriteTypeInfo(context)
         }
@@ -433,9 +447,9 @@ extension Array: Serializer where Element: Serializer {
         } else if hasNull {
             for element in self {
                 if element.foryIsNone {
-                    context.buffer.writeInt8(RefFlag.null.rawValue)
+                    buffer.writeInt8(RefFlag.null.rawValue)
                 } else {
-                    context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
+                    buffer.writeInt8(RefFlag.notNullValue.rawValue)
                     try element.foryWriteData(context, hasGenerics: hasGenerics)
                 }
             }
@@ -451,12 +465,13 @@ extension Array: Serializer where Element: Serializer {
             return try readPrimitiveArray(context)
         }
 
-        let length = Int(try context.buffer.readVarUInt32())
+        let buffer = context.buffer
+        let length = Int(try buffer.readVarUInt32())
         if length == 0 {
             return []
         }
 
-        let header = try context.buffer.readUInt8()
+        let header = try buffer.readUInt8()
         let trackRef = (header & CollectionHeader.trackingRef) != 0
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
@@ -464,59 +479,71 @@ extension Array: Serializer where Element: Serializer {
         let canonicalizeElements = context.trackRef && !trackRef && Element.isReferenceTrackableType
 
         if !sameType {
-            var values: [Element] = []
-            values.reserveCapacity(length)
-
             if trackRef {
-                for _ in 0..<length {
-                    values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: true))
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        destination.advanced(by: index).initialize(
+                            to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: true)
+                        )
+                    }
                 }
-                return values
             }
 
             if hasNull {
-                for _ in 0..<length {
-                    let refFlag = try context.buffer.readInt8()
-                    if refFlag == RefFlag.null.rawValue {
-                        values.append(Element.foryDefault())
-                    } else if refFlag == RefFlag.notNullValue.rawValue {
-                        if canonicalizeElements {
-                            let start = context.buffer.getCursor()
-                            let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                            let end = context.buffer.getCursor()
-                            values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        let refFlag = try buffer.readInt8()
+                        if refFlag == RefFlag.null.rawValue {
+                            destination.advanced(by: index).initialize(to: Element.foryDefault())
+                        } else if refFlag == RefFlag.notNullValue.rawValue {
+                            if canonicalizeElements {
+                                let start = buffer.getCursor()
+                                let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                                let end = buffer.getCursor()
+                                destination.advanced(by: index).initialize(
+                                    to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                                )
+                            } else {
+                                destination.advanced(by: index).initialize(
+                                    to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                                )
+                            }
                         } else {
-                            values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                            throw ForyError.refError("invalid nullability flag \(refFlag)")
                         }
-                    } else {
-                        throw ForyError.refError("invalid nullability flag \(refFlag)")
-                    }
-                }
-            } else {
-                for _ in 0..<length {
-                    if canonicalizeElements {
-                        let start = context.buffer.getCursor()
-                        let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                        let end = context.buffer.getCursor()
-                        values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
-                    } else {
-                        values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
                     }
                 }
             }
-            return values
+
+            return try readArrayUninitialized(count: length) { destination in
+                for index in 0..<length {
+                    if canonicalizeElements {
+                        let start = buffer.getCursor()
+                        let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                        let end = buffer.getCursor()
+                        destination.advanced(by: index).initialize(
+                            to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                        )
+                    } else {
+                        destination.advanced(by: index).initialize(
+                            to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                        )
+                    }
+                }
+            }
         }
 
         if !declared {
             try Element.foryReadTypeInfo(context)
         }
 
-        var values: [Element] = []
-        values.reserveCapacity(length)
-
         if trackRef {
-            for _ in 0..<length {
-                values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: false))
+            let values = try readArrayUninitialized(count: length) { destination in
+                for index in 0..<length {
+                    destination.advanced(by: index).initialize(
+                        to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: false)
+                    )
+                }
             }
             if !declared {
                 context.clearDynamicTypeInfo(for: Element.self)
@@ -525,38 +552,48 @@ extension Array: Serializer where Element: Serializer {
         }
 
         if hasNull {
-            for _ in 0..<length {
-                let refFlag = try context.buffer.readInt8()
-                if refFlag == RefFlag.null.rawValue {
-                    values.append(Element.foryDefault())
-                } else {
-                    if canonicalizeElements {
-                        let start = context.buffer.getCursor()
-                        let value = try Element.foryReadData(context)
-                        let end = context.buffer.getCursor()
-                        values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+            let values = try readArrayUninitialized(count: length) { destination in
+                for index in 0..<length {
+                    let refFlag = try buffer.readInt8()
+                    if refFlag == RefFlag.null.rawValue {
+                        destination.advanced(by: index).initialize(to: Element.foryDefault())
                     } else {
-                        values.append(try Element.foryReadData(context))
+                        if canonicalizeElements {
+                            let start = buffer.getCursor()
+                            let value = try Element.foryReadData(context)
+                            let end = buffer.getCursor()
+                            destination.advanced(by: index).initialize(
+                                to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                            )
+                        } else {
+                            destination.advanced(by: index).initialize(to: try Element.foryReadData(context))
+                        }
                     }
                 }
             }
-        } else {
-            for _ in 0..<length {
+            if !declared {
+                context.clearDynamicTypeInfo(for: Element.self)
+            }
+            return values
+        }
+
+        let values = try readArrayUninitialized(count: length) { destination in
+            for index in 0..<length {
                 if canonicalizeElements {
-                    let start = context.buffer.getCursor()
+                    let start = buffer.getCursor()
                     let value = try Element.foryReadData(context)
-                    let end = context.buffer.getCursor()
-                    values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                    let end = buffer.getCursor()
+                    destination.advanced(by: index).initialize(
+                        to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                    )
                 } else {
-                    values.append(try Element.foryReadData(context))
+                    destination.advanced(by: index).initialize(to: try Element.foryReadData(context))
                 }
             }
         }
-
         if !declared {
             context.clearDynamicTypeInfo(for: Element.self)
         }
-
         return values
     }
 }
@@ -702,11 +739,10 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             return
         }
 
-        var index = 0
-        let pairs = Array(self)
+        var iterator = makeIterator()
+        var pendingPair = iterator.next()
 
-        while index < pairs.count {
-            let pair = pairs[index]
+        while let pair = pendingPair {
             let keyIsNil = pair.key.foryIsNone
             let valueIsNil = pair.value.foryIsNone
 
@@ -744,7 +780,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
                     }
                 }
-                index += 1
+                pendingPair = iterator.next()
                 continue
             }
 
@@ -766,8 +802,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             }
 
             var chunkSize: UInt8 = 0
-            while index < pairs.count && chunkSize < UInt8.max {
-                let current = pairs[index]
+            while chunkSize < UInt8.max, let current = pendingPair {
                 if current.key.foryIsNone || current.value.foryIsNone {
                     break
                 }
@@ -782,7 +817,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     try current.value.foryWriteData(context, hasGenerics: hasGenerics)
                 }
                 chunkSize &+= 1
-                index += 1
+                pendingPair = iterator.next()
             }
             context.buffer.setByte(at: chunkSizeOffset, to: chunkSize)
         }

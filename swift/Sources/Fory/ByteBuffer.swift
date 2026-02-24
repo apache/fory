@@ -110,6 +110,31 @@ public final class ByteBuffer {
 
     @inlinable
     @inline(__always)
+    internal func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        var little = value.littleEndian
+        withUnsafeBytes(of: &little) { raw in
+            storage.append(contentsOf: raw)
+        }
+    }
+
+    @inlinable
+    @inline(__always)
+    internal func appendUninitializedBytes(
+        count: Int,
+        _ body: (UnsafeMutablePointer<UInt8>) -> Void
+    ) {
+        guard count > 0 else {
+            return
+        }
+        let start = storage.count
+        storage.append(contentsOf: repeatElement(0, count: count))
+        storage.withUnsafeMutableBufferPointer { buffer in
+            body(buffer.baseAddress!.advanced(by: start))
+        }
+    }
+
+    @inlinable
+    @inline(__always)
     public func writeUInt8(_ value: UInt8) {
         storage.append(value)
     }
@@ -123,8 +148,7 @@ public final class ByteBuffer {
     @inlinable
     @inline(__always)
     public func writeUInt16(_ value: UInt16) {
-        storage.append(UInt8(truncatingIfNeeded: value))
-        storage.append(UInt8(truncatingIfNeeded: value >> 8))
+        appendLittleEndian(value)
     }
 
     @inlinable
@@ -135,10 +159,7 @@ public final class ByteBuffer {
     @inlinable
     @inline(__always)
     public func writeUInt32(_ value: UInt32) {
-        storage.append(UInt8(truncatingIfNeeded: value))
-        storage.append(UInt8(truncatingIfNeeded: value >> 8))
-        storage.append(UInt8(truncatingIfNeeded: value >> 16))
-        storage.append(UInt8(truncatingIfNeeded: value >> 24))
+        appendLittleEndian(value)
     }
 
     @inlinable
@@ -149,14 +170,7 @@ public final class ByteBuffer {
     @inlinable
     @inline(__always)
     public func writeUInt64(_ value: UInt64) {
-        storage.append(UInt8(truncatingIfNeeded: value))
-        storage.append(UInt8(truncatingIfNeeded: value >> 8))
-        storage.append(UInt8(truncatingIfNeeded: value >> 16))
-        storage.append(UInt8(truncatingIfNeeded: value >> 24))
-        storage.append(UInt8(truncatingIfNeeded: value >> 32))
-        storage.append(UInt8(truncatingIfNeeded: value >> 40))
-        storage.append(UInt8(truncatingIfNeeded: value >> 48))
-        storage.append(UInt8(truncatingIfNeeded: value >> 56))
+        appendLittleEndian(value)
     }
 
     @inlinable
@@ -174,15 +188,21 @@ public final class ByteBuffer {
         if value < 0x4000 {
             let u1 = (UInt8(truncatingIfNeeded: value) & 0x7F) | 0x80
             let u2 = UInt8(truncatingIfNeeded: value >> 7)
-            writeUInt16((UInt16(u2) << 8) | UInt16(u1))
+            appendUninitializedBytes(count: 2) { dst in
+                dst[0] = u1
+                dst[1] = u2
+            }
             return
         }
         if value < 0x20_0000 {
             let u1 = (UInt8(truncatingIfNeeded: value) & 0x7F) | 0x80
             let u2 = (UInt8(truncatingIfNeeded: value >> 7) & 0x7F) | 0x80
             let u3 = UInt8(truncatingIfNeeded: value >> 14)
-            writeUInt16((UInt16(u2) << 8) | UInt16(u1))
-            storage.append(u3)
+            appendUninitializedBytes(count: 3) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+            }
             return
         }
         if value < 0x1000_0000 {
@@ -190,12 +210,12 @@ public final class ByteBuffer {
             let u2 = (UInt8(truncatingIfNeeded: value >> 7) & 0x7F) | 0x80
             let u3 = (UInt8(truncatingIfNeeded: value >> 14) & 0x7F) | 0x80
             let u4 = UInt8(truncatingIfNeeded: value >> 21)
-            writeUInt32(
-                (UInt32(u4) << 24) |
-                    (UInt32(u3) << 16) |
-                    (UInt32(u2) << 8) |
-                    UInt32(u1)
-            )
+            appendUninitializedBytes(count: 4) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+                dst[3] = u4
+            }
             return
         }
 
@@ -204,13 +224,13 @@ public final class ByteBuffer {
         let u3 = (UInt8(truncatingIfNeeded: value >> 14) & 0x7F) | 0x80
         let u4 = (UInt8(truncatingIfNeeded: value >> 21) & 0x7F) | 0x80
         let u5 = UInt8(truncatingIfNeeded: value >> 28)
-        writeUInt32(
-            (UInt32(u4) << 24) |
-                (UInt32(u3) << 16) |
-                (UInt32(u2) << 8) |
-                UInt32(u1)
-        )
-        storage.append(u5)
+        appendUninitializedBytes(count: 5) { dst in
+            dst[0] = u1
+            dst[1] = u2
+            dst[2] = u3
+            dst[3] = u4
+            dst[4] = u5
+        }
     }
 
     @inlinable
@@ -223,15 +243,21 @@ public final class ByteBuffer {
         if value < 0x4000 {
             let u1 = (UInt8(truncatingIfNeeded: value) & 0x7F) | 0x80
             let u2 = UInt8(truncatingIfNeeded: value >> 7)
-            writeUInt16((UInt16(u2) << 8) | UInt16(u1))
+            appendUninitializedBytes(count: 2) { dst in
+                dst[0] = u1
+                dst[1] = u2
+            }
             return
         }
         if value < 0x20_0000 {
             let u1 = (UInt8(truncatingIfNeeded: value) & 0x7F) | 0x80
             let u2 = (UInt8(truncatingIfNeeded: value >> 7) & 0x7F) | 0x80
             let u3 = UInt8(truncatingIfNeeded: value >> 14)
-            writeUInt16((UInt16(u2) << 8) | UInt16(u1))
-            storage.append(u3)
+            appendUninitializedBytes(count: 3) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+            }
             return
         }
         if value < 0x1000_0000 {
@@ -239,12 +265,12 @@ public final class ByteBuffer {
             let u2 = (UInt8(truncatingIfNeeded: value >> 7) & 0x7F) | 0x80
             let u3 = (UInt8(truncatingIfNeeded: value >> 14) & 0x7F) | 0x80
             let u4 = UInt8(truncatingIfNeeded: value >> 21)
-            writeUInt32(
-                (UInt32(u4) << 24) |
-                    (UInt32(u3) << 16) |
-                    (UInt32(u2) << 8) |
-                    UInt32(u1)
-            )
+            appendUninitializedBytes(count: 4) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+                dst[3] = u4
+            }
             return
         }
         if value < 0x8_0000_0000 {
@@ -253,13 +279,13 @@ public final class ByteBuffer {
             let u3 = (UInt8(truncatingIfNeeded: value >> 14) & 0x7F) | 0x80
             let u4 = (UInt8(truncatingIfNeeded: value >> 21) & 0x7F) | 0x80
             let u5 = UInt8(truncatingIfNeeded: value >> 28)
-            writeUInt32(
-                (UInt32(u4) << 24) |
-                    (UInt32(u3) << 16) |
-                    (UInt32(u2) << 8) |
-                    UInt32(u1)
-            )
-            storage.append(u5)
+            appendUninitializedBytes(count: 5) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+                dst[3] = u4
+                dst[4] = u5
+            }
             return
         }
         if value < 0x400_0000_0000 {
@@ -269,13 +295,14 @@ public final class ByteBuffer {
             let u4 = (UInt8(truncatingIfNeeded: value >> 21) & 0x7F) | 0x80
             let u5 = (UInt8(truncatingIfNeeded: value >> 28) & 0x7F) | 0x80
             let u6 = UInt8(truncatingIfNeeded: value >> 35)
-            writeUInt32(
-                (UInt32(u4) << 24) |
-                    (UInt32(u3) << 16) |
-                    (UInt32(u2) << 8) |
-                    UInt32(u1)
-            )
-            writeUInt16((UInt16(u6) << 8) | UInt16(u5))
+            appendUninitializedBytes(count: 6) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+                dst[3] = u4
+                dst[4] = u5
+                dst[5] = u6
+            }
             return
         }
         if value < 0x2_0000_0000_0000 {
@@ -286,14 +313,15 @@ public final class ByteBuffer {
             let u5 = (UInt8(truncatingIfNeeded: value >> 28) & 0x7F) | 0x80
             let u6 = (UInt8(truncatingIfNeeded: value >> 35) & 0x7F) | 0x80
             let u7 = UInt8(truncatingIfNeeded: value >> 42)
-            writeUInt32(
-                (UInt32(u4) << 24) |
-                    (UInt32(u3) << 16) |
-                    (UInt32(u2) << 8) |
-                    UInt32(u1)
-            )
-            writeUInt16((UInt16(u6) << 8) | UInt16(u5))
-            storage.append(u7)
+            appendUninitializedBytes(count: 7) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+                dst[3] = u4
+                dst[4] = u5
+                dst[5] = u6
+                dst[6] = u7
+            }
             return
         }
         if value < 0x100_0000_0000_0000 {
@@ -305,16 +333,16 @@ public final class ByteBuffer {
             let u6 = (UInt8(truncatingIfNeeded: value >> 35) & 0x7F) | 0x80
             let u7 = (UInt8(truncatingIfNeeded: value >> 42) & 0x7F) | 0x80
             let u8 = UInt8(truncatingIfNeeded: value >> 49)
-            writeUInt64(
-                (UInt64(u8) << 56) |
-                    (UInt64(u7) << 48) |
-                    (UInt64(u6) << 40) |
-                    (UInt64(u5) << 32) |
-                    (UInt64(u4) << 24) |
-                    (UInt64(u3) << 16) |
-                    (UInt64(u2) << 8) |
-                    UInt64(u1)
-            )
+            appendUninitializedBytes(count: 8) { dst in
+                dst[0] = u1
+                dst[1] = u2
+                dst[2] = u3
+                dst[3] = u4
+                dst[4] = u5
+                dst[5] = u6
+                dst[6] = u7
+                dst[7] = u8
+            }
             return
         }
 
@@ -327,17 +355,17 @@ public final class ByteBuffer {
         let u7 = (UInt8(truncatingIfNeeded: value >> 42) & 0x7F) | 0x80
         let u8 = (UInt8(truncatingIfNeeded: value >> 49) & 0x7F) | 0x80
         let u9 = UInt8(truncatingIfNeeded: value >> 56)
-        writeUInt64(
-            (UInt64(u8) << 56) |
-                (UInt64(u7) << 48) |
-                (UInt64(u6) << 40) |
-                (UInt64(u5) << 32) |
-                (UInt64(u4) << 24) |
-                (UInt64(u3) << 16) |
-                (UInt64(u2) << 8) |
-                UInt64(u1)
-        )
-        storage.append(u9)
+        appendUninitializedBytes(count: 9) { dst in
+            dst[0] = u1
+            dst[1] = u2
+            dst[2] = u3
+            dst[3] = u4
+            dst[4] = u5
+            dst[5] = u6
+            dst[6] = u7
+            dst[7] = u8
+            dst[8] = u9
+        }
     }
 
     @inlinable
@@ -837,10 +865,13 @@ public final class ByteBuffer {
 
     @inlinable
     public func readBytes(count: Int) throws -> [UInt8] {
-        try checkBound(count)
-        let out = Array(storage[cursor..<(cursor + count)])
-        cursor += count
-        return out
+        if count == 0 {
+            return []
+        }
+        return try Array<UInt8>(unsafeUninitializedCapacity: count) { destination, initializedCount in
+            try readBytes(into: UnsafeMutableRawBufferPointer(destination))
+            initializedCount = count
+        }
     }
 
     @inlinable
