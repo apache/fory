@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-module github.com/apache/fory/benchmarks/go_benchmark
+module github.com/apache/fory/benchmarks/go
 
 go 1.24.0
 

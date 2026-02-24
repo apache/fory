@@ -162,7 +162,7 @@ fi
 protoc --proto_path="$PROTO_DIR" \
     --go_out="$PROTO_OUT_DIR" \
     --go_opt=paths=source_relative \
-    --go_opt=Mbench.proto=github.com/apache/fory/benchmarks/go_benchmark/proto \
+    --go_opt=Mbench.proto=github.com/apache/fory/benchmarks/go/proto \
     "$PROTO_DIR/bench.proto"
 
 echo "Protobuf code generated in $PROTO_OUT_DIR"

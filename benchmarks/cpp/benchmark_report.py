@@ -325,7 +325,7 @@ md_report = [
     f"_Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n\n",
     "## How to Generate This Report\n\n",
     "```bash\n",
-    "cd benchmarks/cpp_benchmark/build\n",
+    "cd benchmarks/cpp/build\n",
     "./fory_benchmark --benchmark_format=json --benchmark_out=benchmark_results.json\n",
     "cd ..\n",
     "python benchmark_report.py --json-file build/benchmark_results.json --output-dir report\n",

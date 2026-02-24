@@ -222,7 +222,7 @@ cargo fmt --check
 cargo doc --lib --no-deps --all-features
 
 # Run benchmarks
-cd $project_dir/benchmarks/rust_benchmark
+cd $project_dir/benchmarks/rust
 cargo bench
 ```
 
@@ -680,7 +680,7 @@ Common CI failures and fixes:
 ## PR and Benchmark Expectations
 
 - **PR titles**: Follow Conventional Commits; CI uses `.github/workflows/pr-lint.yml` to enforce naming.
-- **Performance changes**: Use the `perf` type and include benchmark data (see `benchmarks/java_benchmark/README.md`).
+- **Performance changes**: Use the `perf` type and include benchmark data (see `benchmarks/java/README.md`).
 
 ## Commit Message Format
 

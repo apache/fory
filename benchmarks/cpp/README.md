@@ -43,7 +43,7 @@ Note: Protobuf is fetched automatically via CMake FetchContent, so no manual ins
 Run the complete benchmark pipeline (build, run, generate report):
 
 ```bash
-cd benchmarks/cpp_benchmark
+cd benchmarks/cpp
 ./run.sh
 ```
 
@@ -78,7 +78,7 @@ Examples:
 ## Building
 
 ```bash
-cd benchmarks/cpp_benchmark
+cd benchmarks/cpp
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . -j$(nproc)

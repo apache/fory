@@ -15,7 +15,7 @@ Apache Fory™ Java Benchmark contains benchmarks for:
 
 > Part of benchmark data is based on [Kryo benchmark](https://github.com/EsotericSoftware/kryo/tree/master/benchmarks).
 > Kryo benchmark suite is based on [Kryo benchmark](https://github.com/EsotericSoftware/kryo/tree/master/benchmarks).
-> The msgpack's official provides [msgpack-jackson](https://github.com/msgpack/msgpack-java/tree/main/msgpack-jackson) lib, but the performance is relatively poor. So, generate a basic [manually written code](https://github.com/apache/fory/tree/main/benchmarks/java_benchmarkk/src/main/java/org/apache/fory/benchmark/util/MsgpackUtil.java) using qwen3(LLM). Then modify it.
+> The msgpack's official provides [msgpack-jackson](https://github.com/msgpack/msgpack-java/tree/main/msgpack-jackson) lib, but the performance is relatively poor. So, generate a basic [manually written code](https://github.com/apache/fory/tree/main/benchmarks/java/src/main/java/org/apache/fory/benchmark/util/MsgpackUtil.java) using qwen3(LLM). Then modify it.
 
 ## How to run
 

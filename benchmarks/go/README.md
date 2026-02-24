@@ -155,7 +155,7 @@ After running `./run.sh`:
 ## Directory Structure
 
 ```
-go_benchmark/
+go/
 ├── README.md              # This file
 ├── go.mod                 # Go module definition
 ├── models.go              # Data structures (NumericStruct, Sample, MediaContent)
