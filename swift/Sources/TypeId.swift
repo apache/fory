@@ -17,7 +17,7 @@
 
 import Foundation
 
-public enum ForyTypeId: UInt32, CaseIterable {
+public enum TypeId: UInt32, CaseIterable {
     case unknown = 0
     case bool = 1
     case int8 = 2
@@ -94,7 +94,7 @@ public enum ForyTypeId: UInt32, CaseIterable {
         }
     }
 
-    public static func needsTypeInfoForField(_ typeId: ForyTypeId) -> Bool {
+    public static func needsTypeInfoForField(_ typeId: TypeId) -> Bool {
         switch typeId {
         case .structType,
              .compatibleStruct,

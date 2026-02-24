@@ -34,7 +34,7 @@ private enum MapHeader {
     static let declaredValueType: UInt8 = 0b0010_0000
 }
 
-private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> ForyTypeId? {
+private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> TypeId? {
     if Element.self == UInt8.self { return .binary }
     if Element.self == Bool.self { return .boolArray }
     if Element.self == Int8.self { return .int8Array }
@@ -387,7 +387,7 @@ extension Array: Serializer where Element: Serializer {
         []
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         // Primitive Swift arrays must use ARRAY ids in protocol, not LIST.
         primitiveArrayTypeID(for: Element.self) ?? .list
     }
@@ -406,7 +406,7 @@ extension Array: Serializer where Element: Serializer {
 
         let hasNull = Element.isNullableType && self.contains(where: { $0.foryIsNone })
         let trackRef = context.trackRef && Element.isReferenceTrackableType
-        let declaredElementType = hasGenerics && !ForyTypeId.needsTypeInfoForField(Element.staticTypeId)
+        let declaredElementType = hasGenerics && !TypeId.needsTypeInfoForField(Element.staticTypeId)
         let dynamicElementType = Element.staticTypeId == .unknown
 
         var header: UInt8 = dynamicElementType ? 0 : CollectionHeader.sameType
@@ -601,7 +601,7 @@ extension Array: Serializer where Element: Serializer {
 extension Set: Serializer where Element: Serializer & Hashable {
     public static func foryDefault() -> Set<Element> { [] }
 
-    public static var staticTypeId: ForyTypeId { .set }
+    public static var staticTypeId: TypeId { .set }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         try Array(self).foryWriteData(context, hasGenerics: hasGenerics)
@@ -615,7 +615,7 @@ extension Set: Serializer where Element: Serializer & Hashable {
 extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
     public static func foryDefault() -> Dictionary<Key, Value> { [:] }
 
-    public static var staticTypeId: ForyTypeId { .map }
+    public static var staticTypeId: TypeId { .map }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         context.buffer.writeVarUInt32(UInt32(self.count))
@@ -625,8 +625,8 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
 
         let trackKeyRef = context.trackRef && Key.isReferenceTrackableType
         let trackValueRef = context.trackRef && Value.isReferenceTrackableType
-        let keyDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Key.staticTypeId)
-        let valueDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Value.staticTypeId)
+        let keyDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Key.staticTypeId)
+        let valueDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Value.staticTypeId)
         let keyDynamicType = Key.staticTypeId == .unknown
         let valueDynamicType = Value.staticTypeId == .unknown
 

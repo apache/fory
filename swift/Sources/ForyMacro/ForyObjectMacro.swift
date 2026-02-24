@@ -42,7 +42,7 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
         let sortedFields = sortFields(parsed.fields)
 
         let staticTypeIDDecl: DeclSyntax = """
-        static var staticTypeId: ForyTypeId { .structType }
+        static var staticTypeId: TypeId { .structType }
         """
 
         let referenceTrackDecl: DeclSyntax? = parsed.isClass ? """
@@ -257,7 +257,7 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
     )
 
     let staticTypeIDDecl: DeclSyntax = """
-    static var staticTypeId: ForyTypeId { .enumType }
+    static var staticTypeId: TypeId { .enumType }
     """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl())
     let readWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadWrapperDecl())
@@ -342,7 +342,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
     )
 
     let staticTypeIDDecl: DeclSyntax = """
-    static var staticTypeId: ForyTypeId { .typedUnion }
+    static var staticTypeId: TypeId { .typedUnion }
     """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl())
     let readWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadWrapperDecl())
@@ -1075,7 +1075,7 @@ private func compatibleWriteLine(for field: ParsedField) -> String {
         }
         return "try \(codecType)(rawValue: self.\(field.name)).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
     }
-    return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: ForyTypeId.needsTypeInfoForField(\(field.typeText).staticTypeId), hasGenerics: \(hasGenerics))"
+    return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId), hasGenerics: \(hasGenerics))"
 }
 
 private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedFields: [ParsedField]) -> String {
@@ -1097,7 +1097,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
             let valueExpr = readFieldExpr(
                 field,
                 refModeExpr: "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
-                readTypeInfoExpr: "ForyTypeId.needsTypeInfoForField(ForyTypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
+                readTypeInfoExpr: "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
             )
             return "case \"\(field.fieldIdentifier)\": value.\(field.name) = \(valueExpr)"
         }.joined(separator: "\n                ")
@@ -1180,7 +1180,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
         let valueExpr = readFieldExpr(
             field,
             refModeExpr: "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
-            readTypeInfoExpr: "ForyTypeId.needsTypeInfoForField(ForyTypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
+            readTypeInfoExpr: "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
         )
         return "case \"\(field.fieldIdentifier)\": __\(field.name) = \(valueExpr)"
     }.joined(separator: "\n                    ")
@@ -1436,7 +1436,7 @@ private func buildCompatibleTypeMetaFieldTypeExpression(
         )
         return """
 TypeMetaFieldType(
-    typeID: ForyTypeId.list.rawValue,
+    typeID: TypeId.list.rawValue,
     nullable: \(nullableExpression),
     trackRef: \(trackRefExpression),
     generics: [\(elementExpr)]
@@ -1453,7 +1453,7 @@ TypeMetaFieldType(
         )
         return """
 TypeMetaFieldType(
-    typeID: ForyTypeId.set.rawValue,
+    typeID: TypeId.set.rawValue,
     nullable: \(nullableExpression),
     trackRef: \(trackRefExpression),
     generics: [\(elementExpr)]
@@ -1476,7 +1476,7 @@ TypeMetaFieldType(
         )
         return """
 TypeMetaFieldType(
-    typeID: ForyTypeId.map.rawValue,
+    typeID: TypeId.map.rawValue,
     nullable: \(nullableExpression),
     trackRef: \(trackRefExpression),
     generics: [\(keyExpr), \(valueExpr)]
@@ -1488,7 +1488,7 @@ TypeMetaFieldType(
     if let explicitTypeID {
         typeIDExpr = "\(explicitTypeID)"
     } else if isDynamicAnyConcreteType(concreteType) {
-        typeIDExpr = "UInt32(ForyTypeId.unknown.rawValue)"
+        typeIDExpr = "UInt32(TypeId.unknown.rawValue)"
     } else {
         typeIDExpr = "UInt32(\(concreteType).staticTypeId.rawValue)"
     }

@@ -233,7 +233,7 @@ private struct MyExt: Serializer, Equatable {
         MyExt()
     }
 
-    static var staticTypeId: ForyTypeId {
+    static var staticTypeId: TypeId {
         .ext
     }
 

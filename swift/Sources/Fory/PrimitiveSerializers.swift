@@ -18,7 +18,7 @@
 import Foundation
 
 extension Bool: Serializer {
-    public static var staticTypeId: ForyTypeId { .bool }
+    public static var staticTypeId: TypeId { .bool }
 
     public static func foryDefault() -> Bool { false }
 
@@ -32,7 +32,7 @@ extension Bool: Serializer {
 }
 
 extension Int8: Serializer {
-    public static var staticTypeId: ForyTypeId { .int8 }
+    public static var staticTypeId: TypeId { .int8 }
 
     public static func foryDefault() -> Int8 { 0 }
 
@@ -46,7 +46,7 @@ extension Int8: Serializer {
 }
 
 extension Int16: Serializer {
-    public static var staticTypeId: ForyTypeId { .int16 }
+    public static var staticTypeId: TypeId { .int16 }
 
     public static func foryDefault() -> Int16 { 0 }
 
@@ -60,7 +60,7 @@ extension Int16: Serializer {
 }
 
 extension Int32: Serializer {
-    public static var staticTypeId: ForyTypeId { .varint32 }
+    public static var staticTypeId: TypeId { .varint32 }
 
     public static func foryDefault() -> Int32 { 0 }
 
@@ -74,7 +74,7 @@ extension Int32: Serializer {
 }
 
 extension Int64: Serializer {
-    public static var staticTypeId: ForyTypeId { .varint64 }
+    public static var staticTypeId: TypeId { .varint64 }
 
     public static func foryDefault() -> Int64 { 0 }
 
@@ -88,7 +88,7 @@ extension Int64: Serializer {
 }
 
 extension UInt8: Serializer {
-    public static var staticTypeId: ForyTypeId { .uint8 }
+    public static var staticTypeId: TypeId { .uint8 }
 
     public static func foryDefault() -> UInt8 { 0 }
 
@@ -102,7 +102,7 @@ extension UInt8: Serializer {
 }
 
 extension UInt16: Serializer {
-    public static var staticTypeId: ForyTypeId { .uint16 }
+    public static var staticTypeId: TypeId { .uint16 }
 
     public static func foryDefault() -> UInt16 { 0 }
 
@@ -116,7 +116,7 @@ extension UInt16: Serializer {
 }
 
 extension UInt32: Serializer {
-    public static var staticTypeId: ForyTypeId { .varUInt32 }
+    public static var staticTypeId: TypeId { .varUInt32 }
 
     public static func foryDefault() -> UInt32 { 0 }
 
@@ -130,7 +130,7 @@ extension UInt32: Serializer {
 }
 
 extension UInt64: Serializer {
-    public static var staticTypeId: ForyTypeId { .varUInt64 }
+    public static var staticTypeId: TypeId { .varUInt64 }
 
     public static func foryDefault() -> UInt64 { 0 }
 
@@ -150,7 +150,7 @@ public struct ForyInt32Fixed: Serializer, Equatable {
     }
 
     public static func foryDefault() -> ForyInt32Fixed { .init() }
-    public static var staticTypeId: ForyTypeId { .int32 }
+    public static var staticTypeId: TypeId { .int32 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
@@ -169,7 +169,7 @@ public struct ForyInt64Fixed: Serializer, Equatable {
     }
 
     public static func foryDefault() -> ForyInt64Fixed { .init() }
-    public static var staticTypeId: ForyTypeId { .int64 }
+    public static var staticTypeId: TypeId { .int64 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
@@ -188,7 +188,7 @@ public struct ForyInt64Tagged: Serializer, Equatable {
     }
 
     public static func foryDefault() -> ForyInt64Tagged { .init() }
-    public static var staticTypeId: ForyTypeId { .taggedInt64 }
+    public static var staticTypeId: TypeId { .taggedInt64 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
@@ -207,7 +207,7 @@ public struct ForyUInt32Fixed: Serializer, Equatable {
     }
 
     public static func foryDefault() -> ForyUInt32Fixed { .init() }
-    public static var staticTypeId: ForyTypeId { .uint32 }
+    public static var staticTypeId: TypeId { .uint32 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
@@ -226,7 +226,7 @@ public struct ForyUInt64Fixed: Serializer, Equatable {
     }
 
     public static func foryDefault() -> ForyUInt64Fixed { .init() }
-    public static var staticTypeId: ForyTypeId { .uint64 }
+    public static var staticTypeId: TypeId { .uint64 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
@@ -245,7 +245,7 @@ public struct ForyUInt64Tagged: Serializer, Equatable {
     }
 
     public static func foryDefault() -> ForyUInt64Tagged { .init() }
-    public static var staticTypeId: ForyTypeId { .taggedUInt64 }
+    public static var staticTypeId: TypeId { .taggedUInt64 }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
@@ -259,7 +259,7 @@ public struct ForyUInt64Tagged: Serializer, Equatable {
 
 #if arch(arm64) || arch(x86_64)
 extension Int: Serializer {
-    public static var staticTypeId: ForyTypeId { .varint64 }
+    public static var staticTypeId: TypeId { .varint64 }
 
     public static func foryDefault() -> Int { 0 }
 
@@ -273,7 +273,7 @@ extension Int: Serializer {
 }
 
 extension UInt: Serializer {
-    public static var staticTypeId: ForyTypeId { .varUInt64 }
+    public static var staticTypeId: TypeId { .varUInt64 }
 
     public static func foryDefault() -> UInt { 0 }
 
@@ -288,7 +288,7 @@ extension UInt: Serializer {
 #endif
 
 extension Float: Serializer {
-    public static var staticTypeId: ForyTypeId { .float32 }
+    public static var staticTypeId: TypeId { .float32 }
 
     public static func foryDefault() -> Float { 0 }
 
@@ -302,7 +302,7 @@ extension Float: Serializer {
 }
 
 extension Double: Serializer {
-    public static var staticTypeId: ForyTypeId { .float64 }
+    public static var staticTypeId: TypeId { .float64 }
 
     public static func foryDefault() -> Double { 0 }
 
@@ -331,7 +331,7 @@ private func decodeLatin1(_ bytes: [UInt8]) -> String {
 }
 
 extension String: Serializer {
-    public static var staticTypeId: ForyTypeId { .string }
+    public static var staticTypeId: TypeId { .string }
 
     public static func foryDefault() -> String { "" }
 
@@ -375,7 +375,7 @@ extension String: Serializer {
 }
 
 extension Data: Serializer {
-    public static var staticTypeId: ForyTypeId { .binary }
+    public static var staticTypeId: TypeId { .binary }
 
     public static func foryDefault() -> Data { Data() }
 

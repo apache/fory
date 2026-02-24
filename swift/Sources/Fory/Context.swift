@@ -155,14 +155,14 @@ public final class MetaStringReadState {
 }
 
 public struct DynamicTypeInfo {
-    public let wireTypeID: ForyTypeId
+    public let wireTypeID: TypeId
     public let userTypeID: UInt32?
     public let namespace: MetaString?
     public let typeName: MetaString?
     public let compatibleTypeMeta: TypeMeta?
 
     public init(
-        wireTypeID: ForyTypeId,
+        wireTypeID: TypeId,
         userTypeID: UInt32?,
         namespace: MetaString?,
         typeName: MetaString?,
