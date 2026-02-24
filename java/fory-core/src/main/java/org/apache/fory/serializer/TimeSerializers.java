@@ -271,17 +271,13 @@ public class TimeSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Duration value) {
-      if (isJava) {
-        buffer.writeInt64(value.getSeconds());
-      } else {
-        buffer.writeVarInt64(value.getSeconds());
-      }
+      buffer.writeVarInt64(value.getSeconds());
       buffer.writeInt32(value.getNano());
     }
 
     @Override
     public Duration read(MemoryBuffer buffer) {
-      long seconds = isJava ? buffer.readInt64() : buffer.readVarInt64();
+      long seconds = buffer.readVarInt64();
       int nanos = buffer.readInt32();
       return Duration.ofSeconds(seconds, nanos);
     }
