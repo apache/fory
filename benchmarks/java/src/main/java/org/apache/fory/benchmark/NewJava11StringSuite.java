@@ -54,7 +54,7 @@ public class NewJava11StringSuite {
   private static MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(512);
 
   static {
-    stringSerializer.writeJavaString(buffer, str);
+    stringSerializer.writeString(buffer, str);
   }
 
   // @Benchmark
@@ -78,7 +78,7 @@ public class NewJava11StringSuite {
   // @Benchmark
   public Object createJDK8StringByFory() {
     buffer.readerIndex(0);
-    return stringSerializer.readJavaString(buffer);
+    return stringSerializer.readString(buffer);
   }
 
   public static void main(String[] args) throws Exception {

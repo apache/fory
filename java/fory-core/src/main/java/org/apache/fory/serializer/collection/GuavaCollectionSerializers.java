@@ -52,7 +52,7 @@ public class GuavaCollectionSerializers {
 
     @Override
     public T read(MemoryBuffer buffer) {
-      return read(buffer);
+      return super.read(buffer);
     }
 
     protected abstract T xnewInstance(Collection collection);
