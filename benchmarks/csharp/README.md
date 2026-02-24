@@ -4,7 +4,7 @@ This benchmark compares Apache Fory C#, protobuf-net, and MessagePack-CSharp.
 
 Serializer setup used in this benchmark:
 
-- `fory`: `Fory.Builder().SkipRootRefFlag(true).Build()`
+- `fory`: `Fory.Builder().Build()`
 - `protobuf`: `protobuf-net` runtime serializer
 - `msgpack`: `MessagePackSerializer.Typeless` with `TypelessContractlessStandardResolver`
 

@@ -103,10 +103,8 @@ public sealed class Fory
         if (!isNone)
         {
             _writeContext.ResetFor(writer);
-            RefMode refMode = Config.TrackRef
-                ? RefMode.Tracking
-                : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
-            serializer.Write(_writeContext, value, refMode, !Config.SkipRootTypeInfo, false);
+            RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+            serializer.Write(_writeContext, value, refMode, true, false);
             _writeContext.ResetObjectState();
         }
 
@@ -164,9 +162,7 @@ public sealed class Fory
         if (!isNone)
         {
             _writeContext.ResetFor(writer);
-            RefMode refMode = Config.TrackRef
-                ? RefMode.Tracking
-                : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
+            RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
             DynamicAnyCodec.WriteAny(_writeContext, value, refMode, true, false);
             _writeContext.ResetObjectState();
         }
@@ -254,10 +250,8 @@ public sealed class Fory
         }
 
         _readContext.ResetFor(reader);
-        RefMode refMode = Config.TrackRef
-            ? RefMode.Tracking
-            : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
-        T value = serializer.Read(_readContext, refMode, !Config.SkipRootTypeInfo);
+        RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+        T value = serializer.Read(_readContext, refMode, true);
         _readContext.ResetObjectState();
         return value;
     }
@@ -271,9 +265,7 @@ public sealed class Fory
         }
 
         _readContext.ResetFor(reader);
-        RefMode refMode = Config.TrackRef
-            ? RefMode.Tracking
-            : (Config.SkipRootRefFlag ? RefMode.None : RefMode.NullOnly);
+        RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
         object? value = DynamicAnyCodec.ReadAny(_readContext, refMode, true);
         _readContext.ResetObjectState();
         return value;
