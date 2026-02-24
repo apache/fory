@@ -139,16 +139,12 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @Override
   public void write(MemoryBuffer buffer, String value) {
-    writeJavaString(buffer, value);
+    writeString(buffer, value);
   }
 
   @Override
   public String read(MemoryBuffer buffer) {
-    return readJavaString(buffer);
-  }
-
-  public void writeString(MemoryBuffer buffer, String value) {
-    writeJavaString(buffer, value);
+    return readString(buffer);
   }
 
   public Expression writeStringExpr(Expression strSerializer, Expression buffer, Expression str) {
@@ -176,10 +172,6 @@ public final class StringSerializer extends ImmutableSerializer<String> {
         }
       }
     }
-  }
-
-  public String readString(MemoryBuffer buffer) {
-    return readJavaString(buffer);
   }
 
   public Expression readStringExpr(Expression strSerializer, Expression buffer) {
@@ -346,7 +338,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   // Invoked by fory JIT
-  public void writeJavaString(MemoryBuffer buffer, String value) {
+  public void writeString(MemoryBuffer buffer, String value) {
     if (STRING_VALUE_FIELD_IS_BYTES) {
       if (compressString) {
         writeCompressedBytesString(buffer, value);
@@ -376,7 +368,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   // Invoked by fory JIT
-  public String readJavaString(MemoryBuffer buffer) {
+  public String readString(MemoryBuffer buffer) {
     if (STRING_VALUE_FIELD_IS_BYTES) {
       if (compressString) {
         return readCompressedBytesString(buffer);

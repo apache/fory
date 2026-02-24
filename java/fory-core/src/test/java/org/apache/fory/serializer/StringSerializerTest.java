@@ -149,14 +149,14 @@ public class StringSerializerTest extends ForyTestBase {
     StringSerializer serializer = new StringSerializer(fory);
     {
       String str = "str";
-      serializer.writeJavaString(buffer, str);
-      assertEquals(str, serializer.readJavaString(buffer));
+      serializer.writeString(buffer, str);
+      assertEquals(str, serializer.readString(buffer));
       Assert.assertEquals(buffer.writerIndex(), buffer.readerIndex());
     }
     {
       String str = "你好, Fory";
-      serializer.writeJavaString(buffer, str);
-      assertEquals(str, serializer.readJavaString(buffer));
+      serializer.writeString(buffer, str);
+      assertEquals(str, serializer.readString(buffer));
       Assert.assertEquals(buffer.writerIndex(), buffer.readerIndex());
     }
   }
@@ -217,8 +217,8 @@ public class StringSerializerTest extends ForyTestBase {
     String longStr = new String(new char[50]).replace("\0", "abc");
     buffer.writerIndex(0);
     buffer.readerIndex(0);
-    serializer.writeJavaString(buffer, longStr);
-    assertEquals(longStr, serializer.readJavaString(buffer));
+    serializer.writeString(buffer, longStr);
+    assertEquals(longStr, serializer.readString(buffer));
 
     serDe(fory, "你好, Fory" + StringUtils.random(64));
     serDe(fory, "你好, Fory" + StringUtils.random(64));
@@ -342,13 +342,13 @@ public class StringSerializerTest extends ForyTestBase {
         new MemoryBuffer[] {
           MemoryUtils.buffer(512), MemoryUtils.wrap(ByteBuffer.allocateDirect(512)),
         }) {
-      stringSerializer.writeJavaString(buffer, utf16Str);
-      assertEquals(stringSerializer.readJavaString(buffer), utf16Str);
+      stringSerializer.writeString(buffer, utf16Str);
+      assertEquals(stringSerializer.readString(buffer), utf16Str);
       assertEquals(buffer.writerIndex(), buffer.readerIndex());
 
       String latinStr = StringUtils.random(utf16StrChars.length, 0);
-      stringSerializer.writeJavaString(buffer, latinStr);
-      assertEquals(stringSerializer.readJavaString(buffer), latinStr);
+      stringSerializer.writeString(buffer, latinStr);
+      assertEquals(stringSerializer.readString(buffer), latinStr);
       assertEquals(buffer.writerIndex(), buffer.readerIndex());
     }
   }

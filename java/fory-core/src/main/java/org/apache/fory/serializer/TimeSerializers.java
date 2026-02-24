@@ -385,11 +385,11 @@ public class TimeSerializers {
     }
 
     public void write(MemoryBuffer buffer, TimeZone object) {
-      fory.writeJavaString(buffer, object.getID());
+      fory.writeString(buffer, object.getID());
     }
 
     public TimeZone read(MemoryBuffer buffer) {
-      return TimeZone.getTimeZone(fory.readJavaString(buffer));
+      return TimeZone.getTimeZone(fory.readString(buffer));
     }
 
     @Override

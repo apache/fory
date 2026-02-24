@@ -709,7 +709,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.FLOAT64:
         return buffer.readFloat64();
       case DispatchId.STRING:
-        return fory.readJavaString(buffer);
+        return fory.readString(buffer);
       default:
         return readField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer);
     }
@@ -929,7 +929,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.putObject(targetObject, buffer.readFloat64());
         return;
       case DispatchId.STRING:
-        fieldAccessor.putObject(targetObject, fory.readJavaString(buffer));
+        fieldAccessor.putObject(targetObject, fory.readString(buffer));
         return;
       default:
         // Use RefMode.NONE because null flag was already handled by caller

@@ -948,12 +948,12 @@ public class ArraySerializers {
       StringSerializer serializer = this.stringSerializer;
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (int i = 0; i < numElements; i++) {
-          value[i] = serializer.readJavaString(buffer);
+          value[i] = serializer.readString(buffer);
         }
       } else {
         for (int i = 0; i < numElements; i++) {
           if (buffer.readByte() != Fory.NULL_FLAG) {
-            value[i] = serializer.readJavaString(buffer);
+            value[i] = serializer.readString(buffer);
           }
         }
       }

@@ -614,7 +614,7 @@ public final class Fory implements BaseFory {
         buffer.writeFloat64((Double) obj);
         break;
       case Types.STRING:
-        stringSerializer.writeJavaString(buffer, (String) obj);
+        stringSerializer.writeString(buffer, (String) obj);
         break;
       default:
         depth++;
@@ -696,10 +696,10 @@ public final class Fory implements BaseFory {
     return stringSerializer.readString(buffer);
   }
 
-  public void writeJavaStringRef(MemoryBuffer buffer, String str) {
+  public void writeStringRef(MemoryBuffer buffer, String str) {
     if (stringSerializer.needToWriteRef()) {
       if (!refResolver.writeRefOrNull(buffer, str)) {
-        stringSerializer.writeJavaString(buffer, str);
+        stringSerializer.writeString(buffer, str);
       }
     } else {
       if (str == null) {
@@ -711,7 +711,7 @@ public final class Fory implements BaseFory {
     }
   }
 
-  public String readJavaStringRef(MemoryBuffer buffer) {
+  public String readStringRef(MemoryBuffer buffer) {
     RefResolver refResolver = this.refResolver;
     if (stringSerializer.needToWriteRef()) {
       String obj;
@@ -731,14 +731,6 @@ public final class Fory implements BaseFory {
         return stringSerializer.read(buffer);
       }
     }
-  }
-
-  public void writeJavaString(MemoryBuffer buffer, String str) {
-    stringSerializer.writeJavaString(buffer, str);
-  }
-
-  public String readJavaString(MemoryBuffer buffer) {
-    return stringSerializer.readJavaString(buffer);
   }
 
   public void writeInt64(MemoryBuffer buffer, long value) {
@@ -1040,7 +1032,7 @@ public final class Fory implements BaseFory {
       case Types.FLOAT64:
         return buffer.readFloat64();
       case Types.STRING:
-        return stringSerializer.readJavaString(buffer);
+        return stringSerializer.readString(buffer);
       default:
         incReadDepth();
         Object read = typeInfo.getSerializer().read(buffer);

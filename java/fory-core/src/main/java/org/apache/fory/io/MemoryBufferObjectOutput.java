@@ -129,13 +129,13 @@ public class MemoryBufferObjectOutput extends OutputStream implements ObjectOutp
   @Override
   public void writeChars(String s) throws IOException {
     Preconditions.checkNotNull(s);
-    stringSerializer.writeJavaString(buffer, s);
+    stringSerializer.writeString(buffer, s);
   }
 
   @Override
   public void writeUTF(String s) throws IOException {
     Preconditions.checkNotNull(s);
-    stringSerializer.writeJavaString(buffer, s);
+    stringSerializer.writeString(buffer, s);
   }
 
   @Override

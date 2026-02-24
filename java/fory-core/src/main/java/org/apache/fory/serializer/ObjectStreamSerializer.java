@@ -1109,13 +1109,13 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     @Override
     public void writeChars(String s) throws IOException {
       Preconditions.checkNotNull(s);
-      fory.writeJavaString(buffer, s);
+      fory.writeString(buffer, s);
     }
 
     @Override
     public void writeUTF(String s) throws IOException {
       Preconditions.checkNotNull(s);
-      fory.writeJavaString(buffer, s);
+      fory.writeString(buffer, s);
     }
 
     @Override
@@ -1464,7 +1464,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     @Override
     public String readUTF() throws IOException {
-      return fory.readJavaString(buffer);
+      return fory.readString(buffer);
     }
 
     @Override

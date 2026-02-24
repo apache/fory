@@ -151,7 +151,7 @@ public class RegisterTest extends ForyTestBase {
     @Override
     public void write(MemoryBuffer buffer, MyExt value) {
       if (isJava) {
-        fory.writeJavaString(buffer, value.id);
+        fory.writeString(buffer, value.id);
       } else {
         fory.writeString(buffer, value.id);
       }
@@ -161,7 +161,7 @@ public class RegisterTest extends ForyTestBase {
     public MyExt read(MemoryBuffer buffer) {
       MyExt result = new MyExt();
       if (isJava) {
-        result.id = fory.readJavaString(buffer);
+        result.id = fory.readString(buffer);
       } else {
         result.id = fory.readString(buffer);
       }

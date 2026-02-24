@@ -117,7 +117,7 @@ public class FieldSkipper {
         buffer.readTaggedUint64();
         break;
       case DispatchId.STRING:
-        fory.readJavaString(buffer);
+        fory.readString(buffer);
         break;
       default:
         throw new IllegalStateException("Unexpected basic dispatchId: " + dispatchId);
