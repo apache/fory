@@ -21,12 +21,6 @@ public abstract class Serializer<T>
 {
     public Type Type => typeof(T);
 
-    public abstract TypeId StaticTypeId { get; }
-
-    public virtual bool IsNullableType => false;
-
-    public virtual bool IsReferenceTrackableType => false;
-
     public virtual T DefaultValue => default!;
 
     internal object? DefaultObject => DefaultValue;
@@ -41,7 +35,6 @@ public abstract class Serializer<T>
         {
             bool wroteTrackingRefFlag = false;
             if (refMode == RefMode.Tracking &&
-                IsReferenceTrackableType &&
                 value is object obj)
             {
                 if (context.RefWriter.TryWriteReference(context.Writer, obj))
@@ -54,7 +47,7 @@ public abstract class Serializer<T>
 
             if (!wroteTrackingRefFlag)
             {
-                if (IsNullableType && value is null)
+                if (value is null)
                 {
                     context.Writer.WriteInt8((sbyte)RefFlag.Null);
                     return;

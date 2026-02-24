@@ -67,7 +67,7 @@ internal static class SerializerRuntimeAdapter
 
     internal static bool IsNoneObject<T>(this Serializer<T> serializer, object? value)
     {
-        return serializer.IsNullableType && value is null;
+        return value is null;
     }
 
     internal static void WriteDataObject<T>(this Serializer<T> serializer, WriteContext context, object? value, bool hasGenerics)
@@ -103,7 +103,7 @@ internal static class SerializerRuntimeAdapter
             return typed;
         }
 
-        if (value is null && serializer.IsNullableType)
+        if (value is null && default(T) is null)
         {
             return serializer.DefaultValue;
         }

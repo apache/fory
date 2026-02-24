@@ -307,11 +307,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        return value;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    public override global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
+        sb.AppendLine("    public global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("    public override bool IsNullableType => true;");
-            sb.AppendLine("    public override bool IsReferenceTrackableType => true;");
+            sb.AppendLine("    public bool IsNullableType => true;");
+            sb.AppendLine("    public bool IsReferenceTrackableType => true;");
             sb.AppendLine($"    public override {model.TypeName} DefaultValue => null!;");
         }
         else

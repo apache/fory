@@ -26,11 +26,11 @@ public sealed class NullableSerializer<T> : Serializer<T?>, ITypeInfoSerializer,
         _typeResolver = typeResolver;
     }
 
-    public override TypeId StaticTypeId => _typeResolver.GetSerializer<T>().StaticTypeId;
+    public TypeId StaticTypeId => _typeResolver.GetTypeInfo<T>().StaticTypeId;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => _typeResolver.GetSerializer<T>().IsReferenceTrackableType;
+    public bool IsReferenceTrackableType => _typeResolver.GetTypeInfo<T>().IsReferenceTrackableType;
 
     public override T? DefaultValue => null;
 

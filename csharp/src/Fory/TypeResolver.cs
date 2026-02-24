@@ -200,7 +200,7 @@ public sealed class TypeResolver
     internal void WriteTypeInfo<T>(Serializer<T> serializer, WriteContext context)
     {
         Type type = typeof(T);
-        TypeId staticTypeId = serializer.StaticTypeId;
+        TypeId staticTypeId = GetTypeInfo<T>().StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
         {
             context.Writer.WriteUInt8((byte)staticTypeId);
@@ -275,7 +275,7 @@ public sealed class TypeResolver
         }
 
         TypeId typeId = (TypeId)rawTypeId;
-        TypeId staticTypeId = serializer.StaticTypeId;
+        TypeId staticTypeId = GetTypeInfo<T>().StaticTypeId;
         if (!staticTypeId.IsUserTypeKind())
         {
             if (typeId != staticTypeId)

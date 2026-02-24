@@ -732,11 +732,11 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
+    public TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override Dictionary<TKey, TValue> DefaultValue => null!;
 
@@ -783,11 +783,11 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
+    public TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override SortedDictionary<TKey, TValue> DefaultValue => null!;
 
@@ -834,11 +834,11 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
+    public TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override SortedList<TKey, TValue> DefaultValue => null!;
 
@@ -885,11 +885,11 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
     where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
     where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
+    public TypeId StaticTypeId => TypeId.Map;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override ConcurrentDictionary<TKey, TValue> DefaultValue => null!;
 

@@ -33,9 +33,9 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     where TDictionary : class, IDictionary<TKey, TValue>
     where TKey : notnull
 {
-    public override TypeId StaticTypeId => TypeId.Map;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
+    public TypeId StaticTypeId => TypeId.Map;
+    public bool IsNullableType => true;
+    public bool IsReferenceTrackableType => true;
     public override TDictionary DefaultValue => null!;
 
     protected abstract TDictionary CreateMap(int capacity);
@@ -54,6 +54,8 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
+        TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
+        TypeInfo valueTypeInfo = context.TypeResolver.GetTypeInfo<TValue>();
         TDictionary map = value ?? CreateMap(0);
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
@@ -61,12 +63,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             return;
         }
 
-        bool trackKeyRef = context.TrackRef && keySerializer.IsReferenceTrackableType;
-        bool trackValueRef = context.TrackRef && valueSerializer.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !keySerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
+        bool trackKeyRef = context.TrackRef && keyTypeInfo.IsReferenceTrackableType;
+        bool trackValueRef = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
+        bool keyDeclared = hasGenerics && !keyTypeInfo.StaticTypeId.NeedsTypeInfoForField();
+        bool valueDeclared = hasGenerics && !valueTypeInfo.StaticTypeId.NeedsTypeInfoForField();
+        bool keyDynamicType = keyTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool valueDynamicType = valueTypeInfo.StaticTypeId == TypeId.Unknown;
 
         KeyValuePair<TKey, TValue>[] pairs = SnapshotPairs(map);
         if (keyDynamicType || valueDynamicType)
@@ -207,6 +209,8 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
+        TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
+        TypeInfo valueTypeInfo = context.TypeResolver.GetTypeInfo<TValue>();
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
@@ -214,9 +218,9 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         }
 
         TDictionary map = CreateMap(totalLength);
-        bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
-        bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
+        bool keyDynamicType = keyTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool valueDynamicType = valueTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool canonicalizeValues = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
 
         int readCount = 0;
         while (readCount < totalLength)

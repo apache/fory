@@ -15,6 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Collections.Concurrent;
+using System.Collections.Immutable;
+
 namespace Apache.Fory;
 
 public sealed class TypeInfo
@@ -63,12 +66,15 @@ public sealed class TypeInfo
 
     internal static TypeInfo Create<T>(Type type, Serializer<T> serializer)
     {
+        TypeId staticTypeId = ResolveStaticTypeId(type, serializer);
+        bool isNullableType = ResolveIsNullableType(type, serializer);
+        bool isReferenceTrackableType = ResolveIsReferenceTrackableType(type, serializer, staticTypeId);
         return new TypeInfo(
             type,
             serializer,
-            serializer.StaticTypeId,
-            serializer.IsNullableType,
-            serializer.IsReferenceTrackableType,
+            staticTypeId,
+            isNullableType,
+            isReferenceTrackableType,
             serializer.DefaultObject,
             value => serializer.IsNoneObject(value),
             (context, value, hasGenerics) => serializer.WriteDataObject(context, value, hasGenerics),
@@ -79,6 +85,247 @@ public sealed class TypeInfo
             context => serializer.WriteTypeInfo(context),
             context => serializer.ReadTypeInfo(context),
             trackRef => serializer.CompatibleTypeMetaFields(trackRef));
+    }
+
+    private static TypeId ResolveStaticTypeId(Type type, object serializer)
+    {
+        if (TryGetSerializerProperty(serializer, nameof(StaticTypeId), out TypeId staticTypeId))
+        {
+            return staticTypeId;
+        }
+
+        if (type == typeof(bool))
+        {
+            return TypeId.Bool;
+        }
+
+        if (type == typeof(sbyte))
+        {
+            return TypeId.Int8;
+        }
+
+        if (type == typeof(short))
+        {
+            return TypeId.Int16;
+        }
+
+        if (type == typeof(int))
+        {
+            return TypeId.VarInt32;
+        }
+
+        if (type == typeof(long))
+        {
+            return TypeId.VarInt64;
+        }
+
+        if (type == typeof(byte))
+        {
+            return TypeId.UInt8;
+        }
+
+        if (type == typeof(ushort))
+        {
+            return TypeId.UInt16;
+        }
+
+        if (type == typeof(uint))
+        {
+            return TypeId.VarUInt32;
+        }
+
+        if (type == typeof(ulong))
+        {
+            return TypeId.VarUInt64;
+        }
+
+        if (type == typeof(float))
+        {
+            return TypeId.Float32;
+        }
+
+        if (type == typeof(double))
+        {
+            return TypeId.Float64;
+        }
+
+        if (type == typeof(string))
+        {
+            return TypeId.String;
+        }
+
+        if (type == typeof(byte[]))
+        {
+            return TypeId.Binary;
+        }
+
+        if (type == typeof(bool[]))
+        {
+            return TypeId.BoolArray;
+        }
+
+        if (type == typeof(sbyte[]))
+        {
+            return TypeId.Int8Array;
+        }
+
+        if (type == typeof(short[]))
+        {
+            return TypeId.Int16Array;
+        }
+
+        if (type == typeof(int[]))
+        {
+            return TypeId.Int32Array;
+        }
+
+        if (type == typeof(long[]))
+        {
+            return TypeId.Int64Array;
+        }
+
+        if (type == typeof(ushort[]))
+        {
+            return TypeId.UInt16Array;
+        }
+
+        if (type == typeof(uint[]))
+        {
+            return TypeId.UInt32Array;
+        }
+
+        if (type == typeof(ulong[]))
+        {
+            return TypeId.UInt64Array;
+        }
+
+        if (type == typeof(float[]))
+        {
+            return TypeId.Float32Array;
+        }
+
+        if (type == typeof(double[]))
+        {
+            return TypeId.Float64Array;
+        }
+
+        if (type == typeof(DateOnly))
+        {
+            return TypeId.Date;
+        }
+
+        if (type == typeof(DateTimeOffset) || type == typeof(DateTime))
+        {
+            return TypeId.Timestamp;
+        }
+
+        if (type == typeof(TimeSpan))
+        {
+            return TypeId.Duration;
+        }
+
+        if (type == typeof(object))
+        {
+            return TypeId.Unknown;
+        }
+
+        if (type.IsEnum)
+        {
+            return TypeId.Enum;
+        }
+
+        if (typeof(Union).IsAssignableFrom(type))
+        {
+            return TypeId.TypedUnion;
+        }
+
+        if (type.IsArray)
+        {
+            return TypeId.List;
+        }
+
+        if (type.IsGenericType)
+        {
+            Type genericType = type.GetGenericTypeDefinition();
+            if (genericType == typeof(List<>) ||
+                genericType == typeof(LinkedList<>) ||
+                genericType == typeof(Queue<>) ||
+                genericType == typeof(Stack<>))
+            {
+                return TypeId.List;
+            }
+
+            if (genericType == typeof(HashSet<>) ||
+                genericType == typeof(SortedSet<>) ||
+                genericType == typeof(ImmutableHashSet<>))
+            {
+                return TypeId.Set;
+            }
+
+            if (genericType == typeof(Dictionary<,>) ||
+                genericType == typeof(SortedDictionary<,>) ||
+                genericType == typeof(SortedList<,>) ||
+                genericType == typeof(ConcurrentDictionary<,>) ||
+                genericType == typeof(NullableKeyDictionary<,>))
+            {
+                return TypeId.Map;
+            }
+
+            if (genericType == typeof(Nullable<>))
+            {
+                return ResolveStaticTypeId(Nullable.GetUnderlyingType(type)!, serializer);
+            }
+        }
+
+        return TypeId.Ext;
+    }
+
+    private static bool ResolveIsNullableType(Type type, object serializer)
+    {
+        if (TryGetSerializerProperty(serializer, nameof(IsNullableType), out bool isNullableType))
+        {
+            return isNullableType;
+        }
+
+        return !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
+    }
+
+    private static bool ResolveIsReferenceTrackableType(Type type, object serializer, TypeId staticTypeId)
+    {
+        if (TryGetSerializerProperty(serializer, nameof(IsReferenceTrackableType), out bool isReferenceTrackableType))
+        {
+            return isReferenceTrackableType;
+        }
+
+        if (staticTypeId == TypeId.String)
+        {
+            return false;
+        }
+
+        return !type.IsValueType;
+    }
+
+    private static bool TryGetSerializerProperty<TValue>(
+        object serializer,
+        string propertyName,
+        out TValue value)
+    {
+        Type serializerType = serializer.GetType();
+        System.Reflection.PropertyInfo? property = serializerType.GetProperty(
+            propertyName,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (property is not null && property.PropertyType == typeof(TValue))
+        {
+            object? raw = property.GetValue(serializer);
+            if (raw is TValue typed)
+            {
+                value = typed;
+                return true;
+            }
+        }
+
+        value = default!;
+        return false;
     }
 
     public Type Type { get; }

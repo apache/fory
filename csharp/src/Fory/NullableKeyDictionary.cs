@@ -390,15 +390,17 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
-    public override TypeId StaticTypeId => TypeId.Map;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
+    public TypeId StaticTypeId => TypeId.Map;
+    public bool IsNullableType => true;
+    public bool IsReferenceTrackableType => true;
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
 
     public override void WriteData(WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
+        TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
+        TypeInfo valueTypeInfo = context.TypeResolver.GetTypeInfo<TValue>();
         NullableKeyDictionary<TKey, TValue> map = value ?? new NullableKeyDictionary<TKey, TValue>();
         context.Writer.WriteVarUInt32((uint)map.Count);
         if (map.Count == 0)
@@ -406,12 +408,12 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             return;
         }
 
-        bool trackKeyRef = context.TrackRef && keySerializer.IsReferenceTrackableType;
-        bool trackValueRef = context.TrackRef && valueSerializer.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !keySerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueSerializer.StaticTypeId.NeedsTypeInfoForField();
-        bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
+        bool trackKeyRef = context.TrackRef && keyTypeInfo.IsReferenceTrackableType;
+        bool trackValueRef = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
+        bool keyDeclared = hasGenerics && !keyTypeInfo.StaticTypeId.NeedsTypeInfoForField();
+        bool valueDeclared = hasGenerics && !valueTypeInfo.StaticTypeId.NeedsTypeInfoForField();
+        bool keyDynamicType = keyTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool valueDynamicType = valueTypeInfo.StaticTypeId == TypeId.Unknown;
         KeyValuePair<TKey, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
@@ -531,6 +533,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
+        TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
+        TypeInfo valueTypeInfo = context.TypeResolver.GetTypeInfo<TValue>();
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
@@ -538,9 +542,9 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         }
 
         NullableKeyDictionary<TKey, TValue> map = new();
-        bool keyDynamicType = keySerializer.StaticTypeId == TypeId.Unknown;
-        bool valueDynamicType = valueSerializer.StaticTypeId == TypeId.Unknown;
-        bool canonicalizeValues = context.TrackRef && valueSerializer.IsReferenceTrackableType;
+        bool keyDynamicType = keyTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool valueDynamicType = valueTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool canonicalizeValues = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
 
         int readCount = 0;
         while (readCount < totalLength)

@@ -26,7 +26,7 @@ internal enum ForyStringEncoding : ulong
 
 public sealed class BoolSerializer : Serializer<bool>
 {
-    public override TypeId StaticTypeId => TypeId.Bool;
+    public TypeId StaticTypeId => TypeId.Bool;
 
     public override bool DefaultValue => false;
 
@@ -44,7 +44,7 @@ public sealed class BoolSerializer : Serializer<bool>
 
 public sealed class Int8Serializer : Serializer<sbyte>
 {
-    public override TypeId StaticTypeId => TypeId.Int8;
+    public TypeId StaticTypeId => TypeId.Int8;
 
     public override sbyte DefaultValue => 0;
 
@@ -62,7 +62,7 @@ public sealed class Int8Serializer : Serializer<sbyte>
 
 public sealed class Int16Serializer : Serializer<short>
 {
-    public override TypeId StaticTypeId => TypeId.Int16;
+    public TypeId StaticTypeId => TypeId.Int16;
 
     public override short DefaultValue => 0;
 
@@ -80,7 +80,7 @@ public sealed class Int16Serializer : Serializer<short>
 
 public sealed class Int32Serializer : Serializer<int>
 {
-    public override TypeId StaticTypeId => TypeId.VarInt32;
+    public TypeId StaticTypeId => TypeId.VarInt32;
 
     public override int DefaultValue => 0;
 
@@ -98,7 +98,7 @@ public sealed class Int32Serializer : Serializer<int>
 
 public sealed class Int64Serializer : Serializer<long>
 {
-    public override TypeId StaticTypeId => TypeId.VarInt64;
+    public TypeId StaticTypeId => TypeId.VarInt64;
 
     public override long DefaultValue => 0;
 
@@ -116,7 +116,7 @@ public sealed class Int64Serializer : Serializer<long>
 
 public sealed class UInt8Serializer : Serializer<byte>
 {
-    public override TypeId StaticTypeId => TypeId.UInt8;
+    public TypeId StaticTypeId => TypeId.UInt8;
 
     public override byte DefaultValue => 0;
 
@@ -134,7 +134,7 @@ public sealed class UInt8Serializer : Serializer<byte>
 
 public sealed class UInt16Serializer : Serializer<ushort>
 {
-    public override TypeId StaticTypeId => TypeId.UInt16;
+    public TypeId StaticTypeId => TypeId.UInt16;
 
     public override ushort DefaultValue => 0;
 
@@ -152,7 +152,7 @@ public sealed class UInt16Serializer : Serializer<ushort>
 
 public sealed class UInt32Serializer : Serializer<uint>
 {
-    public override TypeId StaticTypeId => TypeId.VarUInt32;
+    public TypeId StaticTypeId => TypeId.VarUInt32;
 
     public override uint DefaultValue => 0;
 
@@ -170,7 +170,7 @@ public sealed class UInt32Serializer : Serializer<uint>
 
 public sealed class UInt64Serializer : Serializer<ulong>
 {
-    public override TypeId StaticTypeId => TypeId.VarUInt64;
+    public TypeId StaticTypeId => TypeId.VarUInt64;
 
     public override ulong DefaultValue => 0;
 
@@ -188,7 +188,7 @@ public sealed class UInt64Serializer : Serializer<ulong>
 
 public sealed class Float32Serializer : Serializer<float>
 {
-    public override TypeId StaticTypeId => TypeId.Float32;
+    public TypeId StaticTypeId => TypeId.Float32;
 
     public override float DefaultValue => 0;
 
@@ -206,7 +206,7 @@ public sealed class Float32Serializer : Serializer<float>
 
 public sealed class Float64Serializer : Serializer<double>
 {
-    public override TypeId StaticTypeId => TypeId.Float64;
+    public TypeId StaticTypeId => TypeId.Float64;
 
     public override double DefaultValue => 0;
 
@@ -224,9 +224,9 @@ public sealed class Float64Serializer : Serializer<double>
 
 public sealed class BinarySerializer : Serializer<byte[]>
 {
-    public override TypeId StaticTypeId => TypeId.Binary;
+    public TypeId StaticTypeId => TypeId.Binary;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
     public override byte[] DefaultValue => null!;
 

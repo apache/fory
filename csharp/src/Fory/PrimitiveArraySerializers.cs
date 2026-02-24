@@ -19,11 +19,11 @@ namespace Apache.Fory;
 
 internal sealed class BoolArraySerializer : Serializer<bool[]>
 {
-    public override TypeId StaticTypeId => TypeId.BoolArray;
+    public TypeId StaticTypeId => TypeId.BoolArray;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override bool[] DefaultValue => null!;
 
@@ -53,11 +53,11 @@ internal sealed class BoolArraySerializer : Serializer<bool[]>
 
 internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int8Array;
+    public TypeId StaticTypeId => TypeId.Int8Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override sbyte[] DefaultValue => null!;
 
@@ -87,11 +87,11 @@ internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 
 internal sealed class Int16ArraySerializer : Serializer<short[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int16Array;
+    public TypeId StaticTypeId => TypeId.Int16Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override short[] DefaultValue => null!;
 
@@ -126,11 +126,11 @@ internal sealed class Int16ArraySerializer : Serializer<short[]>
 
 internal sealed class Int32ArraySerializer : Serializer<int[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int32Array;
+    public TypeId StaticTypeId => TypeId.Int32Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override int[] DefaultValue => null!;
 
@@ -165,11 +165,11 @@ internal sealed class Int32ArraySerializer : Serializer<int[]>
 
 internal sealed class Int64ArraySerializer : Serializer<long[]>
 {
-    public override TypeId StaticTypeId => TypeId.Int64Array;
+    public TypeId StaticTypeId => TypeId.Int64Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override long[] DefaultValue => null!;
 
@@ -204,11 +204,11 @@ internal sealed class Int64ArraySerializer : Serializer<long[]>
 
 internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 {
-    public override TypeId StaticTypeId => TypeId.UInt16Array;
+    public TypeId StaticTypeId => TypeId.UInt16Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override ushort[] DefaultValue => null!;
 
@@ -243,11 +243,11 @@ internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 
 internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 {
-    public override TypeId StaticTypeId => TypeId.UInt32Array;
+    public TypeId StaticTypeId => TypeId.UInt32Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override uint[] DefaultValue => null!;
 
@@ -282,11 +282,11 @@ internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 
 internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 {
-    public override TypeId StaticTypeId => TypeId.UInt64Array;
+    public TypeId StaticTypeId => TypeId.UInt64Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override ulong[] DefaultValue => null!;
 
@@ -321,11 +321,11 @@ internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 
 internal sealed class Float32ArraySerializer : Serializer<float[]>
 {
-    public override TypeId StaticTypeId => TypeId.Float32Array;
+    public TypeId StaticTypeId => TypeId.Float32Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override float[] DefaultValue => null!;
 
@@ -360,11 +360,11 @@ internal sealed class Float32ArraySerializer : Serializer<float[]>
 
 internal sealed class Float64ArraySerializer : Serializer<double[]>
 {
-    public override TypeId StaticTypeId => TypeId.Float64Array;
+    public TypeId StaticTypeId => TypeId.Float64Array;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override double[] DefaultValue => null!;
 

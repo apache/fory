@@ -19,9 +19,9 @@ namespace Apache.Fory;
 
 public sealed class DynamicAnyObjectSerializer : Serializer<object?>, ITypeInfoSerializer
 {
-    public override TypeId StaticTypeId => TypeId.Unknown;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
+    public TypeId StaticTypeId => TypeId.Unknown;
+    public bool IsNullableType => true;
+    public bool IsReferenceTrackableType => true;
     public override object? DefaultValue => null;
 
     public override void WriteData(WriteContext context, in object? value, bool hasGenerics)

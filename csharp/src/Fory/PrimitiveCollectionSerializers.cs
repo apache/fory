@@ -53,11 +53,11 @@ internal sealed class ListBoolSerializer : Serializer<List<bool>>
 {
     private static readonly ListSerializer<bool> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<bool> DefaultValue => null!;
 
@@ -81,11 +81,11 @@ internal sealed class ListInt8Serializer : Serializer<List<sbyte>>
 {
     private static readonly ListSerializer<sbyte> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<sbyte> DefaultValue => null!;
 
@@ -109,11 +109,11 @@ internal sealed class ListInt16Serializer : Serializer<List<short>>
 {
     private static readonly ListSerializer<short> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<short> DefaultValue => null!;
 
@@ -137,11 +137,11 @@ internal sealed class ListIntSerializer : Serializer<List<int>>
 {
     private static readonly ListSerializer<int> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<int> DefaultValue => null!;
 
@@ -165,11 +165,11 @@ internal sealed class ListLongSerializer : Serializer<List<long>>
 {
     private static readonly ListSerializer<long> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<long> DefaultValue => null!;
 
@@ -193,11 +193,11 @@ internal sealed class ListUInt8Serializer : Serializer<List<byte>>
 {
     private static readonly ListSerializer<byte> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<byte> DefaultValue => null!;
 
@@ -221,11 +221,11 @@ internal sealed class ListUInt16Serializer : Serializer<List<ushort>>
 {
     private static readonly ListSerializer<ushort> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<ushort> DefaultValue => null!;
 
@@ -249,11 +249,11 @@ internal sealed class ListUIntSerializer : Serializer<List<uint>>
 {
     private static readonly ListSerializer<uint> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<uint> DefaultValue => null!;
 
@@ -277,11 +277,11 @@ internal sealed class ListULongSerializer : Serializer<List<ulong>>
 {
     private static readonly ListSerializer<ulong> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<ulong> DefaultValue => null!;
 
@@ -305,11 +305,11 @@ internal sealed class ListFloatSerializer : Serializer<List<float>>
 {
     private static readonly ListSerializer<float> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<float> DefaultValue => null!;
 
@@ -333,11 +333,11 @@ internal sealed class ListDoubleSerializer : Serializer<List<double>>
 {
     private static readonly ListSerializer<double> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<double> DefaultValue => null!;
 
@@ -361,11 +361,11 @@ internal sealed class ListStringSerializer : Serializer<List<string>>
 {
     private static readonly ListSerializer<string> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override List<string> DefaultValue => null!;
 
@@ -417,11 +417,11 @@ internal sealed class SetInt8Serializer : Serializer<HashSet<sbyte>>
 {
     private static readonly SetSerializer<sbyte> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<sbyte> DefaultValue => null!;
 
@@ -445,11 +445,11 @@ internal sealed class SetInt16Serializer : Serializer<HashSet<short>>
 {
     private static readonly SetSerializer<short> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<short> DefaultValue => null!;
 
@@ -473,11 +473,11 @@ internal sealed class SetIntSerializer : Serializer<HashSet<int>>
 {
     private static readonly SetSerializer<int> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<int> DefaultValue => null!;
 
@@ -501,11 +501,11 @@ internal sealed class SetLongSerializer : Serializer<HashSet<long>>
 {
     private static readonly SetSerializer<long> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<long> DefaultValue => null!;
 
@@ -529,11 +529,11 @@ internal sealed class SetUInt8Serializer : Serializer<HashSet<byte>>
 {
     private static readonly SetSerializer<byte> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<byte> DefaultValue => null!;
 
@@ -557,11 +557,11 @@ internal sealed class SetUInt16Serializer : Serializer<HashSet<ushort>>
 {
     private static readonly SetSerializer<ushort> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<ushort> DefaultValue => null!;
 
@@ -585,11 +585,11 @@ internal sealed class SetUIntSerializer : Serializer<HashSet<uint>>
 {
     private static readonly SetSerializer<uint> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<uint> DefaultValue => null!;
 
@@ -613,11 +613,11 @@ internal sealed class SetULongSerializer : Serializer<HashSet<ulong>>
 {
     private static readonly SetSerializer<ulong> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<ulong> DefaultValue => null!;
 
@@ -641,11 +641,11 @@ internal sealed class SetFloatSerializer : Serializer<HashSet<float>>
 {
     private static readonly SetSerializer<float> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<float> DefaultValue => null!;
 
@@ -669,11 +669,11 @@ internal sealed class SetDoubleSerializer : Serializer<HashSet<double>>
 {
     private static readonly SetSerializer<double> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override HashSet<double> DefaultValue => null!;
 
@@ -698,11 +698,11 @@ internal class PrimitiveLinkedListSerializer<T, TCodec> : Serializer<LinkedList<
 {
     private static readonly LinkedListSerializer<T> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override LinkedList<T> DefaultValue => null!;
 
@@ -732,11 +732,11 @@ internal class PrimitiveQueueSerializer<T, TCodec> : Serializer<Queue<T>>
 {
     private static readonly QueueSerializer<T> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override Queue<T> DefaultValue => null!;
 
@@ -766,11 +766,11 @@ internal class PrimitiveStackSerializer<T, TCodec> : Serializer<Stack<T>>
 {
     private static readonly StackSerializer<T> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
+    public TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override Stack<T> DefaultValue => null!;
 
@@ -807,11 +807,11 @@ internal class PrimitiveSortedSetSerializer<T, TCodec> : Serializer<SortedSet<T>
 {
     private static readonly SortedSetSerializer<T> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override SortedSet<T> DefaultValue => null!;
 
@@ -842,11 +842,11 @@ internal class PrimitiveImmutableHashSetSerializer<T, TCodec> : Serializer<Immut
 {
     private static readonly ImmutableHashSetSerializer<T> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.Set;
+    public TypeId StaticTypeId => TypeId.Set;
 
-    public override bool IsNullableType => true;
+    public bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
+    public bool IsReferenceTrackableType => true;
 
     public override ImmutableHashSet<T> DefaultValue => null!;
 
