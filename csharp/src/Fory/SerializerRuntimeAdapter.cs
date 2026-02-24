@@ -67,12 +67,7 @@ internal static class SerializerRuntimeAdapter
 
     internal static bool IsNoneObject<T>(this Serializer<T> serializer, object? value)
     {
-        if (value is null)
-        {
-            return serializer.IsNullableType;
-        }
-
-        return value is T typed && serializer.IsNone(typed);
+        return serializer.IsNullableType && value is null;
     }
 
     internal static void WriteDataObject<T>(this Serializer<T> serializer, WriteContext context, object? value, bool hasGenerics)

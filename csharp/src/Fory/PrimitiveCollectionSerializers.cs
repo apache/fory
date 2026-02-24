@@ -61,8 +61,6 @@ internal sealed class ListBoolSerializer : Serializer<List<bool>>
 
     public override List<bool> DefaultValue => null!;
 
-    public override bool IsNone(in List<bool> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<bool> value, bool hasGenerics)
     {
         List<bool> list = value ?? [];
@@ -90,8 +88,6 @@ internal sealed class ListInt8Serializer : Serializer<List<sbyte>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<sbyte> DefaultValue => null!;
-
-    public override bool IsNone(in List<sbyte> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<sbyte> value, bool hasGenerics)
     {
@@ -121,8 +117,6 @@ internal sealed class ListInt16Serializer : Serializer<List<short>>
 
     public override List<short> DefaultValue => null!;
 
-    public override bool IsNone(in List<short> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<short> value, bool hasGenerics)
     {
         List<short> list = value ?? [];
@@ -150,8 +144,6 @@ internal sealed class ListIntSerializer : Serializer<List<int>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<int> DefaultValue => null!;
-
-    public override bool IsNone(in List<int> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<int> value, bool hasGenerics)
     {
@@ -181,8 +173,6 @@ internal sealed class ListLongSerializer : Serializer<List<long>>
 
     public override List<long> DefaultValue => null!;
 
-    public override bool IsNone(in List<long> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<long> value, bool hasGenerics)
     {
         List<long> list = value ?? [];
@@ -210,8 +200,6 @@ internal sealed class ListUInt8Serializer : Serializer<List<byte>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<byte> DefaultValue => null!;
-
-    public override bool IsNone(in List<byte> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<byte> value, bool hasGenerics)
     {
@@ -241,8 +229,6 @@ internal sealed class ListUInt16Serializer : Serializer<List<ushort>>
 
     public override List<ushort> DefaultValue => null!;
 
-    public override bool IsNone(in List<ushort> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<ushort> value, bool hasGenerics)
     {
         List<ushort> list = value ?? [];
@@ -270,8 +256,6 @@ internal sealed class ListUIntSerializer : Serializer<List<uint>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<uint> DefaultValue => null!;
-
-    public override bool IsNone(in List<uint> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<uint> value, bool hasGenerics)
     {
@@ -301,8 +285,6 @@ internal sealed class ListULongSerializer : Serializer<List<ulong>>
 
     public override List<ulong> DefaultValue => null!;
 
-    public override bool IsNone(in List<ulong> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<ulong> value, bool hasGenerics)
     {
         List<ulong> list = value ?? [];
@@ -330,8 +312,6 @@ internal sealed class ListFloatSerializer : Serializer<List<float>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<float> DefaultValue => null!;
-
-    public override bool IsNone(in List<float> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<float> value, bool hasGenerics)
     {
@@ -361,8 +341,6 @@ internal sealed class ListDoubleSerializer : Serializer<List<double>>
 
     public override List<double> DefaultValue => null!;
 
-    public override bool IsNone(in List<double> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<double> value, bool hasGenerics)
     {
         List<double> list = value ?? [];
@@ -390,8 +368,6 @@ internal sealed class ListStringSerializer : Serializer<List<string>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<string> DefaultValue => null!;
-
-    public override bool IsNone(in List<string> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<string> value, bool hasGenerics)
     {
@@ -449,8 +425,6 @@ internal sealed class SetInt8Serializer : Serializer<HashSet<sbyte>>
 
     public override HashSet<sbyte> DefaultValue => null!;
 
-    public override bool IsNone(in HashSet<sbyte> value) => value is null;
-
     public override void WriteData(WriteContext context, in HashSet<sbyte> value, bool hasGenerics)
     {
         HashSet<sbyte> set = value ?? [];
@@ -478,8 +452,6 @@ internal sealed class SetInt16Serializer : Serializer<HashSet<short>>
     public override bool IsReferenceTrackableType => true;
 
     public override HashSet<short> DefaultValue => null!;
-
-    public override bool IsNone(in HashSet<short> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<short> value, bool hasGenerics)
     {
@@ -509,8 +481,6 @@ internal sealed class SetIntSerializer : Serializer<HashSet<int>>
 
     public override HashSet<int> DefaultValue => null!;
 
-    public override bool IsNone(in HashSet<int> value) => value is null;
-
     public override void WriteData(WriteContext context, in HashSet<int> value, bool hasGenerics)
     {
         HashSet<int> set = value ?? [];
@@ -538,8 +508,6 @@ internal sealed class SetLongSerializer : Serializer<HashSet<long>>
     public override bool IsReferenceTrackableType => true;
 
     public override HashSet<long> DefaultValue => null!;
-
-    public override bool IsNone(in HashSet<long> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<long> value, bool hasGenerics)
     {
@@ -569,8 +537,6 @@ internal sealed class SetUInt8Serializer : Serializer<HashSet<byte>>
 
     public override HashSet<byte> DefaultValue => null!;
 
-    public override bool IsNone(in HashSet<byte> value) => value is null;
-
     public override void WriteData(WriteContext context, in HashSet<byte> value, bool hasGenerics)
     {
         HashSet<byte> set = value ?? [];
@@ -598,8 +564,6 @@ internal sealed class SetUInt16Serializer : Serializer<HashSet<ushort>>
     public override bool IsReferenceTrackableType => true;
 
     public override HashSet<ushort> DefaultValue => null!;
-
-    public override bool IsNone(in HashSet<ushort> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<ushort> value, bool hasGenerics)
     {
@@ -629,8 +593,6 @@ internal sealed class SetUIntSerializer : Serializer<HashSet<uint>>
 
     public override HashSet<uint> DefaultValue => null!;
 
-    public override bool IsNone(in HashSet<uint> value) => value is null;
-
     public override void WriteData(WriteContext context, in HashSet<uint> value, bool hasGenerics)
     {
         HashSet<uint> set = value ?? [];
@@ -658,8 +620,6 @@ internal sealed class SetULongSerializer : Serializer<HashSet<ulong>>
     public override bool IsReferenceTrackableType => true;
 
     public override HashSet<ulong> DefaultValue => null!;
-
-    public override bool IsNone(in HashSet<ulong> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<ulong> value, bool hasGenerics)
     {
@@ -689,8 +649,6 @@ internal sealed class SetFloatSerializer : Serializer<HashSet<float>>
 
     public override HashSet<float> DefaultValue => null!;
 
-    public override bool IsNone(in HashSet<float> value) => value is null;
-
     public override void WriteData(WriteContext context, in HashSet<float> value, bool hasGenerics)
     {
         HashSet<float> set = value ?? [];
@@ -718,8 +676,6 @@ internal sealed class SetDoubleSerializer : Serializer<HashSet<double>>
     public override bool IsReferenceTrackableType => true;
 
     public override HashSet<double> DefaultValue => null!;
-
-    public override bool IsNone(in HashSet<double> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<double> value, bool hasGenerics)
     {
@@ -749,8 +705,6 @@ internal class PrimitiveLinkedListSerializer<T, TCodec> : Serializer<LinkedList<
     public override bool IsReferenceTrackableType => true;
 
     public override LinkedList<T> DefaultValue => null!;
-
-    public override bool IsNone(in LinkedList<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in LinkedList<T> value, bool hasGenerics)
     {
@@ -786,8 +740,6 @@ internal class PrimitiveQueueSerializer<T, TCodec> : Serializer<Queue<T>>
 
     public override Queue<T> DefaultValue => null!;
 
-    public override bool IsNone(in Queue<T> value) => value is null;
-
     public override void WriteData(WriteContext context, in Queue<T> value, bool hasGenerics)
     {
         if (TCodec.IsNullable)
@@ -821,8 +773,6 @@ internal class PrimitiveStackSerializer<T, TCodec> : Serializer<Stack<T>>
     public override bool IsReferenceTrackableType => true;
 
     public override Stack<T> DefaultValue => null!;
-
-    public override bool IsNone(in Stack<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in Stack<T> value, bool hasGenerics)
     {
@@ -865,8 +815,6 @@ internal class PrimitiveSortedSetSerializer<T, TCodec> : Serializer<SortedSet<T>
 
     public override SortedSet<T> DefaultValue => null!;
 
-    public override bool IsNone(in SortedSet<T> value) => value is null;
-
     public override void WriteData(WriteContext context, in SortedSet<T> value, bool hasGenerics)
     {
         if (TCodec.IsNullable)
@@ -901,8 +849,6 @@ internal class PrimitiveImmutableHashSetSerializer<T, TCodec> : Serializer<Immut
     public override bool IsReferenceTrackableType => true;
 
     public override ImmutableHashSet<T> DefaultValue => null!;
-
-    public override bool IsNone(in ImmutableHashSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
     {

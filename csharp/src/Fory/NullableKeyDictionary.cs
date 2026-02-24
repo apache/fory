@@ -394,7 +394,6 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
-    public override bool IsNone(in NullableKeyDictionary<TKey, TValue> value) => value is null;
 
     public override void WriteData(WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
     {

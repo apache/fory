@@ -313,7 +313,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             sb.AppendLine("    public override bool IsNullableType => true;");
             sb.AppendLine("    public override bool IsReferenceTrackableType => true;");
             sb.AppendLine($"    public override {model.TypeName} DefaultValue => null!;");
-            sb.AppendLine($"    public override bool IsNone(in {model.TypeName} value) => value is null;");
         }
         else
         {

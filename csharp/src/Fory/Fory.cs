@@ -98,7 +98,7 @@ public sealed class Fory
         ByteWriter writer = _writeContext.Writer;
         writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
-        bool isNone = serializer.IsNone(value);
+        bool isNone = serializer.IsNullableType && value is null;
         WriteHead(writer, isNone);
         if (!isNone)
         {

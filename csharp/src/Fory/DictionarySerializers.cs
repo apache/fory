@@ -37,7 +37,6 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override TDictionary DefaultValue => null!;
-    public override bool IsNone(in TDictionary value) => value is null;
 
     protected abstract TDictionary CreateMap(int capacity);
 

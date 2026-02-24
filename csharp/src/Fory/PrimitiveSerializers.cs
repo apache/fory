@@ -230,8 +230,6 @@ public sealed class BinarySerializer : Serializer<byte[]>
 
     public override byte[] DefaultValue => null!;
 
-    public override bool IsNone(in byte[] value) => value is null;
-
     public override void WriteData(WriteContext context, in byte[] value, bool hasGenerics)
     {
         _ = hasGenerics;

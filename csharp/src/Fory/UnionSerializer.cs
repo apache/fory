@@ -33,11 +33,6 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
 
     public override TUnion DefaultValue => null!;
 
-    public override bool IsNone(in TUnion value)
-    {
-        return value is null;
-    }
-
     public override void WriteData(WriteContext context, in TUnion value, bool hasGenerics)
     {
         _ = hasGenerics;

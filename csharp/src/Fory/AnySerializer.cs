@@ -23,11 +23,10 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>, ITypeInfoS
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override object? DefaultValue => null;
-    public override bool IsNone(in object? value) => value is null;
 
     public override void WriteData(WriteContext context, in object? value, bool hasGenerics)
     {
-        if (IsNone(value))
+        if (value is null)
         {
             return;
         }
@@ -61,7 +60,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>, ITypeInfoS
     {
         if (refMode != RefMode.None)
         {
-            if (IsNone(value))
+            if (value is null)
             {
                 context.Writer.WriteInt8((sbyte)RefFlag.Null);
                 return;

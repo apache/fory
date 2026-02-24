@@ -172,8 +172,6 @@ internal sealed class ListDateOnlySerializer : Serializer<List<DateOnly>>
 
     public override List<DateOnly> DefaultValue => null!;
 
-    public override bool IsNone(in List<DateOnly> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<DateOnly> value, bool hasGenerics)
     {
         List<DateOnly> list = value ?? [];
@@ -201,8 +199,6 @@ internal sealed class ListDateTimeOffsetSerializer : Serializer<List<DateTimeOff
     public override bool IsReferenceTrackableType => true;
 
     public override List<DateTimeOffset> DefaultValue => null!;
-
-    public override bool IsNone(in List<DateTimeOffset> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<DateTimeOffset> value, bool hasGenerics)
     {
@@ -232,8 +228,6 @@ internal sealed class ListDateTimeSerializer : Serializer<List<DateTime>>
 
     public override List<DateTime> DefaultValue => null!;
 
-    public override bool IsNone(in List<DateTime> value) => value is null;
-
     public override void WriteData(WriteContext context, in List<DateTime> value, bool hasGenerics)
     {
         List<DateTime> list = value ?? [];
@@ -262,8 +256,6 @@ internal sealed class ListTimeSpanSerializer : Serializer<List<TimeSpan>>
     public override bool IsReferenceTrackableType => true;
 
     public override List<TimeSpan> DefaultValue => null!;
-
-    public override bool IsNone(in List<TimeSpan> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<TimeSpan> value, bool hasGenerics)
     {

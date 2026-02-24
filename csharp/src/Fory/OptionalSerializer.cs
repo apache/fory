@@ -34,11 +34,6 @@ public sealed class NullableSerializer<T> : Serializer<T?>, ITypeInfoSerializer,
 
     public override T? DefaultValue => null;
 
-    public override bool IsNone(in T? value)
-    {
-        return !value.HasValue;
-    }
-
     public override void WriteData(WriteContext context, in T? value, bool hasGenerics)
     {
         if (!value.HasValue)

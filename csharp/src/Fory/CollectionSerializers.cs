@@ -485,7 +485,6 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override T[] DefaultValue => null!;
-    public override bool IsNone(in T[] value) => value is null;
 
     public override void WriteData(WriteContext context, in T[] value, bool hasGenerics)
     {
@@ -510,7 +509,6 @@ public class ListSerializer<T> : Serializer<List<T>>
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override List<T> DefaultValue => null!;
-    public override bool IsNone(in List<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<T> value, bool hasGenerics)
     {
@@ -530,7 +528,6 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override HashSet<T> DefaultValue => null!;
-    public override bool IsNone(in HashSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in HashSet<T> value, bool hasGenerics)
     {
@@ -550,7 +547,6 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override SortedSet<T> DefaultValue => null!;
-    public override bool IsNone(in SortedSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in SortedSet<T> value, bool hasGenerics)
     {
@@ -570,7 +566,6 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override ImmutableHashSet<T> DefaultValue => null!;
-    public override bool IsNone(in ImmutableHashSet<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in ImmutableHashSet<T> value, bool hasGenerics)
     {
@@ -590,7 +585,6 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override LinkedList<T> DefaultValue => null!;
-    public override bool IsNone(in LinkedList<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in LinkedList<T> value, bool hasGenerics)
     {
@@ -610,7 +604,6 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override Queue<T> DefaultValue => null!;
-    public override bool IsNone(in Queue<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in Queue<T> value, bool hasGenerics)
     {
@@ -637,7 +630,6 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
     public override bool IsNullableType => true;
     public override bool IsReferenceTrackableType => true;
     public override Stack<T> DefaultValue => null!;
-    public override bool IsNone(in Stack<T> value) => value is null;
 
     public override void WriteData(WriteContext context, in Stack<T> value, bool hasGenerics)
     {

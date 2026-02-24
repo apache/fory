@@ -31,12 +31,6 @@ public abstract class Serializer<T>
 
     internal object? DefaultObject => DefaultValue;
 
-    public virtual bool IsNone(in T value)
-    {
-        _ = value;
-        return false;
-    }
-
     public abstract void WriteData(WriteContext context, in T value, bool hasGenerics);
 
     public abstract T ReadData(ReadContext context);
@@ -60,7 +54,7 @@ public abstract class Serializer<T>
 
             if (!wroteTrackingRefFlag)
             {
-                if (IsNullableType && IsNone(value))
+                if (IsNullableType && value is null)
                 {
                     context.Writer.WriteInt8((sbyte)RefFlag.Null);
                     return;
