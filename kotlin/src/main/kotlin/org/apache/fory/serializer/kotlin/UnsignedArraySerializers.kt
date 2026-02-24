@@ -38,14 +38,6 @@ public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
 
   protected abstract fun fromDelegateClass(value: T_Delegate): T
 
-  override fun xwrite(buffer: MemoryBuffer, value: T) {
-    write(buffer, value)
-  }
-
-  override fun xread(buffer: MemoryBuffer): T {
-    return read(buffer)
-  }
-
   override fun write(buffer: MemoryBuffer, value: T) {
     delegatingSerializer.write(buffer, toDelegateClass(value))
   }

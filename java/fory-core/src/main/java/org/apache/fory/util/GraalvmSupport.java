@@ -163,18 +163,6 @@ public class GraalvmSupport {
       return getSerializer().read(buffer);
     }
 
-    @Override
-    public void xwrite(MemoryBuffer buffer, Object value) {
-      // for xlang mode in graalvm native image
-      getSerializer().xwrite(buffer, value);
-    }
-
-    @Override
-    public Object xread(MemoryBuffer buffer) {
-      // for xlang mode in graalvm native image
-      return getSerializer().xread(buffer);
-    }
-
     private Serializer getSerializer() {
       if (serializer == null) {
         try {

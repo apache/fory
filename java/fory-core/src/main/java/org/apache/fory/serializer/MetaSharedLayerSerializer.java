@@ -53,7 +53,6 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
   private final SerializationFieldInfo[] buildInFields;
   private final SerializationFieldInfo[] otherFields;
   private final SerializationFieldInfo[] containerFields;
-  private final SerializationBinding binding;
 
   /**
    * Creates a new MetaSharedLayerSerializer.
@@ -69,7 +68,6 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     this.layerTypeDef = layerTypeDef;
     this.layerMarkerClass = layerMarkerClass;
     TypeResolver typeResolver = fory.getTypeResolver();
-    this.binding = SerializationBinding.createBinding(fory);
 
     // Build field infos from layerTypeDef
     Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(typeResolver, type);
@@ -119,7 +117,8 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
 
   private void writeBuildInFields(MemoryBuffer buffer, T value) {
     for (SerializationFieldInfo fieldInfo : buildInFields) {
-      AbstractObjectSerializer.writeBuildInField(binding, fieldInfo, buffer, value);
+      AbstractObjectSerializer.writeBuildInField(
+          fory, typeResolver, refResolver, fieldInfo, buffer, value);
     }
   }
 
@@ -129,7 +128,7 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       Object fieldValue = fieldAccessor.getObject(value);
       AbstractObjectSerializer.writeContainerFieldValue(
-          binding, refResolver, generics, fieldInfo, buffer, fieldValue);
+          fory, typeResolver, refResolver, generics, fieldInfo, buffer, fieldValue);
     }
   }
 
@@ -137,7 +136,8 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     for (SerializationFieldInfo fieldInfo : otherFields) {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       Object fieldValue = fieldAccessor.getObject(value);
-      binding.writeField(fieldInfo, buffer, fieldValue);
+      AbstractObjectSerializer.writeField(
+          fory, typeResolver, refResolver, fieldInfo, buffer, fieldValue);
     }
   }
 
@@ -147,17 +147,19 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     int index = 0;
     // Write buildIn fields
     for (SerializationFieldInfo fieldInfo : buildInFields) {
-      AbstractObjectSerializer.writeBuildInFieldValue(binding, fieldInfo, buffer, vals[index++]);
+      AbstractObjectSerializer.writeBuildInFieldValue(
+          fory, typeResolver, refResolver, fieldInfo, buffer, vals[index++]);
     }
     // Write container fields
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       AbstractObjectSerializer.writeContainerFieldValue(
-          binding, refResolver, generics, fieldInfo, buffer, vals[index++]);
+          fory, typeResolver, refResolver, generics, fieldInfo, buffer, vals[index++]);
     }
     // Write other fields
     for (SerializationFieldInfo fieldInfo : otherFields) {
-      binding.writeField(fieldInfo, buffer, vals[index++]);
+      AbstractObjectSerializer.writeField(
+          fory, typeResolver, refResolver, fieldInfo, buffer, vals[index++]);
     }
   }
 
@@ -167,17 +169,21 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     int index = 0;
     // Read buildIn fields
     for (SerializationFieldInfo fieldInfo : buildInFields) {
-      vals[index++] = AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer);
+      vals[index++] =
+          AbstractObjectSerializer.readBuildInFieldValue(
+              fory, typeResolver, refResolver, fieldInfo, buffer);
     }
     // Read container fields
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       vals[index++] =
-          AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+          AbstractObjectSerializer.readContainerFieldValue(
+              fory, typeResolver, refResolver, generics, fieldInfo, buffer);
     }
     // Read other fields
     for (SerializationFieldInfo fieldInfo : otherFields) {
-      vals[index++] = binding.readField(fieldInfo, buffer);
+      vals[index++] =
+          AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
     }
     return vals;
   }
@@ -263,10 +269,11 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     for (SerializationFieldInfo fieldInfo : buildInFields) {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
-        AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer, targetObject);
+        AbstractObjectSerializer.readBuildInFieldValue(
+            fory, typeResolver, refResolver, fieldInfo, buffer, targetObject);
       } else {
         // Field doesn't exist in current class - skip the value
-        FieldSkipper.skipField(binding, fieldInfo, buffer);
+        FieldSkipper.skipField(fory, typeResolver, refResolver, fieldInfo, buffer);
       }
     }
   }
@@ -275,7 +282,8 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       Object fieldValue =
-          AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+          AbstractObjectSerializer.readContainerFieldValue(
+              fory, typeResolver, refResolver, generics, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(obj, fieldValue);
@@ -285,22 +293,13 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
 
   private void readUserTypeFields(MemoryBuffer buffer, T obj) {
     for (SerializationFieldInfo fieldInfo : otherFields) {
-      Object fieldValue = binding.readField(fieldInfo, buffer);
+      Object fieldValue =
+          AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(obj, fieldValue);
       }
     }
-  }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, T value) {
-    write(buffer, value);
-  }
-
-  @Override
-  public T xread(MemoryBuffer buffer) {
-    return read(buffer);
   }
 
   /** Returns the number of fields in this layer. */
@@ -385,35 +384,35 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
    * should already be consumed before calling this method.
    *
    * @param buffer the memory buffer to read from
-   * @param binding the serialization binding for reading field values
    */
-  public void skipFields(MemoryBuffer buffer, SerializationBinding binding) {
+  public void skipFields(MemoryBuffer buffer) {
     // Skip all fields in order: buildIn, container, other
     // We read the values but don't set them anywhere (they're discarded)
-    skipBuildInFields(buffer, binding);
-    skipContainerFields(buffer, binding);
-    skipOtherFields(buffer, binding);
+    skipBuildInFields(buffer);
+    skipContainerFields(buffer);
+    skipOtherFields(buffer);
   }
 
-  private void skipBuildInFields(MemoryBuffer buffer, SerializationBinding binding) {
+  private void skipBuildInFields(MemoryBuffer buffer) {
     for (SerializationFieldInfo fieldInfo : buildInFields) {
       // Read the field value (discarding the result) to advance buffer position
-      FieldSkipper.skipField(binding, fieldInfo, buffer);
+      FieldSkipper.skipField(fory, typeResolver, refResolver, fieldInfo, buffer);
     }
   }
 
-  private void skipContainerFields(MemoryBuffer buffer, SerializationBinding binding) {
+  private void skipContainerFields(MemoryBuffer buffer) {
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       // Read container field value to advance buffer position
-      AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+      AbstractObjectSerializer.readContainerFieldValue(
+          fory, typeResolver, refResolver, generics, fieldInfo, buffer);
     }
   }
 
-  private void skipOtherFields(MemoryBuffer buffer, SerializationBinding binding) {
+  private void skipOtherFields(MemoryBuffer buffer) {
     for (SerializationFieldInfo fieldInfo : otherFields) {
       // Read field value to advance buffer position
-      binding.readField(fieldInfo, buffer);
+      AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
     }
   }
 }

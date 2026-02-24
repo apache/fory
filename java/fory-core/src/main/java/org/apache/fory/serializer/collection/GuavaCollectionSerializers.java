@@ -50,11 +50,6 @@ public class GuavaCollectionSerializers {
       fory.getClassResolver().setSerializer(cls, this);
     }
 
-    @Override
-    public T xread(MemoryBuffer buffer) {
-      return read(buffer);
-    }
-
     protected abstract T xnewInstance(Collection collection);
   }
 
@@ -252,7 +247,7 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public T xread(MemoryBuffer buffer) {
+    public T read(MemoryBuffer buffer) {
       int size = buffer.readVarUint32Small7();
       Map map = new HashMap();
       readElements(buffer, size, map);
