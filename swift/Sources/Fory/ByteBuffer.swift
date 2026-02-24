@@ -109,16 +109,19 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func writeUInt8(_ value: UInt8) {
         storage.append(value)
     }
 
     @inlinable
+    @inline(__always)
     public func writeInt8(_ value: Int8) {
         storage.append(UInt8(bitPattern: value))
     }
 
     @inlinable
+    @inline(__always)
     public func writeUInt16(_ value: UInt16) {
         storage.append(UInt8(truncatingIfNeeded: value))
         storage.append(UInt8(truncatingIfNeeded: value >> 8))
@@ -130,6 +133,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func writeUInt32(_ value: UInt32) {
         storage.append(UInt8(truncatingIfNeeded: value))
         storage.append(UInt8(truncatingIfNeeded: value >> 8))
@@ -143,6 +147,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func writeUInt64(_ value: UInt64) {
         storage.append(UInt8(truncatingIfNeeded: value))
         storage.append(UInt8(truncatingIfNeeded: value >> 8))
@@ -160,6 +165,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func writeVarUInt32(_ value: UInt32) {
         if value < 0x80 {
             storage.append(UInt8(value))
@@ -208,6 +214,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func writeVarUInt64(_ value: UInt64) {
         if value < 0x80 {
             storage.append(UInt8(value))
@@ -340,12 +347,14 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func writeVarInt32(_ value: Int32) {
         let zigzag = UInt32(bitPattern: (value << 1) ^ (value >> 31))
         writeVarUInt32(zigzag)
     }
 
     @inlinable
+    @inline(__always)
     public func writeVarInt64(_ value: Int64) {
         let zigzag = UInt64(bitPattern: (value << 1) ^ (value >> 63))
         writeVarUInt64(zigzag)
@@ -411,6 +420,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func checkBound(_ need: Int) throws {
         if cursor + need > storage.count {
             throw ForyError.outOfBounds(cursor: cursor, need: need, length: storage.count)
@@ -427,6 +437,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readUInt8() throws -> UInt8 {
         try checkBound(1)
         defer { cursor += 1 }
@@ -439,6 +450,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readUInt16() throws -> UInt16 {
         try checkBound(2)
         let b0 = UInt16(storage[cursor])
@@ -453,6 +465,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readUInt32() throws -> UInt32 {
         try checkBound(4)
         let b0 = UInt32(storage[cursor])
@@ -469,6 +482,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readUInt64() throws -> UInt64 {
         try checkBound(8)
         let b0 = UInt64(storage[cursor])
@@ -489,6 +503,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readVarUInt32() throws -> UInt32 {
         let available = storage.count - cursor
         if available >= 5 {
@@ -577,6 +592,7 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readVarUInt64() throws -> UInt64 {
         let available = storage.count - cursor
         if available >= 9 {
@@ -776,12 +792,14 @@ public final class ByteBuffer {
     }
 
     @inlinable
+    @inline(__always)
     public func readVarInt32() throws -> Int32 {
         let encoded = try readVarUInt32()
         return Int32(bitPattern: (encoded >> 1) ^ (~(encoded & 1) &+ 1))
     }
 
     @inlinable
+    @inline(__always)
     public func readVarInt64() throws -> Int64 {
         let encoded = try readVarUInt64()
         return Int64(bitPattern: (encoded >> 1) ^ (~(encoded & 1) &+ 1))

@@ -517,6 +517,7 @@ public extension Serializer {
             throw ForyError.encodingError("failed to normalize meta string encoding")
         }
 
+        context.markMetaStringWriteStateUsed()
         let bytes = normalized.bytes
         let assignment = context.metaStringWriteState.assignIndexIfAbsent(for: normalized)
         if assignment.isNew {
@@ -537,6 +538,7 @@ public extension Serializer {
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {
+        context.markMetaStringReadStateUsed()
         let header = try context.buffer.readVarUInt32()
         let length = Int(header >> 1)
         let isRef = (header & 1) == 1

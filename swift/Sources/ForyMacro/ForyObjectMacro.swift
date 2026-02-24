@@ -264,6 +264,8 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
             _ = hasGenerics
             switch self {
@@ -275,6 +277,8 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             let ordinal = try context.buffer.readVarUInt32()
             switch ordinal {
@@ -345,6 +349,8 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
             _ = hasGenerics
             switch self {
@@ -356,6 +362,8 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             let caseID = try context.buffer.readVarUInt32()
             switch caseID {
@@ -960,6 +968,8 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let compatibleWriteLines = compatibleLines.isEmpty ? "\n            _ = hasGenerics" : "\n            \(compatibleLines.joined(separator: "\n            "))"
 
     return """
+    @inlinable
+    @inline(__always)
     func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         if context.compatible {
             \(compatibleWriteLines)
@@ -1041,6 +1051,8 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
         }.joined(separator: "\n                ")
 
         return """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             if context.compatible {
                 \(compatiblePrelude)
@@ -1072,6 +1084,8 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
 
     if fields.isEmpty {
         return """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             if context.compatible {
                 \(compatiblePrelude)
@@ -1120,6 +1134,8 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
     }.joined(separator: "\n                    ")
 
     return """
+    @inlinable
+    @inline(__always)
     static func foryReadData(_ context: ReadContext) throws -> Self {
         if context.compatible {
             \(compatiblePrelude)
