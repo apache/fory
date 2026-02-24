@@ -196,20 +196,17 @@ public class MapSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Map<?, ?> value) {}
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Map<?, ?> value) {
-      super.write(buffer, value);
+    public void write(MemoryBuffer buffer, Map<?, ?> value) {
+      if (!isJava) {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Map<?, ?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_MAP;
-    }
-
-    @Override
-    public Map<?, ?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.EMPTY_MAP;
+      }
       throw new IllegalStateException();
     }
   }
@@ -243,25 +240,22 @@ public class MapSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Map<?, ?> value) {
-      Map.Entry entry = value.entrySet().iterator().next();
-      fory.writeRef(buffer, entry.getKey());
-      fory.writeRef(buffer, entry.getValue());
+      if (isJava) {
+        Map.Entry entry = value.entrySet().iterator().next();
+        fory.writeRef(buffer, entry.getKey());
+        fory.writeRef(buffer, entry.getValue());
+      } else {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Map<?, ?> read(MemoryBuffer buffer) {
-      Object key = fory.readRef(buffer);
-      Object value = fory.readRef(buffer);
-      return Collections.singletonMap(key, value);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Map<?, ?> value) {
-      super.write(buffer, value);
-    }
-
-    @Override
-    public Map<?, ?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        Object key = fory.readRef(buffer);
+        Object value = fory.readRef(buffer);
+        return Collections.singletonMap(key, value);
+      }
       throw new UnsupportedOperationException();
     }
   }

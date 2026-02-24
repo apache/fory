@@ -425,8 +425,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       typeInfo.setSerializer(newSerializer);
       skipSerializer = newSerializer;
     }
-    SerializationBinding binding = SerializationBinding.createBinding(fory);
-    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(buffer, binding);
+    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(buffer);
   }
 
   private static void throwUnsupportedEncodingException(Class<?> cls)

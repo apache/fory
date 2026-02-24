@@ -87,16 +87,6 @@ public class TimeSerializers {
       return newInstance(buffer.readInt64());
     }
 
-    @Override
-    public void xwrite(MemoryBuffer buffer, T value) {
-      buffer.writeInt64(value.getTime());
-    }
-
-    @Override
-    public T xread(MemoryBuffer buffer) {
-      return newInstance(buffer.readInt64());
-    }
-
     protected abstract T newInstance(long time);
   }
 
@@ -173,31 +163,29 @@ public class TimeSerializers {
     }
 
     @Override
-    public void xwrite(MemoryBuffer buffer, Timestamp value) {
-      Instant instant = value.toInstant();
-      buffer.writeInt64(instant.getEpochSecond());
-      buffer.writeInt32(instant.getNano());
-    }
-
-    @Override
-    public Timestamp xread(MemoryBuffer buffer) {
-      long seconds = buffer.readInt64();
-      int nanos = buffer.readInt32();
-      return Timestamp.from(Instant.ofEpochSecond(seconds, nanos));
-    }
-
-    @Override
     public void write(MemoryBuffer buffer, Timestamp value) {
-      long time = value.getTime() - (value.getNanos() / 1_000_000);
-      buffer.writeInt64(time);
-      buffer.writeInt32(value.getNanos());
+      if (isJava) {
+        long time = value.getTime() - (value.getNanos() / 1_000_000);
+        buffer.writeInt64(time);
+        buffer.writeInt32(value.getNanos());
+      } else {
+        Instant instant = value.toInstant();
+        buffer.writeInt64(instant.getEpochSecond());
+        buffer.writeInt32(instant.getNano());
+      }
     }
 
     @Override
     public Timestamp read(MemoryBuffer buffer) {
-      Timestamp t = new Timestamp(buffer.readInt64());
-      t.setNanos(buffer.readInt32());
-      return t;
+      if (isJava) {
+        Timestamp t = new Timestamp(buffer.readInt64());
+        t.setNanos(buffer.readInt32());
+        return t;
+      } else {
+        long seconds = buffer.readInt64();
+        int nanos = buffer.readInt32();
+        return Timestamp.from(Instant.ofEpochSecond(seconds, nanos));
+      }
     }
 
     @Override
@@ -216,19 +204,13 @@ public class TimeSerializers {
     }
 
     @Override
-    public void xwrite(MemoryBuffer buffer, LocalDate value) {
-      // TODO use java encoding to support larger range.
-      buffer.writeInt32(DateTimeUtils.localDateToDays(value));
-    }
-
-    @Override
-    public LocalDate xread(MemoryBuffer buffer) {
-      return DateTimeUtils.daysToLocalDate(buffer.readInt32());
-    }
-
-    @Override
     public void write(MemoryBuffer buffer, LocalDate value) {
-      writeLocalDate(buffer, value);
+      if (isJava) {
+        writeLocalDate(buffer, value);
+      } else {
+        // TODO use java encoding to support larger range.
+        buffer.writeInt32(DateTimeUtils.localDateToDays(value));
+      }
     }
 
     public static void writeLocalDate(MemoryBuffer buffer, LocalDate value) {
@@ -239,7 +221,11 @@ public class TimeSerializers {
 
     @Override
     public LocalDate read(MemoryBuffer buffer) {
-      return readLocalDate(buffer);
+      if (isJava) {
+        return readLocalDate(buffer);
+      } else {
+        return DateTimeUtils.daysToLocalDate(buffer.readInt32());
+      }
     }
 
     public static LocalDate readLocalDate(MemoryBuffer buffer) {
@@ -260,19 +246,6 @@ public class TimeSerializers {
     }
 
     @Override
-    public void xwrite(MemoryBuffer buffer, Instant value) {
-      buffer.writeInt64(value.getEpochSecond());
-      buffer.writeInt32(value.getNano());
-    }
-
-    @Override
-    public Instant xread(MemoryBuffer buffer) {
-      long seconds = buffer.readInt64();
-      int nanos = buffer.readInt32();
-      return Instant.ofEpochSecond(seconds, nanos);
-    }
-
-    @Override
     public void write(MemoryBuffer buffer, Instant value) {
       buffer.writeInt64(value.getEpochSecond());
       buffer.writeInt32(value.getNano());
@@ -284,6 +257,7 @@ public class TimeSerializers {
       int nanos = buffer.readInt32();
       return Instant.ofEpochSecond(seconds, nanos);
     }
+
   }
 
   public static class DurationSerializer extends ImmutableTimeSerializer<Duration> {
@@ -297,26 +271,17 @@ public class TimeSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Duration value) {
-      buffer.writeInt64(value.getSeconds());
+      if (isJava) {
+        buffer.writeInt64(value.getSeconds());
+      } else {
+        buffer.writeVarInt64(value.getSeconds());
+      }
       buffer.writeInt32(value.getNano());
     }
 
     @Override
     public Duration read(MemoryBuffer buffer) {
-      long seconds = buffer.readInt64();
-      int nanos = buffer.readInt32();
-      return Duration.ofSeconds(seconds, nanos);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Duration value) {
-      buffer.writeVarInt64(value.getSeconds());
-      buffer.writeInt32(value.getNano());
-    }
-
-    @Override
-    public Duration xread(MemoryBuffer buffer) {
-      long seconds = buffer.readVarInt64();
+      long seconds = isJava ? buffer.readInt64() : buffer.readVarInt64();
       int nanos = buffer.readInt32();
       return Duration.ofSeconds(seconds, nanos);
     }

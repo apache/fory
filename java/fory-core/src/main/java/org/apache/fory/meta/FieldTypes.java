@@ -400,7 +400,7 @@ public class FieldTypes {
       }
     }
 
-    public final void xwrite(MemoryBuffer buffer, boolean writeFlags) {
+    public final void writeCrossLanguage(MemoryBuffer buffer, boolean writeFlags) {
       if (writeFlags) {
         int typeId = (this.typeId << 2);
         if (nullable) {
@@ -417,12 +417,12 @@ public class FieldTypes {
       switch (this.typeId) {
         case Types.LIST:
         case Types.SET:
-          ((CollectionFieldType) this).getElementType().xwrite(buffer, true);
+          ((CollectionFieldType) this).getElementType().writeCrossLanguage(buffer, true);
           break;
         case Types.MAP:
           MapFieldType mapFieldType = (MapFieldType) this;
-          mapFieldType.getKeyType().xwrite(buffer, true);
-          mapFieldType.getValueType().xwrite(buffer, true);
+          mapFieldType.getKeyType().writeCrossLanguage(buffer, true);
+          mapFieldType.getValueType().writeCrossLanguage(buffer, true);
           break;
         default:
           {
@@ -430,15 +430,15 @@ public class FieldTypes {
       }
     }
 
-    public static FieldType xread(MemoryBuffer buffer, XtypeResolver resolver) {
+    public static FieldType readCrossLanguage(MemoryBuffer buffer, XtypeResolver resolver) {
       int typeId = buffer.readVarUint32Small7();
       boolean trackingRef = (typeId & 0b1) != 0;
       boolean nullable = (typeId & 0b10) != 0;
       typeId = typeId >>> 2;
-      return xread(buffer, resolver, typeId, nullable, trackingRef);
+      return readCrossLanguage(buffer, resolver, typeId, nullable, trackingRef);
     }
 
-    public static FieldType xread(
+    public static FieldType readCrossLanguage(
         MemoryBuffer buffer,
         XtypeResolver resolver,
         int typeId,
@@ -447,10 +447,15 @@ public class FieldTypes {
       switch (typeId) {
         case Types.LIST:
         case Types.SET:
-          return new CollectionFieldType(typeId, nullable, trackingRef, xread(buffer, resolver));
+          return new CollectionFieldType(
+              typeId, nullable, trackingRef, readCrossLanguage(buffer, resolver));
         case Types.MAP:
           return new MapFieldType(
-              typeId, nullable, trackingRef, xread(buffer, resolver), xread(buffer, resolver));
+              typeId,
+              nullable,
+              trackingRef,
+              readCrossLanguage(buffer, resolver),
+              readCrossLanguage(buffer, resolver));
         case Types.ENUM:
           return new EnumFieldType(nullable, typeId, -1);
         case Types.UNION:

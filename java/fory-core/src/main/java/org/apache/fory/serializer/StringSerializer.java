@@ -143,17 +143,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   @Override
-  public void xwrite(MemoryBuffer buffer, String value) {
-    writeJavaString(buffer, value);
-  }
-
-  @Override
   public String read(MemoryBuffer buffer) {
-    return readJavaString(buffer);
-  }
-
-  @Override
-  public String xread(MemoryBuffer buffer) {
     return readJavaString(buffer);
   }
 

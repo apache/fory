@@ -150,25 +150,21 @@ public class RegisterTest extends ForyTestBase {
 
     @Override
     public void write(MemoryBuffer buffer, MyExt value) {
-      fory.writeJavaString(buffer, value.id);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, MyExt value) {
-      fory.writeString(buffer, value.id);
+      if (isJava) {
+        fory.writeJavaString(buffer, value.id);
+      } else {
+        fory.writeString(buffer, value.id);
+      }
     }
 
     @Override
     public MyExt read(MemoryBuffer buffer) {
       MyExt result = new MyExt();
-      result.id = fory.readJavaString(buffer);
-      return result;
-    }
-
-    @Override
-    public MyExt xread(MemoryBuffer buffer) {
-      MyExt result = new MyExt();
-      result.id = fory.readString(buffer);
+      if (isJava) {
+        result.id = fory.readJavaString(buffer);
+      } else {
+        result.id = fory.readString(buffer);
+      }
       return result;
     }
   }

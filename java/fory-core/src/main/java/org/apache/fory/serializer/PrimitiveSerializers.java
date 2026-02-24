@@ -144,31 +144,25 @@ public class PrimitiveSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Integer value) {
-      if (compressNumber) {
+      if (isJava && compressNumber) {
         buffer.writeVarInt32(value);
-      } else {
+      } else if (isJava) {
         buffer.writeInt32(value);
+      } else {
+        // TODO support varint in cross-language serialization
+        buffer.writeVarInt32(value);
       }
     }
 
     @Override
     public Integer read(MemoryBuffer buffer) {
-      if (compressNumber) {
+      if (isJava && compressNumber) {
         return buffer.readVarInt32();
-      } else {
+      } else if (isJava) {
         return buffer.readInt32();
+      } else {
+        return buffer.readVarInt32();
       }
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Integer value) {
-      // TODO support varint in cross-language serialization
-      buffer.writeVarInt32(value);
-    }
-
-    @Override
-    public Integer xread(MemoryBuffer buffer) {
-      return buffer.readVarInt32();
     }
   }
 
@@ -188,16 +182,6 @@ public class PrimitiveSerializers {
       return buffer.readVarUint32();
     }
 
-    @Override
-    public void xwrite(MemoryBuffer buffer, Integer value) {
-      Preconditions.checkArgument(value >= 0);
-      buffer.writeVarUint32(value);
-    }
-
-    @Override
-    public Integer xread(MemoryBuffer buffer) {
-      return buffer.readVarUint32();
-    }
   }
 
   public static final class LongSerializer extends CrossLanguageCompatibleSerializer<Long> {
@@ -210,12 +194,21 @@ public class PrimitiveSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Long value) {
-      writeInt64(buffer, value, longEncoding);
+      if (isJava) {
+        writeInt64(buffer, value, longEncoding);
+      } else {
+        // TODO(chaokunyang) support var long in cross-language serialization
+        buffer.writeVarInt64(value);
+      }
     }
 
     @Override
     public Long read(MemoryBuffer buffer) {
-      return readInt64(buffer, longEncoding);
+      if (isJava) {
+        return readInt64(buffer, longEncoding);
+      } else {
+        return buffer.readVarInt64();
+      }
     }
 
     public static Expression writeInt64(
@@ -270,16 +263,6 @@ public class PrimitiveSerializers {
       }
     }
 
-    @Override
-    public void xwrite(MemoryBuffer buffer, Long value) {
-      // TODO(chaokunyang) support var long in cross-language serialization
-      buffer.writeVarInt64(value);
-    }
-
-    @Override
-    public Long xread(MemoryBuffer buffer) {
-      return buffer.readVarInt64();
-    }
   }
 
   public static final class VarUint64Serializer extends Serializer<Long> {
@@ -298,16 +281,6 @@ public class PrimitiveSerializers {
       return buffer.readVarUint64();
     }
 
-    @Override
-    public void xwrite(MemoryBuffer buffer, Long value) {
-      Preconditions.checkArgument(value >= 0);
-      buffer.writeVarUint64(value);
-    }
-
-    @Override
-    public Long xread(MemoryBuffer buffer) {
-      return buffer.readVarUint64();
-    }
   }
 
   public static final class FloatSerializer extends CrossLanguageCompatibleSerializer<Float> {
