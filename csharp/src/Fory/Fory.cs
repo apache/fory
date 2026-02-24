@@ -80,16 +80,16 @@ public sealed class Fory
     public Fory Register<T, TSerializer>(uint typeId)
         where TSerializer : Serializer<T>, new()
     {
-        Serializer serializer = _typeResolver.RegisterSerializer<T, TSerializer>();
-        _typeResolver.Register(typeof(T), typeId, serializer);
+        TypeInfo typeInfo = _typeResolver.RegisterSerializer<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeId, typeInfo);
         return this;
     }
 
     public Fory Register<T, TSerializer>(string typeNamespace, string typeName)
         where TSerializer : Serializer<T>, new()
     {
-        Serializer serializer = _typeResolver.RegisterSerializer<T, TSerializer>();
-        _typeResolver.Register(typeof(T), typeNamespace, typeName, serializer);
+        TypeInfo typeInfo = _typeResolver.RegisterSerializer<T, TSerializer>();
+        _typeResolver.Register(typeof(T), typeNamespace, typeName, typeInfo);
         return this;
     }
 

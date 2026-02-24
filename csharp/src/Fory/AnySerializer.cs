@@ -149,8 +149,8 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
     private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
     {
-        Serializer serializer = typeResolver.GetSerializer(value.GetType());
-        return serializer.IsReferenceTrackableType;
+        TypeInfo typeInfo = typeResolver.GetTypeInfo(value.GetType());
+        return typeInfo.IsReferenceTrackableType;
     }
 }
 
@@ -169,8 +169,8 @@ public static class DynamicAnyCodec
             return;
         }
 
-        Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
-        serializer.WriteTypeInfo(context);
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(value.GetType());
+        typeInfo.WriteTypeInfo(context);
     }
 
     public static object? CastAnyDynamicValue(object? value, Type targetType)
@@ -220,8 +220,8 @@ public static class DynamicAnyCodec
             return;
         }
 
-        Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
-        serializer.WriteDataObject(context, value, hasGenerics);
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(value.GetType());
+        typeInfo.WriteDataObject(context, value, hasGenerics);
     }
 
     private static bool TryWriteKnownTypeInfo(object value, WriteContext context)

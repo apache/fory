@@ -17,50 +17,19 @@
 
 namespace Apache.Fory;
 
-public abstract class Serializer
+public abstract class Serializer<T>
 {
-    public abstract Type Type { get; }
+    public Type Type => typeof(T);
 
     public abstract TypeId StaticTypeId { get; }
 
-    public abstract bool IsNullableType { get; }
+    public virtual bool IsNullableType => false;
 
-    public abstract bool IsReferenceTrackableType { get; }
-
-    public abstract object? DefaultObject { get; }
-
-    public abstract bool IsNoneObject(object? value);
-
-    public abstract void WriteDataObject(WriteContext context, object? value, bool hasGenerics);
-
-    public abstract object? ReadDataObject(ReadContext context);
-
-    public abstract void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics);
-
-    public abstract object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo);
-
-    public abstract void WriteTypeInfo(WriteContext context);
-
-    public abstract void ReadTypeInfo(ReadContext context);
-
-    public abstract IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef);
-
-    public abstract Serializer<T> RequireSerializer<T>();
-}
-
-public abstract class Serializer<T> : Serializer
-{
-    public override Type Type => typeof(T);
-
-    public abstract override TypeId StaticTypeId { get; }
-
-    public override bool IsNullableType => false;
-
-    public override bool IsReferenceTrackableType => false;
+    public virtual bool IsReferenceTrackableType => false;
 
     public virtual T DefaultValue => default!;
 
-    public override object? DefaultObject => DefaultValue;
+    internal object? DefaultObject => DefaultValue;
 
     public virtual bool IsNone(in T value)
     {
@@ -153,23 +122,23 @@ public abstract class Serializer<T> : Serializer
         return ReadData(context);
     }
 
-    public override void WriteTypeInfo(WriteContext context)
+    public virtual void WriteTypeInfo(WriteContext context)
     {
-        context.TypeResolver.WriteTypeInfo(Type, this, context);
+        context.TypeResolver.WriteTypeInfo(this, context);
     }
 
-    public override void ReadTypeInfo(ReadContext context)
+    public virtual void ReadTypeInfo(ReadContext context)
     {
-        context.TypeResolver.ReadTypeInfo(Type, this, context);
+        context.TypeResolver.ReadTypeInfo(this, context);
     }
 
-    public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
+    public virtual IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
     {
         _ = trackRef;
         return [];
     }
 
-    public override bool IsNoneObject(object? value)
+    internal bool IsNoneObject(object? value)
     {
         if (value is null)
         {
@@ -179,34 +148,24 @@ public abstract class Serializer<T> : Serializer
         return value is T typed && IsNone(typed);
     }
 
-    public override void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
+    internal void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
     {
         WriteData(context, CoerceValue(value), hasGenerics);
     }
 
-    public override object? ReadDataObject(ReadContext context)
+    internal object? ReadDataObject(ReadContext context)
     {
         return ReadData(context);
     }
 
-    public override void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    internal void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         Write(context, CoerceValue(value), refMode, writeTypeInfo, hasGenerics);
     }
 
-    public override object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
+    internal object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         return Read(context, refMode, readTypeInfo);
-    }
-
-    public override Serializer<TCast> RequireSerializer<TCast>()
-    {
-        if (typeof(TCast) == typeof(T))
-        {
-            return (Serializer<TCast>)(object)this;
-        }
-
-        throw new InvalidDataException($"serializer type mismatch for {typeof(TCast)}");
     }
 
     protected virtual T CoerceValue(object? value)

@@ -19,13 +19,18 @@ namespace Apache.Fory;
 
 public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
 {
-    private readonly Serializer<T> _defaultWrappedSerializer = new TypeResolver().GetSerializer<T>();
+    private readonly TypeResolver _typeResolver;
 
-    public override TypeId StaticTypeId => _defaultWrappedSerializer.StaticTypeId;
+    internal NullableSerializer(TypeResolver typeResolver)
+    {
+        _typeResolver = typeResolver;
+    }
+
+    public override TypeId StaticTypeId => _typeResolver.GetSerializer<T>().StaticTypeId;
 
     public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => _defaultWrappedSerializer.IsReferenceTrackableType;
+    public override bool IsReferenceTrackableType => _typeResolver.GetSerializer<T>().IsReferenceTrackableType;
 
     public override T? DefaultValue => null;
 
@@ -66,7 +71,7 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
 
     public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
     {
-        return _defaultWrappedSerializer.CompatibleTypeMetaFields(trackRef);
+        return _typeResolver.GetSerializer<T>().CompatibleTypeMetaFields(trackRef);
     }
 
     public override void Write(WriteContext context, in T? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)

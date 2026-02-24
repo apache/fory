@@ -19,18 +19,68 @@ namespace Apache.Fory;
 
 public sealed class TypeInfo
 {
-    internal TypeInfo(Type type, Serializer serializer)
+    private readonly object _serializer;
+    private readonly Func<object?, bool> _isNoneObject;
+    private readonly Action<WriteContext, object?, bool> _writeDataObject;
+    private readonly Func<ReadContext, object?> _readDataObject;
+    private readonly Action<WriteContext, object?, RefMode, bool, bool> _writeObject;
+    private readonly Func<ReadContext, RefMode, bool, object?> _readObject;
+    private readonly Action<WriteContext> _writeTypeInfo;
+    private readonly Action<ReadContext> _readTypeInfo;
+    private readonly Func<bool, IReadOnlyList<TypeMetaFieldInfo>> _compatibleTypeMetaFields;
+
+    private TypeInfo(
+        Type type,
+        object serializer,
+        TypeId staticTypeId,
+        bool isNullableType,
+        bool isReferenceTrackableType,
+        object? defaultObject,
+        Func<object?, bool> isNoneObject,
+        Action<WriteContext, object?, bool> writeDataObject,
+        Func<ReadContext, object?> readDataObject,
+        Action<WriteContext, object?, RefMode, bool, bool> writeObject,
+        Func<ReadContext, RefMode, bool, object?> readObject,
+        Action<WriteContext> writeTypeInfo,
+        Action<ReadContext> readTypeInfo,
+        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> compatibleTypeMetaFields)
     {
         Type = type;
-        Serializer = serializer;
-        StaticTypeId = serializer.StaticTypeId;
-        IsNullableType = serializer.IsNullableType;
-        IsReferenceTrackableType = serializer.IsReferenceTrackableType;
+        _serializer = serializer;
+        StaticTypeId = staticTypeId;
+        IsNullableType = isNullableType;
+        IsReferenceTrackableType = isReferenceTrackableType;
+        DefaultObject = defaultObject;
+        _isNoneObject = isNoneObject;
+        _writeDataObject = writeDataObject;
+        _readDataObject = readDataObject;
+        _writeObject = writeObject;
+        _readObject = readObject;
+        _writeTypeInfo = writeTypeInfo;
+        _readTypeInfo = readTypeInfo;
+        _compatibleTypeMetaFields = compatibleTypeMetaFields;
+    }
+
+    internal static TypeInfo Create<T>(Type type, Serializer<T> serializer)
+    {
+        return new TypeInfo(
+            type,
+            serializer,
+            serializer.StaticTypeId,
+            serializer.IsNullableType,
+            serializer.IsReferenceTrackableType,
+            serializer.DefaultObject,
+            serializer.IsNoneObject,
+            serializer.WriteDataObject,
+            serializer.ReadDataObject,
+            serializer.WriteObject,
+            serializer.ReadObject,
+            serializer.WriteTypeInfo,
+            serializer.ReadTypeInfo,
+            serializer.CompatibleTypeMetaFields);
     }
 
     public Type Type { get; }
-
-    internal Serializer Serializer { get; }
 
     public TypeId StaticTypeId { get; }
 
@@ -38,9 +88,56 @@ public sealed class TypeInfo
 
     public bool IsReferenceTrackableType { get; }
 
+    public object? DefaultObject { get; }
+
+    internal Serializer<T> RequireSerializer<T>()
+    {
+        if (_serializer is Serializer<T> serializer)
+        {
+            return serializer;
+        }
+
+        throw new InvalidDataException($"serializer type mismatch for {typeof(T)}");
+    }
+
+    public bool IsNoneObject(object? value)
+    {
+        return _isNoneObject(value);
+    }
+
+    public void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
+    {
+        _writeDataObject(context, value, hasGenerics);
+    }
+
+    public object? ReadDataObject(ReadContext context)
+    {
+        return _readDataObject(context);
+    }
+
     public void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
-        Serializer.WriteObject(context, value, refMode, writeTypeInfo, hasGenerics);
+        _writeObject(context, value, refMode, writeTypeInfo, hasGenerics);
+    }
+
+    public object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        return _readObject(context, refMode, readTypeInfo);
+    }
+
+    internal void WriteTypeInfo(WriteContext context)
+    {
+        _writeTypeInfo(context);
+    }
+
+    internal void ReadTypeInfo(ReadContext context)
+    {
+        _readTypeInfo(context);
+    }
+
+    internal IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
+    {
+        return _compatibleTypeMetaFields(trackRef);
     }
 
     internal bool IsRegistered { get; private set; }
