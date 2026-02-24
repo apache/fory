@@ -136,7 +136,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
         sb.AppendLine(
-            $"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>, global::Apache.Fory.ICompatibleTypeMetaFieldProvider");
+            $"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
         sb.AppendLine("{");
         foreach (MemberModel member in model.Members.Where(m => m.UseDictionaryTypeInfoCache))
         {
@@ -307,11 +307,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        return value;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    public global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("    public bool IsNullableType => true;");
-            sb.AppendLine("    public bool IsReferenceTrackableType => true;");
             sb.AppendLine($"    public override {model.TypeName} DefaultValue => null!;");
         }
         else
@@ -438,7 +435,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string memberAccess = $"value.{member.Name}";
         string hasGenerics = member.IsCollection ? "true" : "false";
         string writeTypeInfo = compatibleMode
-            ? $"__ForyNeedsTypeInfoForField(context.TypeResolver.GetTypeInfo<{member.TypeName}>().StaticTypeId)"
+            ? $"context.TypeResolver.GetTypeInfo<{member.TypeName}>().NeedsTypeInfoForField()"
             : "false";
 
         switch (member.DynamicAnyKind)
@@ -516,7 +513,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"                    __Fory{cacheId}DictRuntimeType = {runtimeTypeVar};");
         sb.AppendLine($"                    __Fory{cacheId}DictTypeInfo = {typeInfoVar};");
         sb.AppendLine("                }");
-        sb.AppendLine($"                {typeInfoVar}.WriteObject(context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+        sb.AppendLine(
+            $"                context.TypeResolver.WriteObject({typeInfoVar}, context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
         sb.AppendLine("            }");
     }
 

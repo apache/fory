@@ -117,6 +117,58 @@ public sealed class TypeResolver
         return GetTypeInfo(typeof(T));
     }
 
+    internal bool IsNoneObject(TypeInfo typeInfo, object? value)
+    {
+        return typeInfo.IsNullableType && value is null;
+    }
+
+    internal void WriteDataObject(TypeInfo typeInfo, WriteContext context, object? value, bool hasGenerics)
+    {
+        typeInfo.WriteDataObject(context, value, hasGenerics);
+    }
+
+    internal object? ReadDataObject(TypeInfo typeInfo, ReadContext context)
+    {
+        return typeInfo.ReadDataObject(context);
+    }
+
+    public void WriteObject(
+        TypeInfo typeInfo,
+        WriteContext context,
+        object? value,
+        RefMode refMode,
+        bool writeTypeInfo,
+        bool hasGenerics)
+    {
+        typeInfo.WriteObject(context, value, refMode, writeTypeInfo, hasGenerics);
+    }
+
+    internal object? ReadObject(TypeInfo typeInfo, ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        return typeInfo.ReadObject(context, refMode, readTypeInfo);
+    }
+
+    internal void WriteTypeInfo(TypeInfo typeInfo, WriteContext context)
+    {
+        WriteTypeInfoCore(typeInfo.Type, typeInfo, context);
+    }
+
+    internal void ReadTypeInfo(TypeInfo typeInfo, ReadContext context)
+    {
+        ReadTypeInfoCore(typeInfo.Type, typeInfo, context);
+    }
+
+    internal IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(TypeInfo typeInfo, bool trackRef)
+    {
+        Type? nullableType = Nullable.GetUnderlyingType(typeInfo.Type);
+        if (nullableType is not null)
+        {
+            return CompatibleTypeMetaFields(GetTypeInfo(nullableType), trackRef);
+        }
+
+        return typeInfo.CompatibleTypeMetaFields(trackRef);
+    }
+
     private TypeInfo GetOrCreateTypeInfo(Type type, TypeInfo? explicitTypeInfo)
     {
         if (_typeInfos.TryGetValue(type, out TypeInfo? existing))
@@ -200,15 +252,42 @@ public sealed class TypeResolver
     internal void WriteTypeInfo<T>(Serializer<T> serializer, WriteContext context)
     {
         Type type = typeof(T);
-        TypeId staticTypeId = GetTypeInfo<T>().StaticTypeId;
-        if (!staticTypeId.IsUserTypeKind())
+        if (type == typeof(object))
         {
-            context.Writer.WriteUInt8((byte)staticTypeId);
+            throw new InvalidDataException("dynamic Any value type info is runtime-only");
+        }
+
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType is not null)
+        {
+            WriteTypeInfoCore(nullableType, GetTypeInfo(nullableType), context);
             return;
         }
 
+        TypeInfo typeInfo = GetTypeInfo<T>();
+        WriteTypeInfoCore(type, typeInfo, context);
+    }
+
+    private void WriteTypeInfoCore(Type type, TypeInfo typeInfo, WriteContext context)
+    {
+        if (typeInfo.BuiltInTypeId.HasValue)
+        {
+            context.Writer.WriteUInt8((byte)typeInfo.BuiltInTypeId.Value);
+            return;
+        }
+
+        if (!typeInfo.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"type {type} has runtime-only type info");
+        }
+
         TypeInfo info = RequireRegisteredTypeInfo(type);
-        TypeId wireTypeId = ResolveWireTypeId(info.StaticTypeId, info.RegisterByName, context.Compatible);
+        if (!info.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"registered type {type} is not a user type");
+        }
+
+        TypeId wireTypeId = ResolveWireTypeId(info.UserTypeKind.Value, info.RegisterByName, context.Compatible);
         context.Writer.WriteUInt8((byte)wireTypeId);
         switch (wireTypeId)
         {
@@ -268,6 +347,26 @@ public sealed class TypeResolver
     internal void ReadTypeInfo<T>(Serializer<T> serializer, ReadContext context)
     {
         Type type = typeof(T);
+        if (type == typeof(object))
+        {
+            DynamicTypeInfo dynamicTypeInfo = ReadDynamicTypeInfo(context);
+            context.SetDynamicTypeInfo(type, dynamicTypeInfo);
+            return;
+        }
+
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType is not null)
+        {
+            ReadTypeInfoCore(nullableType, GetTypeInfo(nullableType), context);
+            return;
+        }
+
+        TypeInfo typeInfo = GetTypeInfo<T>();
+        ReadTypeInfoCore(type, typeInfo, context);
+    }
+
+    private void ReadTypeInfoCore(Type type, TypeInfo typeInfo, ReadContext context)
+    {
         uint rawTypeId = context.Reader.ReadVarUInt32();
         if (!Enum.IsDefined(typeof(TypeId), rawTypeId))
         {
@@ -275,19 +374,28 @@ public sealed class TypeResolver
         }
 
         TypeId typeId = (TypeId)rawTypeId;
-        TypeId staticTypeId = GetTypeInfo<T>().StaticTypeId;
-        if (!staticTypeId.IsUserTypeKind())
+        if (typeInfo.BuiltInTypeId.HasValue)
         {
-            if (typeId != staticTypeId)
+            if (typeId != typeInfo.BuiltInTypeId.Value)
             {
-                throw new TypeMismatchException((uint)staticTypeId, rawTypeId);
+                throw new TypeMismatchException((uint)typeInfo.BuiltInTypeId.Value, rawTypeId);
             }
 
             return;
         }
 
+        if (!typeInfo.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"type {type} has runtime-only type info");
+        }
+
         TypeInfo info = RequireRegisteredTypeInfo(type);
-        HashSet<TypeId> allowed = AllowedWireTypeIds(info.StaticTypeId, info.RegisterByName, context.Compatible);
+        if (!info.UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"registered type {type} is not a user type");
+        }
+
+        HashSet<TypeId> allowed = AllowedWireTypeIds(info.UserTypeKind.Value, info.RegisterByName, context.Compatible);
         if (!allowed.Contains(typeId))
         {
             uint expected = 0;
@@ -367,21 +475,33 @@ public sealed class TypeResolver
         }
     }
 
-    internal static TypeId ResolveWireTypeId(TypeId declaredKind, bool registerByName, bool compatible)
+    internal static TypeId ResolveWireTypeId(UserTypeKind declaredKind, bool registerByName, bool compatible)
     {
-        TypeId baseKind = NormalizeBaseKind(declaredKind);
         if (registerByName)
         {
-            return NamedKind(baseKind, compatible);
+            return declaredKind switch
+            {
+                UserTypeKind.Struct => compatible ? TypeId.NamedCompatibleStruct : TypeId.NamedStruct,
+                UserTypeKind.Enum => TypeId.NamedEnum,
+                UserTypeKind.Ext => TypeId.NamedExt,
+                UserTypeKind.TypedUnion => TypeId.NamedUnion,
+                _ => throw new InvalidDataException($"unknown user type kind {declaredKind}"),
+            };
         }
 
-        return IdKind(baseKind, compatible);
+        return declaredKind switch
+        {
+            UserTypeKind.Struct => compatible ? TypeId.CompatibleStruct : TypeId.Struct,
+            UserTypeKind.Enum => TypeId.Enum,
+            UserTypeKind.Ext => TypeId.Ext,
+            UserTypeKind.TypedUnion => TypeId.TypedUnion,
+            _ => throw new InvalidDataException($"unknown user type kind {declaredKind}"),
+        };
     }
 
-    internal static HashSet<TypeId> AllowedWireTypeIds(TypeId declaredKind, bool registerByName, bool compatible)
+    internal static HashSet<TypeId> AllowedWireTypeIds(UserTypeKind declaredKind, bool registerByName, bool compatible)
     {
-        TypeId baseKind = NormalizeBaseKind(declaredKind);
-        if (baseKind == TypeId.Struct && compatible)
+        if (declaredKind == UserTypeKind.Struct && compatible)
         {
             return CompatibleStructAllowedWireTypes;
         }
@@ -410,14 +530,14 @@ public sealed class TypeResolver
         return ReadRegisteredValue(typeInfo, context, compatibleTypeMeta);
     }
 
-    private static object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? compatibleTypeMeta)
+    private object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? compatibleTypeMeta)
     {
         if (compatibleTypeMeta is not null)
         {
             context.PushCompatibleTypeMeta(typeInfo.Type, compatibleTypeMeta);
         }
 
-        return typeInfo.ReadObject(context, RefMode.None, false);
+        return ReadObject(typeInfo, context, RefMode.None, false);
     }
 
     public DynamicTypeInfo ReadDynamicTypeInfo(ReadContext context)
@@ -762,50 +882,17 @@ public sealed class TypeResolver
         return values;
     }
 
-    private static TypeId NormalizeBaseKind(TypeId kind)
-    {
-        return kind switch
-        {
-            TypeId.NamedEnum => TypeId.Enum,
-            TypeId.CompatibleStruct or TypeId.NamedCompatibleStruct or TypeId.NamedStruct => TypeId.Struct,
-            TypeId.NamedExt => TypeId.Ext,
-            TypeId.NamedUnion => TypeId.TypedUnion,
-            _ => kind,
-        };
-    }
-
-    private static TypeId NamedKind(TypeId baseKind, bool compatible)
-    {
-        return baseKind switch
-        {
-            TypeId.Struct => compatible ? TypeId.NamedCompatibleStruct : TypeId.NamedStruct,
-            TypeId.Enum => TypeId.NamedEnum,
-            TypeId.Ext => TypeId.NamedExt,
-            TypeId.TypedUnion => TypeId.NamedUnion,
-            _ => baseKind,
-        };
-    }
-
-    private static TypeId IdKind(TypeId baseKind, bool compatible)
-    {
-        return baseKind switch
-        {
-            TypeId.Struct => compatible ? TypeId.CompatibleStruct : TypeId.Struct,
-            _ => baseKind,
-        };
-    }
-
     private static bool WireTypeNeedsUserTypeId(TypeId typeId)
     {
         return typeId is TypeId.Enum or TypeId.Struct or TypeId.Ext or TypeId.TypedUnion;
     }
 
-    private static TypeMeta BuildCompatibleTypeMeta(
+    private TypeMeta BuildCompatibleTypeMeta(
         TypeInfo info,
         TypeId wireTypeId,
         bool trackRef)
     {
-        IReadOnlyList<TypeMetaFieldInfo> fields = info.CompatibleTypeMetaFields(trackRef);
+        IReadOnlyList<TypeMetaFieldInfo> fields = CompatibleTypeMetaFields(info, trackRef);
         bool hasFieldsMeta = fields.Count > 0;
         if (info.RegisterByName)
         {
@@ -1536,7 +1623,7 @@ public sealed class TypeResolver
 
     private TypeInfo CreateNullableSerializerTypeInfo<T>() where T : struct
     {
-        return TypeInfo.Create(typeof(T?), new NullableSerializer<T>(this));
+        return TypeInfo.Create(typeof(T?), new NullableSerializer<T>());
     }
 
     private static Type? ResolveSerializerValueType(Type serializerType)

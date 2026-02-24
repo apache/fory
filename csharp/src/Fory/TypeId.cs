@@ -80,24 +80,6 @@ public enum TypeId : uint
 
 internal static class TypeIdExtensions
 {
-    public static bool IsUserTypeKind(this TypeId typeId)
-    {
-        return typeId switch
-        {
-            TypeId.Enum or
-                TypeId.NamedEnum or
-                TypeId.Struct or
-                TypeId.CompatibleStruct or
-                TypeId.NamedStruct or
-                TypeId.NamedCompatibleStruct or
-                TypeId.Ext or
-                TypeId.NamedExt or
-                TypeId.TypedUnion or
-                TypeId.NamedUnion => true,
-            _ => false,
-        };
-    }
-
     public static bool NeedsTypeInfoForField(this TypeId typeId)
     {
         return typeId switch
@@ -113,4 +95,3 @@ internal static class TypeIdExtensions
         };
     }
 }
-

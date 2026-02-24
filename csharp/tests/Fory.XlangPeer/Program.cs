@@ -1027,11 +1027,7 @@ public sealed class MyExt
 
 public sealed class MyExtSerializer : Serializer<MyExt>
 {
-    public override TypeId StaticTypeId => TypeId.Ext;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override MyExt DefaultValue => null!;
-    public override bool IsNone(in MyExt value) => value is null;
 
     public override void WriteData(WriteContext context, in MyExt value, bool hasGenerics)
     {

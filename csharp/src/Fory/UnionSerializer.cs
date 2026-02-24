@@ -25,11 +25,8 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
 {
     private static readonly Func<int, object?, TUnion> Factory = BuildFactory();
 
-    public TypeId StaticTypeId => TypeId.TypedUnion;
 
-    public bool IsNullableType => true;
 
-    public bool IsReferenceTrackableType => true;
 
     public override TUnion DefaultValue => null!;
 

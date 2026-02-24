@@ -17,231 +17,350 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Reflection;
 
 namespace Apache.Fory;
+
+internal enum UserTypeKind
+{
+    Enum,
+    Struct,
+    Ext,
+    TypedUnion,
+}
 
 public sealed class TypeInfo
 {
     private readonly object _serializer;
-    private readonly Func<object?, bool> _isNoneObject;
     private readonly Action<WriteContext, object?, bool> _writeDataObject;
     private readonly Func<ReadContext, object?> _readDataObject;
     private readonly Action<WriteContext, object?, RefMode, bool, bool> _writeObject;
     private readonly Func<ReadContext, RefMode, bool, object?> _readObject;
-    private readonly Action<WriteContext> _writeTypeInfo;
-    private readonly Action<ReadContext> _readTypeInfo;
     private readonly Func<bool, IReadOnlyList<TypeMetaFieldInfo>> _compatibleTypeMetaFields;
+    private static readonly IReadOnlyList<TypeMetaFieldInfo> EmptyTypeMetaFields = Array.Empty<TypeMetaFieldInfo>();
 
     private TypeInfo(
         Type type,
         object serializer,
-        TypeId staticTypeId,
+        TypeId? builtInTypeId,
+        UserTypeKind? userTypeKind,
+        bool isDynamicType,
         bool isNullableType,
         bool isReferenceTrackableType,
         object? defaultObject,
-        Func<object?, bool> isNoneObject,
         Action<WriteContext, object?, bool> writeDataObject,
         Func<ReadContext, object?> readDataObject,
         Action<WriteContext, object?, RefMode, bool, bool> writeObject,
         Func<ReadContext, RefMode, bool, object?> readObject,
-        Action<WriteContext> writeTypeInfo,
-        Action<ReadContext> readTypeInfo,
         Func<bool, IReadOnlyList<TypeMetaFieldInfo>> compatibleTypeMetaFields)
     {
         Type = type;
         _serializer = serializer;
-        StaticTypeId = staticTypeId;
+        BuiltInTypeId = builtInTypeId;
+        UserTypeKind = userTypeKind;
+        IsDynamicType = isDynamicType;
         IsNullableType = isNullableType;
         IsReferenceTrackableType = isReferenceTrackableType;
         DefaultObject = defaultObject;
-        _isNoneObject = isNoneObject;
         _writeDataObject = writeDataObject;
         _readDataObject = readDataObject;
         _writeObject = writeObject;
         _readObject = readObject;
-        _writeTypeInfo = writeTypeInfo;
-        _readTypeInfo = readTypeInfo;
         _compatibleTypeMetaFields = compatibleTypeMetaFields;
     }
 
     internal static TypeInfo Create<T>(Type type, Serializer<T> serializer)
     {
-        TypeId staticTypeId = ResolveStaticTypeId(type, serializer);
-        bool isNullableType = ResolveIsNullableType(type, serializer);
-        bool isReferenceTrackableType = ResolveIsReferenceTrackableType(type, serializer, staticTypeId);
+        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> compatibleTypeMetaFields =
+            CreateCompatibleTypeMetaFieldsProvider(serializer, out bool hasCompatibleTypeMetaFieldsProvider);
+        (TypeId? builtInTypeId, UserTypeKind? userTypeKind, bool isDynamicType) = ResolveTypeShape(
+            type,
+            hasCompatibleTypeMetaFieldsProvider);
+        bool isNullableType = !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
+        bool isReferenceTrackableType = type != typeof(string) && !type.IsValueType;
         return new TypeInfo(
             type,
             serializer,
-            staticTypeId,
+            builtInTypeId,
+            userTypeKind,
+            isDynamicType,
             isNullableType,
             isReferenceTrackableType,
             serializer.DefaultObject,
-            value => serializer.IsNoneObject(value),
-            (context, value, hasGenerics) => serializer.WriteDataObject(context, value, hasGenerics),
-            context => serializer.ReadDataObject(context),
+            (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
+            context => serializer.ReadData(context),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
-                serializer.WriteObject(context, value, refMode, writeTypeInfo, hasGenerics),
-            (context, refMode, readTypeInfo) => serializer.ReadObject(context, refMode, readTypeInfo),
-            context => serializer.WriteTypeInfo(context),
-            context => serializer.ReadTypeInfo(context),
-            trackRef => serializer.CompatibleTypeMetaFields(trackRef));
+                WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
+            (context, refMode, readTypeInfo) => serializer.Read(context, refMode, readTypeInfo),
+            compatibleTypeMetaFields);
     }
 
-    private static TypeId ResolveStaticTypeId(Type type, object serializer)
+    private static Func<bool, IReadOnlyList<TypeMetaFieldInfo>> CreateCompatibleTypeMetaFieldsProvider(
+        object serializer,
+        out bool hasProvider)
     {
-        if (TryGetSerializerProperty(serializer, nameof(StaticTypeId), out TypeId staticTypeId))
+        MethodInfo? method = serializer.GetType().GetMethod(
+            "CompatibleTypeMetaFields",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            [typeof(bool)],
+            null);
+        if (method is null || method.ReturnType != typeof(IReadOnlyList<TypeMetaFieldInfo>))
         {
-            return staticTypeId;
+            hasProvider = false;
+            return EmptyCompatibleTypeMetaFields;
         }
 
-        if (type == typeof(bool))
+        try
         {
-            return TypeId.Bool;
+            Delegate del = method.CreateDelegate(typeof(Func<bool, IReadOnlyList<TypeMetaFieldInfo>>), serializer);
+            hasProvider = true;
+            return (Func<bool, IReadOnlyList<TypeMetaFieldInfo>>)del;
+        }
+        catch
+        {
+            hasProvider = false;
+            return EmptyCompatibleTypeMetaFields;
+        }
+    }
+
+    private static IReadOnlyList<TypeMetaFieldInfo> EmptyCompatibleTypeMetaFields(bool _)
+    {
+        return EmptyTypeMetaFields;
+    }
+
+    private static void WriteDataObject<T>(Serializer<T> serializer, WriteContext context, object? value, bool hasGenerics)
+    {
+        serializer.WriteData(context, CoerceRuntimeValue(serializer, value), hasGenerics);
+    }
+
+    private static void WriteObject<T>(
+        Serializer<T> serializer,
+        WriteContext context,
+        object? value,
+        RefMode refMode,
+        bool writeTypeInfo,
+        bool hasGenerics)
+    {
+        serializer.Write(context, CoerceRuntimeValue(serializer, value), refMode, writeTypeInfo, hasGenerics);
+    }
+
+    private static T CoerceRuntimeValue<T>(Serializer<T> serializer, object? value)
+    {
+        if (value is T typed)
+        {
+            return typed;
         }
 
-        if (type == typeof(sbyte))
+        if (value is null && default(T) is null)
         {
-            return TypeId.Int8;
+            return serializer.DefaultValue;
         }
 
-        if (type == typeof(short))
+        throw new InvalidDataException(
+            $"serializer {serializer.GetType().Name} expected value of type {typeof(T)}, got {value?.GetType()}");
+    }
+
+    private static (TypeId? BuiltInTypeId, UserTypeKind? UserTypeKind, bool IsDynamicType) ResolveTypeShape(
+        Type type,
+        bool hasCompatibleTypeMetaFieldsProvider)
+    {
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType is not null)
         {
-            return TypeId.Int16;
+            return ResolveTypeShape(nullableType, hasCompatibleTypeMetaFieldsProvider);
         }
 
-        if (type == typeof(int))
+        if (TryResolveBuiltInTypeId(type, out TypeId builtInTypeId))
         {
-            return TypeId.VarInt32;
-        }
-
-        if (type == typeof(long))
-        {
-            return TypeId.VarInt64;
-        }
-
-        if (type == typeof(byte))
-        {
-            return TypeId.UInt8;
-        }
-
-        if (type == typeof(ushort))
-        {
-            return TypeId.UInt16;
-        }
-
-        if (type == typeof(uint))
-        {
-            return TypeId.VarUInt32;
-        }
-
-        if (type == typeof(ulong))
-        {
-            return TypeId.VarUInt64;
-        }
-
-        if (type == typeof(float))
-        {
-            return TypeId.Float32;
-        }
-
-        if (type == typeof(double))
-        {
-            return TypeId.Float64;
-        }
-
-        if (type == typeof(string))
-        {
-            return TypeId.String;
-        }
-
-        if (type == typeof(byte[]))
-        {
-            return TypeId.Binary;
-        }
-
-        if (type == typeof(bool[]))
-        {
-            return TypeId.BoolArray;
-        }
-
-        if (type == typeof(sbyte[]))
-        {
-            return TypeId.Int8Array;
-        }
-
-        if (type == typeof(short[]))
-        {
-            return TypeId.Int16Array;
-        }
-
-        if (type == typeof(int[]))
-        {
-            return TypeId.Int32Array;
-        }
-
-        if (type == typeof(long[]))
-        {
-            return TypeId.Int64Array;
-        }
-
-        if (type == typeof(ushort[]))
-        {
-            return TypeId.UInt16Array;
-        }
-
-        if (type == typeof(uint[]))
-        {
-            return TypeId.UInt32Array;
-        }
-
-        if (type == typeof(ulong[]))
-        {
-            return TypeId.UInt64Array;
-        }
-
-        if (type == typeof(float[]))
-        {
-            return TypeId.Float32Array;
-        }
-
-        if (type == typeof(double[]))
-        {
-            return TypeId.Float64Array;
-        }
-
-        if (type == typeof(DateOnly))
-        {
-            return TypeId.Date;
-        }
-
-        if (type == typeof(DateTimeOffset) || type == typeof(DateTime))
-        {
-            return TypeId.Timestamp;
-        }
-
-        if (type == typeof(TimeSpan))
-        {
-            return TypeId.Duration;
+            return (builtInTypeId, null, false);
         }
 
         if (type == typeof(object))
         {
-            return TypeId.Unknown;
+            return (null, null, true);
         }
 
         if (type.IsEnum)
         {
-            return TypeId.Enum;
+            return (null, Apache.Fory.UserTypeKind.Enum, false);
         }
 
         if (typeof(Union).IsAssignableFrom(type))
         {
-            return TypeId.TypedUnion;
+            return (null, Apache.Fory.UserTypeKind.TypedUnion, false);
+        }
+
+        if (hasCompatibleTypeMetaFieldsProvider)
+        {
+            return (null, Apache.Fory.UserTypeKind.Struct, false);
+        }
+
+        return (null, Apache.Fory.UserTypeKind.Ext, false);
+    }
+
+    private static bool TryResolveBuiltInTypeId(Type type, out TypeId typeId)
+    {
+        if (type == typeof(bool))
+        {
+            typeId = TypeId.Bool;
+            return true;
+        }
+
+        if (type == typeof(sbyte))
+        {
+            typeId = TypeId.Int8;
+            return true;
+        }
+
+        if (type == typeof(short))
+        {
+            typeId = TypeId.Int16;
+            return true;
+        }
+
+        if (type == typeof(int))
+        {
+            typeId = TypeId.VarInt32;
+            return true;
+        }
+
+        if (type == typeof(long))
+        {
+            typeId = TypeId.VarInt64;
+            return true;
+        }
+
+        if (type == typeof(byte))
+        {
+            typeId = TypeId.UInt8;
+            return true;
+        }
+
+        if (type == typeof(ushort))
+        {
+            typeId = TypeId.UInt16;
+            return true;
+        }
+
+        if (type == typeof(uint))
+        {
+            typeId = TypeId.VarUInt32;
+            return true;
+        }
+
+        if (type == typeof(ulong))
+        {
+            typeId = TypeId.VarUInt64;
+            return true;
+        }
+
+        if (type == typeof(float))
+        {
+            typeId = TypeId.Float32;
+            return true;
+        }
+
+        if (type == typeof(double))
+        {
+            typeId = TypeId.Float64;
+            return true;
+        }
+
+        if (type == typeof(string))
+        {
+            typeId = TypeId.String;
+            return true;
+        }
+
+        if (type == typeof(byte[]))
+        {
+            typeId = TypeId.Binary;
+            return true;
+        }
+
+        if (type == typeof(bool[]))
+        {
+            typeId = TypeId.BoolArray;
+            return true;
+        }
+
+        if (type == typeof(sbyte[]))
+        {
+            typeId = TypeId.Int8Array;
+            return true;
+        }
+
+        if (type == typeof(short[]))
+        {
+            typeId = TypeId.Int16Array;
+            return true;
+        }
+
+        if (type == typeof(int[]))
+        {
+            typeId = TypeId.Int32Array;
+            return true;
+        }
+
+        if (type == typeof(long[]))
+        {
+            typeId = TypeId.Int64Array;
+            return true;
+        }
+
+        if (type == typeof(ushort[]))
+        {
+            typeId = TypeId.UInt16Array;
+            return true;
+        }
+
+        if (type == typeof(uint[]))
+        {
+            typeId = TypeId.UInt32Array;
+            return true;
+        }
+
+        if (type == typeof(ulong[]))
+        {
+            typeId = TypeId.UInt64Array;
+            return true;
+        }
+
+        if (type == typeof(float[]))
+        {
+            typeId = TypeId.Float32Array;
+            return true;
+        }
+
+        if (type == typeof(double[]))
+        {
+            typeId = TypeId.Float64Array;
+            return true;
+        }
+
+        if (type == typeof(DateOnly))
+        {
+            typeId = TypeId.Date;
+            return true;
+        }
+
+        if (type == typeof(DateTimeOffset) || type == typeof(DateTime))
+        {
+            typeId = TypeId.Timestamp;
+            return true;
+        }
+
+        if (type == typeof(TimeSpan))
+        {
+            typeId = TypeId.Duration;
+            return true;
         }
 
         if (type.IsArray)
         {
-            return TypeId.List;
+            typeId = TypeId.List;
+            return true;
         }
 
         if (type.IsGenericType)
@@ -252,14 +371,16 @@ public sealed class TypeInfo
                 genericType == typeof(Queue<>) ||
                 genericType == typeof(Stack<>))
             {
-                return TypeId.List;
+                typeId = TypeId.List;
+                return true;
             }
 
             if (genericType == typeof(HashSet<>) ||
                 genericType == typeof(SortedSet<>) ||
                 genericType == typeof(ImmutableHashSet<>))
             {
-                return TypeId.Set;
+                typeId = TypeId.Set;
+                return true;
             }
 
             if (genericType == typeof(Dictionary<,>) ||
@@ -268,75 +389,56 @@ public sealed class TypeInfo
                 genericType == typeof(ConcurrentDictionary<,>) ||
                 genericType == typeof(NullableKeyDictionary<,>))
             {
-                return TypeId.Map;
+                typeId = TypeId.Map;
+                return true;
             }
 
             if (genericType == typeof(Nullable<>))
             {
-                return ResolveStaticTypeId(Nullable.GetUnderlyingType(type)!, serializer);
+                Type? underlying = Nullable.GetUnderlyingType(type);
+                if (underlying is not null)
+                {
+                    return TryResolveBuiltInTypeId(underlying, out typeId);
+                }
             }
         }
 
-        return TypeId.Ext;
-    }
-
-    private static bool ResolveIsNullableType(Type type, object serializer)
-    {
-        if (TryGetSerializerProperty(serializer, nameof(IsNullableType), out bool isNullableType))
-        {
-            return isNullableType;
-        }
-
-        return !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
-    }
-
-    private static bool ResolveIsReferenceTrackableType(Type type, object serializer, TypeId staticTypeId)
-    {
-        if (TryGetSerializerProperty(serializer, nameof(IsReferenceTrackableType), out bool isReferenceTrackableType))
-        {
-            return isReferenceTrackableType;
-        }
-
-        if (staticTypeId == TypeId.String)
-        {
-            return false;
-        }
-
-        return !type.IsValueType;
-    }
-
-    private static bool TryGetSerializerProperty<TValue>(
-        object serializer,
-        string propertyName,
-        out TValue value)
-    {
-        Type serializerType = serializer.GetType();
-        System.Reflection.PropertyInfo? property = serializerType.GetProperty(
-            propertyName,
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-        if (property is not null && property.PropertyType == typeof(TValue))
-        {
-            object? raw = property.GetValue(serializer);
-            if (raw is TValue typed)
-            {
-                value = typed;
-                return true;
-            }
-        }
-
-        value = default!;
+        typeId = default;
         return false;
     }
 
     public Type Type { get; }
 
-    public TypeId StaticTypeId { get; }
+    public bool IsBuiltinType => BuiltInTypeId.HasValue;
+
+    public TypeId? BuiltInTypeId { get; }
+
+    public bool IsUserType => UserTypeKind.HasValue;
+
+    internal UserTypeKind? UserTypeKind { get; }
+
+    public bool IsDynamicType { get; }
 
     public bool IsNullableType { get; }
 
     public bool IsReferenceTrackableType { get; }
 
     public object? DefaultObject { get; }
+
+    public bool NeedsTypeInfoForField()
+    {
+        if (IsDynamicType)
+        {
+            return true;
+        }
+
+        if (!UserTypeKind.HasValue)
+        {
+            return false;
+        }
+
+        return UserTypeKind.Value is Apache.Fory.UserTypeKind.Struct or Apache.Fory.UserTypeKind.Ext;
+    }
 
     internal Serializer<T> RequireSerializer<T>()
     {
@@ -348,39 +450,24 @@ public sealed class TypeInfo
         throw new InvalidDataException($"serializer type mismatch for {typeof(T)}");
     }
 
-    public bool IsNoneObject(object? value)
-    {
-        return _isNoneObject(value);
-    }
-
-    public void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
+    internal void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
     {
         _writeDataObject(context, value, hasGenerics);
     }
 
-    public object? ReadDataObject(ReadContext context)
+    internal object? ReadDataObject(ReadContext context)
     {
         return _readDataObject(context);
     }
 
-    public void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
+    internal void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         _writeObject(context, value, refMode, writeTypeInfo, hasGenerics);
     }
 
-    public object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
+    internal object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         return _readObject(context, refMode, readTypeInfo);
-    }
-
-    internal void WriteTypeInfo(WriteContext context)
-    {
-        _writeTypeInfo(context);
-    }
-
-    internal void ReadTypeInfo(ReadContext context)
-    {
-        _readTypeInfo(context);
     }
 
     internal IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)

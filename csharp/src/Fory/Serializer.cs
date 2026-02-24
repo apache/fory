@@ -19,8 +19,6 @@ namespace Apache.Fory;
 
 public abstract class Serializer<T>
 {
-    public Type Type => typeof(T);
-
     public virtual T DefaultValue => default!;
 
     internal object? DefaultObject => DefaultValue;
@@ -59,7 +57,7 @@ public abstract class Serializer<T>
 
         if (writeTypeInfo)
         {
-            this.WriteTypeInfo(context);
+            context.TypeResolver.WriteTypeInfo(this, context);
         }
 
         WriteData(context, value, hasGenerics);
@@ -86,7 +84,7 @@ public abstract class Serializer<T>
                     context.RefReader.PushPendingReference(reservedRefId);
                     if (readTypeInfo)
                     {
-                        this.ReadTypeInfo(context);
+                        context.TypeResolver.ReadTypeInfo(this, context);
                     }
 
                     T value = ReadData(context);
@@ -103,7 +101,7 @@ public abstract class Serializer<T>
 
         if (readTypeInfo)
         {
-            this.ReadTypeInfo(context);
+            context.TypeResolver.ReadTypeInfo(this, context);
         }
 
         return ReadData(context);

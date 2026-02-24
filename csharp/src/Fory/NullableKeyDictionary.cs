@@ -390,9 +390,6 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
-    public TypeId StaticTypeId => TypeId.Map;
-    public bool IsNullableType => true;
-    public bool IsReferenceTrackableType => true;
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
 
     public override void WriteData(WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
@@ -410,10 +407,10 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
         bool trackKeyRef = context.TrackRef && keyTypeInfo.IsReferenceTrackableType;
         bool trackValueRef = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !keyTypeInfo.StaticTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueTypeInfo.StaticTypeId.NeedsTypeInfoForField();
-        bool keyDynamicType = keyTypeInfo.StaticTypeId == TypeId.Unknown;
-        bool valueDynamicType = valueTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool keyDeclared = hasGenerics && !keyTypeInfo.NeedsTypeInfoForField();
+        bool valueDeclared = hasGenerics && !valueTypeInfo.NeedsTypeInfoForField();
+        bool keyDynamicType = keyTypeInfo.IsDynamicType;
+        bool valueDynamicType = valueTypeInfo.IsDynamicType;
         KeyValuePair<TKey, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
@@ -427,6 +424,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 valueDeclared,
                 keyDynamicType,
                 valueDynamicType,
+                keyTypeInfo,
+                valueTypeInfo,
                 keySerializer,
                 valueSerializer);
             return;
@@ -434,8 +433,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
         foreach (KeyValuePair<TKey, TValue> entry in pairs)
         {
-            bool keyIsNull = entry.Key is null || keySerializer.IsNoneObject(entry.Key);
-            bool valueIsNull = valueSerializer.IsNoneObject(entry.Value);
+            bool keyIsNull = context.TypeResolver.IsNoneObject(keyTypeInfo, entry.Key);
+            bool valueIsNull = context.TypeResolver.IsNoneObject(valueTypeInfo, entry.Value);
             byte header = 0;
             if (trackKeyRef)
             {
@@ -475,7 +474,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             {
                 if (!valueDeclared)
                 {
-                    valueSerializer.WriteTypeInfo(context);
+                    context.TypeResolver.WriteTypeInfo(valueSerializer, context);
                 }
 
                 valueSerializer.Write(
@@ -491,7 +490,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             {
                 if (!keyDeclared)
                 {
-                    keySerializer.WriteTypeInfo(context);
+                    context.TypeResolver.WriteTypeInfo(keySerializer, context);
                 }
 
                 keySerializer.Write(
@@ -506,12 +505,12 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             context.Writer.WriteUInt8(1);
             if (!keyDeclared)
             {
-                keySerializer.WriteTypeInfo(context);
+                context.TypeResolver.WriteTypeInfo(keySerializer, context);
             }
 
             if (!valueDeclared)
             {
-                valueSerializer.WriteTypeInfo(context);
+                context.TypeResolver.WriteTypeInfo(valueSerializer, context);
             }
 
             keySerializer.Write(
@@ -542,8 +541,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         }
 
         NullableKeyDictionary<TKey, TValue> map = new();
-        bool keyDynamicType = keyTypeInfo.StaticTypeId == TypeId.Unknown;
-        bool valueDynamicType = valueTypeInfo.StaticTypeId == TypeId.Unknown;
+        bool keyDynamicType = keyTypeInfo.IsDynamicType;
+        bool valueDynamicType = valueTypeInfo.IsDynamicType;
         bool canonicalizeValues = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
 
         int readCount = 0;
@@ -606,7 +605,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                         }
                         else
                         {
-                            keySerializer.ReadTypeInfo(context);
+                            context.TypeResolver.ReadTypeInfo(keySerializer, context);
                         }
                     }
 
@@ -618,7 +617,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                         }
                         else
                         {
-                            valueSerializer.ReadTypeInfo(context);
+                            context.TypeResolver.ReadTypeInfo(valueSerializer, context);
                         }
                     }
 
@@ -658,12 +657,12 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
             if (!keyDeclared)
             {
-                keySerializer.ReadTypeInfo(context);
+                context.TypeResolver.ReadTypeInfo(keySerializer, context);
             }
 
             if (!valueDeclared)
             {
-                valueSerializer.ReadTypeInfo(context);
+                context.TypeResolver.ReadTypeInfo(valueSerializer, context);
             }
 
             for (int i = 0; i < chunkSize; i++)
@@ -699,13 +698,15 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         bool valueDeclared,
         bool keyDynamicType,
         bool valueDynamicType,
+        TypeInfo keyTypeInfo,
+        TypeInfo valueTypeInfo,
         Serializer<TKey> keySerializer,
         Serializer<TValue> valueSerializer)
     {
         foreach (KeyValuePair<TKey, TValue> pair in pairs)
         {
-            bool keyIsNull = pair.Key is null || keySerializer.IsNoneObject(pair.Key);
-            bool valueIsNull = valueSerializer.IsNoneObject(pair.Value);
+            bool keyIsNull = context.TypeResolver.IsNoneObject(keyTypeInfo, pair.Key);
+            bool valueIsNull = context.TypeResolver.IsNoneObject(valueTypeInfo, pair.Value);
             byte header = 0;
             if (trackKeyRef)
             {
@@ -772,7 +773,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 }
                 else
                 {
-                    keySerializer.WriteTypeInfo(context);
+                    context.TypeResolver.WriteTypeInfo(keySerializer, context);
                 }
             }
 
@@ -784,7 +785,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 }
                 else
                 {
-                    valueSerializer.WriteTypeInfo(context);
+                    context.TypeResolver.WriteTypeInfo(valueSerializer, context);
                 }
             }
 
