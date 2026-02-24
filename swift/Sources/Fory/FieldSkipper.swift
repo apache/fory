@@ -52,72 +52,72 @@ public enum FieldSkipper {
     ) throws -> Any? {
         let refMode = RefMode.from(nullable: fieldType.nullable, trackRef: fieldType.trackRef)
         switch fieldType.typeID {
-        case ForyTypeId.bool.rawValue:
+        case TypeId.bool.rawValue:
             return fieldType.nullable
                 ? try Bool?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Bool.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.int8.rawValue:
+        case TypeId.int8.rawValue:
             return fieldType.nullable
                 ? try Int8?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Int8.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.int16.rawValue:
+        case TypeId.int16.rawValue:
             return fieldType.nullable
                 ? try Int16?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Int16.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.varint32.rawValue:
+        case TypeId.varint32.rawValue:
             return fieldType.nullable
                 ? try Int32?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Int32.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.varint64.rawValue:
+        case TypeId.varint64.rawValue:
             return fieldType.nullable
                 ? try Int64?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Int64.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.float32.rawValue:
+        case TypeId.float32.rawValue:
             return fieldType.nullable
                 ? try Float?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Float.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.float64.rawValue:
+        case TypeId.float64.rawValue:
             return fieldType.nullable
                 ? try Double?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Double.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.string.rawValue:
+        case TypeId.string.rawValue:
             return fieldType.nullable
                 ? try String?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try String.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.timestamp.rawValue:
+        case TypeId.timestamp.rawValue:
             return fieldType.nullable
                 ? try Date?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Date.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.date.rawValue:
+        case TypeId.date.rawValue:
             return fieldType.nullable
                 ? try ForyDate?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try ForyDate.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.list.rawValue:
+        case TypeId.list.rawValue:
             guard fieldType.generics.count == 1,
-                  fieldType.generics[0].typeID == ForyTypeId.string.rawValue else {
+                  fieldType.generics[0].typeID == TypeId.string.rawValue else {
                 throw ForyError.invalidData("unsupported compatible list element type")
             }
             return fieldType.nullable
                 ? try [String]?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try [String].foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.set.rawValue:
+        case TypeId.set.rawValue:
             guard fieldType.generics.count == 1,
-                  fieldType.generics[0].typeID == ForyTypeId.string.rawValue else {
+                  fieldType.generics[0].typeID == TypeId.string.rawValue else {
                 throw ForyError.invalidData("unsupported compatible set element type")
             }
             return fieldType.nullable
                 ? try Set<String>?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try Set<String>.foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.map.rawValue:
+        case TypeId.map.rawValue:
             guard fieldType.generics.count == 2,
-                  fieldType.generics[0].typeID == ForyTypeId.string.rawValue,
-                  fieldType.generics[1].typeID == ForyTypeId.string.rawValue else {
+                  fieldType.generics[0].typeID == TypeId.string.rawValue,
+                  fieldType.generics[1].typeID == TypeId.string.rawValue else {
                 throw ForyError.invalidData("unsupported compatible map key/value type")
             }
             return fieldType.nullable
                 ? try [String: String]?.foryRead(context, refMode: refMode, readTypeInfo: false)
                 : try [String: String].foryRead(context, refMode: refMode, readTypeInfo: false)
-        case ForyTypeId.enumType.rawValue:
+        case TypeId.enumType.rawValue:
             return try readEnumOrdinal(context, refMode: refMode)
         default:
             throw ForyError.invalidData("unsupported compatible field type id \(fieldType.typeID)")

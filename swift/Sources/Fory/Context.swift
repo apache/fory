@@ -38,8 +38,12 @@ public final class CompatibleTypeDefWriteState {
     }
 
     public func reset() {
-        typeIndexBySwiftType.removeAll(keepingCapacity: true)
-        nextIndex = 0
+        if !typeIndexBySwiftType.isEmpty {
+            typeIndexBySwiftType.removeAll(keepingCapacity: true)
+        }
+        if nextIndex != 0 {
+            nextIndex = 0
+        }
     }
 }
 
@@ -73,7 +77,9 @@ public final class CompatibleTypeDefReadState {
     }
 
     public func reset() {
-        typeMetas.removeAll(keepingCapacity: true)
+        if !typeMetas.isEmpty {
+            typeMetas.removeAll(keepingCapacity: true)
+        }
     }
 }
 
@@ -116,8 +122,12 @@ public final class MetaStringWriteState {
     }
 
     public func reset() {
-        stringIndexByKey.removeAll(keepingCapacity: true)
-        nextIndex = 0
+        if !stringIndexByKey.isEmpty {
+            stringIndexByKey.removeAll(keepingCapacity: true)
+        }
+        if nextIndex != 0 {
+            nextIndex = 0
+        }
     }
 }
 
@@ -138,19 +148,21 @@ public final class MetaStringReadState {
     }
 
     public func reset() {
-        values.removeAll(keepingCapacity: true)
+        if !values.isEmpty {
+            values.removeAll(keepingCapacity: true)
+        }
     }
 }
 
 public struct DynamicTypeInfo {
-    public let wireTypeID: ForyTypeId
+    public let wireTypeID: TypeId
     public let userTypeID: UInt32?
     public let namespace: MetaString?
     public let typeName: MetaString?
     public let compatibleTypeMeta: TypeMeta?
 
     public init(
-        wireTypeID: ForyTypeId,
+        wireTypeID: TypeId,
         userTypeID: UInt32?,
         namespace: MetaString?,
         typeName: MetaString?,
@@ -169,15 +181,19 @@ public final class WriteContext {
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
+    public let checkClassVersion: Bool
     public let refWriter: RefWriter
     public let compatibleTypeDefState: CompatibleTypeDefWriteState
     public let metaStringWriteState: MetaStringWriteState
+    private var compatibleTypeDefStateUsed = false
+    private var metaStringWriteStateUsed = false
 
     public init(
         buffer: ByteBuffer,
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
+        checkClassVersion: Bool = true,
         compatibleTypeDefState: CompatibleTypeDefWriteState = CompatibleTypeDefWriteState(),
         metaStringWriteState: MetaStringWriteState = MetaStringWriteState()
     ) {
@@ -185,6 +201,7 @@ public final class WriteContext {
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
+        self.checkClassVersion = checkClassVersion
         self.refWriter = RefWriter()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringWriteState = metaStringWriteState
@@ -194,24 +211,48 @@ public final class WriteContext {
         for type: T.Type,
         typeMeta: TypeMeta
     ) throws {
+        try writeCompatibleTypeMeta(
+            for: type,
+            encodedTypeMeta: typeMeta.encode()
+        )
+    }
+
+    public func writeCompatibleTypeMeta<T: Serializer>(
+        for type: T.Type,
+        encodedTypeMeta: [UInt8]
+    ) throws {
+        compatibleTypeDefStateUsed = true
         let typeID = ObjectIdentifier(type)
         let assignment = compatibleTypeDefState.assignIndexIfAbsent(for: typeID)
         if assignment.isNew {
             buffer.writeVarUInt32(assignment.index << 1)
-            buffer.writeBytes(try typeMeta.encode())
+            buffer.writeBytes(encodedTypeMeta)
         } else {
             buffer.writeVarUInt32((assignment.index << 1) | 1)
         }
     }
 
     public func resetObjectState() {
-        refWriter.reset()
+        if trackRef {
+            refWriter.reset()
+        }
+    }
+
+    @inline(__always)
+    public func markMetaStringWriteStateUsed() {
+        metaStringWriteStateUsed = true
     }
 
     public func reset() {
         resetObjectState()
-        compatibleTypeDefState.reset()
-        metaStringWriteState.reset()
+        if compatibleTypeDefStateUsed {
+            compatibleTypeDefState.reset()
+            compatibleTypeDefStateUsed = false
+        }
+        if metaStringWriteStateUsed {
+            metaStringWriteState.reset()
+            metaStringWriteStateUsed = false
+        }
     }
 }
 
@@ -225,9 +266,12 @@ public final class ReadContext {
     public let typeResolver: TypeResolver
     public let trackRef: Bool
     public let compatible: Bool
+    public let checkClassVersion: Bool
     public let refReader: RefReader
     public let compatibleTypeDefState: CompatibleTypeDefReadState
     public let metaStringReadState: MetaStringReadState
+    private var compatibleTypeDefStateUsed = false
+    private var metaStringReadStateUsed = false
 
     private var pendingRefStack: [PendingRefSlot] = []
     private var pendingCompatibleTypeMeta: [ObjectIdentifier: [TypeMeta]] = [:]
@@ -239,6 +283,7 @@ public final class ReadContext {
         typeResolver: TypeResolver,
         trackRef: Bool,
         compatible: Bool = false,
+        checkClassVersion: Bool = true,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
@@ -246,6 +291,7 @@ public final class ReadContext {
         self.typeResolver = typeResolver
         self.trackRef = trackRef
         self.compatible = compatible
+        self.checkClassVersion = checkClassVersion
         self.refReader = RefReader()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringReadState = metaStringReadState
@@ -279,6 +325,7 @@ public final class ReadContext {
     }
 
     public func readCompatibleTypeMeta() throws -> TypeMeta {
+        compatibleTypeDefStateUsed = true
         let indexMarker = try buffer.readVarUInt32()
         let isRef = (indexMarker & 1) == 1
         let index = Int(indexMarker >> 1)
@@ -357,18 +404,39 @@ public final class ReadContext {
         return value
     }
 
+    @inline(__always)
+    public func markMetaStringReadStateUsed() {
+        metaStringReadStateUsed = true
+    }
+
     public func resetObjectState() {
-        refReader.reset()
-        pendingRefStack.removeAll(keepingCapacity: true)
-        pendingCompatibleTypeMeta.removeAll(keepingCapacity: true)
-        pendingDynamicTypeInfo.removeAll(keepingCapacity: true)
-        canonicalReferenceCache.removeAll(keepingCapacity: true)
+        if trackRef {
+            refReader.reset()
+            if !pendingRefStack.isEmpty {
+                pendingRefStack.removeAll(keepingCapacity: true)
+            }
+        }
+        if compatible, !pendingCompatibleTypeMeta.isEmpty {
+            pendingCompatibleTypeMeta.removeAll(keepingCapacity: true)
+        }
+        if !pendingDynamicTypeInfo.isEmpty {
+            pendingDynamicTypeInfo.removeAll(keepingCapacity: true)
+        }
+        if trackRef, !canonicalReferenceCache.isEmpty {
+            canonicalReferenceCache.removeAll(keepingCapacity: true)
+        }
     }
 
     public func reset() {
         resetObjectState()
-        compatibleTypeDefState.reset()
-        metaStringReadState.reset()
+        if compatibleTypeDefStateUsed {
+            compatibleTypeDefState.reset()
+            compatibleTypeDefStateUsed = false
+        }
+        if metaStringReadStateUsed {
+            metaStringReadState.reset()
+            metaStringReadStateUsed = false
+        }
     }
 }
 

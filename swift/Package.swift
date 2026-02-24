@@ -35,7 +35,8 @@ let package = Package(
         .target(
             name: "Fory",
             dependencies: ["ForyMacro"],
-            path: "Sources/Fory"
+            path: "Sources",
+            exclude: ["ForyMacro"]
         ),
         .executableTarget(
             name: "ForyXlangTests",

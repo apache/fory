@@ -22,7 +22,7 @@ extension Optional: Serializer where Wrapped: Serializer {
         nil
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         Wrapped.staticTypeId
     }
 

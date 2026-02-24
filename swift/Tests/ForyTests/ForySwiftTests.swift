@@ -220,11 +220,11 @@ func primitiveArrayTypeIDs() throws {
     let int32Bytes = [UInt8](int32Data)
     #expect(int32Bytes[0] == ForyHeaderFlag.isXlang)
     #expect(Int8(bitPattern: int32Bytes[1]) == RefFlag.notNullValue.rawValue)
-    #expect(UInt32(int32Bytes[2]) == ForyTypeId.int32Array.rawValue)
+    #expect(UInt32(int32Bytes[2]) == TypeId.int32Array.rawValue)
 
     let uint8Data = try fory.serialize([UInt8(1), 2, 3])
     let uint8Bytes = [UInt8](uint8Data)
-    #expect(UInt32(uint8Bytes[2]) == ForyTypeId.binary.rawValue)
+    #expect(UInt32(uint8Bytes[2]) == TypeId.binary.rawValue)
 }
 
 @Test
@@ -516,9 +516,9 @@ func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
     let fields = EncodedNumberFields.foryCompatibleTypeMetaFields(trackRef: false)
     #expect(fields.count == 2)
     #expect(fields[0].fieldName == "u32Fixed")
-    #expect(fields[0].fieldType.typeID == ForyTypeId.uint32.rawValue)
+    #expect(fields[0].fieldType.typeID == TypeId.uint32.rawValue)
     #expect(fields[1].fieldName == "u64Tagged")
-    #expect(fields[1].fieldType.typeID == ForyTypeId.taggedUInt64.rawValue)
+    #expect(fields[1].fieldType.typeID == TypeId.taggedUInt64.rawValue)
 }
 
 @Test
@@ -622,33 +622,33 @@ func typeMetaRoundTripByName() throws {
         .init(
             fieldID: nil,
             fieldName: "createdAt",
-            fieldType: .init(typeID: ForyTypeId.varint64.rawValue, nullable: false)
+            fieldType: .init(typeID: TypeId.varint64.rawValue, nullable: false)
         ),
         .init(
             fieldID: nil,
             fieldName: "tags",
             fieldType: .init(
-                typeID: ForyTypeId.list.rawValue,
+                typeID: TypeId.list.rawValue,
                 nullable: false,
-                generics: [.init(typeID: ForyTypeId.string.rawValue, nullable: true)]
+                generics: [.init(typeID: TypeId.string.rawValue, nullable: true)]
             )
         ),
         .init(
             fieldID: nil,
             fieldName: "attributes",
             fieldType: .init(
-                typeID: ForyTypeId.map.rawValue,
+                typeID: TypeId.map.rawValue,
                 nullable: true,
                 generics: [
-                    .init(typeID: ForyTypeId.string.rawValue, nullable: false),
-                    .init(typeID: ForyTypeId.varint32.rawValue, nullable: true),
+                    .init(typeID: TypeId.string.rawValue, nullable: false),
+                    .init(typeID: TypeId.varint32.rawValue, nullable: true),
                 ]
             )
         ),
         .init(
             fieldID: 7,
             fieldName: "ignored_for_tag_mode",
-            fieldType: .init(typeID: ForyTypeId.varint32.rawValue, nullable: false)
+            fieldType: .init(typeID: TypeId.varint32.rawValue, nullable: false)
         ),
     ]
 
@@ -680,7 +680,7 @@ func typeMetaRoundTripByID() throws {
     let emptyTypeName = MetaString.empty(specialChar1: "$", specialChar2: "_")
 
     let meta = try TypeMeta(
-        typeID: ForyTypeId.structType.rawValue,
+        typeID: TypeId.structType.rawValue,
         userTypeID: 101,
         namespace: emptyNamespace,
         typeName: emptyTypeName,
@@ -692,7 +692,7 @@ func typeMetaRoundTripByID() throws {
     let decoded = try TypeMeta.decode(encoded)
 
     #expect(decoded.registerByName == false)
-    #expect(decoded.typeID == ForyTypeId.structType.rawValue)
+    #expect(decoded.typeID == TypeId.structType.rawValue)
     #expect(decoded.userTypeID == 101)
     #expect(decoded.fields.isEmpty)
 }
