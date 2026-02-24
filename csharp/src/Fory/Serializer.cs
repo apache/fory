@@ -72,7 +72,7 @@ public abstract class Serializer<T>
 
         if (writeTypeInfo)
         {
-            WriteTypeInfo(context);
+            this.WriteTypeInfo(context);
         }
 
         WriteData(context, value, hasGenerics);
@@ -99,7 +99,7 @@ public abstract class Serializer<T>
                     context.RefReader.PushPendingReference(reservedRefId);
                     if (readTypeInfo)
                     {
-                        ReadTypeInfo(context);
+                        this.ReadTypeInfo(context);
                     }
 
                     T value = ReadData(context);
@@ -116,71 +116,9 @@ public abstract class Serializer<T>
 
         if (readTypeInfo)
         {
-            ReadTypeInfo(context);
+            this.ReadTypeInfo(context);
         }
 
         return ReadData(context);
-    }
-
-    public virtual void WriteTypeInfo(WriteContext context)
-    {
-        context.TypeResolver.WriteTypeInfo(this, context);
-    }
-
-    public virtual void ReadTypeInfo(ReadContext context)
-    {
-        context.TypeResolver.ReadTypeInfo(this, context);
-    }
-
-    public virtual IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
-    {
-        _ = trackRef;
-        return [];
-    }
-
-    internal bool IsNoneObject(object? value)
-    {
-        if (value is null)
-        {
-            return IsNullableType;
-        }
-
-        return value is T typed && IsNone(typed);
-    }
-
-    internal void WriteDataObject(WriteContext context, object? value, bool hasGenerics)
-    {
-        WriteData(context, CoerceValue(value), hasGenerics);
-    }
-
-    internal object? ReadDataObject(ReadContext context)
-    {
-        return ReadData(context);
-    }
-
-    internal void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
-    {
-        Write(context, CoerceValue(value), refMode, writeTypeInfo, hasGenerics);
-    }
-
-    internal object? ReadObject(ReadContext context, RefMode refMode, bool readTypeInfo)
-    {
-        return Read(context, refMode, readTypeInfo);
-    }
-
-    protected virtual T CoerceValue(object? value)
-    {
-        if (value is T typed)
-        {
-            return typed;
-        }
-
-        if (value is null && IsNullableType)
-        {
-            return DefaultValue;
-        }
-
-        throw new InvalidDataException(
-            $"serializer {GetType().Name} expected value of type {typeof(T)}, got {value?.GetType()}");
     }
 }

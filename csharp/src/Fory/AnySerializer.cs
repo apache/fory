@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public sealed class DynamicAnyObjectSerializer : Serializer<object?>
+public sealed class DynamicAnyObjectSerializer : Serializer<object?>, ITypeInfoSerializer
 {
     public override TypeId StaticTypeId => TypeId.Unknown;
     public override bool IsNullableType => true;
@@ -46,12 +46,12 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, context);
     }
 
-    public override void WriteTypeInfo(WriteContext context)
+    public void WriteTypeInfo(WriteContext context)
     {
         throw new InvalidDataException("dynamic Any value type info is runtime-only");
     }
 
-    public override void ReadTypeInfo(ReadContext context)
+    public void ReadTypeInfo(ReadContext context)
     {
         DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
         context.SetDynamicTypeInfo(typeof(object), typeInfo);

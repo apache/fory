@@ -70,14 +70,15 @@ public sealed class TypeInfo
             serializer.IsNullableType,
             serializer.IsReferenceTrackableType,
             serializer.DefaultObject,
-            serializer.IsNoneObject,
-            serializer.WriteDataObject,
-            serializer.ReadDataObject,
-            serializer.WriteObject,
-            serializer.ReadObject,
-            serializer.WriteTypeInfo,
-            serializer.ReadTypeInfo,
-            serializer.CompatibleTypeMetaFields);
+            value => serializer.IsNoneObject(value),
+            (context, value, hasGenerics) => serializer.WriteDataObject(context, value, hasGenerics),
+            context => serializer.ReadDataObject(context),
+            (context, value, refMode, writeTypeInfo, hasGenerics) =>
+                serializer.WriteObject(context, value, refMode, writeTypeInfo, hasGenerics),
+            (context, refMode, readTypeInfo) => serializer.ReadObject(context, refMode, readTypeInfo),
+            context => serializer.WriteTypeInfo(context),
+            context => serializer.ReadTypeInfo(context),
+            trackRef => serializer.CompatibleTypeMetaFields(trackRef));
     }
 
     public Type Type { get; }

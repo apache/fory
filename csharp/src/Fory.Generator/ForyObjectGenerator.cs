@@ -135,7 +135,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
-        sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
+        sb.AppendLine(
+            $"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>, global::Apache.Fory.ICompatibleTypeMetaFieldProvider");
         sb.AppendLine("{");
         foreach (MemberModel member in model.Members.Where(m => m.UseDictionaryTypeInfoCache))
         {
@@ -320,7 +321,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine();
-        sb.AppendLine("    public override global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
+        sb.AppendLine("    public global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
         if (model.SortedMembers.Length == 0)
         {

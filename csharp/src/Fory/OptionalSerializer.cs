@@ -17,7 +17,7 @@
 
 namespace Apache.Fory;
 
-public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
+public sealed class NullableSerializer<T> : Serializer<T?>, ITypeInfoSerializer, ICompatibleTypeMetaFieldProvider where T : struct
 {
     private readonly TypeResolver _typeResolver;
 
@@ -57,19 +57,19 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
         return wrappedSerializer.ReadData(context);
     }
 
-    public override void WriteTypeInfo(WriteContext context)
+    public void WriteTypeInfo(WriteContext context)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
         wrappedSerializer.WriteTypeInfo(context);
     }
 
-    public override void ReadTypeInfo(ReadContext context)
+    public void ReadTypeInfo(ReadContext context)
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
         wrappedSerializer.ReadTypeInfo(context);
     }
 
-    public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
+    public IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
     {
         return _typeResolver.GetSerializer<T>().CompatibleTypeMetaFields(trackRef);
     }
