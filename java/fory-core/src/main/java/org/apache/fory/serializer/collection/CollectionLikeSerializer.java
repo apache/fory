@@ -74,38 +74,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     this.typeResolver = fory.getTypeResolver();
   }
 
-  private void writeValue(MemoryBuffer buffer, Serializer serializer, Object value) {
-    serializer.write(buffer, value);
-  }
-
-  private <E> void writeRefValue(MemoryBuffer buffer, E value, Serializer<E> serializer) {
-    serializer.write(buffer, RefMode.TRACKING, value);
-  }
-
-  private void writeRefValue(MemoryBuffer buffer, Object value) {
-    fory.writeRef(buffer, value);
-  }
-
-  private void writeNonRefValue(MemoryBuffer buffer, Object value) {
-    fory.writeNonRef(buffer, value);
-  }
-
-  private Object readValue(MemoryBuffer buffer, Serializer serializer) {
-    return serializer.read(buffer, RefMode.NONE);
-  }
-
-  private <E> E readRefValue(MemoryBuffer buffer, Serializer<E> serializer) {
-    return serializer.read(buffer, RefMode.TRACKING);
-  }
-
-  private Object readRefValue(MemoryBuffer buffer) {
-    return fory.readRef(buffer);
-  }
-
-  private Object readNonRefValue(MemoryBuffer buffer) {
-    return fory.readNonRef(buffer);
-  }
-
   private GenericType getElementGenericType(Fory fory) {
     GenericType genericType = fory.getGenerics().nextGenericType();
     GenericType elemGenericType = null;
@@ -392,13 +360,13 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       RefResolver refResolver = fory.getRefResolver();
       for (Object elem : collection) {
         if (!refResolver.writeRefOrNull(buffer, elem)) {
-          writeValue(buffer, serializer, elem);
+          serializer.write(buffer, elem);
         }
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (Object elem : collection) {
-          writeValue(buffer, serializer, elem);
+          serializer.write(buffer, elem);
         }
       } else {
         for (Object elem : collection) {
@@ -406,7 +374,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
             buffer.writeByte(Fory.NULL_FLAG);
           } else {
             buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-            writeValue(buffer, serializer, elem);
+            serializer.write(buffer, elem);
           }
         }
       }
@@ -418,12 +386,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       MemoryBuffer buffer, int flags, T collection) {
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       for (Object elem : collection) {
-        writeRefValue(buffer, elem);
+        fory.writeRef(buffer, elem);
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (Object elem : collection) {
-          writeNonRefValue(buffer, elem);
+          fory.writeNonRef(buffer, elem);
         }
       } else {
         for (Object elem : collection) {
@@ -431,7 +399,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
             buffer.writeByte(Fory.NULL_FLAG);
           } else {
             buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-            writeNonRefValue(buffer, elem);
+            fory.writeNonRef(buffer, elem);
           }
         }
       }
@@ -608,19 +576,19 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     fory.incReadDepth();
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       for (int i = 0; i < numElements; i++) {
-        collection.add(readRefValue(buffer, serializer));
+        collection.add(serializer.read(buffer, RefMode.TRACKING));
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (int i = 0; i < numElements; i++) {
-          collection.add(readValue(buffer, serializer));
+          collection.add(serializer.read(buffer, RefMode.NONE));
         }
       } else {
         for (int i = 0; i < numElements; i++) {
           if (buffer.readByte() == Fory.NULL_FLAG) {
             collection.add(null);
           } else {
-            collection.add(readValue(buffer, serializer));
+            collection.add(serializer.read(buffer, RefMode.NONE));
           }
         }
       }
@@ -634,12 +602,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       Preconditions.checkState(fory.trackingRef(), "Reference tracking is not enabled");
       for (int i = 0; i < numElements; i++) {
-        collection.add(readRefValue(buffer));
+        collection.add(fory.readRef(buffer));
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (int i = 0; i < numElements; i++) {
-          collection.add(readNonRefValue(buffer));
+          collection.add(fory.readNonRef(buffer));
         }
       } else {
         for (int i = 0; i < numElements; i++) {
@@ -647,7 +615,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
           if (headFlag == Fory.NULL_FLAG) {
             collection.add(null);
           } else {
-            collection.add(readNonRefValue(buffer));
+            collection.add(fory.readNonRef(buffer));
           }
         }
       }

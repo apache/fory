@@ -947,7 +947,7 @@ public final class Fory implements BaseFory {
   /** Deserialize not-null and non-reference object from <code>buffer</code>. */
   public Object readNonRef(MemoryBuffer buffer) {
     if (crossLanguage) {
-      return readNonRefCrossLanguage(buffer);
+      return readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer));
     }
     return readDataInternal(buffer, classResolver.readTypeInfo(buffer));
   }
@@ -1104,10 +1104,6 @@ public final class Fory implements BaseFory {
         return readNonRefCrossLanguage(buffer, serializer);
       }
     }
-  }
-
-  private Object readNonRefCrossLanguage(MemoryBuffer buffer) {
-    return readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer));
   }
 
   private Object readNonRefCrossLanguage(MemoryBuffer buffer, Serializer<?> serializer) {
