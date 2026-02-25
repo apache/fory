@@ -131,13 +131,13 @@ public sealed class TwoFields
     public string F2 { get; set; } = string.Empty;
 }
 
-Fory writer = Fory.Builder().Compatible(true).Build();
-writer.Register<OneField>(300);
+Fory fory1 = Fory.Builder().Compatible(true).Build();
+fory1.Register<OneField>(300);
 
-Fory reader = Fory.Builder().Compatible(true).Build();
-reader.Register<TwoFields>(300);
+Fory fory2 = Fory.Builder().Compatible(true).Build();
+fory2.Register<TwoFields>(300);
 
-TwoFields decoded = reader.Deserialize<TwoFields>(writer.Serialize(new OneField { F1 = "hello" }));
+TwoFields decoded = fory2.Deserialize<TwoFields>(fory1.Serialize(new OneField { F1 = "hello" }));
 ```
 
 ### 4. Dynamic Object Serialization
@@ -215,7 +215,7 @@ Fory fory = Fory.Builder()
 fory.Register<Person>(100); // same ID on other language peers
 ```
 
-See [xlang type mapping](https://fory.apache.org/docs/specification/xlang_type_mapping) for mapping details.
+See [xlang guide](../docs/guide/xlang/index.md) for mapping details.
 
 ## Architecture
 
@@ -254,6 +254,6 @@ dotnet test Fory.sln -c Release
 
 ## Documentation
 
-- [C# guide index](https://fory.apache.org/docs/guide/csharp)
-- [Cross-language serialization spec](https://fory.apache.org/docs/specification/xlang_serialization_spec)
-- [Cross-language type mapping](https://fory.apache.org/docs/specification/xlang_type_mapping)
+- [C# guide index](../docs/guide/csharp/index.md)
+- [Cross-language serialization spec](../docs/specification/xlang_serialization_spec.md)
+- [Cross-language type mapping](../docs/specification/xlang_type_mapping.md)

@@ -91,7 +91,7 @@ value = fory.deserialize(payload_from_csharp)
 
 ## Type Mapping Reference
 
-See [xlang_type_mapping.md](../../specification/xlang_type_mapping.md) for complete mapping.
+See [xlang guide](../xlang/index.md) for complete mapping.
 
 ## Best Practices
 

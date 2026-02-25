@@ -49,14 +49,14 @@ public sealed class TwoStringField
     public string F2 { get; set; } = string.Empty;
 }
 
-Fory writer = Fory.Builder().Compatible(true).Build();
-writer.Register<OneStringField>(200);
+Fory fory1 = Fory.Builder().Compatible(true).Build();
+fory1.Register<OneStringField>(200);
 
-Fory reader = Fory.Builder().Compatible(true).Build();
-reader.Register<TwoStringField>(200);
+Fory fory2 = Fory.Builder().Compatible(true).Build();
+fory2.Register<TwoStringField>(200);
 
-byte[] payload = writer.Serialize(new OneStringField { F1 = "hello" });
-TwoStringField evolved = reader.Deserialize<TwoStringField>(payload);
+byte[] payload = fory1.Serialize(new OneStringField { F1 = "hello" });
+TwoStringField evolved = fory2.Deserialize<TwoStringField>(payload);
 
 // F2 falls back to default value on reader side.
 System.Diagnostics.Debug.Assert(evolved.F1 == "hello");

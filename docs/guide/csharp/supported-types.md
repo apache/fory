@@ -88,7 +88,7 @@ Dynamic object APIs (`SerializeObject` / `DeserializeObject`) support:
 ## Notes
 
 - User-defined types should be registered explicitly.
-- For cross-language usage, follow [xlang type mapping](../../specification/xlang_type_mapping.md).
+- For cross-language usage, follow the [xlang guide](../xlang/index.md).
 
 ## Related Topics
 
