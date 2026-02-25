@@ -100,6 +100,7 @@ package com.example.models alias models_v1;
 | Go       | Package name (last component)     |
 | Rust     | Module name (dots to underscores) |
 | C++      | Namespace (dots to `::`)          |
+| C#       | Namespace                         |
 
 ## File-Level Options
 
@@ -149,6 +150,25 @@ message Payment {
 
 - Generated Go files will have `package paymentv1`
 - The import path can be used in other Go code
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
+
+### C# Namespace Option
+
+Override the C# namespace for generated code:
+
+```protobuf
+package payment;
+option csharp_namespace = "MyCorp.Payment.V1";
+
+message Payment {
+    string id = 1;
+}
+```
+
+**Effect:**
+
+- Generated C# files use `namespace MyCorp.Payment.V1;`
+- Output path follows namespace segments (`MyCorp/Payment/V1/` under `--csharp_out`)
 - Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
 
 ### Java Outer Classname Option
@@ -285,10 +305,10 @@ For protobuf extension options, see
 
 ### Option Priority
 
-For language-specific packages:
+For language-specific packages/namespaces:
 
 1. Command-line package override (highest priority)
-2. Language-specific option (`java_package`, `go_package`)
+2. Language-specific option (`java_package`, `go_package`, `csharp_namespace`)
 3. Fory IDL package declaration (fallback)
 
 **Example:**

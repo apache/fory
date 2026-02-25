@@ -20,8 +20,14 @@
     names: named(staticTypeId),
     named(isReferenceTrackableType),
     named(__forySchemaHash),
+    named(__forySchemaHashTrackRefDisabled),
+    named(__forySchemaHashTrackRefEnabled),
     named(foryCompatibleTypeMetaFields),
+    named(__foryCompatibleTypeMetaFieldsTrackRefDisabled),
+    named(__foryCompatibleTypeMetaFieldsTrackRefEnabled),
     named(foryDefault),
+    named(foryWrite),
+    named(foryRead),
     named(foryWriteData),
     named(foryReadData)
 )

@@ -685,6 +685,63 @@ if err := restored.FromBytes(data); err != nil {
 }
 ```
 
+## C\#
+
+### Output Layout
+
+C# output is one `.cs` file per schema, for example:
+
+- `<csharp_out>/addressbook/addressbook.cs`
+
+### Type Generation
+
+Messages generate `[ForyObject]` classes with C# properties and byte helpers:
+
+```csharp
+[ForyObject]
+public sealed partial class Person
+{
+    public string Name { get; set; } = string.Empty;
+    public int Id { get; set; }
+    public List<Person.PhoneNumber> Phones { get; set; } = new();
+    public Animal Pet { get; set; } = null!;
+
+    public byte[] ToBytes() { ... }
+    public static Person FromBytes(byte[] data) { ... }
+}
+```
+
+Unions generate `Union` subclasses with typed case helpers:
+
+```csharp
+public sealed class Animal : Union
+{
+    public static Animal Dog(Dog value) { ... }
+    public static Animal Cat(Cat value) { ... }
+    public bool IsDog => ...;
+    public Dog DogValue() { ... }
+}
+```
+
+### Registration
+
+Each schema generates a registration helper:
+
+```csharp
+public static class AddressbookForyRegistration
+{
+    public static void Register(Fory fory)
+    {
+        fory.Register<addressbook.Animal>((uint)106);
+        fory.Register<addressbook.Person>((uint)100);
+        // ...
+    }
+}
+```
+
+When explicit type IDs are not provided, generated registration uses computed
+numeric IDs (same behavior as other targets).
+
 ## Cross-Language Notes
 
 ### Type ID Behavior
@@ -702,6 +759,7 @@ if err := restored.FromBytes(data); err != nil {
 | Rust     | `person::PhoneNumber`          |
 | C++      | `Person::PhoneNumber`          |
 | Go       | `Person_PhoneNumber` (default) |
+| C#       | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
 
@@ -712,3 +770,4 @@ if err := restored.FromBytes(data); err != nil {
 | Rust     | `to_bytes` / `from_bytes` |
 | C++      | `to_bytes` / `from_bytes` |
 | Go       | `ToBytes` / `FromBytes`   |
+| C#       | `ToBytes` / `FromBytes`   |

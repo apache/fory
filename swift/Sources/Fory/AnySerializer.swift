@@ -24,7 +24,7 @@ public struct ForyAnyNullValue: Serializer {
         ForyAnyNullValue()
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .none
     }
 
@@ -48,7 +48,7 @@ extension AnyHashable: Serializer {
         AnyHashable(Int32(0))
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .unknown
     }
 
@@ -117,7 +117,7 @@ private struct DynamicAnyValue: Serializer {
         DynamicAnyValue(ForyAnyNullValue())
     }
 
-    static var staticTypeId: ForyTypeId {
+    static var staticTypeId: TypeId {
         .unknown
     }
 
@@ -179,7 +179,7 @@ private struct DynamicAnyValue: Serializer {
 
     func foryWriteTypeInfo(_ context: WriteContext) throws {
         if foryIsNone {
-            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.none.rawValue))
+            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.none.rawValue))
             return
         }
         try writeAnyTypeInfo(value, context: context)
@@ -300,11 +300,11 @@ private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
     }
 
     if value is [Any] {
-        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.list.rawValue))
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.list.rawValue))
         return
     }
     if value is [String: Any] || value is [Int32: Any] || value is [AnyHashable: Any] {
-        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: ForyTypeId.map.rawValue))
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.map.rawValue))
         return
     }
 

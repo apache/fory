@@ -10,3 +10,4 @@ Run tests:
 - Go: `./run_go_tests.sh`
 - Rust: `./run_rust_tests.sh`
 - C++: `./run_cpp_tests.sh`
+- C#: `./run_csharp_tests.sh`

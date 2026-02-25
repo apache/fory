@@ -425,8 +425,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       typeInfo.setSerializer(newSerializer);
       skipSerializer = newSerializer;
     }
-    SerializationBinding binding = SerializationBinding.createBinding(fory);
-    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(buffer, binding);
+    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(buffer);
   }
 
   private static void throwUnsupportedEncodingException(Class<?> cls)
@@ -1110,13 +1109,13 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     @Override
     public void writeChars(String s) throws IOException {
       Preconditions.checkNotNull(s);
-      fory.writeJavaString(buffer, s);
+      fory.writeString(buffer, s);
     }
 
     @Override
     public void writeUTF(String s) throws IOException {
       Preconditions.checkNotNull(s);
-      fory.writeJavaString(buffer, s);
+      fory.writeString(buffer, s);
     }
 
     @Override
@@ -1465,7 +1464,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     @Override
     public String readUTF() throws IOException {
-      return fory.readJavaString(buffer);
+      return fory.readString(buffer);
     }
 
     @Override

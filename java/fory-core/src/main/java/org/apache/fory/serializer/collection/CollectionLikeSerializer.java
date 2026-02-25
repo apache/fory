@@ -26,6 +26,7 @@ import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
@@ -44,7 +45,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   protected final boolean supportCodegenHook;
   protected final TypeInfoHolder elementTypeInfoHolder;
   private final TypeResolver typeResolver;
-  protected final SerializationBinding binding;
 
   // For subclass whose element type are instantiated already, such as
   // `Subclass extends ArrayList<String>`. If declared `Collection` doesn't specify
@@ -63,8 +63,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     super(fory, cls);
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
-    this.typeResolver = fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
-    binding = SerializationBinding.createBinding(fory);
+    this.typeResolver = fory.getTypeResolver();
   }
 
   public CollectionLikeSerializer(
@@ -72,8 +71,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     super(fory, cls, immutable);
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
-    this.typeResolver = fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
-    binding = SerializationBinding.createBinding(fory);
+    this.typeResolver = fory.getTypeResolver();
   }
 
   private GenericType getElementGenericType(Fory fory) {
@@ -362,13 +360,13 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       RefResolver refResolver = fory.getRefResolver();
       for (Object elem : collection) {
         if (!refResolver.writeRefOrNull(buffer, elem)) {
-          binding.write(buffer, serializer, elem);
+          serializer.write(buffer, elem);
         }
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (Object elem : collection) {
-          binding.write(buffer, serializer, elem);
+          serializer.write(buffer, elem);
         }
       } else {
         for (Object elem : collection) {
@@ -376,7 +374,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
             buffer.writeByte(Fory.NULL_FLAG);
           } else {
             buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-            binding.write(buffer, serializer, elem);
+            serializer.write(buffer, elem);
           }
         }
       }
@@ -388,12 +386,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       MemoryBuffer buffer, int flags, T collection) {
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       for (Object elem : collection) {
-        binding.writeRef(buffer, elem);
+        fory.writeRef(buffer, elem);
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (Object elem : collection) {
-          binding.writeNonRef(buffer, elem);
+          fory.writeNonRef(buffer, elem);
         }
       } else {
         for (Object elem : collection) {
@@ -401,16 +399,11 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
             buffer.writeByte(Fory.NULL_FLAG);
           } else {
             buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-            binding.writeNonRef(buffer, elem);
+            fory.writeNonRef(buffer, elem);
           }
         }
       }
     }
-  }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, T value) {
-    write(buffer, value);
   }
 
   @Override
@@ -583,19 +576,19 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     fory.incReadDepth();
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       for (int i = 0; i < numElements; i++) {
-        collection.add(binding.readRef(buffer, serializer));
+        collection.add(serializer.read(buffer, RefMode.TRACKING));
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (int i = 0; i < numElements; i++) {
-          collection.add(binding.read(buffer, serializer));
+          collection.add(serializer.read(buffer, RefMode.NONE));
         }
       } else {
         for (int i = 0; i < numElements; i++) {
           if (buffer.readByte() == Fory.NULL_FLAG) {
             collection.add(null);
           } else {
-            collection.add(binding.read(buffer, serializer));
+            collection.add(serializer.read(buffer, RefMode.NONE));
           }
         }
       }
@@ -609,12 +602,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       Preconditions.checkState(fory.trackingRef(), "Reference tracking is not enabled");
       for (int i = 0; i < numElements; i++) {
-        collection.add(binding.readRef(buffer));
+        collection.add(fory.readRef(buffer));
       }
     } else {
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (int i = 0; i < numElements; i++) {
-          collection.add(binding.readNonRef(buffer));
+          collection.add(fory.readNonRef(buffer));
         }
       } else {
         for (int i = 0; i < numElements; i++) {
@@ -622,15 +615,10 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
           if (headFlag == Fory.NULL_FLAG) {
             collection.add(null);
           } else {
-            collection.add(binding.readNonRef(buffer));
+            collection.add(fory.readNonRef(buffer));
           }
         }
       }
     }
-  }
-
-  @Override
-  public T xread(MemoryBuffer buffer) {
-    return read(buffer);
   }
 }
