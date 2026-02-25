@@ -417,6 +417,90 @@ TEST(SerializationTest, DeserializeZeroSize) {
   EXPECT_FALSE(result.ok());
 }
 
+TEST(SerializationTest, DeserializeRejectsXlangProtocolMismatch) {
+  auto writer = Fory::builder().xlang(true).build();
+  auto reader = Fory::builder().xlang(false).build();
+
+  auto bytes_result = writer.serialize<int32_t>(123);
+  ASSERT_TRUE(bytes_result.ok())
+      << "Serialization failed: " << bytes_result.error().to_string();
+
+  auto result = reader.deserialize<int32_t>(bytes_result.value().data(),
+                                            bytes_result.value().size());
+  EXPECT_FALSE(result.ok());
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.error().code(), ErrorCode::InvalidData);
+  EXPECT_NE(result.error().to_string().find("Protocol mismatch"),
+            std::string::npos);
+}
+
+TEST(SerializationTest, RegistrationByIdFailureDoesNotLeakTypeInfo) {
+  auto fory = Fory::builder().xlang(true).track_ref(false).build();
+  TypeResolver &resolver = fory.type_resolver();
+
+  ASSERT_TRUE(fory.register_struct<::SimpleStruct>(1).ok());
+
+  auto duplicate = fory.register_struct<::NestedStruct>(1);
+  EXPECT_FALSE(duplicate.ok());
+  ASSERT_FALSE(duplicate.ok());
+  EXPECT_EQ(duplicate.error().code(), ErrorCode::Invalid);
+
+  auto nested_info = resolver.get_type_info<::NestedStruct>();
+  EXPECT_FALSE(nested_info.ok());
+
+  auto simple_info = resolver.get_type_info<::SimpleStruct>();
+  ASSERT_TRUE(simple_info.ok());
+  auto by_user_id =
+      resolver.get_user_type_info_by_id(simple_info.value()->type_id, 1);
+  ASSERT_TRUE(by_user_id.ok());
+  EXPECT_EQ(by_user_id.value(), simple_info.value());
+}
+
+TEST(SerializationTest, RegistrationByNameFailureDoesNotLeakTypeInfo) {
+  auto fory = Fory::builder().xlang(true).track_ref(false).build();
+  TypeResolver &resolver = fory.type_resolver();
+
+  ASSERT_TRUE(fory.register_struct<::SimpleStruct>("demo", "SharedType").ok());
+
+  auto duplicate = fory.register_struct<::NestedStruct>("demo", "SharedType");
+  EXPECT_FALSE(duplicate.ok());
+  ASSERT_FALSE(duplicate.ok());
+  EXPECT_EQ(duplicate.error().code(), ErrorCode::Invalid);
+
+  auto nested_info = resolver.get_type_info<::NestedStruct>();
+  EXPECT_FALSE(nested_info.ok());
+
+  auto simple_info = resolver.get_type_info<::SimpleStruct>();
+  ASSERT_TRUE(simple_info.ok());
+  auto by_name = resolver.get_type_info_by_name("demo", "SharedType");
+  ASSERT_TRUE(by_name.ok());
+  EXPECT_EQ(by_name.value(), simple_info.value());
+}
+
+TEST(SerializationTest, TypeMetaRejectsOverConsumedDeclaredSize) {
+  TypeMeta meta =
+      TypeMeta::from_fields(static_cast<uint32_t>(TypeId::STRUCT), "", "S",
+                            false, 1, std::vector<FieldInfo>{});
+  auto bytes_result = meta.to_bytes();
+  ASSERT_TRUE(bytes_result.ok())
+      << "TypeMeta serialization failed: " << bytes_result.error().to_string();
+
+  std::vector<uint8_t> bytes = bytes_result.value();
+  ASSERT_GE(bytes.size(), sizeof(int64_t));
+
+  int64_t header = 0;
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  // Corrupt declared meta_size to be much smaller than actual payload.
+  header = (header & ~static_cast<int64_t>(0xFF)) | 0x01;
+  std::memcpy(bytes.data(), &header, sizeof(header));
+
+  Buffer buffer(bytes);
+  auto parsed = TypeMeta::from_bytes(buffer, nullptr);
+  EXPECT_FALSE(parsed.ok());
+  ASSERT_FALSE(parsed.ok());
+  EXPECT_EQ(parsed.error().code(), ErrorCode::InvalidData);
+}
+
 // ============================================================================
 // Configuration Tests
 // ============================================================================
@@ -476,6 +560,23 @@ TEST(SerializationTest, ThreadSafeForyMultiThread) {
   }
 
   EXPECT_EQ(success_count.load(), k_num_threads * k_iterations_per_thread);
+}
+
+TEST(SerializationTest, ThreadSafeForyRejectsRegistrationAfterFirstSerialize) {
+  auto fory = Fory::builder().xlang(true).track_ref(false).build_thread_safe();
+  ASSERT_TRUE(fory.register_struct<::ComplexStruct>(1).ok());
+
+  ::ComplexStruct original{"Alice", 30, {"reading", "coding"}};
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok())
+      << "Serialization failed: " << bytes_result.error().to_string();
+
+  auto late_registration = fory.register_struct<::SimpleStruct>(2);
+  EXPECT_FALSE(late_registration.ok());
+  ASSERT_FALSE(late_registration.ok());
+  EXPECT_EQ(late_registration.error().code(), ErrorCode::Invalid);
+  EXPECT_NE(late_registration.error().to_string().find("Cannot register types"),
+            std::string::npos);
 }
 
 } // namespace test
