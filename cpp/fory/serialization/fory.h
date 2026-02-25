@@ -230,7 +230,9 @@ public:
   /// fory.register_struct<MyStruct>(1);
   /// ```
   template <typename T> Result<void, Error> register_struct(uint32_t type_id) {
-    return type_resolver_->template register_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_by_id<T>(type_id);
+    });
   }
 
   /// Register a struct type with namespace and type name.
@@ -250,7 +252,9 @@ public:
   template <typename T>
   Result<void, Error> register_struct(const std::string &ns,
                                       const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_by_name<T>(ns, type_name);
+    });
   }
 
   /// Register a struct type with type name only (no namespace).
@@ -267,7 +271,9 @@ public:
   /// ```
   template <typename T>
   Result<void, Error> register_struct(const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_by_name<T>("", type_name);
+    });
   }
 
   /// Register an enum type with a numeric type ID.
@@ -288,7 +294,9 @@ public:
   /// fory.register_enum<Color>(1);
   /// ```
   template <typename T> Result<void, Error> register_enum(uint32_t type_id) {
-    return type_resolver_->template register_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_by_id<T>(type_id);
+    });
   }
 
   /// Register an enum type with namespace and type name.
@@ -308,7 +316,9 @@ public:
   template <typename T>
   Result<void, Error> register_enum(const std::string &ns,
                                     const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_by_name<T>(ns, type_name);
+    });
   }
 
   /// Register an enum type with type name only (no namespace).
@@ -325,7 +335,9 @@ public:
   /// ```
   template <typename T>
   Result<void, Error> register_enum(const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_by_name<T>("", type_name);
+    });
   }
 
   /// Register a union type with a numeric type ID.
@@ -336,7 +348,9 @@ public:
   /// @param type_id Unique numeric identifier for this union type.
   /// @return Success or error if registration fails.
   template <typename T> Result<void, Error> register_union(uint32_t type_id) {
-    return type_resolver_->template register_union_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_union_by_id<T>(type_id);
+    });
   }
 
   /// Register a union type with namespace and type name.
@@ -348,7 +362,9 @@ public:
   template <typename T>
   Result<void, Error> register_union(const std::string &ns,
                                      const std::string &type_name) {
-    return type_resolver_->template register_union_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_union_by_name<T>(ns, type_name);
+    });
   }
 
   /// Register a union type with type name only (no namespace).
@@ -358,7 +374,9 @@ public:
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_union(const std::string &type_name) {
-    return type_resolver_->template register_union_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_union_by_name<T>("", type_name);
+    });
   }
 
   /// Register an extension type with a numeric type ID.
@@ -371,7 +389,9 @@ public:
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_extension_type(uint32_t type_id) {
-    return type_resolver_->template register_ext_type_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_ext_type_by_id<T>(type_id);
+    });
   }
 
   /// Register an extension type with namespace and type name.
@@ -383,7 +403,10 @@ public:
   template <typename T>
   Result<void, Error> register_extension_type(const std::string &ns,
                                               const std::string &type_name) {
-    return type_resolver_->template register_ext_type_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_ext_type_by_name<T>(ns,
+                                                                   type_name);
+    });
   }
 
   /// Register an extension type with type name only (no namespace).
@@ -393,10 +416,29 @@ public:
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_extension_type(const std::string &type_name) {
-    return type_resolver_->template register_ext_type_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_ext_type_by_name<T>("",
+                                                                   type_name);
+    });
+  }
+
+private:
+  template <typename RegisterFn>
+  Result<void, Error> register_type(RegisterFn &&fn) {
+    std::lock_guard<std::mutex> lock(registration_mutex_);
+    if (FORY_PREDICT_FALSE(registration_locked_)) {
+      return Unexpected(Error::invalid(
+          "Cannot register types after first serialize/deserialize call"));
+    }
+    return std::forward<RegisterFn>(fn)();
   }
 
 protected:
+  void lock_registration() const {
+    std::lock_guard<std::mutex> lock(registration_mutex_);
+    registration_locked_ = true;
+  }
+
   /// Protected constructor - only derived classes can instantiate.
   explicit BaseFory(const Config &config,
                     std::shared_ptr<TypeResolver> resolver)
@@ -412,6 +454,8 @@ protected:
 
   Config config_;
   std::shared_ptr<TypeResolver> type_resolver_;
+  mutable std::mutex registration_mutex_;
+  mutable bool registration_locked_{false};
 };
 
 // ============================================================================
@@ -613,6 +657,7 @@ private:
   /// Finalize the type resolver on first use.
   void ensure_finalized() {
     if (!finalized_) {
+      lock_registration();
       auto final_result = type_resolver_->build_final_type_resolver();
       FORY_CHECK(final_result.ok())
           << "Failed to build finalized TypeResolver: "
@@ -758,6 +803,7 @@ private:
 
   std::shared_ptr<TypeResolver> get_finalized_resolver() const {
     std::call_once(finalized_once_flag_, [this]() {
+      lock_registration();
       auto final_result = type_resolver_->build_final_type_resolver();
       FORY_CHECK(final_result.ok())
           << "Failed to build finalized TypeResolver: "
