@@ -42,6 +42,7 @@ from pyfory.includes.libformat cimport (
 )
 
 
+
 # Create Python-accessible TypeId enum
 # The CTypeId enum from libformat.pxd is only accessible from Cython
 class TypeId:
@@ -415,6 +416,12 @@ def int64():
 
 def float16():
     """Create a 16-bit floating point type."""
+    return DataType.wrap(c_float16())
+
+def bfloat16():
+    """Create a 16-bit brain floating point type."""
+    # TODO: Use c_bfloat16() when C++ row format supports bfloat16
+    # For now, use float16 as a temporary workaround since C++ doesn't have bfloat16() yet
     return DataType.wrap(c_float16())
 
 def float32():

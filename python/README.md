@@ -490,6 +490,34 @@ fory.register(Person.class, "example.Person");
 Person person = (Person) fory.deserialize(binaryData);
 ```
 
+### BFloat16 Support
+
+`pyfory` supports `bfloat16` scalar values and `bfloat16` arrays in xlang mode:
+
+- Scalar type: `pyfory.BFloat16` (type id `18`)
+- Array type: `pyfory.BFloat16Array` (type id `54`)
+
+```python
+import pyfory
+from pyfory import BFloat16, BFloat16Array
+
+fory = pyfory.Fory(xlang=True, ref=False, strict=True)
+
+# Scalar bfloat16
+v = BFloat16(3.1415926)
+data = fory.serialize(v)
+out = fory.deserialize(data)
+print(float(out))
+
+# bfloat16 array
+arr = BFloat16Array([1.0, 2.5, -3.25])
+data = fory.serialize(arr)
+out = fory.deserialize(data)
+print(out)
+```
+
+`BFloat16Array` stores values in a packed `array('H')` representation and writes bytes in little-endian order for cross-language compatibility.
+
 ## 📊 Row Format - Zero-Copy Processing
 
 Apache Fury™ provides a random-access row format that enables reading nested fields from binary data without full deserialization. This drastically reduces overhead when working with large objects where only partial data access is needed. The format also supports memory-mapped files for ultra-low memory footprint.

@@ -18,6 +18,7 @@
 import os
 import platform
 import subprocess
+import time
 from os.path import abspath, join as pjoin
 
 from setuptools import setup
@@ -41,10 +42,33 @@ print(f"project_dir: {project_dir}")
 print(f"fory_cpp_src_dir: {fory_cpp_src_dir}")
 
 
+def _configure_bazel_shell_for_windows():
+    if os.name != "nt":
+        return
+    # Bazel genrules require a POSIX shell; prefer Git Bash on Windows.
+    candidates = []
+    for env_key in ("BAZEL_SH", "GIT_BASH", "BASH"):
+        value = os.environ.get(env_key)
+        if value:
+            candidates.append(value)
+    program_files = [os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")]
+    for base in program_files:
+        if not base:
+            continue
+        candidates.append(pjoin(base, "Git", "bin", "bash.exe"))
+        candidates.append(pjoin(base, "Git", "usr", "bin", "bash.exe"))
+    for path in candidates:
+        if os.path.exists(path):
+            os.environ["BAZEL_SH"] = path
+            print(f"Using BAZEL_SH={path}")
+            return
+
+
 class BinaryDistribution(Distribution):
     def __init__(self, attrs=None):
         super().__init__(attrs=attrs)
         if BAZEL_BUILD_EXT:
+            _configure_bazel_shell_for_windows()
             import sys
 
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -59,7 +83,18 @@ class BinaryDistribution(Distribution):
             bazel_args += ["//:cp_fory_so"]
             # Ensure Windows path compatibility
             cwd_path = os.path.normpath(project_dir)
-            subprocess.check_call(bazel_args, cwd=cwd_path)
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    subprocess.check_call(bazel_args, cwd=cwd_path)
+                    break
+                except subprocess.CalledProcessError:
+                    if attempt == max_attempts:
+                        raise
+                    # Retry transient dependency fetch failures (e.g. 502 from external archives).
+                    backoff_seconds = 5 * attempt
+                    print(f"Bazel build failed (attempt {attempt}/{max_attempts}), retrying in {backoff_seconds}s...")
+                    time.sleep(backoff_seconds)
 
     def has_ext_modules(self):
         return True

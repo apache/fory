@@ -35,7 +35,6 @@ from pyfory.serializer import (
     Serializer,
     Numpy1DArraySerializer,
     NDArraySerializer,
-    PythonNDArraySerializer,
     PyArraySerializer,
     DynamicPyArraySerializer,
     NoneSerializer,
@@ -56,6 +55,7 @@ from pyfory.serializer import (
     TaggedUint64Serializer,
     Float32Serializer,
     Float64Serializer,
+    BFloat16Serializer,
     StringSerializer,
     DateSerializer,
     TimestampSerializer,
@@ -249,7 +249,7 @@ class TypeResolver:
         register(tuple, serializer=TupleSerializer)
         register(slice, serializer=SliceSerializer)
         if np is not None:
-            register(np.ndarray, serializer=PythonNDArraySerializer)
+            register(np.ndarray, serializer=NDArraySerializer)
         register(array.array, serializer=DynamicPyArraySerializer)
         register(types.MappingProxyType, serializer=MappingProxySerializer)
         register(pickle.PickleBuffer, serializer=PickleBufferSerializer)
@@ -321,6 +321,13 @@ class TypeResolver:
             serializer=Float64Serializer,
         )
         register(float, type_id=TypeId.FLOAT64, serializer=Float64Serializer)
+        from pyfory.bfloat16 import bfloat16
+
+        register(
+            bfloat16,
+            type_id=TypeId.BFLOAT16,
+            serializer=BFloat16Serializer,
+        )
         register(str, type_id=TypeId.STRING, serializer=StringSerializer)
         # TODO(chaokunyang) DURATION DECIMAL
         register(datetime.datetime, type_id=TypeId.TIMESTAMP, serializer=TimestampSerializer)
@@ -332,6 +339,14 @@ class TypeResolver:
                 type_id=typeid,
                 serializer=PyArraySerializer(self.fory, ftype, typeid),
             )
+        from pyfory.bfloat16_array import BFloat16Array
+        from pyfory.serializer import BFloat16ArraySerializer
+
+        register(
+            BFloat16Array,
+            type_id=TypeId.BFLOAT16_ARRAY,
+            serializer=BFloat16ArraySerializer(self.fory, BFloat16Array, TypeId.BFLOAT16_ARRAY),
+        )
         if np:
             # overwrite pyarray  with same type id.
             # if pyarray are needed, one must annotate that value with XXXArrayType
@@ -451,7 +466,8 @@ class TypeResolver:
             raise TypeError(f"type name {typename} and id {type_id} should not be set at the same time")
         if cls in self._types_info:
             raise TypeError(f"{cls} registered already")
-        return self._register_xtype(
+        register_type = self._register_xtype if self.fory.xlang else self._register_pytype
+        return register_type(
             cls,
             type_id=type_id,
             user_type_id=user_type_id,
@@ -519,6 +535,30 @@ class TypeResolver:
             internal=internal,
         )
 
+    def _register_pytype(
+        self,
+        cls: Union[type, TypeVar],
+        *,
+        type_id: int = None,
+        user_type_id: int = NO_USER_TYPE_ID,
+        namespace: str = None,
+        typename: str = None,
+        serializer: Serializer = None,
+        internal: bool = False,
+    ):
+        # Set default type_id when None, similar to _register_xtype
+        if type_id is None and typename is not None:
+            type_id = self._next_type_id()
+        return self.__register_type(
+            cls,
+            type_id=type_id,
+            user_type_id=user_type_id,
+            namespace=namespace,
+            typename=typename,
+            serializer=serializer,
+            internal=internal,
+        )
+
     def __register_type(
         self,
         cls: Union[type, TypeVar],
@@ -565,7 +605,7 @@ class TypeResolver:
                 if user_type_id not in self._user_type_id_to_type_info or not internal:
                     self._user_type_id_to_type_info[user_type_id] = typeinfo
                 self._used_user_type_ids.add(user_type_id)
-            elif not TypeId.is_namespaced_type(type_id):
+            elif not self.fory.xlang or not TypeId.is_namespaced_type(type_id):
                 if type_id not in self._type_id_to_type_info or not internal:
                     self._type_id_to_type_info[type_id] = typeinfo
         self._types_info[cls] = typeinfo
@@ -588,6 +628,9 @@ class TypeResolver:
         if cls not in self._types_info:
             raise TypeUnregisteredError(f"{cls} not registered")
         typeinfo = self._types_info[cls]
+        if not self.fory.xlang:
+            typeinfo.serializer = serializer
+            return
         prev_type_id = typeinfo.type_id
         prev_user_type_id = typeinfo.user_type_id
         if needs_user_type_id(prev_type_id) and prev_user_type_id not in {None, NO_USER_TYPE_ID}:

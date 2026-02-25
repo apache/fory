@@ -64,6 +64,7 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
         TaggedUint64Serializer,
         Float32Serializer,
         Float64Serializer,
+        BFloat16Serializer,
         StringSerializer,
         DateSerializer,
         TimestampSerializer,
@@ -99,6 +100,7 @@ else:
         TaggedUint64Serializer,
         Float32Serializer,
         Float64Serializer,
+        BFloat16Serializer,
         StringSerializer,
         DateSerializer,
         TimestampSerializer,
@@ -146,6 +148,12 @@ class NoneSerializer(Serializer):
     def __init__(self, fory):
         super().__init__(fory, None)
         self.need_to_write_ref = False
+
+    def xwrite(self, buffer, value):
+        raise NotImplementedError
+
+    def xread(self, buffer):
+        raise NotImplementedError
 
     def write(self, buffer, value):
         pass
@@ -214,6 +222,12 @@ class PandasRangeIndexSerializer(Serializer):
         name = self.fory.read_ref(buffer)
         return self.type_(start, stop, step, dtype=dtype, name=name)
 
+    def xwrite(self, buffer, value):
+        raise NotImplementedError
+
+    def xread(self, buffer):
+        raise NotImplementedError
+
 
 # Use numpy array or python array module.
 typecode_dict = (
@@ -270,6 +284,7 @@ typeid_code = (
         TypeId.UINT64_ARRAY: "Q",
         TypeId.FLOAT32_ARRAY: "f",
         TypeId.FLOAT64_ARRAY: "d",
+        TypeId.BFLOAT16_ARRAY: "H",  # bfloat16 uses 'H' typecode (uint16)
     }
 )
 
@@ -309,7 +324,7 @@ class PyArraySerializer(Serializer):
         self.typecode = typeid_code[type_id]
         self.itemsize, ftype, self.type_id = typecode_dict[self.typecode]
 
-    def write(self, buffer, value):
+    def xwrite(self, buffer, value):
         assert value.itemsize == self.itemsize
         view = memoryview(value)
         assert view.format == self.typecode
@@ -325,11 +340,33 @@ class PyArraySerializer(Serializer):
             swapped.byteswap()
             buffer.write_buffer(swapped)
 
-    def read(self, buffer):
+    def xread(self, buffer):
         data = buffer.read_bytes_and_size()
         arr = array.array(self.typecode, [])
         arr.frombytes(data)
         if not is_little_endian and self.itemsize > 1:
+            # Swap bytes on big-endian machines for multi-byte types
+            arr.byteswap()
+        return arr
+
+    def write(self, buffer, value: array.array):
+        nbytes = len(value) * value.itemsize
+        buffer.write_string(value.typecode)
+        buffer.write_var_uint32(nbytes)
+        if is_little_endian or value.itemsize == 1:
+            buffer.write_buffer(value)
+        else:
+            # Swap bytes on big-endian machines for multi-byte types
+            swapped = array.array(value.typecode, value)
+            swapped.byteswap()
+            buffer.write_buffer(swapped)
+
+    def read(self, buffer):
+        typecode = buffer.read_string()
+        data = buffer.read_bytes_and_size()
+        arr = array.array(typecode[0], [])  # Take first character
+        arr.frombytes(data)
+        if not is_little_endian and arr.itemsize > 1:
             # Swap bytes on big-endian machines for multi-byte types
             arr.byteswap()
         return arr
@@ -340,8 +377,9 @@ class DynamicPyArraySerializer(Serializer):
 
     def __init__(self, fory, cls):
         super().__init__(fory, cls)
+        self._serializer = ReduceSerializer(fory, cls)
 
-    def write(self, buffer, value):
+    def xwrite(self, buffer, value):
         itemsize, ftype, type_id = typecode_dict[value.typecode]
         view = memoryview(value)
         nbytes = len(value) * itemsize
@@ -363,7 +401,7 @@ class DynamicPyArraySerializer(Serializer):
             swapped.byteswap()
             buffer.write_buffer(swapped)
 
-    def read(self, buffer):
+    def xread(self, buffer):
         type_id = buffer.read_uint8()
         typecode = typeid_code[type_id]
         itemsize = typecode_dict[typecode][0]
@@ -373,6 +411,50 @@ class DynamicPyArraySerializer(Serializer):
         if not is_little_endian and itemsize > 1:
             arr.byteswap()
         return arr
+
+    def write(self, buffer, value):
+        self._serializer.write(buffer, value)
+
+    def read(self, buffer):
+        return self._serializer.read(buffer)
+
+
+class BFloat16ArraySerializer(Serializer):
+    def __init__(self, fory, ftype, type_id: int):
+        super().__init__(fory, ftype)
+        self.type_id = type_id
+        self.itemsize = 2
+
+    def write(self, buffer, value):
+        from pyfory.bfloat16_array import BFloat16Array
+
+        if isinstance(value, BFloat16Array):
+            arr_data = value._data
+        elif isinstance(value, array.array) and value.typecode == "H":
+            arr_data = value
+        else:
+            arr_data = BFloat16Array(value)._data
+        nbytes = len(arr_data) * 2
+        buffer.write_var_uint32(nbytes)
+        if nbytes > 0:
+            if is_little_endian:
+                buffer.write_buffer(arr_data)
+            else:
+                swapped = array.array("H", arr_data)
+                swapped.byteswap()
+                buffer.write_buffer(swapped)
+
+    def read(self, buffer):
+        from pyfory.bfloat16_array import BFloat16Array
+
+        data = buffer.read_bytes_and_size()
+        arr = array.array("H", [])
+        arr.frombytes(data)
+        if not is_little_endian:
+            arr.byteswap()
+        bf16_arr = BFloat16Array.__new__(BFloat16Array)
+        bf16_arr._data = arr
+        return bf16_arr
 
 
 if np:
@@ -407,7 +489,6 @@ if np:
     )
 else:
     _np_dtypes_dict = {}
-_np_typeid_to_dtype = {type_id: dtype for dtype, (_, _, _, type_id) in _np_dtypes_dict.items()}
 
 
 class Numpy1DArraySerializer(Serializer):
@@ -417,8 +498,9 @@ class Numpy1DArraySerializer(Serializer):
         super().__init__(fory, ftype)
         self.dtype = dtype
         self.itemsize, self.typecode, _, self.type_id = _np_dtypes_dict[self.dtype]
+        self._serializer = ReduceSerializer(fory, np.ndarray)
 
-    def write(self, buffer, value):
+    def xwrite(self, buffer, value):
         assert value.itemsize == self.itemsize
         view = memoryview(value)
         try:
@@ -440,7 +522,7 @@ class Numpy1DArraySerializer(Serializer):
             # Swap bytes on big-endian machines for multi-byte types
             buffer.write_bytes(value.astype(value.dtype.newbyteorder("<")).tobytes())
 
-    def read(self, buffer):
+    def xread(self, buffer):
         data = buffer.read_bytes_and_size()
         arr = np.frombuffer(data, dtype=self.dtype.newbyteorder("<"))
         if self.itemsize > 1:
@@ -452,53 +534,32 @@ class Numpy1DArraySerializer(Serializer):
                 arr = arr.astype(self.dtype)
         return arr
 
+    def write(self, buffer, value):
+        self._serializer.write(buffer, value)
+
+    def read(self, buffer):
+        return self._serializer.read(buffer)
+
 
 class NDArraySerializer(Serializer):
-    def write(self, buffer, value):
-        # Write concrete 1D primitive ndarray using type id + bytes payload.
-        dtype_info = _np_dtypes_dict.get(value.dtype)
-        if dtype_info is None or value.ndim != 1:
-            raise NotImplementedError(f"Unsupported ndarray: dtype={value.dtype}, ndim={value.ndim}")
-        itemsize, _typecode, _ftype, type_id = dtype_info
+    def xwrite(self, buffer, value):
+        itemsize, typecode, ftype, type_id = _np_dtypes_dict[value.dtype]
         view = memoryview(value)
         nbytes = len(value) * itemsize
         buffer.write_uint8(type_id)
         buffer.write_var_uint32(nbytes)
         if value.dtype == np.dtype("bool") or not view.c_contiguous:
-            if not is_little_endian and itemsize > 1:
-                buffer.write_bytes(value.astype(value.dtype.newbyteorder("<")).tobytes())
-            else:
-                buffer.write_bytes(value.tobytes())
-        elif is_little_endian or itemsize == 1:
-            buffer.write_buffer(value)
+            buffer.write_bytes(value.tobytes())
         else:
-            buffer.write_bytes(value.astype(value.dtype.newbyteorder("<")).tobytes())
+            buffer.write_buffer(value)
 
-    def read(self, buffer):
-        type_id = buffer.read_uint8()
-        dtype = _np_typeid_to_dtype.get(type_id)
-        if dtype is None:
-            raise NotImplementedError(f"Unsupported ndarray type id: {type_id}")
-        data = buffer.read_bytes_and_size()
-        arr = np.frombuffer(data, dtype=dtype.newbyteorder("<"))
-        if dtype.itemsize > 1:
-            if is_little_endian:
-                arr = arr.view(dtype)
-            else:
-                arr = arr.astype(dtype)
-        return arr
+    def xread(self, buffer):
+        raise NotImplementedError("Multi-dimensional array not supported currently")
 
-
-class PythonNDArraySerializer(NDArraySerializer):
     def write(self, buffer, value):
-        dtype_info = _np_dtypes_dict.get(value.dtype)
-        if dtype_info is not None and value.ndim == 1:
-            super().write(buffer, value)
-            return
-
         fory = self.fory
         dtype = value.dtype
-        buffer.write_string(dtype.str)
+        fory.write_ref(buffer, dtype)
         buffer.write_var_uint32(len(value.shape))
         for dim in value.shape:
             buffer.write_var_uint32(dim)
@@ -510,22 +571,8 @@ class PythonNDArraySerializer(NDArraySerializer):
             fory.write_buffer_object(buffer, NDArrayBufferObject(value))
 
     def read(self, buffer):
-        reader_index = buffer.get_reader_index()
-        type_id = buffer.read_uint8()
-        dtype = _np_typeid_to_dtype.get(type_id)
-        if dtype is not None:
-            data = buffer.read_bytes_and_size()
-            arr = np.frombuffer(data, dtype=dtype.newbyteorder("<"))
-            if dtype.itemsize > 1:
-                if is_little_endian:
-                    arr = arr.view(dtype)
-                else:
-                    arr = arr.astype(dtype)
-            return arr
-
-        buffer.set_reader_index(reader_index)
         fory = self.fory
-        dtype = np.dtype(buffer.read_string())
+        dtype = fory.read_ref(buffer)
         ndim = buffer.read_var_uint32()
         shape = tuple(buffer.read_var_uint32() for _ in range(ndim))
         if dtype.kind == "O":
@@ -1200,6 +1247,12 @@ class FunctionSerializer(Serializer):
             func = result
         return func
 
+    def xwrite(self, buffer, value):
+        raise NotImplementedError()
+
+    def xread(self, buffer):
+        raise NotImplementedError()
+
     def write(self, buffer, value):
         """Serialize a function for Python-only mode."""
         self._serialize_function(buffer, value)
@@ -1264,6 +1317,12 @@ class MethodSerializer(Serializer):
             method = result
         return method
 
+    def xwrite(self, buffer, value):
+        return self.write(buffer, value)
+
+    def xread(self, buffer):
+        return self.read(buffer)
+
 
 class ObjectSerializer(Serializer):
     """Serializer for regular Python objects.
@@ -1306,6 +1365,14 @@ class ObjectSerializer(Serializer):
             setattr(obj, field_name, field_value)
         return obj
 
+    def xwrite(self, buffer, value):
+        # for cross-language or minimal framing, reuse the same logic
+        return self.write(buffer, value)
+
+    def xread(self, buffer):
+        # symmetric to xwrite
+        return self.read(buffer)
+
 
 @dataclasses.dataclass
 class NonExistEnum:
@@ -1323,9 +1390,16 @@ class NonExistEnumSerializer(Serializer):
         return True
 
     def write(self, buffer, value):
-        buffer.write_var_uint32(value.value)
+        buffer.write_string(value.name)
 
     def read(self, buffer):
+        name = buffer.read_string()
+        return NonExistEnum(name=name)
+
+    def xwrite(self, buffer, value):
+        buffer.write_var_uint32(value.value)
+
+    def xread(self, buffer):
         value = buffer.read_var_uint32()
         return NonExistEnum(value=value)
 
@@ -1336,6 +1410,12 @@ class UnsupportedSerializer(Serializer):
 
     def read(self, buffer):
         return self.fory.handle_unsupported_read(buffer)
+
+    def xwrite(self, buffer, value):
+        raise NotImplementedError(f"{self.type_} is not supported for xwrite")
+
+    def xread(self, buffer):
+        raise NotImplementedError(f"{self.type_} is not supported for xread")
 
 
 __all__ = [
@@ -1361,6 +1441,7 @@ __all__ = [
     "TaggedUint64Serializer",
     "Float32Serializer",
     "Float64Serializer",
+    "BFloat16Serializer",
     "StringSerializer",
     "DateSerializer",
     "TimestampSerializer",
