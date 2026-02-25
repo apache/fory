@@ -26,6 +26,7 @@ use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_NULL_FLAG};
 use crate::types::{RefMode, SIZE_OF_REF_AND_TYPE};
 use std::cell::UnsafeCell;
+use std::io::Read;
 use std::mem;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -959,13 +960,74 @@ impl Fory {
         reader: &mut Reader,
     ) -> Result<T, Error> {
         self.with_read_context(|context| {
-            let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
-            let mut new_reader = Reader::new(outlive_buffer);
-            new_reader.set_cursor(reader.cursor);
-            context.attach_reader(new_reader);
+            if reader.is_stream_backed() {
+                // Stream-backed path: move the owned stream out of the caller's reader,
+                // construct a fresh stream-backed reader at the current cursor, hand it
+                // to the context, then restore all state from the returned reader.
+                // This is the sequential-read case: caller creates Reader::from_stream(...)
+                // once and calls deserialize_from repeatedly.
+                let stream = mem::take(&mut reader.stream)
+                    .expect("is_stream_backed was true but stream is None");
+                let cursor = reader.cursor;
+                let mut stream_reader = Reader::from_stream(*stream);
+                // Sync cursor: the stream already consumed [0..cursor], re-position.
+                stream_reader.set_cursor(cursor);
+                context.attach_reader(stream_reader);
+                let result = self.deserialize_with_context(context);
+                let returned = context.detach_reader();
+                // Restore state back to caller's reader.
+                reader.cursor = returned.cursor;
+                reader.stream = returned.stream;
+                // Re-pin bf from the (possibly grown after fill_to) stream buffer.
+                // SAFETY: same invariant as Reader::from_stream and fill_to:
+                //   bf points into Box-owned stream buffer, owned by reader.stream,
+                //   which lives as long as reader.
+                if let Some(ref s) = reader.stream {
+                    reader.bf = unsafe { std::slice::from_raw_parts(s.data(), s.size()) };
+                }
+                result
+            } else {
+                // In-memory path: unchanged from original.
+                let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
+                let mut new_reader = Reader::new(outlive_buffer);
+                new_reader.set_cursor(reader.cursor);
+                context.attach_reader(new_reader);
+                let result = self.deserialize_with_context(context);
+                let end = context.detach_reader().get_cursor();
+                reader.set_cursor(end);
+                result
+            }
+        })
+    }
+
+    /// Deserializes a single value of type `T` from any `Read` source.
+    ///
+    /// Equivalent of C++ `fory.deserialize<T>(Buffer(ForyInputStream(source)))`.
+    /// Internally wraps the source in a [`crate::stream::ForyStreamBuf`] and calls
+    /// [`deserialize_from`](Self::deserialize_from).
+    ///
+    /// For deserializing **multiple values sequentially** from one stream
+    /// (e.g. a network socket or pipe), create the reader once and reuse it:
+    ///
+    /// ```rust,ignore
+    /// use fory_core::{Fory, Reader};
+    /// use fory_core::stream::ForyStreamBuf;
+    ///
+    /// let fory = Fory::default();
+    /// let mut reader = Reader::from_stream(ForyStreamBuf::new(my_socket));
+    /// let first: i32    = fory.deserialize_from(&mut reader).unwrap();
+    /// let second: String = fory.deserialize_from(&mut reader).unwrap();
+    /// ```
+    pub fn deserialize_from_stream<T: Serializer + ForyDefault>(
+        &self,
+        source: impl Read + Send + 'static,
+    ) -> Result<T, Error> {
+        self.with_read_context(|context| {
+            let stream = crate::stream::ForyStreamBuf::new(source);
+            let reader = Reader::from_stream(stream);
+            context.attach_reader(reader);
             let result = self.deserialize_with_context(context);
-            let end = context.detach_reader().get_cursor();
-            reader.set_cursor(end);
+            context.detach_reader();
             result
         })
     }
