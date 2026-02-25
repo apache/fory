@@ -411,6 +411,16 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         bool valueDeclared = hasGenerics && !valueTypeInfo.NeedsTypeInfoForField();
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
+        bool writeDeclaredCompatibleKeyTypeInfo =
+            context.Compatible &&
+            keyDeclared &&
+            !keyDynamicType &&
+            keyTypeInfo.NeedsTypeInfoForField();
+        bool writeDeclaredCompatibleValueTypeInfo =
+            context.Compatible &&
+            valueDeclared &&
+            !valueDynamicType &&
+            valueTypeInfo.NeedsTypeInfoForField();
         KeyValuePair<TKey, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
@@ -424,6 +434,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 valueDeclared,
                 keyDynamicType,
                 valueDynamicType,
+                writeDeclaredCompatibleKeyTypeInfo,
+                writeDeclaredCompatibleValueTypeInfo,
                 keyTypeInfo,
                 valueTypeInfo,
                 keySerializer,
@@ -472,7 +484,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
             if (keyIsNull)
             {
-                if (!valueDeclared)
+                if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
                 {
                     context.TypeResolver.WriteTypeInfo(valueSerializer, context);
                 }
@@ -488,7 +500,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
             if (valueIsNull)
             {
-                if (!keyDeclared)
+                if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
                 {
                     context.TypeResolver.WriteTypeInfo(keySerializer, context);
                 }
@@ -503,12 +515,12 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             }
 
             context.Writer.WriteUInt8(1);
-            if (!keyDeclared)
+            if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
             {
                 context.TypeResolver.WriteTypeInfo(keySerializer, context);
             }
 
-            if (!valueDeclared)
+            if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
             {
                 context.TypeResolver.WriteTypeInfo(valueSerializer, context);
             }
@@ -555,6 +567,16 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
             bool valueNull = (header & DictionaryBits.ValueNull) != 0;
             bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
+            bool readDeclaredCompatibleKeyTypeInfo =
+                context.Compatible &&
+                keyDeclared &&
+                !keyDynamicType &&
+                keyTypeInfo.NeedsTypeInfoForField();
+            bool readDeclaredCompatibleValueTypeInfo =
+                context.Compatible &&
+                valueDeclared &&
+                !valueDynamicType &&
+                valueTypeInfo.NeedsTypeInfoForField();
 
             if (keyNull && valueNull)
             {
@@ -568,7 +590,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 TValue valueRead = ReadValueElement(
                     context,
                     trackValueRef,
-                    !valueDeclared,
+                    !valueDeclared || readDeclaredCompatibleValueTypeInfo,
                     canonicalizeValues,
                     valueSerializer);
 
@@ -582,7 +604,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 TKey key = keySerializer.Read(
                     context,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
-                    !keyDeclared);
+                    !keyDeclared || readDeclaredCompatibleKeyTypeInfo);
 
                 map[key] = (TValue)valueSerializer.DefaultObject!;
                 readCount += 1;
@@ -597,7 +619,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                     DynamicTypeInfo? keyDynamicInfo = null;
                     DynamicTypeInfo? valueDynamicInfo = null;
 
-                    if (!keyDeclared)
+                    if (!keyDeclared || readDeclaredCompatibleKeyTypeInfo)
                     {
                         if (keyDynamicType)
                         {
@@ -609,7 +631,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                         }
                     }
 
-                    if (!valueDeclared)
+                    if (!valueDeclared || readDeclaredCompatibleValueTypeInfo)
                     {
                         if (valueDynamicType)
                         {
@@ -655,12 +677,12 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 continue;
             }
 
-            if (!keyDeclared)
+            if (!keyDeclared || readDeclaredCompatibleKeyTypeInfo)
             {
                 context.TypeResolver.ReadTypeInfo(keySerializer, context);
             }
 
-            if (!valueDeclared)
+            if (!valueDeclared || readDeclaredCompatibleValueTypeInfo)
             {
                 context.TypeResolver.ReadTypeInfo(valueSerializer, context);
             }
@@ -698,6 +720,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         bool valueDeclared,
         bool keyDynamicType,
         bool valueDynamicType,
+        bool writeDeclaredCompatibleKeyTypeInfo,
+        bool writeDeclaredCompatibleValueTypeInfo,
         TypeInfo keyTypeInfo,
         TypeInfo valueTypeInfo,
         Serializer<TKey> keySerializer,
@@ -765,7 +789,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             }
 
             context.Writer.WriteUInt8(1);
-            if (!keyDeclared)
+            if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
             {
                 if (keyDynamicType)
                 {
@@ -777,7 +801,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 }
             }
 
-            if (!valueDeclared)
+            if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
             {
                 if (valueDynamicType)
                 {

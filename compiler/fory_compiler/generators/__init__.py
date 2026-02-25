@@ -23,6 +23,7 @@ from fory_compiler.generators.python import PythonGenerator
 from fory_compiler.generators.cpp import CppGenerator
 from fory_compiler.generators.rust import RustGenerator
 from fory_compiler.generators.go import GoGenerator
+from fory_compiler.generators.csharp import CSharpGenerator
 
 GENERATORS = {
     "java": JavaGenerator,
@@ -30,6 +31,7 @@ GENERATORS = {
     "cpp": CppGenerator,
     "rust": RustGenerator,
     "go": GoGenerator,
+    "csharp": CSharpGenerator,
 }
 
 __all__ = [
@@ -39,5 +41,6 @@ __all__ = [
     "CppGenerator",
     "RustGenerator",
     "GoGenerator",
+    "CSharpGenerator",
     "GENERATORS",
 ]

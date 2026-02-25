@@ -1,4 +1,4 @@
-# Apache Fory™ C# #
+# Apache Fory™ C\#
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/apache/fory/blob/main/LICENSE)
 
@@ -6,7 +6,7 @@ Apache Fory™ is a blazing fast multi-language serialization framework powered 
 
 The C# implementation provides high-performance object graph serialization for .NET with source-generated serializers, optional reference tracking, schema evolution support, and cross-language compatibility.
 
-## Why Apache Fory™ C#? ##
+## Why Apache Fory™ C\#?
 
 - High-performance binary serialization for .NET 8+
 - Cross-language compatibility with Java, Python, C++, Go, Rust, and JavaScript
@@ -16,14 +16,14 @@ The C# implementation provides high-performance object graph serialization for .
 - Thread-safe runtime wrapper (`ThreadSafeFory`) for concurrent workloads
 - Dynamic object serialization APIs for heterogeneous payloads
 
-## Quick Start ##
+## Quick Start
 
-### Requirements ###
+### Requirements
 
 - .NET SDK 8.0+
 - C# 12+
 
-### Add Apache Fory™ C# ###
+### Add Apache Fory™ C\#
 
 From this repository, reference the library project:
 
@@ -37,7 +37,7 @@ From this repository, reference the library project:
 </ItemGroup>
 ```
 
-### Basic Example ###
+### Basic Example
 
 ```csharp
 using Apache.Fory;
@@ -64,9 +64,9 @@ byte[] payload = fory.Serialize(user);
 User decoded = fory.Deserialize<User>(payload);
 ```
 
-## Core Features ##
+## Core Features
 
-### 1. Object Graph Serialization ###
+### 1. Object Graph Serialization
 
 `[ForyObject]` types are serialized with generated serializers.
 
@@ -91,7 +91,7 @@ fory.Register<Address>(100);
 fory.Register<Person>(101);
 ```
 
-### 2. Shared and Circular References ###
+### 2. Shared and Circular References
 
 Enable reference tracking to preserve object identity.
 
@@ -113,7 +113,7 @@ Node decoded = fory.Deserialize<Node>(fory.Serialize(node));
 System.Diagnostics.Debug.Assert(object.ReferenceEquals(decoded, decoded.Next));
 ```
 
-### 3. Schema Evolution ###
+### 3. Schema Evolution
 
 Compatible mode allows schema changes between writer and reader.
 
@@ -140,7 +140,7 @@ fory2.Register<TwoFields>(300);
 TwoFields decoded = fory2.Deserialize<TwoFields>(fory1.Serialize(new OneField { F1 = "hello" }));
 ```
 
-### 4. Dynamic Object Serialization ###
+### 4. Dynamic Object Serialization
 
 Use dynamic APIs for unknown/heterogeneous payloads.
 
@@ -158,7 +158,7 @@ byte[] payload = fory.SerializeObject(map);
 object? decoded = fory.DeserializeObject(payload);
 ```
 
-### 5. Thread-Safe Runtime ###
+### 5. Thread-Safe Runtime
 
 `Fory` is single-thread optimized. Use `ThreadSafeFory` for concurrent access.
 
@@ -173,7 +173,7 @@ Parallel.For(0, 128, i =>
 });
 ```
 
-### 6. Custom Serializers ###
+### 6. Custom Serializers
 
 Provide custom encoding logic with `Serializer<T>`.
 
@@ -202,7 +202,7 @@ Fory fory = Fory.Builder().Build();
 fory.Register<Point, PointSerializer>(400);
 ```
 
-## Cross-Language Serialization ##
+## Cross-Language Serialization
 
 Use consistent registration mappings across languages.
 
@@ -217,7 +217,7 @@ fory.Register<Person>(100); // same ID on other language peers
 
 See [xlang guide](../docs/guide/xlang/index.md) for mapping details.
 
-## Architecture ##
+## Architecture
 
 The C# implementation consists of:
 
@@ -240,7 +240,7 @@ csharp/
     └── Fory.XlangPeer/
 ```
 
-## Building and Testing ##
+## Building and Testing
 
 Run from the `csharp` directory:
 
@@ -252,7 +252,7 @@ dotnet build Fory.sln -c Release
 dotnet test Fory.sln -c Release
 ```
 
-## Documentation ##
+## Documentation
 
 - [C# guide index](../docs/guide/csharp/index.md)
 - [Cross-language serialization spec](../docs/specification/xlang_serialization_spec.md)

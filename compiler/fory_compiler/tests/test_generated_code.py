@@ -31,6 +31,7 @@ from fory_compiler.generators.go import GoGenerator
 from fory_compiler.generators.java import JavaGenerator
 from fory_compiler.generators.python import PythonGenerator
 from fory_compiler.generators.rust import RustGenerator
+from fory_compiler.generators.csharp import CSharpGenerator
 from fory_compiler.ir.ast import Schema
 
 
@@ -40,6 +41,7 @@ GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
     CppGenerator,
     RustGenerator,
     GoGenerator,
+    CSharpGenerator,
 )
 
 
