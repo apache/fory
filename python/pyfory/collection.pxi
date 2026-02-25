@@ -191,10 +191,30 @@ cdef class CollectionSerializer(Serializer):
             self._add_element(collection_, i, buffer.read_string())
 
     cdef inline _write_int(self, Buffer buffer, value):
+        cdef Py_ssize_t bytes_written
+        cdef Py_ssize_t max_size
+        value_type = type(value)
+        if value_type is list or value_type is tuple:
+            # Reserve maximum possible size (9 bytes per varint64)
+            max_size = Py_SIZE(value) * 9
+            buffer.grow(<int32_t>max_size)
+            # Try batch write, fall back to slow path on error (e.g., int overflow)
+            try:
+                bytes_written = Fory_PyInt64SequenceWriteToBuffer(value, &buffer.c_buffer)
+                if bytes_written >= 0:
+                    return
+            except OverflowError:
+                pass  # Fall through to slow path
+        # Slow path: write elements one by one
         for s in value:
             buffer.write_varint64(s)
 
     cdef inline _read_int(self, Buffer buffer, int64_t len_, object collection_):
+        cdef Py_ssize_t bytes_read
+        if type(collection_) is list:
+            bytes_read = Fory_PyInt64SequenceReadFromBuffer(collection_, &buffer.c_buffer, len_)
+            if bytes_read >= 0:
+                return
         for i in range(len_):
             self._add_element(collection_, i, buffer.read_varint64())
 

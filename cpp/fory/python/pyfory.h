@@ -26,4 +26,10 @@ int Fory_PyBooleanSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
                                         Py_ssize_t start_index);
 int Fory_PyFloatSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
                                       Py_ssize_t start_index);
+
+Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
+                                             Buffer *buffer);
+
+Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
+                                              Py_ssize_t count);
 } // namespace fory
