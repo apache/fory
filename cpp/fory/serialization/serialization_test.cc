@@ -417,6 +417,47 @@ TEST(SerializationTest, DeserializeZeroSize) {
   EXPECT_FALSE(result.ok());
 }
 
+TEST(SerializationTest, DeserializeRejectsXlangProtocolMismatch) {
+  auto writer = Fory::builder().xlang(true).build();
+  auto reader = Fory::builder().xlang(false).build();
+
+  auto bytes_result = writer.serialize<int32_t>(123);
+  ASSERT_TRUE(bytes_result.ok())
+      << "Serialization failed: " << bytes_result.error().to_string();
+
+  auto result = reader.deserialize<int32_t>(bytes_result.value().data(),
+                                            bytes_result.value().size());
+  EXPECT_FALSE(result.ok());
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.error().code(), ErrorCode::InvalidData);
+  EXPECT_NE(result.error().to_string().find("Protocol mismatch"),
+            std::string::npos);
+}
+
+TEST(SerializationTest, TypeMetaRejectsOverConsumedDeclaredSize) {
+  TypeMeta meta =
+      TypeMeta::from_fields(static_cast<uint32_t>(TypeId::STRUCT), "", "S",
+                            false, 1, std::vector<FieldInfo>{});
+  auto bytes_result = meta.to_bytes();
+  ASSERT_TRUE(bytes_result.ok())
+      << "TypeMeta serialization failed: " << bytes_result.error().to_string();
+
+  std::vector<uint8_t> bytes = bytes_result.value();
+  ASSERT_GE(bytes.size(), sizeof(int64_t));
+
+  int64_t header = 0;
+  std::memcpy(&header, bytes.data(), sizeof(header));
+  // Corrupt declared meta_size to be much smaller than actual payload.
+  header = (header & ~static_cast<int64_t>(0xFF)) | 0x01;
+  std::memcpy(bytes.data(), &header, sizeof(header));
+
+  Buffer buffer(bytes);
+  auto parsed = TypeMeta::from_bytes(buffer, nullptr);
+  EXPECT_FALSE(parsed.ok());
+  ASSERT_FALSE(parsed.ok());
+  EXPECT_EQ(parsed.error().code(), ErrorCode::InvalidData);
+}
+
 // ============================================================================
 // Configuration Tests
 // ============================================================================

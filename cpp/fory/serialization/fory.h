@@ -527,6 +527,12 @@ public:
     if (header.is_null) {
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
     }
+    if (FORY_PREDICT_FALSE(header.is_xlang != config_.xlang)) {
+      return Unexpected(Error::invalid_data(
+          "Protocol mismatch: payload xlang=" +
+          std::string(header.is_xlang ? "true" : "false") +
+          ", local xlang=" + std::string(config_.xlang ? "true" : "false")));
+    }
 
     read_ctx_->attach(buffer);
     ReadContextGuard guard(*read_ctx_);
@@ -559,6 +565,12 @@ public:
     FORY_TRY(header, read_header(buffer));
     if (header.is_null) {
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
+    }
+    if (FORY_PREDICT_FALSE(header.is_xlang != config_.xlang)) {
+      return Unexpected(Error::invalid_data(
+          "Protocol mismatch: payload xlang=" +
+          std::string(header.is_xlang ? "true" : "false") +
+          ", local xlang=" + std::string(config_.xlang ? "true" : "false")));
     }
 
     read_ctx_->attach(buffer);
