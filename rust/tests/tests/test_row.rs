@@ -40,10 +40,11 @@ fn row_with_array_field() {
     assert_eq!(obj.index(), 42);
     let point_getter = obj.point();
     assert_eq!(point_getter.size(), 4);
-    assert_eq!(point_getter.get(0), 1.0);
-    assert_eq!(point_getter.get(1), 2.0);
-    assert_eq!(point_getter.get(2), 3.0);
-    assert_eq!(point_getter.get(3), 4.0);
+    assert_eq!(point_getter.get(0).expect("index 0"), 1.0);
+    assert_eq!(point_getter.get(1).expect("index 1"), 2.0);
+    assert_eq!(point_getter.get(2).expect("index 2"), 3.0);
+    assert_eq!(point_getter.get(3).expect("index 3"), 4.0);
+    assert!(point_getter.get(4).is_err());
 }
 
 #[test]
@@ -73,9 +74,10 @@ fn row_with_nested_struct_array() {
     assert_eq!(obj.name(), "origin");
     let coords = obj.origin().coords();
     assert_eq!(coords.size(), 3);
-    assert_eq!(coords.get(0), 0.0);
-    assert_eq!(coords.get(1), 0.0);
-    assert_eq!(coords.get(2), 0.0);
+    assert_eq!(coords.get(0).expect("index 0"), 0.0);
+    assert_eq!(coords.get(1).expect("index 1"), 0.0);
+    assert_eq!(coords.get(2).expect("index 2"), 0.0);
+    assert!(coords.get(3).is_err());
 }
 
 #[test]
@@ -118,17 +120,20 @@ fn row() {
     assert_eq!(f3, vec![1, 2, 3]);
     let f4_size: usize = obj.f3().f4().size();
     assert_eq!(f4_size, 3);
-    assert_eq!(obj.f3().f4().get(0), -1);
-    assert_eq!(obj.f3().f4().get(1), 2);
-    assert_eq!(obj.f3().f4().get(2), -3);
+    assert_eq!(obj.f3().f4().get(0).expect("index 0"), -1);
+    assert_eq!(obj.f3().f4().get(1).expect("index 1"), 2);
+    assert_eq!(obj.f3().f4().get(2).expect("index 2"), -3);
+    assert!(obj.f3().f4().get(3).is_err());
 
     let binding = obj.f3().f5();
 
     assert_eq!(binding.keys().size(), 2);
-    assert_eq!(binding.keys().get(0), "k1");
+    assert_eq!(binding.keys().get(0).expect("key 0"), "k1");
+    assert!(binding.keys().get(2).is_err());
 
     assert_eq!(binding.values().size(), 2);
-    assert_eq!(binding.values().get(0), "v1");
+    assert_eq!(binding.values().get(0).expect("value 0"), "v1");
+    assert!(binding.values().get(2).is_err());
 
     let f5 = binding.to_btree_map().expect("should be map");
     assert_eq!(f5.get("k1").expect("should exists"), &"v1");
