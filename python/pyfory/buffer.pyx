@@ -50,22 +50,51 @@ cdef class _SharedBufferOwner:
 
 @cython.final
 cdef class Buffer:
-    def __init__(self,  data not None, int32_t offset=0, length=None):
-        self.data = data
-        cdef int32_t buffer_len = len(data)
+    def read_from_stream(self, int32_t size):
+        if not hasattr(self.data, 'read'):
+            return 0
+
+        cdef bytes chunk = self.data.read(size)
+        cdef int32_t length = len(chunk)
+
+        if length > 0:
+            # IMPORTANT: Keep a reference to the chunk in self.data 
+            # so the memory address stays valid!
+            self.data_chunk = chunk 
+            self.c_buffer = CBuffer(get_address(chunk), length, False)
+            self.c_buffer.reader_index(0)
+            self.c_buffer.writer_index(length)
+        
+        return length
+
+    def __init__(self, data not None, int32_t offset=0, length=None):
+        cdef int32_t buffer_len
         cdef int length_
-        if length is None:
-            length_ = buffer_len - offset
-        else:
-            length_ = length
-        if offset < 0 or offset + length_ > buffer_len:
-            raise ValueError(f'Wrong offset {offset} or length {length} for buffer with size {buffer_len}')
         cdef uint8_t* address
-        if length_ > 0:
-            address = get_address(data) + offset
+
+        self.data = data
+
+        if hasattr(data, 'read') and callable(data.read):
+            self.c_buffer = CBuffer(NULL, 0, False)
         else:
-            address = NULL
-        self.c_buffer = CBuffer(address, length_, False)
+            buffer_len = len(data)
+            if length is None:
+                length_ = buffer_len - offset
+            else:
+                length_ = length
+
+            if offset < 0 or offset + length_ > buffer_len:
+                raise ValueError(
+                    f'Wrong offset {offset} or length {length} for buffer with size {buffer_len}'
+                )
+
+            if length_ > 0:
+                address = get_address(data) + offset
+            else:
+                address = NULL
+
+            self.c_buffer = CBuffer(address, length_, False)
+
         self.c_buffer.reader_index(0)
         self.c_buffer.writer_index(0)
 
