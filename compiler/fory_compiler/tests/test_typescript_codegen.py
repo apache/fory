@@ -137,6 +137,30 @@ def test_typescript_nested_enum():
     assert "HOME = 1" in output
 
 
+def test_typescript_nested_enum_registration_uses_simple_name():
+    """Test that nested enums are registered with simple names, not qualified names."""
+    source = dedent(
+        """
+        package example;
+
+        message Person [id=100] {
+            string name = 1;
+
+            enum PhoneType [id=101] {
+                MOBILE = 0;
+                HOME = 1;
+            }
+        }
+        """
+    )
+    output = generate_typescript(source)
+
+    # Check that nested enum is registered with simple name (not qualified name)
+    assert "fory.register(PhoneType, 101)" in output
+    # Ensure qualified names are NOT used
+    assert "Person.PhoneType" not in output
+
+
 def test_typescript_union_generation():
     """Test that unions are properly generated as discriminated unions."""
     source = dedent(
@@ -278,10 +302,14 @@ def test_typescript_field_naming():
     )
     output = generate_typescript(source)
 
-    # Check camelCase conversion
-    assert "first_name:" in output or "firstName:" in output
-    assert "last_name:" in output or "lastName:" in output
-    assert "phone_number:" in output or "phoneNumber:" in output
+    # Check that field names are properly converted to camelCase
+    assert "firstName:" in output
+    assert "lastName:" in output
+    assert "phoneNumber:" in output
+    # Ensure snake_case is not used
+    assert "first_name:" not in output
+    assert "last_name:" not in output
+    assert "phone_number:" not in output
 
 
 def test_typescript_no_runtime_dependencies():

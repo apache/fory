@@ -62,12 +62,15 @@ class TypeScriptGenerator(BaseGenerator):
         PrimitiveKind.VAR_UINT64: "bigint | number",
         PrimitiveKind.TAGGED_UINT64: "bigint | number",
         PrimitiveKind.FLOAT16: "number",
+        PrimitiveKind.BFLOAT16: "number",
         PrimitiveKind.FLOAT32: "number",
         PrimitiveKind.FLOAT64: "number",
         PrimitiveKind.STRING: "string",
         PrimitiveKind.BYTES: "Uint8Array",
         PrimitiveKind.DATE: "Date",
         PrimitiveKind.TIMESTAMP: "Date",
+        PrimitiveKind.DURATION: "number",
+        PrimitiveKind.DECIMAL: "number",
         PrimitiveKind.ANY: "any",
     }
 
@@ -108,7 +111,7 @@ class TypeScriptGenerator(BaseGenerator):
                 imported.append(item)
             else:
                 local.append(item)
-        return local, imported  # Return (local, imported) tuple
+        return imported, local  # Return (imported, local) tuple
 
     def get_module_name(self) -> str:
         """Get the TypeScript module name from package."""
@@ -178,7 +181,7 @@ class TypeScriptGenerator(BaseGenerator):
             lines.append("")
 
         # Generate enums (top-level only)
-        local_enums, _ = self.split_imported_types(self.schema.enums)
+        _, local_enums = self.split_imported_types(self.schema.enums)
         if local_enums:
             lines.append("// Enums")
             lines.append("")
@@ -187,7 +190,7 @@ class TypeScriptGenerator(BaseGenerator):
                 lines.append("")
 
         # Generate unions (top-level only)
-        local_unions, _ = self.split_imported_types(self.schema.unions)
+        _, local_unions = self.split_imported_types(self.schema.unions)
         if local_unions:
             lines.append("// Unions")
             lines.append("")
@@ -196,7 +199,7 @@ class TypeScriptGenerator(BaseGenerator):
                 lines.append("")
 
         # Generate messages (including nested types)
-        local_messages, _ = self.split_imported_types(self.schema.messages)
+        _, local_messages = self.split_imported_types(self.schema.messages)
         if local_messages:
             lines.append("// Messages")
             lines.append("")
@@ -244,17 +247,7 @@ class TypeScriptGenerator(BaseGenerator):
         if comment:
             lines.append(comment)
 
-        # Generate nested enums first
-        for nested_enum in message.nested_enums:
-            lines.extend(self.generate_enum(nested_enum, indent=indent))
-            lines.append("")
-
-        # Generate nested unions
-        for nested_union in message.nested_unions:
-            lines.extend(self.generate_union(nested_union, indent=indent))
-            lines.append("")
-
-        # Generate the main interface
+        # Generate the main interface first
         lines.append(f"{ind}export interface {message.name} {{")
 
         # Generate fields
@@ -266,7 +259,17 @@ class TypeScriptGenerator(BaseGenerator):
 
         lines.append(f"{ind}}}")
 
-        # Generate nested messages
+        # Generate nested enums after parent interface
+        for nested_enum in message.nested_enums:
+            lines.append("")
+            lines.extend(self.generate_enum(nested_enum, indent=indent))
+
+        # Generate nested unions after parent interface
+        for nested_union in message.nested_unions:
+            lines.append("")
+            lines.extend(self.generate_union(nested_union, indent=indent))
+
+        # Generate nested messages after parent interface
         for nested_msg in message.nested_messages:
             lines.append("")
             lines.extend(
@@ -350,33 +353,25 @@ class TypeScriptGenerator(BaseGenerator):
 
         return lines
 
-    def _generate_message_registration(
-        self, message: Message, lines: List[str], parent: Optional[str] = None
-    ):
+    def _generate_message_registration(self, message: Message, lines: List[str]):
         """Generate registration for a message and its nested types."""
-        qual_name = f"{parent}.{message.name}" if parent else message.name
-
-        # Register nested enums
+        # Register nested enums with simple names
         for nested_enum in message.nested_enums:
             if self.should_register_by_id(nested_enum):
                 type_id = nested_enum.type_id
-                lines.append(
-                    f"  fory.register({qual_name}.{nested_enum.name}, {type_id});"
-                )
+                lines.append(f"  fory.register({nested_enum.name}, {type_id});")
 
-        # Register nested unions
+        # Register nested unions with simple names
         for nested_union in message.nested_unions:
             if self.should_register_by_id(nested_union):
                 type_id = nested_union.type_id
-                lines.append(
-                    f"  fory.registerUnion({qual_name}.{nested_union.name}, {type_id});"
-                )
+                lines.append(f"  fory.registerUnion({nested_union.name}, {type_id});")
 
-        # Register nested messages
+        # Register nested messages recursively
         for nested_msg in message.nested_messages:
-            self._generate_message_registration(nested_msg, lines, qual_name)
+            self._generate_message_registration(nested_msg, lines)
 
-        # Register the message itself
+        # Register the message itself with simple name
         if self.should_register_by_id(message):
             type_id = message.type_id
-            lines.append(f"  fory.register({qual_name}, {type_id});")
+            lines.append(f"  fory.register({message.name}, {type_id});")
