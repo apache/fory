@@ -15,7 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""TypeScript/JavaScript code generator."""
+"""TypeScript/JavaScript code generator.
+
+Generates pure TypeScript type definitions from FDL IDL files.
+Supports messages, enums, unions, and all primitive types.
+"""
 
 from pathlib import Path
 from typing import List, Optional, Tuple
