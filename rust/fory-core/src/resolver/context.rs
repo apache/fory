@@ -315,6 +315,9 @@ pub struct ReadContext<'a> {
     xlang: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
+    max_string_bytes: Option<usize>,
+    max_collection_size: Option<usize>,
+    max_map_size: Option<usize>,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -342,6 +345,9 @@ impl<'a> ReadContext<'a> {
             xlang: config.xlang,
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
+            max_string_bytes: config.max_string_bytes,
+            max_collection_size: config.max_collection_size,
+            max_map_size: config.max_map_size,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -470,6 +476,45 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     pub fn read_meta_string(&mut self) -> Result<&MetaString, Error> {
         self.meta_string_resolver.read_meta_string(&mut self.reader)
+    }
+
+    #[inline(always)]
+    pub fn check_string_bytes(&self, len: usize) -> Result<(), Error> {
+        if let Some(max) = self.max_string_bytes {
+            if len > max {
+                return Err(Error::invalid_data(format!(
+                    "string byte length {} exceeds limit {}",
+                    len, max
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn check_collection_size(&self, len: usize) -> Result<(), Error> {
+        if let Some(max) = self.max_collection_size {
+            if len > max {
+                return Err(Error::invalid_data(format!(
+                    "collection length {} exceeds limit {}",
+                    len, max
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn check_map_size(&self, len: usize) -> Result<(), Error> {
+        if let Some(max) = self.max_map_size {
+            if len > max {
+                return Err(Error::invalid_data(format!(
+                    "map entry count {} exceeds limit {}",
+                    len, max
+                )));
+            }
+        }
+        Ok(())
     }
 
     #[inline(always)]

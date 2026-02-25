@@ -865,8 +865,12 @@ impl<'a> Reader<'a> {
 
     // ============ STRING (TypeId = 19) ============
 
+    /// # Caller Contract
+    /// Validate `len` against `ReadContext::check_string_bytes` before calling this.
+    /// `check_bound` only verifies buffer has `len` bytes; it does not enforce size limits.
     #[inline(always)]
     pub fn read_latin1_string(&mut self, len: usize) -> Result<String, Error> {
+        self.check_bound(len)?;
         self.check_bound(len)?;
         if len < SIMD_THRESHOLD {
             // Fast path for small buffers
@@ -913,6 +917,9 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// # Caller Contract
+    /// Validate `len` against `ReadContext::check_string_bytes` before calling this.
+    /// `check_bound` only verifies buffer has `len` bytes; it does not enforce size limits.
     #[inline(always)]
     pub fn read_utf8_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
@@ -930,6 +937,9 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// # Caller Contract
+    /// Validate `len` against `ReadContext::check_string_bytes` before calling this.
+    /// `check_bound` only verifies buffer has `len` bytes; it does not enforce size limits.
     #[inline(always)]
     pub fn read_utf16_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;

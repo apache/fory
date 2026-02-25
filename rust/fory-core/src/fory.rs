@@ -321,6 +321,48 @@ impl Fory {
         self
     }
 
+    /// Sets the maximum byte length of a single deserialized string. Default is no limit.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default().max_string_bytes(1024 * 1024);
+    /// ```
+    pub fn max_string_bytes(mut self, max: usize) -> Self {
+        self.config.max_string_bytes = Some(max);
+        self
+    }
+
+    /// Sets the maximum element count of a single deserialized collection. Default is no limit.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default().max_collection_size(10_000);
+    /// ```
+    pub fn max_collection_size(mut self, max: usize) -> Self {
+        self.config.max_collection_size = Some(max);
+        self
+    }
+
+    /// Sets the maximum entry count of a single deserialized map. Default is no limit.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default().max_map_size(10_000);
+    /// ```
+    pub fn max_map_size(mut self, max: usize) -> Self {
+        self.config.max_map_size = Some(max);
+        self
+    }
+
     /// Returns whether cross-language serialization is enabled.
     pub fn is_xlang(&self) -> bool {
         self.config.xlang

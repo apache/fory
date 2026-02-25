@@ -46,6 +46,7 @@ impl Serializer for String {
         let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
+        context.check_string_bytes(len as usize)?;
         let s = match encoding {
             0 => context.reader.read_latin1_string(len as usize),
             1 => context.reader.read_utf16_string(len as usize),

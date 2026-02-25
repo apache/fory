@@ -233,6 +233,7 @@ where
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_collection_data_dyn_ref(context, len);
     }
+    context.check_collection_size(len as usize)?;
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
     if !declared {
@@ -271,6 +272,7 @@ where
     if len == 0 {
         return Ok(Vec::new());
     }
+    context.check_collection_size(len as usize)?;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_vec_data_dyn_ref(context, len);
     }

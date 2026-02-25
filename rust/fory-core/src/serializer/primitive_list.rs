@@ -84,6 +84,7 @@ pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>
         return Err(Error::invalid_data("Invalid data length"));
     }
     let len = size_bytes / std::mem::size_of::<T>();
+    context.check_collection_size(len)?;
     let mut vec: Vec<T> = Vec::with_capacity(len);
 
     #[cfg(target_endian = "little")]
