@@ -63,9 +63,10 @@ Compile options:
 | `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                          | (none)              |
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)              |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)              |
-| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | from schema/default |
-| `--emit-fdl`                          | Print translated Fory IDL for non-`.fdl` inputs       | `false`             |
-| `--emit-fdl-path`                     | Write translated Fory IDL to a file or directory      | (stdout)            |
+| `--grpc`                              | Generate gRPC service code (in development)           | `false`             |
+| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`        |
+| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`             |
+| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)            |
 
 Scan options (with `--scan-generated`):
 
@@ -177,6 +178,12 @@ foryc schema.proto --emit-fdl
 
 # Write translated Fory IDL to a directory
 foryc schema.fbs --emit-fdl --emit-fdl-path ./translated
+```
+
+**Generate gRPC service code:**
+
+```bash
+foryc schema.fdl --grpc --lang go,java
 ```
 
 ## Import Path Resolution
