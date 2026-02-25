@@ -46,7 +46,15 @@ impl Serializer for String {
         let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
-        context.check_string_bytes(len as usize)?;
+        // For UTF-16, `len` is the number of code-units (each 2 bytes wide).
+        // Convert to a byte budget before checking so the limit means bytes,
+        // not code-units.  Latin-1 and UTF-8 already store `len` as byte count.
+        let byte_len = if encoding == 1 {
+            (len as usize).saturating_mul(2)
+        } else {
+            len as usize
+        };
+        context.check_string_bytes(byte_len)?;
         let s = match encoding {
             0 => context.reader.read_latin1_string(len as usize),
             1 => context.reader.read_utf16_string(len as usize),

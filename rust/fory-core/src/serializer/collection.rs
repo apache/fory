@@ -230,10 +230,13 @@ where
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
+    // Guard must come before the polymorphic dispatch so that non-Vec collections
+    // (HashSet, LinkedList, BTreeSet, ...) with polymorphic element types are also
+    // protected.  Mirrors the ordering in read_vec_data.
+    context.check_collection_size(len as usize)?;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_collection_data_dyn_ref(context, len);
     }
-    context.check_collection_size(len as usize)?;
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
     if !declared {
