@@ -643,6 +643,8 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := int(buf.ReadVarUint32(ctxErr))
+	ctx.checkCollectionSize(length) 
+    if ctx.HasError() { return }  
 	ptr := (*[]string)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]string, 0)
@@ -670,7 +672,7 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				continue // null string, leave as zero value
 			}
 		}
-		result[i] = readString(buf, ctxErr)
+		result[i] = readString(buf, ctxErr, ctx.maxStringBytes)
 	}
 	*ptr = result
 }

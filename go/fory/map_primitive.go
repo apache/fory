@@ -69,8 +69,13 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 }
 
 // readMapStringString reads map[string]string using chunk protocol
-func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
+func readMapStringString(buf *ByteBuffer, err *Error, maxStringBytes, maxMapSize int) map[string]string {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[string]string, size)
 	if size == 0 {
 		return result
@@ -94,7 +99,8 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 			if !valueDeclared {
 				buf.ReadUint8(err) // skip value type
 			}
-			v := readString(buf, err)
+			v := readString(buf, err, maxStringBytes)
+
 			result[""] = v // empty string as null key
 			size--
 			continue
@@ -104,7 +110,8 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 			if !keyDeclared {
 				buf.ReadUint8(err) // skip key type
 			}
-			k := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
 			result[k] = "" // empty string as null value
 			size--
 			continue
@@ -123,8 +130,10 @@ func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
 
 		// ReadData chunk entries
 		for i := 0; i < chunkSize && size > 0; i++ {
-			k := readString(buf, err)
-			v := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
+			v := readString(buf, err, maxStringBytes)
+
 			result[k] = v
 			size--
 		}
@@ -172,8 +181,13 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 }
 
 // readMapStringInt64 reads map[string]int64 using chunk protocol
-func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
+func readMapStringInt64(buf *ByteBuffer, err *Error, maxStringBytes, maxMapSize int) map[string]int64 {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[string]int64, size)
 	if size == 0 {
 		return result
@@ -197,7 +211,8 @@ func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
 			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
-			k := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
 			v := buf.ReadVarint64(err)
 			result[k] = v
 			size--
@@ -246,8 +261,13 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 }
 
 // readMapStringInt32 reads map[string]int32 using chunk protocol
-func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
+func readMapStringInt32(buf *ByteBuffer, err *Error, maxStringBytes, maxMapSize int) map[string]int32 {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[string]int32, size)
 	if size == 0 {
 		return result
@@ -271,7 +291,8 @@ func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
 			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
-			k := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
 			v := buf.ReadVarint32(err)
 			result[k] = v
 			size--
@@ -320,8 +341,13 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 }
 
 // readMapStringInt reads map[string]int using chunk protocol
-func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
+func readMapStringInt(buf *ByteBuffer, err *Error, maxStringBytes, maxMapSize int) map[string]int {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[string]int, size)
 	if size == 0 {
 		return result
@@ -345,7 +371,8 @@ func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
 			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
-			k := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
 			v := buf.ReadVarint64(err)
 			result[k] = int(v)
 			size--
@@ -394,8 +421,13 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 }
 
 // readMapStringFloat64 reads map[string]float64 using chunk protocol
-func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
+func readMapStringFloat64(buf *ByteBuffer, err *Error, maxStringBytes, maxMapSize int) map[string]float64 {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[string]float64, size)
 	if size == 0 {
 		return result
@@ -419,7 +451,8 @@ func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
 			buf.ReadUint8(err)
 		}
 		for i := 0; i < chunkSize && size > 0; i++ {
-			k := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
 			v := buf.ReadFloat64(err)
 			result[k] = v
 			size--
@@ -468,8 +501,13 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 }
 
 // readMapStringBool reads map[string]bool using chunk protocol
-func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
+func readMapStringBool(buf *ByteBuffer, err *Error, maxStringBytes, maxMapSize int) map[string]bool {
 	size := int(buf.ReadVarUint32(err))
+	if maxMapSize > 0 && size > maxMapSize {  
+		err.SetError(DeserializationErrorf(   
+			"fory: map size %d exceeds limit %d", size, maxMapSize)) 
+		return nil                           
+	}
 	result := make(map[string]bool, size)
 	if size == 0 {
 		return result
@@ -498,7 +536,8 @@ func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
 		}
 
 		for i := 0; i < chunkSize && size > 0; i++ {
-			k := readString(buf, err)
+			k := readString(buf, err, maxStringBytes)
+
 			v := buf.ReadBool(err)
 			result[k] = v
 			size--
@@ -549,6 +588,11 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 // readMapInt32Int32 reads map[int32]int32 using chunk protocol
 func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[int32]int32, size)
 	if size == 0 {
 		return result
@@ -623,6 +667,11 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 // readMapInt64Int64 reads map[int64]int64 using chunk protocol
 func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[int64]int64, size)
 	if size == 0 {
 		return result
@@ -697,6 +746,11 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 // readMapIntInt reads map[int]int using chunk protocol
 func readMapIntInt(buf *ByteBuffer, err *Error) map[int]int {
 	size := int(buf.ReadVarUint32(err))
+if maxMapSize > 0 && size > maxMapSize {  
+    err.SetError(DeserializationErrorf(   
+        "fory: map size %d exceeds limit %d", size, maxMapSize)) 
+    return nil                           
+}
 	result := make(map[int]int, size)
 	if size == 0 {
 		return result
@@ -752,7 +806,7 @@ func (s stringStringMapSerializer) ReadData(ctx *ReadContext, value reflect.Valu
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringString(ctx.buffer, ctx.Err())
+	result := readMapStringString(ctx.buffer, ctx.Err(), ctx.maxStringBytes, ctx.maxMapSize)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -787,7 +841,7 @@ func (s stringInt64MapSerializer) ReadData(ctx *ReadContext, value reflect.Value
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringInt64(ctx.buffer, ctx.Err())
+	result := readMapStringInt64(ctx.buffer, ctx.Err(), ctx.maxStringBytes, ctx.maxMapSize)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -822,7 +876,7 @@ func (s stringIntMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringInt(ctx.buffer, ctx.Err())
+	result := readMapStringInt(ctx.buffer, ctx.Err(), ctx.maxStringBytes, ctx.maxMapSize)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -857,7 +911,7 @@ func (s stringFloat64MapSerializer) ReadData(ctx *ReadContext, value reflect.Val
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringFloat64(ctx.buffer, ctx.Err())
+	result := readMapStringFloat64(ctx.buffer, ctx.Err(), ctx.maxStringBytes, ctx.maxMapSize)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -892,7 +946,7 @@ func (s stringBoolMapSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringBool(ctx.buffer, ctx.Err())
+	result := readMapStringBool(ctx.buffer, ctx.Err(), ctx.maxStringBytes, ctx.maxMapSize)
 	value.Set(reflect.ValueOf(result))
 }
 

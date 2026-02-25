@@ -43,6 +43,9 @@ type ReadContext struct {
 	err              Error         // Accumulated error state for deferred checking
 	lastTypePtr      uintptr
 	lastTypeInfo     *TypeInfo
+	maxStringBytes    int
+    maxCollectionSize int
+    maxMapSize        int
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -224,7 +227,7 @@ func (c *ReadContext) readFast(ptr unsafe.Pointer, ct DispatchId) {
 	case PrimitiveFloat16DispatchId:
 		*(*uint16)(ptr) = c.buffer.ReadUint16(err)
 	case StringDispatchId:
-		*(*string)(ptr) = readString(c.buffer, err)
+		*(*string)(ptr) = readString(c.buffer, err, c.maxStringBytes)
 	}
 }
 
@@ -251,7 +254,7 @@ func (c *ReadContext) ReadLength() int {
 
 // ReadString reads a string value (caller handles nullable/type meta)
 func (c *ReadContext) ReadString() string {
-	return readString(c.buffer, c.Err())
+	return readString(c.buffer, c.Err(), c.maxStringBytes)
 }
 
 // ReadBoolSlice reads []bool with ref/type info
@@ -914,3 +917,26 @@ func (c *ReadContext) ReadArrayValue(target reflect.Value, refMode RefMode, read
 		c.RefResolver().SetReadObject(refID, target)
 	}
 }
+
+func (ctx *ReadContext) checkStringBytes(n int) {
+    if ctx.maxStringBytes > 0 && n > ctx.maxStringBytes {
+        ctx.SetError(DeserializationErrorf(
+            "fory: string byte length %d exceeds limit %d", n, ctx.maxStringBytes))
+    }
+}
+
+func (ctx *ReadContext) checkCollectionSize(n int) {
+    if ctx.maxCollectionSize > 0 && n > ctx.maxCollectionSize {
+        ctx.SetError(DeserializationErrorf(
+            "fory: collection size %d exceeds limit %d", n, ctx.maxCollectionSize))
+    }
+}
+
+func (ctx *ReadContext) checkMapSize(n int) {
+    if ctx.maxMapSize > 0 && n > ctx.maxMapSize {
+        ctx.SetError(DeserializationErrorf(
+            "fory: map size %d exceeds limit %d", n, ctx.maxMapSize))
+    }
+}
+
+
