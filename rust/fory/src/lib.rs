@@ -946,7 +946,7 @@
 //!
 //! let scores = row.scores();
 //! assert_eq!(scores.size(), 4);
-//! assert_eq!(scores.get(0), 95);
+//! assert_eq!(scores.get(0).unwrap(), 95);
 //! # }
 //! ```
 //!
