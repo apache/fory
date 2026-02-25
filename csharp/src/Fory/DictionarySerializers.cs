@@ -66,6 +66,16 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         bool valueDeclared = hasGenerics && !valueTypeInfo.NeedsTypeInfoForField();
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
+        bool writeDeclaredCompatibleKeyTypeInfo =
+            context.Compatible &&
+            keyDeclared &&
+            !keyDynamicType &&
+            keyTypeInfo.NeedsTypeInfoForField();
+        bool writeDeclaredCompatibleValueTypeInfo =
+            context.Compatible &&
+            valueDeclared &&
+            !valueDynamicType &&
+            valueTypeInfo.NeedsTypeInfoForField();
 
         KeyValuePair<TKey, TValue>[] pairs = SnapshotPairs(map);
         if (keyDynamicType || valueDynamicType)
@@ -80,6 +90,8 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 valueDeclared,
                 keyDynamicType,
                 valueDynamicType,
+                writeDeclaredCompatibleKeyTypeInfo,
+                writeDeclaredCompatibleValueTypeInfo,
                 keyTypeInfo,
                 valueTypeInfo,
                 keySerializer,
@@ -129,7 +141,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 context.Writer.WriteUInt8(header);
                 if (!keyIsNull)
                 {
-                    if (!keyDeclared)
+                    if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
                     {
                         context.TypeResolver.WriteTypeInfo(keySerializer, context);
                     }
@@ -139,7 +151,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
                 if (!valueIsNull)
                 {
-                    if (!valueDeclared)
+                    if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
                     {
                         context.TypeResolver.WriteTypeInfo(valueSerializer, context);
                     }
@@ -175,12 +187,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             context.Writer.WriteUInt8(blockHeader);
             int chunkSizeOffset = context.Writer.Count;
             context.Writer.WriteUInt8(0);
-            if (!keyDeclared)
+            if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
             {
                 context.TypeResolver.WriteTypeInfo(keySerializer, context);
             }
 
-            if (!valueDeclared)
+            if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
             {
                 context.TypeResolver.WriteTypeInfo(valueSerializer, context);
             }
@@ -232,6 +244,16 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
             bool valueNull = (header & DictionaryBits.ValueNull) != 0;
             bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
+            bool readDeclaredCompatibleKeyTypeInfo =
+                context.Compatible &&
+                keyDeclared &&
+                !keyDynamicType &&
+                keyTypeInfo.NeedsTypeInfoForField();
+            bool readDeclaredCompatibleValueTypeInfo =
+                context.Compatible &&
+                valueDeclared &&
+                !valueDynamicType &&
+                valueTypeInfo.NeedsTypeInfoForField();
 
             if (keyNull && valueNull)
             {
@@ -246,7 +268,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 _ = ReadValueElement(
                     context,
                     trackValueRef,
-                    !valueDeclared,
+                    !valueDeclared || readDeclaredCompatibleValueTypeInfo,
                     canonicalizeValues,
                     valueSerializer);
 
@@ -260,7 +282,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 TKey key = keySerializer.Read(
                     context,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
-                    !keyDeclared);
+                    !keyDeclared || readDeclaredCompatibleKeyTypeInfo);
 
                 SetValue(map, key, (TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
@@ -275,7 +297,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                     DynamicTypeInfo? keyDynamicInfo = null;
                     DynamicTypeInfo? valueDynamicInfo = null;
 
-                    if (!keyDeclared)
+                    if (!keyDeclared || readDeclaredCompatibleKeyTypeInfo)
                     {
                         if (keyDynamicType)
                         {
@@ -287,7 +309,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                         }
                     }
 
-                    if (!valueDeclared)
+                    if (!valueDeclared || readDeclaredCompatibleValueTypeInfo)
                     {
                         if (valueDynamicType)
                         {
@@ -333,12 +355,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 continue;
             }
 
-            if (!keyDeclared)
+            if (!keyDeclared || readDeclaredCompatibleKeyTypeInfo)
             {
                 context.TypeResolver.ReadTypeInfo(keySerializer, context);
             }
 
-            if (!valueDeclared)
+            if (!valueDeclared || readDeclaredCompatibleValueTypeInfo)
             {
                 context.TypeResolver.ReadTypeInfo(valueSerializer, context);
             }
@@ -376,6 +398,8 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         bool valueDeclared,
         bool keyDynamicType,
         bool valueDynamicType,
+        bool writeDeclaredCompatibleKeyTypeInfo,
+        bool writeDeclaredCompatibleValueTypeInfo,
         TypeInfo keyTypeInfo,
         TypeInfo valueTypeInfo,
         Serializer<TKey> keySerializer,
@@ -443,7 +467,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             }
 
             context.Writer.WriteUInt8(1);
-            if (!keyDeclared)
+            if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
             {
                 if (keyDynamicType)
                 {
@@ -455,7 +479,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 }
             }
 
-            if (!valueDeclared)
+            if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
             {
                 if (valueDynamicType)
                 {

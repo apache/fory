@@ -316,6 +316,30 @@ generated/
 - Single `.cs` file per schema
 - Namespace uses `csharp_namespace` (if set) or Fory IDL package
 - Includes registration helper and `ToBytes`/`FromBytes` methods
+- Imported schemas are registered transitively (for example `root.idl` importing
+  `addressbook.fdl` and `tree.fdl`)
+
+### C# IDL Matrix Verification
+
+Run the end-to-end C# IDL matrix (FDL/IDL/Proto/FBS generation plus roundtrip tests):
+
+```bash
+cd integration_tests/idl_tests
+./run_csharp_tests.sh
+```
+
+This runner executes schema-consistent and compatible roundtrips across:
+
+- `addressbook`, `auto_id`, `complex_pb` primitives
+- `collection` and union/list variants
+- `optional_types`
+- `any_example` (`.fdl`) and `any_example` (`.proto`)
+- `tree` and `graph` reference-tracking cases
+- `monster.fbs` and `complex_fbs.fbs`
+- `root.idl` cross-package import coverage
+- evolving schema compatibility cases
+
+The script also sets `DATA_FILE*` variables so file-based roundtrip paths are exercised.
 
 ## Build Integration
 

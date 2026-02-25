@@ -414,6 +414,14 @@ public sealed partial class Cat
 }
 ```
 
+For full C# IDL verification (including root cross-package imports and file-based
+roundtrip paths), run:
+
+```bash
+cd integration_tests/idl_tests
+./run_csharp_tests.sh
+```
+
 ## CLI Reference
 
 ```

@@ -23,5 +23,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 python "${SCRIPT_DIR}/generate_idl.py" --lang csharp
 
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/fory-csharp-idl-XXXXXX")"
+cleanup() {
+  rm -rf "${TMP_DIR}"
+}
+trap cleanup EXIT
+
+export DATA_FILE="${TMP_DIR}/addressbook.bin"
+export DATA_FILE_AUTO_ID="${TMP_DIR}/auto_id.bin"
+export DATA_FILE_PRIMITIVES="${TMP_DIR}/primitives.bin"
+export DATA_FILE_COLLECTION="${TMP_DIR}/collection.bin"
+export DATA_FILE_COLLECTION_UNION="${TMP_DIR}/collection_union.bin"
+export DATA_FILE_COLLECTION_ARRAY="${TMP_DIR}/collection_array.bin"
+export DATA_FILE_COLLECTION_ARRAY_UNION="${TMP_DIR}/collection_array_union.bin"
+export DATA_FILE_OPTIONAL_TYPES="${TMP_DIR}/optional_types.bin"
+export DATA_FILE_ANY="${TMP_DIR}/any.bin"
+export DATA_FILE_ANY_PROTO="${TMP_DIR}/any_proto.bin"
+export DATA_FILE_TREE="${TMP_DIR}/tree.bin"
+export DATA_FILE_GRAPH="${TMP_DIR}/graph.bin"
+export DATA_FILE_FLATBUFFERS_MONSTER="${TMP_DIR}/flatbuffers_monster.bin"
+export DATA_FILE_FLATBUFFERS_TEST2="${TMP_DIR}/flatbuffers_test2.bin"
+export DATA_FILE_ROOT="${TMP_DIR}/root.bin"
+
 cd "${SCRIPT_DIR}/csharp/IdlTests"
 ENABLE_FORY_DEBUG_OUTPUT=1 dotnet test -c Release

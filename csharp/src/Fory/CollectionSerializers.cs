@@ -78,6 +78,11 @@ internal static class CollectionCodec
         bool trackRef = context.TrackRef && elementTypeInfo.IsReferenceTrackableType;
         bool declaredElementType = hasGenerics && CanDeclareElementType<T>(elementTypeInfo);
         bool dynamicElementType = elementTypeInfo.IsDynamicType;
+        bool writeDeclaredCompatibleTypeInfo =
+            context.Compatible &&
+            declaredElementType &&
+            !dynamicElementType &&
+            elementTypeInfo.NeedsTypeInfoForField();
 
         byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
         if (trackRef)
@@ -96,7 +101,7 @@ internal static class CollectionCodec
         }
 
         context.Writer.WriteUInt8(header);
-        if (!dynamicElementType && !declaredElementType)
+        if (!dynamicElementType && (!declaredElementType || writeDeclaredCompatibleTypeInfo))
         {
             context.TypeResolver.WriteTypeInfo(elementSerializer, context);
         }
@@ -161,6 +166,11 @@ internal static class CollectionCodec
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
         bool canonicalizeElements = context.TrackRef && !trackRef && elementTypeInfo.IsReferenceTrackableType;
+        bool readDeclaredCompatibleTypeInfo =
+            context.Compatible &&
+            declared &&
+            !elementTypeInfo.IsDynamicType &&
+            elementTypeInfo.NeedsTypeInfoForField();
 
         List<T> values = new(length);
         if (!sameType)
@@ -205,7 +215,7 @@ internal static class CollectionCodec
             return values;
         }
 
-        if (!declared)
+        if (!declared || readDeclaredCompatibleTypeInfo)
         {
             context.TypeResolver.ReadTypeInfo(elementSerializer, context);
         }
