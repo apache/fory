@@ -871,7 +871,6 @@ impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn read_latin1_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
-        self.check_bound(len)?;
         if len < SIMD_THRESHOLD {
             // Fast path for small buffers
             unsafe {

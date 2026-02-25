@@ -699,11 +699,11 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_varuint32()?;
-        let mut map = BTreeMap::<K, V>::new();
         if len == 0 {
-            return Ok(map);
+            return Ok(BTreeMap::new());
         }
         context.check_map_size(len as usize)?;
+        let mut map = BTreeMap::<K, V>::new();
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
