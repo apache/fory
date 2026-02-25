@@ -119,6 +119,57 @@ TEST(Buffer, TestGetBytesAsInt64) {
   EXPECT_TRUE(buffer->get_bytes_as_int64(0, 1, &result).ok());
   EXPECT_EQ(result, 100);
 }
+
+TEST(Buffer, TestGetBytesAsInt64OutOfBound) {
+  std::shared_ptr<Buffer> buffer;
+  allocate_buffer(8, &buffer);
+  int64_t result = -1;
+  auto oob = buffer->get_bytes_as_int64(7, 2, &result);
+  EXPECT_FALSE(oob.ok());
+  auto invalid = buffer->get_bytes_as_int64(0, 9, &result);
+  EXPECT_FALSE(invalid.ok());
+}
+
+TEST(Buffer, TestGetVarUint32Truncated) {
+  std::vector<uint8_t> bytes = {0x80};
+  Buffer buffer(bytes);
+  uint32_t read_bytes = 123;
+  uint32_t value = buffer.get_var_uint32(0, &read_bytes);
+  EXPECT_EQ(value, 0U);
+  EXPECT_EQ(read_bytes, 0U);
+
+  Error error;
+  uint32_t decoded = buffer.read_var_uint32(error);
+  EXPECT_EQ(decoded, 0U);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(buffer.reader_index(), 0U);
+}
+
+TEST(Buffer, TestGetVarUint64Truncated) {
+  std::vector<uint8_t> bytes(8, 0x80);
+  Buffer buffer(bytes);
+  uint32_t read_bytes = 123;
+  uint64_t value = buffer.get_var_uint64(0, &read_bytes);
+  EXPECT_EQ(value, 0ULL);
+  EXPECT_EQ(read_bytes, 0U);
+
+  Error error;
+  uint64_t decoded = buffer.read_var_uint64(error);
+  EXPECT_EQ(decoded, 0ULL);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(buffer.reader_index(), 0U);
+}
+
+TEST(Buffer, TestReadVarUint36SmallTruncated) {
+  std::vector<uint8_t> bytes = {0x80, 0x80, 0x80, 0x80};
+  Buffer buffer(bytes);
+
+  Error error;
+  uint64_t decoded = buffer.read_var_uint36_small(error);
+  EXPECT_EQ(decoded, 0ULL);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(buffer.reader_index(), 0U);
+}
 } // namespace fory
 
 int main(int argc, char **argv) {
