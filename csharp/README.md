@@ -1,12 +1,12 @@
-# Apache Fory C#
+# Apache Fory™ C#
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/apache/fory/blob/main/LICENSE)
 
-Apache Fory is a blazing fast multi-language serialization framework powered by JIT compilation and zero-copy techniques.
+Apache Fory™ is a blazing fast multi-language serialization framework powered by JIT compilation and zero-copy techniques.
 
 The C# implementation provides high-performance object graph serialization for .NET with source-generated serializers, optional reference tracking, schema evolution support, and cross-language compatibility.
 
-## Why Apache Fory C#?
+## Why Apache Fory™ C#?
 
 - High-performance binary serialization for .NET 8+
 - Cross-language compatibility with Java, Python, C++, Go, Rust, and JavaScript
@@ -23,7 +23,7 @@ The C# implementation provides high-performance object graph serialization for .
 - .NET SDK 8.0+
 - C# 12+
 
-### Add Apache Fory C#
+### Add Apache Fory™ C#
 
 From this repository, reference the library project:
 

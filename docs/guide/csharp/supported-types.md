@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page summarizes built-in and generated type support in Apache Fory C#.
+This page summarizes built-in and generated type support in Apache Fory™ C#.
 
 ## Primitive Types
 

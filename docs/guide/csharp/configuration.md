@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers `ForyBuilder` options and default configuration values for Apache Fory C#.
+This page covers `ForyBuilder` options and default configuration values for Apache Fory™ C#.
 
 ## Build a Runtime
 

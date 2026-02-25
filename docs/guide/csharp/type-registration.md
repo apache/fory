@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers how to register user types in Apache Fory C#.
+This page covers how to register user types in Apache Fory™ C#.
 
 ## Register by Numeric Type ID
 

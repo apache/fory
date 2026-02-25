@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory C# provides two runtime forms with different threading guarantees.
+Apache Fory™ C# provides two runtime forms with different threading guarantees.
 
 ## `Fory` (Single-Threaded Runtime)
 

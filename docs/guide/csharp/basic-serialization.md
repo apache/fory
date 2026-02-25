@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers typed and dynamic serialization APIs in Apache Fory C#.
+This page covers typed and dynamic serialization APIs in Apache Fory™ C#.
 
 ## Object Graph Serialization
 

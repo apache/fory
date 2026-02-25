@@ -14,7 +14,6 @@ The Swift implementation provides high-performance object graph serialization wi
 - **🔄 Shared/Circular References**: Preserve object identity with `trackRef` for reference graphs
 - **🧬 Dynamic Values**: Serialize `Any`, `AnyObject`, `any Serializer`, `AnyHashable`, and dynamic containers
 - **📦 Schema Evolution**: Enable compatible mode for add/remove/reorder field evolution
-- **⚠️ Clear Scope**: Swift currently focuses on object graph serialization (row-format APIs are not exposed yet)
 
 ## 📦 Package Layout
 

@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory C# can preserve shared and circular references when `TrackRef(true)` is enabled.
+Apache Fory™ C# can preserve shared and circular references when `TrackRef(true)` is enabled.
 
 ## Enable Reference Tracking
 

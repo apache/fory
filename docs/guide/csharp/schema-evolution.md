@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory C# supports schema evolution in `Compatible(true)` mode.
+Apache Fory™ C# supports schema evolution in `Compatible(true)` mode.
 
 ## Compatible Mode
 

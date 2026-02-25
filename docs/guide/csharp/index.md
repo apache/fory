@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory C# is a high-performance, cross-language serialization runtime for .NET. It provides object graph serialization, schema evolution, dynamic object support, and a thread-safe wrapper for concurrent workloads.
+Apache Fory™ C# is a high-performance, cross-language serialization runtime for .NET. It provides object graph serialization, schema evolution, dynamic object support, and a thread-safe wrapper for concurrent workloads.
 
 ## Why Fory C#?
 

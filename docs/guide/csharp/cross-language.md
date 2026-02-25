@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory C# supports cross-language serialization with other Fory runtimes.
+Apache Fory™ C# supports cross-language serialization with other Fory runtimes.
 
 ## Enable Cross-Language Mode
 
