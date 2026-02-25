@@ -171,38 +171,14 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
 
     private static void WriteTypedCaseValue(WriteContext context, Type caseType, object? value)
     {
-        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(caseType);
         object? normalized = NormalizeCaseValue(value, caseType);
-        bool writeTypeInfo = context.Compatible && typeInfo.NeedsTypeInfoForField();
-        context.TypeResolver.WriteObject(
-            typeInfo,
-            context,
-            normalized,
-            ResolveRefMode(typeInfo, context.TrackRef),
-            writeTypeInfo,
-            caseType.IsGenericType);
+        DynamicAnyCodec.WriteAny(context, normalized, RefMode.Tracking, writeTypeInfo: true, hasGenerics: caseType.IsGenericType);
     }
 
     private static object? ReadTypedCaseValue(ReadContext context, Type caseType)
     {
-        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(caseType);
-        bool readTypeInfo = context.Compatible && typeInfo.NeedsTypeInfoForField();
-        object? value = context.TypeResolver.ReadObject(
-            typeInfo,
-            context,
-            ResolveRefMode(typeInfo, context.TrackRef),
-            readTypeInfo);
+        object? value = DynamicAnyCodec.ReadAny(context, RefMode.Tracking, readTypeInfo: true);
         return NormalizeCaseValue(value, caseType);
-    }
-
-    private static RefMode ResolveRefMode(TypeInfo typeInfo, bool trackRef)
-    {
-        if (trackRef && typeInfo.IsReferenceTrackableType)
-        {
-            return RefMode.Tracking;
-        }
-
-        return typeInfo.IsNullableType ? RefMode.NullOnly : RefMode.None;
     }
 
     private static object? NormalizeCaseValue(object? value, Type targetType)

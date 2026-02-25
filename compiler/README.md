@@ -396,7 +396,7 @@ struct Cat {
 };
 ```
 
-### C#
+### C\#
 
 Generates classes with:
 

@@ -304,7 +304,7 @@ generated/
 - Namespace matches package (dots to `::`)
 - Header guards and forward declarations
 
-### C#
+### C\#
 
 ```
 generated/
