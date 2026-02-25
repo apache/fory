@@ -132,3 +132,13 @@ refresh_compile_commands(
     exclude_headers = "all",
     exclude_external_sources = True,
 )
+
+py_binary(
+    name = "streaming_verify",
+    srcs = ["streaming_test.py"],
+    main = "streaming_test.py",
+    deps = [
+        "//:buffer",
+        "//:serialization",
+    ],
+)

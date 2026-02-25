@@ -248,5 +248,16 @@ def test_read_bytes_as_int64():
     buf.read_bytes_as_int64(8)
 
 
+def test_buffer_from_stream():
+    import io
+    from pyfory.buffer import Buffer
+    # This specifically tests the fix for the __init__ len() error
+    stream = io.BytesIO(b"fury_test_data")
+    buf = Buffer(stream)
+    assert buf is not None
+    # If you've implemented the read logic, you can add:
+    # assert buf.to_bytes() == b"fury_test_data"
+
+
 if __name__ == "__main__":
     test_grow()
