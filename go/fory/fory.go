@@ -54,6 +54,9 @@ type Config struct {
 	MaxDepth   int
 	IsXlang    bool
 	Compatible bool // Schema evolution compatibility mode
+	MaxStringBytes    int 
+    MaxCollectionSize int 
+    MaxMapSize        int 
 }
 
 // defaultConfig returns the default configuration
@@ -100,6 +103,31 @@ func WithCompatible(enabled bool) Option {
 		f.config.Compatible = enabled
 	}
 }
+
+// WithMaxStringBytes sets the maximum allowed byte length for a single
+// deserialized string. 0 (default) means no limit.
+func WithMaxStringBytes(n int) Option {
+    return func(f *Fory) {
+        f.config.MaxStringBytes = n
+    }
+}
+
+// WithMaxCollectionSize sets the maximum allowed element count for a single
+// deserialized slice or list. 0 (default) means no limit.
+func WithMaxCollectionSize(n int) Option {
+    return func(f *Fory) {
+        f.config.MaxCollectionSize = n
+    }
+}
+
+// WithMaxMapSize sets the maximum allowed entry count for a single
+// deserialized map. 0 (default) means no limit.
+func WithMaxMapSize(n int) Option {
+    return func(f *Fory) {
+        f.config.MaxMapSize = n
+    }
+}
+
 
 // ============================================================================
 // Fory - Main serialization instance
