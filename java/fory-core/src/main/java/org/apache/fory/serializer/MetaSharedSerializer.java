@@ -73,7 +73,6 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   private final SerializationFieldInfo[] otherFields;
   private final RecordInfo recordInfo;
   private Serializer<T> serializer;
-  private final SerializationBinding binding;
   private final boolean hasDefaultValues;
   private final DefaultValueUtils.DefaultValueField[] defaultValueFields;
 
@@ -121,7 +120,6 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     } else {
       recordInfo = null;
     }
-    binding = SerializationBinding.createBinding(fory);
     boolean hasDefaultValues = false;
     DefaultValueUtils.DefaultValueField[] defaultValueFields =
         new DefaultValueUtils.DefaultValueField[0];
@@ -148,11 +146,6 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   @Override
-  public void xwrite(MemoryBuffer buffer, T value) {
-    write(buffer, value);
-  }
-
-  @Override
   public void write(MemoryBuffer buffer, T value) {
     if (serializer == null) {
       // xlang mode will register class and create serializer in advance, it won't go to here.
@@ -173,11 +166,6 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   @Override
-  public T xread(MemoryBuffer buffer) {
-    return read(buffer);
-  }
-
-  @Override
   public T read(MemoryBuffer buffer) {
     if (isRecord) {
       Object[] fieldValues =
@@ -191,7 +179,6 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     T targetObject = newInstance();
     Fory fory = this.fory;
     RefResolver refResolver = this.refResolver;
-    SerializationBinding binding = this.binding;
     if (refResolver instanceof MapRefResolver) {
       MapRefResolver mapRefResolver = (MapRefResolver) refResolver;
       if (mapRefResolver.hasPreservedRefId()) {
@@ -207,11 +194,12 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
-        AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer, targetObject);
+        AbstractObjectSerializer.readBuildInFieldValue(
+            fory, typeResolver, refResolver, fieldInfo, buffer, targetObject);
       } else {
         if (fieldInfo.fieldConverter == null) {
           // Skip the field value from buffer since it doesn't exist in current class
-          FieldSkipper.skipField(binding, fieldInfo, buffer);
+          FieldSkipper.skipField(fory, typeResolver, refResolver, fieldInfo, buffer);
         } else {
           compatibleRead(buffer, fieldInfo, targetObject);
         }
@@ -223,7 +211,8 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
-          AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+          AbstractObjectSerializer.readContainerFieldValue(
+              fory, typeResolver, refResolver, generics, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(targetObject, fieldValue);
@@ -233,7 +222,8 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       if (Utils.DEBUG_OUTPUT_VERBOSE) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
-      Object fieldValue = binding.readField(fieldInfo, buffer);
+      Object fieldValue =
+          AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(targetObject, fieldValue);
@@ -243,14 +233,16 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   private void compatibleRead(MemoryBuffer buffer, SerializationFieldInfo fieldInfo, Object obj) {
-    Object fieldValue = AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer);
+    Object fieldValue =
+        AbstractObjectSerializer.readBuildInFieldValue(
+            fory, typeResolver, refResolver, fieldInfo, buffer);
     fieldInfo.fieldConverter.set(obj, fieldValue);
   }
 
   private void readFields(MemoryBuffer buffer, Object[] fields) {
     int counter = 0;
     Fory fory = this.fory;
-    SerializationBinding binding = this.binding;
+    RefResolver refResolver = this.refResolver;
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
@@ -258,12 +250,13 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       }
       if (fieldInfo.fieldAccessor != null) {
         fields[counter++] =
-            AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer);
+            AbstractObjectSerializer.readBuildInFieldValue(
+                fory, typeResolver, refResolver, fieldInfo, buffer);
       } else {
         // Skip the field value from buffer since it doesn't exist in current class.
         // For records, fieldConverter can't be used since records are immutable and
         // constructed all at once. We just read to advance buffer position.
-        FieldSkipper.skipField(binding, fieldInfo, buffer);
+        FieldSkipper.skipField(fory, typeResolver, refResolver, fieldInfo, buffer);
         // remapping will handle those extra fields from peers.
         fields[counter++] = null;
       }
@@ -274,14 +267,16 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
-          AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+          AbstractObjectSerializer.readContainerFieldValue(
+              fory, typeResolver, refResolver, generics, fieldInfo, buffer);
       fields[counter++] = fieldValue;
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
-      Object fieldValue = binding.readField(fieldInfo, buffer);
+      Object fieldValue =
+          AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
       fields[counter++] = fieldValue;
     }
   }

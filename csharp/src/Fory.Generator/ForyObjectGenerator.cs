@@ -135,7 +135,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
-        sb.AppendLine($"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
+        sb.AppendLine(
+            $"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
         sb.AppendLine("{");
         foreach (MemberModel member in model.Members.Where(m => m.UseDictionaryTypeInfoCache))
         {
@@ -306,13 +307,9 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        return value;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    public override global::Apache.Fory.TypeId StaticTypeId => global::Apache.Fory.TypeId.Struct;");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("    public override bool IsNullableType => true;");
-            sb.AppendLine("    public override bool IsReferenceTrackableType => true;");
             sb.AppendLine($"    public override {model.TypeName} DefaultValue => null!;");
-            sb.AppendLine($"    public override bool IsNone(in {model.TypeName} value) => value is null;");
         }
         else
         {
@@ -320,7 +317,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine();
-        sb.AppendLine("    public override global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
+        sb.AppendLine("    public global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
         if (model.SortedMembers.Length == 0)
         {
@@ -438,7 +435,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string memberAccess = $"value.{member.Name}";
         string hasGenerics = member.IsCollection ? "true" : "false";
         string writeTypeInfo = compatibleMode
-            ? $"__ForyNeedsTypeInfoForField(context.TypeResolver.GetTypeInfo<{member.TypeName}>().StaticTypeId)"
+            ? $"context.TypeResolver.GetTypeInfo<{member.TypeName}>().NeedsTypeInfoForField()"
             : "false";
 
         switch (member.DynamicAnyKind)
@@ -516,7 +513,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"                    __Fory{cacheId}DictRuntimeType = {runtimeTypeVar};");
         sb.AppendLine($"                    __Fory{cacheId}DictTypeInfo = {typeInfoVar};");
         sb.AppendLine("                }");
-        sb.AppendLine($"                {typeInfoVar}.WriteObject(context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
+        sb.AppendLine(
+            $"                context.TypeResolver.WriteObject({typeInfoVar}, context, {fieldValueVar}, {refModeExpr}, {writeTypeInfo}, {hasGenerics});");
         sb.AppendLine("            }");
     }
 

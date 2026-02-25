@@ -89,7 +89,6 @@ internal static class TimeCodec
 
 public sealed class DateOnlySerializer : Serializer<DateOnly>
 {
-    public override TypeId StaticTypeId => TypeId.Date;
 
     public override DateOnly DefaultValue => new(1970, 1, 1);
 
@@ -107,7 +106,6 @@ public sealed class DateOnlySerializer : Serializer<DateOnly>
 
 public sealed class DateTimeOffsetSerializer : Serializer<DateTimeOffset>
 {
-    public override TypeId StaticTypeId => TypeId.Timestamp;
 
     public override DateTimeOffset DefaultValue => DateTimeOffset.UnixEpoch;
 
@@ -125,7 +123,6 @@ public sealed class DateTimeOffsetSerializer : Serializer<DateTimeOffset>
 
 public sealed class DateTimeSerializer : Serializer<DateTime>
 {
-    public override TypeId StaticTypeId => TypeId.Timestamp;
 
     public override DateTime DefaultValue => DateTime.UnixEpoch;
 
@@ -144,7 +141,6 @@ public sealed class DateTimeSerializer : Serializer<DateTime>
 
 public sealed class TimeSpanSerializer : Serializer<TimeSpan>
 {
-    public override TypeId StaticTypeId => TypeId.Duration;
 
     public override TimeSpan DefaultValue => TimeSpan.Zero;
 
@@ -164,15 +160,10 @@ internal sealed class ListDateOnlySerializer : Serializer<List<DateOnly>>
 {
     private static readonly ListSerializer<DateOnly> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override List<DateOnly> DefaultValue => null!;
-
-    public override bool IsNone(in List<DateOnly> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<DateOnly> value, bool hasGenerics)
     {
@@ -194,15 +185,10 @@ internal sealed class ListDateTimeOffsetSerializer : Serializer<List<DateTimeOff
 {
     private static readonly ListSerializer<DateTimeOffset> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override List<DateTimeOffset> DefaultValue => null!;
-
-    public override bool IsNone(in List<DateTimeOffset> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<DateTimeOffset> value, bool hasGenerics)
     {
@@ -224,15 +210,10 @@ internal sealed class ListDateTimeSerializer : Serializer<List<DateTime>>
 {
     private static readonly ListSerializer<DateTime> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override List<DateTime> DefaultValue => null!;
-
-    public override bool IsNone(in List<DateTime> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<DateTime> value, bool hasGenerics)
     {
@@ -255,15 +236,10 @@ internal sealed class ListTimeSpanSerializer : Serializer<List<TimeSpan>>
 {
     private static readonly ListSerializer<TimeSpan> Fallback = new();
 
-    public override TypeId StaticTypeId => TypeId.List;
 
-    public override bool IsNullableType => true;
 
-    public override bool IsReferenceTrackableType => true;
 
     public override List<TimeSpan> DefaultValue => null!;
-
-    public override bool IsNone(in List<TimeSpan> value) => value is null;
 
     public override void WriteData(WriteContext context, in List<TimeSpan> value, bool hasGenerics)
     {

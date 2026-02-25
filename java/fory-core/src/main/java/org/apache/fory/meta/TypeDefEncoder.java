@@ -221,7 +221,7 @@ class TypeDefEncoder {
         header |= (size << 2);
         buffer.writeByte(header);
       }
-      fieldType.xwrite(buffer, false);
+      fieldType.writeCrossLanguage(buffer, false);
       // write field name
       if (!fieldInfo.hasFieldId()) {
         buffer.writeBytes(encoded);

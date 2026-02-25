@@ -19,20 +19,7 @@ namespace Apache.Fory;
 
 public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
 {
-    private readonly Serializer<T> _defaultWrappedSerializer = new TypeResolver().GetSerializer<T>();
-
-    public override TypeId StaticTypeId => _defaultWrappedSerializer.StaticTypeId;
-
-    public override bool IsNullableType => true;
-
-    public override bool IsReferenceTrackableType => _defaultWrappedSerializer.IsReferenceTrackableType;
-
     public override T? DefaultValue => null;
-
-    public override bool IsNone(in T? value)
-    {
-        return !value.HasValue;
-    }
 
     public override void WriteData(WriteContext context, in T? value, bool hasGenerics)
     {
@@ -50,23 +37,6 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
     {
         Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
         return wrappedSerializer.ReadData(context);
-    }
-
-    public override void WriteTypeInfo(WriteContext context)
-    {
-        Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
-        wrappedSerializer.WriteTypeInfo(context);
-    }
-
-    public override void ReadTypeInfo(ReadContext context)
-    {
-        Serializer<T> wrappedSerializer = context.TypeResolver.GetSerializer<T>();
-        wrappedSerializer.ReadTypeInfo(context);
-    }
-
-    public override IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
-    {
-        return _defaultWrappedSerializer.CompatibleTypeMetaFields(trackRef);
     }
 
     public override void Write(WriteContext context, in T? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)

@@ -1005,16 +1005,6 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @Override
     public void write(MemoryBuffer buffer, MyExt value) {
-      xwrite(buffer, value);
-    }
-
-    @Override
-    public MyExt read(MemoryBuffer buffer) {
-      return xread(buffer);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, MyExt value) {
       System.out.println("Writer Index Before write myext: " + buffer.writerIndex());
       buffer.writeVarInt32(value.id);
       System.out.println("Write id " + value.id);
@@ -1022,7 +1012,7 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @SuppressWarnings("unchecked")
     @Override
-    public MyExt xread(MemoryBuffer buffer) {
+    public MyExt read(MemoryBuffer buffer) {
       MyExt obj = new MyExt();
       obj.id = buffer.readVarInt32();
       return obj;

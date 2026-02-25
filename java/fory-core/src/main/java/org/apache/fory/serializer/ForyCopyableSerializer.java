@@ -47,14 +47,4 @@ public class ForyCopyableSerializer<T> extends Serializer<T> {
   public T read(MemoryBuffer buffer) {
     return serializer.read(buffer);
   }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, T value) {
-    serializer.xwrite(buffer, value);
-  }
-
-  @Override
-  public T xread(MemoryBuffer buffer) {
-    return serializer.xread(buffer);
-  }
 }

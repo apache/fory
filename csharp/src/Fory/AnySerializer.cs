@@ -19,15 +19,11 @@ namespace Apache.Fory;
 
 public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 {
-    public override TypeId StaticTypeId => TypeId.Unknown;
-    public override bool IsNullableType => true;
-    public override bool IsReferenceTrackableType => true;
     public override object? DefaultValue => null;
-    public override bool IsNone(in object? value) => value is null;
 
     public override void WriteData(WriteContext context, in object? value, bool hasGenerics)
     {
-        if (IsNone(value))
+        if (value is null)
         {
             return;
         }
@@ -46,22 +42,11 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, context);
     }
 
-    public override void WriteTypeInfo(WriteContext context)
-    {
-        throw new InvalidDataException("dynamic Any value type info is runtime-only");
-    }
-
-    public override void ReadTypeInfo(ReadContext context)
-    {
-        DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
-        context.SetDynamicTypeInfo(typeof(object), typeInfo);
-    }
-
     public override void Write(WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         if (refMode != RefMode.None)
         {
-            if (IsNone(value))
+            if (value is null)
             {
                 context.Writer.WriteInt8((sbyte)RefFlag.Null);
                 return;
@@ -113,7 +98,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                     context.RefReader.PushPendingReference(reservedRefId);
                     if (readTypeInfo)
                     {
-                        ReadTypeInfo(context);
+                        ReadAnyTypeInfo(context);
                     }
 
                     object? value = ReadData(context);
@@ -135,7 +120,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
         if (readTypeInfo)
         {
-            ReadTypeInfo(context);
+            ReadAnyTypeInfo(context);
         }
 
         object? result = ReadData(context);
@@ -149,8 +134,14 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
     private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
     {
-        Serializer serializer = typeResolver.GetSerializer(value.GetType());
-        return serializer.IsReferenceTrackableType;
+        TypeInfo typeInfo = typeResolver.GetTypeInfo(value.GetType());
+        return typeInfo.IsReferenceTrackableType;
+    }
+
+    private static void ReadAnyTypeInfo(ReadContext context)
+    {
+        DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
+        context.SetDynamicTypeInfo(typeof(object), typeInfo);
     }
 }
 
@@ -169,8 +160,8 @@ public static class DynamicAnyCodec
             return;
         }
 
-        Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
-        serializer.WriteTypeInfo(context);
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(value.GetType());
+        context.TypeResolver.WriteTypeInfo(typeInfo, context);
     }
 
     public static object? CastAnyDynamicValue(object? value, Type targetType)
@@ -220,8 +211,8 @@ public static class DynamicAnyCodec
             return;
         }
 
-        Serializer serializer = context.TypeResolver.GetSerializer(value.GetType());
-        serializer.WriteDataObject(context, value, hasGenerics);
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(value.GetType());
+        context.TypeResolver.WriteDataObject(typeInfo, context, value, hasGenerics);
     }
 
     private static bool TryWriteKnownTypeInfo(object value, WriteContext context)

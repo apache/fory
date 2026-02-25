@@ -43,8 +43,12 @@ public final class RefWriter {
     }
 
     public func reset() {
-        refs.removeAll(keepingCapacity: true)
-        nextRefID = 0
+        if !refs.isEmpty {
+            refs.removeAll(keepingCapacity: true)
+        }
+        if nextRefID != 0 {
+            nextRefID = 0
+        }
     }
 }
 
@@ -83,6 +87,8 @@ public final class RefReader {
     }
 
     public func reset() {
-        refs.removeAll(keepingCapacity: true)
+        if !refs.isEmpty {
+            refs.removeAll(keepingCapacity: true)
+        }
     }
 }

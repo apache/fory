@@ -378,6 +378,14 @@ public class ClassResolverTest extends ForyTestBase {
       fory.getClassResolver().setSerializer(Foo.class, this);
       throw new RuntimeException();
     }
+
+    @Override
+    public void write(MemoryBuffer buffer, Foo value) {}
+
+    @Override
+    public Foo read(MemoryBuffer buffer) {
+      return null;
+    }
   }
 
   @Test

@@ -21,11 +21,106 @@ public struct ForyConfig {
     public var xlang: Bool
     public var trackRef: Bool
     public var compatible: Bool
+    public var checkClassVersion: Bool
 
-    public init(xlang: Bool = true, trackRef: Bool = false, compatible: Bool = false) {
+    public init(
+        xlang: Bool = true,
+        trackRef: Bool = false,
+        compatible: Bool = false,
+        checkClassVersion: Bool = true
+    ) {
         self.xlang = xlang
         self.trackRef = trackRef
         self.compatible = compatible
+        self.checkClassVersion = checkClassVersion
+    }
+}
+
+private final class ForyRuntimeContext {
+    let writeBuffer: ByteBuffer
+    let writeContext: WriteContext
+    let readBuffer: ByteBuffer
+    let readContext: ReadContext
+
+    var writeInUse = false
+    var readInUse = false
+
+    var lastReadDataAddress: UnsafeRawPointer?
+    var lastReadDataCount: Int = -1
+
+    init(typeResolver: TypeResolver, config: ForyConfig) {
+        writeBuffer = ByteBuffer()
+        writeContext = WriteContext(
+            buffer: writeBuffer,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
+            compatibleTypeDefState: CompatibleTypeDefWriteState(),
+            metaStringWriteState: MetaStringWriteState()
+        )
+
+        readBuffer = ByteBuffer()
+        readContext = ReadContext(
+            buffer: readBuffer,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
+    }
+}
+
+private final class ForyThreadContextCache {
+    private var cachedID: UInt64 = .max
+    private var cachedContext: ForyRuntimeContext?
+    private var others: [UInt64: ForyRuntimeContext] = [:]
+
+    @inline(__always)
+    func getOrCreate(id: UInt64, create: () -> ForyRuntimeContext) -> ForyRuntimeContext {
+        if cachedID == id, let cachedContext {
+            return cachedContext
+        }
+
+        if let cachedContext {
+            others[cachedID] = cachedContext
+        }
+
+        let context = others.removeValue(forKey: id) ?? create()
+        cachedID = id
+        cachedContext = context
+        return context
+    }
+}
+
+private final class ForyThreadContextStore: @unchecked Sendable {
+    private let key: pthread_key_t
+
+    init() {
+        var localKey = pthread_key_t()
+        let createResult = pthread_key_create(&localKey) { rawPointer in
+            Unmanaged<ForyThreadContextCache>.fromOpaque(rawPointer).release()
+        }
+        precondition(createResult == 0, "failed to create pthread TLS key")
+        key = localKey
+    }
+
+    deinit {
+        pthread_key_delete(key)
+    }
+
+    @inline(__always)
+    func get() -> ForyThreadContextCache {
+        if let rawPointer = pthread_getspecific(key) {
+            return Unmanaged<ForyThreadContextCache>.fromOpaque(rawPointer).takeUnretainedValue()
+        }
+
+        let cache = ForyThreadContextCache()
+        let setResult = pthread_setspecific(key, Unmanaged.passRetained(cache).toOpaque())
+        precondition(setResult == 0, "failed to set pthread TLS value")
+        return cache
     }
 }
 
@@ -33,17 +128,36 @@ public final class Fory {
     public let config: ForyConfig
     public let typeResolver: TypeResolver
 
+    private let instanceID: UInt64
+
+    private static let threadContextStore = ForyThreadContextStore()
+    private static let instanceIDLock = NSLock()
+    nonisolated(unsafe) private static var nextInstanceID: UInt64 = 0
+
     public init(
         xlang: Bool = true,
         trackRef: Bool = false,
-        compatible: Bool = false
+        compatible: Bool = false,
+        checkClassVersion: Bool? = nil
     ) {
-        self.config = ForyConfig(xlang: xlang, trackRef: trackRef, compatible: compatible)
+        let effectiveCheckClassVersion = checkClassVersion ?? (xlang && !compatible)
+        self.config = ForyConfig(
+            xlang: xlang,
+            trackRef: trackRef,
+            compatible: compatible,
+            checkClassVersion: effectiveCheckClassVersion
+        )
         self.typeResolver = TypeResolver()
+        self.instanceID = Self.allocateInstanceID()
     }
 
     public convenience init(config: ForyConfig) {
-        self.init(xlang: config.xlang, trackRef: config.trackRef, compatible: config.compatible)
+        self.init(
+            xlang: config.xlang,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion
+        )
     }
 
     public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
@@ -59,446 +173,229 @@ public final class Fory {
     }
 
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: value.foryIsNone)
-
-        if !value.foryIsNone {
-            let compatibleTypeDefState = CompatibleTypeDefWriteState()
-            let context = WriteContext(
-                buffer: byteBuffer,
-                typeResolver: typeResolver,
-                trackRef: config.trackRef,
-                compatible: config.compatible,
-                compatibleTypeDefState: compatibleTypeDefState,
-                metaStringWriteState: MetaStringWriteState()
-            )
-            let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-            try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-            context.resetObjectState()
+        try serializeRoot(isNone: value.foryIsNone) { context in
+            if useRootDataFastPath {
+                try value.foryWriteData(context, hasGenerics: false)
+            } else {
+                try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
+            }
         }
-
-        return byteBuffer.toData()
     }
 
     public func deserialize<T: Serializer>(_ data: Data, as _: T.Type = T.self) throws -> T {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return T.foryDefault()
+        try deserializeRoot(
+            data: data,
+            nilValue: T.foryDefault()
+        ) { context in
+            if useRootDataFastPath {
+                return try T.foryReadData(context)
+            }
+            return try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
-        context.resetObjectState()
-        return value
     }
 
     public func serialize<T: Serializer>(_ value: T, to buffer: inout Data) throws {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: value.foryIsNone)
-        if !value.foryIsNone {
-            let context = WriteContext(
-                buffer: byteBuffer,
-                typeResolver: typeResolver,
-                trackRef: config.trackRef,
-                compatible: config.compatible,
-                compatibleTypeDefState: CompatibleTypeDefWriteState(),
-                metaStringWriteState: MetaStringWriteState()
-            )
-            let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-            try value.foryWrite(context, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-            context.resetObjectState()
+        try appendSerializedRoot(to: &buffer, isNone: value.foryIsNone) { context in
+            if useRootDataFastPath {
+                try value.foryWriteData(context, hasGenerics: false)
+            } else {
+                try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
+            }
         }
-        buffer.append(byteBuffer.toData())
     }
 
     public func deserialize<T: Serializer>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return T.foryDefault()
+        try deserializeRoot(
+            from: buffer,
+            nilValue: T.foryDefault()
+        ) { context in
+            if useRootDataFastPath {
+                return try T.foryReadData(context)
+            }
+            return try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try T.foryRead(context, refMode: refMode, readTypeInfo: true)
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: Any) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: Any.Type = Any.self) throws -> Any {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return ForyAnyNullValue()
+        try deserializeRoot(
+            data: data,
+            nilValue: ForyAnyNullValue()
+        ) { context in
+            try castAnyDynamicValue(
+                context.readAny(refMode: refMode, readTypeInfo: true),
+                to: Any.self
+            )
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try castAnyDynamicValue(
-            context.readAny(refMode: refMode, readTypeInfo: true),
-            to: Any.self
-        )
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: AnyObject) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return NSNull()
+        try deserializeRoot(
+            data: data,
+            nilValue: NSNull()
+        ) { context in
+            try castAnyDynamicValue(
+                context.readAny(refMode: refMode, readTypeInfo: true),
+                to: AnyObject.self
+            )
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try castAnyDynamicValue(
-            context.readAny(refMode: refMode, readTypeInfo: true),
-            to: AnyObject.self
-        )
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: any Serializer) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: (any Serializer).Type = (any Serializer).self) throws -> any Serializer {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return ForyAnyNullValue()
+        try deserializeRoot(
+            data: data,
+            nilValue: ForyAnyNullValue()
+        ) { context in
+            try castAnyDynamicValue(
+                context.readAny(refMode: refMode, readTypeInfo: true),
+                to: (any Serializer).self
+            )
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try castAnyDynamicValue(
-            context.readAny(refMode: refMode, readTypeInfo: true),
-            to: (any Serializer).self
-        )
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [Any]) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeAnyList(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeAnyList(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [Any].Type = [Any].self) throws -> [Any] {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return []
+        try deserializeRoot(
+            data: data,
+            nilValue: []
+        ) { context in
+            try context.readAnyList(refMode: refMode, readTypeInfo: true) ?? []
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readAnyList(refMode: refMode, readTypeInfo: true) ?? []
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [String: Any]) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeStringAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeStringAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return [:]
+        try deserializeRoot(
+            data: data,
+            nilValue: [:]
+        ) { context in
+            try context.readStringAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readStringAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [Int32: Any]) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeInt32AnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeInt32AnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return [:]
+        try deserializeRoot(
+            data: data,
+            nilValue: [:]
+        ) { context in
+            try context.readInt32AnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readInt32AnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [AnyHashable: Any]) throws -> Data {
-        let byteBuffer = ByteBuffer()
-        writeHead(buffer: byteBuffer, isNone: false)
-
-        let context = WriteContext(
-            buffer: byteBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        try context.writeAnyHashableAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        context.resetObjectState()
-        return byteBuffer.toData()
+        try serializeRoot(isNone: false) { context in
+            try context.writeAnyHashableAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(_ data: Data, as _: [AnyHashable: Any].Type = [AnyHashable: Any].self) throws -> [AnyHashable: Any] {
-        let buffer = ByteBuffer(data: data)
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return [:]
+        try deserializeRoot(
+            data: data,
+            nilValue: [:]
+        ) { context in
+            try context.readAnyHashableAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
         }
-
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readAnyHashableAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [Any], to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeAnyList(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func serialize(_ value: Any, to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(from buffer: ByteBuffer, as _: Any.Type = Any.self) throws -> Any {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return ForyAnyNullValue()
+        try deserializeRoot(
+            from: buffer,
+            nilValue: ForyAnyNullValue()
+        ) { context in
+            try castAnyDynamicValue(
+                context.readAny(refMode: refMode, readTypeInfo: true),
+                to: Any.self
+            )
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try castAnyDynamicValue(
-            context.readAny(refMode: refMode, readTypeInfo: true),
-            to: Any.self
-        )
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: AnyObject, to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(from buffer: ByteBuffer, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return NSNull()
+        try deserializeRoot(
+            from: buffer,
+            nilValue: NSNull()
+        ) { context in
+            try castAnyDynamicValue(
+                context.readAny(refMode: refMode, readTypeInfo: true),
+                to: AnyObject.self
+            )
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try castAnyDynamicValue(
-            context.readAny(refMode: refMode, readTypeInfo: true),
-            to: AnyObject.self
-        )
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: any Serializer, to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
@@ -506,120 +403,76 @@ public final class Fory {
         from buffer: ByteBuffer,
         as _: (any Serializer).Type = (any Serializer).self
     ) throws -> any Serializer {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return ForyAnyNullValue()
+        try deserializeRoot(
+            from: buffer,
+            nilValue: ForyAnyNullValue()
+        ) { context in
+            try castAnyDynamicValue(
+                context.readAny(refMode: refMode, readTypeInfo: true),
+                to: (any Serializer).self
+            )
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try castAnyDynamicValue(
-            context.readAny(refMode: refMode, readTypeInfo: true),
-            to: (any Serializer).self
-        )
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func deserialize(from buffer: ByteBuffer, as _: [Any].Type = [Any].self) throws -> [Any] {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return []
+        try deserializeRoot(
+            from: buffer,
+            nilValue: []
+        ) { context in
+            try context.readAnyList(refMode: refMode, readTypeInfo: true) ?? []
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readAnyList(refMode: refMode, readTypeInfo: true) ?? []
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [String: Any], to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeStringAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(from buffer: ByteBuffer, as _: [String: Any].Type = [String: Any].self) throws -> [String: Any] {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return [:]
+        try deserializeRoot(
+            from: buffer,
+            nilValue: [:]
+        ) { context in
+            try context.readStringAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readStringAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [Int32: Any], to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeInt32AnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func serialize(_ value: [AnyHashable: Any], to buffer: inout Data) throws {
-        buffer.append(try serialize(value))
+        try appendSerializedRoot(to: &buffer, isNone: false) { context in
+            try context.writeAnyHashableAnyMap(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+        }
     }
 
     @_disfavoredOverload
     public func deserialize(from buffer: ByteBuffer, as _: [Int32: Any].Type = [Int32: Any].self) throws -> [Int32: Any] {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return [:]
+        try deserializeRoot(
+            from: buffer,
+            nilValue: [:]
+        ) { context in
+            try context.readInt32AnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readInt32AnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
-        context.resetObjectState()
-        return value
     }
 
     @_disfavoredOverload
     public func deserialize(from buffer: ByteBuffer, as _: [AnyHashable: Any].Type = [AnyHashable: Any].self) throws -> [AnyHashable: Any] {
-        let isNone = try readHead(buffer: buffer)
-        if isNone {
-            return [:]
+        try deserializeRoot(
+            from: buffer,
+            nilValue: [:]
+        ) { context in
+            try context.readAnyHashableAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
         }
-        let context = ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
-        )
-        let refMode: RefMode = config.trackRef ? .tracking : .nullOnly
-        let value = try context.readAnyHashableAnyMap(refMode: refMode, readTypeInfo: true) ?? [:]
-        context.resetObjectState()
-        return value
     }
 
     public func writeHead(buffer: ByteBuffer, isNone: Bool) {
@@ -640,5 +493,201 @@ public final class Fory {
             throw ForyError.invalidData("xlang bitmap mismatch")
         }
         return (bitmap & ForyHeaderFlag.isNull) != 0
+    }
+
+    private static func allocateInstanceID() -> UInt64 {
+        instanceIDLock.lock()
+        defer { instanceIDLock.unlock() }
+        let id = nextInstanceID
+        nextInstanceID &+= 1
+        return id
+    }
+
+    @inline(__always)
+    private var refMode: RefMode {
+        config.trackRef ? .tracking : .nullOnly
+    }
+
+    @inline(__always)
+    private var shouldWriteRootTypeInfo: Bool {
+        config.xlang || config.compatible
+    }
+
+    @inline(__always)
+    private var rootRefMode: RefMode {
+        if config.trackRef {
+            return .tracking
+        }
+        return shouldWriteRootTypeInfo ? .nullOnly : .none
+    }
+
+    @inline(__always)
+    private var useRootDataFastPath: Bool {
+        !shouldWriteRootTypeInfo && rootRefMode == .none
+    }
+
+    @inline(__always)
+    private func makeWriteContext(buffer: ByteBuffer) -> WriteContext {
+        WriteContext(
+            buffer: buffer,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
+            compatibleTypeDefState: CompatibleTypeDefWriteState(),
+            metaStringWriteState: MetaStringWriteState()
+        )
+    }
+
+    @inline(__always)
+    private func makeReadContext(buffer: ByteBuffer) -> ReadContext {
+        ReadContext(
+            buffer: buffer,
+            typeResolver: typeResolver,
+            trackRef: config.trackRef,
+            compatible: config.compatible,
+            checkClassVersion: config.checkClassVersion,
+            compatibleTypeDefState: CompatibleTypeDefReadState(),
+            metaStringReadState: MetaStringReadState()
+        )
+    }
+
+    @inline(__always)
+    private func runtimeContext() -> ForyRuntimeContext {
+        let cache = threadContextCache()
+        return cache.getOrCreate(id: instanceID) {
+            ForyRuntimeContext(typeResolver: typeResolver, config: config)
+        }
+    }
+
+    @inline(__always)
+    private func threadContextCache() -> ForyThreadContextCache {
+        Self.threadContextStore.get()
+    }
+
+    @inline(__always)
+    private func withReusableWriteContext<R>(
+        _ body: (WriteContext) throws -> R
+    ) rethrows -> R {
+        let runtimeContext = runtimeContext()
+
+        if runtimeContext.writeInUse {
+            let temporaryBuffer = ByteBuffer()
+            let temporaryContext = makeWriteContext(buffer: temporaryBuffer)
+            defer { temporaryContext.reset() }
+            return try body(temporaryContext)
+        }
+
+        runtimeContext.writeInUse = true
+        runtimeContext.writeBuffer.clear()
+        defer {
+            runtimeContext.writeContext.reset()
+            runtimeContext.writeInUse = false
+        }
+        return try body(runtimeContext.writeContext)
+    }
+
+    @inline(__always)
+    private func withReusableReadContext<R>(
+        data: Data,
+        _ body: (ReadContext) throws -> R
+    ) rethrows -> R {
+        let runtimeContext = runtimeContext()
+
+        if runtimeContext.readInUse {
+            let temporaryBuffer = ByteBuffer(data: data)
+            let temporaryContext = makeReadContext(buffer: temporaryBuffer)
+            defer { temporaryContext.reset() }
+            return try body(temporaryContext)
+        }
+
+        runtimeContext.readInUse = true
+        let shouldReplace = data.withUnsafeBytes { rawBytes in
+            if rawBytes.count != runtimeContext.lastReadDataCount {
+                return true
+            }
+            return rawBytes.baseAddress != runtimeContext.lastReadDataAddress
+        }
+        if shouldReplace {
+            runtimeContext.readBuffer.replace(with: data)
+            data.withUnsafeBytes { rawBytes in
+                runtimeContext.lastReadDataAddress = rawBytes.baseAddress
+                runtimeContext.lastReadDataCount = rawBytes.count
+            }
+        } else {
+            runtimeContext.readBuffer.setCursor(0)
+        }
+        defer {
+            runtimeContext.readContext.reset()
+            runtimeContext.readInUse = false
+        }
+        return try body(runtimeContext.readContext)
+    }
+
+    @inline(__always)
+    private func withTemporaryReadContext<R>(
+        buffer: ByteBuffer,
+        _ body: (ReadContext) throws -> R
+    ) rethrows -> R {
+        let context = makeReadContext(buffer: buffer)
+        defer { context.reset() }
+        return try body(context)
+    }
+
+    @inline(__always)
+    private func serializeRoot(
+        isNone: Bool,
+        _ body: (WriteContext) throws -> Void
+    ) throws -> Data {
+        try withReusableWriteContext { context in
+            writeHead(buffer: context.buffer, isNone: isNone)
+            if !isNone {
+                try body(context)
+            }
+            return context.buffer.toData()
+        }
+    }
+
+    @inline(__always)
+    private func appendSerializedRoot(
+        to output: inout Data,
+        isNone: Bool,
+        _ body: (WriteContext) throws -> Void
+    ) throws {
+        try withReusableWriteContext { context in
+            writeHead(buffer: context.buffer, isNone: isNone)
+            if !isNone {
+                try body(context)
+            }
+            output.append(contentsOf: context.buffer.storage)
+        }
+    }
+
+    @inline(__always)
+    private func deserializeRoot<R>(
+        data: Data,
+        nilValue: @autoclosure () -> R,
+        _ body: (ReadContext) throws -> R
+    ) throws -> R {
+        try withReusableReadContext(data: data) { context in
+            if try readHead(buffer: context.buffer) {
+                return nilValue()
+            }
+            return try body(context)
+        }
+    }
+
+    @inline(__always)
+    private func deserializeRoot<R>(
+        from buffer: ByteBuffer,
+        nilValue: @autoclosure () -> R,
+        _ body: (ReadContext) throws -> R
+    ) throws -> R {
+        try withTemporaryReadContext(buffer: buffer) { context in
+            if try readHead(buffer: buffer) {
+                return nilValue()
+            }
+            return try body(context)
+        }
     }
 }

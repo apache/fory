@@ -84,12 +84,12 @@ public struct TypeMetaFieldType: Equatable, Sendable {
             buffer.writeUInt8(UInt8(truncatingIfNeeded: typeID))
         }
 
-        if typeID == ForyTypeId.list.rawValue || typeID == ForyTypeId.set.rawValue {
-            let element = generics.first ?? TypeMetaFieldType(typeID: ForyTypeId.unknown.rawValue, nullable: true)
+        if typeID == TypeId.list.rawValue || typeID == TypeId.set.rawValue {
+            let element = generics.first ?? TypeMetaFieldType(typeID: TypeId.unknown.rawValue, nullable: true)
             element.write(buffer, writeFlags: true, nullableOverride: element.nullable)
-        } else if typeID == ForyTypeId.map.rawValue {
-            let key = generics.first ?? TypeMetaFieldType(typeID: ForyTypeId.unknown.rawValue, nullable: true)
-            let value = generics.dropFirst().first ?? TypeMetaFieldType(typeID: ForyTypeId.unknown.rawValue, nullable: true)
+        } else if typeID == TypeId.map.rawValue {
+            let key = generics.first ?? TypeMetaFieldType(typeID: TypeId.unknown.rawValue, nullable: true)
+            let value = generics.dropFirst().first ?? TypeMetaFieldType(typeID: TypeId.unknown.rawValue, nullable: true)
             key.write(buffer, writeFlags: true, nullableOverride: key.nullable)
             value.write(buffer, writeFlags: true, nullableOverride: value.nullable)
         }
@@ -122,7 +122,7 @@ public struct TypeMetaFieldType: Equatable, Sendable {
             resolvedTrackRef = trackRef ?? false
         }
 
-        if typeID == ForyTypeId.list.rawValue || typeID == ForyTypeId.set.rawValue {
+        if typeID == TypeId.list.rawValue || typeID == TypeId.set.rawValue {
             let element = try read(buffer, readFlags: true)
             return TypeMetaFieldType(
                 typeID: typeID,
@@ -131,7 +131,7 @@ public struct TypeMetaFieldType: Equatable, Sendable {
                 generics: [element]
             )
         }
-        if typeID == ForyTypeId.map.rawValue {
+        if typeID == TypeId.map.rawValue {
             let key = try read(buffer, readFlags: true)
             let value = try read(buffer, readFlags: true)
             return TypeMetaFieldType(

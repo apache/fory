@@ -28,7 +28,7 @@ public struct ForyDate: Serializer, Equatable, Hashable {
         .init()
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .date
     }
 
@@ -56,7 +56,7 @@ public struct ForyTimestamp: Serializer, Equatable, Hashable {
         .init()
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .timestamp
     }
 
@@ -99,7 +99,7 @@ extension Date: Serializer {
         Date(timeIntervalSince1970: 0)
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .timestamp
     }
 
