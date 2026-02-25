@@ -447,7 +447,9 @@ class CSharpGenerator(BaseGenerator):
                 return nested
         return self.schema.get_type(name)
 
-    def _type_namespace(self, resolved: Optional[TypingUnion[Message, Enum, Union]]) -> str:
+    def _type_namespace(
+        self, resolved: Optional[TypingUnion[Message, Enum, Union]]
+    ) -> str:
         if resolved is None:
             return self.get_csharp_namespace()
         if self.is_imported_type(resolved):
@@ -464,7 +466,9 @@ class CSharpGenerator(BaseGenerator):
                 self.safe_type_identifier(part) for part in fallback_name.split(".")
             )
         qualified = self._qualified_type_names.get(id(resolved), fallback_name)
-        return ".".join(self.safe_type_identifier(part) for part in qualified.split("."))
+        return ".".join(
+            self.safe_type_identifier(part) for part in qualified.split(".")
+        )
 
     def _named_type_reference(
         self, named_type: NamedType, parent_stack: Optional[List[Message]] = None
@@ -476,7 +480,9 @@ class CSharpGenerator(BaseGenerator):
             return f"global::{ns}.{qname}"
         return qname
 
-    def _is_value_type(self, field_type: FieldType, parent_stack: List[Message]) -> bool:
+    def _is_value_type(
+        self, field_type: FieldType, parent_stack: List[Message]
+    ) -> bool:
         if isinstance(field_type, PrimitiveType):
             return field_type.kind in self.VALUE_TYPE_KINDS
         if isinstance(field_type, NamedType):
@@ -493,7 +499,9 @@ class CSharpGenerator(BaseGenerator):
         parent_stack = parent_stack or []
         if isinstance(field_type, PrimitiveType):
             if field_type.kind not in self.PRIMITIVE_MAP:
-                raise ValueError(f"Unsupported primitive type for C#: {field_type.kind}")
+                raise ValueError(
+                    f"Unsupported primitive type for C#: {field_type.kind}"
+                )
             type_name = self.PRIMITIVE_MAP[field_type.kind]
             if nullable and field_type.kind in self.VALUE_TYPE_KINDS:
                 return f"{type_name}?"
@@ -651,9 +659,7 @@ class CSharpGenerator(BaseGenerator):
             f"{ind}{self.indent_str}public static {type_name} Of(int index, object? value)"
         )
         lines.append(f"{ind}{self.indent_str}{{")
-        lines.append(
-            f"{ind}{self.indent_str * 2}return new {type_name}(index, value);"
-        )
+        lines.append(f"{ind}{self.indent_str * 2}return new {type_name}(index, value);")
         lines.append(f"{ind}{self.indent_str}}}")
         lines.append("")
 
@@ -674,11 +680,11 @@ class CSharpGenerator(BaseGenerator):
             lines.append(f"{ind}{self.indent_str}}}")
             lines.append("")
 
-            lines.append(f"{ind}{self.indent_str}public bool Is{case_name} => Index == {field.number};")
-            lines.append("")
             lines.append(
-                f"{ind}{self.indent_str}public {case_type} {case_name}Value()"
+                f"{ind}{self.indent_str}public bool Is{case_name} => Index == {field.number};"
             )
+            lines.append("")
+            lines.append(f"{ind}{self.indent_str}public {case_type} {case_name}Value()")
             lines.append(f"{ind}{self.indent_str}{{")
             lines.append(f"{ind}{self.indent_str * 2}if (!Is{case_name})")
             lines.append(f"{ind}{self.indent_str * 2}{{")
@@ -884,7 +890,9 @@ class CSharpGenerator(BaseGenerator):
         lines.append(f"{self.indent_str}}}")
         lines.append("")
 
-        lines.append(f"{self.indent_str}public static void Register(ThreadSafeFory fory)")
+        lines.append(
+            f"{self.indent_str}public static void Register(ThreadSafeFory fory)"
+        )
         lines.append(f"{self.indent_str}{{")
         for namespace_name, reg_name in imported_regs:
             if namespace_name == self.get_csharp_namespace() and reg_name == class_name:

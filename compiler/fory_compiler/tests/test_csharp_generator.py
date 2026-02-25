@@ -82,7 +82,10 @@ def test_csharp_registration_uses_fdl_package_for_name_registration():
         """
     )
 
-    assert 'fory.Register<global::MyCorp.Generated.Models.User>("myapp.models", "User");' in file.content
+    assert (
+        'fory.Register<global::MyCorp.Generated.Models.User>("myapp.models", "User");'
+        in file.content
+    )
 
 
 def test_csharp_field_encoding_attributes():
@@ -111,7 +114,10 @@ def test_csharp_imported_registration_calls_generated():
     generator = CSharpGenerator(schema, GeneratorOptions(output_dir=Path("/tmp")))
     file = generator.generate()[0]
 
-    assert "global::addressbook.AddressbookForyRegistration.Register(fory);" in file.content
+    assert (
+        "global::addressbook.AddressbookForyRegistration.Register(fory);"
+        in file.content
+    )
     assert "global::tree.TreeForyRegistration.Register(fory);" in file.content
 
 
