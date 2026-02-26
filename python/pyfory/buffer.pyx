@@ -55,23 +55,7 @@ cdef class Buffer:
         self.data = data
         cdef int32_t buffer_len
         cdef int length_
-        cdef CBuffer* stream_buffer
-        cdef c_string stream_error
-        try:
-            buffer_len = len(data)
-        except TypeError:
-            if not hasattr(data, "read"):
-                raise
-            if offset != 0 or length is not None:
-                raise ValueError("offset and length are unsupported for stream input")
-            if Fory_PyCreateBufferFromStream(<PyObject*>data, 4096, &stream_buffer, &stream_error) != 0:
-                raise ValueError(stream_error.decode("UTF-8"))
-            if stream_buffer == NULL:
-                raise ValueError("failed to create stream buffer")
-            self.c_buffer = move(deref(stream_buffer))
-            del stream_buffer
-            self.data = data
-            return
+        buffer_len = len(data)
         if length is None:
             length_ = buffer_len - offset
         else:
@@ -86,6 +70,24 @@ cdef class Buffer:
         self.c_buffer = CBuffer(address, length_, False)
         self.c_buffer.reader_index(0)
         self.c_buffer.writer_index(0)
+
+    @classmethod
+    def from_stream(cls, stream not None, uint32_t buffer_size=4096):
+        cdef CBuffer* stream_buffer
+        cdef c_string stream_error
+        if Fory_PyCreateBufferFromStream(
+            <PyObject*>stream, buffer_size, &stream_buffer, &stream_error
+        ) != 0:
+            raise ValueError(stream_error.decode("UTF-8"))
+        if stream_buffer == NULL:
+            raise ValueError("failed to create stream buffer")
+        cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.c_buffer = move(deref(stream_buffer))
+        del stream_buffer
+        buffer.data = stream
+        buffer.c_buffer.reader_index(0)
+        buffer.c_buffer.writer_index(0)
+        return buffer
 
     @staticmethod
     cdef Buffer wrap(shared_ptr[CBuffer] c_buffer):
@@ -214,21 +216,7 @@ cdef class Buffer:
 
     cpdef inline check_bound(self, int32_t offset, int32_t length):
         cdef int32_t size_ = self.c_buffer.size()
-        cdef int64_t target = 0
-        cdef uint32_t reader_index_ = 0
-        cdef uint32_t readable = 0
         if offset | length | (offset + length) | (size_- (offset + length)) < 0:
-            if offset >= 0 and length >= 0:
-                target = <int64_t>offset + <int64_t>length
-                if target <= 0xFFFFFFFF:
-                    reader_index_ = self.c_buffer.reader_index()
-                    if target <= reader_index_:
-                        return
-                    readable = <uint32_t>(target - <int64_t>reader_index_)
-                    if self.c_buffer.ensure_readable(readable, self._error):
-                        return
-                self._raise_if_error()
-                size_ = self.c_buffer.size()
             raise_fory_error(
                 CErrorCode.BufferOutOfBound,
                 f"Address range {offset, offset + length} out of bound {0, size_}",
@@ -319,12 +307,19 @@ cdef class Buffer:
 
     cpdef inline int64_t read_bytes_as_int64(self, int32_t length):
         cdef int64_t result = 0
-        cdef uint32_t offset = self.c_buffer.reader_index()
-        cdef CResultVoidError res = self.c_buffer.get_bytes_as_int64(offset, length,  &result)
-        if not res.ok():
-            raise_fory_error(res.error().code(), res.error().message())
-        self.c_buffer.increase_reader_index(length, self._error)
+        cdef uint8_t tmp[8]
+        cdef int32_t i
+        if length == 0:
+            return 0
+        if length < 0 or length > 8:
+            raise_fory_error(
+                CErrorCode.InvalidData,
+                f"get_bytes_as_int64 length should be in range [0, 8], but got {length}",
+            )
+        self.c_buffer.read_bytes(<void*>tmp, <uint32_t>length, self._error)
         self._raise_if_error()
+        for i in range(length):
+            result |= (<int64_t>tmp[i]) << (8 * i)
         return result
 
     cpdef inline put_bytes(self, uint32_t offset, bytes value):
@@ -537,11 +532,11 @@ cdef class Buffer:
 
     cdef inline int32_t read_c_buffer(self, uint8_t** buf):
         cdef int32_t length = self.read_var_uint32()
-        cdef uint8_t* binary_data = self.c_buffer.data()
         cdef uint32_t offset = self.c_buffer.reader_index()
-        self.check_bound(offset, length)
-        buf[0] = binary_data + offset
-        self.c_buffer.increase_reader_index(length, self._error)
+        if length > 0 and not self.c_buffer.ensure_readable(<uint32_t>length, self._error):
+            self._raise_if_error()
+        buf[0] = self.c_buffer.data() + offset
+        self.c_buffer.reader_index(offset + <uint32_t>length)
         self._raise_if_error()
         return length
 
@@ -574,12 +569,19 @@ cdef class Buffer:
     cpdef inline str read_string(self):
         cdef uint64_t header = self.read_var_uint64()
         cdef uint32_t size = header >> 2
-        cdef uint32_t offset = self.c_buffer.reader_index()
-        self.check_bound(offset, size)
-        cdef const char * buf = <const char *>(self.c_buffer.data() + offset)
-        self.c_buffer.increase_reader_index(size, self._error)
-        self._raise_if_error()
         cdef uint32_t encoding = header & <uint32_t>0b11
+        if size == 0:
+            return ""
+        cdef uint32_t offset = self.c_buffer.reader_index()
+        cdef uint32_t available = self.c_buffer.size() - offset
+        cdef const char * buf
+        cdef bytes py_bytes
+        if available >= size:
+            buf = <const char *>(self.c_buffer.data() + offset)
+            self.c_buffer.reader_index(offset + size)
+        else:
+            py_bytes = self.read_bytes(<int32_t>size)
+            buf = <const char *>PyBytes_AS_STRING(py_bytes)
         if encoding == 0:
             # PyUnicode_FromASCII
             return PyUnicode_DecodeLatin1(buf, size, "strict")

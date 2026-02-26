@@ -38,6 +38,20 @@ class OneByteStream:
         self._offset += read_size
         return self._data[start : start + read_size]
 
+    def recvinto(self, buffer, size=-1):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if size < 0 or size > len(view):
+            size = len(view)
+        if size == 0:
+            return 0
+        read_size = min(1, size, len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_stream_roundtrip_primitives_and_strings(xlang):
@@ -54,7 +68,7 @@ def test_stream_roundtrip_primitives_and_strings(xlang):
 
     for value in values:
         data = fory.serialize(value)
-        restored = fory.deserialize(Buffer(OneByteStream(data)))
+        restored = fory.deserialize(Buffer.from_stream(OneByteStream(data)))
         assert restored == value
 
 
@@ -69,7 +83,7 @@ def test_stream_roundtrip_nested_collections(xlang):
     }
 
     data = fory.serialize(value)
-    restored = fory.deserialize(Buffer(OneByteStream(data)))
+    restored = fory.deserialize(Buffer.from_stream(OneByteStream(data)))
     assert restored == value
 
 
@@ -81,12 +95,12 @@ def test_stream_roundtrip_reference_graph_python_mode():
     cycle.append(cycle)
 
     data_ref = fory.serialize(value)
-    restored_ref = fory.deserialize(Buffer(OneByteStream(data_ref)))
+    restored_ref = fory.deserialize(Buffer.from_stream(OneByteStream(data_ref)))
     assert restored_ref["a"] == shared
     assert restored_ref["a"] is restored_ref["b"]
 
     data_cycle = fory.serialize(cycle)
-    restored_cycle = fory.deserialize(Buffer(OneByteStream(data_cycle)))
+    restored_cycle = fory.deserialize(Buffer.from_stream(OneByteStream(data_cycle)))
     assert restored_cycle[0] is restored_cycle
 
 
@@ -104,7 +118,9 @@ def test_stream_deserialize_multiple_objects_from_single_stream(xlang):
     for obj in expected:
         fory.serialize(obj, write_buffer)
 
-    reader = Buffer(OneByteStream(write_buffer.get_bytes(0, write_buffer.get_writer_index())))
+    reader = Buffer.from_stream(
+        OneByteStream(write_buffer.get_bytes(0, write_buffer.get_writer_index()))
+    )
     for obj in expected:
         assert fory.deserialize(reader) == obj
 
@@ -118,4 +134,4 @@ def test_stream_deserialize_truncated_error(xlang):
     truncated = data[:-1]
 
     with pytest.raises(Exception):
-        fory.deserialize(Buffer(OneByteStream(truncated)))
+        fory.deserialize(Buffer.from_stream(OneByteStream(truncated)))

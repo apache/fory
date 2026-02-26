@@ -41,6 +41,20 @@ class OneByteStream:
         self._offset += read_size
         return self._data[start : start + read_size]
 
+    def recvinto(self, buffer, size=-1):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if size < 0 or size > len(view):
+            size = len(view)
+        if size == 0:
+            return 0
+        read_size = min(1, size, len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
 
 def test_buffer():
     buffer = Buffer.allocate(8)
@@ -281,7 +295,7 @@ def test_stream_buffer_read():
 
     data = writer.get_bytes(0, writer.get_writer_index())
     stream = OneByteStream(data)
-    reader = Buffer(stream)
+    reader = Buffer.from_stream(stream)
 
     assert reader.read_uint32() == 0x01020304
     assert reader.read_int64() == -1234567890
@@ -294,13 +308,13 @@ def test_stream_buffer_read():
 
 
 def test_stream_buffer_set_reader_index():
-    reader = Buffer(OneByteStream(bytes([0x11, 0x22, 0x33, 0x44, 0x55])))
+    reader = Buffer.from_stream(OneByteStream(bytes([0x11, 0x22, 0x33, 0x44, 0x55])))
     reader.set_reader_index(4)
     assert reader.read_uint8() == 0x55
 
 
 def test_stream_buffer_short_read_error():
-    reader = Buffer(OneByteStream(b"\x01\x02\x03"))
+    reader = Buffer.from_stream(OneByteStream(b"\x01\x02\x03"))
     with pytest.raises(Exception, match="Buffer out of bound"):
         reader.read_uint32()
 
