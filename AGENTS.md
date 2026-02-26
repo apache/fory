@@ -235,6 +235,41 @@ cd fory-core
 RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 FORY_RUST_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn test -Dtest=org.apache.fory.xlang.RustXlangTest
 ```
 
+### Swift Development
+
+- All commands must be executed within the `swift` directory.
+- All changes to `swift` must pass lint and tests.
+- Swift lint uses `swift/.swiftlint.yml`.
+- Use `ENABLE_FORY_DEBUG_OUTPUT=1` when debugging Swift tests.
+
+```bash
+# Build package
+swift build
+
+# Run tests
+swift test
+
+# Run tests with debug output
+ENABLE_FORY_DEBUG_OUTPUT=1 swift test
+
+# Lint check
+swiftlint lint --config .swiftlint.yml
+
+# Auto-fix lint issues where supported
+swiftlint --fix --config .swiftlint.yml
+```
+
+Run Swift xlang tests:
+
+```bash
+cd swift
+swift build -c release --disable-automatic-resolution --product ForyXlangTests
+cd ../java
+mvn -T16 install -DskipTests
+cd fory-core
+FORY_SWIFT_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 test -Dtest=org.apache.fory.xlang.SwiftXlangTest
+```
+
 ### JavaScript/TypeScript Development
 
 - All commands must be executed within the `javascript` directory.

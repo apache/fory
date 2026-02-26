@@ -44,7 +44,7 @@ private final class AnyObjectDynamicNode {
 @ForyObject
 private struct AnyHashableMapHolder {
     var map: [AnyHashable: Any] = [:]
-    var optionalMap: [AnyHashable: Any]? = nil
+    var optionalMap: [AnyHashable: Any]?
 }
 
 @ForyObject
@@ -60,12 +60,23 @@ private struct AnyCoreFieldHolder {
 @ForyObject
 private struct AnyHashableSetHolder {
     var set: Set<AnyHashable> = []
-    var optionalSet: Set<AnyHashable>? = nil
+    var optionalSet: Set<AnyHashable>?
 }
 
 @ForyObject
 private struct AnyHashableValueHolder {
     var value: AnyHashable = AnyHashable(Int32(0))
+}
+
+private func nestedDynamicAnyList(depth: Int) -> Any {
+    var value: Any = Int32(1)
+    if depth <= 0 {
+        return value
+    }
+    for _ in 0..<depth {
+        value = [value] as [Any]
+    }
+    return value
 }
 
 @Test
@@ -93,7 +104,7 @@ func topLevelAnyHashableAnyMapRoundTrip() throws {
         AnyHashable("name"): "fory",
         AnyHashable(Int32(7)): Int64(9001),
         AnyHashable(true): NSNull(),
-        AnyHashable(AnyHashableDynamicKey(id: 3)): AnyHashableDynamicValue(label: "swift", score: 99),
+        AnyHashable(AnyHashableDynamicKey(id: 3)): AnyHashableDynamicValue(label: "swift", score: 99)
     ]
 
     let data = try fory.serialize(value)
@@ -124,7 +135,7 @@ func topLevelAnyHashableSetRoundTrip() throws {
         AnyHashable("name"),
         AnyHashable(Int32(7)),
         AnyHashable(true),
-        AnyHashable(AnyHashableDynamicKey(id: 11)),
+        AnyHashable(AnyHashableDynamicKey(id: 11))
     ]
 
     let data = try fory.serialize(value)
@@ -138,6 +149,26 @@ func topLevelAnyHashableSetRoundTrip() throws {
 }
 
 @Test
+func topLevelDynamicAnySetRoundTrip() throws {
+    let fory = Fory()
+    fory.register(AnyHashableDynamicKey.self, id: 413)
+
+    let value: Any = Set<AnyHashable>([
+        AnyHashable("name"),
+        AnyHashable(Int32(9)),
+        AnyHashable(AnyHashableDynamicKey(id: 12))
+    ])
+
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    let set = decoded as? Set<AnyHashable>
+    #expect(set != nil)
+    #expect(set?.contains(AnyHashable("name")) == true)
+    #expect(set?.contains(AnyHashable(Int32(9))) == true)
+    #expect(set?.contains(AnyHashable(AnyHashableDynamicKey(id: 12))) == true)
+}
+
+@Test
 func macroAnyHashableAnyMapFieldsRoundTrip() throws {
     let fory = Fory()
     fory.register(AnyHashableDynamicKey.self, id: 420)
@@ -148,10 +179,10 @@ func macroAnyHashableAnyMapFieldsRoundTrip() throws {
         map: [
             AnyHashable("id"): Int32(1),
             AnyHashable(Int32(2)): "value2",
-            AnyHashable(AnyHashableDynamicKey(id: 5)): AnyHashableDynamicValue(label: "nested", score: 8),
+            AnyHashable(AnyHashableDynamicKey(id: 5)): AnyHashableDynamicValue(label: "nested", score: 8)
         ],
         optionalMap: [
-            AnyHashable(false): NSNull(),
+            AnyHashable(false): NSNull()
         ]
     )
 
@@ -177,10 +208,10 @@ func macroAnyHashableSetFieldsRoundTrip() throws {
         set: [
             AnyHashable("a"),
             AnyHashable(Int32(3)),
-            AnyHashable(AnyHashableDynamicKey(id: 9)),
+            AnyHashable(AnyHashableDynamicKey(id: 9))
         ],
         optionalSet: [
-            AnyHashable(false),
+            AnyHashable(false)
         ]
     )
 
@@ -208,11 +239,11 @@ func macroCoreAnyFieldsRoundTrip() throws {
         anyList: [Int32(44), "core-list", AnyHashableDynamicValue(label: "core-list-obj", score: 45)],
         stringAnyMap: [
             "k1": Int32(46),
-            "k2": AnyHashableDynamicValue(label: "core-map-a", score: 47),
+            "k2": AnyHashableDynamicValue(label: "core-map-a", score: 47)
         ],
         int32AnyMap: [
             48: "core-map-b",
-            49: AnyHashableDynamicValue(label: "core-map-c", score: 50),
+            49: AnyHashableDynamicValue(label: "core-map-c", score: 50)
         ]
     )
 
@@ -254,7 +285,7 @@ func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
 
     let heterogeneous: Any = [
         AnyHashable("k"): Int32(1),
-        AnyHashable(Int32(2)): "v2",
+        AnyHashable(Int32(2)): "v2"
     ] as [AnyHashable: Any]
     let heteroData = try fory.serialize(heterogeneous)
     let heteroDecoded: Any = try fory.deserialize(heteroData)
@@ -265,7 +296,7 @@ func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
 
     let homogeneous: Any = [
         AnyHashable("a"): Int32(10),
-        AnyHashable("b"): Int32(20),
+        AnyHashable("b"): Int32(20)
     ] as [AnyHashable: Any]
     let homogeneousData = try fory.serialize(homogeneous)
     let homogeneousDecoded: Any = try fory.deserialize(homogeneousData)
@@ -305,7 +336,7 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
     let anyListValue: [Any] = [
         Int32(4),
         "list",
-        AnyHashableDynamicValue(label: "list-obj", score: 5),
+        AnyHashableDynamicValue(label: "list-obj", score: 5)
     ]
     let anyListData = try fory.serialize(anyListValue)
     let anyListDecoded: [Any] = try fory.deserialize(anyListData)
@@ -316,7 +347,7 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
 
     let stringAnyMapValue: [String: Any] = [
         "a": Int32(6),
-        "b": AnyHashableDynamicValue(label: "map-a", score: 7),
+        "b": AnyHashableDynamicValue(label: "map-a", score: 7)
     ]
     let stringAnyMapData = try fory.serialize(stringAnyMapValue)
     let stringAnyMapDecoded: [String: Any] = try fory.deserialize(stringAnyMapData)
@@ -325,7 +356,7 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
 
     let int32AnyMapValue: [Int32: Any] = [
         8: "v8",
-        9: AnyHashableDynamicValue(label: "map-b", score: 9),
+        9: AnyHashableDynamicValue(label: "map-b", score: 9)
     ]
     let int32AnyMapData = try fory.serialize(int32AnyMapValue)
     let int32AnyMapDecoded: [Int32: Any] = try fory.deserialize(int32AnyMapData)
@@ -334,7 +365,7 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
 
     let anyHashableAnyMapValue: [AnyHashable: Any] = [
         AnyHashable("x"): Int32(10),
-        AnyHashable(Int32(11)): AnyHashableDynamicValue(label: "map-c", score: 11),
+        AnyHashable(Int32(11)): AnyHashableDynamicValue(label: "map-c", score: 11)
     ]
     let anyHashableAnyMapData = try fory.serialize(anyHashableAnyMapValue)
     let anyHashableAnyMapDecoded: [AnyHashable: Any] = try fory.deserialize(anyHashableAnyMapData)
@@ -347,7 +378,7 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
     let anyHashableSetValue: Set<AnyHashable> = [
         AnyHashable("set"),
         AnyHashable(Int32(12)),
-        AnyHashable(AnyHashableDynamicKey(id: 13)),
+        AnyHashable(AnyHashableDynamicKey(id: 13))
     ]
     let anyHashableSetData = try fory.serialize(anyHashableSetValue)
     let anyHashableSetDecoded: Set<AnyHashable> = try fory.deserialize(anyHashableSetData)
@@ -355,4 +386,37 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
     #expect(anyHashableSetDecoded.contains(AnyHashable("set")))
     #expect(anyHashableSetDecoded.contains(AnyHashable(Int32(12))))
     #expect(anyHashableSetDecoded.contains(AnyHashable(AnyHashableDynamicKey(id: 13))))
+}
+
+@Test
+func dynamicAnyMaxDepthRejectsDeepNesting() throws {
+    let value = nestedDynamicAnyList(depth: 3)
+    let writer = Fory(config: .init(maxDepth: 8))
+    let payload = try writer.serialize(value)
+
+    let limited = Fory(config: .init(maxDepth: 3))
+    do {
+        let _: Any = try limited.deserialize(payload)
+        #expect(Bool(false))
+    } catch {
+        #expect(String(describing: error).contains("maxDepth"))
+    }
+}
+
+@Test
+func dynamicAnyMaxDepthAllowsBoundaryDepth() throws {
+    let value = nestedDynamicAnyList(depth: 3)
+    let fory = Fory(config: .init(maxDepth: 4))
+
+    let payload = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(payload)
+
+    let level1 = decoded as? [Any]
+    let level2 = level1?.first as? [Any]
+    let level3 = level2?.first as? [Any]
+
+    #expect(level1 != nil)
+    #expect(level2 != nil)
+    #expect(level3 != nil)
+    #expect(level3?.first as? Int32 == 1)
 }
