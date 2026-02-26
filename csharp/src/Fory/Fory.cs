@@ -53,31 +53,64 @@ public sealed class Fory
             Config.MaxDepth);
     }
 
+    /// <summary>
+    /// Gets the immutable runtime configuration.
+    /// </summary>
     public Config Config { get; }
 
+    /// <summary>
+    /// Creates a new <see cref="ForyBuilder"/> for configuring and building runtimes.
+    /// </summary>
+    /// <returns>A new builder instance.</returns>
     public static ForyBuilder Builder()
     {
         return new ForyBuilder();
     }
 
+    /// <summary>
+    /// Registers a user type by numeric type identifier.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <param name="typeId">Numeric type identifier used on the wire.</param>
+    /// <returns>The same runtime instance.</returns>
     public Fory Register<T>(uint typeId)
     {
         _typeResolver.Register(typeof(T), typeId);
         return this;
     }
 
+    /// <summary>
+    /// Registers a user type by name using an empty namespace.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <param name="typeName">Type name used on the wire.</param>
+    /// <returns>The same runtime instance.</returns>
     public Fory Register<T>(string typeName)
     {
         _typeResolver.Register(typeof(T), string.Empty, typeName);
         return this;
     }
 
+    /// <summary>
+    /// Registers a user type by namespace and name.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <param name="typeNamespace">Namespace used on the wire.</param>
+    /// <param name="typeName">Type name used on the wire.</param>
+    /// <returns>The same runtime instance.</returns>
     public Fory Register<T>(string typeNamespace, string typeName)
     {
         _typeResolver.Register(typeof(T), typeNamespace, typeName);
         return this;
     }
 
+    /// <summary>
+    /// Registers a user type by numeric type identifier with a custom serializer.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <typeparam name="TSerializer">Serializer implementation used for <typeparamref name="T"/>.</typeparam>
+    /// <param name="typeId">Numeric type identifier used on the wire.</param>
+    /// <returns>The same runtime instance.</returns>
     public Fory Register<T, TSerializer>(uint typeId)
         where TSerializer : Serializer<T>, new()
     {
@@ -86,6 +119,14 @@ public sealed class Fory
         return this;
     }
 
+    /// <summary>
+    /// Registers a user type by namespace and name with a custom serializer.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <typeparam name="TSerializer">Serializer implementation used for <typeparamref name="T"/>.</typeparam>
+    /// <param name="typeNamespace">Namespace used on the wire.</param>
+    /// <param name="typeName">Type name used on the wire.</param>
+    /// <returns>The same runtime instance.</returns>
     public Fory Register<T, TSerializer>(string typeNamespace, string typeName)
         where TSerializer : Serializer<T>, new()
     {
@@ -94,6 +135,12 @@ public sealed class Fory
         return this;
     }
 
+    /// <summary>
+    /// Serializes a value into a new byte array containing one Fory frame.
+    /// </summary>
+    /// <typeparam name="T">Value type.</typeparam>
+    /// <param name="value">Value to serialize.</param>
+    /// <returns>Serialized bytes.</returns>
     public byte[] Serialize<T>(in T value)
     {
         ByteWriter writer = _writeContext.Writer;
@@ -113,12 +160,25 @@ public sealed class Fory
         return writer.ToArray();
     }
 
+    /// <summary>
+    /// Serializes a value and writes one Fory frame into the provided buffer writer.
+    /// </summary>
+    /// <typeparam name="T">Value type.</typeparam>
+    /// <param name="output">Destination writer.</param>
+    /// <param name="value">Value to serialize.</param>
     public void Serialize<T>(IBufferWriter<byte> output, in T value)
     {
         byte[] payload = Serialize(value);
         output.Write(payload);
     }
 
+    /// <summary>
+    /// Deserializes a value from one Fory frame in the provided span.
+    /// </summary>
+    /// <typeparam name="T">Target type.</typeparam>
+    /// <param name="payload">Serialized bytes containing exactly one frame.</param>
+    /// <returns>Deserialized value.</returns>
+    /// <exception cref="InvalidDataException">Thrown when trailing bytes remain after decoding.</exception>
     public T Deserialize<T>(ReadOnlySpan<byte> payload)
     {
         ByteReader reader = _readContext.Reader;
@@ -132,6 +192,13 @@ public sealed class Fory
         return value;
     }
 
+    /// <summary>
+    /// Deserializes a value from one Fory frame in the provided byte array.
+    /// </summary>
+    /// <typeparam name="T">Target type.</typeparam>
+    /// <param name="payload">Serialized bytes containing exactly one frame.</param>
+    /// <returns>Deserialized value.</returns>
+    /// <exception cref="InvalidDataException">Thrown when trailing bytes remain after decoding.</exception>
     public T Deserialize<T>(byte[] payload)
     {
         ByteReader reader = _readContext.Reader;
@@ -145,6 +212,12 @@ public sealed class Fory
         return value;
     }
 
+    /// <summary>
+    /// Deserializes a value from the head of a framed sequence and advances the sequence.
+    /// </summary>
+    /// <typeparam name="T">Target type.</typeparam>
+    /// <param name="payload">Input sequence. On success, sliced past the consumed frame.</param>
+    /// <returns>Deserialized value.</returns>
     public T Deserialize<T>(ref ReadOnlySequence<byte> payload)
     {
         byte[] bytes = payload.ToArray();
@@ -156,6 +229,11 @@ public sealed class Fory
     }
 
 
+    /// <summary>
+    /// Writes the frame header for a payload.
+    /// </summary>
+    /// <param name="writer">Destination writer.</param>
+    /// <param name="isNone">Whether the payload value is null.</param>
     public void WriteHead(ByteWriter writer, bool isNone)
     {
         byte bitmap = 0;
@@ -172,6 +250,12 @@ public sealed class Fory
         writer.WriteUInt8(bitmap);
     }
 
+    /// <summary>
+    /// Reads and validates the frame header.
+    /// </summary>
+    /// <param name="reader">Source reader.</param>
+    /// <returns><c>true</c> if the payload value is null; otherwise <c>false</c>.</returns>
+    /// <exception cref="InvalidDataException">Thrown when the peer xlang bitmap does not match this runtime mode.</exception>
     public bool ReadHead(ByteReader reader)
     {
         byte bitmap = reader.ReadUInt8();
