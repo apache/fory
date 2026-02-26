@@ -685,8 +685,6 @@ if err := restored.FromBytes(data); err != nil {
 }
 ```
 
-
-
 ## C\#
 
 ### Output Layout
