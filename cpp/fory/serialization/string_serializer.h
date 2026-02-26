@@ -119,10 +119,6 @@ inline std::string read_string_data(ReadContext &ctx) {
     return std::string();
   }
   const uint32_t length_u32 = static_cast<uint32_t>(length);
-  if (FORY_PREDICT_FALSE(
-          !ctx.buffer().ensure_readable(length_u32, ctx.error()))) {
-    return std::string();
-  }
 
   // Handle different encodings
   switch (encoding) {
@@ -186,10 +182,6 @@ inline std::u16string read_u16string_data(ReadContext &ctx) {
     return std::u16string();
   }
   const uint32_t length_u32 = static_cast<uint32_t>(length);
-  if (FORY_PREDICT_FALSE(
-          !ctx.buffer().ensure_readable(length_u32, ctx.error()))) {
-    return std::u16string();
-  }
 
   // Handle different encodings
   switch (encoding) {

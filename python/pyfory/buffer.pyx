@@ -53,9 +53,8 @@ cdef class _SharedBufferOwner:
 cdef class Buffer:
     def __init__(self,  data not None, int32_t offset=0, length=None):
         self.data = data
-        cdef int32_t buffer_len
+        cdef int32_t buffer_len = len(data)
         cdef int length_
-        buffer_len = len(data)
         if length is None:
             length_ = buffer_len - offset
         else:
@@ -529,16 +528,6 @@ cdef class Buffer:
         self.check_bound(offset, length)
         self.c_buffer.copy_from(offset, value, 0, length)
         self.c_buffer.increase_writer_index(length)
-
-    cdef inline int32_t read_c_buffer(self, uint8_t** buf):
-        cdef int32_t length = self.read_var_uint32()
-        cdef uint32_t offset = self.c_buffer.reader_index()
-        if length > 0 and not self.c_buffer.ensure_readable(<uint32_t>length, self._error):
-            self._raise_if_error()
-        buf[0] = self.c_buffer.data() + offset
-        self.c_buffer.reader_index(offset + <uint32_t>length)
-        self._raise_if_error()
-        return length
 
     cpdef inline write_string(self, str value):
         cdef Py_ssize_t length = PyUnicode_GET_LENGTH(value)

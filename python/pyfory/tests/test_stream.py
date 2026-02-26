@@ -124,7 +124,7 @@ def test_stream_deserialize_multiple_objects_from_single_stream(xlang):
     for obj in expected:
         assert fory.deserialize(reader) == obj
 
-    assert reader.get_reader_index() == write_buffer.get_writer_index()
+    assert reader.get_reader_index() == reader.size()
 
 
 @pytest.mark.parametrize("xlang", [False, True])
