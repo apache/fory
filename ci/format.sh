@@ -332,13 +332,16 @@ format_changed() {
         # Install prettier globally
         npm install -g prettier
         # Fix markdown files except analyzer release tracking files.
-        local markdown_files
-        markdown_files="$(git ls-files -- '*.md' \
+        # Exclude symlinks (for example CLAUDE.md) because prettier fails on explicitly passed symlink paths.
+        git ls-files -z -- '*.md' \
             ':!:csharp/src/Fory.Generator/AnalyzerReleases.Shipped.md' \
-            ':!:csharp/src/Fory.Generator/AnalyzerReleases.Unshipped.md')"
-        if [ -n "$markdown_files" ]; then
-            printf '%s\n' "$markdown_files" | xargs prettier --write
-        fi
+            ':!:csharp/src/Fory.Generator/AnalyzerReleases.Unshipped.md' \
+            | while IFS= read -r -d '' file; do
+                if [ ! -L "$file" ]; then
+                    printf '%s\0' "$file"
+                fi
+            done \
+            | xargs -0 prettier --write
         popd
     fi
 
