@@ -48,7 +48,7 @@ void skip_string(ReadContext &ctx) {
   uint64_t size = size_encoding >> 2;
 
   // skip string data
-  ctx.buffer().increase_reader_index(size);
+  ctx.buffer().increase_reader_index(size, ctx.error());
 }
 
 void skip_list(ReadContext &ctx, const FieldType &field_type) {
@@ -494,13 +494,13 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   case TypeId::BOOL:
   case TypeId::INT8:
   case TypeId::FLOAT8:
-    ctx.buffer().increase_reader_index(1);
+    ctx.buffer().increase_reader_index(1, ctx.error());
     return;
 
   case TypeId::INT16:
   case TypeId::BFLOAT16:
   case TypeId::FLOAT16:
-    ctx.buffer().increase_reader_index(2);
+    ctx.buffer().increase_reader_index(2, ctx.error());
     return;
 
   case TypeId::INT32: {
@@ -512,7 +512,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   }
 
   case TypeId::FLOAT32:
-    ctx.buffer().increase_reader_index(4);
+    ctx.buffer().increase_reader_index(4, ctx.error());
     return;
 
   case TypeId::INT64: {
@@ -524,7 +524,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   }
 
   case TypeId::FLOAT64:
-    ctx.buffer().increase_reader_index(8);
+    ctx.buffer().increase_reader_index(8, ctx.error());
     return;
 
   case TypeId::VARINT32:
@@ -556,7 +556,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
                                                k_bytes, ctx.buffer().size()));
       return;
     }
-    ctx.buffer().increase_reader_index(k_bytes);
+    ctx.buffer().increase_reader_index(k_bytes, ctx.error());
     return;
   }
   case TypeId::TIMESTAMP: {
@@ -568,7 +568,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
                                                k_bytes, ctx.buffer().size()));
       return;
     }
-    ctx.buffer().increase_reader_index(k_bytes);
+    ctx.buffer().increase_reader_index(k_bytes, ctx.error());
     return;
   }
 
@@ -580,7 +580,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
                                                k_bytes, ctx.buffer().size()));
       return;
     }
-    ctx.buffer().increase_reader_index(k_bytes);
+    ctx.buffer().increase_reader_index(k_bytes, ctx.error());
     return;
   }
 
@@ -603,7 +603,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   case TypeId::FLOAT32_ARRAY:
   case TypeId::FLOAT64_ARRAY: {
     if (tid == TypeId::FLOAT8_ARRAY) {
-      ctx.buffer().increase_reader_index(1);
+      ctx.buffer().increase_reader_index(1, ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
@@ -634,7 +634,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
       break;
     }
 
-    ctx.buffer().increase_reader_index(len * elem_size);
+    ctx.buffer().increase_reader_index(len * elem_size, ctx.error());
     return;
   }
 
@@ -644,7 +644,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
-    ctx.buffer().increase_reader_index(len);
+    ctx.buffer().increase_reader_index(len, ctx.error());
     return;
   }
 

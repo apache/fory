@@ -316,7 +316,8 @@ cdef class Buffer:
         cdef CResultVoidError res = self.c_buffer.get_bytes_as_int64(offset, length,  &result)
         if not res.ok():
             raise_fory_error(res.error().code(), res.error().message())
-        self.c_buffer.increase_reader_index(length)
+        self.c_buffer.increase_reader_index(length, self._error)
+        self._raise_if_error()
         return result
 
     cpdef inline put_bytes(self, uint32_t offset, bytes value):
@@ -533,7 +534,8 @@ cdef class Buffer:
         cdef uint32_t offset = self.c_buffer.reader_index()
         self.check_bound(offset, length)
         buf[0] = binary_data + offset
-        self.c_buffer.increase_reader_index(length)
+        self.c_buffer.increase_reader_index(length, self._error)
+        self._raise_if_error()
         return length
 
     cpdef inline write_string(self, str value):
@@ -568,7 +570,8 @@ cdef class Buffer:
         cdef uint32_t offset = self.c_buffer.reader_index()
         self.check_bound(offset, size)
         cdef const char * buf = <const char *>(self.c_buffer.data() + offset)
-        self.c_buffer.increase_reader_index(size)
+        self.c_buffer.increase_reader_index(size, self._error)
+        self._raise_if_error()
         cdef uint32_t encoding = header & <uint32_t>0b11
         if encoding == 0:
             # PyUnicode_FromASCII
