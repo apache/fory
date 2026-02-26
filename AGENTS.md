@@ -6,6 +6,7 @@ This file provides comprehensive guidance to AI coding agents when working with 
 
 While working on Fory, please remember:
 
+- **Do not reserve any legacy code/docs unless requested clearly**.
 - **Performance First**: Performance is the top priority. Never introduce code that reduces performance without explicit justification.
 - **English Only**: Always use English in code, comments, and documentation.
 - **Meaningful Comments**: Only add comments when the code's behavior is difficult to understand or when documenting complex algorithms.
