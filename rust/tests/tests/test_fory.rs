@@ -196,6 +196,128 @@ fn test_serialize_to_detailed() {
     }
 }
 
+#[test]
+fn test_context_reusable_after_unwind_in_entrypoints() {
+    use fory_core::error::Error;
+    use fory_core::resolver::context::{ReadContext, WriteContext};
+    use fory_core::serializer::{ForyDefault, Serializer};
+    use fory_core::TypeResolver;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    #[derive(Debug)]
+    struct PanicOnWrite;
+
+    impl ForyDefault for PanicOnWrite {
+        fn fory_default() -> Self {
+            Self
+        }
+    }
+
+    impl Serializer for PanicOnWrite {
+        fn fory_write_data(&self, _context: &mut WriteContext) -> Result<(), Error> {
+            panic!("intentional panic in fory_write_data")
+        }
+
+        fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
+            Ok(Self)
+        }
+
+        fn fory_type_id_dyn(
+            &self,
+            type_resolver: &TypeResolver,
+        ) -> Result<fory_core::TypeId, Error> {
+            Self::fory_get_type_id(type_resolver)
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    #[derive(Debug)]
+    struct PanicOnRead {
+        value: i32,
+    }
+
+    impl ForyDefault for PanicOnRead {
+        fn fory_default() -> Self {
+            Self { value: 0 }
+        }
+    }
+
+    impl Serializer for PanicOnRead {
+        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_i32(self.value);
+            Ok(())
+        }
+
+        fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
+            panic!("intentional panic in fory_read_data")
+        }
+
+        fn fory_type_id_dyn(
+            &self,
+            type_resolver: &TypeResolver,
+        ) -> Result<fory_core::TypeId, Error> {
+            Self::fory_get_type_id(type_resolver)
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct StablePoint {
+        x: i32,
+        y: i32,
+    }
+
+    let mut fory = Fory::default();
+    fory.register_serializer::<PanicOnWrite>(300).unwrap();
+    fory.register_serializer::<PanicOnRead>(301).unwrap();
+    fory.register::<StablePoint>(302).unwrap();
+
+    let write_unwind = {
+        let mut external_buf = Vec::new();
+        catch_unwind(AssertUnwindSafe(|| {
+            let _ = fory.serialize_to(&mut external_buf, &PanicOnWrite);
+        }))
+    };
+    assert!(write_unwind.is_err());
+
+    let stable = StablePoint { x: 7, y: 9 };
+    let stable_bytes_after_serialize_to_panic = fory.serialize(&stable).unwrap();
+    let stable_after_serialize_to_panic: StablePoint = fory
+        .deserialize(&stable_bytes_after_serialize_to_panic)
+        .unwrap();
+    assert_eq!(stable_after_serialize_to_panic, stable);
+
+    let panic_read_bytes = fory.serialize(&PanicOnRead { value: 42 }).unwrap();
+
+    let deserialize_unwind = catch_unwind(AssertUnwindSafe(|| {
+        let _: PanicOnRead = fory.deserialize(&panic_read_bytes).unwrap();
+    }));
+    assert!(deserialize_unwind.is_err());
+
+    let stable_bytes_after_deserialize_panic = fory.serialize(&stable).unwrap();
+    let stable_after_deserialize_panic: StablePoint = fory
+        .deserialize(&stable_bytes_after_deserialize_panic)
+        .unwrap();
+    assert_eq!(stable_after_deserialize_panic, stable);
+
+    let mut panic_reader = Reader::new(&panic_read_bytes);
+    let deserialize_from_unwind = catch_unwind(AssertUnwindSafe(|| {
+        let _: PanicOnRead = fory.deserialize_from(&mut panic_reader).unwrap();
+    }));
+    assert!(deserialize_from_unwind.is_err());
+
+    let mut stable_reader = Reader::new(&stable_bytes_after_deserialize_panic);
+    let stable_after_deserialize_from_panic: StablePoint =
+        fory.deserialize_from(&mut stable_reader).unwrap();
+    assert_eq!(stable_after_deserialize_from_panic, stable);
+}
+
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 macro_rules! impl_value {

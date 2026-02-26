@@ -124,6 +124,8 @@ pub struct WriteContext<'a> {
     track_ref: bool,
 
     // Context-specific fields
+    // Dedicated fallback writer buffer owned by this context.
+    owned_writer_buffer: *mut Vec<u8>,
     default_writer: Option<Writer<'a>>,
     pub writer: Writer<'a>,
     meta_resolver: MetaWriterResolver,
@@ -134,10 +136,13 @@ pub struct WriteContext<'a> {
 #[allow(clippy::needless_lifetimes)]
 impl<'a> WriteContext<'a> {
     pub fn new(type_resolver: TypeResolver, config: Config) -> WriteContext<'a> {
-        WriteContext::with_writer(
+        let owned_writer_buffer = Self::allocate_owned_writer_buffer();
+        let writer = unsafe { Writer::from_buffer(&mut *owned_writer_buffer) };
+        WriteContext::with_writer_and_owned_buffer(
             type_resolver,
             config,
-            Writer::from_buffer(Self::get_leak_buffer()),
+            writer,
+            owned_writer_buffer,
         )
     }
 
@@ -145,6 +150,22 @@ impl<'a> WriteContext<'a> {
         type_resolver: TypeResolver,
         config: Config,
         writer: Writer<'a>,
+    ) -> WriteContext<'a> {
+        let owned_writer_buffer = Self::allocate_owned_writer_buffer();
+        WriteContext::with_writer_and_owned_buffer(
+            type_resolver,
+            config,
+            writer,
+            owned_writer_buffer,
+        )
+    }
+
+    #[inline(always)]
+    fn with_writer_and_owned_buffer(
+        type_resolver: TypeResolver,
+        config: Config,
+        writer: Writer<'a>,
+        owned_writer_buffer: *mut Vec<u8>,
     ) -> WriteContext<'a> {
         WriteContext {
             type_resolver,
@@ -154,6 +175,7 @@ impl<'a> WriteContext<'a> {
             xlang: config.xlang,
             check_struct_version: config.check_struct_version,
             track_ref: config.track_ref,
+            owned_writer_buffer,
             default_writer: None,
             writer,
             meta_resolver: MetaWriterResolver::default(),
@@ -163,8 +185,8 @@ impl<'a> WriteContext<'a> {
     }
 
     #[inline(always)]
-    fn get_leak_buffer() -> &'static mut Vec<u8> {
-        Box::leak(Box::new(vec![]))
+    fn allocate_owned_writer_buffer() -> *mut Vec<u8> {
+        Box::into_raw(Box::new(vec![]))
     }
 
     #[inline(always)]
@@ -297,6 +319,15 @@ impl<'a> WriteContext<'a> {
         self.meta_resolver.reset();
         self.meta_string_resolver.reset();
         self.ref_writer.reset();
+    }
+}
+
+#[allow(clippy::needless_lifetimes)]
+impl<'a> Drop for WriteContext<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            drop(Box::from_raw(self.owned_writer_buffer));
+        }
     }
 }
 
