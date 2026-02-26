@@ -713,6 +713,17 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
         if len == 0 {
             return Ok(BTreeMap::new());
         }
+        let remaining = context
+            .reader
+            .bf
+            .len()
+            .saturating_sub(context.reader.cursor);
+        if len as usize > remaining {
+            return Err(Error::invalid_data(format!(
+                "map entry count {} exceeds buffer remaining {}",
+                len, remaining
+            )));
+        }
         context.check_map_size(len as usize)?;
         let mut map = BTreeMap::<K, V>::new();
         if K::fory_is_polymorphic()
