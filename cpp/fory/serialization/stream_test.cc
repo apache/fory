@@ -125,8 +125,7 @@ TEST(StreamSerializationTest, PrimitiveAndStringRoundTrip) {
       << number_bytes_result.error().to_string();
   OneByteIStream number_source(std::move(number_bytes_result).value());
   ForyInputStream number_stream(number_source, 8);
-  Buffer number_buffer(number_stream);
-  auto number_result = fory.deserialize<int64_t>(number_buffer);
+  auto number_result = fory.deserialize<int64_t>(number_stream);
   ASSERT_TRUE(number_result.ok()) << number_result.error().to_string();
   EXPECT_EQ(number_result.value(), -9876543212345LL);
 
@@ -135,8 +134,7 @@ TEST(StreamSerializationTest, PrimitiveAndStringRoundTrip) {
       << string_bytes_result.error().to_string();
   OneByteIStream string_source(std::move(string_bytes_result).value());
   ForyInputStream string_stream(string_source, 8);
-  Buffer string_buffer(string_stream);
-  auto string_result = fory.deserialize<std::string>(string_buffer);
+  auto string_result = fory.deserialize<std::string>(string_stream);
   ASSERT_TRUE(string_result.ok()) << string_result.error().to_string();
   EXPECT_EQ(string_result.value(), "stream-hello-世界");
 }
@@ -158,8 +156,7 @@ TEST(StreamSerializationTest, StructRoundTrip) {
 
   OneByteIStream source(std::move(bytes_result).value());
   ForyInputStream stream(source, 4);
-  Buffer buffer(stream);
-  auto result = fory.deserialize<StreamEnvelope>(buffer);
+  auto result = fory.deserialize<StreamEnvelope>(stream);
   ASSERT_TRUE(result.ok()) << result.error().to_string();
   EXPECT_EQ(result.value(), original);
 }
@@ -179,21 +176,20 @@ TEST(StreamSerializationTest, SequentialDeserializeFromSingleStream) {
 
   OneByteIStream source(bytes);
   ForyInputStream stream(source, 3);
-  Buffer buffer(stream);
 
-  auto first = fory.deserialize<int32_t>(buffer);
+  auto first = fory.deserialize<int32_t>(stream);
   ASSERT_TRUE(first.ok()) << first.error().to_string();
   EXPECT_EQ(first.value(), 12345);
 
-  auto second = fory.deserialize<std::string>(buffer);
+  auto second = fory.deserialize<std::string>(stream);
   ASSERT_TRUE(second.ok()) << second.error().to_string();
   EXPECT_EQ(second.value(), "next-value");
 
-  auto third = fory.deserialize<StreamEnvelope>(buffer);
+  auto third = fory.deserialize<StreamEnvelope>(stream);
   ASSERT_TRUE(third.ok()) << third.error().to_string();
   EXPECT_EQ(third.value(), envelope);
 
-  EXPECT_EQ(buffer.reader_index(), bytes.size());
+  EXPECT_EQ(stream.get_buffer().reader_index(), bytes.size());
 }
 
 TEST(StreamSerializationTest, SharedPointerIdentityRoundTrip) {
@@ -208,8 +204,7 @@ TEST(StreamSerializationTest, SharedPointerIdentityRoundTrip) {
 
   OneByteIStream source(std::move(bytes_result).value());
   ForyInputStream stream(source, 2);
-  Buffer buffer(stream);
-  auto result = fory.deserialize<SharedIntPair>(buffer);
+  auto result = fory.deserialize<SharedIntPair>(stream);
   ASSERT_TRUE(result.ok()) << result.error().to_string();
   ASSERT_NE(result.value().first, nullptr);
   ASSERT_NE(result.value().second, nullptr);
@@ -233,8 +228,7 @@ TEST(StreamSerializationTest, TruncatedStreamReturnsError) {
 
   OneByteIStream source(truncated);
   ForyInputStream stream(source, 4);
-  Buffer buffer(stream);
-  auto result = fory.deserialize<StreamEnvelope>(buffer);
+  auto result = fory.deserialize<StreamEnvelope>(stream);
   EXPECT_FALSE(result.ok());
 }
 

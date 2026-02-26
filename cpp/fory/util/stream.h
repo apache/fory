@@ -19,197 +19,65 @@
 
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <istream>
-#include <limits>
 #include <memory>
-#include <streambuf>
 #include <vector>
 
 #include "fory/util/error.h"
-#include "fory/util/logging.h"
 #include "fory/util/result.h"
 
 namespace fory {
 
-class ForyInputStreamBuf final : public std::streambuf {
+class Buffer;
+
+class StreamReader {
 public:
-  explicit ForyInputStreamBuf(std::istream &stream, uint32_t buffer_size = 4096)
-      : stream_(&stream),
-        buffer_(std::max<uint32_t>(buffer_size, static_cast<uint32_t>(1))) {
-    char *base = buffer_.data();
-    setg(base, base, base);
-  }
+  virtual ~StreamReader() = default;
 
-  Result<void, Error> fill_buffer(uint32_t min_fill_size) {
-    if (min_fill_size == 0) {
-      return Result<void, Error>();
-    }
-    if (remaining_size() >= min_fill_size) {
-      return Result<void, Error>();
-    }
+  virtual Result<void, Error> fill_buffer(uint32_t min_fill_size) = 0;
 
-    const uint32_t read_pos = reader_index();
-    const uint32_t cur_size = size();
-    const uint64_t required =
-        static_cast<uint64_t>(cur_size) + (min_fill_size - remaining_size());
-    if (required > std::numeric_limits<uint32_t>::max()) {
-      return Unexpected(
-          Error::out_of_bound("stream buffer size exceeds uint32 range"));
-    }
-    if (required > buffer_.size()) {
-      uint64_t new_size = static_cast<uint64_t>(buffer_.size()) * 2;
-      if (new_size < required) {
-        new_size = required;
-      }
-      reserve(static_cast<uint32_t>(new_size));
-    }
+  virtual Result<void, Error> read_to(uint8_t *dst, uint32_t length) = 0;
 
-    char *base = buffer_.data();
-    uint32_t write_pos = cur_size;
-    setg(base, base + read_pos, base + write_pos);
-    while (remaining_size() < min_fill_size) {
-      uint32_t writable = static_cast<uint32_t>(buffer_.size()) - write_pos;
-      if (writable == 0) {
-        uint64_t new_size = static_cast<uint64_t>(buffer_.size()) * 2 + 1;
-        if (new_size > std::numeric_limits<uint32_t>::max()) {
-          return Unexpected(
-              Error::out_of_bound("stream buffer size exceeds uint32 range"));
-        }
-        reserve(static_cast<uint32_t>(new_size));
-        base = buffer_.data();
-        writable = static_cast<uint32_t>(buffer_.size()) - write_pos;
-        setg(base, base + read_pos, base + write_pos);
-      }
-      std::streambuf *source = stream_->rdbuf();
-      if (source == nullptr) {
-        return Unexpected(Error::io_error("input stream has no stream buffer"));
-      }
-      const std::streamsize read_bytes = source->sgetn(
-          base + write_pos, static_cast<std::streamsize>(writable));
-      if (read_bytes <= 0) {
-        return Unexpected(Error::buffer_out_of_bound(read_pos, min_fill_size,
-                                                     remaining_size()));
-      }
-      write_pos += static_cast<uint32_t>(read_bytes);
-      setg(base, base + read_pos, base + write_pos);
-    }
-    return Result<void, Error>();
-  }
+  virtual Result<void, Error> skip(uint32_t size) = 0;
 
-  void rewind(uint32_t size) {
-    const uint32_t consumed = reader_index();
-    FORY_CHECK(size <= consumed)
-        << "rewind size " << size << " exceeds consumed bytes " << consumed;
-    setg(eback(), gptr() - static_cast<std::ptrdiff_t>(size), egptr());
-  }
+  virtual Result<void, Error> unread(uint32_t size) = 0;
 
-  void consume(uint32_t size) {
-    const uint32_t available = remaining_size();
-    FORY_CHECK(size <= available)
-        << "consume size " << size << " exceeds available bytes " << available;
-    gbump(static_cast<int>(size));
-  }
-
-  void reader_index(uint32_t index) {
-    const uint32_t cur_size = size();
-    FORY_CHECK(index <= cur_size) << "reader_index " << index
-                                  << " exceeds stream buffer size " << cur_size;
-    setg(eback(), eback() + static_cast<std::ptrdiff_t>(index), egptr());
-  }
-
-  uint8_t *data() { return reinterpret_cast<uint8_t *>(eback()); }
-
-  uint32_t size() const { return static_cast<uint32_t>(egptr() - eback()); }
-
-  uint32_t reader_index() const {
-    return static_cast<uint32_t>(gptr() - eback());
-  }
-
-  uint32_t remaining_size() const {
-    return static_cast<uint32_t>(egptr() - gptr());
-  }
-
-protected:
-  std::streamsize xsgetn(char *s, std::streamsize count) override {
-    std::streamsize copied = 0;
-    while (copied < count) {
-      auto available = static_cast<std::streamsize>(egptr() - gptr());
-      if (available == 0) {
-        if (!fill_buffer(1).ok()) {
-          break;
-        }
-        available = static_cast<std::streamsize>(egptr() - gptr());
-      }
-      const std::streamsize n = std::min(available, count - copied);
-      std::memcpy(s + copied, gptr(), static_cast<size_t>(n));
-      gbump(static_cast<int>(n));
-      copied += n;
-    }
-    return copied;
-  }
-
-  int_type underflow() override {
-    if (gptr() < egptr()) {
-      return traits_type::to_int_type(*gptr());
-    }
-    if (!fill_buffer(1).ok()) {
-      return traits_type::eof();
-    }
-    return traits_type::to_int_type(*gptr());
-  }
-
-private:
-  void reserve(uint32_t new_size) {
-    const uint32_t old_size = size();
-    const uint32_t old_reader_index = reader_index();
-    buffer_.resize(new_size);
-    char *base = buffer_.data();
-    setg(base, base + old_reader_index, base + old_size);
-  }
-
-  std::istream *stream_;
-  std::vector<char> buffer_;
+  virtual Buffer &get_buffer() = 0;
 };
 
-class ForyInputStream final : public std::basic_istream<char> {
+class ForyInputStream final
+    : public StreamReader,
+      public std::enable_shared_from_this<ForyInputStream> {
 public:
-  explicit ForyInputStream(std::istream &stream, uint32_t buffer_size = 4096)
-      : std::basic_istream<char>(nullptr), streambuf_(stream, buffer_size) {
-    this->init(&streambuf_);
-  }
+  explicit ForyInputStream(std::istream &stream, uint32_t buffer_size = 4096);
 
   explicit ForyInputStream(std::shared_ptr<std::istream> stream,
-                           uint32_t buffer_size = 4096)
-      : std::basic_istream<char>(nullptr), stream_owner_(std::move(stream)),
-        streambuf_(*stream_owner_, buffer_size) {
-    FORY_CHECK(stream_owner_ != nullptr) << "stream must not be null";
-    this->init(&streambuf_);
-  }
+                           uint32_t buffer_size = 4096);
 
-  Result<void, Error> fill_buffer(uint32_t min_fill_size) {
-    return streambuf_.fill_buffer(min_fill_size);
-  }
+  ~ForyInputStream() override;
 
-  void rewind(uint32_t size) { streambuf_.rewind(size); }
+  Result<void, Error> fill_buffer(uint32_t min_fill_size) override;
 
-  void consume(uint32_t size) { streambuf_.consume(size); }
+  Result<void, Error> read_to(uint8_t *dst, uint32_t length) override;
 
-  void reader_index(uint32_t index) { streambuf_.reader_index(index); }
+  Result<void, Error> skip(uint32_t size) override;
 
-  uint8_t *data() { return streambuf_.data(); }
+  Result<void, Error> unread(uint32_t size) override;
 
-  uint32_t size() const { return streambuf_.size(); }
-
-  uint32_t reader_index() const { return streambuf_.reader_index(); }
-
-  uint32_t remaining_size() const { return streambuf_.remaining_size(); }
+  Buffer &get_buffer() override;
 
 private:
+  uint32_t remaining_size() const;
+
+  void reserve(uint32_t new_size);
+
+  void init_buffer_view();
+
   std::shared_ptr<std::istream> stream_owner_;
-  ForyInputStreamBuf streambuf_;
+  std::istream *stream_ = nullptr;
+  std::vector<uint8_t> data_;
+  std::unique_ptr<Buffer> buffer_;
 };
 
 } // namespace fory

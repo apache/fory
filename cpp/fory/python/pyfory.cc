@@ -25,6 +25,8 @@
 #include <istream>
 #include <streambuf>
 
+#include "fory/util/stream.h"
+
 static PyObject **py_sequence_get_items(PyObject *collection) {
   if (PyList_CheckExact(collection)) {
     return ((PyListObject *)collection)->ob_item;
@@ -197,7 +199,7 @@ int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
     auto source_stream = std::static_pointer_cast<std::istream>(py_stream);
     auto fory_stream = std::make_shared<ForyInputStream>(
         std::move(source_stream), buffer_size);
-    *out = new Buffer(std::move(fory_stream));
+    *out = new Buffer(*fory_stream);
     return 0;
   } catch (const std::exception &e) {
     *error_message = e.what();

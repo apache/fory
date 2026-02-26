@@ -24,6 +24,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "fory/util/bit_util.h"
@@ -34,6 +35,8 @@
 
 namespace fory {
 
+class ForyInputStream;
+
 // A buffer class for storing raw bytes with various methods for reading and
 // writing the bytes.
 class Buffer {
@@ -42,7 +45,7 @@ public:
 
   Buffer(uint8_t *data, uint32_t size, bool own_data = true)
       : data_(data), size_(size), own_data_(own_data), wrapped_vector_(nullptr),
-        stream_(nullptr) {
+        stream_reader_(nullptr) {
     writer_index_ = 0;
     reader_index_ = 0;
   }
@@ -55,22 +58,19 @@ public:
   explicit Buffer(std::vector<uint8_t> &vec)
       : data_(vec.data()), size_(static_cast<uint32_t>(vec.size())),
         own_data_(false), writer_index_(static_cast<uint32_t>(vec.size())),
-        reader_index_(0), wrapped_vector_(&vec), stream_(nullptr) {}
+        reader_index_(0), wrapped_vector_(&vec), stream_reader_(nullptr) {}
 
-  explicit Buffer(ForyInputStream &stream)
-      : data_(stream.data()), size_(stream.size()), own_data_(false),
-        writer_index_(stream.size()), reader_index_(stream.reader_index()),
-        wrapped_vector_(nullptr), stream_(&stream) {}
-
-  explicit Buffer(std::shared_ptr<ForyInputStream> stream)
+  explicit Buffer(StreamReader &stream_reader)
       : data_(nullptr), size_(0), own_data_(false), writer_index_(0),
-        reader_index_(0), wrapped_vector_(nullptr), stream_(stream.get()),
-        stream_owner_(std::move(stream)) {
-    FORY_CHECK(stream_ != nullptr) << "stream must not be null";
-    data_ = stream_->data();
-    size_ = stream_->size();
-    writer_index_ = stream_->size();
-    reader_index_ = stream_->reader_index();
+        reader_index_(0), wrapped_vector_(nullptr),
+        stream_reader_(&stream_reader) {
+    if (auto *input_stream = dynamic_cast<ForyInputStream *>(&stream_reader)) {
+      try {
+        stream_reader_owner_ = std::static_pointer_cast<StreamReader>(
+            input_stream->shared_from_this());
+      } catch (const std::bad_weak_ptr &) {
+      }
+    }
   }
 
   Buffer(Buffer &&buffer) noexcept;
@@ -88,12 +88,23 @@ public:
   FORY_ALWAYS_INLINE bool own_data() const { return own_data_; }
 
   FORY_ALWAYS_INLINE bool is_stream_backed() const {
-    return stream_ != nullptr;
+    return stream_reader_ != nullptr;
   }
 
   FORY_ALWAYS_INLINE void sync_stream_reader_index() {
-    if (stream_ != nullptr) {
-      stream_->reader_index(reader_index_);
+    if (stream_reader_ != nullptr) {
+      Buffer &stream_buffer = stream_reader_->get_buffer();
+      if (reader_index_ > stream_buffer.reader_index_) {
+        auto sync_result =
+            stream_reader_->skip(reader_index_ - stream_buffer.reader_index_);
+        FORY_CHECK(sync_result.ok()) << "failed to sync stream reader index: "
+                                     << sync_result.error().to_string();
+      } else if (reader_index_ < stream_buffer.reader_index_) {
+        auto sync_result =
+            stream_reader_->unread(stream_buffer.reader_index_ - reader_index_);
+        FORY_CHECK(sync_result.ok()) << "failed to sync stream reader index: "
+                                     << sync_result.error().to_string();
+      }
     }
   }
 
@@ -137,7 +148,7 @@ public:
   }
 
   FORY_ALWAYS_INLINE void reader_index(uint32_t reader_index) {
-    if (FORY_PREDICT_FALSE(reader_index > size_ && stream_ != nullptr)) {
+    if (FORY_PREDICT_FALSE(reader_index > size_ && stream_reader_ != nullptr)) {
       Error error;
       const bool ok = fill_buffer(reader_index - reader_index_, error);
       FORY_CHECK(ok)
@@ -1200,27 +1211,46 @@ public:
   std::string hex() const;
 
 private:
+  friend class ForyInputStream;
+
   FORY_ALWAYS_INLINE bool fill_buffer(uint32_t min_fill_size, Error &error) {
     if (FORY_PREDICT_TRUE(min_fill_size <= size_ - reader_index_)) {
       return true;
     }
-    if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
+    if (FORY_PREDICT_TRUE(stream_reader_ == nullptr)) {
       error.set_buffer_out_of_bound(reader_index_, min_fill_size, size_);
       return false;
     }
-    const uint32_t prev_reader_index = reader_index_;
-    stream_->reader_index(reader_index_);
-    auto fill_result = stream_->fill_buffer(min_fill_size);
+    Buffer &stream_buffer = stream_reader_->get_buffer();
+    if (reader_index_ > stream_buffer.reader_index_) {
+      auto sync_result =
+          stream_reader_->skip(reader_index_ - stream_buffer.reader_index_);
+      if (FORY_PREDICT_FALSE(!sync_result.ok())) {
+        error = std::move(sync_result).error();
+        return false;
+      }
+    } else if (reader_index_ < stream_buffer.reader_index_) {
+      auto sync_result =
+          stream_reader_->unread(stream_buffer.reader_index_ - reader_index_);
+      if (FORY_PREDICT_FALSE(!sync_result.ok())) {
+        error = std::move(sync_result).error();
+        return false;
+      }
+    }
+
+    auto fill_result = stream_reader_->fill_buffer(min_fill_size);
     if (FORY_PREDICT_FALSE(!fill_result.ok())) {
       error = std::move(fill_result).error();
       return false;
     }
-    data_ = stream_->data();
-    size_ = stream_->size();
-    reader_index_ = stream_->reader_index();
-    writer_index_ = size_;
+    if (this != &stream_buffer) {
+      data_ = stream_buffer.data_;
+      size_ = stream_buffer.size_;
+      writer_index_ = stream_buffer.writer_index_;
+      reader_index_ = stream_buffer.reader_index_;
+    }
     if (FORY_PREDICT_FALSE(min_fill_size > size_ - reader_index_)) {
-      error.set_buffer_out_of_bound(prev_reader_index, min_fill_size, size_);
+      error.set_buffer_out_of_bound(reader_index_, min_fill_size, size_);
       return false;
     }
     return true;
@@ -1324,8 +1354,8 @@ private:
   uint32_t writer_index_;
   uint32_t reader_index_;
   std::vector<uint8_t> *wrapped_vector_ = nullptr;
-  ForyInputStream *stream_ = nullptr;
-  std::shared_ptr<ForyInputStream> stream_owner_;
+  StreamReader *stream_reader_ = nullptr;
+  std::shared_ptr<StreamReader> stream_reader_owner_;
 };
 
 /// \brief Allocate a fixed-size mutable buffer from the default memory pool

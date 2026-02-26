@@ -31,7 +31,7 @@ Buffer::Buffer() {
   writer_index_ = 0;
   reader_index_ = 0;
   wrapped_vector_ = nullptr;
-  stream_ = nullptr;
+  stream_reader_ = nullptr;
 }
 
 Buffer::Buffer(Buffer &&buffer) noexcept {
@@ -41,13 +41,13 @@ Buffer::Buffer(Buffer &&buffer) noexcept {
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
   wrapped_vector_ = buffer.wrapped_vector_;
-  stream_ = buffer.stream_;
-  stream_owner_ = std::move(buffer.stream_owner_);
+  stream_reader_ = buffer.stream_reader_;
+  buffer.stream_reader_ = nullptr;
+  stream_reader_owner_ = std::move(buffer.stream_reader_owner_);
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
   buffer.wrapped_vector_ = nullptr;
-  buffer.stream_ = nullptr;
 }
 
 Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
@@ -61,13 +61,13 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
   wrapped_vector_ = buffer.wrapped_vector_;
-  stream_ = buffer.stream_;
-  stream_owner_ = std::move(buffer.stream_owner_);
+  stream_reader_ = buffer.stream_reader_;
+  buffer.stream_reader_ = nullptr;
+  stream_reader_owner_ = std::move(buffer.stream_reader_owner_);
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
   buffer.wrapped_vector_ = nullptr;
-  buffer.stream_ = nullptr;
   return *this;
 }
 

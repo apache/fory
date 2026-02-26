@@ -25,6 +25,7 @@
 #include "gtest/gtest.h"
 
 #include "fory/util/buffer.h"
+#include "fory/util/stream.h"
 
 namespace fory {
 
@@ -250,28 +251,37 @@ TEST(Buffer, StreamGetAndReaderIndexFromOneByteSource) {
   auto fill_result = stream.fill_buffer(4);
   ASSERT_TRUE(fill_result.ok()) << fill_result.error().to_string();
   Buffer reader(stream);
+  Error error;
+  ASSERT_TRUE(reader.ensure_readable(4, error)) << error.to_string();
 
   EXPECT_EQ(reader.get<uint32_t>(0), 0x44332211U);
   reader.reader_index(4);
-  Error error;
   EXPECT_EQ(reader.read_uint8(error), 0x55);
   ASSERT_TRUE(error.ok()) << error.to_string();
 }
 
-TEST(Buffer, StreamRewind) {
+TEST(Buffer, StreamSkipAndUnread) {
   std::vector<uint8_t> raw{0x01, 0x02, 0x03, 0x04, 0x05};
   OneByteIStream one_byte_stream(raw);
   ForyInputStream stream(one_byte_stream, 2);
   auto fill_result = stream.fill_buffer(4);
   ASSERT_TRUE(fill_result.ok()) << fill_result.error().to_string();
-  EXPECT_EQ(stream.size(), 4U);
-  EXPECT_EQ(stream.reader_index(), 0U);
-  stream.consume(3);
-  EXPECT_EQ(stream.reader_index(), 3U);
-  stream.rewind(2);
-  EXPECT_EQ(stream.reader_index(), 1U);
-  stream.consume(1);
-  EXPECT_EQ(stream.reader_index(), 2U);
+
+  Buffer &view = stream.get_buffer();
+  EXPECT_EQ(view.size(), 4U);
+  EXPECT_EQ(view.reader_index(), 0U);
+
+  auto skip_result = stream.skip(3);
+  ASSERT_TRUE(skip_result.ok()) << skip_result.error().to_string();
+  EXPECT_EQ(view.reader_index(), 3U);
+
+  auto unread_result = stream.unread(2);
+  ASSERT_TRUE(unread_result.ok()) << unread_result.error().to_string();
+  EXPECT_EQ(view.reader_index(), 1U);
+
+  skip_result = stream.skip(1);
+  ASSERT_TRUE(skip_result.ok()) << skip_result.error().to_string();
+  EXPECT_EQ(view.reader_index(), 2U);
 }
 
 TEST(Buffer, StreamReadErrorWhenInsufficientData) {

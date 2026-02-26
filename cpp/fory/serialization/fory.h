@@ -37,6 +37,7 @@
 #include "fory/util/error.h"
 #include "fory/util/pool.h"
 #include "fory/util/result.h"
+#include "fory/util/stream.h"
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -629,6 +630,29 @@ public:
     return deserialize_impl<T>(buffer);
   }
 
+  /// Deserialize an object from a stream reader.
+  ///
+  /// This overload obtains the reader-owned Buffer via get_buffer() and
+  /// continues deserialization on that buffer.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param stream_reader Stream reader to read from.
+  /// @return Deserialized object, or error.
+  template <typename T>
+  Result<T, Error> deserialize(StreamReader &stream_reader) {
+    Buffer &buffer = stream_reader.get_buffer();
+    return deserialize<T>(buffer);
+  }
+
+  /// Deserialize an object from ForyInputStream.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param stream Input stream wrapper to read from.
+  /// @return Deserialized object, or error.
+  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+    return deserialize<T>(static_cast<StreamReader &>(stream));
+  }
+
   // ==========================================================================
   // Advanced Access
   // ==========================================================================
@@ -801,6 +825,17 @@ public:
   template <typename T>
   Result<T, Error> deserialize(const std::vector<uint8_t> &data) {
     return deserialize<T>(data.data(), data.size());
+  }
+
+  template <typename T>
+  Result<T, Error> deserialize(StreamReader &stream_reader) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(stream_reader);
+  }
+
+  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(stream);
   }
 
 private:
