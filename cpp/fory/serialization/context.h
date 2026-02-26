@@ -359,6 +359,12 @@ private:
 /// ```
 class ReadContext {
 public:
+  /// get maximum allowed collection size.
+  inline uint32_t max_collection_size() const { return config_->max_collection_size; }
+
+  /// get maximum allowed map size.
+  inline uint32_t max_map_size() const { return config_->max_map_size; }
+  
   /// Construct read context with configuration and type resolver.
   /// Takes ownership of the type resolver.
   explicit ReadContext(const Config &config,

@@ -539,7 +539,7 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
                 "Fast path is for non-shared-ref types only");
 
   MapType result;
-  if(length > ctx.config_.max_map_size) {
+  if(length > ctx.max_map_size()) {
     ctx.set_error(Error::invalid_data("Invalid map size"));
     return result;
   }
