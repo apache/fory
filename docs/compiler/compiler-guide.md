@@ -64,9 +64,9 @@ Compile options:
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)              |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)              |
 | `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)              |
-| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | from schema/default |
-| `--emit-fdl`                          | Print translated Fory IDL for non-`.fdl` inputs       | `false`             |
-| `--emit-fdl-path`                     | Write translated Fory IDL to a file or directory      | (stdout)            |
+| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`        |
+| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`             |
+| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)            |
 
 Scan options (with `--scan-generated`):
 
