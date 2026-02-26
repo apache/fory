@@ -392,6 +392,15 @@ func (b *ByteBuffer) ReadBinary(length int, err *Error) []byte {
 			return nil
 		}
 	}
+
+	if b.reader != nil {
+		// In stream mode, compaction might overwrite these bytes, so we must copy
+		result := make([]byte, length)
+		copy(result, b.data[b.readerIndex:b.readerIndex+length])
+		b.readerIndex += length
+		return result
+	}
+
 	v := b.data[b.readerIndex : b.readerIndex+length]
 	b.readerIndex += length
 	return v
@@ -1649,6 +1658,15 @@ func (b *ByteBuffer) ReadBytes(n int, err *Error) []byte {
 			return nil
 		}
 	}
+
+	if b.reader != nil {
+		// In stream mode, compaction might overwrite these bytes, so we must copy
+		result := make([]byte, n)
+		copy(result, b.data[b.readerIndex:b.readerIndex+n])
+		b.readerIndex += n
+		return result
+	}
+
 	p := b.data[b.readerIndex : b.readerIndex+n]
 	b.readerIndex += n
 	return p
