@@ -191,14 +191,25 @@ impl<'a> WriteContext<'a> {
 
     #[inline(always)]
     pub fn attach_writer(&mut self, writer: Writer<'a>) {
-        let old = mem::replace(&mut self.writer, writer);
-        self.default_writer = Some(old);
+        if self.default_writer.is_none() {
+            let old = mem::replace(&mut self.writer, writer);
+            self.default_writer = Some(old);
+        } else {
+            // Previous attach may have panicked before detach; keep the original fallback writer.
+            self.writer = writer;
+        }
     }
 
     #[inline(always)]
     pub fn detach_writer(&mut self) {
-        if let Some(default_writer) = self.default_writer.take() {
-            self.writer = default_writer;
+        let default = mem::take(&mut self.default_writer);
+        self.writer = default.unwrap();
+    }
+
+    #[inline(always)]
+    pub fn detach_writer_if_attached(&mut self) {
+        if self.default_writer.is_some() {
+            self.detach_writer();
         }
     }
 
@@ -352,7 +363,6 @@ pub struct ReadContext<'a> {
     check_struct_version: bool,
 
     // Context-specific fields
-    default_reader: Option<Reader<'a>>,
     pub reader: Reader<'a>,
     pub meta_resolver: MetaReaderResolver,
     meta_string_resolver: MetaStringReaderResolver,
@@ -371,14 +381,6 @@ unsafe impl<'a> Sync for ReadContext<'a> {}
 
 impl<'a> ReadContext<'a> {
     pub fn new(type_resolver: TypeResolver, config: Config) -> ReadContext<'a> {
-        ReadContext::with_reader(type_resolver, config, Reader::default())
-    }
-
-    pub fn with_reader(
-        type_resolver: TypeResolver,
-        config: Config,
-        reader: Reader<'a>,
-    ) -> ReadContext<'a> {
         ReadContext {
             type_resolver,
             compatible: config.compatible,
@@ -386,8 +388,7 @@ impl<'a> ReadContext<'a> {
             xlang: config.xlang,
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
-            default_reader: None,
-            reader,
+            reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
             ref_reader: RefReader::new(),
@@ -433,17 +434,12 @@ impl<'a> ReadContext<'a> {
 
     #[inline(always)]
     pub fn attach_reader(&mut self, reader: Reader<'a>) {
-        let old = mem::replace(&mut self.reader, reader);
-        self.default_reader = Some(old);
+        self.reader = reader;
     }
 
     #[inline(always)]
     pub fn detach_reader(&mut self) -> Reader<'_> {
-        let active = mem::take(&mut self.reader);
-        if let Some(default_reader) = self.default_reader.take() {
-            self.reader = default_reader;
-        }
-        active
+        mem::take(&mut self.reader)
     }
 
     #[inline(always)]

@@ -273,10 +273,13 @@ fn test_context_reusable_after_unwind_in_entrypoints() {
         y: i32,
     }
 
-    let mut fory = Fory::default();
-    fory.register_serializer::<PanicOnWrite>(300).unwrap();
-    fory.register_serializer::<PanicOnRead>(301).unwrap();
-    fory.register::<StablePoint>(302).unwrap();
+    let mut fory = Fory::default().xlang(true).compatible(true);
+    fory.register_serializer_by_namespace::<PanicOnWrite>("panic.test", "PanicOnWrite")
+        .unwrap();
+    fory.register_serializer_by_namespace::<PanicOnRead>("panic.test", "PanicOnRead")
+        .unwrap();
+    fory.register_by_namespace::<StablePoint>("panic.test", "StablePoint")
+        .unwrap();
 
     let write_unwind = {
         let mut external_buf = Vec::new();

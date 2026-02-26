@@ -411,8 +411,9 @@ impl Fory {
     /// let bytes = fory.serialize(&point);
     /// ```
     pub fn serialize<T: Serializer>(&self, record: &T) -> Result<Vec<u8>, Error> {
-        self.with_write_context(
-            |context| match self.serialize_with_context(record, context) {
+        self.with_write_context(|context| {
+            context.detach_writer_if_attached();
+            match self.serialize_with_context(record, context) {
                 Ok(_) => {
                     let result = context.writer.dump();
                     context.writer.reset();
@@ -422,8 +423,8 @@ impl Fory {
                     context.writer.reset();
                     Err(err)
                 }
-            },
-        )
+            }
+        })
     }
 
     /// Serializes a value of type `T` into the provided byte buffer.
@@ -550,21 +551,9 @@ impl Fory {
         self.with_write_context(|context| {
             let writer = unsafe { Self::writer_from_raw_buffer(buf as *mut Vec<u8>) };
             context.attach_writer(writer);
-
-            struct WriteDetachGuard<'a> {
-                context: *mut WriteContext<'a>,
-            }
-            impl<'a> Drop for WriteDetachGuard<'a> {
-                fn drop(&mut self) {
-                    unsafe { (*self.context).detach_writer() };
-                }
-            }
-            let _guard = WriteDetachGuard {
-                context: context as *mut WriteContext<'_>,
-            };
-
             let result = self.serialize_with_context(record, context);
             let written_size = context.writer.len() - start;
+            context.detach_writer();
             match result {
                 Ok(_) => Ok(written_size),
                 Err(err) => Err(err),
@@ -615,9 +604,8 @@ impl Fory {
         record: &T,
         context: &mut WriteContext,
     ) -> Result<(), Error> {
-        let result = self.serialize_with_context_inner::<T>(record, context);
         context.reset();
-        result
+        self.serialize_with_context_inner::<T>(record, context)
     }
 
     #[inline(always)]
@@ -920,22 +908,9 @@ impl Fory {
         self.with_read_context(|context| {
             let reader = unsafe { Self::reader_from_raw_parts(bf.as_ptr(), bf.len()) };
             context.attach_reader(reader);
-
-            struct ReadDetachGuard<'a> {
-                context: *mut ReadContext<'a>,
-            }
-            impl<'a> Drop for ReadDetachGuard<'a> {
-                fn drop(&mut self) {
-                    unsafe {
-                        (*self.context).detach_reader();
-                    }
-                }
-            }
-            let _guard = ReadDetachGuard {
-                context: context as *mut ReadContext<'_>,
-            };
-
-            self.deserialize_with_context(context)
+            let result = self.deserialize_with_context(context);
+            context.detach_reader();
+            result
         })
     }
 
@@ -995,23 +970,9 @@ impl Fory {
                 unsafe { Self::reader_from_raw_parts(reader.bf.as_ptr(), reader.bf.len()) };
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
-
-            struct ReadDetachGuard<'a> {
-                context: *mut ReadContext<'a>,
-            }
-            impl<'a> Drop for ReadDetachGuard<'a> {
-                fn drop(&mut self) {
-                    unsafe {
-                        (*self.context).detach_reader();
-                    }
-                }
-            }
-            let _guard = ReadDetachGuard {
-                context: context as *mut ReadContext<'_>,
-            };
-
             let result = self.deserialize_with_context(context);
-            reader.set_cursor(context.reader.get_cursor());
+            let end = context.detach_reader().get_cursor();
+            reader.set_cursor(end);
             result
         })
     }
@@ -1046,9 +1007,8 @@ impl Fory {
         &self,
         context: &mut ReadContext,
     ) -> Result<T, Error> {
-        let result = self.deserialize_with_context_inner::<T>(context);
         context.reset();
-        result
+        self.deserialize_with_context_inner::<T>(context)
     }
 
     #[inline(always)]
