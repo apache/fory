@@ -217,6 +217,13 @@ jobs:
         run: |
           cd swift
           swift test
+      - name: Run SwiftLint check
+        run: |
+          if ! command -v swiftlint >/dev/null; then
+            brew install swiftlint
+          fi
+          cd swift
+          swiftlint lint --config .swiftlint.yml
 
   swift_xlang:
     name: Swift Xlang Test

@@ -213,6 +213,18 @@ format_go() {
     fi
 }
 
+format_swift() {
+    echo "$(date)" "SwiftLint check Swift files...."
+    if command -v swiftlint >/dev/null; then
+      pushd "$ROOT/swift"
+      swiftlint lint --config .swiftlint.yml
+      popd
+      echo "$(date)" "SwiftLint done!"
+    else
+      echo "WARNING: swiftlint is not installed, skip swift lint check"
+    fi
+}
+
 # Format all files, and print the diff to stdout for travis.
 format_all() {
     format_all_scripts "${@}"
@@ -238,6 +250,9 @@ format_all() {
     if command -v go >/dev/null; then
       git ls-files -- '*.go' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 gofmt -w
     fi
+
+    echo "$(date)" "lint swift...."
+    format_swift
 
     echo "$(date)" "done!"
 }
@@ -292,6 +307,10 @@ format_changed() {
         prettier --write "**/*.md"
         popd
     fi
+
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- 'swift' &>/dev/null; then
+        format_swift
+    fi
 }
 
 
@@ -316,6 +335,8 @@ elif [ "${1-}" == '--python' ]; then
     format_python
 elif [ "${1-}" == '--go' ]; then
     format_go
+elif [ "${1-}" == '--swift' ]; then
+    format_swift
 else
     # Add the origin remote if it doesn't exist
     if ! git remote -v | grep -q origin; then

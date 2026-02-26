@@ -38,10 +38,10 @@ struct Person: Equatable {
 
 @ForyObject
 struct FieldOrder: Equatable {
-    var z: String
-    var a: Int64
-    var b: Int16
-    var c: Int32
+    var textTail: String
+    var longValue: Int64
+    var shortValue: Int16
+    var intValue: Int32
 }
 
 @ForyObject
@@ -145,21 +145,95 @@ func primitiveRoundTrip() throws {
 }
 
 @Test
+func extendedWireTypesRoundTrip() throws {
+    let fory = Fory()
+
+    let float16Value = Float16(3.5)
+    let float16Data = try fory.serialize(float16Value)
+    let float16Decoded: Float16 = try fory.deserialize(float16Data)
+    #expect(float16Decoded.bitPattern == float16Value.bitPattern)
+
+    let bfloatValue = BFloat16(rawValue: 0x3F80)
+    let bfloatData = try fory.serialize(bfloatValue)
+    let bfloatDecoded: BFloat16 = try fory.deserialize(bfloatData)
+    #expect(bfloatDecoded == bfloatValue)
+
+    let durationValue = Duration.seconds(-2) + Duration.nanoseconds(123_456_789)
+    let durationData = try fory.serialize(durationValue)
+    let durationDecoded: Duration = try fory.deserialize(durationData)
+    #expect(durationDecoded == durationValue)
+
+    let float16Array: [Float16] = [Float16(1), Float16(-2), Float16(4.5)]
+    let float16ArrayData = try fory.serialize(float16Array)
+    let float16ArrayDecoded: [Float16] = try fory.deserialize(float16ArrayData)
+    #expect(float16ArrayDecoded.map(\.bitPattern) == float16Array.map(\.bitPattern))
+}
+
+@Test
 func namedInitializerBuildsConfig() {
     let defaultConfig = Fory()
     #expect(defaultConfig.config.xlang == true)
     #expect(defaultConfig.config.trackRef == false)
     #expect(defaultConfig.config.compatible == false)
+    #expect(defaultConfig.config.maxDepth == 5)
 
-    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true)
+    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true, maxDepth: 7)
     #expect(explicitConfig.config.xlang == false)
     #expect(explicitConfig.config.trackRef == true)
     #expect(explicitConfig.config.compatible == true)
+    #expect(explicitConfig.config.maxDepth == 7)
 
-    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true))
+    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true, maxDepth: 9))
     #expect(configInit.config.xlang == false)
     #expect(configInit.config.trackRef == false)
     #expect(configInit.config.compatible == true)
+    #expect(configInit.config.maxDepth == 9)
+}
+
+@Test
+func decodeLimitsRejectOversizedPayloads() throws {
+    let writer = Fory()
+
+    let oversizedCollection = try writer.serialize(["a", "b", "c"])
+    let collectionLimited = Fory(config: .init(maxCollectionLength: 2))
+    do {
+        let _: [String] = try collectionLimited.deserialize(oversizedCollection)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedMap = try writer.serialize([Int32(1): Int32(1), 2: 2, 3: 3])
+    do {
+        let _: [Int32: Int32] = try collectionLimited.deserialize(oversizedMap)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedBinary = try writer.serialize(Data([0x01, 0x02, 0x03, 0x04]))
+    let binaryLimited = Fory(config: .init(maxBinaryLength: 3))
+    do {
+        let _: Data = try binaryLimited.deserialize(oversizedBinary)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedArrayPayload = try writer.serialize([UInt16(1), 2])
+    let payloadLimited = Fory(config: .init(maxCollectionLength: 1))
+    do {
+        let _: [UInt16] = try payloadLimited.deserialize(oversizedArrayPayload)
+        #expect(Bool(false))
+    } catch {}
+}
+
+@Test
+func deserializeRejectsTrailingBytes() throws {
+    let fory = Fory()
+    let payload = try fory.serialize(Int32(7))
+    var bytes = [UInt8](payload)
+    bytes.append(0xFF)
+    let withTrailing = Data(bytes)
+
+    do {
+        let _: Int32 = try fory.deserialize(withTrailing)
+        #expect(Bool(false))
+    } catch {}
 }
 
 @Test
@@ -300,6 +374,29 @@ func topLevelAnyRoundTrip() throws {
 }
 
 @Test
+func mixedDynamicRegistrationModesCanDecodeByID() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 600)
+    try fory.register(Person.self, name: "demo.person")
+
+    let value: Any = Address(street: "mixed", zip: 7788)
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    #expect(decoded as? Address == Address(street: "mixed", zip: 7788))
+}
+
+@Test
+func duplicateNameRegistrationIsRejected() throws {
+    let resolver = TypeResolver()
+    try resolver.register(Address.self, namespace: "demo", typeName: "entity")
+
+    do {
+        try resolver.register(Person.self, namespace: "demo", typeName: "entity")
+        #expect(Bool(false))
+    } catch {}
+}
+
+@Test
 func topLevelAnyObjectRoundTrip() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 210)
@@ -363,7 +460,7 @@ func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
         items: [Int32(11), Address(street: "Nested", zip: 10002)],
         map: [
             "age": Int64(19),
-            "address": Address(street: "Mapped", zip: 10003),
+            "address": Address(street: "Mapped", zip: 10003)
         ]
     )
     let serializerData = try fory.serialize(serializerHolder)
@@ -391,13 +488,13 @@ func macroAnyFieldsRoundTrip() throws {
             "count": Int64(3),
             "name": "map",
             "address": Address(street: "AnyMap", zip: 11003),
-            "empty": NSNull(),
+            "empty": NSNull()
         ],
         int32Map: [
             1: Int32(-9),
             2: "v2",
             3: Address(street: "AnyIntMap", zip: 11004),
-            4: NSNull(),
+            4: NSNull()
         ]
     )
     let data = try fory.serialize(value)
@@ -464,7 +561,7 @@ func macroFieldOrderFollowsForyRules() throws {
     let fory = Fory()
     fory.register(FieldOrder.self, id: 300)
 
-    let value = FieldOrder(z: "tail", a: 123456789, b: 17, c: 99)
+    let value = FieldOrder(textTail: "tail", longValue: 123456789, shortValue: 17, intValue: 99)
     let data = try fory.serialize(value)
 
     let buffer = ByteBuffer(data: data)
@@ -481,10 +578,10 @@ func macroFieldOrderFollowsForyRules() throws {
     let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
     let fourth = try String.foryReadData(tailContext)
 
-    #expect(first == value.b)
-    #expect(second == value.a)
-    #expect(third == value.c)
-    #expect(fourth == value.z)
+    #expect(first == value.shortValue)
+    #expect(second == value.longValue)
+    #expect(third == value.intValue)
+    #expect(fourth == value.textTail)
 }
 
 @Test
@@ -543,7 +640,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         72_057_594_037_927_935,
         72_057_594_037_927_936,
         UInt64(Int64.max),
-        UInt64.max,
+        UInt64.max
     ]
     let intValues: [Int64] = [
         Int64.min,
@@ -560,7 +657,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         1_000_000,
         1_000_000_000_000,
         Int64.max - 1,
-        Int64.max,
+        Int64.max
     ]
 
     let writeBuffer = ByteBuffer()
@@ -641,7 +738,7 @@ func typeMetaRoundTripByName() throws {
                 nullable: true,
                 generics: [
                     .init(typeID: TypeId.string.rawValue, nullable: false),
-                    .init(typeID: TypeId.varint32.rawValue, nullable: true),
+                    .init(typeID: TypeId.varint32.rawValue, nullable: true)
                 ]
             )
         ),
@@ -649,7 +746,7 @@ func typeMetaRoundTripByName() throws {
             fieldID: 7,
             fieldName: "ignored_for_tag_mode",
             fieldType: .init(typeID: TypeId.varint32.rawValue, nullable: false)
-        ),
+        )
     ]
 
     let meta = try TypeMeta(

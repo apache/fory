@@ -17,7 +17,7 @@
 
 import Foundation
 
-public struct RegisteredTypeInfo {
+public struct RegisteredTypeInfo: Equatable {
     public let userTypeID: UInt32?
     public let kind: TypeId
     public let registerByName: Bool
@@ -51,6 +51,7 @@ private enum DynamicRegistrationMode {
 }
 
 private struct TypeReader {
+    let swiftType: ObjectIdentifier
     let kind: TypeId
     let reader: (ReadContext) throws -> Any
     let compatibleReader: (ReadContext, TypeMeta) throws -> Any
@@ -65,7 +66,16 @@ public final class TypeResolver {
     public init() {}
 
     public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
+        do {
+            try registerByID(type, id: id)
+        } catch {
+            preconditionFailure("conflicting registration for \(type): \(error)")
+        }
+    }
+
+    private func registerByID<T: Serializer>(_ type: T.Type, id: UInt32) throws {
         let key = ObjectIdentifier(type)
+        try validateIDRegistration(key: key, type: type, id: id)
         let info = RegisteredTypeInfo(
             userTypeID: id,
             kind: T.staticTypeId,
@@ -73,9 +83,13 @@ public final class TypeResolver {
             namespace: nil,
             typeName: MetaString.empty(specialChar1: "$", specialChar2: "_")
         )
+        if bySwiftType[key] == info {
+            return
+        }
         bySwiftType[key] = info
         markRegistrationMode(kind: info.kind, registerByName: false)
         byUserTypeID[id] = TypeReader(
+            swiftType: key,
             kind: T.staticTypeId,
             reader: { context in
                 try T.foryRead(context, refMode: .none, readTypeInfo: false)
@@ -97,6 +111,12 @@ public final class TypeResolver {
             allowedEncodings: typeNameMetaStringEncodings
         )
         let key = ObjectIdentifier(type)
+        try validateNameRegistration(
+            key: key,
+            type: type,
+            namespace: namespace,
+            typeName: typeName
+        )
         let info = RegisteredTypeInfo(
             userTypeID: nil,
             kind: T.staticTypeId,
@@ -104,9 +124,13 @@ public final class TypeResolver {
             namespace: namespaceMeta,
             typeName: typeNameMeta
         )
+        if bySwiftType[key] == info {
+            return
+        }
         bySwiftType[key] = info
         markRegistrationMode(kind: info.kind, registerByName: true)
         byTypeName[TypeNameKey(namespace: namespace, typeName: typeName)] = TypeReader(
+            swiftType: key,
             kind: T.staticTypeId,
             reader: { context in
                 try T.foryRead(context, refMode: .none, readTypeInfo: false)
@@ -254,7 +278,14 @@ public final class TypeResolver {
                     compatibleTypeMeta: nil
                 )
             case .mixed:
-                throw ForyError.invalidData("ambiguous dynamic type registration mode for \(wireTypeID)")
+                // Wire ids for user kinds are explicit: plain ids always carry user_type_id.
+                return DynamicTypeInfo(
+                    wireTypeID: wireTypeID,
+                    userTypeID: try context.buffer.readVarUInt32(),
+                    namespace: nil,
+                    typeName: nil,
+                    compatibleTypeMeta: nil
+                )
             }
         default:
             return DynamicTypeInfo(
@@ -268,6 +299,9 @@ public final class TypeResolver {
     }
 
     public func readDynamicValue(typeInfo: DynamicTypeInfo, context: ReadContext) throws -> Any {
+        try context.enterDynamicAnyDepth()
+        defer { context.leaveDynamicAnyDepth() }
+
         let value: Any
         switch typeInfo.wireTypeID {
         case .bool:
@@ -300,12 +334,18 @@ public final class TypeResolver {
             value = try UInt64.foryRead(context, refMode: .none, readTypeInfo: false)
         case .taggedUInt64:
             value = try ForyUInt64Tagged.foryRead(context, refMode: .none, readTypeInfo: false)
+        case .float16:
+            value = try Float16.foryRead(context, refMode: .none, readTypeInfo: false)
+        case .bfloat16:
+            value = try BFloat16.foryRead(context, refMode: .none, readTypeInfo: false)
         case .float32:
             value = try Float.foryRead(context, refMode: .none, readTypeInfo: false)
         case .float64:
             value = try Double.foryRead(context, refMode: .none, readTypeInfo: false)
         case .string:
             value = try String.foryRead(context, refMode: .none, readTypeInfo: false)
+        case .duration:
+            value = try Duration.foryRead(context, refMode: .none, readTypeInfo: false)
         case .timestamp:
             value = try Date.foryRead(context, refMode: .none, readTypeInfo: false)
         case .date:
@@ -328,12 +368,18 @@ public final class TypeResolver {
             value = try [UInt32].foryRead(context, refMode: .none, readTypeInfo: false)
         case .uint64Array:
             value = try [UInt64].foryRead(context, refMode: .none, readTypeInfo: false)
+        case .float16Array:
+            value = try [Float16].foryRead(context, refMode: .none, readTypeInfo: false)
+        case .bfloat16Array:
+            value = try [BFloat16].foryRead(context, refMode: .none, readTypeInfo: false)
         case .float32Array:
             value = try [Float].foryRead(context, refMode: .none, readTypeInfo: false)
         case .float64Array:
             value = try [Double].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .list:
+        case .array, .list:
             value = try context.readAnyList(refMode: .none) ?? []
+        case .set:
+            value = try Set<AnyHashable>.foryRead(context, refMode: .none, readTypeInfo: false)
         case .map:
             value = try readDynamicAnyMapValue(context: context)
         case .structType, .enumType, .ext, .typedUnion:
@@ -402,6 +448,60 @@ public final class TypeResolver {
             throw ForyError.typeNotRegistered("no dynamic registration mode for kind \(kind)")
         }
         return mode
+    }
+
+    private func validateIDRegistration<T: Serializer>(
+        key: ObjectIdentifier,
+        type: T.Type,
+        id: UInt32
+    ) throws {
+        if let existing = bySwiftType[key] {
+            if existing.registerByName {
+                throw ForyError.invalidData(
+                    "\(type) was already registered by name, cannot re-register by id"
+                )
+            }
+            if existing.kind != T.staticTypeId || existing.userTypeID != id {
+                let existingID = existing.userTypeID.map { String($0) } ?? "nil"
+                throw ForyError.invalidData(
+                    "\(type) registration conflict: existing id=\(existingID), new id=\(id)"
+                )
+            }
+        }
+
+        if let existing = byUserTypeID[id], existing.swiftType != key {
+            throw ForyError.invalidData("user type id \(id) is already registered by another type")
+        }
+    }
+
+    private func validateNameRegistration<T: Serializer>(
+        key: ObjectIdentifier,
+        type: T.Type,
+        namespace: String,
+        typeName: String
+    ) throws {
+        if let existing = bySwiftType[key] {
+            if !existing.registerByName {
+                throw ForyError.invalidData(
+                    "\(type) was already registered by id, cannot re-register by name"
+                )
+            }
+            if existing.kind != T.staticTypeId ||
+                existing.namespace?.value != namespace ||
+                existing.typeName.value != typeName {
+                throw ForyError.invalidData(
+                    """
+                    \(type) registration conflict: existing name=\(existing.namespace?.value ?? "")::\(existing.typeName.value), \
+                    new name=\(namespace)::\(typeName)
+                    """
+                )
+            }
+        }
+
+        let nameKey = TypeNameKey(namespace: namespace, typeName: typeName)
+        if let existing = byTypeName[nameKey], existing.swiftType != key {
+            throw ForyError.invalidData("type name \(namespace)::\(typeName) is already registered by another type")
+        }
     }
 
     private static func readMetaString(

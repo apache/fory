@@ -76,7 +76,7 @@ private struct StructWithMap {
 @ForyObject
 private struct VersionCheckStruct {
     var f1: Int32 = 0
-    var f2: String? = nil
+    var f2: String?
     var f3: Double = 0
 }
 
@@ -85,7 +85,7 @@ private struct EmptyStructEvolution {}
 
 @ForyObject
 private struct OneStringFieldStruct {
-    var f1: String? = nil
+    var f1: String?
 }
 
 @ForyObject
@@ -120,16 +120,16 @@ private struct NullableComprehensiveSchemaConsistent {
     var setField: Set<String> = []
     var mapField: [String: String] = [:]
 
-    var nullableInt: Int32? = nil
-    var nullableLong: Int64? = nil
-    var nullableFloat: Float? = nil
+    var nullableInt: Int32?
+    var nullableLong: Int64?
+    var nullableFloat: Float?
 
-    var nullableDouble: Double? = nil
-    var nullableBool: Bool? = nil
-    var nullableString: String? = nil
-    var nullableList: [String]? = nil
-    var nullableSet: Set<String>? = nil
-    var nullableMap: [String: String]? = nil
+    var nullableDouble: Double?
+    var nullableBool: Bool?
+    var nullableString: String?
+    var nullableList: [String]?
+    var nullableSet: Set<String>?
+    var nullableMap: [String: String]?
 }
 
 @ForyObject
@@ -175,8 +175,8 @@ private final class RefInnerSchemaConsistent {
 
 @ForyObject
 private final class RefOuterSchemaConsistent {
-    var inner1: RefInnerSchemaConsistent? = nil
-    var inner2: RefInnerSchemaConsistent? = nil
+    var inner1: RefInnerSchemaConsistent?
+    var inner2: RefInnerSchemaConsistent?
 
     required init() {}
 }
@@ -191,8 +191,8 @@ private final class RefInnerCompatible {
 
 @ForyObject
 private final class RefOuterCompatible {
-    var inner1: RefInnerCompatible? = nil
-    var inner2: RefInnerCompatible? = nil
+    var inner1: RefInnerCompatible?
+    var inner2: RefInnerCompatible?
 
     required init() {}
 }
@@ -216,7 +216,7 @@ private final class RefOverrideContainer {
 @ForyObject
 private final class CircularRefStruct {
     var name: String = ""
-    weak var selfRef: CircularRefStruct? = nil
+    weak var selfRef: CircularRefStruct?
 
     required init() {}
 }
@@ -260,7 +260,7 @@ private struct EmptyWrapper {}
 @ForyObject
 private struct Dog {
     var age: Int32 = 0
-    var name: String? = nil
+    var name: String?
 }
 
 @ForyObject
@@ -295,7 +295,7 @@ private struct UnsignedSchemaConsistentSimple {
     @ForyField(encoding: .tagged)
     var u64Tagged: UInt64 = 0
     @ForyField(encoding: .tagged)
-    var u64TaggedNullable: UInt64? = nil
+    var u64TaggedNullable: UInt64?
 }
 
 @ForyObject
@@ -311,30 +311,30 @@ private struct UnsignedSchemaConsistent {
     @ForyField(encoding: .tagged)
     var u64TaggedField: UInt64 = 0
 
-    var u8NullableField: UInt8? = nil
-    var u16NullableField: UInt16? = nil
-    var u32VarNullableField: UInt32? = nil
+    var u8NullableField: UInt8?
+    var u16NullableField: UInt16?
+    var u32VarNullableField: UInt32?
     @ForyField(encoding: .fixed)
-    var u32FixedNullableField: UInt32? = nil
-    var u64VarNullableField: UInt64? = nil
+    var u32FixedNullableField: UInt32?
+    var u64VarNullableField: UInt64?
     @ForyField(encoding: .fixed)
-    var u64FixedNullableField: UInt64? = nil
+    var u64FixedNullableField: UInt64?
     @ForyField(encoding: .tagged)
-    var u64TaggedNullableField: UInt64? = nil
+    var u64TaggedNullableField: UInt64?
 }
 
 @ForyObject
 private struct UnsignedSchemaCompatible {
-    var u8Field1: UInt8? = nil
-    var u16Field1: UInt16? = nil
-    var u32VarField1: UInt32? = nil
+    var u8Field1: UInt8?
+    var u16Field1: UInt16?
+    var u32VarField1: UInt32?
     @ForyField(encoding: .fixed)
-    var u32FixedField1: UInt32? = nil
-    var u64VarField1: UInt64? = nil
+    var u32FixedField1: UInt32?
+    var u64VarField1: UInt64?
     @ForyField(encoding: .fixed)
-    var u64FixedField1: UInt64? = nil
+    var u64FixedField1: UInt64?
     @ForyField(encoding: .tagged)
-    var u64TaggedField1: UInt64? = nil
+    var u64TaggedField1: UInt64?
 
     var u8Field2: UInt8 = 0
     var u16Field2: UInt16 = 0
