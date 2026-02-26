@@ -134,3 +134,58 @@ func TestStreamDeserializationEOF(t *testing.T) {
 		t.Errorf("Expected fory.Error, got %T: %v", err, err)
 	}
 }
+
+func TestStreamReaderSequential(t *testing.T) {
+	f := New()
+	// Register type in compatible mode to test Meta Sharing across sequential reads
+	f.config.Compatible = true
+	f.RegisterStruct(&StreamTestStruct{}, 100)
+
+	msg1 := &StreamTestStruct{ID: 1, Name: "Msg 1", Data: []byte{1, 1}}
+	msg2 := &StreamTestStruct{ID: 2, Name: "Msg 2", Data: []byte{2, 2}}
+	msg3 := &StreamTestStruct{ID: 3, Name: "Msg 3", Data: []byte{3, 3}}
+
+	var buf bytes.Buffer
+	
+	// Serialize sequentially into one stream
+	data1, _ := f.Serialize(msg1)
+	buf.Write(data1)
+	data2, _ := f.Serialize(msg2)
+	buf.Write(data2)
+	data3, _ := f.Serialize(msg3)
+	buf.Write(data3)
+
+	fDec := New()
+	fDec.config.Compatible = true
+	fDec.RegisterStruct(&StreamTestStruct{}, 100)
+
+	// Create a StreamReader
+	sr := fDec.NewStreamReader(&buf)
+
+	// Deserialize sequentially
+	var out1, out2, out3 StreamTestStruct
+
+	err := sr.Deserialize(&out1)
+	if err != nil {
+		t.Fatalf("Deserialize 1 failed: %v", err)
+	}
+	if out1.ID != msg1.ID || out1.Name != msg1.Name || !bytes.Equal(out1.Data, msg1.Data) {
+		t.Errorf("Msg 1 mismatch. Got: %+v, Want: %+v", out1, msg1)
+	}
+
+	err = sr.Deserialize(&out2)
+	if err != nil {
+		t.Fatalf("Deserialize 2 failed: %v", err)
+	}
+	if out2.ID != msg2.ID || out2.Name != msg2.Name || !bytes.Equal(out2.Data, msg2.Data) {
+		t.Errorf("Msg 2 mismatch. Got: %+v, Want: %+v", out2, msg2)
+	}
+
+	err = sr.Deserialize(&out3)
+	if err != nil {
+		t.Fatalf("Deserialize 3 failed: %v", err)
+	}
+	if out3.ID != msg3.ID || out3.Name != msg3.Name || !bytes.Equal(out3.Data, msg3.Data) {
+		t.Errorf("Msg 3 mismatch. Got: %+v, Want: %+v", out3, msg3)
+	}
+}
