@@ -54,6 +54,17 @@ impl Serializer for String {
             1 => len_usize.saturating_mul(2),
             _ => len_usize,
         };
+        let remaining = context
+            .reader
+            .bf
+            .len()
+            .saturating_sub(context.reader.cursor);
+        if byte_len > remaining {
+            return Err(Error::invalid_data(format!(
+                "string byte length {} exceeds buffer remaining {}",
+                byte_len, remaining
+            )));
+        }
         context.check_string_bytes(byte_len)?;
         let s = match encoding {
             0 => context.reader.read_latin1_string(len as usize),
