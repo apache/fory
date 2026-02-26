@@ -138,6 +138,26 @@ func topLevelAnyHashableSetRoundTrip() throws {
 }
 
 @Test
+func topLevelDynamicAnySetRoundTrip() throws {
+    let fory = Fory()
+    fory.register(AnyHashableDynamicKey.self, id: 413)
+
+    let value: Any = Set<AnyHashable>([
+        AnyHashable("name"),
+        AnyHashable(Int32(9)),
+        AnyHashable(AnyHashableDynamicKey(id: 12)),
+    ])
+
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    let set = decoded as? Set<AnyHashable>
+    #expect(set != nil)
+    #expect(set?.contains(AnyHashable("name")) == true)
+    #expect(set?.contains(AnyHashable(Int32(9))) == true)
+    #expect(set?.contains(AnyHashable(AnyHashableDynamicKey(id: 12))) == true)
+}
+
+@Test
 func macroAnyHashableAnyMapFieldsRoundTrip() throws {
     let fory = Fory()
     fory.register(AnyHashableDynamicKey.self, id: 420)

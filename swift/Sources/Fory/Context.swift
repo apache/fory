@@ -267,6 +267,9 @@ public final class ReadContext {
     public let trackRef: Bool
     public let compatible: Bool
     public let checkClassVersion: Bool
+    public let maxCollectionLength: Int
+    public let maxBinaryLength: Int
+    public let maxArrayPayloadLength: Int
     public let refReader: RefReader
     public let compatibleTypeDefState: CompatibleTypeDefReadState
     public let metaStringReadState: MetaStringReadState
@@ -284,6 +287,9 @@ public final class ReadContext {
         trackRef: Bool,
         compatible: Bool = false,
         checkClassVersion: Bool = true,
+        maxCollectionLength: Int = 1_000_000,
+        maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxArrayPayloadLength: Int = 64 * 1024 * 1024,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
@@ -292,9 +298,48 @@ public final class ReadContext {
         self.trackRef = trackRef
         self.compatible = compatible
         self.checkClassVersion = checkClassVersion
+        self.maxCollectionLength = maxCollectionLength
+        self.maxBinaryLength = maxBinaryLength
+        self.maxArrayPayloadLength = maxArrayPayloadLength
         self.refReader = RefReader()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringReadState = metaStringReadState
+    }
+
+    @inline(__always)
+    public func ensureCollectionLength(_ length: Int, label: String) throws {
+        if length < 0 {
+            throw ForyError.invalidData("\(label) length is negative")
+        }
+        if length > maxCollectionLength {
+            throw ForyError.invalidData(
+                "\(label) length \(length) exceeds configured maxCollectionLength \(maxCollectionLength)"
+            )
+        }
+    }
+
+    @inline(__always)
+    public func ensureBinaryLength(_ length: Int, label: String) throws {
+        if length < 0 {
+            throw ForyError.invalidData("\(label) size is negative")
+        }
+        if length > maxBinaryLength {
+            throw ForyError.invalidData(
+                "\(label) size \(length) exceeds configured maxBinaryLength \(maxBinaryLength)"
+            )
+        }
+    }
+
+    @inline(__always)
+    public func ensureArrayPayloadLength(_ length: Int, label: String) throws {
+        if length < 0 {
+            throw ForyError.invalidData("\(label) payload size is negative")
+        }
+        if length > maxArrayPayloadLength {
+            throw ForyError.invalidData(
+                "\(label) payload size \(length) exceeds configured maxArrayPayloadLength \(maxArrayPayloadLength)"
+            )
+        }
     }
 
     public func pushPendingReference(_ refID: UInt32) {

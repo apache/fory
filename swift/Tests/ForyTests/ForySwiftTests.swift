@@ -145,6 +145,31 @@ func primitiveRoundTrip() throws {
 }
 
 @Test
+func extendedWireTypesRoundTrip() throws {
+    let fory = Fory()
+
+    let float16Value = Float16(3.5)
+    let float16Data = try fory.serialize(float16Value)
+    let float16Decoded: Float16 = try fory.deserialize(float16Data)
+    #expect(float16Decoded.bitPattern == float16Value.bitPattern)
+
+    let bfloatValue = BFloat16(rawValue: 0x3F80)
+    let bfloatData = try fory.serialize(bfloatValue)
+    let bfloatDecoded: BFloat16 = try fory.deserialize(bfloatData)
+    #expect(bfloatDecoded == bfloatValue)
+
+    let durationValue = Duration.seconds(-2) + Duration.nanoseconds(123_456_789)
+    let durationData = try fory.serialize(durationValue)
+    let durationDecoded: Duration = try fory.deserialize(durationData)
+    #expect(durationDecoded == durationValue)
+
+    let float16Array: [Float16] = [Float16(1), Float16(-2), Float16(4.5)]
+    let float16ArrayData = try fory.serialize(float16Array)
+    let float16ArrayDecoded: [Float16] = try fory.deserialize(float16ArrayData)
+    #expect(float16ArrayDecoded.map(\.bitPattern) == float16Array.map(\.bitPattern))
+}
+
+@Test
 func namedInitializerBuildsConfig() {
     let defaultConfig = Fory()
     #expect(defaultConfig.config.xlang == true)
@@ -160,6 +185,52 @@ func namedInitializerBuildsConfig() {
     #expect(configInit.config.xlang == false)
     #expect(configInit.config.trackRef == false)
     #expect(configInit.config.compatible == true)
+}
+
+@Test
+func decodeLimitsRejectOversizedPayloads() throws {
+    let writer = Fory()
+
+    let oversizedCollection = try writer.serialize(["a", "b", "c"])
+    let collectionLimited = Fory(config: .init(maxCollectionLength: 2))
+    do {
+        let _: [String] = try collectionLimited.deserialize(oversizedCollection)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedMap = try writer.serialize([Int32(1): Int32(1), 2: 2, 3: 3])
+    do {
+        let _: [Int32: Int32] = try collectionLimited.deserialize(oversizedMap)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedBinary = try writer.serialize(Data([0x01, 0x02, 0x03, 0x04]))
+    let binaryLimited = Fory(config: .init(maxBinaryLength: 3))
+    do {
+        let _: Data = try binaryLimited.deserialize(oversizedBinary)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedArrayPayload = try writer.serialize([UInt16(1), 2])
+    let payloadLimited = Fory(config: .init(maxArrayPayloadLength: 3))
+    do {
+        let _: [UInt16] = try payloadLimited.deserialize(oversizedArrayPayload)
+        #expect(Bool(false))
+    } catch {}
+}
+
+@Test
+func deserializeRejectsTrailingBytes() throws {
+    let fory = Fory()
+    let payload = try fory.serialize(Int32(7))
+    var bytes = [UInt8](payload)
+    bytes.append(0xFF)
+    let withTrailing = Data(bytes)
+
+    do {
+        let _: Int32 = try fory.deserialize(withTrailing)
+        #expect(Bool(false))
+    } catch {}
 }
 
 @Test
@@ -297,6 +368,29 @@ func topLevelAnyRoundTrip() throws {
     let nullData = try fory.serialize(nullAny)
     let nullDecoded: Any = try fory.deserialize(nullData)
     #expect(nullDecoded is ForyAnyNullValue)
+}
+
+@Test
+func mixedDynamicRegistrationModesCanDecodeByID() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 600)
+    try fory.register(Person.self, name: "demo.person")
+
+    let value: Any = Address(street: "mixed", zip: 7788)
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    #expect(decoded as? Address == Address(street: "mixed", zip: 7788))
+}
+
+@Test
+func duplicateNameRegistrationIsRejected() throws {
+    let resolver = TypeResolver()
+    try resolver.register(Address.self, namespace: "demo", typeName: "entity")
+
+    do {
+        try resolver.register(Person.self, namespace: "demo", typeName: "entity")
+        #expect(Bool(false))
+    } catch {}
 }
 
 @Test

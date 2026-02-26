@@ -22,17 +22,26 @@ public struct ForyConfig {
     public var trackRef: Bool
     public var compatible: Bool
     public var checkClassVersion: Bool
+    public var maxCollectionLength: Int
+    public var maxBinaryLength: Int
+    public var maxArrayPayloadLength: Int
 
     public init(
         xlang: Bool = true,
         trackRef: Bool = false,
         compatible: Bool = false,
-        checkClassVersion: Bool = true
+        checkClassVersion: Bool = true,
+        maxCollectionLength: Int = 1_000_000,
+        maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxArrayPayloadLength: Int = 64 * 1024 * 1024
     ) {
         self.xlang = xlang
         self.trackRef = trackRef
         self.compatible = compatible
         self.checkClassVersion = checkClassVersion
+        self.maxCollectionLength = maxCollectionLength
+        self.maxBinaryLength = maxBinaryLength
+        self.maxArrayPayloadLength = maxArrayPayloadLength
     }
 }
 
@@ -67,6 +76,9 @@ private final class ForyRuntimeContext {
             trackRef: config.trackRef,
             compatible: config.compatible,
             checkClassVersion: config.checkClassVersion,
+            maxCollectionLength: config.maxCollectionLength,
+            maxBinaryLength: config.maxBinaryLength,
+            maxArrayPayloadLength: config.maxArrayPayloadLength,
             compatibleTypeDefState: CompatibleTypeDefReadState(),
             metaStringReadState: MetaStringReadState()
         )
@@ -138,14 +150,20 @@ public final class Fory {
         xlang: Bool = true,
         trackRef: Bool = false,
         compatible: Bool = false,
-        checkClassVersion: Bool? = nil
+        checkClassVersion: Bool? = nil,
+        maxCollectionLength: Int = 1_000_000,
+        maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxArrayPayloadLength: Int = 64 * 1024 * 1024
     ) {
         let effectiveCheckClassVersion = checkClassVersion ?? (xlang && !compatible)
         self.config = ForyConfig(
             xlang: xlang,
             trackRef: trackRef,
             compatible: compatible,
-            checkClassVersion: effectiveCheckClassVersion
+            checkClassVersion: effectiveCheckClassVersion,
+            maxCollectionLength: maxCollectionLength,
+            maxBinaryLength: maxBinaryLength,
+            maxArrayPayloadLength: maxArrayPayloadLength
         )
         self.typeResolver = TypeResolver()
         self.instanceID = Self.allocateInstanceID()
@@ -156,7 +174,10 @@ public final class Fory {
             xlang: config.xlang,
             trackRef: config.trackRef,
             compatible: config.compatible,
-            checkClassVersion: config.checkClassVersion
+            checkClassVersion: config.checkClassVersion,
+            maxCollectionLength: config.maxCollectionLength,
+            maxBinaryLength: config.maxBinaryLength,
+            maxArrayPayloadLength: config.maxArrayPayloadLength
         )
     }
 
@@ -547,6 +568,9 @@ public final class Fory {
             trackRef: config.trackRef,
             compatible: config.compatible,
             checkClassVersion: config.checkClassVersion,
+            maxCollectionLength: config.maxCollectionLength,
+            maxBinaryLength: config.maxBinaryLength,
+            maxArrayPayloadLength: config.maxArrayPayloadLength,
             compatibleTypeDefState: CompatibleTypeDefReadState(),
             metaStringReadState: MetaStringReadState()
         )
@@ -602,20 +626,10 @@ public final class Fory {
         }
 
         runtimeContext.readInUse = true
-        let shouldReplace = data.withUnsafeBytes { rawBytes in
-            if rawBytes.count != runtimeContext.lastReadDataCount {
-                return true
-            }
-            return rawBytes.baseAddress != runtimeContext.lastReadDataAddress
-        }
-        if shouldReplace {
-            runtimeContext.readBuffer.replace(with: data)
-            data.withUnsafeBytes { rawBytes in
-                runtimeContext.lastReadDataAddress = rawBytes.baseAddress
-                runtimeContext.lastReadDataCount = rawBytes.count
-            }
-        } else {
-            runtimeContext.readBuffer.setCursor(0)
+        runtimeContext.readBuffer.replace(with: data)
+        data.withUnsafeBytes { rawBytes in
+            runtimeContext.lastReadDataAddress = rawBytes.baseAddress
+            runtimeContext.lastReadDataCount = rawBytes.count
         }
         defer {
             runtimeContext.readContext.reset()
@@ -673,7 +687,11 @@ public final class Fory {
             if try readHead(buffer: context.buffer) {
                 return nilValue()
             }
-            return try body(context)
+            let value = try body(context)
+            if context.buffer.remaining != 0 {
+                throw ForyError.invalidData("unexpected trailing bytes at root: \(context.buffer.remaining)")
+            }
+            return value
         }
     }
 
