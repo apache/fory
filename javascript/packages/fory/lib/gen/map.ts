@@ -405,11 +405,12 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
     const result = this.scope.uniqueName("result");
 
     const foryName = this.builder.getForyName();
+    const maxEntriesVar = this.scope.uniqueName("maxMapEntries");
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
-      const maxEntries = ${foryName}.config.maxMapEntries;
-      if (typeof maxEntries === "number" && maxEntries > 0 && ${count} > maxEntries) {
-        throw new Error(\`Map entry count \${${count}} exceeds configured maxMapEntries \${maxEntries}\`);
+      const ${maxEntriesVar} = ${foryName}.config.maxMapEntries;
+      if (typeof ${maxEntriesVar} === "number" && ${maxEntriesVar} > 0 && ${count} > ${maxEntriesVar}) {
+        throw new Error(\`Map entry count \${${count}} exceeds configured maxMapEntries \${${maxEntriesVar}}\`);
       }
       const ${result} = new Map();
       if (${refState}) {
