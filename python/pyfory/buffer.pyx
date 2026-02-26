@@ -306,8 +306,8 @@ cdef class Buffer:
 
     cpdef inline int64_t read_bytes_as_int64(self, int32_t length):
         cdef int64_t result = 0
-        cdef uint8_t tmp[8]
-        cdef int32_t i
+        cdef uint32_t offset
+        cdef CResultVoidError res
         if length == 0:
             return 0
         if length < 0 or length > 8:
@@ -315,10 +315,14 @@ cdef class Buffer:
                 CErrorCode.InvalidData,
                 f"get_bytes_as_int64 length should be in range [0, 8], but got {length}",
             )
-        self.c_buffer.read_bytes(<void*>tmp, <uint32_t>length, self._error)
+        if not self.c_buffer.ensure_readable(<uint32_t>length, self._error):
+            self._raise_if_error()
+        offset = self.c_buffer.reader_index()
+        res = self.c_buffer.get_bytes_as_int64(offset, <uint32_t>length, &result)
+        if not res.ok():
+            raise_fory_error(res.error().code(), res.error().message())
+        self.c_buffer.increase_reader_index(<uint32_t>length, self._error)
         self._raise_if_error()
-        for i in range(length):
-            result |= (<int64_t>tmp[i]) << (8 * i)
         return result
 
     cpdef inline put_bytes(self, uint32_t offset, bytes value):
