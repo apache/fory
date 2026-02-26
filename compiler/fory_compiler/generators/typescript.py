@@ -235,8 +235,7 @@ class TypeScriptGenerator(BaseGenerator):
             return False
         try:
             return (
-                Path(location.file).resolve()
-                != Path(self.schema.source_file).resolve()
+                Path(location.file).resolve() != Path(self.schema.source_file).resolve()
             )
         except Exception:
             return location.file != self.schema.source_file
@@ -496,34 +495,38 @@ class TypeScriptGenerator(BaseGenerator):
         """Generate import statements for imported types and registration functions."""
         lines: List[str] = []
         imported_regs = self._collect_imported_registrations()
-        
+
         # Collect all imported types used in this schema
         imported_types_by_module: Dict[str, Set[str]] = {}
-        
+
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(type_def):
                 continue
-            
+
             location = getattr(type_def, "location", None)
             file_path = getattr(location, "file", None) if location else None
             if not file_path:
                 continue
-                
+
             imported_schema = self._load_schema(file_path)
             if imported_schema is None:
                 continue
-                
+
             mod_name = self._module_name_for_schema(imported_schema)
             mod_path = f"./{mod_name}"
-            
+
             if mod_path not in imported_types_by_module:
                 imported_types_by_module[mod_path] = set()
-                
-            imported_types_by_module[mod_path].add(self.safe_type_identifier(type_def.name))
-            
+
+            imported_types_by_module[mod_path].add(
+                self.safe_type_identifier(type_def.name)
+            )
+
             # If it's a union, also import the Case enum
             if isinstance(type_def, Union):
-                imported_types_by_module[mod_path].add(self.safe_type_identifier(f"{type_def.name}Case"))
+                imported_types_by_module[mod_path].add(
+                    self.safe_type_identifier(f"{type_def.name}Case")
+                )
 
         # Add registration functions to the imports
         for mod_path, reg_fn in imported_regs:
@@ -595,7 +598,7 @@ class TypeScriptGenerator(BaseGenerator):
             for i, line in enumerate(lines):
                 if line.startswith("// Package:") or line.startswith("// Licensed"):
                     insert_idx = i + 2
-            
+
             lines.insert(insert_idx, "")
             for imp in reversed(imports):
                 lines.insert(insert_idx, imp)
@@ -739,9 +742,7 @@ class TypeScriptGenerator(BaseGenerator):
 
         namespace_name = self.schema.package or "default"
         qualified_name = self._qualified_type_names.get(id(type_def), type_def.name)
-        return (
-            f'{target_var}.{method}("{type_name}", "{namespace_name}", "{qualified_name}");'
-        )
+        return f'{target_var}.{method}("{type_name}", "{namespace_name}", "{qualified_name}");'
 
     def generate_registration(self) -> List[str]:
         """Generate a registration function that registers all local and
