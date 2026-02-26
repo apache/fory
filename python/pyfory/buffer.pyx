@@ -128,7 +128,8 @@ cdef class Buffer:
     cpdef inline void set_reader_index(self, int32_t value):
         if value < 0:
             raise ValueError("reader_index must be >= 0")
-        self.c_buffer.reader_index(<uint32_t>value)
+        if not self.c_buffer.reader_index(<uint32_t>value, self._error):
+            self._raise_if_error()
 
     cpdef inline int32_t get_writer_index(self):
         return <int32_t>self.c_buffer.writer_index()

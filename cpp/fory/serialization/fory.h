@@ -604,6 +604,17 @@ public:
   /// @param buffer Buffer to read from. Its reader_index will be updated.
   /// @return Deserialized object, or error.
   template <typename T> Result<T, Error> deserialize(Buffer &buffer) {
+    struct StreamShrinkGuard {
+      Buffer *buffer = nullptr;
+      ~StreamShrinkGuard() {
+        if (buffer != nullptr) {
+          buffer->shrink_stream_buffer();
+        }
+      }
+    };
+    StreamShrinkGuard shrink_guard{buffer.is_stream_backed() ? &buffer
+                                                             : nullptr};
+
     if (FORY_PREDICT_FALSE(!finalized_)) {
       ensure_finalized();
     }

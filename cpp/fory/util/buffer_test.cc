@@ -258,6 +258,27 @@ TEST(Buffer, StreamGetAndReaderIndexFromOneByteSource) {
   ASSERT_TRUE(error.ok()) << error.to_string();
 }
 
+TEST(Buffer, StreamReadBytesAndSkipAdvanceReaderIndex) {
+  std::vector<uint8_t> raw{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  OneByteIStream one_byte_stream(raw);
+  ForyInputStream stream(one_byte_stream, 2);
+  Buffer reader(stream);
+  Error error;
+  uint8_t out[5] = {0};
+
+  reader.read_bytes(out, 5, error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.reader_index(), 5U);
+  EXPECT_EQ(out[0], 0U);
+  EXPECT_EQ(out[4], 4U);
+
+  reader.skip(3, error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.reader_index(), 8U);
+  EXPECT_EQ(reader.read_uint8(error), 8U);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+}
+
 TEST(Buffer, StreamSkipAndUnread) {
   std::vector<uint8_t> raw{0x01, 0x02, 0x03, 0x04, 0x05};
   OneByteIStream one_byte_stream(raw);

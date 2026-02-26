@@ -19,56 +19,10 @@ import pytest
 
 from pyfory.buffer import Buffer
 from pyfory.tests.core import require_pyarrow
+from pyfory.tests.test_stream import OneByteStream
 from pyfory.utils import lazy_import
 
 pa = lazy_import("pyarrow")
-
-
-class OneByteStream:
-    def __init__(self, data: bytes):
-        self._data = data
-        self._offset = 0
-
-    def read(self, size=-1):
-        if self._offset >= len(self._data):
-            return b""
-        if size < 0:
-            size = len(self._data) - self._offset
-        if size == 0:
-            return b""
-        read_size = min(1, size, len(self._data) - self._offset)
-        start = self._offset
-        self._offset += read_size
-        return self._data[start : start + read_size]
-
-    def readinto(self, buffer):
-        if self._offset >= len(self._data):
-            return 0
-        view = memoryview(buffer).cast("B")
-        if len(view) == 0:
-            return 0
-        read_size = min(1, len(view), len(self._data) - self._offset)
-        start = self._offset
-        self._offset += read_size
-        view[:read_size] = self._data[start : start + read_size]
-        return read_size
-
-    def recv_into(self, buffer, size=-1):
-        if self._offset >= len(self._data):
-            return 0
-        view = memoryview(buffer).cast("B")
-        if size < 0 or size > len(view):
-            size = len(view)
-        if size == 0:
-            return 0
-        read_size = min(1, size, len(self._data) - self._offset)
-        start = self._offset
-        self._offset += read_size
-        view[:read_size] = self._data[start : start + read_size]
-        return read_size
-
-    def recvinto(self, buffer, size=-1):
-        return self.recv_into(buffer, size)
 
 
 class RecvIntoOnlyStream:
@@ -376,6 +330,20 @@ def test_stream_buffer_set_reader_index():
     reader = Buffer.from_stream(OneByteStream(bytes([0x11, 0x22, 0x33, 0x44, 0x55])))
     reader.set_reader_index(4)
     assert reader.read_uint8() == 0x55
+
+
+def test_stream_buffer_set_reader_index_out_of_bound():
+    reader = Buffer.from_stream(OneByteStream(b"\x11\x22\x33"))
+    with pytest.raises(Exception, match="Buffer out of bound"):
+        reader.set_reader_index(10)
+
+
+def test_stream_buffer_read_bytes_and_skip_update_reader_index():
+    reader = Buffer.from_stream(OneByteStream(bytes(range(20))), buffer_size=2)
+    assert reader.read_bytes(5) == bytes([0, 1, 2, 3, 4])
+    assert reader.get_reader_index() == 5
+    reader.skip(5)
+    assert reader.get_reader_index() == 10
 
 
 def test_stream_buffer_short_read_error():

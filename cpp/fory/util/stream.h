@@ -43,6 +43,8 @@ public:
 
   virtual Result<void, Error> unread(uint32_t size) = 0;
 
+  virtual void shrink_buffer() = 0;
+
   virtual Buffer &get_buffer() = 0;
 
   // Bind the reader to an external Buffer. Passing nullptr rebinds to the
@@ -67,6 +69,8 @@ public:
 
   Result<void, Error> unread(uint32_t size) override;
 
+  void shrink_buffer() override;
+
   Buffer &get_buffer() override;
 
   void bind_buffer(Buffer *buffer) override;
@@ -79,6 +83,7 @@ private:
   std::shared_ptr<std::istream> stream_owner_;
   std::istream *stream_ = nullptr;
   std::vector<uint8_t> data_;
+  uint32_t initial_buffer_size_ = 1;
   Buffer *buffer_ = nullptr;
   std::unique_ptr<Buffer> owned_buffer_;
 };

@@ -106,6 +106,12 @@ public:
     return stream_reader_ != nullptr;
   }
 
+  FORY_ALWAYS_INLINE void shrink_stream_buffer() {
+    if (stream_reader_ != nullptr) {
+      stream_reader_->shrink_buffer();
+    }
+  }
+
   FORY_ALWAYS_INLINE uint32_t writer_index() { return writer_index_; }
 
   FORY_ALWAYS_INLINE uint32_t reader_index() { return reader_index_; }
@@ -145,18 +151,29 @@ public:
     writer_index_ = writer_index;
   }
 
-  FORY_ALWAYS_INLINE void reader_index(uint32_t reader_index) {
+  FORY_ALWAYS_INLINE bool reader_index(uint32_t reader_index, Error &error) {
     if (FORY_PREDICT_FALSE(reader_index > size_ && stream_reader_ != nullptr)) {
-      Error error;
-      const bool ok = fill_buffer(reader_index - reader_index_, error);
-      FORY_CHECK(ok)
-          << "failed to fill stream buffer while setting reader index: "
-          << error.to_string();
+      if (FORY_PREDICT_FALSE(
+              !fill_buffer(reader_index - reader_index_, error))) {
+        return false;
+      }
     }
-    FORY_CHECK(reader_index <= size_)
-        << "Buffer overflow reader_index " << reader_index_
-        << " target reader_index " << reader_index << " size " << size_;
+    if (FORY_PREDICT_FALSE(reader_index > size_)) {
+      const uint32_t diff =
+          reader_index > reader_index_ ? reader_index - reader_index_ : 0;
+      error.set_buffer_out_of_bound(reader_index_, diff, size_);
+      return false;
+    }
     reader_index_ = reader_index;
+    return true;
+  }
+
+  FORY_ALWAYS_INLINE void reader_index(uint32_t reader_index) {
+    Error error;
+    const bool ok = this->reader_index(reader_index, error);
+    FORY_CHECK(ok) << "Buffer overflow reader_index " << reader_index_
+                   << " target reader_index " << reader_index << " size "
+                   << size_ << ", " << error.to_string();
   }
 
   FORY_ALWAYS_INLINE void increase_reader_index(uint32_t diff, Error &error) {
@@ -1102,38 +1119,16 @@ public:
   /// Read raw bytes from buffer. Sets error on bounds violation.
   FORY_ALWAYS_INLINE void read_bytes(void *data, uint32_t length,
                                      Error &error) {
-    if (FORY_PREDICT_TRUE(length <= size_ - reader_index_)) {
-      copy(reader_index_, length, static_cast<uint8_t *>(data));
-      reader_index_ += length;
+    if (FORY_PREDICT_FALSE(!ensure_readable(length, error))) {
       return;
     }
-    if (FORY_PREDICT_TRUE(stream_reader_ == nullptr)) {
-      error.set_buffer_out_of_bound(reader_index_, length, size_);
-      return;
-    }
-    auto read_result =
-        stream_reader_->read_to(static_cast<uint8_t *>(data), length);
-    if (FORY_PREDICT_FALSE(!read_result.ok())) {
-      error = std::move(read_result).error();
-      return;
-    }
+    copy(reader_index_, length, static_cast<uint8_t *>(data));
+    reader_index_ += length;
   }
 
   /// skip bytes in buffer. Sets error on bounds violation.
   FORY_ALWAYS_INLINE void skip(uint32_t length, Error &error) {
-    if (FORY_PREDICT_TRUE(length <= size_ - reader_index_)) {
-      reader_index_ += length;
-      return;
-    }
-    if (FORY_PREDICT_TRUE(stream_reader_ == nullptr)) {
-      error.set_buffer_out_of_bound(reader_index_, length, size_);
-      return;
-    }
-    auto skip_result = stream_reader_->skip(length);
-    if (FORY_PREDICT_FALSE(!skip_result.ok())) {
-      error = std::move(skip_result).error();
-      return;
-    }
+    increase_reader_index(length, error);
   }
 
   /// Return true if both buffers are the same size and contain the same bytes

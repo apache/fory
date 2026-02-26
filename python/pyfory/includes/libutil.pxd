@@ -79,6 +79,8 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
         inline void reader_index(uint32_t reader_index)
 
+        inline c_bool reader_index(uint32_t reader_index, CError& error)
+
         inline void increase_reader_index(uint32_t diff, CError& error)
 
         void grow(uint32_t min_capacity)
