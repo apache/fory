@@ -336,11 +336,7 @@ public final class Fory implements BaseFory {
         throwDepthSerializationException();
       }
       depth = 0;
-      if (!crossLanguage) {
-        writeRef(buffer, obj);
-      } else {
-        xwriteRef(buffer, obj);
-      }
+      writeRef(buffer, obj);
       return buffer;
     } catch (Throwable t) {
       throw processSerializationError(t);
@@ -410,21 +406,48 @@ public final class Fory implements BaseFory {
   /** Serialize a nullable referencable object to <code>buffer</code>. */
   public void writeRef(MemoryBuffer buffer, Object obj) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
-      TypeInfo typeInfo = classResolver.getOrUpdateTypeInfo(obj.getClass());
-      classResolver.writeTypeInfo(buffer, typeInfo);
+      TypeResolver resolver = getTypeResolver();
+      TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass());
+      if (crossLanguage && typeInfo.getCls() == UnknownStruct.class) {
+        depth++;
+        typeInfo.getSerializer().write(buffer, obj);
+        depth--;
+        return;
+      }
+      resolver.writeTypeInfo(buffer, typeInfo);
       writeData(buffer, typeInfo, obj);
     }
   }
 
   public void writeRef(MemoryBuffer buffer, Object obj, TypeInfoHolder classInfoHolder) {
     if (!refResolver.writeRefOrNull(buffer, obj)) {
-      TypeInfo typeInfo = classResolver.getTypeInfo(obj.getClass(), classInfoHolder);
-      classResolver.writeTypeInfo(buffer, typeInfo);
+      TypeResolver resolver = getTypeResolver();
+      TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass(), classInfoHolder);
+      if (crossLanguage && typeInfo.getCls() == UnknownStruct.class) {
+        depth++;
+        typeInfo.getSerializer().write(buffer, obj);
+        depth--;
+        return;
+      }
+      resolver.writeTypeInfo(buffer, typeInfo);
       writeData(buffer, typeInfo, obj);
     }
   }
 
   public void writeRef(MemoryBuffer buffer, Object obj, TypeInfo typeInfo) {
+    if (crossLanguage) {
+      if (!refResolver.writeRefOrNull(buffer, obj)) {
+        if (typeInfo.getCls() == UnknownStruct.class) {
+          depth++;
+          typeInfo.getSerializer().write(buffer, obj);
+          depth--;
+          return;
+        }
+        getTypeResolver().writeTypeInfo(buffer, typeInfo);
+        writeData(buffer, typeInfo, obj);
+      }
+      return;
+    }
     Serializer<Object> serializer = typeInfo.getSerializer();
     if (serializer.needToWriteRef()) {
       if (!refResolver.writeRefOrNull(buffer, obj)) {
@@ -472,8 +495,15 @@ public final class Fory implements BaseFory {
    * object graph.
    */
   public void writeNonRef(MemoryBuffer buffer, Object obj) {
-    TypeInfo typeInfo = classResolver.getOrUpdateTypeInfo(obj.getClass());
-    classResolver.writeTypeInfo(buffer, typeInfo);
+    TypeResolver resolver = getTypeResolver();
+    TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass());
+    if (crossLanguage && typeInfo.getCls() == UnknownStruct.class) {
+      depth++;
+      typeInfo.getSerializer().write(buffer, obj);
+      depth--;
+      return;
+    }
+    resolver.writeTypeInfo(buffer, typeInfo);
     writeData(buffer, typeInfo, obj);
   }
 
@@ -484,122 +514,30 @@ public final class Fory implements BaseFory {
   }
 
   public void writeNonRef(MemoryBuffer buffer, Object obj, TypeInfoHolder holder) {
-    TypeInfo typeInfo = classResolver.getTypeInfo(obj.getClass(), holder);
-    classResolver.writeTypeInfo(buffer, typeInfo);
+    TypeResolver resolver = getTypeResolver();
+    TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass(), holder);
+    if (crossLanguage && typeInfo.getCls() == UnknownStruct.class) {
+      depth++;
+      typeInfo.getSerializer().write(buffer, obj);
+      depth--;
+      return;
+    }
+    resolver.writeTypeInfo(buffer, typeInfo);
     writeData(buffer, typeInfo, obj);
   }
 
   public void writeNonRef(MemoryBuffer buffer, Object obj, TypeInfo typeInfo) {
-    classResolver.writeTypeInfo(buffer, typeInfo);
-    Serializer serializer = typeInfo.getSerializer();
-    depth++;
-    serializer.write(buffer, obj);
-    depth--;
-  }
-
-  public void xwriteRef(MemoryBuffer buffer, Object obj) {
-    if (!refResolver.writeRefOrNull(buffer, obj)) {
-      TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass());
-      if (typeInfo.getCls() == UnknownStruct.class) {
-        depth++;
-        typeInfo.getSerializer().xwrite(buffer, obj);
-        depth--;
-        return;
-      }
-      xtypeResolver.writeTypeInfo(buffer, typeInfo);
-      xwriteData(buffer, typeInfo, obj);
-    }
-  }
-
-  public void xwriteRef(MemoryBuffer buffer, Object obj, TypeInfoHolder classInfoHolder) {
-    if (!refResolver.writeRefOrNull(buffer, obj)) {
-      TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass(), classInfoHolder);
-      if (typeInfo.getCls() == UnknownStruct.class) {
-        depth++;
-        typeInfo.getSerializer().xwrite(buffer, obj);
-        depth--;
-        return;
-      }
-      xtypeResolver.writeTypeInfo(buffer, typeInfo);
-      xwriteData(buffer, typeInfo, obj);
-    }
-  }
-
-  public void xwriteRef(MemoryBuffer buffer, Object obj, TypeInfo typeInfo) {
-    if (!refResolver.writeRefOrNull(buffer, obj)) {
-      if (typeInfo.getCls() == UnknownStruct.class) {
-        depth++;
-        typeInfo.getSerializer().xwrite(buffer, obj);
-        depth--;
-        return;
-      }
-      xtypeResolver.writeTypeInfo(buffer, typeInfo);
-      xwriteData(buffer, typeInfo, obj);
-    }
-  }
-
-  public <T> void xwriteRef(MemoryBuffer buffer, T obj, Serializer<T> serializer) {
-    if (serializer.needToWriteRef()) {
-      if (!refResolver.writeRefOrNull(buffer, obj)) {
-        depth++;
-        serializer.xwrite(buffer, obj);
-        depth--;
-      }
-    } else {
-      if (obj == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-      } else {
-        buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-        depth++;
-        serializer.xwrite(buffer, obj);
-        depth--;
-      }
-    }
-  }
-
-  public void xwriteNonRef(MemoryBuffer buffer, Object obj) {
-    TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass());
-    if (typeInfo.getCls() == UnknownStruct.class) {
+    if (crossLanguage && typeInfo.getCls() == UnknownStruct.class) {
       depth++;
-      typeInfo.getSerializer().xwrite(buffer, obj);
+      typeInfo.getSerializer().write(buffer, obj);
       depth--;
       return;
     }
-    xtypeResolver.writeTypeInfo(buffer, typeInfo);
-    xwriteData(buffer, typeInfo, obj);
+    getTypeResolver().writeTypeInfo(buffer, typeInfo);
+    writeData(buffer, typeInfo, obj);
   }
 
-  public void xwriteNonRef(MemoryBuffer buffer, Object obj, TypeInfoHolder holder) {
-    TypeInfo typeInfo = xtypeResolver.getTypeInfo(obj.getClass(), holder);
-    if (typeInfo.getCls() == UnknownStruct.class) {
-      depth++;
-      typeInfo.getSerializer().xwrite(buffer, obj);
-      depth--;
-      return;
-    }
-    xtypeResolver.writeTypeInfo(buffer, typeInfo);
-    xwriteData(buffer, typeInfo, obj);
-  }
-
-  public void xwriteNonRef(MemoryBuffer buffer, Object obj, TypeInfo typeInfo) {
-    if (typeInfo.getCls() == UnknownStruct.class) {
-      depth++;
-      typeInfo.getSerializer().xwrite(buffer, obj);
-      depth--;
-      return;
-    }
-    xtypeResolver.writeTypeInfo(buffer, typeInfo);
-    xwriteData(buffer, typeInfo, obj);
-  }
-
-  public void xwriteNonRef(MemoryBuffer buffer, Object obj, Serializer serializer) {
-    depth++;
-    serializer.xwrite(buffer, obj);
-    depth--;
-    ;
-  }
-
-  public void xwriteData(MemoryBuffer buffer, TypeInfo typeInfo, Object obj) {
+  private void writeCrossLanguageData(MemoryBuffer buffer, TypeInfo typeInfo, Object obj) {
     int typeId = typeInfo.getTypeId();
     switch (typeId) {
       case Types.BOOL:
@@ -629,13 +567,22 @@ public final class Fory implements BaseFory {
         // TODO(add fastpath for other types)
       default:
         depth++;
-        typeInfo.getSerializer().xwrite(buffer, obj);
+        typeInfo.getSerializer().write(buffer, obj);
         depth--;
     }
   }
 
+  /** Class/type info should be written already. */
+  public void writeData(MemoryBuffer buffer, TypeInfo typeInfo, Object obj) {
+    if (crossLanguage) {
+      writeCrossLanguageData(buffer, typeInfo, obj);
+      return;
+    }
+    writeJavaData(buffer, typeInfo, obj);
+  }
+
   /** Write not null data to buffer. */
-  private void writeData(MemoryBuffer buffer, TypeInfo typeInfo, Object obj) {
+  private void writeJavaData(MemoryBuffer buffer, TypeInfo typeInfo, Object obj) {
     int typeId = typeInfo.getTypeId();
     switch (typeId) {
       case Types.BOOL:
@@ -667,7 +614,7 @@ public final class Fory implements BaseFory {
         buffer.writeFloat64((Double) obj);
         break;
       case Types.STRING:
-        stringSerializer.writeJavaString(buffer, (String) obj);
+        stringSerializer.writeString(buffer, (String) obj);
         break;
       default:
         depth++;
@@ -749,10 +696,10 @@ public final class Fory implements BaseFory {
     return stringSerializer.readString(buffer);
   }
 
-  public void writeJavaStringRef(MemoryBuffer buffer, String str) {
+  public void writeStringRef(MemoryBuffer buffer, String str) {
     if (stringSerializer.needToWriteRef()) {
       if (!refResolver.writeRefOrNull(buffer, str)) {
-        stringSerializer.writeJavaString(buffer, str);
+        stringSerializer.writeString(buffer, str);
       }
     } else {
       if (str == null) {
@@ -764,7 +711,7 @@ public final class Fory implements BaseFory {
     }
   }
 
-  public String readJavaStringRef(MemoryBuffer buffer) {
+  public String readStringRef(MemoryBuffer buffer) {
     RefResolver refResolver = this.refResolver;
     if (stringSerializer.needToWriteRef()) {
       String obj;
@@ -784,14 +731,6 @@ public final class Fory implements BaseFory {
         return stringSerializer.read(buffer);
       }
     }
-  }
-
-  public void writeJavaString(MemoryBuffer buffer, String str) {
-    stringSerializer.writeJavaString(buffer, str);
-  }
-
-  public String readJavaString(MemoryBuffer buffer) {
-    return stringSerializer.readJavaString(buffer);
   }
 
   public void writeInt64(MemoryBuffer buffer, long value) {
@@ -884,7 +823,7 @@ public final class Fory implements BaseFory {
       }
       Object obj;
       if (isTargetXLang) {
-        obj = xreadRef(buffer);
+        obj = readRefCrossLanguage(buffer);
       } else {
         obj = readRef(buffer);
       }
@@ -925,6 +864,9 @@ public final class Fory implements BaseFory {
 
   /** Deserialize nullable referencable object from <code>buffer</code>. */
   public Object readRef(MemoryBuffer buffer) {
+    if (crossLanguage) {
+      return readRefCrossLanguage(buffer);
+    }
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
@@ -938,6 +880,9 @@ public final class Fory implements BaseFory {
   }
 
   public Object readRef(MemoryBuffer buffer, TypeInfo typeInfo) {
+    if (crossLanguage) {
+      return readRefCrossLanguage(buffer, typeInfo);
+    }
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
@@ -951,6 +896,9 @@ public final class Fory implements BaseFory {
   }
 
   public Object readRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
+    if (crossLanguage) {
+      return readRefCrossLanguage(buffer, classInfoHolder);
+    }
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
@@ -965,6 +913,9 @@ public final class Fory implements BaseFory {
 
   @SuppressWarnings("unchecked")
   public <T> T readRef(MemoryBuffer buffer, Serializer<T> serializer) {
+    if (crossLanguage) {
+      return (T) readRefCrossLanguage(buffer, serializer);
+    }
     if (serializer.needToWriteRef()) {
       T obj;
       int nextReadRefId = refResolver.tryPreserveRefId(buffer);
@@ -987,15 +938,34 @@ public final class Fory implements BaseFory {
 
   /** Deserialize not-null and non-reference object from <code>buffer</code>. */
   public Object readNonRef(MemoryBuffer buffer) {
+    if (crossLanguage) {
+      return readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer));
+    }
     return readDataInternal(buffer, classResolver.readTypeInfo(buffer));
   }
 
   public Object readNonRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
+    if (crossLanguage) {
+      return readNonRefCrossLanguage(buffer, classInfoHolder);
+    }
     return readDataInternal(buffer, classResolver.readTypeInfo(buffer, classInfoHolder));
   }
 
   public Object readNonRef(MemoryBuffer buffer, TypeInfo typeInfo) {
+    if (crossLanguage) {
+      return readNonRefCrossLanguage(buffer, typeInfo);
+    }
     return readDataInternal(buffer, typeInfo);
+  }
+
+  public Object readNonRef(MemoryBuffer buffer, Serializer<?> serializer) {
+    if (crossLanguage) {
+      return readNonRefCrossLanguage(buffer, serializer);
+    }
+    incReadDepth();
+    Object o = serializer.read(buffer);
+    depth--;
+    return o;
   }
 
   /** Read object class and data without tracking ref. */
@@ -1018,6 +988,9 @@ public final class Fory implements BaseFory {
   }
 
   public Object readNullable(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
+    if (crossLanguage) {
+      return readNullableCrossLanguage(buffer, classInfoHolder);
+    }
     byte headFlag = buffer.readByte();
     if (headFlag == Fory.NULL_FLAG) {
       return null;
@@ -1059,7 +1032,7 @@ public final class Fory implements BaseFory {
       case Types.FLOAT64:
         return buffer.readFloat64();
       case Types.STRING:
-        return stringSerializer.readJavaString(buffer);
+        return stringSerializer.readString(buffer);
       default:
         incReadDepth();
         Object read = typeInfo.getSerializer().read(buffer);
@@ -1068,44 +1041,11 @@ public final class Fory implements BaseFory {
     }
   }
 
-  private Object xreadDataInternal(MemoryBuffer buffer, TypeInfo typeInfo) {
-    int typeId = typeInfo.getTypeId();
-    switch (typeId) {
-      case Types.BOOL:
-        return buffer.readBoolean();
-      case Types.INT8:
-        return buffer.readByte();
-      case ClassResolver.CHAR_ID:
-        return buffer.readChar();
-      case Types.INT16:
-        return buffer.readInt16();
-      case Types.INT32:
-        if (compressInt) {
-          return buffer.readVarInt32();
-        } else {
-          return buffer.readInt32();
-        }
-      case Types.FLOAT32:
-        return buffer.readFloat32();
-      case Types.INT64:
-        return LongSerializer.readInt64(buffer, longEncoding);
-      case Types.FLOAT64:
-        return buffer.readFloat64();
-      case Types.STRING:
-        return stringSerializer.readJavaString(buffer);
-      default:
-        incReadDepth();
-        Object read = typeInfo.getSerializer().xread(buffer);
-        depth--;
-        return read;
-    }
-  }
-
-  public Object xreadRef(MemoryBuffer buffer) {
+  private Object readRefCrossLanguage(MemoryBuffer buffer) {
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
-      Object o = xreadNonRef(buffer, xtypeResolver.readTypeInfo(buffer));
+      Object o = readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer));
       refResolver.setReadObject(nextReadRefId, o);
       return o;
     } else {
@@ -1113,12 +1053,11 @@ public final class Fory implements BaseFory {
     }
   }
 
-  public Object xreadRef(MemoryBuffer buffer, TypeInfo typeInfo) {
+  private Object readRefCrossLanguage(MemoryBuffer buffer, TypeInfo typeInfo) {
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
-      // ref value or not-null value
-      Object o = xreadDataInternal(buffer, typeInfo);
+      Object o = readNonRefCrossLanguage(buffer, typeInfo);
       refResolver.setReadObject(nextReadRefId, o);
       return o;
     } else {
@@ -1126,12 +1065,12 @@ public final class Fory implements BaseFory {
     }
   }
 
-  public Object xreadRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
+  private Object readRefCrossLanguage(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
-      // ref value or not-null value
-      Object o = xreadDataInternal(buffer, xtypeResolver.readTypeInfo(buffer, classInfoHolder));
+      Object o =
+          readNonRefCrossLanguage(buffer, xtypeResolver.readTypeInfo(buffer, classInfoHolder));
       refResolver.setReadObject(nextReadRefId, o);
       return o;
     } else {
@@ -1139,12 +1078,12 @@ public final class Fory implements BaseFory {
     }
   }
 
-  public Object xreadRef(MemoryBuffer buffer, Serializer<?> serializer) {
+  private Object readRefCrossLanguage(MemoryBuffer buffer, Serializer<?> serializer) {
     if (serializer.needToWriteRef()) {
       RefResolver refResolver = this.refResolver;
       int nextReadRefId = refResolver.tryPreserveRefId(buffer);
       if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
-        Object o = xreadNonRef(buffer, serializer);
+        Object o = readNonRefCrossLanguage(buffer, serializer);
         refResolver.setReadObject(nextReadRefId, o);
         return o;
       } else {
@@ -1155,23 +1094,19 @@ public final class Fory implements BaseFory {
       if (headFlag == Fory.NULL_FLAG) {
         return null;
       } else {
-        return xreadNonRef(buffer, serializer);
+        return readNonRefCrossLanguage(buffer, serializer);
       }
     }
   }
 
-  public Object xreadNonRef(MemoryBuffer buffer) {
-    return xreadNonRef(buffer, xtypeResolver.readTypeInfo(buffer));
-  }
-
-  public Object xreadNonRef(MemoryBuffer buffer, Serializer<?> serializer) {
+  private Object readNonRefCrossLanguage(MemoryBuffer buffer, Serializer<?> serializer) {
     incReadDepth();
-    Object o = serializer.xread(buffer);
+    Object o = serializer.read(buffer);
     depth--;
     return o;
   }
 
-  public Object xreadNonRef(MemoryBuffer buffer, TypeInfo typeInfo) {
+  private Object readNonRefCrossLanguage(MemoryBuffer buffer, TypeInfo typeInfo) {
     assert typeInfo != null;
     int typeId = typeInfo.getTypeId();
     switch (typeId) {
@@ -1183,42 +1118,39 @@ public final class Fory implements BaseFory {
         return buffer.readInt16();
       case Types.INT32:
       case Types.VARINT32:
-        // TODO(chaokunyang) support other encoding
         return buffer.readVarInt32();
       case Types.INT64:
       case Types.VARINT64:
-        // TODO(chaokunyang) support other encoding
       case Types.TAGGED_INT64:
         return buffer.readVarInt64();
       case Types.FLOAT32:
         return buffer.readFloat32();
       case Types.FLOAT64:
         return buffer.readFloat64();
-        // TODO(add fastpath for other types)
       default:
         incReadDepth();
-        Object o = typeInfo.getSerializer().xread(buffer);
+        Object o = typeInfo.getSerializer().read(buffer);
         depth--;
         return o;
     }
   }
 
-  public Object xreadNonRef(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
+  private Object readNonRefCrossLanguage(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
     TypeInfo typeInfo = xtypeResolver.readTypeInfo(buffer, classInfoHolder);
-    return xreadNonRef(buffer, typeInfo);
+    return readNonRefCrossLanguage(buffer, typeInfo);
   }
 
-  public Object xreadNullable(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
+  private Object readNullableCrossLanguage(MemoryBuffer buffer, TypeInfoHolder classInfoHolder) {
     TypeInfo typeInfo = xtypeResolver.readTypeInfo(buffer, classInfoHolder);
-    return xreadNullable(buffer, typeInfo.getSerializer());
+    return readNullableCrossLanguage(buffer, typeInfo.getSerializer());
   }
 
-  public Object xreadNullable(MemoryBuffer buffer, Serializer<Object> serializer) {
+  private Object readNullableCrossLanguage(MemoryBuffer buffer, Serializer<Object> serializer) {
     byte headFlag = buffer.readByte();
     if (headFlag == Fory.NULL_FLAG) {
       return null;
     } else {
-      return serializer.xread(buffer);
+      return serializer.read(buffer);
     }
   }
 

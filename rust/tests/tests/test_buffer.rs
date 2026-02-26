@@ -96,3 +96,23 @@ fn test_varuint36_small() {
         assert_eq!(value, data, "failed for data {}", data);
     }
 }
+
+#[test]
+fn test_fixed_width_read_bounds_checks() {
+    let mut empty = Reader::new(&[]);
+    assert!(empty.read_u16().is_err());
+    assert!(empty.read_u32().is_err());
+    assert!(empty.read_u64().is_err());
+    assert!(empty.read_f16().is_err());
+    assert!(empty.read_f32().is_err());
+    assert!(empty.read_f64().is_err());
+    assert!(empty.read_u128().is_err());
+
+    let mut short = Reader::new(&[1, 2, 3]);
+    assert!(short.read_u32().is_err());
+
+    let mut bad_cursor = Reader::new(&[1, 2, 3, 4]);
+    bad_cursor.set_cursor(10);
+    assert!(bad_cursor.read_u16().is_err());
+    assert!(bad_cursor.read_varuint36small().is_err());
+}

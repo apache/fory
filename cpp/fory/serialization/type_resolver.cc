@@ -553,9 +553,16 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
   // CRITICAL FIX: Ensure we consume exactly meta_size bytes
   size_t current_pos = buffer.reader_index();
   size_t expected_end_pos = start_pos + header_size + meta_size;
+  if (FORY_PREDICT_FALSE(current_pos > expected_end_pos)) {
+    return Unexpected(Error::invalid_data(
+        "TypeMeta parser consumed beyond declared meta size"));
+  }
   if (current_pos < expected_end_pos) {
     size_t remaining = expected_end_pos - current_pos;
-    buffer.increase_reader_index(remaining);
+    buffer.skip(static_cast<uint32_t>(remaining), error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
   }
 
   auto meta = std::make_unique<TypeMeta>();
@@ -574,16 +581,12 @@ Result<std::unique_ptr<TypeMeta>, Error>
 TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
   Error error;
   int64_t meta_size = header & META_SIZE_MASK;
-  size_t header_size = 0;
   if (meta_size == META_SIZE_MASK) {
-    uint32_t before = buffer.reader_index();
     uint32_t extra = buffer.read_var_uint32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
     meta_size += extra;
-    uint32_t after = buffer.reader_index();
-    header_size = (after - before);
   }
   int64_t meta_hash = header >> (64 - NUM_HASH_BITS);
 
@@ -663,10 +666,17 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
 
   // CRITICAL FIX: Ensure we consume exactly meta_size bytes
   size_t current_pos = buffer.reader_index();
-  size_t expected_end_pos = start_pos + meta_size - header_size;
+  size_t expected_end_pos = start_pos + meta_size;
+  if (FORY_PREDICT_FALSE(current_pos > expected_end_pos)) {
+    return Unexpected(Error::invalid_data(
+        "TypeMeta parser consumed beyond declared meta size"));
+  }
   if (current_pos < expected_end_pos) {
     size_t remaining = expected_end_pos - current_pos;
-    buffer.increase_reader_index(remaining);
+    buffer.skip(static_cast<uint32_t>(remaining), error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
   }
 
   auto meta = std::make_unique<TypeMeta>();

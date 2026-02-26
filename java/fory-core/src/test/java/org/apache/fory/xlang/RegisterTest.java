@@ -65,21 +65,11 @@ public class RegisterTest extends ForyTestBase {
 
     @Override
     public void write(MemoryBuffer buffer, MyExt value) {
-      xwrite(buffer, value);
-    }
-
-    @Override
-    public MyExt read(MemoryBuffer buffer) {
-      return xread(buffer);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, MyExt value) {
       buffer.writeVarInt32(value.id);
     }
 
     @Override
-    public MyExt xread(MemoryBuffer buffer) {
+    public MyExt read(MemoryBuffer buffer) {
       MyExt obj = new MyExt();
       obj.id = buffer.readVarInt32();
       return obj;

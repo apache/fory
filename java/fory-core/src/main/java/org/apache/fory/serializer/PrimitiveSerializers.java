@@ -139,7 +139,8 @@ public class PrimitiveSerializers {
 
     public IntSerializer(Fory fory, Class<?> cls) {
       super(fory, (Class) cls, false, true);
-      compressNumber = fory.compressInt();
+      // Cross-language encoding always uses varint; Java mode follows compressInt config.
+      compressNumber = !isJava || fory.compressInt();
     }
 
     @Override
@@ -159,17 +160,6 @@ public class PrimitiveSerializers {
         return buffer.readInt32();
       }
     }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Integer value) {
-      // TODO support varint in cross-language serialization
-      buffer.writeVarInt32(value);
-    }
-
-    @Override
-    public Integer xread(MemoryBuffer buffer) {
-      return buffer.readVarInt32();
-    }
   }
 
   public static final class VarUint32Serializer extends Serializer<Integer> {
@@ -187,17 +177,6 @@ public class PrimitiveSerializers {
     public Integer read(MemoryBuffer buffer) {
       return buffer.readVarUint32();
     }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Integer value) {
-      Preconditions.checkArgument(value >= 0);
-      buffer.writeVarUint32(value);
-    }
-
-    @Override
-    public Integer xread(MemoryBuffer buffer) {
-      return buffer.readVarUint32();
-    }
   }
 
   public static final class LongSerializer extends CrossLanguageCompatibleSerializer<Long> {
@@ -205,7 +184,7 @@ public class PrimitiveSerializers {
 
     public LongSerializer(Fory fory, Class<?> cls) {
       super(fory, (Class) cls, false, true);
-      longEncoding = fory.longEncoding();
+      longEncoding = isJava ? fory.longEncoding() : LongEncoding.VARINT;
     }
 
     @Override
@@ -269,17 +248,6 @@ public class PrimitiveSerializers {
           throw new UnsupportedOperationException("Unsupported long encoding " + longEncoding);
       }
     }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Long value) {
-      // TODO(chaokunyang) support var long in cross-language serialization
-      buffer.writeVarInt64(value);
-    }
-
-    @Override
-    public Long xread(MemoryBuffer buffer) {
-      return buffer.readVarInt64();
-    }
   }
 
   public static final class VarUint64Serializer extends Serializer<Long> {
@@ -295,17 +263,6 @@ public class PrimitiveSerializers {
 
     @Override
     public Long read(MemoryBuffer buffer) {
-      return buffer.readVarUint64();
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Long value) {
-      Preconditions.checkArgument(value >= 0);
-      buffer.writeVarUint64(value);
-    }
-
-    @Override
-    public Long xread(MemoryBuffer buffer) {
       return buffer.readVarUint64();
     }
   }

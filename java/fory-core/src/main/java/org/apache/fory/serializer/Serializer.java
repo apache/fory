@@ -97,9 +97,7 @@ public abstract class Serializer<T> {
    * Write value to buffer, this method do not write ref/null flags and the passed value must not be
    * null.
    */
-  public void write(MemoryBuffer buffer, T value) {
-    throw new UnsupportedOperationException("Please implement serialization for " + type);
-  }
+  public abstract void write(MemoryBuffer buffer, T value);
 
   /**
    * Read value from buffer, this method may read ref/null flags based passed {@code refMode}, and
@@ -119,7 +117,7 @@ public abstract class Serializer<T> {
       }
     } else if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
       if (needToWriteRef) {
-        // in normal case, the xread implementation may invoke `refResolver.reference` to
+        // in normal case, the read implementation may invoke `refResolver.reference` to
         // support circular reference, so we still need this `-1`
         refResolver.preserveRefId(-1);
       }
@@ -131,73 +129,7 @@ public abstract class Serializer<T> {
   /**
    * Read value from buffer, this method wont read ref/null flags and the read value won't be null.
    */
-  public T read(MemoryBuffer buffer) {
-    throw new UnsupportedOperationException("Please implement serialization for " + type);
-  }
-
-  /**
-   * Write value to buffer, this method may write ref/null flags based passed {@code refMode}, and
-   * the passed value can be null. Note that this method don't write type info, this method is
-   * mostly be used in cases the context has already knows the value type when deserialization.
-   */
-  public void xwrite(MemoryBuffer buffer, RefMode refMode, T value) {
-    // noinspection Duplicates
-    if (refMode == RefMode.TRACKING) {
-      if (refResolver.writeRefOrNull(buffer, value)) {
-        return;
-      }
-    } else if (refMode == RefMode.NULL_ONLY) {
-      if (value == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-        return;
-      } else {
-        buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-      }
-    }
-    xwrite(buffer, value);
-  }
-
-  /**
-   * Write value to buffer, this method do not write ref/null flags and the passed value must not be
-   * null.
-   */
-  public void xwrite(MemoryBuffer buffer, T value) {
-    throw new UnsupportedOperationException("Please implement xlang serialization for " + type);
-  }
-
-  /**
-   * Read value from buffer, this method may read ref/null flags based passed {@code refMode}, and
-   * the read value can be null. Note that this method don't read type info, this method is mostly
-   * be used in cases the context has already knows the value type for deserialization.
-   */
-  public T xread(MemoryBuffer buffer, RefMode refMode) {
-    if (refMode == RefMode.TRACKING) {
-      T obj;
-      int nextReadRefId = refResolver.tryPreserveRefId(buffer);
-      if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-        obj = xread(buffer);
-        refResolver.setReadObject(nextReadRefId, obj);
-        return obj;
-      } else {
-        return (T) refResolver.getReadObject();
-      }
-    } else if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-      if (needToWriteRef) {
-        // in normal case, the xread implementation may invoke `refResolver.reference` to
-        // support circular reference, so we still need this `-1`
-        refResolver.preserveRefId(-1);
-      }
-      return xread(buffer);
-    }
-    return null;
-  }
-
-  /**
-   * Read value from buffer, this method won't read ref/null flags and the read value won't be null.
-   */
-  public T xread(MemoryBuffer buffer) {
-    throw new UnsupportedOperationException("Please implement xlang serialization for " + type);
-  }
+  public abstract T read(MemoryBuffer buffer);
 
   public T copy(T value) {
     if (isImmutable()) {

@@ -5,7 +5,7 @@ _Generated on 2026-02-19 10:20:08_
 ## How to Generate This Report
 
 ```bash
-cd benchmarks/cpp_benchmark/build
+cd benchmarks/cpp/build
 ./fory_benchmark --benchmark_format=json --benchmark_out=benchmark_results.json
 cd ..
 python benchmark_report.py --json-file build/benchmark_results.json --output-dir report

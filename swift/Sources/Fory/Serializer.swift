@@ -17,9 +17,28 @@
 
 import Foundation
 
+private struct CompatibleTypeMetaCacheKey: Hashable {
+    let swiftType: ObjectIdentifier
+    let wireTypeID: TypeId
+    let trackRef: Bool
+    let registerByName: Bool
+    let userTypeID: UInt32?
+    let namespace: MetaString?
+    let typeName: MetaString
+}
+
+private struct CompatibleTypeMetaCacheEntry {
+    let encodedTypeMeta: [UInt8]
+}
+
+private enum CompatibleTypeMetaCache {
+    nonisolated(unsafe) static var values: [CompatibleTypeMetaCacheKey: CompatibleTypeMetaCacheEntry] = [:]
+    static let lock = NSLock()
+}
+
 public protocol Serializer {
     static func foryDefault() -> Self
-    static var staticTypeId: ForyTypeId { get }
+    static var staticTypeId: TypeId { get }
 
     static var isNullableType: Bool { get }
     static var isReferenceTrackableType: Bool { get }
@@ -49,20 +68,26 @@ public protocol Serializer {
 }
 
 public extension Serializer {
+    @inlinable
     static var isNullableType: Bool { false }
 
+    @inlinable
     static var isReferenceTrackableType: Bool { false }
 
+    @inlinable
     var foryIsNone: Bool { false }
 
+    @inlinable
     static func foryCompatibleTypeMetaFields(trackRef _: Bool) -> [TypeMetaFieldInfo] {
         []
     }
 
+    @inlinable
     func foryWriteTypeInfo(_ context: WriteContext) throws {
         try Self.foryWriteTypeInfo(context)
     }
 
+    @inlinable
     func foryWrite(
         _ context: WriteContext,
         refMode: RefMode,
@@ -86,6 +111,7 @@ public extension Serializer {
         try foryWriteData(context, hasGenerics: hasGenerics)
     }
 
+    @inlinable
     static func foryRead(
         _ context: ReadContext,
         refMode: RefMode,
@@ -139,20 +165,26 @@ public extension Serializer {
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: wireTypeID.rawValue))
         switch wireTypeID {
         case .compatibleStruct, .namedCompatibleStruct:
-            let typeMeta = try buildCompatibleTypeMeta(
+            let cachedTypeMeta = try compatibleTypeMetaEntry(
                 info: info,
                 wireTypeID: wireTypeID,
                 trackRef: context.trackRef
             )
-            try context.writeCompatibleTypeMeta(for: Self.self, typeMeta: typeMeta)
+            try context.writeCompatibleTypeMeta(
+                for: Self.self,
+                encodedTypeMeta: cachedTypeMeta.encodedTypeMeta
+            )
         case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if context.compatible {
-                let typeMeta = try buildCompatibleTypeMeta(
+                let cachedTypeMeta = try compatibleTypeMetaEntry(
                     info: info,
                     wireTypeID: wireTypeID,
                     trackRef: context.trackRef
                 )
-                try context.writeCompatibleTypeMeta(for: Self.self, typeMeta: typeMeta)
+                try context.writeCompatibleTypeMeta(
+                    for: Self.self,
+                    encodedTypeMeta: cachedTypeMeta.encodedTypeMeta
+                )
             } else {
                 guard let namespace = info.namespace else {
                     throw ForyError.invalidData("missing namespace metadata for name-registered type")
@@ -182,7 +214,7 @@ public extension Serializer {
 
     static func foryReadTypeInfo(_ context: ReadContext) throws {
         let rawTypeID = try context.buffer.readVarUInt32()
-        guard let typeID = ForyTypeId(rawValue: rawTypeID) else {
+        guard let typeID = TypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")
         }
 
@@ -264,7 +296,7 @@ public extension Serializer {
         }
     }
 
-    private static func normalizeBaseKind(_ kind: ForyTypeId) -> ForyTypeId {
+    private static func normalizeBaseKind(_ kind: TypeId) -> TypeId {
         switch kind {
         case .namedEnum:
             return .enumType
@@ -279,7 +311,7 @@ public extension Serializer {
         }
     }
 
-    private static func namedKind(for baseKind: ForyTypeId, compatible: Bool) -> ForyTypeId {
+    private static func namedKind(for baseKind: TypeId, compatible: Bool) -> TypeId {
         switch baseKind {
         case .structType:
             return compatible ? .namedCompatibleStruct : .namedStruct
@@ -294,7 +326,7 @@ public extension Serializer {
         }
     }
 
-    private static func idKind(for baseKind: ForyTypeId, compatible: Bool) -> ForyTypeId {
+    private static func idKind(for baseKind: TypeId, compatible: Bool) -> TypeId {
         switch baseKind {
         case .structType:
             return compatible ? .compatibleStruct : .structType
@@ -304,10 +336,10 @@ public extension Serializer {
     }
 
     private static func resolveWireTypeID(
-        declaredKind: ForyTypeId,
+        declaredKind: TypeId,
         registerByName: Bool,
         compatible: Bool
-    ) -> ForyTypeId {
+    ) -> TypeId {
         let baseKind = normalizeBaseKind(declaredKind)
         if registerByName {
             return namedKind(for: baseKind, compatible: compatible)
@@ -316,17 +348,17 @@ public extension Serializer {
     }
 
     private static func allowedWireTypeIDs(
-        declaredKind: ForyTypeId,
+        declaredKind: TypeId,
         registerByName: Bool,
         compatible: Bool
-    ) -> Set<ForyTypeId> {
+    ) -> Set<TypeId> {
         let baseKind = normalizeBaseKind(declaredKind)
         let expected = resolveWireTypeID(
             declaredKind: declaredKind,
             registerByName: registerByName,
             compatible: compatible
         )
-        var allowed: Set<ForyTypeId> = [expected]
+        var allowed: Set<TypeId> = [expected]
         if baseKind == .structType, compatible {
             // Be permissive across peers while struct compatibility converges.
             allowed.insert(.compatibleStruct)
@@ -337,7 +369,7 @@ public extension Serializer {
         return allowed
     }
 
-    private static func wireTypeNeedsUserTypeID(_ typeID: ForyTypeId) -> Bool {
+    private static func wireTypeNeedsUserTypeID(_ typeID: TypeId) -> Bool {
         switch typeID {
         case .enumType, .structType, .ext, .typedUnion:
             return true
@@ -346,9 +378,50 @@ public extension Serializer {
         }
     }
 
+    private static func compatibleTypeMetaEntry(
+        info: RegisteredTypeInfo,
+        wireTypeID: TypeId,
+        trackRef: Bool
+    ) throws -> CompatibleTypeMetaCacheEntry {
+        let cacheKey = CompatibleTypeMetaCacheKey(
+            swiftType: ObjectIdentifier(Self.self),
+            wireTypeID: wireTypeID,
+            trackRef: trackRef,
+            registerByName: info.registerByName,
+            userTypeID: info.userTypeID,
+            namespace: info.namespace,
+            typeName: info.typeName
+        )
+
+        CompatibleTypeMetaCache.lock.lock()
+        if let cached = CompatibleTypeMetaCache.values[cacheKey] {
+            CompatibleTypeMetaCache.lock.unlock()
+            return cached
+        }
+        CompatibleTypeMetaCache.lock.unlock()
+
+        let typeMeta = try buildCompatibleTypeMeta(
+            info: info,
+            wireTypeID: wireTypeID,
+            trackRef: trackRef
+        )
+        let cacheEntry = CompatibleTypeMetaCacheEntry(
+            encodedTypeMeta: try typeMeta.encode()
+        )
+
+        CompatibleTypeMetaCache.lock.lock()
+        if let cached = CompatibleTypeMetaCache.values[cacheKey] {
+            CompatibleTypeMetaCache.lock.unlock()
+            return cached
+        }
+        CompatibleTypeMetaCache.values[cacheKey] = cacheEntry
+        CompatibleTypeMetaCache.lock.unlock()
+        return cacheEntry
+    }
+
     private static func buildCompatibleTypeMeta(
         info: RegisteredTypeInfo,
-        wireTypeID: ForyTypeId,
+        wireTypeID: TypeId,
         trackRef: Bool
     ) throws -> TypeMeta {
         let fields = foryCompatibleTypeMetaFields(trackRef: trackRef)
@@ -385,8 +458,8 @@ public extension Serializer {
     private static func validateCompatibleTypeMeta(
         _ remoteTypeMeta: TypeMeta,
         localInfo: RegisteredTypeInfo,
-        expectedWireTypes: Set<ForyTypeId>,
-        actualWireTypeID: ForyTypeId
+        expectedWireTypes: Set<TypeId>,
+        actualWireTypeID: TypeId
     ) throws {
         if remoteTypeMeta.registerByName {
             guard localInfo.registerByName else {
@@ -421,7 +494,7 @@ public extension Serializer {
         }
 
         if let remoteTypeID = remoteTypeMeta.typeID,
-           let remoteWireTypeID = ForyTypeId(rawValue: remoteTypeID),
+           let remoteWireTypeID = TypeId(rawValue: remoteTypeID),
            !expectedWireTypes.contains(remoteWireTypeID) {
             throw ForyError.typeMismatch(expected: actualWireTypeID.rawValue, actual: remoteTypeID)
         }
@@ -444,6 +517,7 @@ public extension Serializer {
             throw ForyError.encodingError("failed to normalize meta string encoding")
         }
 
+        context.markMetaStringWriteStateUsed()
         let bytes = normalized.bytes
         let assignment = context.metaStringWriteState.assignIndexIfAbsent(for: normalized)
         if assignment.isNew {
@@ -464,6 +538,7 @@ public extension Serializer {
         decoder: MetaStringDecoder,
         encodings: [MetaStringEncoding]
     ) throws -> MetaString {
+        context.markMetaStringReadStateUsed()
         let header = try context.buffer.readVarUInt32()
         let length = Int(header >> 1)
         let isRef = (header & 1) == 1

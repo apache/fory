@@ -99,12 +99,16 @@ impl<'a, T: Row<'a>, const N: usize> FixedArrayGetter<'a, T, N> {
         self.array_data.num_elements()
     }
 
-    pub fn get(&self, idx: usize) -> T::ReadResult {
+    pub fn get(&self, idx: usize) -> Result<T::ReadResult, Error> {
         if idx >= self.array_data.num_elements() {
-            panic!("out of bound");
+            return Err(Error::buffer_out_of_bound(
+                idx,
+                1,
+                self.array_data.num_elements(),
+            ));
         }
         let bytes = self.array_data.get_field_bytes(idx);
-        <T as Row>::cast(bytes)
+        Ok(<T as Row>::cast(bytes))
     }
 }
 
@@ -190,12 +194,16 @@ impl<'a, T: Row<'a>> ArrayGetter<'a, T> {
         self.array_data.num_elements()
     }
 
-    pub fn get(&self, idx: usize) -> T::ReadResult {
+    pub fn get(&self, idx: usize) -> Result<T::ReadResult, Error> {
         if idx >= self.array_data.num_elements() {
-            panic!("out of bound");
+            return Err(Error::buffer_out_of_bound(
+                idx,
+                1,
+                self.array_data.num_elements(),
+            ));
         }
         let bytes = self.array_data.get_field_bytes(idx);
-        <T as Row>::cast(bytes)
+        Ok(<T as Row>::cast(bytes))
     }
 }
 
@@ -241,7 +249,7 @@ impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> MapGetter<'a, T1, T2> {
         let values = self.values();
 
         for i in 0..self.keys().size() {
-            map.insert(keys.get(i), values.get(i));
+            map.insert(keys.get(i)?, values.get(i)?);
         }
         Ok(map)
     }

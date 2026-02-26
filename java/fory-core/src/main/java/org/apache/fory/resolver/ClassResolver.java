@@ -1193,7 +1193,7 @@ public class ClassResolver extends TypeResolver {
   @Override
   public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
     boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+        fory.getConfig().isCodeGenEnabled() && supportCodegenForJavaSerialization(cls);
     return getSerializerClass(cls, codegen);
   }
 
@@ -1341,7 +1341,7 @@ public class ClassResolver extends TypeResolver {
   public Class<? extends Serializer> getObjectSerializerClass(
       Class<?> cls, JITContext.SerializerJITCallback<Class<? extends Serializer>> callback) {
     boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+        fory.getConfig().isCodeGenEnabled() && supportCodegenForJavaSerialization(cls);
     return getObjectSerializerClass(cls, false, codegen, callback);
   }
 

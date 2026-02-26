@@ -19,14 +19,14 @@ import Foundation
 
 public struct RegisteredTypeInfo {
     public let userTypeID: UInt32?
-    public let kind: ForyTypeId
+    public let kind: TypeId
     public let registerByName: Bool
     public let namespace: MetaString?
     public let typeName: MetaString
 
     public init(
         userTypeID: UInt32?,
-        kind: ForyTypeId,
+        kind: TypeId,
         registerByName: Bool,
         namespace: MetaString?,
         typeName: MetaString
@@ -51,7 +51,7 @@ private enum DynamicRegistrationMode {
 }
 
 private struct TypeReader {
-    let kind: ForyTypeId
+    let kind: TypeId
     let reader: (ReadContext) throws -> Any
     let compatibleReader: (ReadContext, TypeMeta) throws -> Any
 }
@@ -60,7 +60,7 @@ public final class TypeResolver {
     private var bySwiftType: [ObjectIdentifier: RegisteredTypeInfo] = [:]
     private var byUserTypeID: [UInt32: TypeReader] = [:]
     private var byTypeName: [TypeNameKey: TypeReader] = [:]
-    private var registrationModeByKind: [ForyTypeId: DynamicRegistrationMode] = [:]
+    private var registrationModeByKind: [TypeId: DynamicRegistrationMode] = [:]
 
     public init() {}
 
@@ -184,7 +184,7 @@ public final class TypeResolver {
 
     public func readDynamicTypeInfo(context: ReadContext) throws -> DynamicTypeInfo {
         let rawTypeID = try context.buffer.readVarUInt32()
-        guard let wireTypeID = ForyTypeId(rawValue: rawTypeID) else {
+        guard let wireTypeID = TypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown dynamic type id \(rawTypeID)")
         }
 
@@ -386,7 +386,7 @@ public final class TypeResolver {
         return value
     }
 
-    private func markRegistrationMode(kind: ForyTypeId, registerByName: Bool) {
+    private func markRegistrationMode(kind: TypeId, registerByName: Bool) {
         let mode: DynamicRegistrationMode = registerByName ? .nameOnly : .idOnly
         guard let existing = registrationModeByKind[kind] else {
             registrationModeByKind[kind] = mode
@@ -397,7 +397,7 @@ public final class TypeResolver {
         }
     }
 
-    private func dynamicRegistrationMode(for kind: ForyTypeId) throws -> DynamicRegistrationMode {
+    private func dynamicRegistrationMode(for kind: TypeId) throws -> DynamicRegistrationMode {
         guard let mode = registrationModeByKind[kind] else {
             throw ForyError.typeNotRegistered("no dynamic registration mode for kind \(kind)")
         }

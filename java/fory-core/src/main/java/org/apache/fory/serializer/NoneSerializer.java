@@ -35,12 +35,4 @@ public class NoneSerializer extends Serializer {
   public Object read(MemoryBuffer buffer) {
     return null;
   }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, Object value) {}
-
-  @Override
-  public Object xread(MemoryBuffer buffer) {
-    return null;
-  }
 }

@@ -42,7 +42,7 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
         let sortedFields = sortFields(parsed.fields)
 
         let staticTypeIDDecl: DeclSyntax = """
-        static var staticTypeId: ForyTypeId { .structType }
+        static var staticTypeId: TypeId { .structType }
         """
 
         let referenceTrackDecl: DeclSyntax? = parsed.isClass ? """
@@ -54,6 +54,8 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
             stringLiteral: buildCompatibleTypeMetaFieldsDecl(sortedFields: sortedFields)
         )
         let defaultDecl: DeclSyntax = DeclSyntax(stringLiteral: buildDefaultDecl(isClass: parsed.isClass, fields: parsed.fields))
+        let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl())
+        let readWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadWrapperDecl())
         let writeDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteDataDecl(sortedFields: sortedFields))
         let readDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadDataDecl(isClass: parsed.isClass, fields: parsed.fields, sortedFields: sortedFields))
 
@@ -63,6 +65,8 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
             schemaHashDecl,
             compatibleTypeMetaDecl,
             defaultDecl,
+            writeWrapperDecl,
+            readWrapperDecl,
             writeDecl,
             readDecl,
         ].compactMap { $0 }
@@ -253,11 +257,15 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
     )
 
     let staticTypeIDDecl: DeclSyntax = """
-    static var staticTypeId: ForyTypeId { .enumType }
+    static var staticTypeId: TypeId { .enumType }
     """
+    let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl())
+    let readWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadWrapperDecl())
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
             _ = hasGenerics
             switch self {
@@ -269,6 +277,8 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             let ordinal = try context.buffer.readVarUInt32()
             switch ordinal {
@@ -280,7 +290,7 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
         """
     )
 
-    return [defaultDecl, staticTypeIDDecl, writeDecl, readDecl]
+    return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, readWrapperDecl, writeDecl, readDecl]
 }
 
 private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax] {
@@ -332,11 +342,15 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
     )
 
     let staticTypeIDDecl: DeclSyntax = """
-    static var staticTypeId: ForyTypeId { .typedUnion }
+    static var staticTypeId: TypeId { .typedUnion }
     """
+    let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl())
+    let readWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildReadWrapperDecl())
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
             _ = hasGenerics
             switch self {
@@ -348,6 +362,8 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             let caseID = try context.buffer.readVarUInt32()
             switch caseID {
@@ -359,7 +375,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase]) -> [DeclSyntax
         """
     )
 
-    return [defaultDecl, staticTypeIDDecl, writeDecl, readDecl]
+    return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, readWrapperDecl, writeDecl, readDecl]
 }
 
 private func enumCasePattern(_ enumCase: ParsedEnumCase) -> String {
@@ -749,29 +765,42 @@ private func sortFields(_ fields: [ParsedField]) -> [ParsedField] {
 }
 
 private func buildSchemaHashDecl(fields: [ParsedField]) -> String {
-    let fingerprint = buildSchemaFingerprint(fields: fields)
+    let fingerprintTrackRefDisabled = buildSchemaFingerprint(fields: fields, trackRefExpression: "false")
+    let fingerprintTrackRefEnabled = buildSchemaFingerprint(fields: fields, trackRefExpression: "true")
     return """
+    private static let __forySchemaHashTrackRefDisabled: UInt32 = SchemaHash.structHash32(\(fingerprintTrackRefDisabled))
+    private static let __forySchemaHashTrackRefEnabled: UInt32 = SchemaHash.structHash32(\(fingerprintTrackRefEnabled))
+
     private static func __forySchemaHash(_ trackRef: Bool) -> UInt32 {
-        SchemaHash.structHash32(\(fingerprint))
+        trackRef ? Self.__forySchemaHashTrackRefEnabled : Self.__forySchemaHashTrackRefDisabled
     }
     """
 }
 
 private func buildCompatibleTypeMetaFieldsDecl(sortedFields: [ParsedField]) -> String {
-    let fieldInfos = sortedFields.map { field in
-        "TypeMetaFieldInfo(fieldID: nil, fieldName: \"\(field.name)\", fieldType: \(compatibleTypeMetaFieldExpression(field, trackRefExpression: "trackRef")))"
+    let fieldInfosTrackRefDisabled = sortedFields.map { field in
+        "TypeMetaFieldInfo(fieldID: nil, fieldName: \"\(field.name)\", fieldType: \(compatibleTypeMetaFieldExpression(field, trackRefExpression: "false")))"
     }
-    let fieldsExpr = fieldInfos.isEmpty
+    let fieldInfosTrackRefEnabled = sortedFields.map { field in
+        "TypeMetaFieldInfo(fieldID: nil, fieldName: \"\(field.name)\", fieldType: \(compatibleTypeMetaFieldExpression(field, trackRefExpression: "true")))"
+    }
+    let disabledExpr = fieldInfosTrackRefDisabled.isEmpty
         ? "[]"
-        : "[\n            \(fieldInfos.joined(separator: ",\n            "))\n        ]"
+        : "[\n            \(fieldInfosTrackRefDisabled.joined(separator: ",\n            "))\n        ]"
+    let enabledExpr = fieldInfosTrackRefEnabled.isEmpty
+        ? "[]"
+        : "[\n            \(fieldInfosTrackRefEnabled.joined(separator: ",\n            "))\n        ]"
     return """
+    private static let __foryCompatibleTypeMetaFieldsTrackRefDisabled: [TypeMetaFieldInfo] = \(disabledExpr)
+    private static let __foryCompatibleTypeMetaFieldsTrackRefEnabled: [TypeMetaFieldInfo] = \(enabledExpr)
+
     static func foryCompatibleTypeMetaFields(trackRef: Bool) -> [TypeMetaFieldInfo] {
-        \(fieldsExpr)
+        trackRef ? Self.__foryCompatibleTypeMetaFieldsTrackRefEnabled : Self.__foryCompatibleTypeMetaFieldsTrackRefDisabled
     }
     """
 }
 
-private func buildSchemaFingerprint(fields: [ParsedField]) -> String {
+private func buildSchemaFingerprint(fields: [ParsedField], trackRefExpression: String) -> String {
     let entries = fields
         .sorted { lhs, rhs in
             if lhs.fieldIdentifier != rhs.fieldIdentifier {
@@ -786,12 +815,12 @@ private func buildSchemaFingerprint(fields: [ParsedField]) -> String {
             if let dynamicAnyCodec = field.dynamicAnyCodec {
                 switch dynamicAnyCodec {
                 case .anyValue:
-                    trackRefExpr = "trackRef ? 1 : 0"
+                    trackRefExpr = "(\(trackRefExpression)) ? 1 : 0"
                 case .anyHashableValue, .anyList, .stringAnyMap, .int32AnyMap, .anyHashableAnyMap:
                     trackRefExpr = "0"
                 }
             } else {
-                trackRefExpr = "(trackRef && \(field.typeText).isReferenceTrackableType) ? 1 : 0"
+                trackRefExpr = "((\(trackRefExpression)) && \(field.typeText).isReferenceTrackableType) ? 1 : 0"
             }
             return "\"\(field.fieldIdentifier),\(typeID),\\(\(trackRefExpr)),\(nullable);\""
         }
@@ -846,6 +875,77 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField]) -> String {
     """
 }
 
+private func buildWriteWrapperDecl() -> String {
+    """
+    @inlinable
+    func foryWrite(
+        _ context: WriteContext,
+        refMode: RefMode,
+        writeTypeInfo: Bool,
+        hasGenerics: Bool
+    ) throws {
+        if refMode != .none {
+            if refMode == .tracking, Self.isReferenceTrackableType, let object = self as AnyObject? {
+                if context.refWriter.tryWriteReference(buffer: context.buffer, object: object) {
+                    return
+                }
+            } else {
+                context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
+            }
+        }
+
+        if writeTypeInfo {
+            try Self.foryWriteTypeInfo(context)
+        }
+
+        try foryWriteData(context, hasGenerics: hasGenerics)
+    }
+    """
+}
+
+private func buildReadWrapperDecl() -> String {
+    """
+    @inlinable
+    static func foryRead(
+        _ context: ReadContext,
+        refMode: RefMode,
+        readTypeInfo: Bool
+    ) throws -> Self {
+        if refMode != .none {
+            let rawFlag = try context.buffer.readInt8()
+            guard let flag = RefFlag(rawValue: rawFlag) else {
+                throw ForyError.refError("invalid ref flag \\(rawFlag)")
+            }
+
+            switch flag {
+            case .null:
+                return Self.foryDefault()
+            case .ref:
+                let refID = try context.buffer.readVarUInt32()
+                return try context.refReader.readRef(refID, as: Self.self)
+            case .refValue:
+                let reservedRefID = context.refReader.reserveRefID()
+                context.pushPendingReference(reservedRefID)
+                if readTypeInfo {
+                    try Self.foryReadTypeInfo(context)
+                }
+                let value = try Self.foryReadData(context)
+                context.finishPendingReferenceIfNeeded(value)
+                context.popPendingReference()
+                return value
+            case .notNullValue:
+                break
+            }
+        }
+
+        if readTypeInfo {
+            try Self.foryReadTypeInfo(context)
+        }
+        return try Self.foryReadData(context)
+    }
+    """
+}
+
 private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let schemaFieldLines = sortedFields.map { field in
         schemaWriteLine(for: field)
@@ -853,7 +953,18 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let compatibleLines = sortedFields.map { field in
         compatibleWriteLine(for: field)
     }
-    var schemaBodyLines = ["context.buffer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))"]
+    var schemaBodyLines = [
+        "if context.checkClassVersion {",
+        "    context.buffer.writeInt32(Int32(bitPattern: Self.__forySchemaHash(context.trackRef)))",
+        "}"
+    ]
+    let primitiveReserveBytes = schemaPrimitiveReserveBytes(sortedFields)
+    if primitiveReserveBytes > 0 {
+        schemaBodyLines.insert(
+            "context.buffer.reserve(\(primitiveReserveBytes) + (context.checkClassVersion ? 4 : 0))",
+            at: 0
+        )
+    }
     if schemaFieldLines.isEmpty {
         schemaBodyLines.append("_ = hasGenerics")
     } else {
@@ -864,6 +975,8 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     let compatibleWriteLines = compatibleLines.isEmpty ? "\n            _ = hasGenerics" : "\n            \(compatibleLines.joined(separator: "\n            "))"
 
     return """
+    @inlinable
+    @inline(__always)
     func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         if context.compatible {
             \(compatibleWriteLines)
@@ -874,9 +987,54 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     """
 }
 
+private func schemaPrimitiveReserveBytes(_ fields: [ParsedField]) -> Int {
+    fields.reduce(0) { partial, field in
+        partial + schemaPrimitiveReserveBytes(for: field)
+    }
+}
+
+private func schemaPrimitiveReserveBytes(for field: ParsedField) -> Int {
+    guard !field.isOptional else {
+        return 0
+    }
+    guard field.dynamicAnyCodec == nil, field.typeID != 27 else {
+        return 0
+    }
+
+    if let customCodecType = field.customCodecType {
+        switch customCodecType {
+        case "ForyInt32Fixed", "ForyUInt32Fixed":
+            return 4
+        case "ForyInt64Fixed", "ForyUInt64Fixed":
+            return 8
+        case "ForyInt64Tagged", "ForyUInt64Tagged":
+            return 9
+        default:
+            return 0
+        }
+    }
+
+    switch trimType(field.typeText) {
+    case "Bool", "Int8", "UInt8":
+        return 1
+    case "Int16", "UInt16":
+        return 2
+    case "Float":
+        return 4
+    case "Double":
+        return 8
+    case "Int32", "UInt32":
+        return 5
+    case "Int64", "UInt64", "Int", "UInt":
+        return 10
+    default:
+        return 0
+    }
+}
+
 private func schemaWriteLine(for field: ParsedField) -> String {
-    let refMode = fieldRefModeExpression(field)
     if let dynamicAnyCodec = field.dynamicAnyCodec {
+        let refMode = fieldRefModeExpression(field)
         return dynamicAnyWriteLine(
             field: field,
             dynamicAnyCodec: dynamicAnyCodec,
@@ -885,11 +1043,19 @@ private func schemaWriteLine(for field: ParsedField) -> String {
     }
     let hasGenerics = field.isCollection ? "true" : "false"
     if let codecType = field.customCodecType {
+        let refMode = fieldRefModeExpression(field)
         if field.isOptional {
             return "try (self.\(field.name).map { \(codecType)(rawValue: $0) }).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
         }
         return "try \(codecType)(rawValue: self.\(field.name)).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
     }
+    if !field.isOptional, field.typeID != 27 {
+        if let primitiveLine = primitiveSchemaWriteLine(field) {
+            return primitiveLine
+        }
+        return "try self.\(field.name).foryWriteData(context, hasGenerics: \(hasGenerics))"
+    }
+    let refMode = fieldRefModeExpression(field)
     return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: \(hasGenerics))"
 }
 
@@ -909,7 +1075,7 @@ private func compatibleWriteLine(for field: ParsedField) -> String {
         }
         return "try \(codecType)(rawValue: self.\(field.name)).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
     }
-    return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: ForyTypeId.needsTypeInfoForField(\(field.typeText).staticTypeId), hasGenerics: \(hasGenerics))"
+    return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId), hasGenerics: \(hasGenerics))"
 }
 
 private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedFields: [ParsedField]) -> String {
@@ -931,12 +1097,14 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
             let valueExpr = readFieldExpr(
                 field,
                 refModeExpr: "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
-                readTypeInfoExpr: "ForyTypeId.needsTypeInfoForField(ForyTypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
+                readTypeInfoExpr: "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
             )
             return "case \"\(field.fieldIdentifier)\": value.\(field.name) = \(valueExpr)"
         }.joined(separator: "\n                ")
 
         return """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             if context.compatible {
                 \(compatiblePrelude)
@@ -951,10 +1119,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                 }
                 return value
             }
-            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
-            let __expectedHash = Self.__forySchemaHash(context.trackRef)
-            if __schemaHash != __expectedHash {
-                throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+            if context.checkClassVersion {
+                let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
+                let __expectedHash = Self.__forySchemaHash(context.trackRef)
+                if __schemaHash != __expectedHash {
+                    throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+                }
             }
             let value = Self.init()
             context.bindPendingReference(value)
@@ -966,6 +1136,8 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
 
     if fields.isEmpty {
         return """
+        @inlinable
+        @inline(__always)
         static func foryReadData(_ context: ReadContext) throws -> Self {
             if context.compatible {
                 \(compatiblePrelude)
@@ -974,10 +1146,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                 }
                 return Self()
             }
-            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
-            let __expectedHash = Self.__forySchemaHash(context.trackRef)
-            if __schemaHash != __expectedHash {
-                throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+            if context.checkClassVersion {
+                let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
+                let __expectedHash = Self.__forySchemaHash(context.trackRef)
+                if __schemaHash != __expectedHash {
+                    throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+                }
             }
             return Self()
         }
@@ -985,12 +1159,7 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
     }
 
     let readLines = sortedFields.map { field -> String in
-        let refMode = fieldRefModeExpression(field)
-        let valueExpr = readFieldExpr(
-            field,
-            refModeExpr: refMode,
-            readTypeInfoExpr: "false"
-        )
+        let valueExpr = schemaReadFieldExpr(field)
         return "let __\(field.name) = \(valueExpr)"
     }.joined(separator: "\n        ")
 
@@ -1011,12 +1180,14 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
         let valueExpr = readFieldExpr(
             field,
             refModeExpr: "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
-            readTypeInfoExpr: "ForyTypeId.needsTypeInfoForField(ForyTypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
+            readTypeInfoExpr: "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
         )
         return "case \"\(field.fieldIdentifier)\": __\(field.name) = \(valueExpr)"
     }.joined(separator: "\n                    ")
 
     return """
+    @inlinable
+    @inline(__always)
     static func foryReadData(_ context: ReadContext) throws -> Self {
         if context.compatible {
             \(compatiblePrelude)
@@ -1032,10 +1203,12 @@ private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedField
                     \(ctorArgs)
                 )
             }
-        let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
-        let __expectedHash = Self.__forySchemaHash(context.trackRef)
-        if __schemaHash != __expectedHash {
-            throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+        if context.checkClassVersion {
+            let __schemaHash = UInt32(bitPattern: try context.buffer.readInt32())
+            let __expectedHash = Self.__forySchemaHash(context.trackRef)
+            if __schemaHash != __expectedHash {
+                throw ForyError.invalidData("class version hash mismatch: expected \\(__expectedHash), got \\(__schemaHash)")
+            }
         }
         \(readLines)
         return Self(
@@ -1065,6 +1238,89 @@ private func readFieldExpr(
         return "try \(codecType).foryRead(context, refMode: \(refModeExpr), readTypeInfo: false).rawValue"
     }
     return "try \(field.typeText).foryRead(context, refMode: \(refModeExpr), readTypeInfo: \(readTypeInfoExpr))"
+}
+
+private func schemaReadFieldExpr(_ field: ParsedField) -> String {
+    if field.dynamicAnyCodec != nil || field.customCodecType != nil || field.isOptional || field.typeID == 27 {
+        let refMode = fieldRefModeExpression(field)
+        return readFieldExpr(
+            field,
+            refModeExpr: refMode,
+            readTypeInfoExpr: "false"
+        )
+    }
+    if let primitiveExpr = primitiveSchemaReadExpr(field) {
+        return primitiveExpr
+    }
+    return "try \(field.typeText).foryReadData(context)"
+}
+
+private func primitiveSchemaWriteLine(_ field: ParsedField) -> String? {
+    let type = trimType(field.typeText)
+    switch type {
+    case "Bool":
+        return "context.buffer.writeUInt8(self.\(field.name) ? 1 : 0)"
+    case "Int8":
+        return "context.buffer.writeInt8(self.\(field.name))"
+    case "Int16":
+        return "context.buffer.writeInt16(self.\(field.name))"
+    case "Int32":
+        return "context.buffer.writeVarInt32(self.\(field.name))"
+    case "Int64":
+        return "context.buffer.writeVarInt64(self.\(field.name))"
+    case "Int":
+        return "context.buffer.writeVarInt64(Int64(self.\(field.name)))"
+    case "UInt8":
+        return "context.buffer.writeUInt8(self.\(field.name))"
+    case "UInt16":
+        return "context.buffer.writeUInt16(self.\(field.name))"
+    case "UInt32":
+        return "context.buffer.writeVarUInt32(self.\(field.name))"
+    case "UInt64":
+        return "context.buffer.writeVarUInt64(self.\(field.name))"
+    case "UInt":
+        return "context.buffer.writeVarUInt64(UInt64(self.\(field.name)))"
+    case "Float":
+        return "context.buffer.writeFloat32(self.\(field.name))"
+    case "Double":
+        return "context.buffer.writeFloat64(self.\(field.name))"
+    default:
+        return nil
+    }
+}
+
+private func primitiveSchemaReadExpr(_ field: ParsedField) -> String? {
+    let type = trimType(field.typeText)
+    switch type {
+    case "Bool":
+        return "try context.buffer.readUInt8() != 0"
+    case "Int8":
+        return "try context.buffer.readInt8()"
+    case "Int16":
+        return "try context.buffer.readInt16()"
+    case "Int32":
+        return "try context.buffer.readVarInt32()"
+    case "Int64":
+        return "try context.buffer.readVarInt64()"
+    case "Int":
+        return "Int(try context.buffer.readVarInt64())"
+    case "UInt8":
+        return "try context.buffer.readUInt8()"
+    case "UInt16":
+        return "try context.buffer.readUInt16()"
+    case "UInt32":
+        return "try context.buffer.readVarUInt32()"
+    case "UInt64":
+        return "try context.buffer.readVarUInt64()"
+    case "UInt":
+        return "UInt(try context.buffer.readVarUInt64())"
+    case "Float":
+        return "try context.buffer.readFloat32()"
+    case "Double":
+        return "try context.buffer.readFloat64()"
+    default:
+        return nil
+    }
 }
 
 private func dynamicAnyWriteLine(
@@ -1180,7 +1436,7 @@ private func buildCompatibleTypeMetaFieldTypeExpression(
         )
         return """
 TypeMetaFieldType(
-    typeID: ForyTypeId.list.rawValue,
+    typeID: TypeId.list.rawValue,
     nullable: \(nullableExpression),
     trackRef: \(trackRefExpression),
     generics: [\(elementExpr)]
@@ -1197,7 +1453,7 @@ TypeMetaFieldType(
         )
         return """
 TypeMetaFieldType(
-    typeID: ForyTypeId.set.rawValue,
+    typeID: TypeId.set.rawValue,
     nullable: \(nullableExpression),
     trackRef: \(trackRefExpression),
     generics: [\(elementExpr)]
@@ -1220,7 +1476,7 @@ TypeMetaFieldType(
         )
         return """
 TypeMetaFieldType(
-    typeID: ForyTypeId.map.rawValue,
+    typeID: TypeId.map.rawValue,
     nullable: \(nullableExpression),
     trackRef: \(trackRefExpression),
     generics: [\(keyExpr), \(valueExpr)]
@@ -1232,7 +1488,7 @@ TypeMetaFieldType(
     if let explicitTypeID {
         typeIDExpr = "\(explicitTypeID)"
     } else if isDynamicAnyConcreteType(concreteType) {
-        typeIDExpr = "UInt32(ForyTypeId.unknown.rawValue)"
+        typeIDExpr = "UInt32(TypeId.unknown.rawValue)"
     } else {
         typeIDExpr = "UInt32(\(concreteType).staticTypeId.rawValue)"
     }
