@@ -114,9 +114,7 @@ inline std::string read_string_data(ReadContext &ctx) {
     return std::string();
   }
 
-  const uint64_t target =
-      static_cast<uint64_t>(ctx.buffer().reader_index()) + length;
-  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_size(target, ctx.error()))) {
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
     return std::string();
   }
 
@@ -177,9 +175,7 @@ inline std::u16string read_u16string_data(ReadContext &ctx) {
     return std::u16string();
   }
 
-  const uint64_t target =
-      static_cast<uint64_t>(ctx.buffer().reader_index()) + length;
-  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_size(target, ctx.error()))) {
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
     return std::u16string();
   }
 

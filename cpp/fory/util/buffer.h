@@ -106,26 +106,28 @@ public:
     return size_ - reader_index_;
   }
 
-  FORY_ALWAYS_INLINE bool ensure_size(uint64_t target_size, Error &error) {
-    if (FORY_PREDICT_TRUE(target_size <= size_)) {
+  FORY_ALWAYS_INLINE bool ensure_readable(uint64_t length, Error &error) {
+    const uint64_t target = static_cast<uint64_t>(reader_index_) + length;
+    if (FORY_PREDICT_TRUE(target <= size_)) {
       return true;
     }
-    if (FORY_PREDICT_FALSE(target_size >
-                           std::numeric_limits<uint32_t>::max())) {
+    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
       error.set_error(ErrorCode::OutOfBound,
                       "reader index exceeds uint32 range");
       return false;
     }
-    const auto target_u32 = static_cast<uint32_t>(target_size);
     if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
-      error.set_buffer_out_of_bound(target_u32, 0, size_);
+      error.set_buffer_out_of_bound(reader_index_, length, size_);
       return false;
     }
-    if (FORY_PREDICT_FALSE(!fill_to(target_u32, error))) {
+    if (FORY_PREDICT_FALSE(!fill_to(static_cast<uint32_t>(target), error))) {
+      if (error.ok()) {
+        error.set_buffer_out_of_bound(reader_index_, length, size_);
+      }
       return false;
     }
-    if (FORY_PREDICT_FALSE(target_size > size_)) {
-      error.set_buffer_out_of_bound(target_u32, 0, size_);
+    if (FORY_PREDICT_FALSE(target > size_)) {
+      error.set_buffer_out_of_bound(reader_index_, length, size_);
       return false;
     }
     return true;
@@ -160,29 +162,10 @@ public:
   }
 
   FORY_ALWAYS_INLINE void increase_reader_index(uint32_t diff, Error &error) {
-    const uint64_t target = static_cast<uint64_t>(reader_index_) + diff;
-    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
+    if (FORY_PREDICT_FALSE(!ensure_readable(diff, error))) {
       return;
     }
-    if (FORY_PREDICT_FALSE(target > size_)) {
-      if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
-        error.set_buffer_out_of_bound(reader_index_, diff, size_);
-        return;
-      }
-      if (FORY_PREDICT_FALSE(!fill_to(static_cast<uint32_t>(target), error))) {
-        if (error.ok()) {
-          error.set_buffer_out_of_bound(reader_index_, diff, size_);
-        }
-        return;
-      }
-      if (FORY_PREDICT_FALSE(target > size_)) {
-        error.set_buffer_out_of_bound(reader_index_, diff, size_);
-        return;
-      }
-    }
-    reader_index_ = static_cast<uint32_t>(target);
+    reader_index_ += diff;
   }
 
   // Unsafe methods don't check bound
@@ -1248,30 +1231,12 @@ private:
     return true;
   }
 
-  FORY_ALWAYS_INLINE bool ensure_readable(uint32_t length, Error &error) {
-    const uint64_t target = static_cast<uint64_t>(reader_index_) + length;
-    if (FORY_PREDICT_TRUE(target <= size_)) {
-      return true;
-    }
-    if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
-      if (error.ok()) {
-        error.set_buffer_out_of_bound(reader_index_, length, size_);
-      }
-      return false;
-    }
-    if (FORY_PREDICT_FALSE(target > size_)) {
-      error.set_buffer_out_of_bound(reader_index_, length, size_);
-      return false;
-    }
-    return true;
-  }
-
   FORY_ALWAYS_INLINE uint32_t read_var_uint32_slow(Error &error) {
     uint32_t position = reader_index_;
     uint32_t result = 0;
     for (int i = 0; i < 5; ++i) {
-      const uint64_t target = static_cast<uint64_t>(position) + 1;
-      if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
+      if (FORY_PREDICT_FALSE(
+              !ensure_readable(static_cast<uint64_t>(i) + 1, error))) {
         return 0;
       }
       uint8_t b = data_[position++];
@@ -1289,8 +1254,8 @@ private:
     uint32_t position = reader_index_;
     uint64_t result = 0;
     for (int i = 0; i < 8; ++i) {
-      const uint64_t target = static_cast<uint64_t>(position) + 1;
-      if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
+      if (FORY_PREDICT_FALSE(
+              !ensure_readable(static_cast<uint64_t>(i) + 1, error))) {
         return 0;
       }
       uint8_t b = data_[position++];
@@ -1300,8 +1265,7 @@ private:
         return result;
       }
     }
-    const uint64_t target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(9, error))) {
       return 0;
     }
     uint8_t b = data_[position++];
@@ -1312,8 +1276,7 @@ private:
 
   FORY_ALWAYS_INLINE uint64_t read_var_uint36_small_slow(Error &error) {
     uint32_t position = reader_index_;
-    const uint64_t first_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(!ensure_size(first_target, error))) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
       return 0;
     }
     uint8_t b = data_[position++];
@@ -1323,8 +1286,7 @@ private:
       return result;
     }
 
-    const uint64_t second_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(!ensure_size(second_target, error))) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(2, error))) {
       return 0;
     }
     b = data_[position++];
@@ -1334,8 +1296,7 @@ private:
       return result;
     }
 
-    const uint64_t third_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(!ensure_size(third_target, error))) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(3, error))) {
       return 0;
     }
     b = data_[position++];
@@ -1345,8 +1306,7 @@ private:
       return result;
     }
 
-    const uint64_t fourth_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(!ensure_size(fourth_target, error))) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(4, error))) {
       return 0;
     }
     b = data_[position++];
@@ -1356,8 +1316,7 @@ private:
       return result;
     }
 
-    const uint64_t fifth_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(!ensure_size(fifth_target, error))) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(5, error))) {
       return 0;
     }
     b = data_[position++];
