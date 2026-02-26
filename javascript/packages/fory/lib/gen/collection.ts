@@ -145,6 +145,10 @@ class CollectionAnySerializer {
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
     void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
+    const maxLen = this.fory.config.maxCollectionLength;
+    if (typeof maxLen === "number" && maxLen > 0 && len > maxLen) {
+      throw new Error(`Collection length ${len} exceeds configured maxCollectionLength ${maxLen}`);
+    }
     const flags = this.fory.binaryReader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
@@ -295,8 +299,13 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const flags = this.scope.uniqueName("flags");
     const idx = this.scope.uniqueName("idx");
     const refFlag = this.scope.uniqueName("refFlag");
+    const foryName = this.builder.getForyName();
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
+            const maxLen = ${foryName}.config.maxCollectionLength;
+            if (typeof maxLen === "number" && maxLen > 0 && ${len} > maxLen) {
+                throw new Error(\`Collection length \${${len}} exceeds configured maxCollectionLength \${maxLen}\`);
+            }
             const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
