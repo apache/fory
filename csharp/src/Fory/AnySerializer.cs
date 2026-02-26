@@ -88,25 +88,25 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 case RefFlag.Null:
                     return null;
                 case RefFlag.Ref:
-                {
-                    uint refId = context.Reader.ReadVarUInt32();
-                    return context.RefReader.ReadRefValue(refId);
-                }
+                    {
+                        uint refId = context.Reader.ReadVarUInt32();
+                        return context.RefReader.ReadRefValue(refId);
+                    }
                 case RefFlag.RefValue:
-                {
-                    uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.RefReader.PushPendingReference(reservedRefId);
-                    try
                     {
-                        object? value = ReadNonNullDynamicAny(context, readTypeInfo);
-                        context.RefReader.FinishPendingReferenceIfNeeded(value);
-                        return value;
+                        uint reservedRefId = context.RefReader.ReserveRefId();
+                        context.RefReader.PushPendingReference(reservedRefId);
+                        try
+                        {
+                            object? value = ReadNonNullDynamicAny(context, readTypeInfo);
+                            context.RefReader.FinishPendingReferenceIfNeeded(value);
+                            return value;
+                        }
+                        finally
+                        {
+                            context.RefReader.PopPendingReference();
+                        }
                     }
-                    finally
-                    {
-                        context.RefReader.PopPendingReference();
-                    }
-                }
                 case RefFlag.NotNullValue:
                     break;
                 default:

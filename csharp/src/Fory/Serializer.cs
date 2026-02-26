@@ -74,24 +74,24 @@ public abstract class Serializer<T>
                 case RefFlag.Null:
                     return DefaultValue;
                 case RefFlag.Ref:
-                {
-                    uint refId = context.Reader.ReadVarUInt32();
-                    return context.RefReader.ReadRef<T>(refId);
-                }
-                case RefFlag.RefValue:
-                {
-                    uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.RefReader.PushPendingReference(reservedRefId);
-                    if (readTypeInfo)
                     {
-                        context.TypeResolver.ReadTypeInfo(this, context);
+                        uint refId = context.Reader.ReadVarUInt32();
+                        return context.RefReader.ReadRef<T>(refId);
                     }
+                case RefFlag.RefValue:
+                    {
+                        uint reservedRefId = context.RefReader.ReserveRefId();
+                        context.RefReader.PushPendingReference(reservedRefId);
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
 
-                    T value = ReadData(context);
-                    context.RefReader.FinishPendingReferenceIfNeeded(value);
-                    context.RefReader.PopPendingReference();
-                    return value;
-                }
+                        T value = ReadData(context);
+                        context.RefReader.FinishPendingReferenceIfNeeded(value);
+                        context.RefReader.PopPendingReference();
+                        return value;
+                    }
                 case RefFlag.NotNullValue:
                     break;
                 default:
