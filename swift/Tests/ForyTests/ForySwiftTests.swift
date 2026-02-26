@@ -212,7 +212,7 @@ func decodeLimitsRejectOversizedPayloads() throws {
     } catch {}
 
     let oversizedArrayPayload = try writer.serialize([UInt16(1), 2])
-    let payloadLimited = Fory(config: .init(maxArrayPayloadLength: 3))
+    let payloadLimited = Fory(config: .init(maxCollectionLength: 1))
     do {
         let _: [UInt16] = try payloadLimited.deserialize(oversizedArrayPayload)
         #expect(Bool(false))

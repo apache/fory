@@ -372,6 +372,11 @@ public struct TypeMeta: Equatable, Sendable {
         }
 
         var fieldInfos: [TypeMetaFieldInfo] = []
+        if numFields > bodyReader.remaining {
+            throw ForyError.invalidData(
+                "type meta field count \(numFields) exceeds remaining bytes \(bodyReader.remaining)"
+            )
+        }
         fieldInfos.reserveCapacity(numFields)
         for _ in 0..<numFields {
             fieldInfos.append(try TypeMetaFieldInfo.read(bodyReader))

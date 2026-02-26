@@ -315,6 +315,41 @@ extension Double: Serializer {
     }
 }
 
+public struct BFloat16: Serializer, Equatable, Hashable, Sendable {
+    public var rawValue: UInt16
+
+    public init(rawValue: UInt16 = 0) {
+        self.rawValue = rawValue
+    }
+
+    public static func foryDefault() -> BFloat16 { .init() }
+    public static var staticTypeId: TypeId { .bfloat16 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.buffer.writeUInt16(rawValue)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> BFloat16 {
+        .init(rawValue: try context.buffer.readUInt16())
+    }
+}
+
+extension Float16: Serializer {
+    public static var staticTypeId: TypeId { .float16 }
+
+    public static func foryDefault() -> Float16 { 0 }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        context.buffer.writeUInt16(bitPattern)
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> Float16 {
+        Float16(bitPattern: try context.buffer.readUInt16())
+    }
+}
+
 private enum StringEncoding: UInt64 {
     case latin1 = 0
     case utf16 = 1
@@ -388,6 +423,7 @@ extension Data: Serializer {
         let length = try context.buffer.readVarUInt32()
         let byteLength = Int(length)
         try context.ensureBinaryLength(byteLength, label: "binary")
+        try context.ensureRemainingBytes(byteLength, label: "binary")
         let bytes = try context.buffer.readBytes(count: byteLength)
         return Data(bytes)
     }

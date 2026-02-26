@@ -269,7 +269,6 @@ public final class ReadContext {
     public let checkClassVersion: Bool
     public let maxCollectionLength: Int
     public let maxBinaryLength: Int
-    public let maxArrayPayloadLength: Int
     public let refReader: RefReader
     public let compatibleTypeDefState: CompatibleTypeDefReadState
     public let metaStringReadState: MetaStringReadState
@@ -289,7 +288,6 @@ public final class ReadContext {
         checkClassVersion: Bool = true,
         maxCollectionLength: Int = 1_000_000,
         maxBinaryLength: Int = 64 * 1024 * 1024,
-        maxArrayPayloadLength: Int = 64 * 1024 * 1024,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
@@ -300,7 +298,6 @@ public final class ReadContext {
         self.checkClassVersion = checkClassVersion
         self.maxCollectionLength = maxCollectionLength
         self.maxBinaryLength = maxBinaryLength
-        self.maxArrayPayloadLength = maxArrayPayloadLength
         self.refReader = RefReader()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringReadState = metaStringReadState
@@ -331,13 +328,14 @@ public final class ReadContext {
     }
 
     @inline(__always)
-    public func ensureArrayPayloadLength(_ length: Int, label: String) throws {
-        if length < 0 {
-            throw ForyError.invalidData("\(label) payload size is negative")
+    public func ensureRemainingBytes(_ byteCount: Int, label: String) throws {
+        if byteCount < 0 {
+            throw ForyError.invalidData("\(label) size is negative")
         }
-        if length > maxArrayPayloadLength {
+        let remainingBytes = buffer.remaining
+        if byteCount > remainingBytes {
             throw ForyError.invalidData(
-                "\(label) payload size \(length) exceeds configured maxArrayPayloadLength \(maxArrayPayloadLength)"
+                "\(label) requires \(byteCount) bytes but only \(remainingBytes) remain in buffer"
             )
         }
     }
