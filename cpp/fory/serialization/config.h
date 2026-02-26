@@ -52,9 +52,11 @@ struct Config {
   /// When enabled, avoids duplicating shared objects and handles cycles.
   bool track_ref = true;
 
-  //max limits fot map,lists and collections
-  uint32_t max_string_length = 64 * 1024 * 1024; // 64MB default max string length
-  uint32_t max_collection_size = 10 * 1000 * 1000; // 1M default max collection size
+  // max limits fot map,lists and collections
+  uint32_t max_string_length =
+      64 * 1024 * 1024; // 64MB default max string length
+  uint32_t max_collection_size =
+      10 * 1000 * 1000;                    // 1M default max collection size
   uint32_t max_map_size = 1 * 1000 * 1000; // 1M default max map size
 
   /// Default constructor with sensible defaults
