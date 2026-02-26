@@ -77,6 +77,23 @@ public:
 
   virtual ~Buffer();
 
+  FORY_ALWAYS_INLINE void swap(Buffer &other) noexcept {
+    if (this == &other) {
+      return;
+    }
+    using std::swap;
+    swap(data_, other.data_);
+    swap(size_, other.size_);
+    swap(own_data_, other.own_data_);
+    swap(writer_index_, other.writer_index_);
+    swap(reader_index_, other.reader_index_);
+    swap(wrapped_vector_, other.wrapped_vector_);
+    swap(stream_reader_, other.stream_reader_);
+    swap(stream_reader_owner_, other.stream_reader_owner_);
+    rebind_stream_reader_to_this();
+    other.rebind_stream_reader_to_this();
+  }
+
   /// \brief Return a pointer to the buffer's data
   FORY_ALWAYS_INLINE uint8_t *data() const { return data_; }
 

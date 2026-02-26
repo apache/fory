@@ -514,9 +514,9 @@ public:
       ensure_finalized();
     }
     // Swap in the caller's buffer so all writes go there.
-    std::swap(buffer, write_ctx_->buffer());
+    buffer.swap(write_ctx_->buffer());
     auto result = serialize_impl(obj, write_ctx_->buffer());
-    std::swap(buffer, write_ctx_->buffer());
+    buffer.swap(write_ctx_->buffer());
     // reset internal state after use without clobbering caller buffer.
     write_ctx_->reset();
     return result;
