@@ -116,16 +116,7 @@ public:
                       "reader index exceeds uint32 range");
       return false;
     }
-    if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
-      error.set_buffer_out_of_bound(reader_index_, length, size_);
-      return false;
-    }
-    const uint32_t target = reader_index_ + length;
-    if (FORY_PREDICT_FALSE(!fill_to(target, error))) {
-      return false;
-    }
-    if (FORY_PREDICT_FALSE(length > size_ - reader_index_)) {
-      error.set_buffer_out_of_bound(reader_index_, length, size_);
+    if (FORY_PREDICT_FALSE(!fill_buffer(length, error))) {
       return false;
     }
     return true;
@@ -148,7 +139,7 @@ public:
   FORY_ALWAYS_INLINE void reader_index(uint32_t reader_index) {
     if (FORY_PREDICT_FALSE(reader_index > size_ && stream_ != nullptr)) {
       Error error;
-      const bool ok = fill_to(reader_index, error);
+      const bool ok = fill_buffer(reader_index - reader_index_, error);
       FORY_CHECK(ok)
           << "failed to fill stream buffer while setting reader index: "
           << error.to_string();
@@ -1209,18 +1200,17 @@ public:
   std::string hex() const;
 
 private:
-  FORY_ALWAYS_INLINE bool fill_to(uint32_t target_size, Error &error) {
-    if (FORY_PREDICT_TRUE(target_size <= size_)) {
+  FORY_ALWAYS_INLINE bool fill_buffer(uint32_t min_fill_size, Error &error) {
+    if (FORY_PREDICT_TRUE(min_fill_size <= size_ - reader_index_)) {
       return true;
     }
     if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
-      error.set_buffer_out_of_bound(reader_index_, target_size - reader_index_,
-                                    size_);
+      error.set_buffer_out_of_bound(reader_index_, min_fill_size, size_);
       return false;
     }
     const uint32_t prev_reader_index = reader_index_;
     stream_->reader_index(reader_index_);
-    auto fill_result = stream_->fill_buffer(target_size - reader_index_);
+    auto fill_result = stream_->fill_buffer(min_fill_size);
     if (FORY_PREDICT_FALSE(!fill_result.ok())) {
       error = std::move(fill_result).error();
       return false;
@@ -1229,9 +1219,8 @@ private:
     size_ = stream_->size();
     reader_index_ = stream_->reader_index();
     writer_index_ = size_;
-    if (FORY_PREDICT_FALSE(target_size > size_)) {
-      error.set_buffer_out_of_bound(prev_reader_index,
-                                    target_size - prev_reader_index, size_);
+    if (FORY_PREDICT_FALSE(min_fill_size > size_ - reader_index_)) {
+      error.set_buffer_out_of_bound(prev_reader_index, min_fill_size, size_);
       return false;
     }
     return true;
