@@ -228,15 +228,15 @@ Compiling src/main.fdl...
 
 ## Supported Languages
 
-| Language | Flag     | Output Extension | Description                  |
-| -------- | -------- | ---------------- | ---------------------------- |
-| Java     | `java`   | `.java`          | POJOs with Fory annotations  |
-| Python   | `python` | `.py`            | Dataclasses with type hints  |
-| Go       | `go`     | `.go`            | Structs with struct tags     |
-| Rust     | `rust`   | `.rs`            | Structs with derive macros   |
-| C++      | `cpp`    | `.h`             | Structs with FORY macros     |
-| C#       | `csharp` | `.cs`            | Classes with Fory attributes |
-| TS       | `typescript`| `.ts`         | Interfaces with registration function |
+| Language | Flag         | Output Extension | Description                           |
+| -------- | ------------ | ---------------- | ------------------------------------- |
+| Java     | `java`       | `.java`          | POJOs with Fory annotations           |
+| Python   | `python`     | `.py`            | Dataclasses with type hints           |
+| Go       | `go`         | `.go`            | Structs with struct tags              |
+| Rust     | `rust`       | `.rs`            | Structs with derive macros            |
+| C++      | `cpp`        | `.h`             | Structs with FORY macros              |
+| C#       | `csharp`     | `.cs`            | Classes with Fory attributes          |
+| TS       | `typescript` | `.ts`            | Interfaces with registration function |
 
 ## Output Structure
 

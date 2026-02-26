@@ -194,11 +194,11 @@ message Example {
 
 Fory IDL types map to native types in each language:
 
-| Fory IDL Type | Java      | Python         | Go       | Rust     | C++           | C#       | TypeScript         |
-| ------------- | --------- | -------------- | -------- | -------- | ------------- | -------- | ------------------ |
-| `int32`       | `int`     | `pyfory.int32` | `int32`  | `i32`    | `int32_t`     | `int`    | `number`           |
-| `string`      | `String`  | `str`          | `string` | `String` | `std::string` | `string` | `string`           |
-| `bool`        | `boolean` | `bool`         | `bool`   | `bool`   | `bool`        | `bool`   | `boolean`          |
+| Fory IDL Type | Java      | Python         | Go       | Rust     | C++           | C#       | TypeScript |
+| ------------- | --------- | -------------- | -------- | -------- | ------------- | -------- | ---------- |
+| `int32`       | `int`     | `pyfory.int32` | `int32`  | `i32`    | `int32_t`     | `int`    | `number`   |
+| `string`      | `String`  | `str`          | `string` | `String` | `std::string` | `string` | `string`   |
+| `bool`        | `boolean` | `bool`         | `bool`   | `bool`   | `bool`        | `bool`   | `boolean`  |
 
 See [Type System](schema-idl.md#type-system) for complete mappings.
 
