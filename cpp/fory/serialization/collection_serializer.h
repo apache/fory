@@ -394,7 +394,7 @@ template <typename T, typename Container>
 inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   Container result;
   if constexpr (has_reserve_v<Container>) {
-    if(length > ctx.max_collection_size() ) {
+    if (length > ctx.max_collection_size()) {
       ctx.set_error(Error::invalid_data("invalid collection size"));
       return result;
     }
@@ -721,7 +721,7 @@ struct Serializer<
       }
 
       std::vector<T, Alloc> result;
-      if(length > ctx.max_collection_size()) {
+      if (length > ctx.max_collection_size()) {
         ctx.set_error(Error::invalid_data("invalid collection size"));
         return result;
       }
