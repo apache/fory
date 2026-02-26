@@ -11,3 +11,4 @@ Run tests:
 - Rust: `./run_rust_tests.sh`
 - C++: `./run_cpp_tests.sh`
 - C#: `./run_csharp_tests.sh`
+- Typescript: `./run_typescript_tests.sh`

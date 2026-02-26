@@ -82,7 +82,7 @@ def test_typescript_message_generation():
     assert "export interface Person" in output
     assert "name: string;" in output
     assert "age: number;" in output
-    assert "email: string | undefined;" in output
+    assert "email?: string | undefined;" in output
     assert "Type ID 102" in output
 
 
@@ -155,8 +155,12 @@ def test_typescript_nested_enum_registration_uses_simple_name():
     )
     output = generate_typescript(source)
 
-    # Check that nested enum is registered with simple name (not qualified name)
-    assert "fory.register(PhoneType, 101)" in output
+    # Enums are skipped during registration in TypeScript (they are numeric
+    # values at runtime and don't need separate Fory registration).
+    assert "fory.register('PhoneType'" not in output
+    # Messages are still registered (using string name since interfaces
+    # don't exist at runtime).
+    assert "fory.register('Person', 100)" in output
     # Ensure qualified names are NOT used
     assert "Person.PhoneType" not in output
 

@@ -685,6 +685,8 @@ if err := restored.FromBytes(data); err != nil {
 }
 ```
 
+
+
 ## C\#
 
 ### Output Layout
@@ -742,6 +744,69 @@ public static class AddressbookForyRegistration
 When explicit type IDs are not provided, generated registration uses computed
 numeric IDs (same behavior as other targets).
 
+## TypeScript
+
+### Output Layout
+
+TypeScript output is one `.ts` file per schema, for example:
+
+- `<typescript_out>/addressbook.ts`
+
+### Type Generation
+
+Messages generate `export interface` declarations with camelCase field names:
+
+```typescript
+export interface Person {
+  name: string;
+  id: number;
+  phones: PhoneNumber[];
+  pet?: Animal | undefined;
+}
+```
+
+Enums generate `export enum` declarations:
+
+```typescript
+export enum PhoneType {
+  PHONE_TYPE_MOBILE = 0,
+  PHONE_TYPE_HOME = 1,
+  PHONE_TYPE_WORK = 2,
+}
+```
+
+Unions generate a discriminated union with a case enum:
+
+```typescript
+export enum AnimalCase {
+  DOG = 1,
+  CAT = 2,
+}
+
+export type Animal =
+  | { case: AnimalCase.DOG; value: Dog }
+  | { case: AnimalCase.CAT; value: Cat };
+```
+
+### Registration
+
+Each schema generates a registration helper function:
+
+```typescript
+export function registerAddressbookTypes(fory: any): void {
+  fory.register(PhoneType, 101);
+  fory.register(PhoneNumber, 102);
+  fory.register(Person, 100);
+  fory.register(Dog, 104);
+  fory.register(Cat, 105);
+  fory.registerUnion(Animal, 106);
+  fory.register(AddressBook, 103);
+}
+```
+
+When explicit type IDs are not provided, generated registration uses computed
+numeric IDs (same behavior as other targets).
+
 ## Cross-Language Notes
 
 ### Type ID Behavior
@@ -760,6 +825,7 @@ numeric IDs (same behavior as other targets).
 | C++      | `Person::PhoneNumber`          |
 | Go       | `Person_PhoneNumber` (default) |
 | C#       | `Person.PhoneNumber`           |
+| TS       | `PhoneNumber` (flat)           |
 
 ### Byte Helper Naming
 
@@ -771,3 +837,4 @@ numeric IDs (same behavior as other targets).
 | C++      | `to_bytes` / `from_bytes` |
 | Go       | `ToBytes` / `FromBytes`   |
 | C#       | `ToBytes` / `FromBytes`   |
+| TS       | (via `fory.serialize()`)  |

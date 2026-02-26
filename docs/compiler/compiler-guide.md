@@ -64,6 +64,7 @@ Compile options:
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)              |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)              |
 | `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)              |
+| `--typescript_out=DST_DIR`            | Generate Typescript code in DST_DIR                   | (none)              |
 | `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | from schema/default |
 | `--emit-fdl`                          | Print translated Fory IDL for non-`.fdl` inputs       | `false`             |
 | `--emit-fdl-path`                     | Write translated Fory IDL to a file or directory      | (stdout)            |
@@ -111,7 +112,7 @@ foryc schema.fdl
 **Compile for specific languages:**
 
 ```bash
-foryc schema.fdl --lang java,python,csharp
+foryc schema.fdl --lang java,python,csharp,typescript
 ```
 
 **Specify output directory:**
@@ -158,7 +159,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --typescript_out=./javascript/src
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
@@ -235,6 +236,7 @@ Compiling src/main.fdl...
 | Rust     | `rust`   | `.rs`            | Structs with derive macros   |
 | C++      | `cpp`    | `.h`             | Structs with FORY macros     |
 | C#       | `csharp` | `.cs`            | Classes with Fory attributes |
+| TS       | `typescript`| `.ts`         | Interfaces with registration function |
 
 ## Output Structure
 
@@ -303,6 +305,20 @@ generated/
 - Single header file
 - Namespace matches package (dots to `::`)
 - Header guards and forward declarations
+
+### TypeScript
+
+```
+generated/
+└── typescript/
+    └── example.ts
+```
+
+- Single `.ts` file per schema
+- `export interface` declarations for messages
+- `export enum` declarations for enums
+- Discriminated unions with case enums
+- Registration helper function included
 
 ### C\#
 

@@ -101,6 +101,7 @@ package com.example.models alias models_v1;
 | Rust     | Module name (dots to underscores) |
 | C++      | Namespace (dots to `::`)          |
 | C#       | Namespace                         |
+| TS       | Module name (last segment)        |
 
 ## File-Level Options
 
@@ -505,6 +506,7 @@ FDL does not support `option ...;` statements inside enum bodies.
 | Go       | `type Status int32` with constants     |
 | Rust     | `#[repr(i32)] enum Status { Unknown }` |
 | C++      | `enum class Status : int32_t { ... }`  |
+| TS       | `export enum Status { UNKNOWN, ... }`  |
 
 ### Enum Prefix Stripping
 
@@ -528,6 +530,7 @@ enum DeviceTier {
 | C++      | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
 | Python   | `UNKNOWN, TIER1, TIER2`                   | Scoped IntEnum |
 | Go       | `DeviceTierUnknown, DeviceTierTier1, ...` | Unscoped const |
+| TS       | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
 
 **Note:** The prefix is only stripped if the remainder is a valid identifier. For example, `DEVICE_TIER_1` is kept unchanged because `1` is not a valid identifier name.
 
@@ -604,6 +607,7 @@ message Person {  // Auto-generated when enable_auto_type_id = true
 | Go       | Struct with exported fields         |
 | Rust     | Struct with `#[derive(ForyObject)]` |
 | C++      | Struct with `FORY_STRUCT` macro     |
+| TS       | `export interface` declaration      |
 
 Type IDs control cross-language registration for messages, unions, and enums. See
 [Type IDs](#type-ids) for auto-generation, aliases, and collision handling.
@@ -727,6 +731,7 @@ message OtherMessage {
 | Go       | Flat structs with underscore (`SearchResponse_Result`, configurable to camelcase) |
 | Rust     | Nested modules (`search_response::Result`)                                        |
 | C++      | Nested classes (`SearchResponse::Result`)                                         |
+| TS       | Flat names (`Result`)                                                             |
 
 **Note:** Go defaults to underscore-separated nested names; set `option go_nested_type_style = "camelcase";` to use concatenated names. Rust emits nested modules for nested types.
 
@@ -829,6 +834,7 @@ message User {
 | Go       | `Name string`      | `Name *string`                                  |
 | Rust     | `name: String`     | `name: Option<String>`                          |
 | C++      | `std::string name` | `std::optional<std::string> name`               |
+| TS       | `name: string`     | `name?: string \| undefined`                    |
 
 **Default Values:**
 
@@ -864,6 +870,7 @@ message Node {
 | Go       | `Parent Node`  | `Parent *Node` with `fory:"ref"`          |
 | Rust     | `parent: Node` | `parent: Arc<Node>`                       |
 | C++      | `Node parent`  | `std::shared_ptr<Node> parent`            |
+| TS       | `parent: Node` | `parent: Node` (no ref distinction)       |
 
 Rust uses `Arc` by default; use `ref(thread_safe=false)` or `ref(weak=true)`
 to customize pointer types. For protobuf option syntax, see
@@ -889,6 +896,7 @@ message Document {
 | Go       | `[]string`                 |
 | Rust     | `Vec<String>`              |
 | C++      | `std::vector<std::string>` |
+| TS       | `string[]`                 |
 
 ### Combining Modifiers
 
@@ -984,6 +992,7 @@ collection behavior, and reference tracking (see
 | Go       | `bool`                |                    |
 | Rust     | `bool`                |                    |
 | C++      | `bool`                |                    |
+| TS       | `boolean`             |                    |
 
 #### Integer Types
 
@@ -998,12 +1007,12 @@ Fory IDL provides fixed-width signed integers (varint encoding for 32/64-bit by 
 
 **Language Mapping (Signed):**
 
-| Fory IDL | Java    | Python         | Go      | Rust  | C++       |
-| -------- | ------- | -------------- | ------- | ----- | --------- |
-| `int8`   | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  |
-| `int16`  | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
-| `int32`  | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
-| `int64`  | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
+| Fory IDL | Java    | Python         | Go      | Rust  | C++       | TS                 |
+| -------- | ------- | -------------- | ------- | ----- | --------- | ------------------ |
+| `int8`   | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  | `number`           |
+| `int16`  | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` | `number`           |
+| `int32`  | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` | `number`           |
+| `int64`  | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` | `bigint \| number` |
 
 Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
 
@@ -1016,12 +1025,12 @@ Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit b
 
 **Language Mapping (Unsigned):**
 
-| Fory IDL | Java    | Python          | Go       | Rust  | C++        |
-| -------- | ------- | --------------- | -------- | ----- | ---------- |
-| `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  |
-| `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` |
-| `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` |
-| `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` |
+| Fory IDL | Java    | Python          | Go       | Rust  | C++        | TS                 |
+| -------- | ------- | --------------- | -------- | ----- | ---------- | ------------------ |
+| `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  | `number`           |
+| `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` | `number`           |
+| `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` | `number`           |
+| `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` | `bigint \| number` |
 
 #### Integer Encoding Variants
 
@@ -1046,10 +1055,10 @@ you need fixed-width or tagged encoding:
 
 **Language Mapping:**
 
-| Fory IDL  | Java     | Python           | Go        | Rust  | C++      |
-| --------- | -------- | ---------------- | --------- | ----- | -------- |
-| `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  |
-| `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` |
+| Fory IDL  | Java     | Python           | Go        | Rust  | C++      | TS       |
+| --------- | -------- | ---------------- | --------- | ----- | -------- | -------- |
+| `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  | `number` |
+| `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` | `number` |
 
 #### String Type
 
@@ -1060,6 +1069,7 @@ you need fixed-width or tagged encoding:
 | Go       | `string`      | Immutable             |
 | Rust     | `String`      | Owned, heap-allocated |
 | C++      | `std::string` |                       |
+| TS       | `string`      |                       |
 
 #### Bytes Type
 
@@ -1070,6 +1080,7 @@ you need fixed-width or tagged encoding:
 | Go       | `[]byte`               |           |
 | Rust     | `Vec<u8>`              |           |
 | C++      | `std::vector<uint8_t>` |           |
+| TS       | `Uint8Array`           |           |
 
 #### Temporal Types
 
@@ -1082,6 +1093,7 @@ you need fixed-width or tagged encoding:
 | Go       | `time.Time`                 | Time portion ignored    |
 | Rust     | `chrono::NaiveDate`         | Requires `chrono` crate |
 | C++      | `fory::serialization::Date` |                         |
+| TS       | `Date`                      |                         |
 
 ##### Timestamp
 
@@ -1092,6 +1104,7 @@ you need fixed-width or tagged encoding:
 | Go       | `time.Time`                      |                         |
 | Rust     | `chrono::NaiveDateTime`          | Requires `chrono` crate |
 | C++      | `fory::serialization::Timestamp` |                         |
+| TS       | `Date`                           |                         |
 
 #### Any
 
@@ -1102,6 +1115,7 @@ you need fixed-width or tagged encoding:
 | Go       | `any`          | Runtime type written |
 | Rust     | `Box<dyn Any>` | Runtime type written |
 | C++      | `std::any`     | Runtime type written |
+| TS       | `any`          | Runtime type written |
 
 **Example:**
 
@@ -1130,6 +1144,7 @@ message Envelope [id=122] {
 | Go       | `Payload any`           |
 | Rust     | `payload: Box<dyn Any>` |
 | C++      | `std::any payload`      |
+| TS       | `payload: any`          |
 
 **Notes:**
 
@@ -1180,10 +1195,10 @@ message Config {
 
 **Language Mapping:**
 
-| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              |
-| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- |
-| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` |
-| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    |
+| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              | TS                       |
+| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- | ------------------------ |
+| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` | `Record<string, number>` |
+| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    | `Record<string, User>`   |
 
 **Key Type Restrictions:**
 

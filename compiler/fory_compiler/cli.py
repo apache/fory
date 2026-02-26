@@ -264,7 +264,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--lang",
         type=str,
         default="all",
-        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp). Default: all",
+        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp,typescript). Default: all",
     )
 
     parser.add_argument(
