@@ -26,7 +26,6 @@ use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_NULL_FLAG};
 use crate::types::{RefMode, SIZE_OF_REF_AND_TYPE};
 use std::cell::UnsafeCell;
-use std::mem;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
@@ -108,6 +107,18 @@ impl Default for Fory {
 }
 
 impl Fory {
+    #[inline(always)]
+    unsafe fn writer_from_raw_buffer(buffer: *mut Vec<u8>) -> Writer<'static> {
+        // SAFETY: Caller must ensure `buffer` remains valid while the returned writer is in use.
+        Writer::from_buffer(unsafe { &mut *buffer })
+    }
+
+    #[inline(always)]
+    unsafe fn reader_from_raw_parts(ptr: *const u8, len: usize) -> Reader<'static> {
+        // SAFETY: Caller must ensure `[ptr, ptr + len)` remains valid while the returned reader is in use.
+        Reader::new(unsafe { std::slice::from_raw_parts(ptr, len) })
+    }
+
     /// Sets the serialization compatible mode for this Fory instance.
     ///
     /// # Arguments
@@ -537,15 +548,23 @@ impl Fory {
     ) -> Result<usize, Error> {
         let start = buf.len();
         self.with_write_context(|context| {
-            // Context from thread-local would be 'static. but context hold the buffer through `writer` field,
-            // so we should make buffer live longer.
-            // After serializing, `detach_writer` will be called, the writer in context will be set to dangling pointer.
-            // So it's safe to make buf live to the end of this method.
-            let outlive_buffer = unsafe { mem::transmute::<&mut Vec<u8>, &mut Vec<u8>>(buf) };
-            context.attach_writer(Writer::from_buffer(outlive_buffer));
+            let writer = unsafe { Self::writer_from_raw_buffer(buf as *mut Vec<u8>) };
+            context.attach_writer(writer);
+
+            struct WriteDetachGuard<'a> {
+                context: *mut WriteContext<'a>,
+            }
+            impl<'a> Drop for WriteDetachGuard<'a> {
+                fn drop(&mut self) {
+                    unsafe { (*self.context).detach_writer() };
+                }
+            }
+            let _guard = WriteDetachGuard {
+                context: context as *mut WriteContext<'_>,
+            };
+
             let result = self.serialize_with_context(record, context);
             let written_size = context.writer.len() - start;
-            context.detach_writer();
             match result {
                 Ok(_) => Ok(written_size),
                 Err(err) => Err(err),
@@ -899,11 +918,24 @@ impl Fory {
     /// ```
     pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
         self.with_read_context(|context| {
-            let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
-            context.attach_reader(Reader::new(outlive_buffer));
-            let result = self.deserialize_with_context(context);
-            context.detach_reader();
-            result
+            let reader = unsafe { Self::reader_from_raw_parts(bf.as_ptr(), bf.len()) };
+            context.attach_reader(reader);
+
+            struct ReadDetachGuard<'a> {
+                context: *mut ReadContext<'a>,
+            }
+            impl<'a> Drop for ReadDetachGuard<'a> {
+                fn drop(&mut self) {
+                    unsafe {
+                        (*self.context).detach_reader();
+                    }
+                }
+            }
+            let _guard = ReadDetachGuard {
+                context: context as *mut ReadContext<'_>,
+            };
+
+            self.deserialize_with_context(context)
         })
     }
 
@@ -959,13 +991,27 @@ impl Fory {
         reader: &mut Reader,
     ) -> Result<T, Error> {
         self.with_read_context(|context| {
-            let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
-            let mut new_reader = Reader::new(outlive_buffer);
+            let mut new_reader =
+                unsafe { Self::reader_from_raw_parts(reader.bf.as_ptr(), reader.bf.len()) };
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
+
+            struct ReadDetachGuard<'a> {
+                context: *mut ReadContext<'a>,
+            }
+            impl<'a> Drop for ReadDetachGuard<'a> {
+                fn drop(&mut self) {
+                    unsafe {
+                        (*self.context).detach_reader();
+                    }
+                }
+            }
+            let _guard = ReadDetachGuard {
+                context: context as *mut ReadContext<'_>,
+            };
+
             let result = self.deserialize_with_context(context);
-            let end = context.detach_reader().get_cursor();
-            reader.set_cursor(end);
+            reader.set_cursor(context.reader.get_cursor());
             result
         })
     }

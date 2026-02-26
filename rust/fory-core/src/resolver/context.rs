@@ -134,6 +134,18 @@ pub struct WriteContext<'a> {
 #[allow(clippy::needless_lifetimes)]
 impl<'a> WriteContext<'a> {
     pub fn new(type_resolver: TypeResolver, config: Config) -> WriteContext<'a> {
+        WriteContext::with_writer(
+            type_resolver,
+            config,
+            Writer::from_buffer(Self::get_leak_buffer()),
+        )
+    }
+
+    pub fn with_writer(
+        type_resolver: TypeResolver,
+        config: Config,
+        writer: Writer<'a>,
+    ) -> WriteContext<'a> {
         WriteContext {
             type_resolver,
             compatible: config.compatible,
@@ -143,7 +155,7 @@ impl<'a> WriteContext<'a> {
             check_struct_version: config.check_struct_version,
             track_ref: config.track_ref,
             default_writer: None,
-            writer: Writer::from_buffer(Self::get_leak_buffer()),
+            writer,
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
@@ -163,8 +175,9 @@ impl<'a> WriteContext<'a> {
 
     #[inline(always)]
     pub fn detach_writer(&mut self) {
-        let default = mem::take(&mut self.default_writer);
-        self.writer = default.unwrap();
+        if let Some(default_writer) = self.default_writer.take() {
+            self.writer = default_writer;
+        }
     }
 
     /// Get type resolver
@@ -287,15 +300,6 @@ impl<'a> WriteContext<'a> {
     }
 }
 
-#[allow(clippy::needless_lifetimes)]
-impl<'a> Drop for WriteContext<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            drop(Box::from_raw(self.writer.bf));
-        }
-    }
-}
-
 // Safety: WriteContext is only shared across threads via higher-level pooling code that
 // ensures single-threaded access while the context is in use. Users must never hold the same
 // instance on multiple threads simultaneously; that would violate the invariants and result in
@@ -317,6 +321,7 @@ pub struct ReadContext<'a> {
     check_struct_version: bool,
 
     // Context-specific fields
+    default_reader: Option<Reader<'a>>,
     pub reader: Reader<'a>,
     pub meta_resolver: MetaReaderResolver,
     meta_string_resolver: MetaStringReaderResolver,
@@ -335,6 +340,14 @@ unsafe impl<'a> Sync for ReadContext<'a> {}
 
 impl<'a> ReadContext<'a> {
     pub fn new(type_resolver: TypeResolver, config: Config) -> ReadContext<'a> {
+        ReadContext::with_reader(type_resolver, config, Reader::default())
+    }
+
+    pub fn with_reader(
+        type_resolver: TypeResolver,
+        config: Config,
+        reader: Reader<'a>,
+    ) -> ReadContext<'a> {
         ReadContext {
             type_resolver,
             compatible: config.compatible,
@@ -342,7 +355,8 @@ impl<'a> ReadContext<'a> {
             xlang: config.xlang,
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
-            reader: Reader::default(),
+            default_reader: None,
+            reader,
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
             ref_reader: RefReader::new(),
@@ -388,12 +402,17 @@ impl<'a> ReadContext<'a> {
 
     #[inline(always)]
     pub fn attach_reader(&mut self, reader: Reader<'a>) {
-        self.reader = reader;
+        let old = mem::replace(&mut self.reader, reader);
+        self.default_reader = Some(old);
     }
 
     #[inline(always)]
     pub fn detach_reader(&mut self) -> Reader<'_> {
-        mem::take(&mut self.reader)
+        let active = mem::take(&mut self.reader);
+        if let Some(default_reader) = self.default_reader.take() {
+            self.reader = default_reader;
+        }
+        active
     }
 
     #[inline(always)]
