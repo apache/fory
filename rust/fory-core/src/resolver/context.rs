@@ -150,7 +150,7 @@ impl<'a> WriteContext<'a> {
         }
     }
 
-    #[inline(always)] 
+    #[inline(always)]
     fn get_leak_buffer() -> &'static mut Vec<u8> {
         Box::leak(Box::new(vec![]))
     }
