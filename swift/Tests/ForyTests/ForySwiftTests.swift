@@ -38,10 +38,10 @@ struct Person: Equatable {
 
 @ForyObject
 struct FieldOrder: Equatable {
-    var z: String
-    var a: Int64
-    var b: Int16
-    var c: Int32
+    var textTail: String
+    var longValue: Int64
+    var shortValue: Int16
+    var intValue: Int32
 }
 
 @ForyObject
@@ -460,7 +460,7 @@ func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
         items: [Int32(11), Address(street: "Nested", zip: 10002)],
         map: [
             "age": Int64(19),
-            "address": Address(street: "Mapped", zip: 10003),
+            "address": Address(street: "Mapped", zip: 10003)
         ]
     )
     let serializerData = try fory.serialize(serializerHolder)
@@ -488,13 +488,13 @@ func macroAnyFieldsRoundTrip() throws {
             "count": Int64(3),
             "name": "map",
             "address": Address(street: "AnyMap", zip: 11003),
-            "empty": NSNull(),
+            "empty": NSNull()
         ],
         int32Map: [
             1: Int32(-9),
             2: "v2",
             3: Address(street: "AnyIntMap", zip: 11004),
-            4: NSNull(),
+            4: NSNull()
         ]
     )
     let data = try fory.serialize(value)
@@ -561,7 +561,7 @@ func macroFieldOrderFollowsForyRules() throws {
     let fory = Fory()
     fory.register(FieldOrder.self, id: 300)
 
-    let value = FieldOrder(z: "tail", a: 123456789, b: 17, c: 99)
+    let value = FieldOrder(textTail: "tail", longValue: 123456789, shortValue: 17, intValue: 99)
     let data = try fory.serialize(value)
 
     let buffer = ByteBuffer(data: data)
@@ -578,10 +578,10 @@ func macroFieldOrderFollowsForyRules() throws {
     let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
     let fourth = try String.foryReadData(tailContext)
 
-    #expect(first == value.b)
-    #expect(second == value.a)
-    #expect(third == value.c)
-    #expect(fourth == value.z)
+    #expect(first == value.shortValue)
+    #expect(second == value.longValue)
+    #expect(third == value.intValue)
+    #expect(fourth == value.textTail)
 }
 
 @Test
@@ -640,7 +640,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         72_057_594_037_927_935,
         72_057_594_037_927_936,
         UInt64(Int64.max),
-        UInt64.max,
+        UInt64.max
     ]
     let intValues: [Int64] = [
         Int64.min,
@@ -657,7 +657,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         1_000_000,
         1_000_000_000_000,
         Int64.max - 1,
-        Int64.max,
+        Int64.max
     ]
 
     let writeBuffer = ByteBuffer()
@@ -738,7 +738,7 @@ func typeMetaRoundTripByName() throws {
                 nullable: true,
                 generics: [
                     .init(typeID: TypeId.string.rawValue, nullable: false),
-                    .init(typeID: TypeId.varint32.rawValue, nullable: true),
+                    .init(typeID: TypeId.varint32.rawValue, nullable: true)
                 ]
             )
         ),
@@ -746,7 +746,7 @@ func typeMetaRoundTripByName() throws {
             fieldID: 7,
             fieldName: "ignored_for_tag_mode",
             fieldType: .init(typeID: TypeId.varint32.rawValue, nullable: false)
-        ),
+        )
     ]
 
     let meta = try TypeMeta(

@@ -490,7 +490,10 @@ public final class TypeResolver {
                 existing.namespace?.value != namespace ||
                 existing.typeName.value != typeName {
                 throw ForyError.invalidData(
-                    "\(type) registration conflict: existing name=\(existing.namespace?.value ?? "")::\(existing.typeName.value), new name=\(namespace)::\(typeName)"
+                    """
+                    \(type) registration conflict: existing name=\(existing.namespace?.value ?? "")::\(existing.typeName.value), \
+                    new name=\(namespace)::\(typeName)
+                    """
                 )
             }
         }

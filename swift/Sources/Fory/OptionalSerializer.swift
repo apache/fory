@@ -18,7 +18,7 @@
 import Foundation
 
 extension Optional: Serializer where Wrapped: Serializer {
-    public static func foryDefault() -> Optional<Wrapped> {
+    public static func foryDefault() -> Wrapped? {
         nil
     }
 
@@ -45,7 +45,7 @@ extension Optional: Serializer where Wrapped: Serializer {
         try wrapped.foryWriteData(context, hasGenerics: hasGenerics)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Optional<Wrapped> {
+    public static func foryReadData(_ context: ReadContext) throws -> Wrapped? {
         .some(try Wrapped.foryReadData(context))
     }
 
@@ -89,7 +89,7 @@ extension Optional: Serializer where Wrapped: Serializer {
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
-    ) throws -> Optional<Wrapped> {
+    ) throws -> Wrapped? {
         switch refMode {
         case .none:
             return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))

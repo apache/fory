@@ -103,7 +103,7 @@ private protocol OptionalTypeMarker {
 }
 
 extension Optional: OptionalTypeMarker {
-    static var noneValue: Optional<Wrapped> { nil }
+    static var noneValue: Wrapped? { nil }
 }
 
 private struct DynamicAnyValue: Serializer {
@@ -343,18 +343,25 @@ private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: B
 
 public func castAnyDynamicValue<T>(_ value: Any?, to type: T.Type) throws -> T {
     _ = type
+    func castNilSentinel(_ sentinel: Any) throws -> T {
+        guard let casted = sentinel as? T else {
+            throw ForyError.invalidData("cannot cast dynamic Any value to \(type)")
+        }
+        return casted
+    }
+
     if value == nil {
         if T.self == Any.self {
-            return ForyAnyNullValue() as! T
+            return try castNilSentinel(ForyAnyNullValue())
         }
         if T.self == AnyObject.self {
-            return NSNull() as! T
+            return try castNilSentinel(NSNull())
         }
         if T.self == (any Serializer).self {
-            return ForyAnyNullValue() as! T
+            return try castNilSentinel(ForyAnyNullValue())
         }
         if let optionalType = T.self as? any OptionalTypeMarker.Type {
-            return optionalType.noneValue as! T
+            return try castNilSentinel(optionalType.noneValue)
         }
     }
 

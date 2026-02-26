@@ -32,20 +32,20 @@ private let noUserTypeID: UInt32 = UInt32.max
 public let namespaceMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
-    .lowerUpperDigitSpecial,
+    .lowerUpperDigitSpecial
 ]
 
 public let typeNameMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
     .lowerUpperDigitSpecial,
-    .firstToLowerSpecial,
+    .firstToLowerSpecial
 ]
 
 public let fieldNameMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
-    .lowerUpperDigitSpecial,
+    .lowerUpperDigitSpecial
 ]
 
 public struct TypeMetaFieldType: Equatable, Sendable {

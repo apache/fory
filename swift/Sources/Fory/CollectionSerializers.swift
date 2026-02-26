@@ -64,7 +64,7 @@ private func readArrayUninitialized<Element>(
     count: Int,
     _ initializer: (UnsafeMutablePointer<Element>) throws -> Void
 ) rethrows -> [Element] {
-    try Array<Element>(unsafeUninitializedCapacity: count) { destination, initializedCount in
+    try [Element](unsafeUninitializedCapacity: count) { destination, initializedCount in
         if count > 0 {
             try initializer(destination.baseAddress!)
         }
@@ -665,12 +665,12 @@ extension Set: Serializer where Element: Serializer & Hashable {
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
-        Set(try Array<Element>.foryReadData(context))
+        Set(try [Element].foryReadData(context))
     }
 }
 
 extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
-    public static func foryDefault() -> Dictionary<Key, Value> { [:] }
+    public static func foryDefault() -> [Key: Value] { [:] }
 
     public static var staticTypeId: TypeId { .map }
 
@@ -880,7 +880,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         }
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Dictionary<Key, Value> {
+    public static func foryReadData(_ context: ReadContext) throws -> [Key: Value] {
         let totalLength = Int(try context.buffer.readVarUInt32())
         try context.ensureCollectionLength(totalLength, label: "map")
         if totalLength == 0 {
