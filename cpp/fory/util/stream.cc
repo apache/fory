@@ -52,36 +52,29 @@ Result<void, Error> ForyInputStream::fill_buffer(uint32_t min_fill_size) {
   }
 
   const uint32_t read_pos = buffer_->reader_index_;
-  const uint64_t required = static_cast<uint64_t>(buffer_->size_) +
-                            (min_fill_size - remaining_size());
-  if (required > std::numeric_limits<uint32_t>::max()) {
+  const uint32_t deficit = min_fill_size - remaining_size();
+  constexpr uint64_t k_max_u32 = std::numeric_limits<uint32_t>::max();
+  const uint64_t required = static_cast<uint64_t>(buffer_->size_) + deficit;
+  if (required > k_max_u32) {
     return Unexpected(
         Error::out_of_bound("stream buffer size exceeds uint32 range"));
   }
   if (required > data_.size()) {
-    uint64_t new_size = static_cast<uint64_t>(data_.size()) * 2;
-    if (new_size < required) {
-      new_size = required;
+    uint64_t new_size =
+        std::max<uint64_t>(required, static_cast<uint64_t>(data_.size()) * 2);
+    if (new_size > k_max_u32) {
+      new_size = k_max_u32;
     }
     reserve(static_cast<uint32_t>(new_size));
   }
 
+  std::streambuf *source = stream_->rdbuf();
+  if (source == nullptr) {
+    return Unexpected(Error::io_error("input stream has no stream buffer"));
+  }
   uint32_t write_pos = buffer_->size_;
   while (remaining_size() < min_fill_size) {
     uint32_t writable = static_cast<uint32_t>(data_.size()) - write_pos;
-    if (writable == 0) {
-      uint64_t new_size = static_cast<uint64_t>(data_.size()) * 2 + 1;
-      if (new_size > std::numeric_limits<uint32_t>::max()) {
-        return Unexpected(
-            Error::out_of_bound("stream buffer size exceeds uint32 range"));
-      }
-      reserve(static_cast<uint32_t>(new_size));
-      writable = static_cast<uint32_t>(data_.size()) - write_pos;
-    }
-    std::streambuf *source = stream_->rdbuf();
-    if (source == nullptr) {
-      return Unexpected(Error::io_error("input stream has no stream buffer"));
-    }
     const std::streamsize read_bytes =
         source->sgetn(reinterpret_cast<char *>(data_.data() + write_pos),
                       static_cast<std::streamsize>(writable));
@@ -91,7 +84,6 @@ Result<void, Error> ForyInputStream::fill_buffer(uint32_t min_fill_size) {
     }
     write_pos += static_cast<uint32_t>(read_bytes);
     buffer_->size_ = write_pos;
-    buffer_->writer_index_ = write_pos;
   }
   return Result<void, Error>();
 }
