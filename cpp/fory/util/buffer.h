@@ -375,11 +375,11 @@ public:
       return result;
     }
     // Slow path: byte-by-byte read
-    return get_var_uint32_slow(offset, read_bytes_length);
+    return read_var_uint32_slow(offset, read_bytes_length);
   }
 
-  /// Slow path for get_var_uint32 when not enough bytes for bulk read.
-  uint32_t get_var_uint32_slow(uint32_t offset, uint32_t *read_bytes_length) {
+  /// Slow path for varuint32 decode when not enough bytes for bulk read.
+  uint32_t read_var_uint32_slow(uint32_t offset, uint32_t *read_bytes_length) {
     if (FORY_PREDICT_FALSE(offset >= size_)) {
       *read_bytes_length = 0;
       return 0;
@@ -933,39 +933,44 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
       return 0;
     }
-    if (FORY_PREDICT_FALSE(stream_ != nullptr && size_ - reader_index_ < 5)) {
-      return read_var_uint32_stream(error);
+    if (FORY_PREDICT_FALSE(size_ - reader_index_ < 5)) {
+      return read_var_uint32_slow(error);
     }
-    uint32_t read_bytes = 0;
-    uint32_t value = get_var_uint32(reader_index_, &read_bytes);
-    if (FORY_PREDICT_FALSE(read_bytes == 0)) {
-      error.set_buffer_out_of_bound(reader_index_, 1, size_);
-      return 0;
+    uint32_t offset = reader_index_;
+    uint32_t bulk = *reinterpret_cast<uint32_t *>(data_ + offset);
+
+    uint32_t result = bulk & 0x7F;
+    if ((bulk & 0x80) == 0) {
+      reader_index_ = offset + 1;
+      return result;
     }
-    increase_reader_index(read_bytes, error);
-    return value;
+    result |= (bulk >> 1) & 0x3F80;
+    if ((bulk & 0x8000) == 0) {
+      reader_index_ = offset + 2;
+      return result;
+    }
+    result |= (bulk >> 2) & 0x1FC000;
+    if ((bulk & 0x800000) == 0) {
+      reader_index_ = offset + 3;
+      return result;
+    }
+    result |= (bulk >> 3) & 0xFE00000;
+    if ((bulk & 0x80000000) == 0) {
+      reader_index_ = offset + 4;
+      return result;
+    }
+    result |= static_cast<uint32_t>(data_[offset + 4] & 0x7F) << 28;
+    reader_index_ = offset + 5;
+    return result;
   }
 
   /// Read int32_t value as varint (zigzag encoded). Sets error on bounds
   /// violation.
   FORY_ALWAYS_INLINE int32_t read_var_int32(Error &error) {
-    if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
+    uint32_t raw = read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
       return 0;
     }
-    if (FORY_PREDICT_FALSE(stream_ != nullptr && size_ - reader_index_ < 5)) {
-      uint32_t raw = read_var_uint32_stream(error);
-      if (FORY_PREDICT_FALSE(!error.ok())) {
-        return 0;
-      }
-      return static_cast<int32_t>((raw >> 1) ^ (~(raw & 1) + 1));
-    }
-    uint32_t read_bytes = 0;
-    uint32_t raw = get_var_uint32(reader_index_, &read_bytes);
-    if (FORY_PREDICT_FALSE(read_bytes == 0)) {
-      error.set_buffer_out_of_bound(reader_index_, 1, size_);
-      return 0;
-    }
-    increase_reader_index(read_bytes, error);
     return static_cast<int32_t>((raw >> 1) ^ (~(raw & 1) + 1));
   }
 
@@ -974,8 +979,8 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
       return 0;
     }
-    if (FORY_PREDICT_FALSE(stream_ != nullptr && size_ - reader_index_ < 9)) {
-      return read_var_uint64_stream(error);
+    if (FORY_PREDICT_FALSE(size_ - reader_index_ < 9)) {
+      return read_var_uint64_slow(error);
     }
     uint32_t read_bytes = 0;
     uint64_t value = get_var_uint64(reader_index_, &read_bytes);
@@ -1074,76 +1079,35 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
       return 0;
     }
-    if (FORY_PREDICT_FALSE(stream_ != nullptr && size_ - reader_index_ < 8)) {
-      return read_var_uint36_small_stream(error);
-    }
     uint32_t offset = reader_index_;
-    // Fast path: need at least 8 bytes for safe bulk read
-    if (FORY_PREDICT_TRUE(size_ - offset >= 8)) {
-      uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
-
-      uint64_t result = bulk & 0x7F;
-      if ((bulk & 0x80) == 0) {
-        increase_reader_index(1, error);
-        return result;
-      }
-      result |= (bulk >> 1) & 0x3F80;
-      if ((bulk & 0x8000) == 0) {
-        increase_reader_index(2, error);
-        return result;
-      }
-      result |= (bulk >> 2) & 0x1FC000;
-      if ((bulk & 0x800000) == 0) {
-        increase_reader_index(3, error);
-        return result;
-      }
-      result |= (bulk >> 3) & 0xFE00000;
-      if ((bulk & 0x80000000) == 0) {
-        increase_reader_index(4, error);
-        return result;
-      }
-      // 5th byte for bits 28-35 (up to 36 bits)
-      result |= (bulk >> 4) & 0xFF0000000ULL;
-      increase_reader_index(5, error);
+    if (FORY_PREDICT_FALSE(size_ - offset < 8)) {
+      return read_var_uint36_small_slow(error);
+    }
+    // Fast path: need at least 8 bytes for safe bulk read.
+    uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
+    uint64_t result = bulk & 0x7F;
+    if ((bulk & 0x80) == 0) {
+      increase_reader_index(1, error);
       return result;
     }
-    // Slow path: byte-by-byte read
-    uint32_t position = offset;
-    uint8_t b = data_[position++];
-    uint64_t result = b & 0x7F;
-    if ((b & 0x80) != 0) {
-      if (FORY_PREDICT_FALSE(position >= size_)) {
-        error.set_buffer_out_of_bound(position, 1, size_);
-        return 0;
-      }
-      b = data_[position++];
-      result |= static_cast<uint64_t>(b & 0x7F) << 7;
-      if ((b & 0x80) != 0) {
-        if (FORY_PREDICT_FALSE(position >= size_)) {
-          error.set_buffer_out_of_bound(position, 1, size_);
-          return 0;
-        }
-        b = data_[position++];
-        result |= static_cast<uint64_t>(b & 0x7F) << 14;
-        if ((b & 0x80) != 0) {
-          if (FORY_PREDICT_FALSE(position >= size_)) {
-            error.set_buffer_out_of_bound(position, 1, size_);
-            return 0;
-          }
-          b = data_[position++];
-          result |= static_cast<uint64_t>(b & 0x7F) << 21;
-          if ((b & 0x80) != 0) {
-            if (FORY_PREDICT_FALSE(position >= size_)) {
-              error.set_buffer_out_of_bound(position, 1, size_);
-              return 0;
-            }
-            b = data_[position++];
-            result |= static_cast<uint64_t>(b & 0xFF) << 28;
-          }
-        }
-      }
+    result |= (bulk >> 1) & 0x3F80;
+    if ((bulk & 0x8000) == 0) {
+      increase_reader_index(2, error);
+      return result;
     }
-    increase_reader_index(position - offset, error);
+    result |= (bulk >> 2) & 0x1FC000;
+    if ((bulk & 0x800000) == 0) {
+      increase_reader_index(3, error);
+      return result;
+    }
+    result |= (bulk >> 3) & 0xFE00000;
+    if ((bulk & 0x80000000) == 0) {
+      increase_reader_index(4, error);
+      return result;
+    }
+    // 5th byte for bits 28-35 (up to 36 bits)
+    result |= (bulk >> 4) & 0xFF0000000ULL;
+    increase_reader_index(5, error);
     return result;
   }
 
@@ -1304,16 +1268,24 @@ private:
     return true;
   }
 
-  FORY_ALWAYS_INLINE uint32_t read_var_uint32_stream(Error &error) {
+  FORY_ALWAYS_INLINE uint32_t read_var_uint32_slow(Error &error) {
+    uint32_t position = reader_index_;
     uint32_t result = 0;
     for (int i = 0; i < 5; ++i) {
-      if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
+      const uint64_t target = static_cast<uint64_t>(position) + 1;
+      if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
+        error.set_error(ErrorCode::OutOfBound,
+                        "reader index exceeds uint32 range");
         return 0;
       }
-      uint8_t b = data_[reader_index_];
-      reader_index_ += 1;
+      if (FORY_PREDICT_FALSE(
+              !ensure_size(static_cast<uint32_t>(target), error))) {
+        return 0;
+      }
+      uint8_t b = data_[position++];
       result |= static_cast<uint32_t>(b & 0x7F) << (i * 7);
       if ((b & 0x80) == 0) {
+        reader_index_ = position;
         return result;
       }
     }
@@ -1321,44 +1293,132 @@ private:
     return 0;
   }
 
-  FORY_ALWAYS_INLINE uint64_t read_var_uint64_stream(Error &error) {
+  FORY_ALWAYS_INLINE uint64_t read_var_uint64_slow(Error &error) {
+    uint32_t position = reader_index_;
     uint64_t result = 0;
     for (int i = 0; i < 8; ++i) {
-      if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
+      const uint64_t target = static_cast<uint64_t>(position) + 1;
+      if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
+        error.set_error(ErrorCode::OutOfBound,
+                        "reader index exceeds uint32 range");
         return 0;
       }
-      uint8_t b = data_[reader_index_];
-      reader_index_ += 1;
+      if (FORY_PREDICT_FALSE(
+              !ensure_size(static_cast<uint32_t>(target), error))) {
+        return 0;
+      }
+      uint8_t b = data_[position++];
       result |= static_cast<uint64_t>(b & 0x7F) << (i * 7);
       if ((b & 0x80) == 0) {
+        reader_index_ = position;
         return result;
       }
     }
-    if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
+    const uint64_t target = static_cast<uint64_t>(position) + 1;
+    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
       return 0;
     }
-    uint8_t b = data_[reader_index_];
-    reader_index_ += 1;
+    if (FORY_PREDICT_FALSE(
+            !ensure_size(static_cast<uint32_t>(target), error))) {
+      return 0;
+    }
+    uint8_t b = data_[position++];
     result |= static_cast<uint64_t>(b) << 56;
+    reader_index_ = position;
     return result;
   }
 
-  FORY_ALWAYS_INLINE uint64_t read_var_uint36_small_stream(Error &error) {
-    uint64_t result = 0;
-    for (int i = 0; i < 5; ++i) {
-      if (FORY_PREDICT_FALSE(!ensure_readable(1, error))) {
-        return 0;
-      }
-      uint8_t b = data_[reader_index_];
-      reader_index_ += 1;
-      result |= static_cast<uint64_t>(b & 0x7F) << (i * 7);
-      if ((b & 0x80) == 0) {
-        return result;
-      }
+  FORY_ALWAYS_INLINE uint64_t read_var_uint36_small_slow(Error &error) {
+    uint32_t position = reader_index_;
+    const uint64_t first_target = static_cast<uint64_t>(position) + 1;
+    if (FORY_PREDICT_FALSE(first_target >
+                           std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
+      return 0;
     }
-    error.set_error(ErrorCode::InvalidData,
-                    "Invalid var_uint36_small encoding");
-    return 0;
+    if (FORY_PREDICT_FALSE(
+            !ensure_size(static_cast<uint32_t>(first_target), error))) {
+      return 0;
+    }
+    uint8_t b = data_[position++];
+    uint64_t result = b & 0x7F;
+    if ((b & 0x80) == 0) {
+      reader_index_ = position;
+      return result;
+    }
+
+    const uint64_t second_target = static_cast<uint64_t>(position) + 1;
+    if (FORY_PREDICT_FALSE(second_target >
+                           std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
+      return 0;
+    }
+    if (FORY_PREDICT_FALSE(
+            !ensure_size(static_cast<uint32_t>(second_target), error))) {
+      return 0;
+    }
+    b = data_[position++];
+    result |= static_cast<uint64_t>(b & 0x7F) << 7;
+    if ((b & 0x80) == 0) {
+      reader_index_ = position;
+      return result;
+    }
+
+    const uint64_t third_target = static_cast<uint64_t>(position) + 1;
+    if (FORY_PREDICT_FALSE(third_target >
+                           std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
+      return 0;
+    }
+    if (FORY_PREDICT_FALSE(
+            !ensure_size(static_cast<uint32_t>(third_target), error))) {
+      return 0;
+    }
+    b = data_[position++];
+    result |= static_cast<uint64_t>(b & 0x7F) << 14;
+    if ((b & 0x80) == 0) {
+      reader_index_ = position;
+      return result;
+    }
+
+    const uint64_t fourth_target = static_cast<uint64_t>(position) + 1;
+    if (FORY_PREDICT_FALSE(fourth_target >
+                           std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
+      return 0;
+    }
+    if (FORY_PREDICT_FALSE(
+            !ensure_size(static_cast<uint32_t>(fourth_target), error))) {
+      return 0;
+    }
+    b = data_[position++];
+    result |= static_cast<uint64_t>(b & 0x7F) << 21;
+    if ((b & 0x80) == 0) {
+      reader_index_ = position;
+      return result;
+    }
+
+    const uint64_t fifth_target = static_cast<uint64_t>(position) + 1;
+    if (FORY_PREDICT_FALSE(fifth_target >
+                           std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
+      return 0;
+    }
+    if (FORY_PREDICT_FALSE(
+            !ensure_size(static_cast<uint32_t>(fifth_target), error))) {
+      return 0;
+    }
+    b = data_[position++];
+    result |= static_cast<uint64_t>(b) << 28;
+    reader_index_ = position;
+    return result;
   }
 
   uint8_t *data_;
