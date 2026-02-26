@@ -15,11 +15,54 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import pytest
+
 from pyfory.buffer import Buffer
 from pyfory.tests.core import require_pyarrow
+from pyfory.tests.test_stream import OneByteStream
 from pyfory.utils import lazy_import
 
 pa = lazy_import("pyarrow")
+
+
+class RecvIntoOnlyStream:
+    def __init__(self, data: bytes):
+        self._data = data
+        self._offset = 0
+
+    def recv_into(self, buffer, size=-1):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if size < 0 or size > len(view):
+            size = len(view)
+        if size == 0:
+            return 0
+        read_size = min(1, size, len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
+
+class LegacyRecvIntoOnlyStream:
+    def __init__(self, data: bytes):
+        self._data = data
+        self._offset = 0
+
+    def recvinto(self, buffer, size=-1):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if size < 0 or size > len(view):
+            size = len(view)
+        if size == 0:
+            return 0
+        read_size = min(1, size, len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
 
 
 def test_buffer():
@@ -246,6 +289,67 @@ def test_read_bytes_as_int64():
     # test fix for `OverflowError: Python int too large to convert to C long`
     buf = Buffer(b"\xa6IOr\x9ch)\x80\x12\x02")
     buf.read_bytes_as_int64(8)
+
+
+def test_stream_buffer_read():
+    writer = Buffer.allocate(32)
+    writer.write_uint32(0x01020304)
+    writer.write_int64(-1234567890)
+    writer.write_var_uint32(300)
+    writer.write_varint64(-4567890123)
+    writer.write_tagged_uint64(0x123456789)
+    writer.write_var_uint64(0x1FFFF)
+    writer.write_bytes_and_size(b"stream-data")
+    writer.write_string("hello-stream")
+
+    data = writer.get_bytes(0, writer.get_writer_index())
+    stream = OneByteStream(data)
+    reader = Buffer.from_stream(stream)
+
+    assert reader.read_uint32() == 0x01020304
+    assert reader.read_int64() == -1234567890
+    assert reader.read_var_uint32() == 300
+    assert reader.read_varint64() == -4567890123
+    assert reader.read_tagged_uint64() == 0x123456789
+    assert reader.read_var_uint64() == 0x1FFFF
+    assert reader.read_bytes_and_size() == b"stream-data"
+    assert reader.read_string() == "hello-stream"
+
+
+def test_stream_buffer_read_with_recv_into():
+    reader = Buffer.from_stream(RecvIntoOnlyStream(bytes([0x11, 0x22, 0x33, 0x44])))
+    assert reader.read_uint32() == 0x44332211
+
+
+def test_stream_buffer_read_with_legacy_recvinto():
+    reader = Buffer.from_stream(LegacyRecvIntoOnlyStream(bytes([0x11, 0x22, 0x33, 0x44])))
+    assert reader.read_uint32() == 0x44332211
+
+
+def test_stream_buffer_set_reader_index():
+    reader = Buffer.from_stream(OneByteStream(bytes([0x11, 0x22, 0x33, 0x44, 0x55])))
+    reader.set_reader_index(4)
+    assert reader.read_uint8() == 0x55
+
+
+def test_stream_buffer_set_reader_index_out_of_bound():
+    reader = Buffer.from_stream(OneByteStream(b"\x11\x22\x33"))
+    with pytest.raises(Exception, match="Buffer out of bound"):
+        reader.set_reader_index(10)
+
+
+def test_stream_buffer_read_bytes_and_skip_update_reader_index():
+    reader = Buffer.from_stream(OneByteStream(bytes(range(20))), buffer_size=2)
+    assert reader.read_bytes(5) == bytes([0, 1, 2, 3, 4])
+    assert reader.get_reader_index() == 5
+    reader.skip(5)
+    assert reader.get_reader_index() == 10
+
+
+def test_stream_buffer_short_read_error():
+    reader = Buffer.from_stream(OneByteStream(b"\x01\x02\x03"))
+    with pytest.raises(Exception, match="Buffer out of bound"):
+        reader.read_uint32()
 
 
 if __name__ == "__main__":

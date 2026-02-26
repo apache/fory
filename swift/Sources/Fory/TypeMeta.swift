@@ -32,20 +32,20 @@ private let noUserTypeID: UInt32 = UInt32.max
 public let namespaceMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
-    .lowerUpperDigitSpecial,
+    .lowerUpperDigitSpecial
 ]
 
 public let typeNameMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
     .lowerUpperDigitSpecial,
-    .firstToLowerSpecial,
+    .firstToLowerSpecial
 ]
 
 public let fieldNameMetaStringEncodings: [MetaStringEncoding] = [
     .utf8,
     .allToLowerSpecial,
-    .lowerUpperDigitSpecial,
+    .lowerUpperDigitSpecial
 ]
 
 public struct TypeMetaFieldType: Equatable, Sendable {
@@ -372,6 +372,11 @@ public struct TypeMeta: Equatable, Sendable {
         }
 
         var fieldInfos: [TypeMetaFieldInfo] = []
+        if numFields > bodyReader.remaining {
+            throw ForyError.invalidData(
+                "type meta field count \(numFields) exceeds remaining bytes \(bodyReader.remaining)"
+            )
+        }
         fieldInfos.reserveCapacity(numFields)
         for _ in 0..<numFields {
             fieldInfos.append(try TypeMetaFieldInfo.read(bodyReader))

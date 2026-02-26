@@ -167,6 +167,12 @@ jobs:
         run: |
           cd csharp
           dotnet test tests/Fory.Tests/Fory.Tests.csproj -c Release --no-build
+      - name: Verify C# format
+        run: |
+          cd csharp
+          dotnet format Fory.sln --verify-no-changes \
+            --exclude src/Fory.Generator/AnalyzerReleases.Shipped.md \
+            --exclude src/Fory.Generator/AnalyzerReleases.Unshipped.md
 
   csharp_xlang:
     name: C# Xlang Test
@@ -217,6 +223,13 @@ jobs:
         run: |
           cd swift
           swift test
+      - name: Run SwiftLint check
+        run: |
+          if ! command -v swiftlint >/dev/null; then
+            brew install swiftlint
+          fi
+          cd swift
+          swiftlint lint --config .swiftlint.yml
 
   swift_xlang:
     name: Swift Xlang Test
@@ -900,6 +913,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.8
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:

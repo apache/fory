@@ -30,6 +30,7 @@ private struct DateMacroHolder {
 func dateAndTimestampTypeIds() {
     #expect(ForyDate.staticTypeId == .date)
     #expect(ForyTimestamp.staticTypeId == .timestamp)
+    #expect(Duration.staticTypeId == .duration)
     #expect(Date.staticTypeId == .timestamp)
 }
 
@@ -46,6 +47,11 @@ func dateAndTimestampRoundTrip() throws {
     let tsData = try fory.serialize(ts)
     let tsDecoded: ForyTimestamp = try fory.deserialize(tsData)
     #expect(tsDecoded == ts)
+
+    let duration = Duration.seconds(-7) + Duration.nanoseconds(12_000_000)
+    let durationData = try fory.serialize(duration)
+    let durationDecoded: Duration = try fory.deserialize(durationData)
+    #expect(durationDecoded == duration)
 
     let instant = Date(timeIntervalSince1970: 1_731_234_567.123_456_7)
     let instantData = try fory.serialize(instant)

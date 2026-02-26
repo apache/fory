@@ -293,42 +293,42 @@ public sealed class TypeResolver
         {
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
-            {
-                TypeMeta typeMeta = BuildCompatibleTypeMeta(info, wireTypeId, context.TrackRef);
-                context.WriteCompatibleTypeMeta(type, typeMeta);
-                return;
-            }
+                {
+                    TypeMeta typeMeta = BuildCompatibleTypeMeta(info, wireTypeId, context.TrackRef);
+                    context.WriteCompatibleTypeMeta(type, typeMeta);
+                    return;
+                }
             case TypeId.NamedEnum:
             case TypeId.NamedStruct:
             case TypeId.NamedExt:
             case TypeId.NamedUnion:
-            {
-                if (context.Compatible)
                 {
-                    TypeMeta typeMeta = BuildCompatibleTypeMeta(info, wireTypeId, context.TrackRef);
-                    context.WriteCompatibleTypeMeta(type, typeMeta);
-                }
-                else
-                {
-                    if (!info.NamespaceName.HasValue || !info.TypeName.HasValue)
+                    if (context.Compatible)
                     {
-                        throw new InvalidDataException("missing type name metadata for name-registered type");
+                        TypeMeta typeMeta = BuildCompatibleTypeMeta(info, wireTypeId, context.TrackRef);
+                        context.WriteCompatibleTypeMeta(type, typeMeta);
+                    }
+                    else
+                    {
+                        if (!info.NamespaceName.HasValue || !info.TypeName.HasValue)
+                        {
+                            throw new InvalidDataException("missing type name metadata for name-registered type");
+                        }
+
+                        WriteMetaString(
+                            context,
+                            info.NamespaceName.Value,
+                            TypeMetaEncodings.NamespaceMetaStringEncodings,
+                            MetaStringEncoder.Namespace);
+                        WriteMetaString(
+                            context,
+                            info.TypeName.Value,
+                            TypeMetaEncodings.TypeNameMetaStringEncodings,
+                            MetaStringEncoder.TypeName);
                     }
 
-                    WriteMetaString(
-                        context,
-                        info.NamespaceName.Value,
-                        TypeMetaEncodings.NamespaceMetaStringEncodings,
-                        MetaStringEncoder.Namespace);
-                    WriteMetaString(
-                        context,
-                        info.TypeName.Value,
-                        TypeMetaEncodings.TypeNameMetaStringEncodings,
-                        MetaStringEncoder.TypeName);
+                    return;
                 }
-
-                return;
-            }
             default:
                 if (!info.RegisterByName && WireTypeNeedsUserTypeId(wireTypeId))
                 {
@@ -412,50 +412,50 @@ public sealed class TypeResolver
         {
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
-            {
-                TypeMeta remoteTypeMeta = context.ReadCompatibleTypeMeta();
-                ValidateCompatibleTypeMeta(remoteTypeMeta, info, allowed, typeId);
-                context.PushCompatibleTypeMeta(type, remoteTypeMeta);
-                return;
-            }
+                {
+                    TypeMeta remoteTypeMeta = context.ReadCompatibleTypeMeta();
+                    ValidateCompatibleTypeMeta(remoteTypeMeta, info, allowed, typeId);
+                    context.PushCompatibleTypeMeta(type, remoteTypeMeta);
+                    return;
+                }
             case TypeId.NamedEnum:
             case TypeId.NamedStruct:
             case TypeId.NamedExt:
             case TypeId.NamedUnion:
-            {
-                if (context.Compatible)
                 {
-                    TypeMeta remoteTypeMeta = context.ReadCompatibleTypeMeta();
-                    ValidateCompatibleTypeMeta(remoteTypeMeta, info, allowed, typeId);
-                    if (typeId == TypeId.NamedStruct)
+                    if (context.Compatible)
                     {
-                        context.PushCompatibleTypeMeta(type, remoteTypeMeta);
+                        TypeMeta remoteTypeMeta = context.ReadCompatibleTypeMeta();
+                        ValidateCompatibleTypeMeta(remoteTypeMeta, info, allowed, typeId);
+                        if (typeId == TypeId.NamedStruct)
+                        {
+                            context.PushCompatibleTypeMeta(type, remoteTypeMeta);
+                        }
                     }
-                }
-                else
-                {
-                    MetaString namespaceName = ReadMetaString(
-                        context,
-                        MetaStringDecoder.Namespace,
-                        TypeMetaEncodings.NamespaceMetaStringEncodings);
-                    MetaString typeName = ReadMetaString(
-                        context,
-                        MetaStringDecoder.TypeName,
-                        TypeMetaEncodings.TypeNameMetaStringEncodings);
-                    if (!info.RegisterByName || !info.NamespaceName.HasValue || !info.TypeName.HasValue)
+                    else
                     {
-                        throw new InvalidDataException("received name-registered type info for id-registered local type");
+                        MetaString namespaceName = ReadMetaString(
+                            context,
+                            MetaStringDecoder.Namespace,
+                            TypeMetaEncodings.NamespaceMetaStringEncodings);
+                        MetaString typeName = ReadMetaString(
+                            context,
+                            MetaStringDecoder.TypeName,
+                            TypeMetaEncodings.TypeNameMetaStringEncodings);
+                        if (!info.RegisterByName || !info.NamespaceName.HasValue || !info.TypeName.HasValue)
+                        {
+                            throw new InvalidDataException("received name-registered type info for id-registered local type");
+                        }
+
+                        if (namespaceName.Value != info.NamespaceName.Value.Value || typeName.Value != info.TypeName.Value.Value)
+                        {
+                            throw new InvalidDataException(
+                                $"type name mismatch: expected {info.NamespaceName.Value.Value}::{info.TypeName.Value.Value}, got {namespaceName.Value}::{typeName.Value}");
+                        }
                     }
 
-                    if (namespaceName.Value != info.NamespaceName.Value.Value || typeName.Value != info.TypeName.Value.Value)
-                    {
-                        throw new InvalidDataException(
-                            $"type name mismatch: expected {info.NamespaceName.Value.Value}::{info.TypeName.Value.Value}, got {namespaceName.Value}::{typeName.Value}");
-                    }
+                    return;
                 }
-
-                return;
-            }
             default:
                 if (!info.RegisterByName && WireTypeNeedsUserTypeId(typeId))
                 {
@@ -553,31 +553,31 @@ public sealed class TypeResolver
         {
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
-            {
-                TypeMeta typeMeta = context.ReadCompatibleTypeMeta();
-                if (typeMeta.RegisterByName)
                 {
-                    return new DynamicTypeInfo(wireTypeId, null, typeMeta.NamespaceName, typeMeta.TypeName, typeMeta);
-                }
+                    TypeMeta typeMeta = context.ReadCompatibleTypeMeta();
+                    if (typeMeta.RegisterByName)
+                    {
+                        return new DynamicTypeInfo(wireTypeId, null, typeMeta.NamespaceName, typeMeta.TypeName, typeMeta);
+                    }
 
-                return new DynamicTypeInfo(wireTypeId, typeMeta.UserTypeId, null, null, typeMeta);
-            }
+                    return new DynamicTypeInfo(wireTypeId, typeMeta.UserTypeId, null, null, typeMeta);
+                }
             case TypeId.NamedStruct:
             case TypeId.NamedEnum:
             case TypeId.NamedExt:
             case TypeId.NamedUnion:
-            {
-                MetaString namespaceName = ReadMetaString(context.Reader, MetaStringDecoder.Namespace, TypeMetaEncodings.NamespaceMetaStringEncodings);
-                MetaString typeName = ReadMetaString(context.Reader, MetaStringDecoder.TypeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
-                return new DynamicTypeInfo(wireTypeId, null, namespaceName, typeName, null);
-            }
+                {
+                    MetaString namespaceName = ReadMetaString(context.Reader, MetaStringDecoder.Namespace, TypeMetaEncodings.NamespaceMetaStringEncodings);
+                    MetaString typeName = ReadMetaString(context.Reader, MetaStringDecoder.TypeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
+                    return new DynamicTypeInfo(wireTypeId, null, namespaceName, typeName, null);
+                }
             case TypeId.Struct:
             case TypeId.Enum:
             case TypeId.Ext:
             case TypeId.TypedUnion:
-            {
-                return new DynamicTypeInfo(wireTypeId, context.Reader.ReadVarUInt32(), null, null, null);
-            }
+                {
+                    return new DynamicTypeInfo(wireTypeId, context.Reader.ReadVarUInt32(), null, null, null);
+                }
             default:
                 return new DynamicTypeInfo(wireTypeId, null, null, null, null);
         }
@@ -664,51 +664,51 @@ public sealed class TypeResolver
             case TypeId.Enum:
             case TypeId.Ext:
             case TypeId.TypedUnion:
-            {
-                if (!typeInfo.UserTypeId.HasValue)
                 {
-                    throw new InvalidDataException($"missing dynamic user type id for {typeInfo.WireTypeId}");
-                }
+                    if (!typeInfo.UserTypeId.HasValue)
+                    {
+                        throw new InvalidDataException($"missing dynamic user type id for {typeInfo.WireTypeId}");
+                    }
 
-                return ReadByUserTypeId(typeInfo.UserTypeId.Value, context);
-            }
+                    return ReadByUserTypeId(typeInfo.UserTypeId.Value, context);
+                }
             case TypeId.NamedStruct:
             case TypeId.NamedEnum:
             case TypeId.NamedExt:
             case TypeId.NamedUnion:
-            {
-                if (!typeInfo.NamespaceName.HasValue || !typeInfo.TypeName.HasValue)
                 {
-                    throw new InvalidDataException($"missing dynamic type name for {typeInfo.WireTypeId}");
-                }
+                    if (!typeInfo.NamespaceName.HasValue || !typeInfo.TypeName.HasValue)
+                    {
+                        throw new InvalidDataException($"missing dynamic type name for {typeInfo.WireTypeId}");
+                    }
 
-                return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, context);
-            }
+                    return ReadByTypeName(typeInfo.NamespaceName.Value.Value, typeInfo.TypeName.Value.Value, context);
+                }
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
-            {
-                if (typeInfo.CompatibleTypeMeta is null)
                 {
-                    throw new InvalidDataException($"missing compatible type meta for {typeInfo.WireTypeId}");
-                }
+                    if (typeInfo.CompatibleTypeMeta is null)
+                    {
+                        throw new InvalidDataException($"missing compatible type meta for {typeInfo.WireTypeId}");
+                    }
 
-                TypeMeta compatibleTypeMeta = typeInfo.CompatibleTypeMeta;
-                if (compatibleTypeMeta.RegisterByName)
-                {
-                    return ReadByTypeName(
-                        compatibleTypeMeta.NamespaceName.Value,
-                        compatibleTypeMeta.TypeName.Value,
-                        context,
-                        compatibleTypeMeta);
-                }
+                    TypeMeta compatibleTypeMeta = typeInfo.CompatibleTypeMeta;
+                    if (compatibleTypeMeta.RegisterByName)
+                    {
+                        return ReadByTypeName(
+                            compatibleTypeMeta.NamespaceName.Value,
+                            compatibleTypeMeta.TypeName.Value,
+                            context,
+                            compatibleTypeMeta);
+                    }
 
-                if (!compatibleTypeMeta.UserTypeId.HasValue)
-                {
-                    throw new InvalidDataException("missing user type id in compatible dynamic type meta");
-                }
+                    if (!compatibleTypeMeta.UserTypeId.HasValue)
+                    {
+                        throw new InvalidDataException("missing user type id in compatible dynamic type meta");
+                    }
 
-                return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, context, compatibleTypeMeta);
-            }
+                    return ReadByUserTypeId(compatibleTypeMeta.UserTypeId.Value, context, compatibleTypeMeta);
+                }
             case TypeId.None:
                 return null;
             default:

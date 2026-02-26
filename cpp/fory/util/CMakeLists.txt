@@ -19,6 +19,7 @@ set(FORY_UTIL_SOURCES
     buffer.cc
     error.cc
     logging.cc
+    stream.cc
     string_util.cc
     time_util.cc
 )
@@ -32,6 +33,7 @@ set(FORY_UTIL_HEADERS
     platform.h
     pool.h
     result.h
+    stream.h
     string_util.h
     time_util.h
     flat_int_map.h

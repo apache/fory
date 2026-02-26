@@ -186,8 +186,6 @@ cdef class Buffer:
 
     cdef inline write_c_buffer(self, const uint8_t* value, int32_t length)
 
-    cdef inline int32_t read_c_buffer(self, uint8_t** buf)
-
     cpdef inline write_bytes_and_size(self, bytes value)
 
     cpdef inline bytes read_bytes_and_size(self)
