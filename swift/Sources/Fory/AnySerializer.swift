@@ -312,6 +312,9 @@ private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
 }
 
 private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: Bool) throws {
+    try context.enterDynamicAnyDepth()
+    defer { context.leaveDynamicAnyDepth() }
+
     if let serializer = value as? any Serializer {
         try serializer.foryWriteData(context, hasGenerics: hasGenerics)
         return

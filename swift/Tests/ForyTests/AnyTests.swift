@@ -68,6 +68,17 @@ private struct AnyHashableValueHolder {
     var value: AnyHashable = AnyHashable(Int32(0))
 }
 
+private func nestedDynamicAnyList(depth: Int) -> Any {
+    var value: Any = Int32(1)
+    if depth <= 0 {
+        return value
+    }
+    for _ in 0..<depth {
+        value = [value] as [Any]
+    }
+    return value
+}
+
 @Test
 func topLevelAnyHashableRoundTrip() throws {
     let fory = Fory()
@@ -375,4 +386,37 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
     #expect(anyHashableSetDecoded.contains(AnyHashable("set")))
     #expect(anyHashableSetDecoded.contains(AnyHashable(Int32(12))))
     #expect(anyHashableSetDecoded.contains(AnyHashable(AnyHashableDynamicKey(id: 13))))
+}
+
+@Test
+func dynamicAnyMaxDepthRejectsDeepNesting() throws {
+    let value = nestedDynamicAnyList(depth: 3)
+    let writer = Fory(config: .init(maxDepth: 8))
+    let payload = try writer.serialize(value)
+
+    let limited = Fory(config: .init(maxDepth: 3))
+    do {
+        let _: Any = try limited.deserialize(payload)
+        #expect(Bool(false))
+    } catch {
+        #expect(String(describing: error).contains("maxDepth"))
+    }
+}
+
+@Test
+func dynamicAnyMaxDepthAllowsBoundaryDepth() throws {
+    let value = nestedDynamicAnyList(depth: 3)
+    let fory = Fory(config: .init(maxDepth: 4))
+
+    let payload = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(payload)
+
+    let level1 = decoded as? [Any]
+    let level2 = level1?.first as? [Any]
+    let level3 = level2?.first as? [Any]
+
+    #expect(level1 != nil)
+    #expect(level2 != nil)
+    #expect(level3 != nil)
+    #expect(level3?.first as? Int32 == 1)
 }

@@ -175,16 +175,19 @@ func namedInitializerBuildsConfig() {
     #expect(defaultConfig.config.xlang == true)
     #expect(defaultConfig.config.trackRef == false)
     #expect(defaultConfig.config.compatible == false)
+    #expect(defaultConfig.config.maxDepth == 5)
 
-    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true)
+    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true, maxDepth: 7)
     #expect(explicitConfig.config.xlang == false)
     #expect(explicitConfig.config.trackRef == true)
     #expect(explicitConfig.config.compatible == true)
+    #expect(explicitConfig.config.maxDepth == 7)
 
-    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true))
+    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true, maxDepth: 9))
     #expect(configInit.config.xlang == false)
     #expect(configInit.config.trackRef == false)
     #expect(configInit.config.compatible == true)
+    #expect(configInit.config.maxDepth == 9)
 }
 
 @Test

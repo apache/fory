@@ -299,6 +299,9 @@ public final class TypeResolver {
     }
 
     public func readDynamicValue(typeInfo: DynamicTypeInfo, context: ReadContext) throws -> Any {
+        try context.enterDynamicAnyDepth()
+        defer { context.leaveDynamicAnyDepth() }
+
         let value: Any
         switch typeInfo.wireTypeID {
         case .bool:

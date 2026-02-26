@@ -182,11 +182,13 @@ public final class WriteContext {
     public let trackRef: Bool
     public let compatible: Bool
     public let checkClassVersion: Bool
+    public let maxDepth: Int
     public let refWriter: RefWriter
     public let compatibleTypeDefState: CompatibleTypeDefWriteState
     public let metaStringWriteState: MetaStringWriteState
     private var compatibleTypeDefStateUsed = false
     private var metaStringWriteStateUsed = false
+    private var dynamicAnyDepth = 0
 
     public init(
         buffer: ByteBuffer,
@@ -194,6 +196,7 @@ public final class WriteContext {
         trackRef: Bool,
         compatible: Bool = false,
         checkClassVersion: Bool = true,
+        maxDepth: Int = 5,
         compatibleTypeDefState: CompatibleTypeDefWriteState = CompatibleTypeDefWriteState(),
         metaStringWriteState: MetaStringWriteState = MetaStringWriteState()
     ) {
@@ -202,9 +205,31 @@ public final class WriteContext {
         self.trackRef = trackRef
         self.compatible = compatible
         self.checkClassVersion = checkClassVersion
+        self.maxDepth = maxDepth
         self.refWriter = RefWriter()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringWriteState = metaStringWriteState
+    }
+
+    @inline(__always)
+    public func enterDynamicAnyDepth() throws {
+        if maxDepth < 0 {
+            throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
+        }
+        let nextDepth = dynamicAnyDepth + 1
+        if nextDepth > maxDepth {
+            throw ForyError.invalidData(
+                "dynamic Any nesting depth \(nextDepth) exceeds configured maxDepth \(maxDepth)"
+            )
+        }
+        dynamicAnyDepth = nextDepth
+    }
+
+    @inline(__always)
+    public func leaveDynamicAnyDepth() {
+        if dynamicAnyDepth > 0 {
+            dynamicAnyDepth -= 1
+        }
     }
 
     public func writeCompatibleTypeMeta<T: Serializer>(
@@ -233,6 +258,9 @@ public final class WriteContext {
     }
 
     public func resetObjectState() {
+        if dynamicAnyDepth != 0 {
+            dynamicAnyDepth = 0
+        }
         if trackRef {
             refWriter.reset()
         }
@@ -269,11 +297,13 @@ public final class ReadContext {
     public let checkClassVersion: Bool
     public let maxCollectionLength: Int
     public let maxBinaryLength: Int
+    public let maxDepth: Int
     public let refReader: RefReader
     public let compatibleTypeDefState: CompatibleTypeDefReadState
     public let metaStringReadState: MetaStringReadState
     private var compatibleTypeDefStateUsed = false
     private var metaStringReadStateUsed = false
+    private var dynamicAnyDepth = 0
 
     private var pendingRefStack: [PendingRefSlot] = []
     private var pendingCompatibleTypeMeta: [ObjectIdentifier: [TypeMeta]] = [:]
@@ -288,6 +318,7 @@ public final class ReadContext {
         checkClassVersion: Bool = true,
         maxCollectionLength: Int = 1_000_000,
         maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxDepth: Int = 5,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
     ) {
@@ -298,9 +329,31 @@ public final class ReadContext {
         self.checkClassVersion = checkClassVersion
         self.maxCollectionLength = maxCollectionLength
         self.maxBinaryLength = maxBinaryLength
+        self.maxDepth = maxDepth
         self.refReader = RefReader()
         self.compatibleTypeDefState = compatibleTypeDefState
         self.metaStringReadState = metaStringReadState
+    }
+
+    @inline(__always)
+    public func enterDynamicAnyDepth() throws {
+        if maxDepth < 0 {
+            throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
+        }
+        let nextDepth = dynamicAnyDepth + 1
+        if nextDepth > maxDepth {
+            throw ForyError.invalidData(
+                "dynamic Any nesting depth \(nextDepth) exceeds configured maxDepth \(maxDepth)"
+            )
+        }
+        dynamicAnyDepth = nextDepth
+    }
+
+    @inline(__always)
+    public func leaveDynamicAnyDepth() {
+        if dynamicAnyDepth > 0 {
+            dynamicAnyDepth -= 1
+        }
     }
 
     @inline(__always)
@@ -453,6 +506,9 @@ public final class ReadContext {
     }
 
     public func resetObjectState() {
+        if dynamicAnyDepth != 0 {
+            dynamicAnyDepth = 0
+        }
         if trackRef {
             refReader.reset()
             if !pendingRefStack.isEmpty {
