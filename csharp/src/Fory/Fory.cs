@@ -49,7 +49,8 @@ public sealed class Fory
             Config.Compatible,
             Config.CheckStructVersion,
             new CompatibleTypeDefReadState(),
-            new MetaStringReadState());
+            new MetaStringReadState(),
+            Config.MaxDepth);
     }
 
     public Config Config { get; }

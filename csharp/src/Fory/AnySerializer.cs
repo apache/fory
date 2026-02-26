@@ -96,20 +96,16 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 {
                     uint reservedRefId = context.RefReader.ReserveRefId();
                     context.RefReader.PushPendingReference(reservedRefId);
-                    if (readTypeInfo)
+                    try
                     {
-                        ReadAnyTypeInfo(context);
+                        object? value = ReadNonNullDynamicAny(context, readTypeInfo);
+                        context.RefReader.FinishPendingReferenceIfNeeded(value);
+                        return value;
                     }
-
-                    object? value = ReadData(context);
-                    if (readTypeInfo)
+                    finally
                     {
-                        context.ClearDynamicTypeInfo(typeof(object));
+                        context.RefReader.PopPendingReference();
                     }
-
-                    context.RefReader.FinishPendingReferenceIfNeeded(value);
-                    context.RefReader.PopPendingReference();
-                    return value;
                 }
                 case RefFlag.NotNullValue:
                     break;
@@ -118,18 +114,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
             }
         }
 
-        if (readTypeInfo)
-        {
-            ReadAnyTypeInfo(context);
-        }
-
-        object? result = ReadData(context);
-        if (readTypeInfo)
-        {
-            context.ClearDynamicTypeInfo(typeof(object));
-        }
-
-        return result;
+        return ReadNonNullDynamicAny(context, readTypeInfo);
     }
 
     private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
@@ -142,6 +127,31 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
     {
         DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
         context.SetDynamicTypeInfo(typeof(object), typeInfo);
+    }
+
+    private object? ReadNonNullDynamicAny(ReadContext context, bool readTypeInfo)
+    {
+        context.IncreaseDynamicReadDepth();
+        bool loadedDynamicTypeInfo = false;
+        try
+        {
+            if (readTypeInfo)
+            {
+                ReadAnyTypeInfo(context);
+                loadedDynamicTypeInfo = true;
+            }
+
+            return ReadData(context);
+        }
+        finally
+        {
+            if (loadedDynamicTypeInfo)
+            {
+                context.ClearDynamicTypeInfo(typeof(object));
+            }
+
+            context.DecreaseDynamicReadDepth();
+        }
     }
 }
 

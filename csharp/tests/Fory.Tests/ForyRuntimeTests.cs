@@ -837,6 +837,31 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void DynamicObjectReadDepthExceededThrows()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Build();
+        object? value = new List<object?> { new List<object?> { 1 } };
+        byte[] payload = writer.Serialize<object?>(value);
+
+        ForyRuntime reader = ForyRuntime.Builder().MaxDepth(2).Build();
+        InvalidDataException ex = Assert.Throws<InvalidDataException>(() => reader.Deserialize<object?>(payload));
+        Assert.Contains("dynamic object nesting depth", ex.Message);
+    }
+
+    [Fact]
+    public void DynamicObjectReadDepthWithinLimitRoundTrip()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().MaxDepth(3).Build();
+        object? value = new List<object?> { new List<object?> { 1 } };
+
+        List<object?> outer = Assert.IsType<List<object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(value)));
+        Assert.Single(outer);
+        List<object?> inner = Assert.IsType<List<object?>>(outer[0]);
+        Assert.Single(inner);
+        Assert.Equal(1, inner[0]);
+    }
+
+    [Fact]
     public void GeneratedSerializerSupportsObjectKeyMap()
     {
         ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
