@@ -146,7 +146,7 @@ func TestStreamReaderSequential(t *testing.T) {
 	msg3 := &StreamTestStruct{ID: 3, Name: "Msg 3", Data: []byte{3, 3}}
 
 	var buf bytes.Buffer
-	
+
 	// Serialize sequentially into one stream
 	data1, _ := f.Serialize(msg1)
 	buf.Write(data1)
