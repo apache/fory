@@ -106,19 +106,26 @@ public:
     return size_ - reader_index_;
   }
 
-  FORY_ALWAYS_INLINE bool ensure_size(uint32_t target_size, Error &error) {
+  FORY_ALWAYS_INLINE bool ensure_size(uint64_t target_size, Error &error) {
     if (FORY_PREDICT_TRUE(target_size <= size_)) {
       return true;
     }
-    if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
-      error.set_buffer_out_of_bound(target_size, 0, size_);
+    if (FORY_PREDICT_FALSE(target_size >
+                           std::numeric_limits<uint32_t>::max())) {
+      error.set_error(ErrorCode::OutOfBound,
+                      "reader index exceeds uint32 range");
       return false;
     }
-    if (FORY_PREDICT_FALSE(!fill_to(target_size, error))) {
+    const auto target_u32 = static_cast<uint32_t>(target_size);
+    if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
+      error.set_buffer_out_of_bound(target_u32, 0, size_);
+      return false;
+    }
+    if (FORY_PREDICT_FALSE(!fill_to(target_u32, error))) {
       return false;
     }
     if (FORY_PREDICT_FALSE(target_size > size_)) {
-      error.set_buffer_out_of_bound(target_size, 0, size_);
+      error.set_buffer_out_of_bound(target_u32, 0, size_);
       return false;
     }
     return true;
@@ -1246,16 +1253,7 @@ private:
     if (FORY_PREDICT_TRUE(target <= size_)) {
       return true;
     }
-    if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
-      error.set_buffer_out_of_bound(reader_index_, length, size_);
-      return false;
-    }
-    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return false;
-    }
-    if (FORY_PREDICT_FALSE(!fill_to(static_cast<uint32_t>(target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
       if (error.ok()) {
         error.set_buffer_out_of_bound(reader_index_, length, size_);
       }
@@ -1273,13 +1271,7 @@ private:
     uint32_t result = 0;
     for (int i = 0; i < 5; ++i) {
       const uint64_t target = static_cast<uint64_t>(position) + 1;
-      if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-        error.set_error(ErrorCode::OutOfBound,
-                        "reader index exceeds uint32 range");
-        return 0;
-      }
-      if (FORY_PREDICT_FALSE(
-              !ensure_size(static_cast<uint32_t>(target), error))) {
+      if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
         return 0;
       }
       uint8_t b = data_[position++];
@@ -1298,13 +1290,7 @@ private:
     uint64_t result = 0;
     for (int i = 0; i < 8; ++i) {
       const uint64_t target = static_cast<uint64_t>(position) + 1;
-      if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-        error.set_error(ErrorCode::OutOfBound,
-                        "reader index exceeds uint32 range");
-        return 0;
-      }
-      if (FORY_PREDICT_FALSE(
-              !ensure_size(static_cast<uint32_t>(target), error))) {
+      if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
         return 0;
       }
       uint8_t b = data_[position++];
@@ -1315,13 +1301,7 @@ private:
       }
     }
     const uint64_t target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return 0;
-    }
-    if (FORY_PREDICT_FALSE(
-            !ensure_size(static_cast<uint32_t>(target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(target, error))) {
       return 0;
     }
     uint8_t b = data_[position++];
@@ -1333,14 +1313,7 @@ private:
   FORY_ALWAYS_INLINE uint64_t read_var_uint36_small_slow(Error &error) {
     uint32_t position = reader_index_;
     const uint64_t first_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(first_target >
-                           std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return 0;
-    }
-    if (FORY_PREDICT_FALSE(
-            !ensure_size(static_cast<uint32_t>(first_target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(first_target, error))) {
       return 0;
     }
     uint8_t b = data_[position++];
@@ -1351,14 +1324,7 @@ private:
     }
 
     const uint64_t second_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(second_target >
-                           std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return 0;
-    }
-    if (FORY_PREDICT_FALSE(
-            !ensure_size(static_cast<uint32_t>(second_target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(second_target, error))) {
       return 0;
     }
     b = data_[position++];
@@ -1369,14 +1335,7 @@ private:
     }
 
     const uint64_t third_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(third_target >
-                           std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return 0;
-    }
-    if (FORY_PREDICT_FALSE(
-            !ensure_size(static_cast<uint32_t>(third_target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(third_target, error))) {
       return 0;
     }
     b = data_[position++];
@@ -1387,14 +1346,7 @@ private:
     }
 
     const uint64_t fourth_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(fourth_target >
-                           std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return 0;
-    }
-    if (FORY_PREDICT_FALSE(
-            !ensure_size(static_cast<uint32_t>(fourth_target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(fourth_target, error))) {
       return 0;
     }
     b = data_[position++];
@@ -1405,14 +1357,7 @@ private:
     }
 
     const uint64_t fifth_target = static_cast<uint64_t>(position) + 1;
-    if (FORY_PREDICT_FALSE(fifth_target >
-                           std::numeric_limits<uint32_t>::max())) {
-      error.set_error(ErrorCode::OutOfBound,
-                      "reader index exceeds uint32 range");
-      return 0;
-    }
-    if (FORY_PREDICT_FALSE(
-            !ensure_size(static_cast<uint32_t>(fifth_target), error))) {
+    if (FORY_PREDICT_FALSE(!ensure_size(fifth_target, error))) {
       return 0;
     }
     b = data_[position++];
