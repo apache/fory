@@ -38,12 +38,12 @@ pub struct Config {
     /// When enabled, shared references and circular references are tracked
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
-    /// Maximum byte length of a single deserialized string. `None` = unlimited.
-    pub max_string_bytes: Option<usize>,
-    /// Maximum element count of a single deserialized collection. `None` = unlimited.
-    pub max_collection_size: Option<usize>,
-    /// Maximum entry count of a single deserialized map. `None` = unlimited.
-    pub max_map_size: Option<usize>,
+    /// Maximum byte length of a single deserialized string.
+    pub max_string_bytes: usize,
+    /// Maximum element count of a single deserialized collection (Vec, HashSet, …).
+    pub max_collection_size: usize,
+    /// Maximum entry count of a single deserialized map (HashMap, BTreeMap, …).
+    pub max_map_size: usize,
 }
 
 impl Default for Config {
@@ -56,9 +56,9 @@ impl Default for Config {
             max_dyn_depth: 5,
             check_struct_version: false,
             track_ref: false,
-            max_string_bytes: None,
-            max_collection_size: None,
-            max_map_size: None,
+            max_string_bytes: i32::MAX as usize,
+            max_collection_size: i32::MAX as usize,
+            max_map_size: i32::MAX as usize,
         }
     }
 }
@@ -112,17 +112,17 @@ impl Config {
     }
 
     #[inline(always)]
-    pub fn max_string_bytes(&self) -> Option<usize> {
+    pub fn max_string_bytes(&self) -> usize {
         self.max_string_bytes
     }
 
     #[inline(always)]
-    pub fn max_collection_size(&self) -> Option<usize> {
+    pub fn max_collection_size(&self) -> usize {
         self.max_collection_size
     }
 
     #[inline(always)]
-    pub fn max_map_size(&self) -> Option<usize> {
+    pub fn max_map_size(&self) -> usize {
         self.max_map_size
     }
 }

@@ -331,7 +331,7 @@ impl Fory {
     /// let fory = Fory::default().max_string_bytes(1024 * 1024);
     /// ```
     pub fn max_string_bytes(mut self, max: usize) -> Self {
-        self.config.max_string_bytes = Some(max);
+        self.config.max_string_bytes = max;
         self
     }
 
@@ -345,7 +345,7 @@ impl Fory {
     /// let fory = Fory::default().max_collection_size(10_000);
     /// ```
     pub fn max_collection_size(mut self, max: usize) -> Self {
-        self.config.max_collection_size = Some(max);
+        self.config.max_collection_size = max;
         self
     }
 
@@ -359,7 +359,7 @@ impl Fory {
     /// let fory = Fory::default().max_map_size(10_000);
     /// ```
     pub fn max_map_size(mut self, max: usize) -> Self {
-        self.config.max_map_size = Some(max);
+        self.config.max_map_size = max;
         self
     }
 

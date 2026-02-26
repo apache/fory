@@ -49,10 +49,10 @@ impl Serializer for String {
         // For UTF-16, `len` is the number of code-units (each 2 bytes wide).
         // Convert to a byte budget before checking so the limit means bytes,
         // not code-units.  Latin-1 and UTF-8 already store `len` as byte count.
-        let byte_len = if encoding == 1 {
-            (len as usize).saturating_mul(2)
-        } else {
-            len as usize
+        let len_usize = usize::try_from(len).unwrap_or(usize::MAX);
+        let byte_len = match encoding {
+            1 => len_usize.saturating_mul(2),
+            _ => len_usize,
         };
         context.check_string_bytes(byte_len)?;
         let s = match encoding {

@@ -315,9 +315,9 @@ pub struct ReadContext<'a> {
     xlang: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
-    max_string_bytes: Option<usize>,
-    max_collection_size: Option<usize>,
-    max_map_size: Option<usize>,
+    max_string_bytes: usize,
+    max_collection_size: usize,
+    max_map_size: usize,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -479,40 +479,55 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    pub fn check_string_bytes(&self, len: usize) -> Result<(), Error> {
-        if let Some(max) = self.max_string_bytes {
-            if len > max {
-                return Err(Error::invalid_data(format!(
-                    "string byte length {} exceeds limit {}",
-                    len, max
-                )));
-            }
+    pub fn check_string_bytes(&self, byte_len: usize) -> Result<(), Error> {
+        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
+        if byte_len > remaining {
+            return Err(Error::invalid_data(format!(
+                "string byte length {} exceeds buffer remaining {}",
+                byte_len, remaining
+            )));
+        }
+        if byte_len > self.max_string_bytes {
+            return Err(Error::invalid_data(format!(
+                "string byte length {} exceeds limit {}",
+                byte_len, self.max_string_bytes
+            )));
         }
         Ok(())
     }
 
     #[inline(always)]
     pub fn check_collection_size(&self, len: usize) -> Result<(), Error> {
-        if let Some(max) = self.max_collection_size {
-            if len > max {
-                return Err(Error::invalid_data(format!(
-                    "collection length {} exceeds limit {}",
-                    len, max
-                )));
-            }
+        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
+        if len > remaining {
+            return Err(Error::invalid_data(format!(
+                "collection length {} exceeds buffer remaining {}",
+                len, remaining
+            )));
+        }
+        if len > self.max_collection_size {
+            return Err(Error::invalid_data(format!(
+                "collection length {} exceeds limit {}",
+                len, self.max_collection_size
+            )));
         }
         Ok(())
     }
 
     #[inline(always)]
     pub fn check_map_size(&self, len: usize) -> Result<(), Error> {
-        if let Some(max) = self.max_map_size {
-            if len > max {
-                return Err(Error::invalid_data(format!(
-                    "map entry count {} exceeds limit {}",
-                    len, max
-                )));
-            }
+        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
+        if len > remaining / 2 {
+            return Err(Error::invalid_data(format!(
+                "map entry count {} exceeds buffer remaining capacity {}",
+                len, remaining
+            )));
+        }
+        if len > self.max_map_size {
+            return Err(Error::invalid_data(format!(
+                "map entry count {} exceeds limit {}",
+                len, self.max_map_size
+            )));
         }
         Ok(())
     }

@@ -547,11 +547,11 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_varuint32()?;
+        if len == 0 {
+            return Ok(HashMap::new());
+        }
         context.check_map_size(len as usize)?;
         let mut map = HashMap::<K, V>::with_capacity(len as usize);
-        if len == 0 {
-            return Ok(map);
-        }
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
