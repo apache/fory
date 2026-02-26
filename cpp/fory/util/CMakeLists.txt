@@ -19,6 +19,7 @@ set(FORY_UTIL_SOURCES
     buffer.cc
     error.cc
     logging.cc
+    stream.cc
     string_util.cc
     time_util.cc
 )

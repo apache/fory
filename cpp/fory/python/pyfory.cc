@@ -64,10 +64,69 @@ static std::string fetch_python_error_message() {
   return message;
 }
 
+enum class PythonStreamReadMethod {
+  ReadInto,
+  RecvInto,
+  RecvIntoUnderscore,
+};
+
+static const char *
+python_stream_read_method_name(PythonStreamReadMethod method) {
+  switch (method) {
+  case PythonStreamReadMethod::ReadInto:
+    return "readinto";
+  case PythonStreamReadMethod::RecvInto:
+    return "recvinto";
+  case PythonStreamReadMethod::RecvIntoUnderscore:
+    return "recv_into";
+  }
+  return "readinto";
+}
+
+static bool resolve_python_stream_read_method(PyObject *stream,
+                                              PythonStreamReadMethod *method,
+                                              std::string *error_message) {
+  struct MethodCandidate {
+    const char *name;
+    PythonStreamReadMethod method;
+  };
+  constexpr MethodCandidate k_candidates[] = {
+      {"readinto", PythonStreamReadMethod::ReadInto},
+      {"recv_into", PythonStreamReadMethod::RecvIntoUnderscore},
+      {"recvinto", PythonStreamReadMethod::RecvInto},
+  };
+  for (const auto &candidate : k_candidates) {
+    const int has_method = PyObject_HasAttrString(stream, candidate.name);
+    if (has_method < 0) {
+      *error_message = fetch_python_error_message();
+      return false;
+    }
+    if (has_method == 0) {
+      continue;
+    }
+    PyObject *method_obj = PyObject_GetAttrString(stream, candidate.name);
+    if (method_obj == nullptr) {
+      *error_message = fetch_python_error_message();
+      return false;
+    }
+    const bool is_callable = PyCallable_Check(method_obj) != 0;
+    Py_DECREF(method_obj);
+    if (is_callable) {
+      *method = candidate.method;
+      return true;
+    }
+  }
+  *error_message = "stream object must provide readinto(buffer), "
+                   "recv_into(buffer, size) or recvinto(buffer, size) method";
+  return false;
+}
+
 class PythonStreamReader final : public StreamReader {
 public:
-  explicit PythonStreamReader(PyObject *stream, uint32_t buffer_size)
-      : stream_(stream),
+  explicit PythonStreamReader(PyObject *stream, uint32_t buffer_size,
+                              PythonStreamReadMethod read_method)
+      : stream_(stream), read_method_(read_method),
+        read_method_name_(python_stream_read_method_name(read_method)),
         data_(std::max<uint32_t>(buffer_size, static_cast<uint32_t>(1))),
         owned_buffer_(std::make_unique<Buffer>()) {
     FORY_CHECK(stream_ != nullptr) << "stream must not be null";
@@ -261,9 +320,19 @@ private:
       PyGILState_Release(gil_state);
       return Unexpected(Error::io_error(message));
     }
-    PyObject *read_bytes_obj =
-        PyObject_CallMethod(stream_, "recvinto", "On", memory_view,
-                            static_cast<Py_ssize_t>(length));
+    PyObject *read_bytes_obj = nullptr;
+    switch (read_method_) {
+    case PythonStreamReadMethod::ReadInto:
+      read_bytes_obj =
+          PyObject_CallMethod(stream_, read_method_name_, "O", memory_view);
+      break;
+    case PythonStreamReadMethod::RecvInto:
+    case PythonStreamReadMethod::RecvIntoUnderscore:
+      read_bytes_obj =
+          PyObject_CallMethod(stream_, read_method_name_, "On", memory_view,
+                              static_cast<Py_ssize_t>(length));
+      break;
+    }
     Py_DECREF(memory_view);
     if (read_bytes_obj == nullptr) {
       std::string message = fetch_python_error_message();
@@ -281,8 +350,9 @@ private:
     PyGILState_Release(gil_state);
     if (read_bytes < 0 ||
         static_cast<uint64_t>(read_bytes) > static_cast<uint64_t>(length)) {
-      return Unexpected(
-          Error::io_error("python stream recvinto returned invalid length"));
+      return Unexpected(Error::io_error("python stream " +
+                                        std::string(read_method_name_) +
+                                        " returned invalid length"));
     }
     return static_cast<uint32_t>(read_bytes);
   }
@@ -297,6 +367,8 @@ private:
   }
 
   PyObject *stream_ = nullptr;
+  PythonStreamReadMethod read_method_;
+  const char *read_method_name_ = nullptr;
   std::vector<uint8_t> data_;
   Buffer *buffer_ = nullptr;
   std::unique_ptr<Buffer> owned_buffer_;
@@ -338,18 +410,13 @@ int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
     *error_message = "stream must not be null";
     return -1;
   }
-  const int has_recvinto = PyObject_HasAttrString(stream, "recvinto");
-  if (has_recvinto < 0) {
-    *error_message = fetch_python_error_message();
-    return -1;
-  }
-  if (has_recvinto == 0) {
-    *error_message = "stream object must provide recvinto(buffer, size) method";
+  PythonStreamReadMethod read_method = PythonStreamReadMethod::ReadInto;
+  if (!resolve_python_stream_read_method(stream, &read_method, error_message)) {
     return -1;
   }
   try {
     auto stream_reader =
-        std::make_shared<PythonStreamReader>(stream, buffer_size);
+        std::make_shared<PythonStreamReader>(stream, buffer_size, read_method);
     *out = new Buffer(*stream_reader);
     return 0;
   } catch (const std::exception &e) {

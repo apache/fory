@@ -41,6 +41,61 @@ class OneByteStream:
         self._offset += read_size
         return self._data[start : start + read_size]
 
+    def readinto(self, buffer):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if len(view) == 0:
+            return 0
+        read_size = min(1, len(view), len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
+    def recv_into(self, buffer, size=-1):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if size < 0 or size > len(view):
+            size = len(view)
+        if size == 0:
+            return 0
+        read_size = min(1, size, len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
+    def recvinto(self, buffer, size=-1):
+        return self.recv_into(buffer, size)
+
+
+class RecvIntoOnlyStream:
+    def __init__(self, data: bytes):
+        self._data = data
+        self._offset = 0
+
+    def recv_into(self, buffer, size=-1):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if size < 0 or size > len(view):
+            size = len(view)
+        if size == 0:
+            return 0
+        read_size = min(1, size, len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
+
+class LegacyRecvIntoOnlyStream:
+    def __init__(self, data: bytes):
+        self._data = data
+        self._offset = 0
+
     def recvinto(self, buffer, size=-1):
         if self._offset >= len(self._data):
             return 0
@@ -305,6 +360,16 @@ def test_stream_buffer_read():
     assert reader.read_var_uint64() == 0x1FFFF
     assert reader.read_bytes_and_size() == b"stream-data"
     assert reader.read_string() == "hello-stream"
+
+
+def test_stream_buffer_read_with_recv_into():
+    reader = Buffer.from_stream(RecvIntoOnlyStream(bytes([0x11, 0x22, 0x33, 0x44])))
+    assert reader.read_uint32() == 0x44332211
+
+
+def test_stream_buffer_read_with_legacy_recvinto():
+    reader = Buffer.from_stream(LegacyRecvIntoOnlyStream(bytes([0x11, 0x22, 0x33, 0x44])))
+    assert reader.read_uint32() == 0x44332211
 
 
 def test_stream_buffer_set_reader_index():

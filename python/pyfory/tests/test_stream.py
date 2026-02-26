@@ -38,7 +38,19 @@ class OneByteStream:
         self._offset += read_size
         return self._data[start : start + read_size]
 
-    def recvinto(self, buffer, size=-1):
+    def readinto(self, buffer):
+        if self._offset >= len(self._data):
+            return 0
+        view = memoryview(buffer).cast("B")
+        if len(view) == 0:
+            return 0
+        read_size = min(1, len(view), len(self._data) - self._offset)
+        start = self._offset
+        self._offset += read_size
+        view[:read_size] = self._data[start : start + read_size]
+        return read_size
+
+    def recv_into(self, buffer, size=-1):
         if self._offset >= len(self._data):
             return 0
         view = memoryview(buffer).cast("B")
@@ -51,6 +63,9 @@ class OneByteStream:
         self._offset += read_size
         view[:read_size] = self._data[start : start + read_size]
         return read_size
+
+    def recvinto(self, buffer, size=-1):
+        return self.recv_into(buffer, size)
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -118,9 +133,7 @@ def test_stream_deserialize_multiple_objects_from_single_stream(xlang):
     for obj in expected:
         fory.serialize(obj, write_buffer)
 
-    reader = Buffer.from_stream(
-        OneByteStream(write_buffer.get_bytes(0, write_buffer.get_writer_index()))
-    )
+    reader = Buffer.from_stream(OneByteStream(write_buffer.get_bytes(0, write_buffer.get_writer_index())))
     for obj in expected:
         assert fory.deserialize(reader) == obj
 
