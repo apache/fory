@@ -42,8 +42,9 @@ Buffer::Buffer(Buffer &&buffer) noexcept {
   reader_index_ = buffer.reader_index_;
   wrapped_vector_ = buffer.wrapped_vector_;
   stream_reader_ = buffer.stream_reader_;
-  buffer.stream_reader_ = nullptr;
   stream_reader_owner_ = std::move(buffer.stream_reader_owner_);
+  rebind_stream_reader_to_this();
+  buffer.stream_reader_ = nullptr;
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
@@ -51,6 +52,7 @@ Buffer::Buffer(Buffer &&buffer) noexcept {
 }
 
 Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
+  detach_stream_reader_from_this();
   if (own_data_) {
     free(data_);
     data_ = nullptr;
@@ -62,8 +64,9 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
   reader_index_ = buffer.reader_index_;
   wrapped_vector_ = buffer.wrapped_vector_;
   stream_reader_ = buffer.stream_reader_;
-  buffer.stream_reader_ = nullptr;
   stream_reader_owner_ = std::move(buffer.stream_reader_owner_);
+  rebind_stream_reader_to_this();
+  buffer.stream_reader_ = nullptr;
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
@@ -72,6 +75,7 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
 }
 
 Buffer::~Buffer() {
+  detach_stream_reader_from_this();
   if (own_data_) {
     free(data_);
     data_ = nullptr;

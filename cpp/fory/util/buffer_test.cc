@@ -248,8 +248,6 @@ TEST(Buffer, StreamGetAndReaderIndexFromOneByteSource) {
   std::vector<uint8_t> raw{0x11, 0x22, 0x33, 0x44, 0x55};
   OneByteIStream one_byte_stream(raw);
   ForyInputStream stream(one_byte_stream, 2);
-  auto fill_result = stream.fill_buffer(4);
-  ASSERT_TRUE(fill_result.ok()) << fill_result.error().to_string();
   Buffer reader(stream);
   Error error;
   ASSERT_TRUE(reader.ensure_readable(4, error)) << error.to_string();

@@ -189,7 +189,7 @@ TEST(StreamSerializationTest, SequentialDeserializeFromSingleStream) {
   ASSERT_TRUE(third.ok()) << third.error().to_string();
   EXPECT_EQ(third.value(), envelope);
 
-  EXPECT_EQ(stream.get_buffer().reader_index(), bytes.size());
+  EXPECT_EQ(stream.get_buffer().remaining_size(), 0U);
 }
 
 TEST(StreamSerializationTest, SharedPointerIdentityRoundTrip) {

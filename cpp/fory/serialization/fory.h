@@ -609,16 +609,13 @@ public:
     }
     auto header_result = read_header(buffer);
     if (FORY_PREDICT_FALSE(!header_result.ok())) {
-      buffer.sync_stream_reader_index();
       return Unexpected(std::move(header_result).error());
     }
     auto header = std::move(header_result).value();
     if (header.is_null) {
-      buffer.sync_stream_reader_index();
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
     }
     if (FORY_PREDICT_FALSE(header.is_xlang != config_.xlang)) {
-      buffer.sync_stream_reader_index();
       return Unexpected(Error::invalid_data(
           "Protocol mismatch: payload xlang=" +
           std::string(header.is_xlang ? "true" : "false") +
@@ -749,14 +746,10 @@ private:
     T result = Serializer<T>::read(*read_ctx_, top_level_ref_mode, true);
     // Check for errors at deserialization boundary
     if (FORY_PREDICT_FALSE(read_ctx_->has_error())) {
-      // Sync stream cursor once per top-level deserialize call.
-      buffer.sync_stream_reader_index();
       return Unexpected(read_ctx_->take_error());
     }
 
     read_ctx_->ref_reader().resolve_callbacks();
-    // Sync stream cursor once per top-level deserialize call.
-    buffer.sync_stream_reader_index();
     return result;
   }
 

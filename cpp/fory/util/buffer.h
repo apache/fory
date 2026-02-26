@@ -65,12 +65,15 @@ public:
         reader_index_(0), wrapped_vector_(nullptr),
         stream_reader_(&stream_reader) {
     if (auto *input_stream = dynamic_cast<ForyInputStream *>(&stream_reader)) {
+      input_stream->bind_buffer(this);
       try {
         stream_reader_owner_ = std::static_pointer_cast<StreamReader>(
             input_stream->shared_from_this());
       } catch (const std::bad_weak_ptr &) {
       }
     }
+    FORY_CHECK(&stream_reader_->get_buffer() == this)
+        << "StreamReader must hold and return the same Buffer instance";
   }
 
   Buffer(Buffer &&buffer) noexcept;
@@ -89,23 +92,6 @@ public:
 
   FORY_ALWAYS_INLINE bool is_stream_backed() const {
     return stream_reader_ != nullptr;
-  }
-
-  FORY_ALWAYS_INLINE void sync_stream_reader_index() {
-    if (stream_reader_ != nullptr) {
-      Buffer &stream_buffer = stream_reader_->get_buffer();
-      if (reader_index_ > stream_buffer.reader_index_) {
-        auto sync_result =
-            stream_reader_->skip(reader_index_ - stream_buffer.reader_index_);
-        FORY_CHECK(sync_result.ok()) << "failed to sync stream reader index: "
-                                     << sync_result.error().to_string();
-      } else if (reader_index_ < stream_buffer.reader_index_) {
-        auto sync_result =
-            stream_reader_->unread(stream_buffer.reader_index_ - reader_index_);
-        FORY_CHECK(sync_result.ok()) << "failed to sync stream reader index: "
-                                     << sync_result.error().to_string();
-      }
-    }
   }
 
   FORY_ALWAYS_INLINE uint32_t writer_index() { return writer_index_; }
@@ -978,7 +964,7 @@ public:
       error.set_buffer_out_of_bound(reader_index_, 1, size_);
       return 0;
     }
-    increase_reader_index(read_bytes, error);
+    reader_index_ += read_bytes;
     return value;
   }
 
@@ -1077,46 +1063,65 @@ public:
     uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
     uint64_t result = bulk & 0x7F;
     if ((bulk & 0x80) == 0) {
-      increase_reader_index(1, error);
+      reader_index_ = offset + 1;
       return result;
     }
     result |= (bulk >> 1) & 0x3F80;
     if ((bulk & 0x8000) == 0) {
-      increase_reader_index(2, error);
+      reader_index_ = offset + 2;
       return result;
     }
     result |= (bulk >> 2) & 0x1FC000;
     if ((bulk & 0x800000) == 0) {
-      increase_reader_index(3, error);
+      reader_index_ = offset + 3;
       return result;
     }
     result |= (bulk >> 3) & 0xFE00000;
     if ((bulk & 0x80000000) == 0) {
-      increase_reader_index(4, error);
+      reader_index_ = offset + 4;
       return result;
     }
     // 5th byte for bits 28-35 (up to 36 bits)
     result |= (bulk >> 4) & 0xFF0000000ULL;
-    increase_reader_index(5, error);
+    reader_index_ = offset + 5;
     return result;
   }
 
   /// Read raw bytes from buffer. Sets error on bounds violation.
   FORY_ALWAYS_INLINE void read_bytes(void *data, uint32_t length,
                                      Error &error) {
-    if (FORY_PREDICT_FALSE(!ensure_readable(length, error))) {
+    if (FORY_PREDICT_TRUE(length <= size_ - reader_index_)) {
+      copy(reader_index_, length, static_cast<uint8_t *>(data));
+      reader_index_ += length;
       return;
     }
-    copy(reader_index_, length, static_cast<uint8_t *>(data));
-    increase_reader_index(length, error);
+    if (FORY_PREDICT_TRUE(stream_reader_ == nullptr)) {
+      error.set_buffer_out_of_bound(reader_index_, length, size_);
+      return;
+    }
+    auto read_result =
+        stream_reader_->read_to(static_cast<uint8_t *>(data), length);
+    if (FORY_PREDICT_FALSE(!read_result.ok())) {
+      error = std::move(read_result).error();
+      return;
+    }
   }
 
   /// skip bytes in buffer. Sets error on bounds violation.
   FORY_ALWAYS_INLINE void skip(uint32_t length, Error &error) {
-    if (FORY_PREDICT_FALSE(!ensure_readable(length, error))) {
+    if (FORY_PREDICT_TRUE(length <= size_ - reader_index_)) {
+      reader_index_ += length;
       return;
     }
-    increase_reader_index(length, error);
+    if (FORY_PREDICT_TRUE(stream_reader_ == nullptr)) {
+      error.set_buffer_out_of_bound(reader_index_, length, size_);
+      return;
+    }
+    auto skip_result = stream_reader_->skip(length);
+    if (FORY_PREDICT_FALSE(!skip_result.ok())) {
+      error = std::move(skip_result).error();
+      return;
+    }
   }
 
   /// Return true if both buffers are the same size and contain the same bytes
@@ -1213,6 +1218,32 @@ public:
 private:
   friend class ForyInputStream;
 
+  FORY_ALWAYS_INLINE void rebind_stream_reader_to_this() {
+    if (stream_reader_ == nullptr) {
+      return;
+    }
+    if (auto *input_stream = dynamic_cast<ForyInputStream *>(stream_reader_)) {
+      input_stream->bind_buffer(this);
+      return;
+    }
+    FORY_CHECK(&stream_reader_->get_buffer() == this)
+        << "StreamReader must hold and return the same Buffer instance";
+  }
+
+  FORY_ALWAYS_INLINE void detach_stream_reader_from_this() {
+    if (stream_reader_ == nullptr) {
+      return;
+    }
+    auto *input_stream = dynamic_cast<ForyInputStream *>(stream_reader_);
+    if (input_stream == nullptr) {
+      return;
+    }
+    if (&input_stream->get_buffer() == this && input_stream->owned_buffer_ &&
+        input_stream->owned_buffer_.get() != this) {
+      input_stream->bind_buffer(input_stream->owned_buffer_.get());
+    }
+  }
+
   FORY_ALWAYS_INLINE bool fill_buffer(uint32_t min_fill_size, Error &error) {
     if (FORY_PREDICT_TRUE(min_fill_size <= size_ - reader_index_)) {
       return true;
@@ -1221,33 +1252,10 @@ private:
       error.set_buffer_out_of_bound(reader_index_, min_fill_size, size_);
       return false;
     }
-    Buffer &stream_buffer = stream_reader_->get_buffer();
-    if (reader_index_ > stream_buffer.reader_index_) {
-      auto sync_result =
-          stream_reader_->skip(reader_index_ - stream_buffer.reader_index_);
-      if (FORY_PREDICT_FALSE(!sync_result.ok())) {
-        error = std::move(sync_result).error();
-        return false;
-      }
-    } else if (reader_index_ < stream_buffer.reader_index_) {
-      auto sync_result =
-          stream_reader_->unread(stream_buffer.reader_index_ - reader_index_);
-      if (FORY_PREDICT_FALSE(!sync_result.ok())) {
-        error = std::move(sync_result).error();
-        return false;
-      }
-    }
-
     auto fill_result = stream_reader_->fill_buffer(min_fill_size);
     if (FORY_PREDICT_FALSE(!fill_result.ok())) {
       error = std::move(fill_result).error();
       return false;
-    }
-    if (this != &stream_buffer) {
-      data_ = stream_buffer.data_;
-      size_ = stream_buffer.size_;
-      writer_index_ = stream_buffer.writer_index_;
-      reader_index_ = stream_buffer.reader_index_;
     }
     if (FORY_PREDICT_FALSE(min_fill_size > size_ - reader_index_)) {
       error.set_buffer_out_of_bound(reader_index_, min_fill_size, size_);

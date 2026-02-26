@@ -31,17 +31,17 @@ namespace fory {
 ForyInputStream::ForyInputStream(std::istream &stream, uint32_t buffer_size)
     : stream_(&stream),
       data_(std::max<uint32_t>(buffer_size, static_cast<uint32_t>(1))),
-      buffer_(std::make_unique<Buffer>(*this)) {
-  init_buffer_view();
+      owned_buffer_(std::make_unique<Buffer>()) {
+  bind_buffer(owned_buffer_.get());
 }
 
 ForyInputStream::ForyInputStream(std::shared_ptr<std::istream> stream,
                                  uint32_t buffer_size)
     : stream_owner_(std::move(stream)), stream_(stream_owner_.get()),
       data_(std::max<uint32_t>(buffer_size, static_cast<uint32_t>(1))),
-      buffer_(std::make_unique<Buffer>(*this)) {
+      owned_buffer_(std::make_unique<Buffer>()) {
   FORY_CHECK(stream_owner_ != nullptr) << "stream must not be null";
-  init_buffer_view();
+  bind_buffer(owned_buffer_.get());
 }
 
 ForyInputStream::~ForyInputStream() = default;
@@ -97,39 +97,70 @@ Result<void, Error> ForyInputStream::fill_buffer(uint32_t min_fill_size) {
 }
 
 Result<void, Error> ForyInputStream::read_to(uint8_t *dst, uint32_t length) {
+  const uint32_t read_pos = buffer_->reader_index_;
+  const uint32_t total_length = length;
+  uint32_t available = remaining_size();
+  if (available >= length) {
+    std::memcpy(dst, buffer_->data_ + buffer_->reader_index_,
+                static_cast<size_t>(length));
+    buffer_->reader_index_ += length;
+    return Result<void, Error>();
+  }
+
+  if (available > 0) {
+    std::memcpy(dst, buffer_->data_ + buffer_->reader_index_,
+                static_cast<size_t>(available));
+    buffer_->reader_index_ += available;
+    dst += available;
+    length -= available;
+  }
+
+  std::streambuf *source = stream_->rdbuf();
+  if (source == nullptr) {
+    return Unexpected(Error::io_error("input stream has no stream buffer"));
+  }
   uint32_t copied = 0;
   while (copied < length) {
-    uint32_t available = remaining_size();
-    if (available == 0) {
-      auto fill_result = fill_buffer(1);
-      if (FORY_PREDICT_FALSE(!fill_result.ok())) {
-        return fill_result;
-      }
-      available = remaining_size();
+    const std::streamsize read_bytes =
+        source->sgetn(reinterpret_cast<char *>(dst + copied),
+                      static_cast<std::streamsize>(length - copied));
+    if (read_bytes <= 0) {
+      return Unexpected(
+          Error::buffer_out_of_bound(read_pos, total_length, buffer_->size_));
     }
-    uint32_t to_copy = std::min(available, length - copied);
-    std::memcpy(dst + copied, buffer_->data_ + buffer_->reader_index_,
-                static_cast<size_t>(to_copy));
-    buffer_->reader_index_ += to_copy;
-    copied += to_copy;
+    copied += static_cast<uint32_t>(read_bytes);
   }
   return Result<void, Error>();
 }
 
 Result<void, Error> ForyInputStream::skip(uint32_t size) {
+  const uint32_t read_pos = buffer_->reader_index_;
+  const uint32_t total_size = size;
+  uint32_t available = remaining_size();
+  if (available >= size) {
+    buffer_->reader_index_ += size;
+    return Result<void, Error>();
+  }
+
+  buffer_->reader_index_ += available;
+  size -= available;
+
+  std::streambuf *source = stream_->rdbuf();
+  if (source == nullptr) {
+    return Unexpected(Error::io_error("input stream has no stream buffer"));
+  }
+  char discard[4096];
   uint32_t skipped = 0;
   while (skipped < size) {
-    uint32_t available = remaining_size();
-    if (available == 0) {
-      auto fill_result = fill_buffer(1);
-      if (FORY_PREDICT_FALSE(!fill_result.ok())) {
-        return fill_result;
-      }
-      available = remaining_size();
+    const uint32_t chunk = std::min<uint32_t>(
+        size - skipped, static_cast<uint32_t>(sizeof(discard)));
+    const std::streamsize read_bytes =
+        source->sgetn(discard, static_cast<std::streamsize>(chunk));
+    if (read_bytes <= 0) {
+      return Unexpected(
+          Error::buffer_out_of_bound(read_pos, total_size, buffer_->size_));
     }
-    uint32_t to_skip = std::min(available, size - skipped);
-    buffer_->reader_index_ += to_skip;
-    skipped += to_skip;
+    skipped += static_cast<uint32_t>(read_bytes);
   }
   return Result<void, Error>();
 }
@@ -154,13 +185,19 @@ void ForyInputStream::reserve(uint32_t new_size) {
   buffer_->data_ = data_.data();
 }
 
-void ForyInputStream::init_buffer_view() {
+void ForyInputStream::bind_buffer(Buffer *buffer) {
+  FORY_CHECK(buffer != nullptr) << "buffer must not be null";
+  if (buffer_ != nullptr && buffer_ != buffer) {
+    buffer_->stream_reader_ = nullptr;
+  }
+  buffer_ = buffer;
   buffer_->data_ = data_.data();
   buffer_->size_ = 0;
   buffer_->own_data_ = false;
   buffer_->writer_index_ = 0;
   buffer_->reader_index_ = 0;
   buffer_->wrapped_vector_ = nullptr;
+  buffer_->stream_reader_ = this;
 }
 
 } // namespace fory

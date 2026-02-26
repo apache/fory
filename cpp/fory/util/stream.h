@@ -68,16 +68,19 @@ public:
   Buffer &get_buffer() override;
 
 private:
+  friend class Buffer;
+
   uint32_t remaining_size() const;
 
   void reserve(uint32_t new_size);
 
-  void init_buffer_view();
+  void bind_buffer(Buffer *buffer);
 
   std::shared_ptr<std::istream> stream_owner_;
   std::istream *stream_ = nullptr;
   std::vector<uint8_t> data_;
-  std::unique_ptr<Buffer> buffer_;
+  Buffer *buffer_ = nullptr;
+  std::unique_ptr<Buffer> owned_buffer_;
 };
 
 } // namespace fory
