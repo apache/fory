@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers typed and dynamic serialization APIs in Apache Fory™ C#.
+This page covers typed serialization APIs in Apache Fory™ C#.
 
 ## Object Graph Serialization
 
@@ -88,9 +88,9 @@ MyType first = fory.Deserialize<MyType>(ref sequence);
 MyType second = fory.Deserialize<MyType>(ref sequence);
 ```
 
-## Dynamic Object API
+## Dynamic Payloads via Generic Object API
 
-Use object APIs when the compile-time type is unknown or heterogeneous.
+When the compile-time type is unknown or heterogeneous, use the generic API with `object?`.
 
 ```csharp
 Dictionary<object, object?> value = new()
@@ -100,8 +100,8 @@ Dictionary<object, object?> value = new()
     [true] = null,
 };
 
-byte[] payload = fory.SerializeObject(value);
-object? decoded = fory.DeserializeObject(payload);
+byte[] payload = fory.Serialize<object?>(value);
+object? decoded = fory.Deserialize<object?>(payload);
 ```
 
 ## Buffer Writer API
@@ -115,7 +115,7 @@ ArrayBufferWriter<byte> writer = new();
 fory.Serialize(writer, value);
 
 ArrayBufferWriter<byte> dynamicWriter = new();
-fory.SerializeObject(dynamicWriter, value);
+fory.Serialize<object?>(dynamicWriter, value);
 ```
 
 ## Notes

@@ -513,19 +513,19 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void StreamDeserializeObjectConsumesSingleFrame()
+    public void StreamDeserializeGenericObjectConsumesSingleFrame()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
 
-        byte[] p1 = fory.SerializeObject("first");
-        byte[] p2 = fory.SerializeObject(99);
+        byte[] p1 = fory.Serialize<object?>("first");
+        byte[] p2 = fory.Serialize<object?>(99);
         byte[] joined = new byte[p1.Length + p2.Length];
         Buffer.BlockCopy(p1, 0, joined, 0, p1.Length);
         Buffer.BlockCopy(p2, 0, joined, p1.Length, p2.Length);
 
         ReadOnlySequence<byte> sequence = new(joined);
-        object? first = fory.DeserializeObject(ref sequence);
-        object? second = fory.DeserializeObject(ref sequence);
+        object? first = fory.Deserialize<object?>(ref sequence);
+        object? second = fory.Deserialize<object?>(ref sequence);
 
         Assert.Equal("first", first);
         Assert.Equal(99, second);
@@ -790,7 +790,7 @@ public sealed class ForyRuntimeTests
             [true] = null,
         };
         Dictionary<object, object?> mapDecoded =
-            Assert.IsType<Dictionary<object, object?>>(fory.DeserializeObject(fory.SerializeObject(map)));
+            Assert.IsType<Dictionary<object, object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(map)));
         Assert.Equal(3, mapDecoded.Count);
         Assert.Equal(7, mapDecoded["k1"]);
         Assert.Equal("v2", mapDecoded[2]);
@@ -799,7 +799,7 @@ public sealed class ForyRuntimeTests
 
         HashSet<object> set = ["a", 7, false];
         HashSet<object?> setDecoded =
-            Assert.IsType<HashSet<object?>>(fory.DeserializeObject(fory.SerializeObject(set)));
+            Assert.IsType<HashSet<object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(set)));
         Assert.Equal(3, setDecoded.Count);
         Assert.Contains("a", setDecoded);
         Assert.Contains(7, setDecoded);
@@ -815,22 +815,22 @@ public sealed class ForyRuntimeTests
         queue.Enqueue("q1");
         queue.Enqueue(7);
         queue.Enqueue(null);
-        List<object?> queueDecoded = Assert.IsType<List<object?>>(fory.DeserializeObject(fory.SerializeObject(queue)));
+        List<object?> queueDecoded = Assert.IsType<List<object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(queue)));
         Assert.Equal(new object?[] { "q1", 7, null }, queueDecoded.ToArray());
 
         Stack<object?> stack = new();
         stack.Push("s1");
         stack.Push(9);
-        List<object?> stackDecoded = Assert.IsType<List<object?>>(fory.DeserializeObject(fory.SerializeObject(stack)));
+        List<object?> stackDecoded = Assert.IsType<List<object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(stack)));
         Assert.Equal(new object?[] { 9, "s1" }, stackDecoded.ToArray());
 
         LinkedList<object?> linkedList = new(new object?[] { "l1", 3, null });
-        List<object?> linkedListDecoded = Assert.IsType<List<object?>>(fory.DeserializeObject(fory.SerializeObject(linkedList)));
+        List<object?> linkedListDecoded = Assert.IsType<List<object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(linkedList)));
         Assert.Equal(new object?[] { "l1", 3, null }, linkedListDecoded.ToArray());
 
         ImmutableHashSet<object?> immutableSet = ImmutableHashSet.Create<object?>("i1", 5);
         HashSet<object?> immutableSetDecoded =
-            Assert.IsType<HashSet<object?>>(fory.DeserializeObject(fory.SerializeObject(immutableSet)));
+            Assert.IsType<HashSet<object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(immutableSet)));
         Assert.Equal(2, immutableSetDecoded.Count);
         Assert.Contains("i1", immutableSetDecoded);
         Assert.Contains(5, immutableSetDecoded);

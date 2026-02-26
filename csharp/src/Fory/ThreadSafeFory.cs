@@ -90,26 +90,6 @@ public sealed class ThreadSafeFory : IDisposable
         return Current.Deserialize<T>(ref payload);
     }
 
-    public byte[] SerializeObject(object? value)
-    {
-        return Current.SerializeObject(value);
-    }
-
-    public void SerializeObject(IBufferWriter<byte> output, object? value)
-    {
-        Current.SerializeObject(output, value);
-    }
-
-    public object? DeserializeObject(ReadOnlySpan<byte> payload)
-    {
-        return Current.DeserializeObject(payload);
-    }
-
-    public object? DeserializeObject(ref ReadOnlySequence<byte> payload)
-    {
-        return Current.DeserializeObject(ref payload);
-    }
-
     public void Dispose()
     {
         lock (_registrationLock)
