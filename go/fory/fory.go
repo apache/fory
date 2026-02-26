@@ -538,7 +538,6 @@ func (sr *StreamReader) Deserialize(v any) error {
 		if f.readCtx.refResolver != nil {
 			f.readCtx.refResolver.resetRead()
 		}
-		// Do NOT reset typeResolver here. It must persist across objects in a stream.
 	}()
 
 	// Temporarily swap buffer
@@ -569,8 +568,8 @@ func (sr *StreamReader) Deserialize(v any) error {
 	return nil
 }
 
-// DeserializeFromReader is deprecated for sequential streaming. Use NewStreamReader instead.
-// It deserializes a single object from a stream but will discard prefetched data
+// For Sequential Streaming use NewStreamReader instead of DeserializeFromReader.
+// DeserializeFromReader deserializes a single object from a stream but will discard prefetched data
 // and type metadata after the call.
 func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	defer f.resetReadState()
