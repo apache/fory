@@ -2762,13 +2762,7 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
     if constexpr (fixed_count > 0 && fixed_bytes > 0) {
       const uint64_t target =
           static_cast<uint64_t>(buffer.reader_index()) + fixed_bytes;
-      if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-        ctx.set_error(
-            Error::out_of_bound("fixed-size struct read exceeds uint32 range"));
-        return;
-      }
-      if (FORY_PREDICT_FALSE(!buffer.ensure_size(static_cast<uint32_t>(target),
-                                                 ctx.error()))) {
+      if (FORY_PREDICT_FALSE(!buffer.ensure_size(target, ctx.error()))) {
         return;
       }
       // Fast read fixed-size primitives
@@ -2826,13 +2820,7 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
   if constexpr (fixed_count > 0 && fixed_bytes > 0) {
     const uint64_t target =
         static_cast<uint64_t>(buffer.reader_index()) + fixed_bytes;
-    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
-      ctx.set_error(
-          Error::out_of_bound("fixed-size struct read exceeds uint32 range"));
-      return;
-    }
-    if (FORY_PREDICT_FALSE(
-            !buffer.ensure_size(static_cast<uint32_t>(target), ctx.error()))) {
+    if (FORY_PREDICT_FALSE(!buffer.ensure_size(target, ctx.error()))) {
       return;
     }
     // Fast read fixed-size primitives
