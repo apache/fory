@@ -18,6 +18,8 @@
  */
 
 #pragma once
+#include <string>
+
 #include "Python.h"
 #include "fory/util/buffer.h"
 
@@ -26,4 +28,6 @@ int Fory_PyBooleanSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
                                         Py_ssize_t start_index);
 int Fory_PyFloatSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
                                       Py_ssize_t start_index);
+int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
+                                  Buffer **out, std::string *error_message);
 } // namespace fory

@@ -113,6 +113,10 @@ if(FORY_BUILD_TESTS)
     add_executable(fory_serialization_any_test any_serializer_test.cc)
     target_link_libraries(fory_serialization_any_test fory_serialization GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_serialization_any_test)
+
+    add_executable(fory_serialization_stream_test stream_test.cc)
+    target_link_libraries(fory_serialization_stream_test fory_serialization GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(fory_serialization_stream_test)
 endif()
 
 # xlang test binary
