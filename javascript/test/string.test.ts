@@ -62,4 +62,16 @@ describe('string', () => {
     );
     expect(result).toEqual(str)
   });
+
+  test('should enforce maxStringBytes when configured', () => {
+    const short = "abcd";
+    const long = "abcdef";
+    const fory = new Fory({ ...config, maxStringBytes: 4 });
+
+    const ok = fory.serialize(short);
+    expect(fory.deserialize(ok)).toEqual(short);
+
+    const tooLong = fory.serialize(long);
+    expect(() => fory.deserialize(tooLong)).toThrow(/maxStringBytes/);
+  });
 });

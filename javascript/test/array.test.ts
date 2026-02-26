@@ -148,6 +148,22 @@ describe('array', () => {
     expect(result.a7[1].toFloat32()).toBeCloseTo(-2.5, 2);
     expect(result.a7[2].toFloat32()).toBe(0);
   });
+
+  test('should enforce maxCollectionLength for list field', () => {
+    const typeinfo = Type.struct({
+      typeName: "example.limit"
+    }, {
+      items: Type.array(Type.string()),
+    });
+    const fory = new Fory({ refTracking: true, maxCollectionLength: 2 });
+    const { serialize, deserialize } = fory.registerSerializer(typeinfo);
+
+    const okBin = serialize({ items: ["a", "b"] });
+    expect(deserialize(okBin)).toEqual({ items: ["a", "b"] });
+
+    const tooManyBin = serialize({ items: ["a", "b", "c"] });
+    expect(() => deserialize(tooManyBin)).toThrow(/maxCollectionLength/);
+  });
 });
 
 

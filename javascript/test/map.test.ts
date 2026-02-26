@@ -43,6 +43,16 @@ describe('map', () => {
     const result = deserialize(bin);
     expect(result).toEqual({ f1: new Map([["hello", 123],["world", 456]])})
   });
+
+  test('should enforce maxMapEntries when configured', () => {
+    const fory = new Fory({ refTracking: true, maxMapEntries: 1 });
+
+    const okInput = fory.serialize(new Map([["foo", "bar"]]));
+    expect(fory.deserialize(okInput)).toEqual(new Map([["foo", "bar"]]));
+
+    const tooManyInput = fory.serialize(new Map([["foo", "bar"], ["baz", "qux"]]));
+    expect(() => fory.deserialize(tooManyInput)).toThrow(/maxMapEntries/);
+  });
 });
 
 
