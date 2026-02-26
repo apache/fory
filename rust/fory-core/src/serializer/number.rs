@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::float16::float16;
+
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::resolver::context::ReadContext;
@@ -99,6 +101,55 @@ impl_num_serializer!(
 );
 impl_num_serializer!(f32, Writer::write_f32, Reader::read_f32, TypeId::FLOAT32);
 impl_num_serializer!(f64, Writer::write_f64, Reader::read_f64, TypeId::FLOAT64);
+
+// Custom implementation for float16 (cannot use 0 as float16)
+impl Serializer for float16 {
+    #[inline(always)]
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        Writer::write_f16(&mut context.writer, *self);
+        Ok(())
+    }
+    #[inline(always)]
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Reader::read_f16(&mut context.reader)
+    }
+    #[inline(always)]
+    fn fory_reserved_space() -> usize {
+        std::mem::size_of::<float16>()
+    }
+    #[inline(always)]
+    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::FLOAT16)
+    }
+    #[inline(always)]
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
+        Ok(TypeId::FLOAT16)
+    }
+    #[inline(always)]
+    fn fory_static_type_id() -> TypeId {
+        TypeId::FLOAT16
+    }
+    #[inline(always)]
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    #[inline(always)]
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_var_uint32(TypeId::FLOAT16 as u32);
+        Ok(())
+    }
+    #[inline(always)]
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        read_basic_type_info::<Self>(context)
+    }
+}
+
+impl ForyDefault for float16 {
+    #[inline(always)]
+    fn fory_default() -> Self {
+        float16::ZERO
+    }
+}
 impl_num_serializer!(i128, Writer::write_i128, Reader::read_i128, TypeId::INT128);
 impl_num_serializer!(
     isize,

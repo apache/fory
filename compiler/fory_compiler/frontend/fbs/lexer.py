@@ -38,6 +38,10 @@ class TokenType(Enum):
     FILE_EXTENSION = auto()
     TRUE = auto()
     FALSE = auto()
+    SERVICE = auto()
+    RPC = auto()
+    RETURNS = auto()
+    STREAM = auto()
 
     # Literals
     IDENT = auto()
@@ -97,6 +101,11 @@ class Lexer:
         "file_extension": TokenType.FILE_EXTENSION,
         "true": TokenType.TRUE,
         "false": TokenType.FALSE,
+        "service": TokenType.SERVICE,
+        "rpc_service": TokenType.SERVICE,
+        "rpc": TokenType.RPC,
+        "returns": TokenType.RETURNS,
+        "stream": TokenType.STREAM,
     }
 
     PUNCTUATION = {

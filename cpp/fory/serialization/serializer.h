@@ -29,7 +29,6 @@
 #include "fory/util/error.h"
 #include "fory/util/result.h"
 #include <cstdint>
-#include <limits>
 #include <string>
 
 namespace fory {
@@ -84,28 +83,15 @@ struct HeaderInfo {
 /// @param buffer Input buffer
 /// @return Header information or error
 inline Result<HeaderInfo, Error> read_header(Buffer &buffer) {
-  // Ensure minimum header size (1 byte: flags), including stream-backed
-  // buffers.
   Error error;
-  const uint64_t target = static_cast<uint64_t>(buffer.reader_index()) + 1;
-  if (target > std::numeric_limits<uint32_t>::max()) {
-    return Unexpected(Error::out_of_bound("header reader index overflow"));
-  }
-  if (!buffer.ensure_size(static_cast<uint32_t>(target), error)) {
+  uint8_t flags = buffer.read_uint8(error);
+  if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
-
   HeaderInfo info;
-  uint32_t start_pos = buffer.reader_index();
-
-  // Read flags byte
-  uint8_t flags = buffer.get_byte_as<uint8_t>(start_pos);
   info.is_null = (flags & (1 << 0)) != 0;
   info.is_xlang = (flags & (1 << 1)) != 0;
   info.is_oob = (flags & (1 << 2)) != 0;
-
-  // Update reader index (1 byte consumed: flags)
-  buffer.increase_reader_index(1);
 
   // Note: Meta start offset would be read here if present
   info.meta_start_offset = 0;

@@ -17,15 +17,15 @@
  * under the License.
  */
 
-import { StructTypeInfo, TypeInfo } from "./typeInfo";
+import { Type, TypeInfo } from "./typeInfo";
 import fory from "./fory";
-import { TypeMeta } from "./meta/TypeMeta";
+import { InnerFieldInfo, TypeMeta } from "./meta/TypeMeta";
 import { BinaryReader } from "./reader";
 import { Serializer, TypeId } from "./type";
 import { BinaryWriter } from "./writer";
 
 export class TypeMetaResolver {
-  private disposeTypeInfo: StructTypeInfo[] = [];
+  private disposeTypeInfo: TypeInfo[] = [];
   private dynamicTypeId = 0;
   private typeMeta: TypeMeta[] = [];
 
@@ -33,47 +33,61 @@ export class TypeMetaResolver {
 
   }
 
-  private updateTypeInfo(typeMeta: TypeMeta, typeInfo: TypeInfo) {
-    typeInfo.options.props = Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
-      const typeId = x.getTypeId();
-      const fieldName = x.getFieldName();
-      const declared = typeInfo.options.props?.[fieldName];
-      const fieldTypeInfo = declared ?? this.fory.typeResolver.getTypeInfo(typeId);
-      if (!fieldTypeInfo) {
-        throw new Error(`typeid: ${typeId} in prop ${fieldName} not registered`);
+  private fieldInfoToTypeInfo(fieldInfo: InnerFieldInfo): TypeInfo {
+    const typeId = fieldInfo.typeId;
+
+    switch (typeId) {
+      case TypeId.MAP:
+        return Type.map(this.fieldInfoToTypeInfo(fieldInfo.options!.key!), this.fieldInfoToTypeInfo(fieldInfo.options!.value!));
+      case TypeId.LIST:
+        return Type.array(this.fieldInfoToTypeInfo(fieldInfo.options!.inner!));
+      case TypeId.SET:
+        return Type.set(this.fieldInfoToTypeInfo(fieldInfo.options!.key!));
+      default:
+      {
+        const serializer = this.fory.typeResolver.getSerializerById(typeId, fieldInfo.userTypeId);
+        // registered type
+        if (serializer) {
+          return serializer.getTypeInfo().clone();
+        }
+        return Type.any();
       }
-      if (!typeInfo.options.fieldInfo) {
-        typeInfo.options.fieldInfo = {};
-      }
-      typeInfo.options.fieldInfo[x.fieldName] = {
-        nullable: x.nullable,
-        trackingRef: x.trackingRef,
-        ...typeInfo.options.fieldInfo[x.fieldName],
-      };
-      return [fieldName, fieldTypeInfo];
-    }));
+    }
   }
 
-  genSerializerByTypeMetaRuntime(typeMeta: TypeMeta): Serializer {
+  genSerializerByTypeMetaRuntime(typeMeta: TypeMeta, original?: Serializer): Serializer {
     const typeName = typeMeta.getTypeName();
     const ns = typeMeta.getNs();
     const typeId = typeMeta.getTypeId();
     const userTypeId = typeMeta.getUserTypeId();
+    if (!TypeId.structType(typeId)) {
+      throw new Error("only support reconstructor struct type");
+    }
     let typeInfo;
-    if (!TypeId.isNamedType(typeId)) {
-      typeInfo = this.fory.typeResolver.getTypeInfo(typeId, userTypeId);
+    if (original) {
+      typeInfo = original.getTypeInfo().clone();
     } else {
-      typeInfo = this.fory.typeResolver.getTypeInfo(`${ns}$${typeName}`);
+      if (!TypeId.isNamedType(typeId)) {
+        typeInfo = Type.struct(userTypeId);
+      } else {
+        typeInfo = Type.struct({ typeName, namespace: ns });
+      }
     }
-    if (!typeInfo) {
-      throw new Error(`${typeId} not registered`); // todo
-    }
-    this.updateTypeInfo(typeMeta, typeInfo);
+    // rebuild props
+    const props = (Object.fromEntries(typeMeta.getFieldInfo().map((x) => {
+      const fieldName = x.getFieldName();
+      const fieldTypeInfo = this.fieldInfoToTypeInfo(x).setNullable(x.nullable).setTrackingRef(x.trackingRef).setId(x.fieldId);
+      return [fieldName, fieldTypeInfo];
+    })));
+    typeInfo.options! = {
+      ...typeInfo.options,
+      props,
+    };
     return this.fory.replaceSerializerReader(typeInfo);
   }
 
   readTypeMeta(reader: BinaryReader): TypeMeta {
-    const idOrLen = reader.varUInt32();
+    const idOrLen = reader.readVarUInt32();
     if (idOrLen & 1) {
       return this.typeMeta[idOrLen >> 1];
     } else {
@@ -84,17 +98,17 @@ export class TypeMetaResolver {
     }
   }
 
-  writeTypeMeta(typeInfo: StructTypeInfo, writer: BinaryWriter, bytes: Uint8Array) {
+  writeTypeMeta(typeInfo: TypeInfo, writer: BinaryWriter, bytes: Uint8Array) {
     if (typeInfo.dynamicTypeId !== -1) {
       // Reference to previously written type: (index << 1) | 1, LSB=1
-      writer.varUInt32((typeInfo.dynamicTypeId << 1) | 1);
+      writer.writeVarUInt32((typeInfo.dynamicTypeId << 1) | 1);
     } else {
       // New type: index << 1, LSB=0, followed by TypeMeta bytes inline
       const index = this.dynamicTypeId;
       typeInfo.dynamicTypeId = index;
       this.dynamicTypeId += 1;
       this.disposeTypeInfo.push(typeInfo);
-      writer.varUInt32(index << 1);
+      writer.writeVarUInt32(index << 1);
       writer.buffer(bytes);
     }
   }

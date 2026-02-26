@@ -100,6 +100,7 @@ package com.example.models alias models_v1;
 | Go       | Package name (last component)     |
 | Rust     | Module name (dots to underscores) |
 | C++      | Namespace (dots to `::`)          |
+| C#       | Namespace                         |
 
 ## File-Level Options
 
@@ -149,6 +150,25 @@ message Payment {
 
 - Generated Go files will have `package paymentv1`
 - The import path can be used in other Go code
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
+
+### C# Namespace Option
+
+Override the C# namespace for generated code:
+
+```protobuf
+package payment;
+option csharp_namespace = "MyCorp.Payment.V1";
+
+message Payment {
+    string id = 1;
+}
+```
+
+**Effect:**
+
+- Generated C# files use `namespace MyCorp.Payment.V1;`
+- Output path follows namespace segments (`MyCorp/Payment/V1/` under `--csharp_out`)
 - Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
 
 ### Java Outer Classname Option
@@ -272,38 +292,23 @@ message Payment {
 }
 ```
 
-### Protobuf Compatibility Options
+### Protobuf Extension Syntax
 
-Fory IDL accepts protobuf-style extension syntax (for example, `(fory).id`) for
-compatibility, but native Fory IDL style uses plain option keys such as `id`,
-`evolving`, `ref`, and `nullable` without the `(fory)` prefix.
+In `.fdl` files, use native Fory IDL syntax only (for example, `[id=100]`, `ref`,
+`optional`, `nullable=true`).
 
-Equivalent forms:
+Protobuf extension syntax with `(fory).` is for `.proto` files and the protobuf
+frontend only.
 
-```protobuf
-// Native Fory IDL style (preferred in .fdl files)
-message Node [id=100] {
-    ref Node parent = 1;
-    optional string nickname = 2;
-}
-
-// Protobuf-style compatibility syntax
-message Node {
-    option (fory).id = 100;
-    Node parent = 1 [(fory).ref = true];
-    string nickname = 2 [(fory).nullable = true];
-}
-```
-
-For the protobuf-specific extension option guide, see
+For protobuf extension options, see
 [Protocol Buffers IDL Support](protobuf-idl.md#fory-extension-options-protobuf).
 
 ### Option Priority
 
-For language-specific packages:
+For language-specific packages/namespaces:
 
 1. Command-line package override (highest priority)
-2. Language-specific option (`java_package`, `go_package`)
+2. Language-specific option (`java_package`, `go_package`, `csharp_namespace`)
 3. Fory IDL package declaration (fallback)
 
 **Example:**
@@ -474,21 +479,22 @@ enum Status {
 }
 ```
 
-### Enum Options
+### Enum Type Options
 
-Options can be specified within enums:
+Enum-level options are declared inline in `[]` after the enum name:
 
 ```protobuf
-enum Status {
-    option deprecated = true;  // Allowed
+enum Status [deprecated=true] {
     PENDING = 0;
     ACTIVE = 1;
 }
 ```
 
-**Forbidden Options:**
+FDL does not support `option ...;` statements inside enum bodies.
 
-- `option allow_alias = true` is **not supported**. Each enum value must have a unique integer.
+**Unsupported:**
+
+- `allow_alias` is **not supported**. Each enum value must have a unique integer.
 
 ### Language Mapping
 
@@ -531,8 +537,7 @@ enum DeviceTier {
 enum_def     := 'enum' IDENTIFIER [type_options] '{' enum_body '}'
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value
-enum_body    := (option_stmt | reserved_stmt | enum_value)*
-option_stmt  := 'option' IDENTIFIER '=' option_value ';'
+enum_body    := (reserved_stmt | enum_value)*
 reserved_stmt := 'reserved' reserved_items ';'
 enum_value   := IDENTIFIER '=' INTEGER ';'
 ```
@@ -616,17 +621,18 @@ message User {
 }
 ```
 
-### Message Options
+### Message Type Options
 
-Options can be specified within messages:
+Message-level options are declared inline in `[]` after the message name:
 
 ```protobuf
-message User {
-    option deprecated = true;
+message User [deprecated=true] {
     string id = 1;
     string name = 2;
 }
 ```
+
+FDL does not support `option ...;` statements inside message or enum bodies.
 
 **Grammar:**
 
@@ -634,8 +640,8 @@ message User {
 message_def  := 'message' IDENTIFIER [type_options] '{' message_body '}'
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value
-message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
-nested_type  := enum_def | message_def
+message_body := (reserved_stmt | nested_type | field_def)*
+nested_type  := enum_def | message_def | union_def
 ```
 
 **Rules:**
@@ -644,7 +650,7 @@ nested_type  := enum_def | message_def
 
 ## Nested Types
 
-Messages can contain nested message and enum definitions. This is useful for defining types that are closely related to their parent message.
+Messages can contain nested message, enum, and union definitions. This is useful for defining types that are closely related to their parent message.
 
 ### Nested Messages
 
@@ -722,7 +728,7 @@ message OtherMessage {
 | Rust     | Nested modules (`search_response::Result`)                                        |
 | C++      | Nested classes (`SearchResponse::Result`)                                         |
 
-**Note:** Go defaults to underscore-separated nested names; set `option (fory).go_nested_type_style = "camelcase";` to use concatenated names. Rust emits nested modules for nested types.
+**Note:** Go defaults to underscore-separated nested names; set `option go_nested_type_style = "camelcase";` to use concatenated names. Rust emits nested modules for nested types.
 
 ### Nested Type Rules
 
@@ -1361,33 +1367,30 @@ package_decl := 'package' package_name ['alias' package_name] ';'
 package_name := IDENTIFIER ('.' IDENTIFIER)*
 
 file_option  := 'option' option_name '=' option_value ';'
-option_name  := IDENTIFIER | extension_name
-extension_name := '(' IDENTIFIER ')' '.' IDENTIFIER   // e.g., (fory).polymorphism
+option_name  := IDENTIFIER
 
 import_decl  := 'import' STRING ';'
 
 type_def     := enum_def | message_def | union_def
 
 enum_def     := 'enum' IDENTIFIER [type_options] '{' enum_body '}'
-enum_body    := (option_stmt | reserved_stmt | enum_value)*
+enum_body    := (reserved_stmt | enum_value)*
 enum_value   := IDENTIFIER '=' INTEGER ';'
 
 message_def  := 'message' IDENTIFIER [type_options] '{' message_body '}'
-message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
-nested_type  := enum_def | message_def
+message_body := (reserved_stmt | nested_type | field_def)*
+nested_type  := enum_def | message_def | union_def
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER [field_options] ';'
 
 union_def    := 'union' IDENTIFIER [type_options] '{' union_field* '}'
-union_field  := field_type IDENTIFIER '=' INTEGER ';'
-
-option_stmt  := 'option' option_name '=' option_value ';'
+union_field  := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';'
 option_value := 'true' | 'false' | IDENTIFIER | INTEGER | STRING
 
 reserved_stmt := 'reserved' reserved_items ';'
 reserved_items := reserved_item (',' reserved_item)*
 reserved_item := INTEGER | INTEGER 'to' INTEGER | INTEGER 'to' 'max' | STRING
 
-modifiers    := { 'optional' | 'ref' } ['list' { 'optional' | 'ref' }]
+modifiers    := { 'optional' | 'ref' | 'repeated' }
 
 field_type   := primitive_type | named_type | list_type | map_type
 primitive_type := 'bool'
@@ -1407,7 +1410,7 @@ map_type     := 'map' '<' field_type ',' field_type '>'
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value         // e.g., id=100, deprecated=true
 field_options := '[' field_option (',' field_option)* ']'
-field_option := option_name '=' option_value        // e.g., deprecated=true, (fory).ref=true
+field_option := IDENTIFIER '=' option_value         // e.g., deprecated=true, ref=true
 
 STRING       := '"' [^"\n]* '"' | "'" [^'\n]* "'"
 IDENTIFIER   := [a-zA-Z_][a-zA-Z0-9_]*

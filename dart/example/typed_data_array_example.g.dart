@@ -25,14 +25,14 @@ part of 'typed_data_array_example.dart';
 // ForyObjSpecGenerator
 // **************************************************************************
 
-final $TypedDataArrayExample = ClassSpec(
+final $TypedDataArrayExample = TypeSpec(
   TypedDataArrayExample,
   false,
   true,
   [
     FieldSpec(
       'bools',
-      TypeSpec(
+      FieldTypeSpec(
         BoolList,
         ObjType.BOOL_ARRAY,
         false,
@@ -48,7 +48,7 @@ final $TypedDataArrayExample = ClassSpec(
     ),
     FieldSpec(
       'bytes',
-      TypeSpec(
+      FieldTypeSpec(
         Uint8List,
         ObjType.BINARY,
         false,
@@ -64,7 +64,7 @@ final $TypedDataArrayExample = ClassSpec(
     ),
     FieldSpec(
       'nums',
-      TypeSpec(
+      FieldTypeSpec(
         Int32List,
         ObjType.INT32_ARRAY,
         false,
@@ -82,8 +82,3 @@ final $TypedDataArrayExample = ClassSpec(
   null,
   () => TypedDataArrayExample(),
 );
-
-mixin _$TypedDataArrayExampleFory implements Furiable {
-  @override
-  Type get $foryType => TypedDataArrayExample;
-}

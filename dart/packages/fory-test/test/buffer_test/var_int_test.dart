@@ -38,19 +38,19 @@ void main() {
 
       // Boundary values
       bw.writeVarInt32(-2147483648); // Min int32
-      bw.writeVarInt32(2147483647);  // Max int32 (0x7FFFFFFF)
+      bw.writeVarInt32(2147483647); // Max int32 (0x7FFFFFFF)
 
       // Powers of 2 to test binary encoding edge cases
-      bw.writeVarInt32(128);        // 2^7
-      bw.writeVarInt32(16384);      // 2^14
-      bw.writeVarInt32(2097152);    // 2^21
-      bw.writeVarInt32(268435456);  // 2^28
+      bw.writeVarInt32(128); // 2^7
+      bw.writeVarInt32(16384); // 2^14
+      bw.writeVarInt32(2097152); // 2^21
+      bw.writeVarInt32(268435456); // 2^28
 
       // Values near encoding boundaries
-      bw.writeVarInt32(127);        // Just under 2^7
-      bw.writeVarInt32(16383);      // Just under 2^14
-      bw.writeVarInt32(2097151);    // Just under 2^21
-      bw.writeVarInt32(268435455);  // Just under 2^28
+      bw.writeVarInt32(127); // Just under 2^7
+      bw.writeVarInt32(16383); // Just under 2^14
+      bw.writeVarInt32(2097151); // Just under 2^21
+      bw.writeVarInt32(268435455); // Just under 2^28
 
       // Read and verify
       ByteReader br = ByteReader.forBytes(bw.takeBytes());
@@ -79,21 +79,21 @@ void main() {
 
       // Boundary values
       bw.writeVarInt64(-9223372036854775808); // Min int64
-      bw.writeVarInt64(9223372036854775807);  // Max int64 (0x7FFFFFFFFFFFFFFF)
+      bw.writeVarInt64(9223372036854775807); // Max int64 (0x7FFFFFFFFFFFFFFF)
 
       // Powers of 2 to test binary encoding edge cases
-      bw.writeVarInt64(128);                  // 2^7
-      bw.writeVarInt64(16384);                // 2^14
-      bw.writeVarInt64(2097152);              // 2^21
-      bw.writeVarInt64(268435456);            // 2^28
-      bw.writeVarInt64(34359738368);          // 2^35
-      bw.writeVarInt64(4398046511104);        // 2^42
-      bw.writeVarInt64(562949953421312);      // 2^49
-      bw.writeVarInt64(72057594037927936);    // 2^56
+      bw.writeVarInt64(128); // 2^7
+      bw.writeVarInt64(16384); // 2^14
+      bw.writeVarInt64(2097152); // 2^21
+      bw.writeVarInt64(268435456); // 2^28
+      bw.writeVarInt64(34359738368); // 2^35
+      bw.writeVarInt64(4398046511104); // 2^42
+      bw.writeVarInt64(562949953421312); // 2^49
+      bw.writeVarInt64(72057594037927936); // 2^56
 
       // Large values that test different bytes in 64-bit encoding
-      bw.writeVarInt64(1099511627776);        // 2^40
-      bw.writeVarInt64(-281474976710656);     // -2^48
+      bw.writeVarInt64(1099511627776); // 2^40
+      bw.writeVarInt64(-281474976710656); // -2^48
 
       // Read and verify
       ByteReader br = ByteReader.forBytes(bw.takeBytes());
@@ -122,19 +122,19 @@ void main() {
       bw.writeVarUint32(1);
 
       // Boundary values
-      bw.writeVarUint32(4294967295);  // Max uint32 (2^32-1)
+      bw.writeVarUint32(4294967295); // Max uint32 (2^32-1)
 
       // Powers of 2 to test encoding efficiency
-      bw.writeVarUint32(128);        // 2^7
-      bw.writeVarUint32(16384);      // 2^14
-      bw.writeVarUint32(2097152);    // 2^21
-      bw.writeVarUint32(268435456);  // 2^28
+      bw.writeVarUint32(128); // 2^7
+      bw.writeVarUint32(16384); // 2^14
+      bw.writeVarUint32(2097152); // 2^21
+      bw.writeVarUint32(268435456); // 2^28
 
       // Values at encoding boundaries
-      bw.writeVarUint32(127);        // Max 1-byte
-      bw.writeVarUint32(16383);      // Max 2-byte
-      bw.writeVarUint32(2097151);    // Max 3-byte
-      bw.writeVarUint32(268435455);  // Max 4-byte
+      bw.writeVarUint32(127); // Max 1-byte
+      bw.writeVarUint32(16383); // Max 2-byte
+      bw.writeVarUint32(2097151); // Max 3-byte
+      bw.writeVarUint32(268435455); // Max 4-byte
 
       // Read and verify
       ByteReader br = ByteReader.forBytes(bw.takeBytes());
@@ -159,28 +159,28 @@ void main() {
       bw.writeVarUint32Small7(1);
 
       // Small values (optimized 7-bit range)
-      bw.writeVarUint32Small7(63);   // 2^6-1
-      bw.writeVarUint32Small7(64);   // 2^6
-      bw.writeVarUint32Small7(127);  // 2^7-1
+      bw.writeVarUint32Small7(63); // 2^6-1
+      bw.writeVarUint32Small7(64); // 2^6
+      bw.writeVarUint32Small7(127); // 2^7-1
 
       // Values beyond 7-bit range
-      bw.writeVarUint32Small7(128);  // 2^7
-      bw.writeVarUint32Small7(255);  // 2^8-1
-      bw.writeVarUint32Small7(256);  // 2^8
+      bw.writeVarUint32Small7(128); // 2^7
+      bw.writeVarUint32Small7(255); // 2^8-1
+      bw.writeVarUint32Small7(256); // 2^8
 
       // Medium values
-      bw.writeVarUint32Small7(16383);   // 2^14-1
-      bw.writeVarUint32Small7(16384);   // 2^14
-      bw.writeVarUint32Small7(65535);   // 2^16-1
-      bw.writeVarUint32Small7(65536);   // 2^16
+      bw.writeVarUint32Small7(16383); // 2^14-1
+      bw.writeVarUint32Small7(16384); // 2^14
+      bw.writeVarUint32Small7(65535); // 2^16-1
+      bw.writeVarUint32Small7(65536); // 2^16
 
       // Large values
-      bw.writeVarUint32Small7(16777215);   // 2^24-1
-      bw.writeVarUint32Small7(16777216);   // 2^24
+      bw.writeVarUint32Small7(16777215); // 2^24-1
+      bw.writeVarUint32Small7(16777216); // 2^24
 
       // Boundary values
-      bw.writeVarUint32Small7(2147483647);  // 2^31-1
-      bw.writeVarUint32Small7(4294967295);  // MAX uint32 (2^32-1)
+      bw.writeVarUint32Small7(2147483647); // 2^31-1
+      bw.writeVarUint32Small7(4294967295); // MAX uint32 (2^32-1)
 
       // Read and verify
       ByteReader br = ByteReader.forBytes(bw.takeBytes());
@@ -210,31 +210,31 @@ void main() {
       bw.writeVarUint36Small(1);
 
       // Small values (likely optimized range)
-      bw.writeVarUint36Small(63);   // 2^6-1
-      bw.writeVarUint36Small(64);   // 2^6
-      bw.writeVarUint36Small(127);  // 2^7-1
-      bw.writeVarUint36Small(128);  // 2^7
+      bw.writeVarUint36Small(63); // 2^6-1
+      bw.writeVarUint36Small(64); // 2^6
+      bw.writeVarUint36Small(127); // 2^7-1
+      bw.writeVarUint36Small(128); // 2^7
 
       // Medium values
-      bw.writeVarUint36Small(16383);   // 2^14-1
-      bw.writeVarUint36Small(16384);   // 2^14
-      bw.writeVarUint36Small(65535);   // 2^16-1
-      bw.writeVarUint36Small(65536);   // 2^16
+      bw.writeVarUint36Small(16383); // 2^14-1
+      bw.writeVarUint36Small(16384); // 2^14
+      bw.writeVarUint36Small(65535); // 2^16-1
+      bw.writeVarUint36Small(65536); // 2^16
 
       // Large values
-      bw.writeVarUint36Small(16777215);   // 2^24-1
-      bw.writeVarUint36Small(16777216);   // 2^24
+      bw.writeVarUint36Small(16777215); // 2^24-1
+      bw.writeVarUint36Small(16777216); // 2^24
 
-      bw.writeVarUint36Small(2147483647);  // 2^31-1
-      bw.writeVarUint36Small(2147483648);  // 2^31
+      bw.writeVarUint36Small(2147483647); // 2^31-1
+      bw.writeVarUint36Small(2147483648); // 2^31
 
       bw.writeVarUint36Small(4294967295); // 2^32-1
       bw.writeVarUint36Small(4294967296); // 2^32
 
       // Boundary values for 36-bit
-      bw.writeVarUint36Small(34359738367);  // 2^35-1
-      bw.writeVarUint36Small(34359738368);  // 2^35
-      bw.writeVarUint36Small(68719476735);  // MAX 36-bit value (2^36-1)
+      bw.writeVarUint36Small(34359738367); // 2^35-1
+      bw.writeVarUint36Small(34359738368); // 2^35
+      bw.writeVarUint36Small(68719476735); // MAX 36-bit value (2^36-1)
 
       // Read and verify
       ByteReader br = ByteReader.forBytes(bw.takeBytes());
@@ -270,8 +270,11 @@ void main() {
 
       // Generate random values
       for (int i = 0; i < 100; i++) {
-        int32Values.add(random.nextInt(0x7FFFFFFF) * (random.nextBool() ? 1 : -1));
-        int64Values.add(random.nextInt(0x7FFFFFFF) * random.nextInt(0x7FFFFFFF) * (random.nextBool() ? 1 : -1));
+        int32Values
+            .add(random.nextInt(0x7FFFFFFF) * (random.nextBool() ? 1 : -1));
+        int64Values.add(random.nextInt(0x7FFFFFFF) *
+            random.nextInt(0x7FFFFFFF) *
+            (random.nextBool() ? 1 : -1));
         uint32Values.add(random.nextInt(0x7FFFFFFF));
       }
 
@@ -304,9 +307,9 @@ void main() {
       ByteWriter bw = ByteWriter();
 
       // Write values that should encode to specific byte lengths
-      bw.writeVarInt32(63);        // Should be 1 byte
-      bw.writeVarInt32(8191);      // Should be 2 bytes
-      bw.writeVarInt32(1048575);   // Should be 3 bytes
+      bw.writeVarInt32(63); // Should be 1 byte
+      bw.writeVarInt32(8191); // Should be 2 bytes
+      bw.writeVarInt32(1048575); // Should be 3 bytes
       bw.writeVarInt32(134217727); // Should be 4 bytes
 
       final bytes = bw.takeBytes();
@@ -319,9 +322,19 @@ void main() {
       ByteWriter bw = ByteWriter();
 
       final testValues = [
-        0, 1, -1, 127, 128, 255, 256,
-        32767, 32768, 65535, 65536,
-        2147483647, -2147483648
+        0,
+        1,
+        -1,
+        127,
+        128,
+        255,
+        256,
+        32767,
+        32768,
+        65535,
+        65536,
+        2147483647,
+        -2147483648
       ];
 
       // Write all values

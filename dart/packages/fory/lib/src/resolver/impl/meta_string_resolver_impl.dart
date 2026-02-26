@@ -40,31 +40,34 @@ class MetaStringResolverImpl extends MetaStringResolver {
   final List<MetaStringBytes> _readId2MSB = [];
   final Map<MetaString, MetaStringBytes> _metaString2MSB = HashMap();
   // Empty meta string uses utf8 encoding id 0 and hashCode 256 (see MetaStringBytes.of).
-  final MetaStringBytes _emptyMetaStringBytes = MetaStringBytes(Uint8List(0), 256);
+  final MetaStringBytes _emptyMetaStringBytes =
+      MetaStringBytes(Uint8List(0), 256);
 
   MetaStringResolverImpl();
 
   @override
-  MetaStringBytes getOrCreateMetaStringBytes(MetaString mstr){
+  MetaStringBytes getOrCreateMetaStringBytes(MetaString mstr) {
     MetaStringBytes? bytes = _metaString2MSB[mstr];
-    if (bytes == null){
+    if (bytes == null) {
       bytes = MetaStringBytes.of(mstr);
       _metaString2MSB[mstr] = bytes;
     }
     return bytes;
   }
 
-  MetaStringBytes _createAndCacheMetaStringBytes(int len, int encoding, int v1, int v2){
+  MetaStringBytes _createAndCacheMetaStringBytes(
+      int len, int encoding, int v1, int v2) {
     Uint8List bytes = Uint8List(16);
     ByteData data = ByteData.view(bytes.buffer);
     data.setInt64(0, v1, Endian.little);
     data.setInt64(8, v2, Endian.little);
 
-    int hashCode = Murmur3Hash.hash128x64(bytes,len).$1;
+    int hashCode = Murmur3Hash.hash128x64(bytes, len).$1;
     hashCode = hashCode.abs();
     hashCode = (hashCode & 0xffffffffffffff00) | encoding;
     // The bytes here are a view, not copied
-    MetaStringBytes msb = MetaStringBytes(bytes.buffer.asUint8List(0, len), hashCode);
+    MetaStringBytes msb =
+        MetaStringBytes(bytes.buffer.asUint8List(0, len), hashCode);
     _longLong2MSB[LongLongKey(v1, v2)] = msb;
     return msb;
   }
@@ -72,13 +75,14 @@ class MetaStringResolverImpl extends MetaStringResolver {
   /// read meta string bytes from reader
   /// if the bytes are not cached, cache them, if the bytes are cached, return the cached bytes
   /// [len] is the length of the string bytes, [hashCode] is the hash code of the string bytes
-  MetaStringBytes _readBigStringBytes(ByteReader reader, int len, int hashCode) {
+  MetaStringBytes _readBigStringBytes(
+      ByteReader reader, int len, int hashCode) {
     MetaStringBytes? bytes = _hash2MSB[hashCode];
     if (bytes != null) {
       // not cached
       bytes = MetaStringBytes(reader.copyBytes(len), hashCode);
       _hash2MSB[hashCode] = bytes;
-    }else{
+    } else {
       reader.skip(len);
     }
     return bytes!;
@@ -96,9 +100,9 @@ class MetaStringResolverImpl extends MetaStringResolver {
     late final int v1;
     int v2 = 0;
     int encoding = reader.readInt8();
-    if (len <= 8){
+    if (len <= 8) {
       v1 = reader.readBytesAsInt64(len);
-    }else{
+    } else {
       v1 = reader.readInt64();
       v2 = reader.readBytesAsInt64(len - 8);
     }
@@ -109,7 +113,7 @@ class MetaStringResolverImpl extends MetaStringResolver {
   }
 
   @override
-  MetaStringBytes readMetaStringBytes(ByteReader br){
+  MetaStringBytes readMetaStringBytes(ByteReader br) {
     /* for big meta string
      |header  |hash   |contents|
      |7+1 bits|64 bits|len bits|
@@ -126,7 +130,7 @@ class MetaStringResolverImpl extends MetaStringResolver {
           : _readSmallStringBytes(br, len);
       _readId2MSB.add(bytes);
       return bytes;
-    }else {
+    } else {
       // means that can directly get MSB from _readId2MSB, index is len - 1
       return _readId2MSB[len - 1];
     }

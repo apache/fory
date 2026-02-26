@@ -21,6 +21,7 @@ import { LATIN1, UTF16, UTF8 } from "../type";
 import { isNodeEnv } from "../util";
 import { PlatformBuffer, alloc, fromUint8Array } from "../platformBuffer";
 import { readLatin1String } from "./string";
+import { BFloat16 } from "../bfloat16";
 
 export class BinaryReader {
   private sliceStringEnable;
@@ -46,71 +47,123 @@ export class BinaryReader {
     this.cursor = 0;
   }
 
-  uint8() {
+  readUint8() {
     return this.dataView.getUint8(this.cursor++);
   }
 
-  int8() {
+  readInt8() {
     return this.dataView.getInt8(this.cursor++);
   }
 
-  uint16() {
+  readUint16() {
     const result = this.dataView.getUint16(this.cursor, true);
     this.cursor += 2;
     return result;
   }
 
-  int16() {
+  readInt16() {
     const result = this.dataView.getInt16(this.cursor, true);
     this.cursor += 2;
     return result;
   }
 
-  skip(len: number) {
+  readSkip(len: number) {
     this.cursor += len;
   }
 
-  int32() {
+  readInt32() {
     const result = this.dataView.getInt32(this.cursor, true);
     this.cursor += 4;
     return result;
   }
 
-  uint32() {
+  readUint32() {
     const result = this.dataView.getUint32(this.cursor, true);
     this.cursor += 4;
     return result;
   }
 
-  int64() {
+  readInt64() {
     const result = this.dataView.getBigInt64(this.cursor, true);
     this.cursor += 8;
     return result;
   }
 
-  uint64() {
+  readUint64() {
     const result = this.dataView.getBigUint64(this.cursor, true);
     this.cursor += 8;
     return result;
   }
 
-  sliInt64() {
+  readSliInt64() {
     const i = this.dataView.getUint32(this.cursor, true);
     if ((i & 0b1) != 0b1) {
       this.cursor += 4;
       return BigInt(i >> 1);
     }
     this.cursor += 1;
-    return this.varInt64();
+    return this.readVarInt64();
   }
 
-  float32() {
+  /**
+   * Read signed fory Tagged(Small Long as Int) encoded long.
+   * If the first bit is 0, it's a 4-byte int shifted left by 1 bit.
+   * If the first bit is 1, it's a 9-byte format with 0b1 flag + 8-byte long.
+   */
+  readTaggedInt64(): bigint {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx < 4) {
+      throw new Error("Insufficient bytes for tagged int64");
+    }
+
+    const i = this.dataView.getInt32(readIdx, true);
+    if ((i & 0b1) !== 0b1) {
+      // Small long encoded as int
+      this.cursor = readIdx + 4;
+      return BigInt(i >> 1);
+    } else {
+      // Big long encoded as 8 bytes
+      if (this.byteLength - readIdx < 9) {
+        throw new Error("Insufficient bytes for big tagged int64");
+      }
+      this.cursor = readIdx + 1; // Skip the flag byte
+      return this.readInt64();
+    }
+  }
+
+  /**
+   * Read unsigned fory Tagged(Small Long as Int) encoded long.
+   * If the first bit is 0, it's a 4-byte uint shifted left by 1 bit.
+   * If the first bit is 1, it's a 9-byte format with 0b1 flag + 8-byte ulong.
+   */
+  readTaggedUInt64(): bigint {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx < 4) {
+      throw new Error("Insufficient bytes for tagged uint64");
+    }
+
+    const i = this.dataView.getUint32(readIdx, true);
+    if ((i & 0b1) !== 0b1) {
+      // Small ulong encoded as uint
+      this.cursor = readIdx + 4;
+      return BigInt(i >>> 1); // unsigned right shift
+    } else {
+      // Big ulong encoded as 8 bytes
+      if (this.byteLength - readIdx < 9) {
+        throw new Error("Insufficient bytes for big tagged uint64");
+      }
+      this.cursor = readIdx + 1; // Skip the flag byte
+      return this.readUint64();
+    }
+  }
+
+  readFloat32() {
     const result = this.dataView.getFloat32(this.cursor, true);
     this.cursor += 4;
     return result;
   }
 
-  float64() {
+  readFloat64() {
     const result = this.dataView.getFloat64(this.cursor, true);
     this.cursor += 8;
     return result;
@@ -180,7 +233,7 @@ export class BinaryReader {
     return result;
   }
 
-  varUInt32() {
+  readVarUInt32() {
     // Reduce memory reads as much as possible. Reading a uint32 at once is far faster than reading four uint8s separately.
     if (this.byteLength - this.cursor >= 5) {
       const fourByteValue = this.dataView.getUint32(this.cursor++, true);
@@ -199,26 +252,26 @@ export class BinaryReader {
             // 0xfe00000: 0b1111111 << 21
             result |= (fourByteValue >>> 3) & 0xfe00000;
             if ((fourByteValue & 0x80000000) != 0) {
-              result |= (this.uint8()) << 28;
+              result |= (this.readUint8()) << 28;
             }
           }
         }
       }
       return result;
     }
-    let byte = this.uint8();
+    let byte = this.readUint8();
     let result = byte & 0x7f;
     if ((byte & 0x80) != 0) {
-      byte = this.uint8();
+      byte = this.readUint8();
       result |= (byte & 0x7f) << 7;
       if ((byte & 0x80) != 0) {
-        byte = this.uint8();
+        byte = this.readUint8();
         result |= (byte & 0x7f) << 14;
         if ((byte & 0x80) != 0) {
-          byte = this.uint8();
+          byte = this.readUint8();
           result |= (byte & 0x7f) << 21;
           if ((byte & 0x80) != 0) {
-            byte = this.uint8();
+            byte = this.readUint8();
             result |= (byte) << 28;
           }
         }
@@ -307,19 +360,19 @@ export class BinaryReader {
   }
 
   private readVarUint36Slow(): number {
-    let b = this.uint8();
+    let b = this.readUint8();
     let result = b & 0x7F;
     if ((b & 0x80) !== 0) {
-      b = this.uint8();
+      b = this.readUint8();
       result |= (b & 0x7F) << 7;
       if ((b & 0x80) !== 0) {
-        b = this.uint8();
+        b = this.readUint8();
         result |= (b & 0x7F) << 14;
         if ((b & 0x80) !== 0) {
-          b = this.uint8();
+          b = this.readUint8();
           result |= (b & 0x7F) << 21;
           if ((b & 0x80) !== 0) {
-            b = this.uint8();
+            b = this.readUint8();
             result |= (b & 0xFF) << 28;
           }
         }
@@ -328,16 +381,16 @@ export class BinaryReader {
     return result;
   }
 
-  varInt32() {
-    const v = this.varUInt32();
+  readVarInt32() {
+    const v = this.readVarUInt32();
     return (v >>> 1) ^ -(v & 1); // zigZag decode
   }
 
   bigUInt8() {
-    return BigInt(this.uint8() >>> 0);
+    return BigInt(this.readUint8() >>> 0);
   }
 
-  varUInt64() {
+  readVarUInt64() {
     // Creating BigInts is too performance-intensive; we'll use uint32 instead.
     if (this.byteLength - this.cursor < 8) {
       let byte = this.bigUInt8();
@@ -409,7 +462,7 @@ export class BinaryReader {
                   this.cursor++;
                   rh28 |= (byte & 0x7f) << 21;
                   if ((byte & 0x80) != 0) {
-                    return (BigInt(this.uint8()) << 56n) | BigInt(rh28) << 28n | BigInt(rl28);
+                    return (BigInt(this.readUint8()) << 56n) | BigInt(rh28) << 28n | BigInt(rl28);
                   }
                 }
               }
@@ -422,13 +475,13 @@ export class BinaryReader {
     return BigInt(rh28) << 28n | BigInt(rl28);
   }
 
-  varInt64() {
-    const v = this.varUInt64();
+  readVarInt64() {
+    const v = this.readVarUInt64();
     return (v >> 1n) ^ -(v & 1n); // zigZag decode
   }
 
-  float16() {
-    const asUint16 = this.uint16();
+  readFloat16() {
+    const asUint16 = this.readUint16();
     const sign = asUint16 >> 15;
     const exponent = (asUint16 >> 10) & 0x1F;
     const mantissa = asUint16 & 0x3FF;
@@ -456,11 +509,15 @@ export class BinaryReader {
     }
   }
 
-  getCursor() {
+  readBfloat16(): BFloat16 {
+    return BFloat16.fromBits(this.readUint16());
+  }
+
+  readGetCursor() {
     return this.cursor;
   }
 
-  setCursor(v: number) {
+  readSetCursor(v: number) {
     this.cursor = v;
   }
 }

@@ -63,9 +63,10 @@ Compile options:
 | `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                          | (none)              |
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)              |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)              |
-| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | from schema/default |
-| `--emit-fdl`                          | Print translated Fory IDL for non-`.fdl` inputs       | `false`             |
-| `--emit-fdl-path`                     | Write translated Fory IDL to a file or directory      | (stdout)            |
+| `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)              |
+| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`        |
+| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`             |
+| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)            |
 
 Scan options (with `--scan-generated`):
 
@@ -110,7 +111,7 @@ foryc schema.fdl
 **Compile for specific languages:**
 
 ```bash
-foryc schema.fdl --lang java,python
+foryc schema.fdl --lang java,python,csharp
 ```
 
 **Specify output directory:**
@@ -157,7 +158,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
@@ -226,13 +227,14 @@ Compiling src/main.fdl...
 
 ## Supported Languages
 
-| Language | Flag     | Output Extension | Description                 |
-| -------- | -------- | ---------------- | --------------------------- |
-| Java     | `java`   | `.java`          | POJOs with Fory annotations |
-| Python   | `python` | `.py`            | Dataclasses with type hints |
-| Go       | `go`     | `.go`            | Structs with struct tags    |
-| Rust     | `rust`   | `.rs`            | Structs with derive macros  |
-| C++      | `cpp`    | `.h`             | Structs with FORY macros    |
+| Language | Flag     | Output Extension | Description                  |
+| -------- | -------- | ---------------- | ---------------------------- |
+| Java     | `java`   | `.java`          | POJOs with Fory annotations  |
+| Python   | `python` | `.py`            | Dataclasses with type hints  |
+| Go       | `go`     | `.go`            | Structs with struct tags     |
+| Rust     | `rust`   | `.rs`            | Structs with derive macros   |
+| C++      | `cpp`    | `.h`             | Structs with FORY macros     |
+| C#       | `csharp` | `.cs`            | Classes with Fory attributes |
 
 ## Output Structure
 
@@ -301,6 +303,43 @@ generated/
 - Single header file
 - Namespace matches package (dots to `::`)
 - Header guards and forward declarations
+
+### C\#
+
+```
+generated/
+└── csharp/
+    └── example/
+        └── example.cs
+```
+
+- Single `.cs` file per schema
+- Namespace uses `csharp_namespace` (if set) or Fory IDL package
+- Includes registration helper and `ToBytes`/`FromBytes` methods
+- Imported schemas are registered transitively (for example `root.idl` importing
+  `addressbook.fdl` and `tree.fdl`)
+
+### C# IDL Matrix Verification
+
+Run the end-to-end C# IDL matrix (FDL/IDL/Proto/FBS generation plus roundtrip tests):
+
+```bash
+cd integration_tests/idl_tests
+./run_csharp_tests.sh
+```
+
+This runner executes schema-consistent and compatible roundtrips across:
+
+- `addressbook`, `auto_id`, `complex_pb` primitives
+- `collection` and union/list variants
+- `optional_types`
+- `any_example` (`.fdl`) and `any_example` (`.proto`)
+- `tree` and `graph` reference-tracking cases
+- `monster.fbs` and `complex_fbs.fbs`
+- `root.idl` cross-package import coverage
+- evolving schema compatibility cases
+
+The script also sets `DATA_FILE*` variables so file-based roundtrip paths are exercised.
 
 ## Build Integration
 

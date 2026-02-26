@@ -80,7 +80,7 @@ pip install -e ".[dev,format]"
 
 ## Thread Safety
 
-`pyfory` provides `ThreadSafeFory` for thread-safe serialization using thread-local storage:
+`pyfory` provides `ThreadSafeFory` for thread-safe serialization using a pooled wrapper:
 
 ```python
 import pyfory

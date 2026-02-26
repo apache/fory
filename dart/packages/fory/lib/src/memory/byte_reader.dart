@@ -19,17 +19,19 @@
 
 import 'dart:typed_data';
 import 'package:meta/meta.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/memory/byte_reader_impl.dart';
 
 abstract base class ByteReader {
-
   @protected
   final Endian endian = Endian.little;
 
   ByteReader.internal();
 
-  factory ByteReader.forBytes(Uint8List data, {int offset = 0, int? length})
-    => ByteReaderImpl(data, offset: offset, length: length);
+  factory ByteReader.forBytes(Uint8List data, {int offset = 0, int? length}) =>
+      ByteReaderImpl(data, offset: offset, length: length);
+
+  int get remaining;
 
   void skip(int length);
 
@@ -65,6 +67,9 @@ abstract base class ByteReader {
   /// Reads a 64-bit floating point number from the stream.
   double readFloat64();
 
+  /// Reads a 16-bit floating point number from the stream.
+  Float16 readFloat16();
+
   int readVarUint36Small();
 
   int readVarInt32();
@@ -81,7 +86,7 @@ abstract base class ByteReader {
   int readBytesAsInt64(int length);
 
   Uint8List readBytesView(int length);
-  
+
   Uint8List copyBytes(int length);
 
   Uint16List readCopyUint16List(int byteNum);

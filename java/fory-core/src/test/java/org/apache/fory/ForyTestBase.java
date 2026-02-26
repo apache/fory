@@ -50,6 +50,7 @@ import org.testng.annotations.DataProvider;
 /** Fory unit test base class. */
 @SuppressWarnings("unchecked")
 public abstract class ForyTestBase {
+  private static final String XLANG_DATAPROVIDER_THREAD_COUNT = "8";
   private static final ThreadLocal<Fory> javaForyLocal =
       ThreadLocal.withInitial(
           () ->
@@ -129,6 +130,12 @@ public abstract class ForyTestBase {
   @DataProvider
   public static Object[][] enableCodegen() {
     return new Object[][] {{false}, {true}};
+  }
+
+  @DataProvider(name = "enableCodegenParallel", parallel = true)
+  public static Object[][] enableCodegenParallel() {
+    System.setProperty("dataproviderthreadcount", XLANG_DATAPROVIDER_THREAD_COUNT);
+    return enableCodegen();
   }
 
   @DataProvider

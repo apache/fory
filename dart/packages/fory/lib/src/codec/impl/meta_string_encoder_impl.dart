@@ -28,7 +28,6 @@ import 'package:fory/src/util/char_util.dart';
 import 'package:fory/src/util/string_util.dart';
 
 final class ForyMetaStringEncoder extends MetaStringEncoder {
-
   const ForyMetaStringEncoder(super.specialChar1, super.specialChar2);
 
   int _charToValueLowerSpecial(int codeUint) {
@@ -38,36 +37,37 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
     } else if (codeUint == 46) {
       return 26; // '.'
     } else if (codeUint == 95) {
-      return 27;  // '_'
+      return 27; // '_'
     } else if (codeUint == 36) {
       return 28; // '$'
     } else if (codeUint == 124) {
       return 29; // '|'
     } else {
-      throw ArgumentError('Unsupported character for LOWER_SPECIAL encoding:: ${String.fromCharCode(codeUint)}');
+      throw ArgumentError(
+          'Unsupported character for LOWER_SPECIAL encoding:: ${String.fromCharCode(codeUint)}');
     }
   }
 
   // Write the missing method
-  Uint8List _encodeLowerSpecial(String input){
+  Uint8List _encodeLowerSpecial(String input) {
     return _encodeGeneric(input.codeUnits, MetaStringEncoding.ls.bits);
   }
 
-  Uint8List _encodeLowerUpperDigitSpecial(String input){
+  Uint8List _encodeLowerUpperDigitSpecial(String input) {
     return _encodeGeneric(input.codeUnits, MetaStringEncoding.luds.bits);
   }
 
-  Uint8List _encodeFirstToLowerSpecial(String input){
+  Uint8List _encodeFirstToLowerSpecial(String input) {
     Uint16List chars = Uint16List.fromList(input.codeUnits);
     chars[0] += 32; // 'A' to 'a'
     return _encodeGeneric(chars, MetaStringEncoding.ftls.bits);
   }
 
-  Uint8List _encodeRepAllToLowerSpecial(String input, int upperCount){
+  Uint8List _encodeRepAllToLowerSpecial(String input, int upperCount) {
     Uint16List newChars = Uint16List(input.length + upperCount);
     int index = 0;
-    for (var c in input.codeUnits){
-      if (CharUtil.upper(c)){
+    for (var c in input.codeUnits) {
+      if (CharUtil.upper(c)) {
         newChars[index++] = 0x7c; // '|'
         newChars[index++] = c + 32; // 'A' to 'a'
       } else {
@@ -95,30 +95,40 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
       // '_'
       return 63;
     } else {
-      throw ArgumentError('Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: ${String.fromCharCode(codeUnit)}');
+      throw ArgumentError(
+          'Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: ${String.fromCharCode(codeUnit)}');
     }
   }
 
   // TODO: (Consider optimization later) If using int64 for raw padding, although bytes do not need to be changed frequently, the bitsPerChar will not be that large, causing charVal to still change frequently, the improvement may not be significant, consider optimization later
-  Uint8List _encodeGeneric(List<int> input, int bitsPerChar){
-    assert(bitsPerChar >= 5 && bitsPerChar <= 32); // According to the official documentation, the minimum range for bitsPerChar is 5
+  Uint8List _encodeGeneric(List<int> input, int bitsPerChar) {
+    assert(bitsPerChar >= 5 &&
+        bitsPerChar <=
+            32); // According to the official documentation, the minimum range for bitsPerChar is 5
     int totalBits = input.length * bitsPerChar + 1;
     int byteLength = (totalBits + 7) ~/ 8;
     Uint8List bytes = Uint8List(byteLength);
     int byteInd = 0;
-    int bitInd = 1; // Start from the second bit (the first is reserved for the flag)
+    int bitInd =
+        1; // Start from the second bit (the first is reserved for the flag)
     int charInd = 0;
-    int charBitRemain = bitsPerChar; // Remaining bits to process for the current character
+    int charBitRemain =
+        bitsPerChar; // Remaining bits to process for the current character
     int mask;
     while (charInd < input.length) {
       // bitsPerChar == 5 means LOWER_SPECIAL encoding, or LOWER_UPPER_DIGIT_SPECIAL encoding(only two)
-      int charVal = (bitsPerChar == 5) ? _charToValueLowerSpecial(input[charInd]) : _charToValueLowerUpperDigitSpecial(input[charInd]);
+      int charVal = (bitsPerChar == 5)
+          ? _charToValueLowerSpecial(input[charInd])
+          : _charToValueLowerUpperDigitSpecial(input[charInd]);
       // Calculate how many bits are remaining in the current byte
       int nowByteRemain = 8 - bitInd;
       if (nowByteRemain >= charBitRemain) {
         // If the remaining bits in the current byte can fit the whole character value
-        mask = (1 << charBitRemain) - 1; // Create a mask for the bits of the character
-        bytes[byteInd] |= (charVal & mask) << (nowByteRemain - charBitRemain); // Place the character bits into the byte
+        mask = (1 << charBitRemain) -
+            1; // Create a mask for the bits of the character
+        bytes[byteInd] |= (charVal & mask) <<
+            (nowByteRemain -
+                charBitRemain); // Place the character bits into the byte
         bitInd += charBitRemain;
         if (bitInd == 8) {
           // Move to the next byte if the current byte is filled
@@ -127,14 +137,18 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
         }
         // Character has been fully placed in the current byte, move to the next character
         ++charInd;
-        charBitRemain = bitsPerChar; // Reset the remaining bits for the next character
+        charBitRemain =
+            bitsPerChar; // Reset the remaining bits for the next character
       } else {
         // If the remaining bits in the current byte are not enough to hold the whole character
-        mask = (1 << nowByteRemain) - 1; // Create a mask for the current available bits in the byte
-        bytes[byteInd] |= (charVal >> (charBitRemain - nowByteRemain)) & mask; // Place part of the character bits into the byte
+        mask = (1 << nowByteRemain) -
+            1; // Create a mask for the current available bits in the byte
+        bytes[byteInd] |= (charVal >> (charBitRemain - nowByteRemain)) &
+            mask; // Place part of the character bits into the byte
         ++byteInd; // Move to the next byte
         bitInd = 0; // Reset bit index for the new byte
-        charBitRemain -= nowByteRemain; // Decrease the remaining bits for the character
+        charBitRemain -=
+            nowByteRemain; // Decrease the remaining bits for the character
       }
     }
     bool stripLastChar = bytes.length * 8 >= totalBits + bitsPerChar;
@@ -148,10 +162,14 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
   MetaString _encode(String input, MetaStringEncoding encoding) {
     // TODO: Do not check input length here, this check should be done earlier (remove this comment after writing)
     assert(input.length < MetaStringConst.metaStrMaxLen);
-    assert(encoding == MetaStringEncoding.utf8 || input.isNotEmpty); // Only utf8 encoding can be empty
-    if (input.isEmpty) return MetaString(input, encoding, specialChar1, specialChar2, Uint8List(0));
-    if (encoding != MetaStringEncoding.utf8 && StringUtil.hasNonLatin(input)){
-      throw ArgumentError('non-latin characters are not allowed in non-utf8 encoding');
+    assert(encoding == MetaStringEncoding.utf8 ||
+        input.isNotEmpty); // Only utf8 encoding can be empty
+    if (input.isEmpty)
+      return MetaString(
+          input, encoding, specialChar1, specialChar2, Uint8List(0));
+    if (encoding != MetaStringEncoding.utf8 && StringUtil.hasNonLatin(input)) {
+      throw ArgumentError(
+          'non-latin characters are not allowed in non-utf8 encoding');
     }
     late final Uint8List bytes;
     switch (encoding) {
@@ -178,9 +196,12 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
   }
 
   @override
-  MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings) {
-    if (input.isEmpty) return MetaString(input, MetaStringEncoding.utf8, specialChar1, specialChar2, Uint8List(0));
-    if (StringUtil.hasNonLatin(input)){
+  MetaString encodeByAllowedEncodings(
+      String input, List<MetaStringEncoding> encodings) {
+    if (input.isEmpty)
+      return MetaString(input, MetaStringEncoding.utf8, specialChar1,
+          specialChar2, Uint8List(0));
+    if (StringUtil.hasNonLatin(input)) {
       return MetaString(
         input,
         MetaStringEncoding.utf8,

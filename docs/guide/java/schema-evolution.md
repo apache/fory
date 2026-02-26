@@ -73,7 +73,7 @@ Fory supports sharing type metadata (class name, field name, final field type in
 //   .withLanguage(Language.JAVA)
 //   .withRefTracking(false)
 //   // share meta across serialization.
-//   .withMetaContextShare(true)
+//   .withMetaShare(true)
 
 // Not thread-safe fory.
 MetaContext context = xxx;

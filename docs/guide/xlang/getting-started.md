@@ -31,14 +31,14 @@ This guide covers installation and basic setup for cross-language serialization 
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 ```
 
 **Gradle:**
 
 ```gradle
-implementation 'org.apache.fory:fory-core:0.14.1'
+implementation 'org.apache.fory:fory-core:0.15.0'
 ```
 
 ### Python

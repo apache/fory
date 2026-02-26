@@ -21,36 +21,39 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:fory/src/codegen/analyze/analysis_cache.dart';
-import 'package:fory/src/codegen/analyze/analysis_wrappers.dart';
+import 'package:fory/src/codegen/analyze/type_analysis_models.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/analyze/interface/type_analyzer.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/type_immutable.dart';
-import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
+import 'package:fory/src/codegen/meta/impl/type_spec_generator.dart';
 import 'package:fory/src/const/types.dart';
 
-class TypeAnalyzerImpl extends TypeAnalyzer{
-
+class TypeAnalyzerImpl extends TypeAnalyzer {
   TypeAnalyzerImpl();
 
-  TypeSpecGen _analyze(
-    TypeDecision typeDecision,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
-  ){
-    assert (locationMark.ensureFieldLevel);
+  TypeSpecGenerator _analyze(
+    TypeAnalysisDecision typeDecision,
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
+  ) {
+    assert(locationMark.ensureFieldLevel);
     InterfaceType type = typeDecision.type;
-    bool nullable = (typeDecision.forceNullable) ? true:  type.nullabilitySuffix == NullabilitySuffix.question;
-    TypeImmutable typeImmutable = _analyzeTypeImmutable(type.element, locationMark);
+    bool nullable = (typeDecision.forceNullable)
+        ? true
+        : type.nullabilitySuffix == NullabilitySuffix.question;
+    TypeImmutable typeImmutable =
+        _resolveTypeImmutable(type.element, locationMark);
 
-    List<TypeSpecGen> typeArgsTypes = [];
-    for (DartType arg in type.typeArguments){
+    List<TypeSpecGenerator> typeArgsTypes = [];
+    for (DartType arg in type.typeArguments) {
       typeArgsTypes.add(
-        _analyze(Analyzer.typeSystemAnalyzer.decideInterfaceType(arg), locationMark),
+        _analyze(
+            Analyzer.typeSystemAnalyzer.decideInterfaceType(arg), locationMark),
       );
     }
-    TypeSpecGen spec = TypeSpecGen(
+    TypeSpecGenerator spec = TypeSpecGenerator(
       typeImmutable,
       nullable,
       typeArgsTypes,
@@ -58,21 +61,23 @@ class TypeAnalyzerImpl extends TypeAnalyzer{
     return spec;
   }
 
-
   @override
-  TypeSpecGen getTypeImmutableAndTag(
-    TypeDecision typeDecision,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
-  ){
+  TypeSpecGenerator resolveTypeSpec(
+    TypeAnalysisDecision typeDecision,
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
+  ) {
     InterfaceType type = typeDecision.type;
 
     InterfaceElement element = type.element;
     int libId = element.library.id;
-    bool nullable = (typeDecision.forceNullable) ? true:  type.nullabilitySuffix == NullabilitySuffix.question;
+    bool nullable = (typeDecision.forceNullable)
+        ? true
+        : type.nullabilitySuffix == NullabilitySuffix.question;
 
-    ObjTypeWrapper objTypeRes = Analyzer.typeSystemAnalyzer.analyzeObjType(element, locationMark);
-    List<TypeSpecGen> typeArgsTypes = [];
-    for (DartType arg in type.typeArguments){
+    ObjectTypeAnalysis objTypeRes =
+        Analyzer.typeSystemAnalyzer.resolveObjectType(element, locationMark);
+    List<TypeSpecGenerator> typeArgsTypes = [];
+    for (DartType arg in type.typeArguments) {
       typeArgsTypes.add(
         _analyze(
           Analyzer.typeSystemAnalyzer.decideInterfaceType(arg),
@@ -80,34 +85,37 @@ class TypeAnalyzerImpl extends TypeAnalyzer{
         ),
       );
     }
-    return TypeSpecGen(
+    return TypeSpecGenerator(
       TypeImmutable(
         element.name,
         libId,
         objTypeRes.objType,
         objTypeRes.objType.independent,
-        objTypeRes.certainForSer,
+        objTypeRes.serializationCertain,
       ),
       nullable,
       typeArgsTypes,
     );
   }
 
-  /// Version of getTypeImmutableAndTag that supports annotation-based ObjType override.
+  /// Version of resolveTypeSpec that supports annotation-based ObjType override.
   /// Used when uint annotations are present on int fields.
-  TypeSpecGen getTypeImmutableAndTagWithOverride(
-    TypeDecision typeDecision,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
+  @override
+  TypeSpecGenerator resolveTypeSpecWithOverride(
+    TypeAnalysisDecision typeDecision,
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
     ObjType objTypeOverride,
-  ){
+  ) {
     InterfaceType type = typeDecision.type;
 
     InterfaceElement element = type.element;
     int libId = element.library.id;
-    bool nullable = (typeDecision.forceNullable) ? true:  type.nullabilitySuffix == NullabilitySuffix.question;
+    bool nullable = (typeDecision.forceNullable)
+        ? true
+        : type.nullabilitySuffix == NullabilitySuffix.question;
 
-    List<TypeSpecGen> typeArgsTypes = [];
-    for (DartType arg in type.typeArguments){
+    List<TypeSpecGenerator> typeArgsTypes = [];
+    for (DartType arg in type.typeArguments) {
       typeArgsTypes.add(
         _analyze(
           Analyzer.typeSystemAnalyzer.decideInterfaceType(arg),
@@ -115,25 +123,25 @@ class TypeAnalyzerImpl extends TypeAnalyzer{
         ),
       );
     }
-    return TypeSpecGen(
+    return TypeSpecGenerator(
       TypeImmutable(
         element.name,
         libId,
         objTypeOverride,
         objTypeOverride.independent,
-        true, // certainForSer is true for annotation-based types
+        true, // serializationCertain is true for annotation-based types
       ),
       nullable,
       typeArgsTypes,
     );
   }
 
-  TypeImmutable _analyzeTypeImmutable(
+  TypeImmutable _resolveTypeImmutable(
     InterfaceElement element,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
+  ) {
     // loc
-    assert (locationMark.ensureFieldLevel);
+    assert(locationMark.ensureFieldLevel);
     // check cache
     TypeImmutable? typeImmutable = AnalysisCache.getTypeImmutable(element.id);
     if (typeImmutable != null) {
@@ -142,7 +150,8 @@ class TypeAnalyzerImpl extends TypeAnalyzer{
     // step by step
     String name = element.name;
 
-    ObjTypeWrapper objTypeRes = Analyzer.typeSystemAnalyzer.analyzeObjType(element, locationMark);
+    ObjectTypeAnalysis objTypeRes =
+        Analyzer.typeSystemAnalyzer.resolveObjectType(element, locationMark);
     int libId = element.library.id;
     // cache
     typeImmutable = TypeImmutable(
@@ -150,7 +159,7 @@ class TypeAnalyzerImpl extends TypeAnalyzer{
       libId,
       objTypeRes.objType,
       objTypeRes.objType.independent,
-      objTypeRes.certainForSer,
+      objTypeRes.serializationCertain,
     );
     AnalysisCache.putTypeImmutable(element.id, typeImmutable);
     return typeImmutable;

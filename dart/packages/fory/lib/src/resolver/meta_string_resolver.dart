@@ -23,13 +23,13 @@ import 'package:fory/src/meta/meta_string_byte.dart';
 import 'package:fory/src/resolver/impl/meta_string_resolver_impl.dart';
 import 'package:fory/src/resolver/meta_string_handler.dart';
 
-abstract class MetaStringResolver extends MataStringHandler{
+abstract class MetaStringResolver extends MataStringHandler {
   const MetaStringResolver();
   static MetaStringResolver get newInst => MetaStringResolverImpl();
 
   MetaStringBytes readMetaStringBytes(ByteReader reader);
   MetaStringBytes getOrCreateMetaStringBytes(MetaString mstr);
-  
+
   String decodeNamespace(MetaStringBytes msb);
   String decodeTypename(MetaStringBytes msb);
 }

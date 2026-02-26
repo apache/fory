@@ -39,7 +39,7 @@ final class Int32 extends FixedNum {
   static int _convert(num value) {
     if (value is int) {
       // Apply 32-bit signed integer overflow behavior
-      int result = value & 0xFFFFFFFF;  // Keep only the lowest 32 bits
+      int result = value & 0xFFFFFFFF; // Keep only the lowest 32 bits
       // Convert to signed by checking the sign bit
       return (result & 0x80000000) != 0 ? result - 4294967296 : result;
     } else {

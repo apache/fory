@@ -48,6 +48,7 @@ class TokenType(Enum):
     FALSE = auto()
     TO = auto()
     MAX = auto()
+    STREAM = auto()
 
     # Literals
     IDENT = auto()
@@ -120,6 +121,7 @@ class Lexer:
         "false": TokenType.FALSE,
         "to": TokenType.TO,
         "max": TokenType.MAX,
+        "stream": TokenType.STREAM,
     }
 
     PUNCTUATION = {

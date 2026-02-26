@@ -25,6 +25,8 @@ from fory_compiler.ir.ast import (
     Message,
     Enum,
     Union,
+    Service,
+    RpcMethod,
     Field,
     EnumValue,
     Import,
@@ -44,6 +46,7 @@ KNOWN_FILE_OPTIONS: Set[str] = {
     "java_outer_classname",
     "java_multiple_files",
     "go_package",
+    "csharp_namespace",
     "deprecated",
     "use_record_for_java_message",
     "polymorphism",
@@ -104,6 +107,14 @@ KNOWN_MESSAGE_OPTIONS: Set[str] = {
 KNOWN_UNION_OPTIONS: Set[str] = {
     "id",
     "alias",
+    "deprecated",
+}
+
+KNOWN_SERVICE_OPTIONS: Set[str] = {
+    "deprecated",
+}
+
+KNOWN_METHOD_OPTIONS: Set[str] = {
     "deprecated",
 }
 
@@ -196,6 +207,7 @@ class Parser:
         enums = []
         messages = []
         unions = []
+        services = []
         options = {}
 
         while not self.at_end():
@@ -215,6 +227,8 @@ class Parser:
                 unions.append(self.parse_union())
             elif self.check(TokenType.MESSAGE):
                 messages.append(self.parse_message())
+            elif self.check(TokenType.SERVICE):
+                services.append(self.parse_service())
             else:
                 raise self.error(f"Unexpected token: {self.current().value}")
 
@@ -225,6 +239,7 @@ class Parser:
             enums=enums,
             messages=messages,
             unions=unions,
+            services=services,
             options=options,
             source_file=self.filename,
             source_format=self.source_format,
@@ -821,6 +836,113 @@ class Parser:
             target["weak_ref"] = weak_ref
         if thread_safe is not None:
             target["thread_safe_pointer"] = thread_safe
+
+    def parse_service(self) -> Service:
+        """Parse a service definition: service Greeter { rpc ... }"""
+        start = self.current()
+        self.consume(TokenType.SERVICE)
+        name = self.consume(TokenType.IDENT, "Expected service name").value
+        self.consume(TokenType.LBRACE, "Expected '{' after service name")
+
+        methods = []
+        options = {}
+
+        while not self.check(TokenType.RBRACE):
+            if self.check(TokenType.OPTION):
+                # Service-level option
+                name_token = self.current()
+                opt_name, opt_value = (
+                    self.parse_file_option()
+                )  # Reusing generic option parser
+                options[opt_name] = opt_value
+                if opt_name not in KNOWN_SERVICE_OPTIONS:
+                    warnings.warn(
+                        f"Line {name_token.line}: ignoring unknown service option '{opt_name}'",
+                        stacklevel=2,
+                    )
+            elif self.check(TokenType.RPC):
+                methods.append(self.parse_rpc_method())
+            else:
+                raise self.error("Expected 'rpc' or 'option' inside service block")
+
+        self.consume(TokenType.RBRACE, "Expected '}' after service body")
+
+        return Service(
+            name=name,
+            methods=methods,
+            options=options,
+            line=start.line,
+            column=start.column,
+            location=self.make_location(start),
+        )
+
+    def parse_rpc_method(self) -> RpcMethod:
+        """Parse an RPC method: rpc Name (stream? Req) returns (stream? Res) { option ... };"""
+        start = self.current()
+        self.consume(TokenType.RPC)
+        name = self.consume(TokenType.IDENT, "Expected method name").value
+
+        # Parse request type
+        self.consume(TokenType.LPAREN, "Expected '(' before request type")
+        client_streaming = False
+        if self.check(TokenType.STREAM):
+            self.advance()
+            client_streaming = True
+
+        req_type_token = self.consume(TokenType.IDENT, "Expected request message type")
+        request_type = NamedType(
+            name=req_type_token.value, location=self.make_location(req_type_token)
+        )
+        self.consume(TokenType.RPAREN, "Expected ')' after request type")
+
+        # Parse return type
+        self.consume(TokenType.RETURNS, "Expected 'returns' keyword")
+        self.consume(TokenType.LPAREN, "Expected '(' before response type")
+        server_streaming = False
+        if self.check(TokenType.STREAM):
+            self.advance()
+            server_streaming = True
+
+        res_type_token = self.consume(TokenType.IDENT, "Expected response message type")
+        response_type = NamedType(
+            name=res_type_token.value, location=self.make_location(res_type_token)
+        )
+        self.consume(TokenType.RPAREN, "Expected ')' after response type")
+
+        # Parse optional method options block
+        options = {}
+        if self.check(TokenType.LBRACE):
+            self.consume(TokenType.LBRACE)
+            while not self.check(TokenType.RBRACE):
+                if self.check(TokenType.OPTION):
+                    name_token = self.current()
+                    opt_name, opt_value = self.parse_file_option()
+                    options[opt_name] = opt_value
+                    if opt_name not in KNOWN_METHOD_OPTIONS:
+                        warnings.warn(
+                            f"Line {name_token.line}: ignoring unknown method option '{opt_name}'",
+                            stacklevel=2,
+                        )
+                elif self.check(TokenType.SEMI):
+                    # Allow empty ; inside block
+                    self.advance()
+                else:
+                    raise self.error("Expected 'option' inside method block")
+            self.consume(TokenType.RBRACE, "Expected '}' after method options")
+        else:
+            self.consume(TokenType.SEMI, "Expected ';' after method definition")
+
+        return RpcMethod(
+            name=name,
+            request_type=request_type,
+            response_type=response_type,
+            client_streaming=client_streaming,
+            server_streaming=server_streaming,
+            options=options,
+            line=start.line,
+            column=start.column,
+            location=self.make_location(start),
+        )
 
     def parse_type_options(
         self, type_name: str, known_options: Set[str], allow_zero_id: bool = False

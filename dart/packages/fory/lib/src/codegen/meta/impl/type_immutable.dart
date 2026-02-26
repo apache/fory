@@ -26,13 +26,13 @@ class TypeImmutable {
   final String name;
   final ObjType objType;
   final bool independent;
-  final bool certainForSer;
+  final bool serializationCertain;
 
   TypeImmutable(
     this.name,
     this.typeLibId,
     this.objType,
     this.independent,
-    this.certainForSer,
+    this.serializationCertain,
   );
 }

@@ -47,29 +47,12 @@ class Serializer(ABC):
     def read(self, buffer):
         raise NotImplementedError
 
-    def xwrite(self, buffer, value):
-        raise NotImplementedError
-
-    def xread(self, buffer):
-        raise NotImplementedError
-
     @classmethod
     def support_subclass(cls) -> bool:
         return False
 
 
-class XlangCompatibleSerializer(Serializer):
-    def __init__(self, fory, type_):
-        super().__init__(fory, type_)
-
-    def xwrite(self, buffer, value):
-        self.write(buffer, value)
-
-    def xread(self, buffer):
-        return self.read(buffer)
-
-
-class BooleanSerializer(XlangCompatibleSerializer):
+class BooleanSerializer(Serializer):
     def write(self, buffer, value):
         buffer.write_bool(value)
 
@@ -77,7 +60,7 @@ class BooleanSerializer(XlangCompatibleSerializer):
         return buffer.read_bool()
 
 
-class ByteSerializer(XlangCompatibleSerializer):
+class ByteSerializer(Serializer):
     def write(self, buffer, value):
         buffer.write_int8(value)
 
@@ -85,7 +68,7 @@ class ByteSerializer(XlangCompatibleSerializer):
         return buffer.read_int8()
 
 
-class Int16Serializer(XlangCompatibleSerializer):
+class Int16Serializer(Serializer):
     def write(self, buffer, value):
         buffer.write_int16(value)
 
@@ -93,7 +76,7 @@ class Int16Serializer(XlangCompatibleSerializer):
         return buffer.read_int16()
 
 
-class Int32Serializer(XlangCompatibleSerializer):
+class Int32Serializer(Serializer):
     """Serializer for INT32/VARINT32 type - uses variable-length encoding for xlang compatibility."""
 
     def write(self, buffer, value):
@@ -103,7 +86,7 @@ class Int32Serializer(XlangCompatibleSerializer):
         return buffer.read_varint32()
 
 
-class FixedInt32Serializer(XlangCompatibleSerializer):
+class FixedInt32Serializer(Serializer):
     """Serializer for fixed-width 32-bit signed integer (INT32 type_id=4)."""
 
     def write(self, buffer, value):
@@ -116,12 +99,6 @@ class FixedInt32Serializer(XlangCompatibleSerializer):
 class Int64Serializer(Serializer):
     """Serializer for INT64/VARINT64 type - uses variable-length encoding for xlang compatibility."""
 
-    def xwrite(self, buffer, value):
-        buffer.write_varint64(value)
-
-    def xread(self, buffer):
-        return buffer.read_varint64()
-
     def write(self, buffer, value):
         buffer.write_varint64(value)
 
@@ -129,7 +106,7 @@ class Int64Serializer(Serializer):
         return buffer.read_varint64()
 
 
-class FixedInt64Serializer(XlangCompatibleSerializer):
+class FixedInt64Serializer(Serializer):
     """Serializer for fixed-width 64-bit signed integer (INT64 type_id=6)."""
 
     def write(self, buffer, value):
@@ -139,7 +116,7 @@ class FixedInt64Serializer(XlangCompatibleSerializer):
         return buffer.read_int64()
 
 
-class Varint32Serializer(XlangCompatibleSerializer):
+class Varint32Serializer(Serializer):
     """Serializer for VARINT32 type - variable-length encoded signed 32-bit integer."""
 
     def write(self, buffer, value):
@@ -149,7 +126,7 @@ class Varint32Serializer(XlangCompatibleSerializer):
         return buffer.read_varint32()
 
 
-class Varint64Serializer(XlangCompatibleSerializer):
+class Varint64Serializer(Serializer):
     """Serializer for VARINT64 type - variable-length encoded signed 64-bit integer."""
 
     def write(self, buffer, value):
@@ -159,7 +136,7 @@ class Varint64Serializer(XlangCompatibleSerializer):
         return buffer.read_varint64()
 
 
-class TaggedInt64Serializer(XlangCompatibleSerializer):
+class TaggedInt64Serializer(Serializer):
     """Serializer for TAGGED_INT64 type - tagged encoding for signed 64-bit integer."""
 
     def write(self, buffer, value):
@@ -169,7 +146,7 @@ class TaggedInt64Serializer(XlangCompatibleSerializer):
         return buffer.read_tagged_int64()
 
 
-class Uint8Serializer(XlangCompatibleSerializer):
+class Uint8Serializer(Serializer):
     """Serializer for UINT8 type - unsigned 8-bit integer."""
 
     def write(self, buffer, value):
@@ -179,7 +156,7 @@ class Uint8Serializer(XlangCompatibleSerializer):
         return buffer.read_uint8()
 
 
-class Uint16Serializer(XlangCompatibleSerializer):
+class Uint16Serializer(Serializer):
     """Serializer for UINT16 type - unsigned 16-bit integer."""
 
     def write(self, buffer, value):
@@ -189,7 +166,7 @@ class Uint16Serializer(XlangCompatibleSerializer):
         return buffer.read_uint16()
 
 
-class Uint32Serializer(XlangCompatibleSerializer):
+class Uint32Serializer(Serializer):
     """Serializer for UINT32 type - fixed-size unsigned 32-bit integer."""
 
     def write(self, buffer, value):
@@ -199,7 +176,7 @@ class Uint32Serializer(XlangCompatibleSerializer):
         return buffer.read_uint32()
 
 
-class VarUint32Serializer(XlangCompatibleSerializer):
+class VarUint32Serializer(Serializer):
     """Serializer for VAR_UINT32 type - variable-length encoded unsigned 32-bit integer."""
 
     def write(self, buffer, value):
@@ -209,7 +186,7 @@ class VarUint32Serializer(XlangCompatibleSerializer):
         return buffer.read_var_uint32()
 
 
-class Uint64Serializer(XlangCompatibleSerializer):
+class Uint64Serializer(Serializer):
     """Serializer for UINT64 type - fixed-size unsigned 64-bit integer."""
 
     def write(self, buffer, value):
@@ -219,7 +196,7 @@ class Uint64Serializer(XlangCompatibleSerializer):
         return buffer.read_uint64()
 
 
-class VarUint64Serializer(XlangCompatibleSerializer):
+class VarUint64Serializer(Serializer):
     """Serializer for VAR_UINT64 type - variable-length encoded unsigned 64-bit integer."""
 
     def write(self, buffer, value):
@@ -229,7 +206,7 @@ class VarUint64Serializer(XlangCompatibleSerializer):
         return buffer.read_var_uint64()
 
 
-class TaggedUint64Serializer(XlangCompatibleSerializer):
+class TaggedUint64Serializer(Serializer):
     """Serializer for TAGGED_UINT64 type - tagged encoding for unsigned 64-bit integer."""
 
     def write(self, buffer, value):
@@ -239,7 +216,7 @@ class TaggedUint64Serializer(XlangCompatibleSerializer):
         return buffer.read_tagged_uint64()
 
 
-class Float32Serializer(XlangCompatibleSerializer):
+class Float32Serializer(Serializer):
     def write(self, buffer, value):
         buffer.write_float(value)
 
@@ -247,7 +224,7 @@ class Float32Serializer(XlangCompatibleSerializer):
         return buffer.read_float()
 
 
-class Float64Serializer(XlangCompatibleSerializer):
+class Float64Serializer(Serializer):
     def write(self, buffer, value):
         buffer.write_double(value)
 
@@ -255,7 +232,7 @@ class Float64Serializer(XlangCompatibleSerializer):
         return buffer.read_double()
 
 
-class StringSerializer(XlangCompatibleSerializer):
+class StringSerializer(Serializer):
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
         self.need_to_write_ref = False
@@ -270,7 +247,7 @@ class StringSerializer(XlangCompatibleSerializer):
 _base_date = datetime.date(1970, 1, 1)
 
 
-class DateSerializer(XlangCompatibleSerializer):
+class DateSerializer(Serializer):
     def write(self, buffer, value: datetime.date):
         if not isinstance(value, datetime.date):
             raise TypeError("{} should be {} instead of {}".format(value, datetime.date, type(value)))
@@ -282,7 +259,7 @@ class DateSerializer(XlangCompatibleSerializer):
         return _base_date + datetime.timedelta(days=days)
 
 
-class TimestampSerializer(XlangCompatibleSerializer):
+class TimestampSerializer(Serializer):
     __win_platform = platform.system() == "Windows"
 
     def _get_timestamp(self, value: datetime.datetime):
@@ -315,24 +292,19 @@ class EnumSerializer(Serializer):
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
         self.need_to_write_ref = False
+        self._members = tuple(type_)
+        self._ordinal_by_member = {member: idx for idx, member in enumerate(self._members)}
 
     @classmethod
     def support_subclass(cls) -> bool:
         return True
 
     def write(self, buffer, value):
-        buffer.write_string(value.name)
+        buffer.write_var_uint32(self._ordinal_by_member[value])
 
     def read(self, buffer):
-        name = buffer.read_string()
-        return getattr(self.type_, name)
-
-    def xwrite(self, buffer, value):
-        buffer.write_var_uint32(value.value)
-
-    def xread(self, buffer):
         ordinal = buffer.read_var_uint32()
-        return self.type_(ordinal)
+        return self._members[ordinal]
 
 
 class SliceSerializer(Serializer):
@@ -383,9 +355,3 @@ class SliceSerializer(Serializer):
         else:
             step = self.fory.read_no_ref(buffer)
         return slice(start, stop, step)
-
-    def xwrite(self, buffer, value):
-        raise NotImplementedError
-
-    def xread(self, buffer):
-        raise NotImplementedError

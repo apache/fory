@@ -19,15 +19,15 @@
 
 import 'dart:typed_data';
 import 'package:fory/src/dev_annotation/optimize.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 
-final class ByteWriterImpl extends ByteWriter{
-  
+final class ByteWriterImpl extends ByteWriter {
   final BytesBuilder _buffer = BytesBuilder();
   final ByteData _tempByteData = ByteData(8); // Used to store converted data
-  
-  ByteWriterImpl():super.internal();
-  
+
+  ByteWriterImpl() : super.internal();
+
   /// Get the current buffer size
   int get length => _buffer.length;
 
@@ -49,6 +49,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append a `Uint8` to the buffer
   @override
   void writeUint8(int value) {
@@ -56,6 +57,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append a `Uint16` (2 bytes, Little Endian) to the buffer
   @override
   void writeUint16(int value) {
@@ -64,6 +66,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append a `Uint32` (4 bytes, Little Endian) to the buffer
   @override
   void writeUint32(int value) {
@@ -72,6 +75,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append a `Uint64` (8 bytes, Little Endian) to the buffer
   @override
   void writeUint64(int value) {
@@ -80,6 +84,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append an `Int8` to the buffer
   @override
   void writeInt8(int value) {
@@ -88,6 +93,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append an `Int16` to the buffer
   @override
   void writeInt16(int value) {
@@ -96,21 +102,22 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   @inline
+
   /// Append an `Int32` (4 bytes, Little Endian) to the buffer
   @override
-  void writeInt32(int value,[int len = 4]) {
+  void writeInt32(int value, [int len = 4]) {
     _tempByteData.setInt32(0, value, endian);
     _buffer.add(_tempByteData.buffer.asUint8List(0, len));
   }
 
   @inline
+
   /// Append an `Int64` (8 bytes, Little Endian) to the buffer
   @override
-  void writeInt64(int value,[int len = 8]) {
+  void writeInt64(int value, [int len = 8]) {
     _tempByteData.setInt64(0, value, endian);
     _buffer.add(_tempByteData.buffer.asUint8List(0, len));
   }
-
 
   /// Append a `Float32` (4 bytes, Little Endian) to the buffer
   @inline
@@ -128,6 +135,13 @@ final class ByteWriterImpl extends ByteWriter{
     _buffer.add(_tempByteData.buffer.asUint8List(0, 8));
   }
 
+  /// Append a `Float16` (2 bytes, Little Endian) to the buffer
+  @inline
+  @override
+  void writeFloat16(Float16 value) {
+    writeUint16(value.toBits());
+  }
+
   /// Append a list of bytes to the buffer
   @override
   @inline
@@ -140,26 +154,27 @@ final class ByteWriterImpl extends ByteWriter{
   @inline
   void writeVarInt32(int v) {
     // Move the sign bit to the far right, shifting `v` to the left by 1 bit to make space for this position.
-    writeVarUint36Small((v<<1) ^ (v>>31));
+    writeVarUint36Small((v << 1) ^ (v >> 31));
   }
 
   /// Write a 64-bit var int (sign bit shifted right)
   @inline
   @override
   void writeVarInt64(int v) {
-    writeVarUint64((v<<1) ^ (v>>63));
+    writeVarUint64((v << 1) ^ (v >> 63));
   }
 
   /// Write a 32-bit unsigned var int
   @inline
   @override
   void writeVarUint32(int v) {
-    writeVarUint36Small(v); // Similar to ForyJava, directly call this method first as well.
+    writeVarUint36Small(
+        v); // Similar to ForyJava, directly call this method first as well.
   }
 
   /// Continue writing a 36-bit var int
   @override
-  void writeVarUint36Small(int v){
+  void writeVarUint36Small(int v) {
     int encoded = (v & 0x7f);
     if (v >>> 7 == 0) {
       _buffer.addByte(encoded);
@@ -173,14 +188,14 @@ final class ByteWriterImpl extends ByteWriter{
     return _continuePutVarInt36(encoded, v);
   }
 
-  void _continuePutVarInt36(int encoded, int v){
+  void _continuePutVarInt36(int encoded, int v) {
     encoded |= (((v & 0x1fc000) << 2) | 0x8000);
-    if (v >>> 21 ==0){
+    if (v >>> 21 == 0) {
       writeInt32(encoded, 3);
       return;
     }
     encoded |= (((v & 0xfe00000) << 3) | 0x800000);
-    if (v >>> 28 == 0){
+    if (v >>> 28 == 0) {
       writeInt32(encoded, 4);
       return;
     }
@@ -189,7 +204,7 @@ final class ByteWriterImpl extends ByteWriter{
   }
 
   /// Continue writing 32-bit var int with small chunk
-  void _continueWriteVarUint32Small7(int v){
+  void _continueWriteVarUint32Small7(int v) {
     int encoded = (v & 0x7f);
     encoded |= (((v & 0x3f80) << 1) | 0x80);
     if (v >>> 14 == 0) {
@@ -202,7 +217,7 @@ final class ByteWriterImpl extends ByteWriter{
   /// Write a 32-bit var int with a small 7-bit chunk
   @override
   void writeVarUint32Small7(int v) {
-    if (v >>> 7 ==0){
+    if (v >>> 7 == 0) {
       _buffer.addByte(v);
       return;
     }
@@ -213,7 +228,7 @@ final class ByteWriterImpl extends ByteWriter{
   @override
   void writeVarUint64(int v) {
     int varInt = (v & 0x7f);
-    if(v >>> 7 == 0){
+    if (v >>> 7 == 0) {
       _buffer.addByte(varInt);
       return;
     }

@@ -264,7 +264,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--lang",
         type=str,
         default="all",
-        help="Comma-separated list of target languages (java,python,cpp,rust,go). Default: all",
+        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp). Default: all",
     )
 
     parser.add_argument(
@@ -336,6 +336,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--csharp_out",
+        type=Path,
+        default=None,
+        metavar="DST_DIR",
+        help="Generate C# code in DST_DIR",
+    )
+
+    parser.add_argument(
         "--go_nested_type_style",
         type=str,
         default=None,
@@ -377,6 +385,12 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Scan and print without deleting files",
+    )
+
+    parser.add_argument(
+        "--grpc",
+        action="store_true",
+        help="Generate gRPC service code (stubs, serialization traits, etc.)",
     )
 
     return parser.parse_args(args)
@@ -425,6 +439,7 @@ def compile_file(
     emit_fdl: bool = False,
     emit_fdl_path: Optional[Path] = None,
     resolve_cache: Optional[Dict[Path, Schema]] = None,
+    grpc: bool = False,
 ) -> bool:
     """Compile a single IDL file with import resolution.
 
@@ -486,11 +501,17 @@ def compile_file(
             output_dir=lang_output,
             package_override=package_override,
             go_nested_type_style=go_nested_type_style,
+            grpc=grpc,
         )
 
         generator_class = GENERATORS[lang]
         generator = generator_class(schema, options)
         files = generator.generate()
+
+        if grpc:
+            service_files = generator.generate_services()
+            files.extend(service_files)
+
         generator.write_files(files)
 
         for f in files:
@@ -511,6 +532,7 @@ def compile_file_recursive(
     stack: Set[Path],
     resolve_cache: Dict[Path, Schema],
     go_module_root: Optional[Path],
+    grpc: bool = False,
 ) -> bool:
     file_path = file_path.resolve()
     if file_path in generated:
@@ -574,6 +596,7 @@ def compile_file_recursive(
             stack,
             resolve_cache,
             go_module_root,
+            grpc,
         ):
             stack.remove(file_path)
             return False
@@ -588,6 +611,7 @@ def compile_file_recursive(
         emit_fdl,
         emit_fdl_path,
         resolve_cache,
+        grpc,
     )
     if ok:
         generated.add(file_path)
@@ -604,6 +628,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
         "cpp": args.cpp_out,
         "go": args.go_out,
         "rust": args.rust_out,
+        "csharp": args.csharp_out,
     }
 
     # Determine which languages to generate
@@ -676,6 +701,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 set(),
                 resolve_cache,
                 None,
+                args.grpc,
             ):
                 success = False
         except ImportError as e:

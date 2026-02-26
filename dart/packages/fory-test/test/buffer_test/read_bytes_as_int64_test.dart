@@ -29,14 +29,24 @@ void main() {
     test('reads values for lengths 1 through 8', () {
       ByteWriter writer = ByteWriter(); // big endian
       // Write test values of different sizes
-      writer.writeUint8(0xAB);                       // 1 byte: 0xAB
-      writer.writeUint16(0xCDEF);                    // 2 bytes: 0xCDEF
-      writer.writeBytes([0x56, 0x34, 0x12]);         // 3 bytes: 0x123456
-      writer.writeUint32(0x789ABCDE);                // 4 bytes: 0x789ABCDE
-      writer.writeBytes([0x55, 0x44, 0x33, 0x22, 0x11]); // 5 bytes: 0x1122334455
-      writer.writeBytes([0x11, 0x00, 0x99, 0x88, 0x77, 0x66]); // 6 bytes: 0x667788990011
-      writer.writeBytes([0x00, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA]); // 7 bytes: 0xAABBCCDDEEFF00
-      writer.writeInt64(0x1234567890ABCDEF);         // 8 bytes: 0x1234567890ABCDEF
+      writer.writeUint8(0xAB); // 1 byte: 0xAB
+      writer.writeUint16(0xCDEF); // 2 bytes: 0xCDEF
+      writer.writeBytes([0x56, 0x34, 0x12]); // 3 bytes: 0x123456
+      writer.writeUint32(0x789ABCDE); // 4 bytes: 0x789ABCDE
+      writer
+          .writeBytes([0x55, 0x44, 0x33, 0x22, 0x11]); // 5 bytes: 0x1122334455
+      writer.writeBytes(
+          [0x11, 0x00, 0x99, 0x88, 0x77, 0x66]); // 6 bytes: 0x667788990011
+      writer.writeBytes([
+        0x00,
+        0xFF,
+        0xEE,
+        0xDD,
+        0xCC,
+        0xBB,
+        0xAA
+      ]); // 7 bytes: 0xAABBCCDDEEFF00
+      writer.writeInt64(0x1234567890ABCDEF); // 8 bytes: 0x1234567890ABCDEF
 
       ByteReader reader = ByteReader.forBytes(writer.takeBytes());
 

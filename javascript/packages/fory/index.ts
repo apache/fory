@@ -18,25 +18,26 @@
  */
 
 import {
-  StructTypeInfo,
   TypeInfo,
-  ArrayTypeInfo,
   Type,
+  Dynamic,
 } from "./lib/typeInfo";
 import { Serializer, Mode } from "./lib/type";
 import Fory from "./lib/fory";
 import { BinaryReader } from "./lib/reader";
 import { BinaryWriter } from "./lib/writer";
+import { BFloat16, BFloat16Array } from "./lib/bfloat16";
 
 export {
   Serializer,
   TypeInfo,
-  ArrayTypeInfo,
-  StructTypeInfo,
   Type,
   Mode,
   BinaryWriter,
+  Dynamic,
   BinaryReader,
+  BFloat16,
+  BFloat16Array,
 };
 
 export default Fory;

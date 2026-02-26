@@ -23,41 +23,47 @@ This document explains generated code for each target language.
 
 Fory IDL generated types are idiomatic in host languages and can be used directly as domain objects. Generated types also include `to/from bytes` helpers and registration helpers.
 
-All snippets are representative excerpts from real generated output.
+## Reference Schemas
 
-## Example Fory IDL Schema
+The examples below use two real schemas:
 
-The sections below use this schema:
+1. `addressbook.fdl` (explicit type IDs)
+2. `auto_id.fdl` (no explicit type IDs)
+
+### `addressbook.fdl` (excerpt)
 
 ```protobuf
-package demo;
+package addressbook;
 
-enum DeviceTier [id=100] {
-    DEVICE_TIER_UNKNOWN = 0;
-    DEVICE_TIER_TIER1 = 1;
-    DEVICE_TIER_TIER2 = 2;
-}
+option go_package = "github.com/myorg/myrepo/gen/addressbook;addressbook";
 
-message User [id=101] {
-    string id = 1;
-    string name = 2;
-    optional string email = 3;
-}
+message Person [id=100] {
+    string name = 1;
+    int32 id = 2;
 
-message SearchResponse [id=102] {
-    message Result [id=103] {
-        string url = 1;
-        string title = 2;
+    enum PhoneType [id=101] {
+        PHONE_TYPE_MOBILE = 0;
+        PHONE_TYPE_HOME = 1;
+        PHONE_TYPE_WORK = 2;
     }
-    list<Result> results = 1;
+
+    message PhoneNumber [id=102] {
+        string number = 1;
+        PhoneType phone_type = 2;
+    }
+
+    list<PhoneNumber> phones = 7;
+    Animal pet = 8;
 }
 
 message Dog [id=104] {
     string name = 1;
+    int32 bark_volume = 2;
 }
 
 message Cat [id=105] {
     string name = 1;
+    int32 lives = 2;
 }
 
 union Animal [id=106] {
@@ -65,13 +71,42 @@ union Animal [id=106] {
     Cat cat = 2;
 }
 
-message Order [id=107] {
+message AddressBook [id=103] {
+    list<Person> people = 1;
+    map<string, Person> people_by_name = 2;
+}
+```
+
+### `auto_id.fdl` (excerpt)
+
+```protobuf
+package auto_id;
+
+enum Status {
+    UNKNOWN = 0;
+    OK = 1;
+}
+
+message Envelope {
     string id = 1;
-    ref User customer = 2;
-    list<string> items = 3;
-    map<string, int32> quantities = 4;
-    DeviceTier tier = 5;
-    Animal pet = 6;
+
+    message Payload {
+        int32 value = 1;
+    }
+
+    union Detail {
+        Payload payload = 1;
+        string note = 2;
+    }
+
+    Payload payload = 2;
+    Detail detail = 3;
+    Status status = 4;
+}
+
+union Wrapper {
+    Envelope envelope = 1;
+    string raw = 2;
 }
 ```
 
@@ -79,72 +114,65 @@ message Order [id=107] {
 
 ### Output Layout
 
-For package `demo`, Java code is generated under `demo/`:
+For `package addressbook`, Java output is generated under:
 
-- `DeviceTier.java`, `User.java`, `SearchResponse.java`, `Dog.java`, `Cat.java`, `Animal.java`, `Order.java`
-- `DemoForyRegistration.java`
+- `<java_out>/addressbook/`
+- Type files: `AddressBook.java`, `Person.java`, `Dog.java`, `Cat.java`, `Animal.java`
+- Registration helper: `AddressbookForyRegistration.java`
 
 ### Type Generation
 
-Enum prefix stripping keeps scoped enum values clean:
+Messages generate Java classes with `@ForyField`, default constructors, getters/setters, and byte helpers:
 
 ```java
-public enum DeviceTier {
-    UNKNOWN,
-    TIER1,
-    TIER2;
-}
-```
+public class Person {
+    public static enum PhoneType {
+        MOBILE,
+        HOME,
+        WORK;
+    }
 
-Messages are regular Java classes with `@ForyField` metadata and Java-style getters/setters:
+    public static class PhoneNumber {
+        @ForyField(id = 1)
+        private String number;
 
-```java
-public class Order {
+        @ForyField(id = 2)
+        private PhoneType phoneType;
+
+        public byte[] toBytes() { ... }
+        public static PhoneNumber fromBytes(byte[] bytes) { ... }
+    }
+
     @ForyField(id = 1)
-    private String id;
+    private String name;
 
-    @ForyField(id = 2, nullable = true, ref = true)
-    private User customer;
-
-    @ForyField(id = 3)
-    private List<String> items;
-
-    @ForyField(id = 4)
-    private Map<String, Integer> quantities;
-
-    @ForyField(id = 5)
-    private DeviceTier tier;
-
-    @ForyField(id = 6)
+    @ForyField(id = 8)
     private Animal pet;
 
-    public String getId() { ... }
-    public void setId(String id) { ... }
-    public User getCustomer() { ... }
-    public void setCustomer(User customer) { ... }
-
     public byte[] toBytes() { ... }
-    public static Order fromBytes(byte[] bytes) { ... }
+    public static Person fromBytes(byte[] bytes) { ... }
 }
 ```
 
-Nested messages become static inner classes:
+Unions generate classes extending `org.apache.fory.type.union.Union`:
 
 ```java
-public class SearchResponse {
-    public static class Result { ... }
-}
-```
+public final class Animal extends Union {
+    public enum AnimalCase {
+        DOG(1),
+        CAT(2);
+        public final int id;
+        AnimalCase(int id) { this.id = id; }
+    }
 
-Unions generate explicit case APIs:
+    public static Animal ofDog(Dog v) { ... }
+    public AnimalCase getAnimalCase() { ... }
+    public int getAnimalCaseId() { ... }
 
-```java
-Animal pet = Animal.ofDog(new Dog());
-if (pet.hasDog()) {
-    Dog dog = pet.getDog();
+    public boolean hasDog() { ... }
+    public Dog getDog() { ... }
+    public void setDog(Dog v) { ... }
 }
-Animal.AnimalCase c = pet.getAnimalCase();
-int caseId = pet.getAnimalCaseId();
 ```
 
 ### Registration
@@ -152,25 +180,29 @@ int caseId = pet.getAnimalCaseId();
 Generated registration helper:
 
 ```java
-public class DemoForyRegistration {
-    public static void register(Fory fory) {
-        org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();
-        resolver.register(DeviceTier.class, 100L);
-        resolver.registerUnion(
-            Animal.class,
-            106L,
-            new org.apache.fory.serializer.UnionSerializer(fory, Animal.class));
-        resolver.register(User.class, 101L);
-        resolver.register(SearchResponse.class, 102L);
-        resolver.register(SearchResponse.Result.class, 103L);
-        resolver.register(Dog.class, 104L);
-        resolver.register(Cat.class, 105L);
-        resolver.register(Order.class, 107L);
-    }
+public static void register(Fory fory) {
+    org.apache.fory.resolver.TypeResolver resolver = fory.getTypeResolver();
+    resolver.registerUnion(Animal.class, 106L, new org.apache.fory.serializer.UnionSerializer(fory, Animal.class));
+    resolver.register(Person.class, 100L);
+    resolver.register(Person.PhoneType.class, 101L);
+    resolver.register(Person.PhoneNumber.class, 102L);
+    resolver.register(Dog.class, 104L);
+    resolver.register(Cat.class, 105L);
+    resolver.register(AddressBook.class, 103L);
 }
 ```
 
-If you disable auto IDs (`option enable_auto_type_id = false;`), registration switches to namespace + type name:
+For schemas without explicit `[id=...]`, generated registration uses computed numeric IDs (for example from `auto_id.fdl`):
+
+```java
+resolver.register(Status.class, 1124725126L);
+resolver.registerUnion(Wrapper.class, 1471345060L, new org.apache.fory.serializer.UnionSerializer(fory, Wrapper.class));
+resolver.register(Envelope.class, 3022445236L);
+resolver.registerUnion(Envelope.Detail.class, 1609214087L, new org.apache.fory.serializer.UnionSerializer(fory, Envelope.Detail.class));
+resolver.register(Envelope.Payload.class, 2862577837L);
+```
+
+If `option enable_auto_type_id = false;` is set, registration uses namespace and type name:
 
 ```java
 resolver.register(Config.class, "myapp.models", "Config");
@@ -184,68 +216,65 @@ resolver.registerUnion(
 ### Usage
 
 ```java
-Order order = new Order();
-order.setId("o456");
-order.setCustomer(new User());
-order.setTier(DeviceTier.TIER1);
-order.setPet(Animal.ofDog(new Dog()));
+Person person = new Person();
+person.setName("Alice");
+person.setPet(Animal.ofDog(new Dog()));
 
-byte[] bytes = order.toBytes();
-Order restored = Order.fromBytes(bytes);
+byte[] data = person.toBytes();
+Person restored = Person.fromBytes(data);
 ```
 
 ## Python
 
 ### Output Layout
 
-One module is generated per package, for example `demo.py`.
+Python output is one module per schema file, for example:
+
+- `<python_out>/addressbook.py`
 
 ### Type Generation
 
-Enums are `IntEnum` values with prefix stripping:
+Unions generate a case enum plus a `Union` subclass with typed helpers:
 
 ```python
-class DeviceTier(IntEnum):
-    UNKNOWN = 0
-    TIER1 = 1
-    TIER2 = 2
-```
+class AnimalCase(Enum):
+    DOG = 1
+    CAT = 2
 
-Messages are `@pyfory.dataclass` classes:
-
-```python
-@pyfory.dataclass(repr=False)
-class Order:
-    id: str = pyfory.field(id=1, default="")
-    customer: Optional[User] = pyfory.field(id=2, nullable=True, ref=True, default=None)
-    items: List[str] = pyfory.field(id=3, default_factory=list)
-    quantities: Dict[str, pyfory.int32] = pyfory.field(id=4, default_factory=dict)
-    tier: DeviceTier = pyfory.field(id=5, default=None)
-    pet: Animal = pyfory.field(id=6, default=None)
-
-    def to_bytes(self) -> bytes: ...
+class Animal(Union):
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Order": ...
+    def dog(cls, v: Dog) -> "Animal": ...
+
+    def case(self) -> AnimalCase: ...
+    def case_id(self) -> int: ...
+
+    def is_dog(self) -> bool: ...
+    def dog_value(self) -> Dog: ...
+    def set_dog(self, v: Dog) -> None: ...
 ```
 
-Nested messages stay nested:
+Messages generate `@pyfory.dataclass` types, and nested types stay nested:
 
 ```python
 @pyfory.dataclass
-class SearchResponse:
+class Person:
+    class PhoneType(IntEnum):
+        MOBILE = 0
+        HOME = 1
+        WORK = 2
+
     @pyfory.dataclass
-    class Result:
-        url: str = pyfory.field(id=1, default="")
-        title: str = pyfory.field(id=2, default="")
-```
+    class PhoneNumber:
+        number: str = pyfory.field(id=1, default="")
+        phone_type: Person.PhoneType = pyfory.field(id=2, default=None)
 
-Unions generate case enum + typed accessors:
+    name: str = pyfory.field(id=1, default="")
+    phones: List[Person.PhoneNumber] = pyfory.field(id=7, default_factory=list)
+    pet: Animal = pyfory.field(id=8, default=None)
 
-```python
-pet = Animal.dog(Dog(name="Rex"))
-if pet.is_dog():
-    dog = pet.dog_value()
-case_id = pet.case_id()
+    def to_bytes(self) -> bytes: ...
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "Person": ...
 ```
 
 ### Registration
@@ -253,18 +282,27 @@ case_id = pet.case_id()
 Generated registration function:
 
 ```python
-def register_demo_types(fory: pyfory.Fory):
-    fory.register_type(DeviceTier, type_id=100)
+def register_addressbook_types(fory: pyfory.Fory):
     fory.register_union(Animal, type_id=106, serializer=AnimalSerializer(fory))
-    fory.register_type(User, type_id=101)
-    fory.register_type(SearchResponse, type_id=102)
-    fory.register_type(SearchResponse.Result, type_id=103)
+    fory.register_type(Person, type_id=100)
+    fory.register_type(Person.PhoneType, type_id=101)
+    fory.register_type(Person.PhoneNumber, type_id=102)
     fory.register_type(Dog, type_id=104)
     fory.register_type(Cat, type_id=105)
-    fory.register_type(Order, type_id=107)
+    fory.register_type(AddressBook, type_id=103)
 ```
 
-If auto IDs are disabled:
+For schemas without explicit `[id=...]`, generated registration uses computed numeric IDs:
+
+```python
+fory.register_type(Status, type_id=1124725126)
+fory.register_union(Wrapper, type_id=1471345060, serializer=WrapperSerializer(fory))
+fory.register_type(Envelope, type_id=3022445236)
+fory.register_union(Envelope.Detail, type_id=1609214087, serializer=Envelope.DetailSerializer(fory))
+fory.register_type(Envelope.Payload, type_id=2862577837)
+```
+
+If `option enable_auto_type_id = false;` is set:
 
 ```python
 fory.register_type(Config, namespace="myapp.models", typename="Config")
@@ -279,70 +317,23 @@ fory.register_union(
 ### Usage
 
 ```python
-order = Order(
-    id="o456",
-    customer=User(id="u1", name="Alice"),
-    items=["a", "b"],
-    quantities={"a": 1, "b": 2},
-    tier=DeviceTier.TIER1,
-    pet=Animal.dog(Dog(name="Rex")),
-)
+person = Person(name="Alice", pet=Animal.dog(Dog(name="Rex", bark_volume=10)))
 
-data = order.to_bytes()
-restored = Order.from_bytes(data)
+data = person.to_bytes()
+restored = Person.from_bytes(data)
 ```
 
 ## Rust
 
 ### Output Layout
 
-One Rust module file per package, for example `demo.rs`.
+Rust output is one module file per schema, for example:
+
+- `<rust_out>/addressbook.rs`
 
 ### Type Generation
 
-Enums are strongly typed and use stripped, idiomatic variant names:
-
-```rust
-#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
-#[repr(i32)]
-pub enum DeviceTier {
-    #[default]
-    Unknown = 0,
-    Tier1 = 1,
-    Tier2 = 2,
-}
-```
-
-Messages derive `ForyObject`:
-
-```rust
-#[derive(ForyObject, Clone, PartialEq, Default)]
-pub struct Order {
-    #[fory(id = 1)]
-    pub id: String,
-    #[fory(id = 2, nullable = true, ref = true)]
-    pub customer: Option<Arc<User>>,
-    #[fory(id = 3)]
-    pub items: Vec<String>,
-    #[fory(id = 4)]
-    pub quantities: HashMap<String, i32>,
-    #[fory(id = 5)]
-    pub tier: DeviceTier,
-    #[fory(id = 6, type_id = "union")]
-    pub pet: Animal,
-}
-```
-
-Nested types are generated in nested modules:
-
-```rust
-pub mod search_response {
-    #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
-    pub struct Result { ... }
-}
-```
-
-Unions map to Rust enums with per-case IDs:
+Unions map to Rust enums with `#[fory(id = ...)]` case attributes:
 
 ```rust
 #[derive(ForyObject, Debug, Clone, PartialEq)]
@@ -354,25 +345,71 @@ pub enum Animal {
 }
 ```
 
+Nested types generate nested modules:
+
+```rust
+pub mod person {
+    #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+    #[repr(i32)]
+    pub enum PhoneType {
+        #[default]
+        Mobile = 0,
+        Home = 1,
+        Work = 2,
+    }
+
+    #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+    pub struct PhoneNumber {
+        #[fory(id = 1)]
+        pub number: String,
+        #[fory(id = 2)]
+        pub phone_type: PhoneType,
+    }
+}
+```
+
+Messages derive `ForyObject` and include `to_bytes`/`from_bytes` helpers:
+
+```rust
+#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+pub struct Person {
+    #[fory(id = 1)]
+    pub name: String,
+    #[fory(id = 7)]
+    pub phones: Vec<person::PhoneNumber>,
+    #[fory(id = 8, type_id = "union")]
+    pub pet: Animal,
+}
+```
+
 ### Registration
 
 Generated registration function:
 
 ```rust
 pub fn register_types(fory: &mut Fory) -> Result<(), fory::Error> {
-    fory.register::<DeviceTier>(100)?;
     fory.register_union::<Animal>(106)?;
-    fory.register::<User>(101)?;
-    fory.register::<search_response::Result>(103)?;
-    fory.register::<SearchResponse>(102)?;
+    fory.register::<person::PhoneType>(101)?;
+    fory.register::<person::PhoneNumber>(102)?;
+    fory.register::<Person>(100)?;
     fory.register::<Dog>(104)?;
     fory.register::<Cat>(105)?;
-    fory.register::<Order>(107)?;
+    fory.register::<AddressBook>(103)?;
     Ok(())
 }
 ```
 
-If auto IDs are disabled:
+For schemas without explicit `[id=...]`, generated registration uses computed numeric IDs:
+
+```rust
+fory.register::<Status>(1124725126)?;
+fory.register_union::<Wrapper>(1471345060)?;
+fory.register::<Envelope>(3022445236)?;
+fory.register_union::<envelope::Detail>(1609214087)?;
+fory.register::<envelope::Payload>(2862577837)?;
+```
+
+If `option enable_auto_type_id = false;` is set:
 
 ```rust
 fory.register_by_namespace::<Config>("myapp.models", "Config")?;
@@ -382,89 +419,103 @@ fory.register_union_by_namespace::<Holder>("myapp.models", "Holder")?;
 ### Usage
 
 ```rust
-let order = Order {
-    id: "o456".into(),
-    customer: Some(Arc::new(User::default())),
-    items: vec!["a".into(), "b".into()],
-    quantities: HashMap::new(),
-    tier: DeviceTier::Tier1,
-    pet: Animal::Dog(Dog { name: "Rex".into() }),
+let person = Person {
+    name: "Alice".into(),
+    pet: Animal::Dog(Dog::default()),
+    ..Default::default()
 };
 
-let bytes = order.to_bytes()?;
-let restored = Order::from_bytes(&bytes)?;
+let bytes = person.to_bytes()?;
+let restored = Person::from_bytes(&bytes)?;
 ```
 
 ## C++
 
 ### Output Layout
 
-One header per package, for example `demo.h`.
+C++ output is one header per schema file, for example:
+
+- `<cpp_out>/addressbook.h`
 
 ### Type Generation
 
-Enums are generated as `enum class` with stripped names:
+Messages generate `final` classes with typed accessors and byte helpers:
 
 ```cpp
-enum class DeviceTier : int32_t {
-  UNKNOWN = 0,
-  TIER1 = 1,
-  TIER2 = 2,
+class Person final {
+ public:
+  class PhoneNumber final {
+   public:
+    const std::string& number() const;
+    std::string* mutable_number();
+    template <class Arg, class... Args>
+    void set_number(Arg&& arg, Args&&... args);
+
+    fory::Result<std::vector<uint8_t>, fory::Error> to_bytes() const;
+    static fory::Result<PhoneNumber, fory::Error> from_bytes(const std::vector<uint8_t>& data);
+  };
+
+  const std::string& name() const;
+  std::string* mutable_name();
+  template <class Arg, class... Args>
+  void set_name(Arg&& arg, Args&&... args);
+
+  const Animal& pet() const;
+  Animal* mutable_pet();
 };
-FORY_ENUM(demo::DeviceTier, UNKNOWN, TIER1, TIER2);
 ```
 
-Messages are generated as classes with typed accessors and private fields, including `has_xxx`, `mutable_xxx`, and `set_xxx` where applicable:
+Optional message fields generate `has_xxx`, `mutable_xxx`, and `clear_xxx` APIs:
 
 ```cpp
-class Order final {
+class Envelope final {
  public:
-  const std::string& id() const;
-  std::string* mutable_id();
-  template <class Arg, class... Args>
-  void set_id(Arg&& arg, Args&&... args);
-
-  bool has_customer() const;
-  const std::shared_ptr<User>& customer() const;
-  std::shared_ptr<User>* mutable_customer();
-  void set_customer(std::shared_ptr<User> value);
-  void clear_customer();
-
-  fory::Result<std::vector<uint8_t>, fory::Error> to_bytes() const;
-  static fory::Result<Order, fory::Error> from_bytes(
-      const std::vector<uint8_t>& data);
+  bool has_payload() const { return payload_ != nullptr; }
+  const Envelope::Payload& payload() const { return *payload_; }
+  Envelope::Payload* mutable_payload() {
+    if (!payload_) {
+      payload_ = std::make_unique<Envelope::Payload>();
+    }
+    return payload_.get();
+  }
+  void clear_payload() { payload_.reset(); }
 
  private:
-  std::string id_;
-  std::shared_ptr<User> customer_;
-  std::vector<std::string> items_;
-  std::map<std::string, int32_t> quantities_;
-  DeviceTier tier_;
-  Animal pet_;
-
- public:
-  FORY_STRUCT(Order, id_, customer_, items_, quantities_, tier_, pet_);
+  std::unique_ptr<Envelope::Payload> payload_;
 };
 ```
 
-Nested messages are nested classes:
+Unions generate `std::variant` wrappers:
 
 ```cpp
-class SearchResponse final {
+class Animal final {
  public:
-  class Result final { ... };
+  enum class AnimalCase : uint32_t {
+    DOG = 1,
+    CAT = 2,
+  };
+
+  static Animal dog(Dog v);
+  static Animal cat(Cat v);
+
+  AnimalCase animal_case() const noexcept;
+  uint32_t animal_case_id() const noexcept;
+
+  bool is_dog() const noexcept;
+  const Dog* as_dog() const noexcept;
+  Dog* as_dog() noexcept;
+  const Dog& dog() const;
+  Dog& dog();
+
+  template <class Visitor>
+  decltype(auto) visit(Visitor&& vis) const;
+
+ private:
+  std::variant<Dog, Cat> value_;
 };
 ```
 
-Unions are generated as tagged `std::variant` wrappers:
-
-```cpp
-Animal pet = Animal::dog(Dog{});
-if (pet.is_dog()) {
-  const Dog& dog = pet.dog();
-}
-uint32_t case_id = pet.animal_case_id();
-```
+Generated headers also include `FORY_UNION`, `FORY_FIELD_CONFIG`, `FORY_ENUM`, and `FORY_STRUCT` macros for serialization metadata.
 
 ### Registration
 
@@ -472,18 +523,27 @@ Generated registration function:
 
 ```cpp
 inline void register_types(fory::serialization::BaseFory& fory) {
-  fory.register_enum<DeviceTier>(100);
-  fory.register_union<Animal>(106);
-  fory.register_struct<User>(101);
-  fory.register_struct<SearchResponse::Result>(103);
-  fory.register_struct<SearchResponse>(102);
-  fory.register_struct<Dog>(104);
-  fory.register_struct<Cat>(105);
-  fory.register_struct<Order>(107);
+    fory.register_union<Animal>(106);
+    fory.register_enum<Person::PhoneType>(101);
+    fory.register_struct<Person::PhoneNumber>(102);
+    fory.register_struct<Person>(100);
+    fory.register_struct<Dog>(104);
+    fory.register_struct<Cat>(105);
+    fory.register_struct<AddressBook>(103);
 }
 ```
 
-If auto IDs are disabled:
+For schemas without explicit `[id=...]`, generated registration uses computed numeric IDs:
+
+```cpp
+fory.register_enum<Status>(1124725126);
+fory.register_union<Wrapper>(1471345060);
+fory.register_struct<Envelope>(3022445236);
+fory.register_union<Envelope::Detail>(1609214087);
+fory.register_struct<Envelope::Payload>(2862577837);
+```
+
+If `option enable_auto_type_id = false;` is set:
 
 ```cpp
 fory.register_struct<Config>("myapp.models", "Config");
@@ -493,96 +553,73 @@ fory.register_union<Holder>("myapp.models", "Holder");
 ### Usage
 
 ```cpp
-demo::Order order;
-order.set_id("o456");
-order.set_customer(std::make_shared<demo::User>());
+addressbook::Person person;
+person.set_name("Alice");
+*person.mutable_pet() = addressbook::Animal::dog(addressbook::Dog{});
 
-auto bytes_result = order.to_bytes();
-if (!bytes_result.ok()) {
-  return 1;
-}
-auto order_result = demo::Order::from_bytes(bytes_result.value());
-if (!order_result.ok()) {
-  return 1;
-}
-demo::Order restored = std::move(order_result.value());
+auto bytes = person.to_bytes();
+auto restored = addressbook::Person::from_bytes(bytes.value());
 ```
 
 ## Go
 
 ### Output Layout
 
-Go output path depends on whether `go_package` is configured.
+Go output path depends on schema options and `--go_out`.
 
-When `go_package` is set in schema options (as in `integration_tests/idl_tests/idl/addressbook.fdl`), output follows that package path, for example:
+For `addressbook.fdl`, `go_package` is configured and generated output follows the configured import path/package (for example under your `--go_out` root).
 
-- `integration_tests/idl_tests/go/addressbook/generated/addressbook.go`
-
-Without `go_package`, compiler derives output from the Fory IDL package name.
-
-For package `demo`, output is:
-
-- `<go_out>/demo/demo.go`
-
-For package `myapp.models`, output is:
-
-- `<go_out>/models/myapp_models.go`
+Without `go_package`, output uses the requested `--go_out` directory and package-derived file naming.
 
 ### Type Generation
 
-Enums keep Go-style unscoped constant names:
+Nested types use underscore naming by default (`Person_PhoneType`, `Person_PhoneNumber`):
 
 ```go
-type DeviceTier int32
+type Person_PhoneType int32
 
 const (
-    DeviceTierUnknown DeviceTier = 0
-    DeviceTierTier1   DeviceTier = 1
-    DeviceTierTier2   DeviceTier = 2
+    Person_PhoneTypeMobile Person_PhoneType = 0
+    Person_PhoneTypeHome   Person_PhoneType = 1
+    Person_PhoneTypeWork   Person_PhoneType = 2
 )
-```
 
-Messages are regular structs with fory tags:
-
-```go
-type User struct {
-    Id    string                    `fory:"id=1"`
-    Name  string                    `fory:"id=2"`
-    Email optional.Optional[string] `fory:"id=3,nullable"`
-}
-
-type Order struct {
-    Id         string            `fory:"id=1"`
-    Customer   *User             `fory:"id=2,nullable,ref"`
-    Items      []string          `fory:"id=3"`
-    Quantities map[string]int32  `fory:"id=4"`
-    Tier       DeviceTier        `fory:"id=5"`
-    Pet        Animal            `fory:"id=6"`
+type Person_PhoneNumber struct {
+    Number    string           `fory:"id=1"`
+    PhoneType Person_PhoneType `fory:"id=2"`
 }
 ```
 
-Nested type naming defaults to underscore:
+Messages generate structs with `fory` tags and byte helpers:
 
 ```go
-type SearchResponse_Result struct { ... }
-```
-
-You can switch to concatenated names with:
-
-```protobuf
-option go_nested_type_style = "camelcase";
-```
-
-Unions generate typed case helpers:
-
-```go
-pet := DogAnimal(&Dog{Name: "Rex"})
-if dog, ok := pet.AsDog(); ok {
-    _ = dog
+type Person struct {
+    Name   string               `fory:"id=1"`
+    Id     int32                `fory:"id=2,compress=true"`
+    Phones []Person_PhoneNumber `fory:"id=7"`
+    Pet    Animal               `fory:"id=8"`
 }
-_ = pet.Visit(AnimalVisitor{
-    Dog: func(d *Dog) error { return nil },
-})
+
+func (m *Person) ToBytes() ([]byte, error) { ... }
+func (m *Person) FromBytes(data []byte) error { ... }
+```
+
+Unions generate typed case structs with constructors/accessors/visitor APIs:
+
+```go
+type AnimalCase uint32
+
+type Animal struct {
+    case_ AnimalCase
+    value any
+}
+
+func DogAnimal(v *Dog) Animal { ... }
+func CatAnimal(v *Cat) Animal { ... }
+
+func (u Animal) Case() AnimalCase { ... }
+func (u Animal) AsDog() (*Dog, bool) { ... }
+func (u Animal) Visit(visitor AnimalVisitor) error { ... }
 ```
 
 ### Registration
@@ -591,63 +628,146 @@ Generated registration function:
 
 ```go
 func RegisterTypes(f *fory.Fory) error {
-    if err := f.RegisterEnum(DeviceTier(0), 100); err != nil {
+    if err := f.RegisterUnion(Animal{}, 106, fory.NewUnionSerializer(...)); err != nil {
         return err
     }
-    if err := f.RegisterUnion(Animal{}, 106, ...); err != nil {
+    if err := f.RegisterEnum(Person_PhoneType(0), 101); err != nil {
         return err
     }
-    if err := f.RegisterStruct(User{}, 101); err != nil {
+    if err := f.RegisterStruct(Person_PhoneNumber{}, 102); err != nil {
         return err
     }
-    // ... SearchResponse_Result, SearchResponse, Dog, Cat, Order
+    if err := f.RegisterStruct(Person{}, 100); err != nil {
+        return err
+    }
     return nil
 }
 ```
 
-If auto IDs are disabled:
+For schemas without explicit `[id=...]`, generated registration uses computed numeric IDs:
+
+```go
+if err := f.RegisterEnum(Status(0), 1124725126); err != nil { ... }
+if err := f.RegisterUnion(Wrapper{}, 1471345060, fory.NewUnionSerializer(...)); err != nil { ... }
+if err := f.RegisterStruct(Envelope{}, 3022445236); err != nil { ... }
+if err := f.RegisterUnion(Envelope_Detail{}, 1609214087, fory.NewUnionSerializer(...)); err != nil { ... }
+if err := f.RegisterStruct(Envelope_Payload{}, 2862577837); err != nil { ... }
+```
+
+If `option enable_auto_type_id = false;` is set:
 
 ```go
 if err := f.RegisterNamedStruct(Config{}, "myapp.models.Config"); err != nil { ... }
-if err := f.RegisterNamedUnion(Holder{}, "myapp.models.Holder", ...); err != nil { ... }
+if err := f.RegisterNamedUnion(Holder{}, "myapp.models.Holder", fory.NewUnionSerializer(...)); err != nil { ... }
+```
+
+`go_nested_type_style` controls nested type naming:
+
+```protobuf
+option go_nested_type_style = "camelcase";
 ```
 
 ### Usage
 
 ```go
-email := optional.Some("alice@example.com")
-order := &Order{
-    Id:       "o456",
-    Customer: &User{Id: "u1", Name: "Alice", Email: email},
-    Items:    []string{"a", "b"},
-    Tier:     DeviceTierTier1,
-    Pet:      DogAnimal(&Dog{Name: "Rex"}),
+person := &Person{
+    Name: "Alice",
+    Pet:  DogAnimal(&Dog{Name: "Rex"}),
 }
 
-data, err := order.ToBytes()
+data, err := person.ToBytes()
 if err != nil {
     panic(err)
 }
-var restored Order
+var restored Person
 if err := restored.FromBytes(data); err != nil {
     panic(err)
 }
 ```
 
+## C\#
+
+### Output Layout
+
+C# output is one `.cs` file per schema, for example:
+
+- `<csharp_out>/addressbook/addressbook.cs`
+
+### Type Generation
+
+Messages generate `[ForyObject]` classes with C# properties and byte helpers:
+
+```csharp
+[ForyObject]
+public sealed partial class Person
+{
+    public string Name { get; set; } = string.Empty;
+    public int Id { get; set; }
+    public List<Person.PhoneNumber> Phones { get; set; } = new();
+    public Animal Pet { get; set; } = null!;
+
+    public byte[] ToBytes() { ... }
+    public static Person FromBytes(byte[] data) { ... }
+}
+```
+
+Unions generate `Union` subclasses with typed case helpers:
+
+```csharp
+public sealed class Animal : Union
+{
+    public static Animal Dog(Dog value) { ... }
+    public static Animal Cat(Cat value) { ... }
+    public bool IsDog => ...;
+    public Dog DogValue() { ... }
+}
+```
+
+### Registration
+
+Each schema generates a registration helper:
+
+```csharp
+public static class AddressbookForyRegistration
+{
+    public static void Register(Fory fory)
+    {
+        fory.Register<addressbook.Animal>((uint)106);
+        fory.Register<addressbook.Person>((uint)100);
+        // ...
+    }
+}
+```
+
+When explicit type IDs are not provided, generated registration uses computed
+numeric IDs (same behavior as other targets).
+
 ## Cross-Language Notes
 
 ### Type ID Behavior
 
-- Explicit `[id=...]` is used directly.
-- Without explicit IDs, compiler-generated IDs are used by default.
-- With `option enable_auto_type_id = false;`, generated code registers by namespace + type name.
+- Explicit `[id=...]` values are used directly in generated registration.
+- When type IDs are omitted, generated code uses computed numeric IDs (see `auto_id.*` outputs).
+- If `option enable_auto_type_id = false;` is set, generated registration uses namespace/type-name APIs instead of numeric IDs.
 
-### Nested Type Shapes
+### Nested Type Shape
 
-| Language | Nested Type Form        |
-| -------- | ----------------------- |
-| Java     | `Outer.Inner`           |
-| Python   | `Outer.Inner`           |
-| Rust     | `outer::Inner`          |
-| C++      | `Outer::Inner`          |
-| Go       | `Outer_Inner` (default) |
+| Language | Nested type form               |
+| -------- | ------------------------------ |
+| Java     | `Person.PhoneNumber`           |
+| Python   | `Person.PhoneNumber`           |
+| Rust     | `person::PhoneNumber`          |
+| C++      | `Person::PhoneNumber`          |
+| Go       | `Person_PhoneNumber` (default) |
+| C#       | `Person.PhoneNumber`           |
+
+### Byte Helper Naming
+
+| Language | Helpers                   |
+| -------- | ------------------------- |
+| Java     | `toBytes` / `fromBytes`   |
+| Python   | `to_bytes` / `from_bytes` |
+| Rust     | `to_bytes` / `from_bytes` |
+| C++      | `to_bytes` / `from_bytes` |
+| Go       | `ToBytes` / `FromBytes`   |
+| C#       | `ToBytes` / `FromBytes`   |

@@ -33,9 +33,7 @@ Future<void> runBuild() async {
   );
 
   // Listen to standard output and automatically respond when a specific prompt is detected
-  process.stdout
-      .transform(utf8.decoder)
-      .listen((output) {
+  process.stdout.transform(utf8.decoder).listen((output) {
     print(output);
 
     // Define your conditions here, under what circumstances you need to input
@@ -48,9 +46,7 @@ Future<void> runBuild() async {
   });
 
   // Listen to standard error
-  process.stderr
-      .transform(utf8.decoder)
-      .listen((error) {
+  process.stderr.transform(utf8.decoder).listen((error) {
     print('error: $error');
   });
 

@@ -25,7 +25,7 @@ import 'obj_spec_generator.dart';
 
 Builder foryObjSpecBuilder(BuilderOptions options) {
   return SharedPartBuilder(
-    [ObjSpecGenerator()],  // Provide a generator
-    ForyConst.intermediateMark,     // Name of the output file
+    [ObjSpecGenerator()], // Provide a generator
+    ForyConst.intermediateMark, // Name of the output file
   );
 }

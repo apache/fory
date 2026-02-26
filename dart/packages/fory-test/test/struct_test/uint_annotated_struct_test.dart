@@ -39,13 +39,13 @@ void main() {
 
       // Serialize
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
-      var bytes = fory.toFory(original);
+      fory.register(UIntAnnotatedStruct);
+      var bytes = fory.serialize(original);
 
       expect(bytes.isNotEmpty, isTrue);
 
       // Deserialize
-      var decoded = fory.fromFory(bytes) as UIntAnnotatedStruct;
+      var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
       // Verify values
       expect(decoded.age, 25);
@@ -69,9 +69,9 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
-      var bytes = fory.toFory(original);
-      var decoded = fory.fromFory(bytes) as UIntAnnotatedStruct;
+      fory.register(UIntAnnotatedStruct);
+      var bytes = fory.serialize(original);
+      var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
       expect(decoded.age, 255);
     });
@@ -88,9 +88,9 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
-      var bytes = fory.toFory(original);
-      var decoded = fory.fromFory(bytes) as UIntAnnotatedStruct;
+      fory.register(UIntAnnotatedStruct);
+      var bytes = fory.serialize(original);
+      var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
       expect(decoded.port, 65535);
     });
@@ -107,9 +107,9 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
-      var bytes = fory.toFory(original);
-      var decoded = fory.fromFory(bytes) as UIntAnnotatedStruct;
+      fory.register(UIntAnnotatedStruct);
+      var bytes = fory.serialize(original);
+      var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
       expect(decoded.count, 4294967295);
       expect(decoded.varCount, 4294967295);
@@ -127,9 +127,9 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
-      var bytes = fory.toFory(original);
-      var decoded = fory.fromFory(bytes) as UIntAnnotatedStruct;
+      fory.register(UIntAnnotatedStruct);
+      var bytes = fory.serialize(original);
+      var decoded = fory.deserialize(bytes) as UIntAnnotatedStruct;
 
       expect(decoded.age, 0);
       expect(decoded.port, 0);
@@ -162,10 +162,10 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntAnnotatedStruct);
-      
-      var smallBytes = fory.toFory(smallValues);
-      var largeBytes = fory.toFory(largeValues);
+      fory.register(UIntAnnotatedStruct);
+
+      var smallBytes = fory.serialize(smallValues);
+      var largeBytes = fory.serialize(largeValues);
 
       // Varint should use less space for small values
       // Fixed-length uint32 always uses 4 bytes regardless of value

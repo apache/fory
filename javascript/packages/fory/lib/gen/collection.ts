@@ -82,7 +82,7 @@ class CollectionAnySerializer {
     if (trackingRef) {
       flag |= CollectionFlags.TRACKING_REF;
     }
-    this.fory.binaryWriter.uint8(flag);
+    this.fory.binaryWriter.writeUint8(flag);
     return {
       serializer,
       isSame,
@@ -106,9 +106,9 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.int8(RefFlags.NullFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NullFlag);
           } else {
-            this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
         }
@@ -126,16 +126,17 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.int8(RefFlags.NullFlag);
+            this.fory.binaryWriter.writeInt8(RefFlags.NullFlag);
           } else {
             const serializer = this.fory.typeResolver.getSerializerByData(item);
-            this.fory.binaryWriter.int8(RefFlags.NotNullValueFlag);
-            serializer!.write(item);
+            this.fory.binaryWriter.writeInt8(RefFlags.NotNullValueFlag);
+            serializer!.writeNoRef(item);
           }
         }
       } else {
         for (const item of value) {
-          serializer!.write(item);
+          const serializer = this.fory.typeResolver.getSerializerByData(item);
+          serializer!.writeNoRef(item);
         }
       }
     }
@@ -144,7 +145,7 @@ class CollectionAnySerializer {
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
     void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
-    const flags = this.fory.binaryReader.uint8();
+    const flags = this.fory.binaryReader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
     const refTracking = flags & CollectionFlags.TRACKING_REF;
@@ -157,7 +158,7 @@ class CollectionAnySerializer {
           serializer.readRef();
           const refFlag = this.fory.referenceResolver.readRefFlag();
           if (refFlag === RefFlags.RefFlag) {
-            const refId = this.fory.binaryReader.varUInt32();
+            const refId = this.fory.binaryReader.readVarUInt32();
             accessor(result, i, this.fory.referenceResolver.getReadObject(refId));
           } else if (refFlag === RefFlags.RefValueFlag) {
             accessor(result, i, serializer!.read(true));
@@ -167,7 +168,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.int8();
+          const flag = this.fory.binaryReader.readInt8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
@@ -187,7 +188,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.int8();
+          const flag = this.fory.binaryReader.readInt8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
@@ -213,14 +214,14 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
-    const inner = this.genericTypeDescriptin();
+    const inner = this.genericTypeDescriptin()!;
     this.innerGenerator = CodegenRegistry.newGeneratorByTypeInfo(inner, this.builder, this.scope);
   }
 
-  abstract genericTypeDescriptin(): TypeInfo;
+  abstract genericTypeDescriptin(): TypeInfo | undefined;
 
   private isAny() {
-    return this.genericTypeDescriptin().typeId === TypeId.UNKNOWN;
+    return this.genericTypeDescriptin()?.typeId === TypeId.UNKNOWN;
   }
 
   abstract newCollection(lenAccessor: string): string;
@@ -241,7 +242,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             }
         }
     `);
-    stmts.push(`${this.builder.writer.uint8(flagAccessor)}`);
+    stmts.push(`${this.builder.writer.writeUint8(flagAccessor)}`);
     return stmts.join("\n");
   }
 
@@ -257,27 +258,27 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             ${this.builder.writer.reserve(`${this.innerGenerator.getFixedSize()} * ${accessor}.${this.sizeProp()}`)};
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
                 for (const ${item} of ${accessor}) {
-                    if (${accessor} !== null && ${accessor} !== undefined) {
+                    if (${item} !== null && ${item} !== undefined) {
                         const ${existsId} = ${this.builder.referenceResolver.existsWriteObject(item)};
                         if (typeof ${existsId} === "number") {
-                            ${this.builder.writer.int8(RefFlags.RefFlag)}
-                            ${this.builder.writer.varUInt32(existsId)}
+                            ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
+                            ${this.builder.writer.writeVarUInt32(existsId)}
                         } else {
                             ${this.builder.referenceResolver.writeRef(item)}
-                            ${this.builder.writer.int8(RefFlags.RefValueFlag)};
+                            ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)};
                             ${this.innerGenerator.writeEmbed().write(item)}
                         }
                     } else {
-                        ${this.builder.writer.int8(RefFlags.NullFlag)};
+                        ${this.builder.writer.writeInt8(RefFlags.NullFlag)};
                     }
                 }
             } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
                 for (const ${item} of ${accessor}) {
-                    if (${accessor} !== null && ${accessor} !== undefined) {
-                        ${this.builder.writer.int8(RefFlags.NotNullValueFlag)};
+                    if (${item} !== null && ${item} !== undefined) {
+                        ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)};
                         ${this.innerGenerator.writeEmbed().write(item)}
                     } else {
-                        ${this.builder.writer.int8(RefFlags.NullFlag)};
+                        ${this.builder.writer.writeInt8(RefFlags.NullFlag)};
                     }
                 }
             } else {
@@ -294,22 +295,21 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const flags = this.scope.uniqueName("flags");
     const idx = this.scope.uniqueName("idx");
     const refFlag = this.scope.uniqueName("refFlag");
-
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
-            const ${flags} = ${this.builder.reader.uint8()};
+            const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    const ${refFlag} = ${this.builder.reader.int8()};
+                    const ${refFlag} = ${this.builder.reader.readInt8()};
                     switch (${refFlag}) {
                         case ${RefFlags.NotNullValueFlag}:
                         case ${RefFlags.RefValueFlag}:
-                            ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                            ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                             break;
                         case ${RefFlags.RefFlag}:
-                            ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.varUInt32()), idx)}
+                            ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()), idx)}
                             break;
                         case ${RefFlags.NullFlag}:
                             ${this.putAccessor(result, "null", idx)}
@@ -318,16 +318,16 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                 }
             } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    if (${this.builder.reader.int8()} == ${RefFlags.NullFlag}) {
+                    if (${this.builder.reader.readInt8()} == ${RefFlags.NullFlag}) {
                         ${this.putAccessor(result, "null", idx)}
                     } else {
-                        ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                        ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
                     }
                 }
 
             } else {
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    ${this.innerGenerator.read(x => `${this.putAccessor(result, x, idx)}`, "false")}
+                    ${this.innerGenerator.readEmbed().read((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
                 }
             }
             ${accessor(result)}

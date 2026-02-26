@@ -40,7 +40,8 @@ extension TypedDataExtensions on TypedDataList {
     }
     // Compare any remaining bytes.
     Uint8List remaining1 = buffer.asUint8List(offsetInBytes + numWords * 8);
-    Uint8List remaining2 = other.buffer.asUint8List(other.offsetInBytes + numWords * 8);
+    Uint8List remaining2 =
+        other.buffer.asUint8List(other.offsetInBytes + numWords * 8);
     for (var i = 0; i < remaining1.length; i += 1) {
       if (remaining1[i] != remaining2[i]) {
         return false;

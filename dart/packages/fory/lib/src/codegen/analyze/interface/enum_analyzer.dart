@@ -18,8 +18,8 @@
  */
 
 import 'package:analyzer/dart/element/element.dart';
-import 'package:fory/src/codegen/meta/impl/enum_spec_gen.dart';
+import 'package:fory/src/codegen/meta/impl/enum_spec_generator.dart';
 
-abstract class EnumAnalyzer{
-  EnumSpecGen analyze(EnumElement enumElement);
+abstract class EnumAnalyzer {
+  EnumSpecGenerator analyze(EnumElement enumElement);
 }

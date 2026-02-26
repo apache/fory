@@ -21,34 +21,33 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
-import 'package:fory/src/furiable.dart';
+import 'package:fory/src/fory_type_provider.dart';
 
 /// Type i = Uint8List;
 /// Uint8List lis = Uint8List(10);
 /// print(lis.runtimeType == i);
 /// false
-final class DartTypeResolver{
-
+final class DartTypeResolver {
   static const DartTypeResolver I = DartTypeResolver._internal();
   const DartTypeResolver._internal();
 
   @inline
   Type getForyType(Object obj) {
-    if (obj is Furiable){
-      return obj.$foryType;
+    if (obj is ForyTypeProvider) {
+      return obj.foryType;
     }
-    if (obj is Enum){
+    if (obj is Enum) {
       return obj.runtimeType;
     }
-    if (obj is Map){
+    if (obj is Map) {
       if (obj is LinkedHashMap) return LinkedHashMap;
       if (obj is HashMap) return HashMap;
       if (obj is SplayTreeMap) return SplayTreeMap;
       return Map;
     }
-    if (obj is List){
-      if (obj is TypedDataList){
-        switch (obj.elementSizeInBytes){
+    if (obj is List) {
+      if (obj is TypedDataList) {
+        switch (obj.elementSizeInBytes) {
           case 1:
             if (obj is Uint8List) return Uint8List;
             if (obj is Uint8ClampedList) return Uint8ClampedList;
@@ -71,7 +70,7 @@ final class DartTypeResolver{
       if (obj is BoolList) return BoolList;
       return List;
     }
-    if (obj is Set){
+    if (obj is Set) {
       if (obj is LinkedHashSet) return LinkedHashSet;
       if (obj is HashSet) return HashSet;
       if (obj is SplayTreeSet) return SplayTreeSet;

@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.apache.fory</groupId>
     <artifactId>fory-parent</artifactId>
-    <version>0.15.0-SNAPSHOT</version>
+    <version>0.16.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -127,4 +127,59 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>xlang-parallel</id>
+      <activation>
+        <property>
+          <name>!test</name>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>default-test</id>
+                <goals>
+                  <goal>test</goal>
+                </goals>
+                <configuration>
+                  <excludedGroups>xlang</excludedGroups>
+                  <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+                </configuration>
+              </execution>
+              <execution>
+                <id>xlang-parallel-test</id>
+                <goals>
+                  <goal>test</goal>
+                </goals>
+                <configuration>
+                  <groups>xlang</groups>
+                  <properties>
+                    <property>
+                      <name>parallel</name>
+                      <value>methods</value>
+                    </property>
+                    <property>
+                      <name>threadcount</name>
+                      <value>8</value>
+                    </property>
+                    <property>
+                      <name>dataproviderthreadcount</name>
+                      <value>8</value>
+                    </property>
+                  </properties>
+                  <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

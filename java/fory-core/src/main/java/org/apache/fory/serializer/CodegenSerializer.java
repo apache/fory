@@ -32,14 +32,19 @@ import org.apache.fory.memory.MemoryBuffer;
 public final class CodegenSerializer {
 
   public static boolean supportCodegenForJavaSerialization(Class<?> cls) {
-    // bean class can be static nested class, but can't be a non-static inner class
-    // If a class is a static class, the enclosing class must not be null.
-    // If enclosing class is null, it must not be a static class.
+    // bean class can be static nested class, but can't be a non-static inner class.
+    // Check modifiers first to avoid loading the enclosing class unnecessarily —
+    // in classloader-isolated environments (e.g. OSGi, module systems) the enclosing
+    // class may not be visible, causing NoClassDefFoundError.
+    if (Modifier.isStatic(cls.getModifiers())) {
+      return true;
+    }
     try {
-      return cls.getEnclosingClass() == null || Modifier.isStatic(cls.getModifiers());
-
+      return cls.getEnclosingClass() == null;
     } catch (Throwable t) {
-      throw new RuntimeException(t);
+      // Enclosing class is not loadable — the class cannot be a valid non-static
+      // inner class in this context, so codegen is not applicable.
+      return false;
     }
   }
 

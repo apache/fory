@@ -19,40 +19,39 @@
 
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/datatype/timestamp.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serializer/time/time_serializer_cache.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
-final class _TimestampSerializerCache extends TimeSerializerCache{
-  static TimestampSerializer? serRef;
-  static TimestampSerializer? serNoRef;
+final class _TimestampSerializerCache extends TimeSerializerCache {
+  static TimestampSerializer? serializerWithRef;
+  static TimestampSerializer? serializerWithoutRef;
 
   const _TimestampSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
-      serRef ??= TimestampSerializer._(true);
-      return serRef!;
+  Serializer getSerializerWithRef(bool writeRef) {
+    if (writeRef) {
+      serializerWithRef ??= TimestampSerializer._(true);
+      return serializerWithRef!;
     } else {
-      serNoRef ??= TimestampSerializer._(false);
-      return serNoRef!;
+      serializerWithoutRef ??= TimestampSerializer._(false);
+      return serializerWithoutRef!;
     }
   }
 }
 
 final class TimestampSerializer extends Serializer<TimeStamp> {
-
   static const SerializerCache cache = _TimestampSerializerCache();
 
   TimestampSerializer._(bool writeRef) : super(ObjType.TIMESTAMP, writeRef);
 
   @override
-  TimeStamp read(ByteReader br, int refId, DeserializerPack pack) {
+  TimeStamp read(ByteReader br, int refId, DeserializationContext pack) {
     final int seconds = br.readInt64();
     final int nanos = br.readUint32();
     final int microseconds = seconds * 1000000 + (nanos ~/ 1000);
@@ -61,7 +60,7 @@ final class TimestampSerializer extends Serializer<TimeStamp> {
   }
 
   @override
-  void write(ByteWriter bw, TimeStamp v, SerializerPack pack) {
+  void write(ByteWriter bw, TimeStamp v, SerializationContext pack) {
     int seconds = v.microsecondsSinceEpoch ~/ 1000000;
     int microsRem = v.microsecondsSinceEpoch % 1000000;
     if (microsRem < 0) {

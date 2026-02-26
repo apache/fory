@@ -75,6 +75,7 @@ import org.testng.annotations.Test;
  * @see RustXlangTest
  * @see CPPXlangTest
  */
+@Test(groups = "xlang")
 public abstract class XlangTestBase extends ForyTestBase {
 
   /**
@@ -232,7 +233,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         "Failed to execute peer test " + ctx.caseName());
   }
 
-  @Test
+  @Test(groups = "xlang")
   public void testBuffer() throws IOException {
     String caseName = "test_buffer";
     MemoryBuffer buffer = MemoryUtils.buffer(32);
@@ -263,7 +264,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertTrue(Arrays.equals(buffer.readBytes(buffer.readInt32()), bytes));
   }
 
-  @Test
+  @Test(groups = "xlang")
   public void testBufferVar() throws IOException {
     String caseName = "test_buffer_var";
     MemoryBuffer buffer = MemoryUtils.buffer(256);
@@ -377,7 +378,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     }
   }
 
-  @Test
+  @Test(groups = "xlang")
   public void testMurmurHash3() throws IOException {
     String caseName = "test_murmurhash3";
     MemoryBuffer buffer = MemoryUtils.buffer(32);
@@ -427,7 +428,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     }
   }
 
-  @Test
+  @Test(groups = "xlang")
   public void testStringSerializer() throws Exception {
     String caseName = "test_string_serializer";
     Fory fory =
@@ -455,7 +456,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     White,
   }
 
-  @Test
+  @Test(groups = "xlang")
   public void testCrossLanguageSerializer() throws Exception {
     String caseName = "test_cross_language_serializer";
     List<String> strList = Arrays.asList("hello", "world");
@@ -558,7 +559,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     int last; // Changed from Integer to int to match Rust
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSimpleStruct(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_simple_struct";
     Fory fory =
@@ -598,7 +599,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSimpleNamedStruct(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_named_simple_struct";
     Fory fory =
@@ -637,7 +638,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_list";
     Fory fory =
@@ -677,7 +678,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     assertEqualsNullTolerant(fory.deserialize(buffer2), itemList2);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testMap(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_map";
     Fory fory =
@@ -726,7 +727,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Integer f6;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testInteger(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_integer";
     Fory fory =
@@ -780,7 +781,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), 0);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testItem(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_item";
     Fory fory =
@@ -822,7 +823,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(readItem3.name, "");
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testColor(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_color";
     Fory fory =
@@ -862,7 +863,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     org.apache.fory.type.union.Union2<String, Long> union;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testUnionXlang(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_union_xlang";
     Fory fory =
@@ -903,7 +904,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     List<String> items;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testStructWithList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_struct_with_list";
     Fory fory =
@@ -940,7 +941,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, String> data;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_struct_with_map";
     Fory fory =
@@ -1004,16 +1005,6 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @Override
     public void write(MemoryBuffer buffer, MyExt value) {
-      xwrite(buffer, value);
-    }
-
-    @Override
-    public MyExt read(MemoryBuffer buffer) {
-      return xread(buffer);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, MyExt value) {
       System.out.println("Writer Index Before write myext: " + buffer.writerIndex());
       buffer.writeVarInt32(value.id);
       System.out.println("Write id " + value.id);
@@ -1021,7 +1012,7 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @SuppressWarnings("unchecked")
     @Override
-    public MyExt xread(MemoryBuffer buffer) {
+    public MyExt read(MemoryBuffer buffer) {
       MyExt obj = new MyExt();
       obj.id = buffer.readVarInt32();
       return obj;
@@ -1055,7 +1046,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(newWrapper, new EmptyWrapper());
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSkipIdCustom(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_skip_id_custom";
     Fory fory1 =
@@ -1081,7 +1072,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     _testSkipCustom(fory1, fory2, caseName);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSkipNameCustom(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_skip_name_custom";
     Fory fory1 =
@@ -1107,7 +1098,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     _testSkipCustom(fory1, fory2, caseName);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testConsistentNamed(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_consistent_named";
     Fory fory =
@@ -1161,7 +1152,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     double f3;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testStructVersionCheck(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_struct_version_check";
     Fory fory =
@@ -1245,7 +1236,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, Animal> animal_map;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testPolymorphicList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_polymorphic_list";
     Fory fory =
@@ -1304,7 +1295,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(((Cat) readHolder.animals.get(1)).lives, 7);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testPolymorphicMap(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_polymorphic_map";
     Fory fory =
@@ -1402,7 +1393,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     String f2;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testOneStringFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_string_field_schema";
     Fory fory =
@@ -1427,7 +1418,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, "hello");
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testOneStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_string_field_compatible";
     Fory fory =
@@ -1454,7 +1445,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, "hello");
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testTwoStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_two_string_field_compatible";
     Fory fory =
@@ -1483,7 +1474,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f2, "second");
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_schema_evolution_compatible";
     // Fory for TwoStringFieldStruct
@@ -1568,7 +1559,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     TestEnum f2;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testOneEnumFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_enum_field_schema";
     Fory fory =
@@ -1594,7 +1585,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, TestEnum.VALUE_B);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testOneEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_enum_field_compatible";
     Fory fory =
@@ -1620,7 +1611,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, TestEnum.VALUE_A);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testTwoEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_two_enum_field_compatible";
     Fory fory =
@@ -1648,7 +1639,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f2, TestEnum.VALUE_C);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testEnumSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_enum_schema_evolution_compatible";
     // Fory for TwoEnumFieldStruct
@@ -1784,7 +1775,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, String> nullableMap;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen)
       throws java.io.IOException {
     String caseName = "test_nullable_field_schema_consistent_not_null";
@@ -1843,7 +1834,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result, obj);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testNullableFieldSchemaConsistentNull(boolean enableCodegen)
       throws java.io.IOException {
     String caseName = "test_nullable_field_schema_consistent_null";
@@ -1969,7 +1960,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, String> nullableMap2;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testNullableFieldCompatibleNotNull(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_nullable_field_compatible_not_null";
     Fory fory =
@@ -2035,7 +2026,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result, obj);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_nullable_field_compatible_null";
     Fory fory =
@@ -2233,7 +2224,7 @@ public abstract class XlangTestBase extends ForyTestBase {
    * with two fields pointing to the same inner struct instance. Verifies that after
    * serialization/deserialization across languages, both fields still reference the same object.
    */
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_ref_schema_consistent";
     Fory fory =
@@ -2310,7 +2301,7 @@ public abstract class XlangTestBase extends ForyTestBase {
    * fields pointing to the same inner struct instance. Verifies that after
    * serialization/deserialization across languages, both fields still reference the same object.
    */
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testRefCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_ref_compatible";
     Fory fory =
@@ -2376,7 +2367,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, @Ref(enable = false) RefOverrideElement> mapField;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_collection_element_ref_override";
     Fory fory =
@@ -2453,7 +2444,7 @@ public abstract class XlangTestBase extends ForyTestBase {
    * the 'selfRef' field points back to the same object. Verifies that after
    * serialization/deserialization across languages, the circular reference is preserved.
    */
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testCircularRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_circular_ref_schema_consistent";
     Fory fory =
@@ -2496,7 +2487,7 @@ public abstract class XlangTestBase extends ForyTestBase {
    * 'selfRef' field points back to the same object. Verifies that circular references work with
    * schema evolution support.
    */
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testCircularRefCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_circular_ref_compatible";
     Fory fory =
@@ -2641,7 +2632,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Long u64TaggedNullable;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaConsistentSimple(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_unsigned_schema_consistent_simple";
     Fory fory =
@@ -2667,7 +2658,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result, obj);
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_unsigned_schema_consistent";
     Fory fory =
@@ -2784,7 +2775,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Long u64TaggedField2;
   }
 
-  @Test(dataProvider = "enableCodegen")
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testUnsignedSchemaCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_unsigned_schema_compatible";
     Fory fory =

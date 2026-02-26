@@ -21,7 +21,7 @@ import 'package:meta/meta_meta.dart';
 import 'fory_object.dart';
 
 /// A class representing an enumeration type in the Fory framework.
-/// 
+///
 /// This class extends [ForyObject] and is used to annotate enum types
 /// within the Fory framework.
 /// Example:
@@ -34,7 +34,7 @@ import 'fory_object.dart';
 class ForyEnum extends ForyObject {
   static const String name = 'ForyEnum';
   static const List<TargetKind> targets = [TargetKind.enumType];
-  
+
   /// Creates a new instance of [ForyEnum].
   const ForyEnum();
 }

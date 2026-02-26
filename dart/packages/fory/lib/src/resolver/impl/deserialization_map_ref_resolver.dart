@@ -19,15 +19,14 @@
 
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 
-class DeserializationMapRefResolver implements DeserializationRefResolver{
-
+class DeserializationMapRefResolver implements DeserializationRefResolver {
   final List<Object?> _refs = [];
 
   int _lastRefId = -1;
 
   @override
   Object getObj(int refId) {
-    assert (_refs.length > refId);
+    assert(_refs.length > refId);
     return _refs[refId]!;
   }
 

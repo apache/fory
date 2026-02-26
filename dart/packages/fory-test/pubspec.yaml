@@ -17,7 +17,7 @@
 
 name: fory_test
 description: test for fory dart
-version: 0.15.0-dev
+version: 0.16.0-dev
 
 environment:
   sdk: ^3.6.1
@@ -25,7 +25,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  fory: 0.15.0-dev
+  fory: 0.16.0-dev
   checks: ^0.3.0
   path: ^1.9.1
   yaml: ^3.1.3

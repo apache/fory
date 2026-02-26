@@ -35,11 +35,12 @@ abstract class DeserializationException extends ForyException {
   }
 }
 
-class DeserializationConflictException extends DeserializationException{
+class DeserializationConflictException extends DeserializationException {
   final String _readSetting;
   final String _nowForySetting;
 
-  DeserializationConflictException(this._readSetting, this._nowForySetting, [super._where]);
+  DeserializationConflictException(this._readSetting, this._nowForySetting,
+      [super._where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -51,13 +52,13 @@ class DeserializationConflictException extends DeserializationException{
   }
 }
 
-class UnsupportedFeatureException extends DeserializationException{
-
+class UnsupportedFeatureException extends DeserializationException {
   final Object _read;
   final List<Object> _supported;
   final String _whatFeature;
 
-  UnsupportedFeatureException(this._read, this._supported, this._whatFeature, [super._where]);
+  UnsupportedFeatureException(this._read, this._supported, this._whatFeature,
+      [super._where]);
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -72,11 +73,14 @@ class UnsupportedFeatureException extends DeserializationException{
   }
 }
 
-class DeserializationRangeException extends ForyException{
+class DeserializationRangeException extends ForyException {
   final int index;
   final List<Object> candidates;
 
-  DeserializationRangeException(this.index, this.candidates,);
+  DeserializationRangeException(
+    this.index,
+    this.candidates,
+  );
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -89,7 +93,7 @@ class DeserializationRangeException extends ForyException{
   }
 }
 
-class InvalidParamException extends DeserializationException{
+class InvalidParamException extends DeserializationException {
   final String _invalidParam;
   final String _validParams;
 
@@ -105,16 +109,16 @@ class InvalidParamException extends DeserializationException{
   }
 }
 
-class ForyMismatchException extends DeserializationException{
+class ForyMismatchException extends DeserializationException {
   final Object readValue;
   final Object expected;
   final String specification;
 
   ForyMismatchException(
-      this.readValue,
-      this.expected,
-      this.specification,
-      );
+    this.readValue,
+    this.expected,
+    this.specification,
+  );
 
   @override
   void giveExceptionMessage(StringBuffer buf) {
@@ -129,10 +133,12 @@ class ForyMismatchException extends DeserializationException{
   }
 }
 
-class UnsupportedTypeException extends ForyException{
+class UnsupportedTypeException extends ForyException {
   final ObjType _objType;
 
-  UnsupportedTypeException(this._objType,);
+  UnsupportedTypeException(
+    this._objType,
+  );
 
   @override
   void giveExceptionMessage(StringBuffer buf) {

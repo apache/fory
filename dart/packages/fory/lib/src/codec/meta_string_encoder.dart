@@ -19,7 +19,7 @@
 
 import 'package:meta/meta.dart';
 
-import 'package:fory/src/codec/entity/str_stat.dart';
+import 'package:fory/src/codec/entity/string_statistics.dart';
 import 'package:fory/src/codec/meta_string_codecs.dart';
 import 'package:fory/src/codec/meta_string_encoding.dart';
 import 'package:fory/src/meta/meta_string.dart';
@@ -29,50 +29,60 @@ abstract base class MetaStringEncoder extends MetaStringCodecs {
   const MetaStringEncoder(super.specialChar1, super.specialChar2);
 
   // MetaString encode(String input, MetaStringEncoding encoding);
-  MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings);
+  MetaString encodeByAllowedEncodings(
+      String input, List<MetaStringEncoding> encodings);
 
-  StrStat _computeStrStat(String input){
+  StringStatistics _computeStringStatistics(String input) {
     bool canLUDS = true;
     bool canLS = true;
     int digitCount = 0;
     int upperCount = 0;
-    for (var c in input.codeUnits){
-      if (canLUDS && !CharUtil.isLUD(c) && c != specialChar1 && c != specialChar2) canLUDS = false;
+    for (var c in input.codeUnits) {
+      if (canLUDS &&
+          !CharUtil.isLUD(c) &&
+          c != specialChar1 &&
+          c != specialChar2) canLUDS = false;
       if (canLS && !CharUtil.isLS(c)) canLS = false;
       if (CharUtil.digit(c)) ++digitCount;
       if (CharUtil.upper(c)) ++upperCount;
     }
-    return StrStat(digitCount, upperCount, canLUDS, canLS,);
+    return StringStatistics(
+      digitCount,
+      upperCount,
+      canLUDS,
+      canLS,
+    );
   }
 
   @protected
-  MetaStringEncoding decideEncoding(String input, List<MetaStringEncoding> encodings) {
+  MetaStringEncoding decideEncoding(
+      String input, List<MetaStringEncoding> encodings) {
     List<bool> flags = List.filled(MetaStringEncoding.values.length, false);
     for (var e in encodings) {
       flags[e.index] = true;
     }
     // The encoding array is very small, so the List's contains method is used. If more encodings need to be supported in the future, consider using a Set.
-    if(input.isEmpty && flags[MetaStringEncoding.ls.index]){
+    if (input.isEmpty && flags[MetaStringEncoding.ls.index]) {
       return MetaStringEncoding.ls;
     }
-    StrStat stat = _computeStrStat(input);
-    if (stat.canLS && flags[MetaStringEncoding.ls.index]){
+    StringStatistics stat = _computeStringStatistics(input);
+    if (stat.canLS && flags[MetaStringEncoding.ls.index]) {
       return MetaStringEncoding.ls;
     }
-    if (stat.canLUDS){
-      if (stat.digitCount != 0 && flags[MetaStringEncoding.luds.index]){
+    if (stat.canLUDS) {
+      if (stat.digitCount != 0 && flags[MetaStringEncoding.luds.index]) {
         return MetaStringEncoding.luds;
       }
-      if (stat.upperCount == 1 && CharUtil.upper(input.codeUnitAt(0)) && flags[MetaStringEncoding.ftls.index]){
+      if (stat.upperCount == 1 &&
+          CharUtil.upper(input.codeUnitAt(0)) &&
+          flags[MetaStringEncoding.ftls.index]) {
         return MetaStringEncoding.ftls;
       }
-      if (
-        ((input.length + stat.upperCount) * 5 < input.length * 6) &&
-        flags[MetaStringEncoding.atls.index]
-        ) {
+      if (((input.length + stat.upperCount) * 5 < input.length * 6) &&
+          flags[MetaStringEncoding.atls.index]) {
         return MetaStringEncoding.atls;
       }
-      if (flags[MetaStringEncoding.luds.index]){
+      if (flags[MetaStringEncoding.luds.index]) {
         return MetaStringEncoding.luds;
       }
     }

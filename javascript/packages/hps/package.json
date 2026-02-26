@@ -1,6 +1,6 @@
 {
   "name": "@apache-fory/hps",
-  "version": "0.15.0-alpha.0",
+  "version": "0.16.0-alpha.0",
   "description": "Apache Fory™ nodejs high-performance suite",
   "main": "dist/index.js",
   "files": [

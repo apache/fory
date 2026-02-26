@@ -21,7 +21,7 @@ import 'package:fory/fory.dart';
 part '../generated/simple_struct1.g.dart';
 
 @foryClass
-class SimpleStruct1 with _$SimpleStruct1Fory {
+class SimpleStruct1 {
   late Int32 a;
 
   @override

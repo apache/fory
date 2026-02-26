@@ -18,19 +18,19 @@
  */
 
 import 'package:analyzer/dart/element/element.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/public_accessor_field.dart';
+import 'package:fory/src/codegen/meta/public_accessor_descriptor.dart';
 
 typedef FieldOverrideChecker = bool Function(String fieldName);
 
-abstract class FieldAnalyzer{
-  Either<FieldSpecImmutable, PublicAccessorField>? analyze(
+abstract class FieldAnalyzer {
+  Either<FieldSpecImmutable, PublicAccessorDescriptor>? analyze(
     FieldElement element,
     FieldOverrideChecker fieldOverrideChecker,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
   );
 }

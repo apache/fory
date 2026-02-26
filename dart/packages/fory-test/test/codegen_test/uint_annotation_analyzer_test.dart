@@ -30,17 +30,21 @@ void main() {
   group('UintAnnotationAnalyzer integration tests', () {
     const analyzer = UintAnnotationAnalyzer();
 
-    Future<UintAnnotationResult> analyzeField(String source, String fieldName) async {
-      final library = await resolveSource(source, (resolver) => resolver.findLibraryByName('test_lib'));
-      final classElement = library!.topLevelElements.firstWhere((e) => e is ClassElement) as ClassElement;
-      final fieldElement = classElement.fields.firstWhere((f) => f.name == fieldName);
-      
+    Future<UintAnnotationResult> analyzeField(
+        String source, String fieldName) async {
+      final library = await resolveSource(
+          source, (resolver) => resolver.findLibraryByName('test_lib'));
+      final classElement = library!.topLevelElements
+          .firstWhere((e) => e is ClassElement) as ClassElement;
+      final fieldElement =
+          classElement.fields.firstWhere((f) => f.name == fieldName);
+
       final locationMark = LocationMark.fieldLevel(
         'test_lib',
         'TestClass',
         fieldName,
       );
-      
+
       return analyzer.analyze(fieldElement.metadata, locationMark);
     }
 

@@ -20,7 +20,8 @@
 // @Skip()
 library;
 
-import 'package:fory/fory.dart' show FixedNum, Float32, Int16, Int32, Int8, NumType;
+import 'package:fory/fory.dart'
+    show FixedNum, Float32, Int16, Int32, Int8, NumType;
 import 'package:test/test.dart';
 
 void main() {
@@ -57,9 +58,9 @@ void main() {
       });
 
       test('wraps on overflow/underflow', () {
-        var a = Int8(128);  // Overflow
-        var b = Int8(255);  // Overflow to -1
-        var c = Int8(256);  // Overflow to 0
+        var a = Int8(128); // Overflow
+        var b = Int8(255); // Overflow to -1
+        var c = Int8(256); // Overflow to 0
         var d = Int8(-129); // Underflow
 
         expect(a.value, -128);
@@ -346,12 +347,25 @@ void main() {
       test('random overflow behavior', () {
         // Instead of property-based testing, we'll use a set of random values
         final random = [
-          27, 99, 128, 129, 255, 256, 300, -1, -127, -128, -129, -200, -256
+          27,
+          99,
+          128,
+          129,
+          255,
+          256,
+          300,
+          -1,
+          -127,
+          -128,
+          -129,
+          -200,
+          -256
         ];
 
         for (final value in random) {
           final int8 = Int8(value);
-          expect(int8.value >= Int8.MIN_VALUE && int8.value <= Int8.MAX_VALUE, isTrue,
+          expect(int8.value >= Int8.MIN_VALUE && int8.value <= Int8.MAX_VALUE,
+              isTrue,
               reason: 'Value $value should be converted to a valid Int8 range');
         }
       });
@@ -361,14 +375,20 @@ void main() {
 
         for (final a in values) {
           for (final b in values) {
-            if (b != 0) { // Avoid division by zero
+            if (b != 0) {
+              // Avoid division by zero
               final sum = Int8(a) + Int8(b);
               final diff = Int8(a) - Int8(b);
               final prod = Int8(a) * Int8(b);
 
-              expect(sum.value >= Int8.MIN_VALUE && sum.value <= Int8.MAX_VALUE, isTrue);
-              expect(diff.value >= Int8.MIN_VALUE && diff.value <= Int8.MAX_VALUE, isTrue);
-              expect(prod.value >= Int8.MIN_VALUE && prod.value <= Int8.MAX_VALUE, isTrue);
+              expect(sum.value >= Int8.MIN_VALUE && sum.value <= Int8.MAX_VALUE,
+                  isTrue);
+              expect(
+                  diff.value >= Int8.MIN_VALUE && diff.value <= Int8.MAX_VALUE,
+                  isTrue);
+              expect(
+                  prod.value >= Int8.MIN_VALUE && prod.value <= Int8.MAX_VALUE,
+                  isTrue);
             }
           }
         }

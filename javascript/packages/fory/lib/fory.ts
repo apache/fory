@@ -21,9 +21,9 @@ import TypeResolver from "./typeResolver";
 import { BinaryWriter } from "./writer";
 import { BinaryReader } from "./reader";
 import { ReferenceResolver } from "./referenceResolver";
-import { ConfigFlags, Serializer, Config, Mode, ForyTypeInfoSymbol, WithForyClsInfo, TypeId } from "./type";
+import { ConfigFlags, Serializer, Config, ForyTypeInfoSymbol, WithForyClsInfo, TypeId, CustomSerializer } from "./type";
 import { OwnershipError } from "./error";
-import { InputType, ResultType, StructTypeInfo, TypeInfo } from "./typeInfo";
+import { InputType, ResultType, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
 import { TypeMeta } from "./meta/TypeMeta";
 import { PlatformBuffer } from "./platformBuffer";
@@ -58,22 +58,22 @@ export default class {
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
       hooks: config?.hooks || {},
-      mode: config?.mode || Mode.SchemaConsistent,
+      compatible: Boolean(config?.compatible),
     };
   }
 
   isCompatible() {
-    return this.config.mode === Mode.Compatible;
+    return this.config.compatible === true;
   }
 
-  registerSerializer<T extends new () => any>(constructor: T): {
+  registerSerializer<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
     serializer: Serializer;
-    serialize(data: Partial<InstanceType<T>> | null): PlatformBuffer;
-    serializeVolatile(data: Partial<InstanceType<T>>): {
+    serialize(data: InputType<T> | null): PlatformBuffer;
+    serializeVolatile(data: InputType<T>): {
       get: () => Uint8Array;
       dispose: () => void;
     };
-    deserialize(bytes: Uint8Array): InstanceType<T> | null;
+    deserialize(bytes: Uint8Array): ResultType<T>;
   };
   registerSerializer<T extends TypeInfo>(typeInfo: T): {
     serializer: Serializer;
@@ -84,15 +84,26 @@ export default class {
     };
     deserialize(bytes: Uint8Array): ResultType<T>;
   };
-  registerSerializer(constructor: any) {
+  registerSerializer<T extends new () => any>(constructor: T): {
+    serializer: Serializer;
+    serialize(data: Partial<InstanceType<T>> | null): PlatformBuffer;
+    serializeVolatile(data: Partial<InstanceType<T>>): {
+      get: () => Uint8Array;
+      dispose: () => void;
+    };
+    deserialize(bytes: Uint8Array): InstanceType<T> | null;
+  };
+  registerSerializer(constructor: any, customSerializer?: CustomSerializer<any>) {
     let serializer: Serializer;
     TypeInfo.attach(this);
     if (constructor.prototype?.[ForyTypeInfoSymbol]) {
       const typeInfo: TypeInfo = (<WithForyClsInfo>(constructor.prototype[ForyTypeInfoSymbol])).structTypeInfo;
-      serializer = new Gen(this, { constructor }).generateSerializer(typeInfo);
+      typeInfo.freeze();
+      serializer = new Gen(this, { creator: constructor, customSerializer }).generateSerializer(typeInfo);
       this.typeResolver.registerSerializer(typeInfo, serializer);
     } else {
       const typeInfo = constructor;
+      typeInfo.freeze();
       serializer = new Gen(this).generateSerializer(typeInfo);
       this.typeResolver.registerSerializer(typeInfo, serializer);
     }
@@ -116,13 +127,14 @@ export default class {
 
   replaceSerializerReader(typeInfo: TypeInfo) {
     TypeInfo.attach(this);
-    const serializer = new Gen(this, { constroctor: (typeInfo as StructTypeInfo).options.constructor }).reGenerateSerializer(typeInfo);
+    const serializer = new Gen(this, { creator: (typeInfo).options!.creator! }).reGenerateSerializer(typeInfo);
     const result = this.typeResolver.registerSerializer(typeInfo, {
       getHash: serializer.getHash,
       read: serializer.read,
       readNoRef: serializer.readNoRef,
       readRef: serializer.readRef,
       readTypeInfo: serializer.readTypeInfo,
+      readRefWithoutTypeInfo: serializer.readRefWithoutTypeInfo,
     } as any)!;
     TypeInfo.detach();
     return result;
@@ -133,7 +145,7 @@ export default class {
     this.binaryReader.reset(bytes);
     this.typeMetaResolver.reset();
     this.metaStringResolver.reset();
-    const bitmap = this.binaryReader.uint8();
+    const bitmap = this.binaryReader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
     }
@@ -158,12 +170,14 @@ export default class {
       throw e;
     }
     this.referenceResolver.reset();
+    this.metaStringResolver.reset();
+    this.typeMetaResolver.reset();
     let bitmap = 0;
     if (data === null) {
       bitmap |= ConfigFlags.isNullFlag;
     }
     bitmap |= ConfigFlags.isCrossLanguageFlag;
-    this.binaryWriter.uint8(bitmap);
+    this.binaryWriter.writeUint8(bitmap);
     // reserve fixed size
     this.binaryWriter.reserve(serializer.fixedSize);
     // start write

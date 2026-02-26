@@ -21,14 +21,14 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { Mode, Serializer, TypeId } from "../type";
+import { Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 import { TypeMeta } from "../meta/TypeMeta";
 
 export class AnyHelper {
   static detectSerializer(fory: Fory) {
-    const typeId = fory.binaryReader.uint8();
+    const typeId = fory.binaryReader.readUint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT) {
       userTypeId = fory.binaryReader.readVarUint32Small7();
@@ -37,11 +37,11 @@ export class AnyHelper {
 
     function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
       if (!serializer) {
-        throw new Error(`can't find implements of typeId: ${typeId}`);
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
       }
       const hash = serializer.getHash();
       if (hash !== typeMeta.getHash()) {
-        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta, serializer);
       }
       return serializer;
     }
@@ -59,7 +59,7 @@ export class AnyHelper {
       case TypeId.NAMED_EXT:
       case TypeId.NAMED_UNION:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
-        if (fory.config.mode === Mode.Compatible || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
+        if (fory.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
           const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();

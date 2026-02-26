@@ -22,7 +22,7 @@ import 'package:fory/fory.dart';
 part '../generated/time_obj.g.dart';
 
 @ForyClass(promiseAcyclic: true)
-class TimeObj with _$TimeObjFory{
+class TimeObj {
   final LocalDate date1;
   final LocalDate date2;
   final LocalDate date3;
@@ -44,7 +44,8 @@ class TimeObj with _$TimeObjFory{
   );
 
   @override
-  int get hashCode => Object.hash(date1, date2, date3, date4, dateTime1, dateTime2, dateTime3, dateTime4);
+  int get hashCode => Object.hash(
+      date1, date2, date3, date4, dateTime1, dateTime2, dateTime3, dateTime4);
 
   @override
   bool operator ==(Object other) {

@@ -19,24 +19,24 @@
 
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/analysis_cache.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/analyze/impl/field/non_static_field_visitor.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/fields_cache_unit.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/public_accessor_field.dart';
+import 'package:fory/src/codegen/meta/public_accessor_descriptor.dart';
 
-class FieldsAnalyzer{
-
+class FieldsAnalyzer {
   const FieldsAnalyzer();
 
   FieldsCacheUnit analyzeFields(
     ClassElement element,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureClassLevel);
-    assert (element.supertype != null); // At the very least, it is also an Object
+    assert(
+        element.supertype != null); // At the very least, it is also an Object
     FieldsCacheUnit res = _analyzeFieldsInner(element, locationMark)!;
     return res;
   }
@@ -44,48 +44,53 @@ class FieldsAnalyzer{
   // For efficiency, a key can be provided here (because the key may have already been established, reuse it if possible)
   FieldsCacheUnit? _analyzeFieldsInner(
     ClassElement element,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-  ){
-    assert (locationMark.ensureClassLevel);
-    if (element.supertype == null) return null; // No need to analyze further if the inheritance chain reaches Object
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
+    assert(locationMark.ensureClassLevel);
+    if (element.supertype == null) {
+      return null; // No need to analyze further if the inheritance chain reaches Object
+    }
 
     FieldsCacheUnit? cacheUnit = AnalysisCache.getFields(element.id);
     if (cacheUnit != null) {
       return cacheUnit;
     }
 
-    FieldsCacheUnit? superCacheUnit = _analyzeFieldsInner(element.supertype!.element as ClassElement, locationMark);
+    FieldsCacheUnit? superCacheUnit = _analyzeFieldsInner(
+        element.supertype!.element as ClassElement, locationMark);
 
     List<FieldSpecImmutable>? superFields = superCacheUnit?.fieldImmutables;
     Set<String>? superParamNames = superCacheUnit?.fieldNames;
 
     // Start analyzing the fields of the current class
-    NonStaticFieldVisitor visitor = NonStaticFieldVisitor(superParamNames, locationMark);
+    NonStaticFieldVisitor visitor =
+        NonStaticFieldVisitor(superParamNames, locationMark);
     element.visitChildren(visitor);
     // analyse setter and getter
     _analyzeFieldSetAndGet(visitor.fields, visitor.accessors);
     // put this and super together
     List<FieldSpecImmutable> fields = visitor.fields;
     Set<String> fieldNames = fields.map((e) => e.name).toSet();
-    if (superCacheUnit != null){
+    if (superCacheUnit != null) {
       fields.addAll(superFields!);
       fieldNames.addAll(superParamNames!);
     }
 
-    bool superAllFieldIndependent = (superCacheUnit == null) || (superCacheUnit.allFieldIndependent);
-    late bool allFieldIndependent;
-    if (!superAllFieldIndependent){
-      allFieldIndependent = false;
-    }else{
-      allFieldIndependent = true;
-      for (var field in fields){
-        if (!field.typeSpec.independent){
-          allFieldIndependent = false;
+    bool superAllFieldsIndependent =
+        (superCacheUnit == null) || (superCacheUnit.allFieldsIndependent);
+    late bool allFieldsIndependent;
+    if (!superAllFieldsIndependent) {
+      allFieldsIndependent = false;
+    } else {
+      allFieldsIndependent = true;
+      for (var field in fields) {
+        if (!field.typeSpec.independent) {
+          allFieldsIndependent = false;
           break;
         }
       }
     }
-    cacheUnit = FieldsCacheUnit(fields, allFieldIndependent, fieldNames);
+    cacheUnit = FieldsCacheUnit(fields, allFieldsIndependent, fieldNames);
     // cache
     AnalysisCache.putFields(element.id, cacheUnit);
     return cacheUnit;
@@ -93,28 +98,31 @@ class FieldsAnalyzer{
 
   // This method only analyzes field readability and writability through setters and getters.
   // However, for fields like finalAndHasInitializer, the setter cannot change the fact that canSet=false
-  void _analyzeFieldSetAndGet(List<FieldSpecImmutable> fields, List<PublicAccessorField> accessors){
-    accessors.sort((a,b) => a.name.compareTo(b.name));
-    for (var field in fields){
+  void _analyzeFieldSetAndGet(List<FieldSpecImmutable> fields,
+      List<PublicAccessorDescriptor> accessors) {
+    accessors.sort((a, b) => a.name.compareTo(b.name));
+    for (var field in fields) {
       if (field.isPublic) {
         assert(field.canGet);
         continue;
       }
-      if (field.accessUnchangeable){
+      if (field.accessUnchangeable) {
         continue;
       }
-      final accessor = _searchAccessorByName(field.name.substring(1), accessors);
-      if (accessor != null){
+      final accessor =
+          _searchAccessorByName(field.name.substring(1), accessors);
+      if (accessor != null) {
         field.notifyHasSetter(accessor.hasSetter);
         field.notifyHasGetter(accessor.hasGetter);
-      }else{
-        field.notifyHasGetter(false);
+      } else {
+        field.notifyHasSetter(false);
         field.notifyHasGetter(false);
       }
     }
   }
 
-  PublicAccessorField? _searchAccessorByName(String name, List<PublicAccessorField> accessors){
+  PublicAccessorDescriptor? _searchAccessorByName(
+      String name, List<PublicAccessorDescriptor> accessors) {
     int low = 0;
     int high = accessors.length - 1;
     while (low <= high) {

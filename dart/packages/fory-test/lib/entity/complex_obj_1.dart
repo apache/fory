@@ -24,7 +24,7 @@ import 'package:fory_test/extensions/map_ext.dart';
 part '../generated/complex_obj_1.g.dart';
 
 @foryClass
-class ComplexObject1 with _$ComplexObject1Fory{
+class ComplexObject1 {
   late Object f1;
   late String f2;
   late List<Object> f3;
@@ -39,7 +39,8 @@ class ComplexObject1 with _$ComplexObject1Fory{
   late List<Int16> f12;
 
   @override
-  int get hashCode => Object.hash(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12);
+  int get hashCode =>
+      Object.hash(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12);
 
   // define ==
   @override

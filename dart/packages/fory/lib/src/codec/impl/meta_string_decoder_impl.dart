@@ -25,7 +25,6 @@ import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/meta/meta_string_byte.dart';
 
 class ForyMetaStringDecoder extends MetaStringDecoder {
-
   const ForyMetaStringDecoder(super.specialChar1, super.specialChar2);
 
   // Decoding special char for LOWER_SPECIAL based on encoding mapping.
@@ -47,7 +46,8 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
       // '|'
       return 124;
     } else {
-      throw ArgumentError('Unsupported character for LOWER_SPECIAL encoding: $charValue');
+      throw ArgumentError(
+          'Unsupported character for LOWER_SPECIAL encoding: $charValue');
     }
   }
 
@@ -68,30 +68,31 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
     } else if (charValue == 63) {
       return specialChar2;
     } else {
-      throw ArgumentError('Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: $charValue');
+      throw ArgumentError(
+          'Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: $charValue');
     }
   }
 
-
-  String _decodeLowerSpecial(Uint8List data){
+  String _decodeLowerSpecial(Uint8List data) {
     assert(data.isNotEmpty);
     var decoded = StringBuffer();
     int totalBits = data.length * 8;
-    bool stripLastChar = (data[0] & 0x80) != 0; // the first bit of the first byte
+    bool stripLastChar =
+        (data[0] & 0x80) != 0; // the first bit of the first byte
     int bitMask = 0x1f; // 1 1111
     int bitIndex = 1;
-    while (bitIndex + 5 <= totalBits && !(stripLastChar && (bitIndex + 2 * 5 > totalBits))){
+    while (bitIndex + 5 <= totalBits &&
+        !(stripLastChar && (bitIndex + 2 * 5 > totalBits))) {
       int byteIndex = bitIndex ~/ 8;
       int bitOffset = bitIndex % 8;
       int charValue = 0; // codeUnit
       // 01234567
-      if (bitOffset > 3){
+      if (bitOffset > 3) {
         // need to read from two bytes
-        charValue =
-        ((data[byteIndex] & 0xFF) << 8)
-        | (byteIndex + 1 < data.length ? (data[byteIndex + 1] & 0xFF) : 0);
+        charValue = ((data[byteIndex] & 0xFF) << 8) |
+            (byteIndex + 1 < data.length ? (data[byteIndex + 1] & 0xFF) : 0);
         charValue = ((charValue >> (11 - bitOffset)) & bitMask);
-      }else {
+      } else {
         // read from one byte
         charValue = (data[byteIndex] >> (3 - bitOffset)) & bitMask;
       }
@@ -101,23 +102,25 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
     return decoded.toString();
   }
 
-  String _decodeLowerUpperDigitSpecial(Uint8List data){
+  String _decodeLowerUpperDigitSpecial(Uint8List data) {
     StringBuffer buf = StringBuffer();
     int bitIndex = 1;
-    bool stripLastChar = (data[0] & 0x80) != 0; // the first bit of the first byte
+    bool stripLastChar =
+        (data[0] & 0x80) != 0; // the first bit of the first byte
     int bitMask = 0x3f; // 0011 1111
     int numBits = data.length * 8;
-    while (bitIndex + 6 <= numBits && !(stripLastChar && (bitIndex + 2 * 6 > numBits))){
+    while (bitIndex + 6 <= numBits &&
+        !(stripLastChar && (bitIndex + 2 * 6 > numBits))) {
       int byteIndex = bitIndex ~/ 8;
       int intraByteIndex = bitIndex % 8;
       int charValue = 0; // codeUnit
       // 01234567
-      if (intraByteIndex > 2){
+      if (intraByteIndex > 2) {
         // need to read from two bytes
-        charValue = ((data[byteIndex] & 0xFF) << 8)
-        | (byteIndex + 1 < data.length ? (data[byteIndex + 1] & 0xFF) : 0);
+        charValue = ((data[byteIndex] & 0xFF) << 8) |
+            (byteIndex + 1 < data.length ? (data[byteIndex + 1] & 0xFF) : 0);
         charValue = (charValue >> (10 - intraByteIndex)) & bitMask;
-      }else {
+      } else {
         // read from one byte
         charValue = data[byteIndex] >> (2 - intraByteIndex) & bitMask;
       }
@@ -134,22 +137,21 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
     return String.fromCharCodes(chars);
   }
 
-  String _decodeRepAllToLowerSpecial(Uint8List data){
+  String _decodeRepAllToLowerSpecial(Uint8List data) {
     String decoded = _decodeLowerSpecial(data);
     StringBuffer buf = StringBuffer();
     List<int> chars = decoded.codeUnits;
     int c;
-    for (int i = 0; i< chars.length; ++i){
-      if(chars[i] == 0x7c){
+    for (int i = 0; i < chars.length; ++i) {
+      if (chars[i] == 0x7c) {
         c = chars[++i];
         buf.writeCharCode(c - 32); // 'A' to 'a'
-      }else{
+      } else {
         buf.writeCharCode(chars[i]);
       }
     }
     return buf.toString();
   }
-
 
   @override
   String decode(Uint8List data, MetaStringEncoding encoding) {
@@ -175,5 +177,4 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
   String decodeMetaString(MetaStringBytes data) {
     return decode(data.bytes, data.encoding);
   }
-
 }

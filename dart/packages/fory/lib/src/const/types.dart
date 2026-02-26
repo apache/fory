@@ -31,7 +31,8 @@ enum ObjType {
 
   // x
   /// Boolean as 1 bit, LSB bit-packed ordering
-  BOOL(1, true), // 1 // This string means that when the Dart type is bool, ObjType.BOOL is used by default.
+  BOOL(1,
+      true), // 1 // This string means that when the Dart type is bool, ObjType.BOOL is used by default.
 
   // x
   /// Signed 8-bit little-endian integer
@@ -244,22 +245,20 @@ enum ObjType {
 
   // Helper methods
   bool isStructType() {
-    return this == STRUCT
-        || this == COMPATIBLE_STRUCT
-        || this == NAMED_STRUCT
-        || this == NAMED_COMPATIBLE_STRUCT;
+    return this == STRUCT ||
+        this == COMPATIBLE_STRUCT ||
+        this == NAMED_STRUCT ||
+        this == NAMED_COMPATIBLE_STRUCT;
   }
 
   bool needsUserTypeId() {
-    return this == ENUM
-        || this == STRUCT
-        || this == COMPATIBLE_STRUCT
-        || this == EXT;
+    return this == ENUM ||
+        this == STRUCT ||
+        this == COMPATIBLE_STRUCT ||
+        this == EXT;
   }
 
   bool isTimeType() {
-    return this == TIMESTAMP
-        || this == DATE
-        || this == DURATION;
+    return this == TIMESTAMP || this == DATE || this == DURATION;
   }
 }

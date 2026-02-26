@@ -25,59 +25,97 @@
 /// we still need to implement this separately, which may introduce duplicate code.
 library;
 
+import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/collection/iterable_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
 abstract base class SetSerializer extends IterableSerializer {
+  const SetSerializer(bool writeRef) : super(ObjType.SET, writeRef);
 
-  const SetSerializer(bool writeRef): super(ObjType.SET, writeRef);
-  
   Set newSet(bool nullable);
 
   @override
-  Set read(ByteReader br, int refId, DeserializerPack pack) {
+  Set read(ByteReader br, int refId, DeserializationContext pack) {
     int num = br.readVarUint32Small7();
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
     Set set = newSet(
       elemWrap == null || elemWrap.nullable,
     );
-    if (writeRef){
+    if (writeRef) {
       pack.refResolver.setRefTheLatestId(set);
     }
-    if (elemWrap == null){
-      for (int i = 0; i < num; ++i) {
-        Object? o = pack.foryDeser.xReadRefNoSer(br, pack);
-        set.add(o);
-      }
+    if (num == 0) {
       return set;
     }
-    if (elemWrap.hasGenericsParam){
+
+    int flags = br.readUint8();
+    bool hasGenericsParam = elemWrap != null && elemWrap.hasGenericsParam;
+    if (hasGenericsParam) {
       pack.typeWrapStack.push(elemWrap);
     }
-    if (!elemWrap.certainForSer){
-      for (int i = 0; i < num; ++i) {
-        Object? o = pack.foryDeser.xReadRefNoSer(br, pack);
-        set.add(o);
+
+    if ((flags & IterableSerializer.isSameTypeFlag) ==
+        IterableSerializer.isSameTypeFlag) {
+      Serializer? serializer;
+      bool isDeclElemType =
+          (flags & IterableSerializer.isDeclElementTypeFlag) ==
+              IterableSerializer.isDeclElementTypeFlag;
+      if (isDeclElemType) {
+        serializer = elemWrap?.serializer;
       }
-    }else {
-      Serializer? ser = elemWrap.ser;
-      if (ser == null){
+      if (serializer == null) {
+        serializer = pack.typeResolver.readTypeInfo(br).serializer;
+      }
+
+      if ((flags & IterableSerializer.trackingRefFlag) ==
+          IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          Object? o = pack.foryDeser.xReadRefNoSer(br, pack);
-          set.add(o);
+          set.add(pack.deserializationDispatcher
+              .readWithSerializer(br, serializer, pack));
         }
-      }else{
+      } else if ((flags & IterableSerializer.hasNullFlag) ==
+          IterableSerializer.hasNullFlag) {
         for (int i = 0; i < num; ++i) {
-          Object? o = pack.foryDeser.xReadRefWithSer(br, ser, pack);
-          set.add(o);
+          if (br.readInt8() == RefFlag.NULL.id) {
+            set.add(null);
+          } else {
+            set.add(serializer.read(br, -1, pack));
+          }
+        }
+      } else {
+        for (int i = 0; i < num; ++i) {
+          set.add(serializer.read(br, -1, pack));
+        }
+      }
+    } else {
+      if ((flags & IterableSerializer.trackingRefFlag) ==
+          IterableSerializer.trackingRefFlag) {
+        for (int i = 0; i < num; ++i) {
+          set.add(pack.deserializationDispatcher.readDynamicWithRef(br, pack));
+        }
+      } else if ((flags & IterableSerializer.hasNullFlag) ==
+          IterableSerializer.hasNullFlag) {
+        for (int i = 0; i < num; ++i) {
+          if (br.readInt8() == RefFlag.NULL.id) {
+            set.add(null);
+          } else {
+            set.add(
+                pack.deserializationDispatcher.readDynamicWithoutRef(br, pack));
+          }
+        }
+      } else {
+        for (int i = 0; i < num; ++i) {
+          set.add(
+              pack.deserializationDispatcher.readDynamicWithoutRef(br, pack));
         }
       }
     }
-    if (elemWrap.hasGenericsParam){
+
+    if (hasGenericsParam) {
       pack.typeWrapStack.pop();
     }
     return set;

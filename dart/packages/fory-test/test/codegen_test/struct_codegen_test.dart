@@ -25,16 +25,24 @@ import 'package:fory/fory.dart';
 import 'package:fory_test/entity/complex_obj_2.dart';
 import 'package:test/test.dart';
 
-void main(){
+void main() {
   group('Struct codegen for ComplexObject2', () {
-    test('generates ClassSpec for ComplexObject2', () async {
-      ClassSpec spec = ClassSpec(
+    test('generates TypeSpec for ComplexObject2', () async {
+      TypeSpec spec = TypeSpec(
         ComplexObject2,
-        true, false,
+        true,
+        false,
         [
           FieldSpec(
             'f1',
-            TypeSpec(Object, ObjType.UNKNOWN, false, false, null, const [],),
+            FieldTypeSpec(
+              Object,
+              ObjType.UNKNOWN,
+              false,
+              false,
+              null,
+              const [],
+            ),
             true,
             true,
             (Object inst) => (inst as ComplexObject2).f1,
@@ -42,10 +50,29 @@ void main(){
           ),
           FieldSpec(
             'f2',
-            TypeSpec(Map, ObjType.MAP, false, false, null,
+            FieldTypeSpec(
+              Map,
+              ObjType.MAP,
+              false,
+              false,
+              null,
               const [
-                TypeSpec(Int8, ObjType.INT8, false, true, null, [],),
-                TypeSpec(Int32, ObjType.INT32, false, true, null, [],),
+                FieldTypeSpec(
+                  Int8,
+                  ObjType.INT8,
+                  false,
+                  true,
+                  null,
+                  [],
+                ),
+                FieldTypeSpec(
+                  Int32,
+                  ObjType.INT32,
+                  false,
+                  true,
+                  null,
+                  [],
+                ),
               ],
             ),
             true,
@@ -56,8 +83,8 @@ void main(){
         ],
         (List<dynamic> objList) => ComplexObject2(
           (objList[0] as Object),
-          Map<Int8, Int32>.of(
-              (objList[1] as Map).map((k, v) => MapEntry((k as Int8), (v as Int32)))),
+          Map<Int8, Int32>.of((objList[1] as Map)
+              .map((k, v) => MapEntry((k as Int8), (v as Int32)))),
         ),
         null,
       );
