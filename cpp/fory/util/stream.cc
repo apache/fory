@@ -186,16 +186,38 @@ void ForyInputStream::reserve(uint32_t new_size) {
 }
 
 void ForyInputStream::bind_buffer(Buffer *buffer) {
-  FORY_CHECK(buffer != nullptr) << "buffer must not be null";
-  if (buffer_ != nullptr && buffer_ != buffer) {
-    buffer_->stream_reader_ = nullptr;
+  Buffer *target = buffer == nullptr ? owned_buffer_.get() : buffer;
+  if (target == nullptr) {
+    if (buffer_ != nullptr) {
+      buffer_->stream_reader_ = nullptr;
+    }
+    buffer_ = nullptr;
+    return;
   }
-  buffer_ = buffer;
+
+  if (buffer_ == target) {
+    buffer_->data_ = data_.data();
+    buffer_->own_data_ = false;
+    buffer_->wrapped_vector_ = nullptr;
+    buffer_->stream_reader_ = this;
+    return;
+  }
+
+  Buffer *source = buffer_;
+  if (source != nullptr) {
+    target->size_ = source->size_;
+    target->writer_index_ = source->writer_index_;
+    target->reader_index_ = source->reader_index_;
+    source->stream_reader_ = nullptr;
+  } else {
+    target->size_ = 0;
+    target->writer_index_ = 0;
+    target->reader_index_ = 0;
+  }
+
+  buffer_ = target;
   buffer_->data_ = data_.data();
-  buffer_->size_ = 0;
   buffer_->own_data_ = false;
-  buffer_->writer_index_ = 0;
-  buffer_->reader_index_ = 0;
   buffer_->wrapped_vector_ = nullptr;
   buffer_->stream_reader_ = this;
 }

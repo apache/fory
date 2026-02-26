@@ -31,7 +31,7 @@ namespace fory {
 
 class Buffer;
 
-class StreamReader {
+class StreamReader : public std::enable_shared_from_this<StreamReader> {
 public:
   virtual ~StreamReader() = default;
 
@@ -44,11 +44,13 @@ public:
   virtual Result<void, Error> unread(uint32_t size) = 0;
 
   virtual Buffer &get_buffer() = 0;
+
+  // Bind the reader to an external Buffer. Passing nullptr rebinds to the
+  // reader-owned internal buffer.
+  virtual void bind_buffer(Buffer *buffer) = 0;
 };
 
-class ForyInputStream final
-    : public StreamReader,
-      public std::enable_shared_from_this<ForyInputStream> {
+class ForyInputStream final : public StreamReader {
 public:
   explicit ForyInputStream(std::istream &stream, uint32_t buffer_size = 4096);
 
@@ -67,14 +69,12 @@ public:
 
   Buffer &get_buffer() override;
 
-private:
-  friend class Buffer;
+  void bind_buffer(Buffer *buffer) override;
 
+private:
   uint32_t remaining_size() const;
 
   void reserve(uint32_t new_size);
-
-  void bind_buffer(Buffer *buffer);
 
   std::shared_ptr<std::istream> stream_owner_;
   std::istream *stream_ = nullptr;

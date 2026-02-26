@@ -36,6 +36,7 @@
 namespace fory {
 
 class ForyInputStream;
+class PythonStreamReader;
 
 // A buffer class for storing raw bytes with various methods for reading and
 // writing the bytes.
@@ -64,14 +65,8 @@ public:
       : data_(nullptr), size_(0), own_data_(false), writer_index_(0),
         reader_index_(0), wrapped_vector_(nullptr),
         stream_reader_(&stream_reader) {
-    if (auto *input_stream = dynamic_cast<ForyInputStream *>(&stream_reader)) {
-      input_stream->bind_buffer(this);
-      try {
-        stream_reader_owner_ = std::static_pointer_cast<StreamReader>(
-            input_stream->shared_from_this());
-      } catch (const std::bad_weak_ptr &) {
-      }
-    }
+    stream_reader_->bind_buffer(this);
+    stream_reader_owner_ = stream_reader_->weak_from_this().lock();
     FORY_CHECK(&stream_reader_->get_buffer() == this)
         << "StreamReader must hold and return the same Buffer instance";
   }
@@ -1217,15 +1212,13 @@ public:
 
 private:
   friend class ForyInputStream;
+  friend class PythonStreamReader;
 
   FORY_ALWAYS_INLINE void rebind_stream_reader_to_this() {
     if (stream_reader_ == nullptr) {
       return;
     }
-    if (auto *input_stream = dynamic_cast<ForyInputStream *>(stream_reader_)) {
-      input_stream->bind_buffer(this);
-      return;
-    }
+    stream_reader_->bind_buffer(this);
     FORY_CHECK(&stream_reader_->get_buffer() == this)
         << "StreamReader must hold and return the same Buffer instance";
   }
@@ -1234,13 +1227,8 @@ private:
     if (stream_reader_ == nullptr) {
       return;
     }
-    auto *input_stream = dynamic_cast<ForyInputStream *>(stream_reader_);
-    if (input_stream == nullptr) {
-      return;
-    }
-    if (&input_stream->get_buffer() == this && input_stream->owned_buffer_ &&
-        input_stream->owned_buffer_.get() != this) {
-      input_stream->bind_buffer(input_stream->owned_buffer_.get());
+    if (&stream_reader_->get_buffer() == this) {
+      stream_reader_->bind_buffer(nullptr);
     }
   }
 
