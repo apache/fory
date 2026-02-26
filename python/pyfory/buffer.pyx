@@ -216,7 +216,7 @@ cdef class Buffer:
         cdef int32_t size_ = self.c_buffer.size()
         cdef int64_t target = 0
         cdef uint32_t reader_index_ = 0
-        cdef uint64_t readable = 0
+        cdef uint32_t readable = 0
         if offset | length | (offset + length) | (size_- (offset + length)) < 0:
             if offset >= 0 and length >= 0:
                 target = <int64_t>offset + <int64_t>length
@@ -224,7 +224,7 @@ cdef class Buffer:
                     reader_index_ = self.c_buffer.reader_index()
                     if target <= reader_index_:
                         return
-                    readable = <uint64_t>target - <uint64_t>reader_index_
+                    readable = <uint32_t>(target - <int64_t>reader_index_)
                     if self.c_buffer.ensure_readable(readable, self._error):
                         return
                 self._raise_if_error()

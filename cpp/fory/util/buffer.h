@@ -106,12 +106,12 @@ public:
     return size_ - reader_index_;
   }
 
-  FORY_ALWAYS_INLINE bool ensure_readable(uint64_t length, Error &error) {
-    const uint64_t target = static_cast<uint64_t>(reader_index_) + length;
-    if (FORY_PREDICT_TRUE(target <= size_)) {
+  FORY_ALWAYS_INLINE bool ensure_readable(uint32_t length, Error &error) {
+    if (FORY_PREDICT_TRUE(length <= size_ - reader_index_)) {
       return true;
     }
-    if (FORY_PREDICT_FALSE(target > std::numeric_limits<uint32_t>::max())) {
+    if (FORY_PREDICT_FALSE(length > std::numeric_limits<uint32_t>::max() -
+                                        reader_index_)) {
       error.set_error(ErrorCode::OutOfBound,
                       "reader index exceeds uint32 range");
       return false;
@@ -120,13 +120,11 @@ public:
       error.set_buffer_out_of_bound(reader_index_, length, size_);
       return false;
     }
-    if (FORY_PREDICT_FALSE(!fill_to(static_cast<uint32_t>(target), error))) {
-      if (error.ok()) {
-        error.set_buffer_out_of_bound(reader_index_, length, size_);
-      }
+    const uint32_t target = reader_index_ + length;
+    if (FORY_PREDICT_FALSE(!fill_to(target, error))) {
       return false;
     }
-    if (FORY_PREDICT_FALSE(target > size_)) {
+    if (FORY_PREDICT_FALSE(length > size_ - reader_index_)) {
       error.set_buffer_out_of_bound(reader_index_, length, size_);
       return false;
     }
@@ -1216,8 +1214,11 @@ private:
       return true;
     }
     if (FORY_PREDICT_TRUE(stream_ == nullptr)) {
+      error.set_buffer_out_of_bound(reader_index_, target_size - reader_index_,
+                                    size_);
       return false;
     }
+    const uint32_t prev_reader_index = reader_index_;
     stream_->reader_index(reader_index_);
     auto fill_result = stream_->fill_buffer(target_size - reader_index_);
     if (FORY_PREDICT_FALSE(!fill_result.ok())) {
@@ -1228,6 +1229,11 @@ private:
     size_ = stream_->size();
     reader_index_ = stream_->reader_index();
     writer_index_ = size_;
+    if (FORY_PREDICT_FALSE(target_size > size_)) {
+      error.set_buffer_out_of_bound(prev_reader_index,
+                                    target_size - prev_reader_index, size_);
+      return false;
+    }
     return true;
   }
 
@@ -1235,8 +1241,7 @@ private:
     uint32_t position = reader_index_;
     uint32_t result = 0;
     for (int i = 0; i < 5; ++i) {
-      if (FORY_PREDICT_FALSE(
-              !ensure_readable(static_cast<uint64_t>(i) + 1, error))) {
+      if (FORY_PREDICT_FALSE(!ensure_readable(i + 1, error))) {
         return 0;
       }
       uint8_t b = data_[position++];
@@ -1254,8 +1259,7 @@ private:
     uint32_t position = reader_index_;
     uint64_t result = 0;
     for (int i = 0; i < 8; ++i) {
-      if (FORY_PREDICT_FALSE(
-              !ensure_readable(static_cast<uint64_t>(i) + 1, error))) {
+      if (FORY_PREDICT_FALSE(!ensure_readable(i + 1, error))) {
         return 0;
       }
       uint8_t b = data_[position++];

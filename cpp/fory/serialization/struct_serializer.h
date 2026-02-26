@@ -2760,8 +2760,8 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
 
     // Phase 1: Read leading fixed-size primitives if any
     if constexpr (fixed_count > 0 && fixed_bytes > 0) {
-      if (FORY_PREDICT_FALSE(
-              !buffer.ensure_readable(fixed_bytes, ctx.error()))) {
+      if (FORY_PREDICT_FALSE(!buffer.ensure_readable(
+              static_cast<uint32_t>(fixed_bytes), ctx.error()))) {
         return;
       }
       // Fast read fixed-size primitives
@@ -2817,7 +2817,8 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
 
   // Phase 1: Read leading fixed-size primitives if any
   if constexpr (fixed_count > 0 && fixed_bytes > 0) {
-    if (FORY_PREDICT_FALSE(!buffer.ensure_readable(fixed_bytes, ctx.error()))) {
+    if (FORY_PREDICT_FALSE(!buffer.ensure_readable(
+            static_cast<uint32_t>(fixed_bytes), ctx.error()))) {
       return;
     }
     // Fast read fixed-size primitives
