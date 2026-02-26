@@ -737,7 +737,7 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
 
     public override Dictionary<TKey, TValue> DefaultValue => null!;
 
-public override void WriteData(WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
+    public override void WriteData(WriteContext context, in Dictionary<TKey, TValue> value, bool hasGenerics)
     {
         Dictionary<TKey, TValue> map = value ?? [];
         PrimitiveDictionaryCodecWriter.WriteMap<

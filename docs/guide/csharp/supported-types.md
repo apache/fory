@@ -79,7 +79,7 @@ This page summarizes built-in and generated type support in Apache Fory™ C#.
 
 ## Dynamic Types
 
-Dynamic object APIs (`SerializeObject` / `DeserializeObject`) support:
+Dynamic object payloads via `Serialize<object?>` / `Deserialize<object?>` support:
 
 - Primitive/object values
 - Dynamic lists/sets/maps

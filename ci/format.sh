@@ -213,6 +213,21 @@ format_go() {
     fi
 }
 
+format_csharp() {
+    echo "$(date)" "dotnet format C# files...."
+    if command -v dotnet >/dev/null; then
+      pushd "$ROOT/csharp"
+      dotnet format Fory.sln \
+        --exclude src/Fory.Generator/AnalyzerReleases.Shipped.md \
+        --exclude src/Fory.Generator/AnalyzerReleases.Unshipped.md
+      popd
+      echo "$(date)" "C# formatting done!"
+    else
+      echo "ERROR: dotnet is not installed! Install .NET SDK from https://dotnet.microsoft.com/download"
+      exit 1
+    fi
+}
+
 format_swift() {
     echo "$(date)" "SwiftLint check Swift files...."
     if command -v swiftlint >/dev/null; then
@@ -249,6 +264,11 @@ format_all() {
     echo "$(date)" "format go...."
     if command -v go >/dev/null; then
       git ls-files -- '*.go' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 gofmt -w
+    fi
+
+    echo "$(date)" "format csharp...."
+    if command -v dotnet >/dev/null; then
+      format_csharp
     fi
 
     echo "$(date)" "lint swift...."
@@ -295,6 +315,14 @@ format_changed() {
         fi
     fi
 
+    if command -v dotnet >/dev/null; then
+        local csharp_changed
+        csharp_changed="$(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- csharp || true)"
+        if [ -n "$csharp_changed" ]; then
+            format_csharp
+        fi
+    fi
+
     if which node >/dev/null; then
         pushd "$ROOT"
         if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.ts' &>/dev/null; then
@@ -303,8 +331,17 @@ format_changed() {
         fi
         # Install prettier globally
         npm install -g prettier
-        # Fix markdown files
-        prettier --write "**/*.md"
+        # Fix markdown files except analyzer release tracking files.
+        # Exclude symlinks (for example CLAUDE.md) because prettier fails on explicitly passed symlink paths.
+        git ls-files -z -- '*.md' \
+            ':!:csharp/src/Fory.Generator/AnalyzerReleases.Shipped.md' \
+            ':!:csharp/src/Fory.Generator/AnalyzerReleases.Unshipped.md' \
+            | while IFS= read -r -d '' file; do
+                if [ ! -L "$file" ]; then
+                    printf '%s\0' "$file"
+                fi
+            done \
+            | xargs -0 prettier --write
         popd
     fi
 
@@ -335,6 +372,10 @@ elif [ "${1-}" == '--python' ]; then
     format_python
 elif [ "${1-}" == '--go' ]; then
     format_go
+elif [ "${1-}" == '--swift' ]; then
+    format_swift
+elif [ "${1-}" == '--csharp' ]; then
+    format_csharp
 elif [ "${1-}" == '--swift' ]; then
     format_swift
 else

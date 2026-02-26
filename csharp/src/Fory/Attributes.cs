@@ -17,20 +17,41 @@
 
 namespace Apache.Fory;
 
+/// <summary>
+/// Marks a class, struct, or enum as a generated Fory object type.
+/// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum)]
 public sealed class ForyObjectAttribute : Attribute
 {
 }
 
+/// <summary>
+/// Specifies field-level integer/number encoding strategy for generated serializers.
+/// </summary>
 public enum FieldEncoding
 {
+    /// <summary>
+    /// Variable-length integer encoding.
+    /// </summary>
     Varint,
+    /// <summary>
+    /// Fixed-width integer encoding.
+    /// </summary>
     Fixed,
+    /// <summary>
+    /// Tagged field encoding for schema-evolution scenarios.
+    /// </summary>
     Tagged,
 }
 
+/// <summary>
+/// Overrides generated serializer behavior for a field or property.
+/// </summary>
 [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
 public sealed class FieldAttribute : Attribute
 {
+    /// <summary>
+    /// Gets or sets the field encoding strategy used by generated serializers.
+    /// </summary>
     public FieldEncoding Encoding { get; set; } = FieldEncoding.Varint;
 }
