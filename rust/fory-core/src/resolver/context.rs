@@ -150,7 +150,7 @@ impl<'a> WriteContext<'a> {
         }
     }
 
-    #[inline(always)]
+    #[inline(always)] 
     fn get_leak_buffer() -> &'static mut Vec<u8> {
         Box::leak(Box::new(vec![]))
     }
@@ -480,16 +480,9 @@ impl<'a> ReadContext<'a> {
 
     #[inline(always)]
     pub fn check_string_bytes(&self, byte_len: usize) -> Result<(), Error> {
-        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
-        if byte_len > remaining {
-            return Err(Error::invalid_data(format!(
-                "string byte length {} exceeds buffer remaining {}",
-                byte_len, remaining
-            )));
-        }
         if byte_len > self.max_string_bytes {
             return Err(Error::invalid_data(format!(
-                "string byte length {} exceeds limit {}",
+                "string byte length {} exceeds configured limit {}",
                 byte_len, self.max_string_bytes
             )));
         }
@@ -498,16 +491,9 @@ impl<'a> ReadContext<'a> {
 
     #[inline(always)]
     pub fn check_collection_size(&self, len: usize) -> Result<(), Error> {
-        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
-        if len > remaining {
-            return Err(Error::invalid_data(format!(
-                "collection length {} exceeds buffer remaining {}",
-                len, remaining
-            )));
-        }
         if len > self.max_collection_size {
             return Err(Error::invalid_data(format!(
-                "collection length {} exceeds limit {}",
+                "collection length {} exceeds configured limit {}",
                 len, self.max_collection_size
             )));
         }
@@ -516,16 +502,9 @@ impl<'a> ReadContext<'a> {
 
     #[inline(always)]
     pub fn check_map_size(&self, len: usize) -> Result<(), Error> {
-        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
-        if len > remaining / 2 {
-            return Err(Error::invalid_data(format!(
-                "map entry count {} exceeds buffer remaining capacity {}",
-                len, remaining
-            )));
-        }
         if len > self.max_map_size {
             return Err(Error::invalid_data(format!(
-                "map entry count {} exceeds limit {}",
+                "map entry count {} exceeds configured limit {}",
                 len, self.max_map_size
             )));
         }
