@@ -52,21 +52,21 @@ foryc --scan-generated [OPTIONS]
 
 Compile options:
 
-| Option                                | Description                                           | Default             |
-| ------------------------------------- | ----------------------------------------------------- | ------------------- |
-| `--lang`                              | Comma-separated target languages                      | `all`               |
-| `--output`, `-o`                      | Output directory                                      | `./generated`       |
-| `--package`                           | Override package name from Fory IDL file              | (from file)         |
-| `-I`, `--proto_path`, `--import_path` | Add directory to import search path (can be repeated) | (none)              |
-| `--java_out=DST_DIR`                  | Generate Java code in DST_DIR                         | (none)              |
-| `--python_out=DST_DIR`                | Generate Python code in DST_DIR                       | (none)              |
-| `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                          | (none)              |
-| `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)              |
-| `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)              |
-| `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)              |
-| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | from schema/default |
-| `--emit-fdl`                          | Print translated Fory IDL for non-`.fdl` inputs       | `false`             |
-| `--emit-fdl-path`                     | Write translated Fory IDL to a file or directory      | (stdout)            |
+| Option                                | Description                                           | Default       |
+| ------------------------------------- | ----------------------------------------------------- | ------------- |
+| `--lang`                              | Comma-separated target languages                      | `all`         |
+| `--output`, `-o`                      | Output directory                                      | `./generated` |
+| `--package`                           | Override package name from Fory IDL file              | (from file)   |
+| `-I`, `--proto_path`, `--import_path` | Add directory to import search path (can be repeated) | (none)        |
+| `--java_out=DST_DIR`                  | Generate Java code in DST_DIR                         | (none)        |
+| `--python_out=DST_DIR`                | Generate Python code in DST_DIR                       | (none)        |
+| `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                          | (none)        |
+| `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
+| `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
+| `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
+| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`  |
+| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`       |
+| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)      |
 
 Scan options (with `--scan-generated`):
 

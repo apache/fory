@@ -870,7 +870,7 @@ public final class ByteBuffer {
         if count == 0 {
             return []
         }
-        return try Array<UInt8>(unsafeUninitializedCapacity: count) { destination, initializedCount in
+        return try [UInt8](unsafeUninitializedCapacity: count) { destination, initializedCount in
             try readBytes(into: UnsafeMutableRawBufferPointer(destination))
             initializedCount = count
         }
@@ -883,12 +883,11 @@ public final class ByteBuffer {
         let start = cursor
         let end = start + count
         cursor = end
-        return storage.withUnsafeBufferPointer { buffer in
-            String(
-                decoding: UnsafeBufferPointer(rebasing: buffer[start..<end]),
-                as: UTF8.self
-            )
+        let utf8Bytes = storage[start..<end]
+        guard let decoded = String(bytes: utf8Bytes, encoding: .utf8) else {
+            throw ForyError.invalidData("invalid UTF-8 sequence")
         }
+        return decoded
     }
 
     @inlinable

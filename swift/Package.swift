@@ -6,7 +6,7 @@ let package = Package(
     name: "fory-swift",
     platforms: [
         .macOS(.v13),
-        .iOS(.v16),
+        .iOS(.v16)
     ],
     products: [
         .library(
@@ -16,7 +16,7 @@ let package = Package(
         .executable(
             name: "ForyXlangTests",
             targets: ["ForyXlangTests"]
-        ),
+        )
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
@@ -28,7 +28,7 @@ let package = Package(
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
-                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax")
             ],
             path: "Sources/ForyMacro"
         ),
@@ -47,6 +47,6 @@ let package = Package(
             name: "ForyTests",
             dependencies: ["Fory"],
             path: "Tests/ForyTests"
-        ),
+        )
     ]
 )

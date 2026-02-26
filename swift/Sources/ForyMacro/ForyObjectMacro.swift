@@ -68,7 +68,7 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
             writeWrapperDecl,
             readWrapperDecl,
             writeDecl,
-            readDecl,
+            readDecl
         ].compactMap { $0 }
     }
 
@@ -972,7 +972,13 @@ private func buildWriteDataDecl(sortedFields: [ParsedField]) -> String {
     }
     let schemaBody = schemaBodyLines.joined(separator: "\n        ")
 
-    let compatibleWriteLines = compatibleLines.isEmpty ? "\n            _ = hasGenerics" : "\n            \(compatibleLines.joined(separator: "\n            "))"
+    let compatibleWriteLines: String
+    if compatibleLines.isEmpty {
+        compatibleWriteLines = "\n            _ = hasGenerics"
+    } else {
+        let joinedCompatibleLines = compatibleLines.joined(separator: "\n            ")
+        compatibleWriteLines = "\n            \(joinedCompatibleLines)"
+    }
 
     return """
     @inlinable
@@ -1045,9 +1051,23 @@ private func schemaWriteLine(for field: ParsedField) -> String {
     if let codecType = field.customCodecType {
         let refMode = fieldRefModeExpression(field)
         if field.isOptional {
-            return "try (self.\(field.name).map { \(codecType)(rawValue: $0) }).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
+            return """
+            try (self.\(field.name).map { \(codecType)(rawValue: $0) }).foryWrite(
+                context,
+                refMode: \(refMode),
+                writeTypeInfo: false,
+                hasGenerics: false
+            )
+            """
         }
-        return "try \(codecType)(rawValue: self.\(field.name)).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
+        return """
+        try \(codecType)(rawValue: self.\(field.name)).foryWrite(
+            context,
+            refMode: \(refMode),
+            writeTypeInfo: false,
+            hasGenerics: false
+        )
+        """
     }
     if !field.isOptional, field.typeID != 27 {
         if let primitiveLine = primitiveSchemaWriteLine(field) {
@@ -1071,11 +1091,32 @@ private func compatibleWriteLine(for field: ParsedField) -> String {
     let hasGenerics = field.isCollection ? "true" : "false"
     if let codecType = field.customCodecType {
         if field.isOptional {
-            return "try (self.\(field.name).map { \(codecType)(rawValue: $0) }).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
+            return """
+            try (self.\(field.name).map { \(codecType)(rawValue: $0) }).foryWrite(
+                context,
+                refMode: \(refMode),
+                writeTypeInfo: false,
+                hasGenerics: false
+            )
+            """
         }
-        return "try \(codecType)(rawValue: self.\(field.name)).foryWrite(context, refMode: \(refMode), writeTypeInfo: false, hasGenerics: false)"
+        return """
+        try \(codecType)(rawValue: self.\(field.name)).foryWrite(
+            context,
+            refMode: \(refMode),
+            writeTypeInfo: false,
+            hasGenerics: false
+        )
+        """
     }
-    return "try self.\(field.name).foryWrite(context, refMode: \(refMode), writeTypeInfo: TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId), hasGenerics: \(hasGenerics))"
+    return """
+    try self.\(field.name).foryWrite(
+        context,
+        refMode: \(refMode),
+        writeTypeInfo: TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId),
+        hasGenerics: \(hasGenerics)
+    )
+    """
 }
 
 private func buildReadDataDecl(isClass: Bool, fields: [ParsedField], sortedFields: [ParsedField]) -> String {
@@ -1583,16 +1624,66 @@ private func classifyType(_ typeText: String) -> TypeClassification {
         if elem.typeID == 9 { // UInt8
             return .init(typeID: 41, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
         }
-        if elem.typeID == 1 { return .init(typeID: 43, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 2 { return .init(typeID: 44, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 3 { return .init(typeID: 45, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 5 { return .init(typeID: 46, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 7 { return .init(typeID: 47, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 10 { return .init(typeID: 49, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 12 { return .init(typeID: 50, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 14 { return .init(typeID: 51, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 19 { return .init(typeID: 55, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
-        if elem.typeID == 20 { return .init(typeID: 56, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0) }
+        if elem.typeID == 1 {
+            return .init(
+                typeID: 43, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 2 {
+            return .init(
+                typeID: 44, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 3 {
+            return .init(
+                typeID: 45, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 5 {
+            return .init(
+                typeID: 46, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 7 {
+            return .init(
+                typeID: 47, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 10 {
+            return .init(
+                typeID: 49, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 12 {
+            return .init(
+                typeID: 50, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 14 {
+            return .init(
+                typeID: 51, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 19 {
+            return .init(
+                typeID: 55, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
+        if elem.typeID == 20 {
+            return .init(
+                typeID: 56, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false,
+                isCompressedNumeric: false, primitiveSize: 0
+            )
+        }
         return .init(typeID: 22, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     }
 
