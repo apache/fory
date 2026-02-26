@@ -217,7 +217,9 @@ format_csharp() {
     echo "$(date)" "dotnet format C# files...."
     if command -v dotnet >/dev/null; then
       pushd "$ROOT/csharp"
-      dotnet format Fory.sln
+      dotnet format Fory.sln \
+        --exclude src/Fory.Generator/AnalyzerReleases.Shipped.md \
+        --exclude src/Fory.Generator/AnalyzerReleases.Unshipped.md
       popd
       echo "$(date)" "C# formatting done!"
     else
@@ -329,8 +331,14 @@ format_changed() {
         fi
         # Install prettier globally
         npm install -g prettier
-        # Fix markdown files
-        prettier --write "**/*.md"
+        # Fix markdown files except analyzer release tracking files.
+        local markdown_files
+        markdown_files="$(git ls-files -- '*.md' \
+            ':!:csharp/src/Fory.Generator/AnalyzerReleases.Shipped.md' \
+            ':!:csharp/src/Fory.Generator/AnalyzerReleases.Unshipped.md')"
+        if [ -n "$markdown_files" ]; then
+            printf '%s\n' "$markdown_files" | xargs prettier --write
+        fi
         popd
     fi
 

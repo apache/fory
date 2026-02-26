@@ -170,7 +170,9 @@ jobs:
       - name: Verify C# format
         run: |
           cd csharp
-          dotnet format Fory.sln --verify-no-changes
+          dotnet format Fory.sln --verify-no-changes \
+            --exclude src/Fory.Generator/AnalyzerReleases.Shipped.md \
+            --exclude src/Fory.Generator/AnalyzerReleases.Unshipped.md
 
   csharp_xlang:
     name: C# Xlang Test
