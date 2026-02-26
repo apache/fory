@@ -479,13 +479,6 @@ impl<'a> ReadContext<'a> {
     }
 
     pub fn check_string_bytes(&self, byte_len: usize) -> Result<(), Error> {
-        let remaining = self.reader.bf.len().saturating_sub(self.reader.cursor);
-        if byte_len > remaining {
-            return Err(Error::invalid_data(format!(
-                "string byte length {} exceeds buffer remaining {}",
-                byte_len, remaining
-            )));
-        }
         if byte_len > self.max_string_bytes {
             return Err(Error::invalid_data(format!(
                 "string byte length {} exceeds configured limit {}",
