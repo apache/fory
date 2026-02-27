@@ -37,6 +37,7 @@
 #include "fory/util/error.h"
 #include "fory/util/pool.h"
 #include "fory/util/result.h"
+#include "fory/util/stream.h"
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -513,9 +514,9 @@ public:
       ensure_finalized();
     }
     // Swap in the caller's buffer so all writes go there.
-    std::swap(buffer, write_ctx_->buffer());
+    buffer.swap(write_ctx_->buffer());
     auto result = serialize_impl(obj, write_ctx_->buffer());
-    std::swap(buffer, write_ctx_->buffer());
+    buffer.swap(write_ctx_->buffer());
     // reset internal state after use without clobbering caller buffer.
     write_ctx_->reset();
     return result;
@@ -606,7 +607,11 @@ public:
     if (FORY_PREDICT_FALSE(!finalized_)) {
       ensure_finalized();
     }
-    FORY_TRY(header, read_header(buffer));
+    auto header_result = read_header(buffer);
+    if (FORY_PREDICT_FALSE(!header_result.ok())) {
+      return Unexpected(std::move(header_result).error());
+    }
+    auto header = std::move(header_result).value();
     if (header.is_null) {
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
     }
@@ -620,6 +625,38 @@ public:
     read_ctx_->attach(buffer);
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
+  }
+
+  /// Deserialize an object from a stream reader.
+  ///
+  /// This overload obtains the reader-owned Buffer via get_buffer() and
+  /// continues deserialization on that buffer.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param stream_reader Stream reader to read from.
+  /// @return Deserialized object, or error.
+  template <typename T>
+  Result<T, Error> deserialize(StreamReader &stream_reader) {
+    struct StreamShrinkGuard {
+      StreamReader *stream_reader = nullptr;
+      ~StreamShrinkGuard() {
+        if (stream_reader != nullptr) {
+          stream_reader->shrink_buffer();
+        }
+      }
+    };
+    StreamShrinkGuard shrink_guard{&stream_reader};
+    Buffer &buffer = stream_reader.get_buffer();
+    return deserialize<T>(buffer);
+  }
+
+  /// Deserialize an object from ForyInputStream.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param stream Input stream wrapper to read from.
+  /// @return Deserialized object, or error.
+  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+    return deserialize<T>(static_cast<StreamReader &>(stream));
   }
 
   // ==========================================================================
@@ -790,6 +827,17 @@ public:
   template <typename T>
   Result<T, Error> deserialize(const std::vector<uint8_t> &data) {
     return deserialize<T>(data.data(), data.size());
+  }
+
+  template <typename T>
+  Result<T, Error> deserialize(StreamReader &stream_reader) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(stream_reader);
+  }
+
+  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(stream);
   }
 
 private:

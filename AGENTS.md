@@ -6,6 +6,7 @@ This file provides comprehensive guidance to AI coding agents when working with 
 
 While working on Fory, please remember:
 
+- **Do not reserve any legacy code/docs unless requested clearly**.
 - **Performance First**: Performance is the top priority. Never introduce code that reduces performance without explicit justification.
 - **English Only**: Always use English in code, comments, and documentation.
 - **Meaningful Comments**: Only add comments when the code's behavior is difficult to understand or when documenting complex algorithms.
@@ -61,6 +62,42 @@ mvn -T16 test
 
 # Run specific tests
 mvn -T16 test -Dtest=org.apache.fory.TestClass#testMethod
+```
+
+### C# Development
+
+- All dotnet commands must be executed within the `csharp` directory.
+- All changes to `csharp` must pass formatting and tests.
+- Fory C# requires .NET SDK `8.0+` and C# `12+`.
+- Use `dotnet format` to keep C# code style consistent.
+
+```bash
+# Restore
+dotnet restore Fory.sln
+
+# Build
+dotnet build Fory.sln -c Release --no-restore
+
+# Run tests
+dotnet test Fory.sln -c Release
+
+# Run specific test
+dotnet test tests/Fory.Tests/Fory.Tests.csproj -c Release --filter "FullyQualifiedName~ForyRuntimeTests.DynamicObjectReadDepthExceededThrows"
+
+# Format code
+dotnet format Fory.sln
+
+# Format check
+dotnet format Fory.sln --verify-no-changes
+```
+
+Run C# xlang tests:
+
+```bash
+cd java
+mvn -T16 install -DskipTests
+cd fory-core
+FORY_CSHARP_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 test -Dtest=org.apache.fory.xlang.CSharpXlangTest
 ```
 
 ### C++ Development
@@ -389,6 +426,7 @@ The `origin` points to forked repository instead of the official repository.
 
 - **Language Implementations**:
   - `java/`: Java implementation (maven-based, multi-module)
+  - `csharp/`: C# implementation (.NET SDK + source generator)
   - `python/`: Python implementation (pip/setuptools + bazel)
   - `cpp/`: C++ implementation (bazel-based)
   - `go/`: Go implementation (go modules)
@@ -609,7 +647,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 
 - **Unit Tests**: Focus on internal behavior verification
 - **Integration Tests**: Use `integration_tests/` for cross-language compatibility
-- **Language alignment and protocol compatibility**: Run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest` when changing xlang or type mapping behavior
+- **Language alignment and protocol compatibility**: Run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest` when changing xlang or type mapping behavior
 - **Performance Tests**: Include benchmarks for performance-critical changes
 
 ### Documentation Requirements

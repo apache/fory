@@ -154,8 +154,8 @@ Dictionary<object, object?> map = new()
     [true] = null,
 };
 
-byte[] payload = fory.SerializeObject(map);
-object? decoded = fory.DeserializeObject(payload);
+byte[] payload = fory.Serialize<object?>(map);
+object? decoded = fory.Deserialize<object?>(payload);
 ```
 
 ### 5. Thread-Safe Runtime

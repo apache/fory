@@ -85,26 +85,26 @@ public sealed class NullableSerializer<T> : Serializer<T?> where T : struct
             case RefMode.None:
                 return wrappedSerializer.Read(context, RefMode.None, readTypeInfo);
             case RefMode.NullOnly:
-            {
-                sbyte refFlag = context.Reader.ReadInt8();
-                if (refFlag == (sbyte)RefFlag.Null)
                 {
-                    return null;
-                }
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        return null;
+                    }
 
-                return wrappedSerializer.Read(context, RefMode.None, readTypeInfo);
-            }
+                    return wrappedSerializer.Read(context, RefMode.None, readTypeInfo);
+                }
             case RefMode.Tracking:
-            {
-                sbyte refFlag = context.Reader.ReadInt8();
-                if (refFlag == (sbyte)RefFlag.Null)
                 {
-                    return null;
-                }
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        return null;
+                    }
 
-                context.Reader.MoveBack(1);
-                return wrappedSerializer.Read(context, RefMode.Tracking, readTypeInfo);
-            }
+                    context.Reader.MoveBack(1);
+                    return wrappedSerializer.Read(context, RefMode.Tracking, readTypeInfo);
+                }
             default:
                 throw new InvalidDataException($"unsupported ref mode {refMode}");
         }

@@ -339,7 +339,7 @@ internal static class Program
         List<byte> output = [];
         foreach (string sample in StringSamples)
         {
-            Append(output, fory.SerializeObject(sample));
+            Append(output, fory.Serialize<object?>(sample));
         }
 
         return output.ToArray();
@@ -389,33 +389,33 @@ internal static class Program
         Ensure(color == Color.White, "color mismatch");
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(b1));
-        Append(output, fory.SerializeObject(b2));
-        Append(output, fory.SerializeObject(i32));
-        Append(output, fory.SerializeObject(i8a));
-        Append(output, fory.SerializeObject(i8b));
-        Append(output, fory.SerializeObject(i16a));
-        Append(output, fory.SerializeObject(i16b));
-        Append(output, fory.SerializeObject(i32a));
-        Append(output, fory.SerializeObject(i32b));
-        Append(output, fory.SerializeObject(i64a));
-        Append(output, fory.SerializeObject(i64b));
-        Append(output, fory.SerializeObject(f32));
-        Append(output, fory.SerializeObject(f64));
-        Append(output, fory.SerializeObject(str));
-        Append(output, fory.SerializeObject(day));
-        Append(output, fory.SerializeObject(timestamp));
-        Append(output, fory.SerializeObject(bools));
-        Append(output, fory.SerializeObject(bytes));
-        Append(output, fory.SerializeObject(int16s));
-        Append(output, fory.SerializeObject(int32s));
-        Append(output, fory.SerializeObject(int64s));
-        Append(output, fory.SerializeObject(floats));
-        Append(output, fory.SerializeObject(doubles));
-        Append(output, fory.SerializeObject(list));
-        Append(output, fory.SerializeObject(set));
-        Append(output, fory.SerializeObject(map));
-        Append(output, fory.SerializeObject(color));
+        Append(output, fory.Serialize<object?>(b1));
+        Append(output, fory.Serialize<object?>(b2));
+        Append(output, fory.Serialize<object?>(i32));
+        Append(output, fory.Serialize<object?>(i8a));
+        Append(output, fory.Serialize<object?>(i8b));
+        Append(output, fory.Serialize<object?>(i16a));
+        Append(output, fory.Serialize<object?>(i16b));
+        Append(output, fory.Serialize<object?>(i32a));
+        Append(output, fory.Serialize<object?>(i32b));
+        Append(output, fory.Serialize<object?>(i64a));
+        Append(output, fory.Serialize<object?>(i64b));
+        Append(output, fory.Serialize<object?>(f32));
+        Append(output, fory.Serialize<object?>(f64));
+        Append(output, fory.Serialize<object?>(str));
+        Append(output, fory.Serialize<object?>(day));
+        Append(output, fory.Serialize<object?>(timestamp));
+        Append(output, fory.Serialize<object?>(bools));
+        Append(output, fory.Serialize<object?>(bytes));
+        Append(output, fory.Serialize<object?>(int16s));
+        Append(output, fory.Serialize<object?>(int32s));
+        Append(output, fory.Serialize<object?>(int64s));
+        Append(output, fory.Serialize<object?>(floats));
+        Append(output, fory.Serialize<object?>(doubles));
+        Append(output, fory.Serialize<object?>(list));
+        Append(output, fory.Serialize<object?>(set));
+        Append(output, fory.Serialize<object?>(map));
+        Append(output, fory.Serialize<object?>(color));
         return output.ToArray();
     }
 
@@ -445,10 +445,10 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseList));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(strList));
-        Append(output, fory.SerializeObject(strList2));
-        Append(output, fory.SerializeObject(itemList));
-        Append(output, fory.SerializeObject(itemList2));
+        Append(output, fory.Serialize<object?>(strList));
+        Append(output, fory.Serialize<object?>(strList2));
+        Append(output, fory.Serialize<object?>(itemList));
+        Append(output, fory.Serialize<object?>(itemList2));
         return output.ToArray();
     }
 
@@ -462,8 +462,8 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseMap));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(strMap));
-        Append(output, fory.SerializeObject(itemMap));
+        Append(output, fory.Serialize<object?>(strMap));
+        Append(output, fory.Serialize<object?>(itemMap));
         return output.ToArray();
     }
 
@@ -485,13 +485,13 @@ internal static class Program
         Ensure(obj.F3 == 3 && obj.F4 == 4 && obj.F5 == 0 && obj.F6 == 0, "item1 boxed fields mismatch");
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(obj));
-        Append(output, fory.SerializeObject(f1));
-        Append(output, fory.SerializeObject(f2));
-        Append(output, fory.SerializeObject(f3));
-        Append(output, fory.SerializeObject(f4));
-        Append(output, fory.SerializeObject(f5));
-        Append(output, fory.SerializeObject(f6));
+        Append(output, fory.Serialize<object?>(obj));
+        Append(output, fory.Serialize<object?>(f1));
+        Append(output, fory.Serialize<object?>(f2));
+        Append(output, fory.Serialize<object?>(f3));
+        Append(output, fory.Serialize<object?>(f4));
+        Append(output, fory.Serialize<object?>(f5));
+        Append(output, fory.Serialize<object?>(f6));
         return output.ToArray();
     }
 
@@ -506,9 +506,9 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseItem));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(i1));
-        Append(output, fory.SerializeObject(i2));
-        Append(output, fory.SerializeObject(i3));
+        Append(output, fory.Serialize<object?>(i1));
+        Append(output, fory.Serialize<object?>(i2));
+        Append(output, fory.Serialize<object?>(i3));
         return output.ToArray();
     }
 
@@ -524,10 +524,10 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseColor));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(c1));
-        Append(output, fory.SerializeObject(c2));
-        Append(output, fory.SerializeObject(c3));
-        Append(output, fory.SerializeObject(c4));
+        Append(output, fory.Serialize<object?>(c1));
+        Append(output, fory.Serialize<object?>(c2));
+        Append(output, fory.Serialize<object?>(c3));
+        Append(output, fory.Serialize<object?>(c4));
         return output.ToArray();
     }
 
@@ -541,8 +541,8 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseStructWithList));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(s1));
-        Append(output, fory.SerializeObject(s2));
+        Append(output, fory.Serialize<object?>(s1));
+        Append(output, fory.Serialize<object?>(s2));
         return output.ToArray();
     }
 
@@ -556,8 +556,8 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseStructWithMap));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(s1));
-        Append(output, fory.SerializeObject(s2));
+        Append(output, fory.Serialize<object?>(s1));
+        Append(output, fory.Serialize<object?>(s2));
         return output.ToArray();
     }
 
@@ -577,8 +577,8 @@ internal static class Program
         Ensure(second.Union.Value is long secondValue && secondValue == 42L, "union case value mismatch for second value");
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(first));
-        Append(output, fory.SerializeObject(second));
+        Append(output, fory.Serialize<object?>(first));
+        Append(output, fory.Serialize<object?>(second));
         return output.ToArray();
     }
 
@@ -614,19 +614,19 @@ internal static class Program
         for (int i = 0; i < 3; i++)
         {
             Color color = fory.Deserialize<Color>(ref sequence);
-            Append(output, fory.SerializeObject(color));
+            Append(output, fory.Serialize<object?>(color));
         }
 
         for (int i = 0; i < 3; i++)
         {
             MyStruct myStruct = fory.Deserialize<MyStruct>(ref sequence);
-            Append(output, fory.SerializeObject(myStruct));
+            Append(output, fory.Serialize<object?>(myStruct));
         }
 
         for (int i = 0; i < 3; i++)
         {
             MyExt myExt = fory.Deserialize<MyExt>(ref sequence);
-            Append(output, fory.SerializeObject(myExt));
+            Append(output, fory.Serialize<object?>(myExt));
         }
 
         EnsureConsumed(sequence, nameof(CaseConsistentNamed));
@@ -653,8 +653,8 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CasePolymorphicList));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(animals));
-        Append(output, fory.SerializeObject(holder));
+        Append(output, fory.Serialize<object?>(animals));
+        Append(output, fory.Serialize<object?>(holder));
         return output.ToArray();
     }
 
@@ -671,8 +671,8 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CasePolymorphicMap));
 
         List<byte> output = [];
-        Append(output, fory.SerializeObject(map));
-        Append(output, fory.SerializeObject(holder));
+        Append(output, fory.Serialize<object?>(map));
+        Append(output, fory.Serialize<object?>(holder));
         return output.ToArray();
     }
 
@@ -768,7 +768,7 @@ internal static class Program
         EnsureConsumed(sequence, nameof(CaseEnumSchemaEvolutionCompatibleReverse));
         Ensure(value.F1 == TestEnum.ValueC, "enum schema evolution reverse F1 mismatch");
         Ensure(value.F2 == TestEnum.ValueA, "enum schema evolution reverse F2 default mismatch");
-        return fory.SerializeObject(value);
+        return fory.Serialize<object?>(value);
     }
 
     private static byte[] CaseNullableFieldSchemaConsistentNotNull(byte[] input)
@@ -809,7 +809,7 @@ internal static class Program
         RefOuterSchemaConsistent outer = fory.Deserialize<RefOuterSchemaConsistent>(ref sequence);
         EnsureConsumed(sequence, nameof(CaseRefSchemaConsistent));
         Ensure(ReferenceEquals(outer.Inner1, outer.Inner2), "reference tracking mismatch");
-        return fory.SerializeObject(outer);
+        return fory.Serialize<object?>(outer);
     }
 
     private static byte[] CaseRefCompatible(byte[] input)
@@ -822,7 +822,7 @@ internal static class Program
         RefOuterCompatible outer = fory.Deserialize<RefOuterCompatible>(ref sequence);
         EnsureConsumed(sequence, nameof(CaseRefCompatible));
         Ensure(ReferenceEquals(outer.Inner1, outer.Inner2), "reference tracking mismatch");
-        return fory.SerializeObject(outer);
+        return fory.Serialize<object?>(outer);
     }
 
     private static byte[] CaseCollectionElementRefOverride(byte[] input)
@@ -857,7 +857,7 @@ internal static class Program
             }
         }
 
-        return fory.SerializeObject(container);
+        return fory.Serialize<object?>(container);
     }
 
     private static byte[] CaseCircularRefSchemaConsistent(byte[] input)
@@ -869,7 +869,7 @@ internal static class Program
         CircularRefStruct value = fory.Deserialize<CircularRefStruct>(ref sequence);
         EnsureConsumed(sequence, nameof(CaseCircularRefSchemaConsistent));
         Ensure(ReferenceEquals(value, value.SelfRef), "circular ref mismatch");
-        return fory.SerializeObject(value);
+        return fory.Serialize<object?>(value);
     }
 
     private static byte[] CaseCircularRefCompatible(byte[] input)
@@ -881,7 +881,7 @@ internal static class Program
         CircularRefStruct value = fory.Deserialize<CircularRefStruct>(ref sequence);
         EnsureConsumed(sequence, nameof(CaseCircularRefCompatible));
         Ensure(ReferenceEquals(value, value.SelfRef), "circular ref mismatch");
-        return fory.SerializeObject(value);
+        return fory.Serialize<object?>(value);
     }
 
     private static byte[] CaseUnsignedSchemaConsistentSimple(byte[] input)
@@ -910,7 +910,7 @@ internal static class Program
         ReadOnlySequence<byte> sequence = new(input);
         T value = fory.Deserialize<T>(ref sequence);
         EnsureConsumed(sequence, typeof(T).Name);
-        return fory.SerializeObject(value);
+        return fory.Serialize<object?>(value);
     }
 
     private static void RegisterSimpleById(ForyRuntime fory)
