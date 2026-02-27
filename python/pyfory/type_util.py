@@ -254,11 +254,8 @@ def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
 
         if origin in (list, dict, set):
             return visitor.visit_other(field_name, type_, types_path=types_path)
-        
-        if (
-            inspect.isclass(origin)
-            and origin.__module__ not in ("builtins", "datetime")
-        ):
+
+        if inspect.isclass(origin) and origin.__module__ not in ("builtins", "datetime"):
             return visitor.visit_customized(field_name, type_, types_path=types_path)
 
         return visitor.visit_other(field_name, type_, types_path=types_path)
