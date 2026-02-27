@@ -46,27 +46,6 @@ impl Serializer for String {
         let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
-        let len_usize = usize::try_from(len).map_err(|_| {
-            Error::invalid_data(format!(
-                "string length {} overflows usize on this platform",
-                len
-            ))
-        })?;
-        let byte_len = match encoding {
-            1 => len_usize.saturating_mul(2),
-            _ => len_usize,
-        };
-        let remaining = context
-            .reader
-            .bf
-            .len()
-            .saturating_sub(context.reader.cursor);
-        if byte_len > remaining {
-            return Err(Error::invalid_data(format!(
-                "string byte length {} exceeds buffer remaining {}",
-                byte_len, remaining
-            )));
-        }
         let s = match encoding {
             0 => context.reader.read_latin1_string(len as usize),
             1 => context.reader.read_utf16_string(len as usize),
