@@ -562,15 +562,15 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
             )));
         }
         context.check_map_size(len as usize)?;
-        let mut map = HashMap::<K, V>::with_capacity(len as usize);
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
             || V::fory_is_shared_ref()
         {
-            let map: HashMap<K, V> = HashMap::with_capacity(len as usize);
+            let map = HashMap::<K, V>::with_capacity(len as usize);
             return read_hashmap_data_dyn_ref(context, map, len);
         }
+        let mut map = HashMap::<K, V>::with_capacity(len as usize);
         let mut len_counter = 0;
         loop {
             if len_counter == len {
@@ -725,15 +725,15 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
             )));
         }
         context.check_map_size(len as usize)?;
-        let mut map = BTreeMap::<K, V>::new();
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
             || V::fory_is_shared_ref()
         {
-            let map: BTreeMap<K, V> = BTreeMap::new();
+            let map = BTreeMap::<K, V>::new();
             return read_btreemap_data_dyn_ref(context, map, len);
         }
+        let mut map = BTreeMap::<K, V>::new();
         let mut len_counter = 0;
         loop {
             if len_counter == len {

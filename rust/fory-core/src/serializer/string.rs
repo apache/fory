@@ -46,10 +46,12 @@ impl Serializer for String {
         let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
-        // For UTF-16, `len` is the number of code-units (each 2 bytes wide).
-        // Convert to a byte budget before checking so the limit means bytes,
-        // not code-units.  Latin-1 and UTF-8 already store `len` as byte count.
-        let len_usize = usize::try_from(len).unwrap_or(usize::MAX);
+        let len_usize = usize::try_from(len).map_err(|_| {
+            Error::invalid_data(format!(
+                "string length {} overflows usize on this platform",
+                len
+            ))
+        })?;
         let byte_len = match encoding {
             1 => len_usize.saturating_mul(2),
             _ => len_usize,
