@@ -107,6 +107,8 @@ ignored/**
 ci-logs/**
 **/*.log
 swift/.build
+integration_tests/idl_tests/swift/.build
+integration_tests/idl_tests/swift/idl_package/.build
 
 csharp/src/Fory.Generator/bin/
 csharp/src/Fory.Generator/obj/
