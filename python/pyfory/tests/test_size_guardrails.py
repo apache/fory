@@ -19,11 +19,10 @@
 Test cases for configurable size guardrails for untrusted payloads.
 
 These tests verify that:
-- String byte-length limits are enforced during deserialization
-- Collection (list/tuple/set) length limits are enforced during deserialization
-- Map (dict) length limits are enforced during deserialization
-- Limits can be configured independently
-- Default value (-1) disables the limit
+- Binary byte-size limits are enforced during deserialization
+- Collection (list/tuple/set) size limits are enforced during deserialization
+- Map (dict) size limits are enforced using max_collection_size
+- Defaults are set correctly (max_collection_size=1_000_000, max_binary_size=64MB)
 """
 
 from dataclasses import dataclass
@@ -35,29 +34,29 @@ import pyfory
 from pyfory import Fory
 
 
-class TestStringBytesLengthLimit:
-    """Test string byte-length limit enforcement."""
+class TestBinarySizeLimit:
+    """Test binary byte-size limit enforcement."""
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_string_within_limit(self, xlang, ref):
-        """String within limit should deserialize successfully."""
+    def test_binary_within_limit(self, xlang, ref):
+        """Binary within limit should deserialize successfully."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=100)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_binary_size=100)
 
-        data = "hello world"
+        data = b"hello world"
         serialized = fory_writer.serialize(data)
         result = fory_reader.deserialize(serialized)
         assert result == data
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_string_exceeds_limit(self, xlang, ref):
-        """String exceeding limit should raise ValueError."""
+    def test_binary_exceeds_limit(self, xlang, ref):
+        """Binary exceeding limit should raise ValueError."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=10)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_binary_size=10)
 
-        data = "this string is longer than 10 bytes"
+        data = b"this binary data is longer than 10 bytes"
         serialized = fory_writer.serialize(data)
 
         with pytest.raises(ValueError, match="exceeds the configured limit"):
@@ -65,52 +64,33 @@ class TestStringBytesLengthLimit:
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_string_limit_disabled_by_default(self, xlang, ref):
-        """Default limit (-1) should allow any string size."""
+    def test_binary_default_limit(self, xlang, ref):
+        """Default limit should be 64MB."""
         fory = Fory(xlang=xlang, ref=ref)
-        assert fory.max_string_bytes_length == -1
-
-        data = "a" * 10000
-        result = fory.deserialize(fory.serialize(data))
-        assert result == data
+        assert fory.max_binary_size == 64 * 1024 * 1024
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_unicode_string_limit(self, xlang, ref):
-        """Unicode strings should be measured in serialized bytes."""
+    def test_empty_binary_always_allowed(self, xlang, ref):
+        """Empty binary should always be allowed regardless of limit."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        # Use a longer unicode string to ensure it exceeds the limit
-        # regardless of the internal encoding (UTF-8, UTF-16, or Latin-1)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_binary_size=0)
 
-        data = "你好世界测试"  # Multiple unicode characters
-        serialized = fory_writer.serialize(data)
-
-        with pytest.raises(ValueError, match="exceeds the configured limit"):
-            fory_reader.deserialize(serialized)
-
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
-    def test_empty_string_always_allowed(self, xlang, ref):
-        """Empty string should always be allowed regardless of limit."""
-        fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=0)
-
-        data = ""
+        data = b""
         serialized = fory_writer.serialize(data)
         result = fory_reader.deserialize(serialized)
         assert result == data
 
 
-class TestCollectionLengthLimit:
-    """Test collection (list/tuple/set) length limit enforcement."""
+class TestCollectionSizeLimit:
+    """Test collection (list/tuple/set) size limit enforcement."""
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_within_limit(self, xlang, ref):
         """List within limit should deserialize successfully."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=10)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=10)
 
         data = [1, 2, 3, 4, 5]
         serialized = fory_writer.serialize(data)
@@ -122,7 +102,7 @@ class TestCollectionLengthLimit:
     def test_list_exceeds_limit(self, xlang, ref):
         """List exceeding limit should raise ValueError."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
 
         data = list(range(10))
         serialized = fory_writer.serialize(data)
@@ -135,7 +115,7 @@ class TestCollectionLengthLimit:
         """Tuple within limit should deserialize successfully."""
         # Tuple serialization only works in Python-native mode (xlang=False)
         fory_writer = Fory(xlang=False, ref=ref)
-        fory_reader = Fory(xlang=False, ref=ref, max_collection_length=10)
+        fory_reader = Fory(xlang=False, ref=ref, max_collection_size=10)
 
         data = (1, 2, 3, 4, 5)
         serialized = fory_writer.serialize(data)
@@ -147,7 +127,7 @@ class TestCollectionLengthLimit:
         """Tuple exceeding limit should raise ValueError."""
         # Tuple serialization only works in Python-native mode (xlang=False)
         fory_writer = Fory(xlang=False, ref=ref)
-        fory_reader = Fory(xlang=False, ref=ref, max_collection_length=5)
+        fory_reader = Fory(xlang=False, ref=ref, max_collection_size=5)
 
         data = tuple(range(10))
         serialized = fory_writer.serialize(data)
@@ -160,7 +140,7 @@ class TestCollectionLengthLimit:
     def test_set_within_limit(self, xlang, ref):
         """Set within limit should deserialize successfully."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=10)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=10)
 
         data = {1, 2, 3, 4, 5}
         serialized = fory_writer.serialize(data)
@@ -172,7 +152,7 @@ class TestCollectionLengthLimit:
     def test_set_exceeds_limit(self, xlang, ref):
         """Set exceeding limit should raise ValueError."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
 
         data = set(range(10))
         serialized = fory_writer.serialize(data)
@@ -182,21 +162,17 @@ class TestCollectionLengthLimit:
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_collection_limit_disabled_by_default(self, xlang, ref):
-        """Default limit (-1) should allow any collection size."""
+    def test_collection_default_limit(self, xlang, ref):
+        """Default limit should be 1,000,000."""
         fory = Fory(xlang=xlang, ref=ref)
-        assert fory.max_collection_length == -1
-
-        data = list(range(1000))
-        result = fory.deserialize(fory.serialize(data))
-        assert result == data
+        assert fory.max_collection_size == 1_000_000
 
     @pytest.mark.parametrize("ref", [False, True])
     def test_empty_collection_always_allowed(self, ref):
         """Empty collections should always be allowed regardless of limit."""
         # Empty tuple test only works in Python-native mode (xlang=False)
         fory_writer = Fory(xlang=False, ref=ref)
-        fory_reader = Fory(xlang=False, ref=ref, max_collection_length=0)
+        fory_reader = Fory(xlang=False, ref=ref, max_collection_size=0)
 
         for data in [[], (), set()]:
             serialized = fory_writer.serialize(data)
@@ -204,15 +180,15 @@ class TestCollectionLengthLimit:
             assert result == data
 
 
-class TestMapLengthLimit:
-    """Test map (dict) length limit enforcement."""
+class TestMapSizeLimit:
+    """Test map (dict) size limit enforcement using max_collection_size."""
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_within_limit(self, xlang, ref):
         """Dict within limit should deserialize successfully."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_map_length=10)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=10)
 
         data = {"a": 1, "b": 2, "c": 3}
         serialized = fory_writer.serialize(data)
@@ -224,7 +200,7 @@ class TestMapLengthLimit:
     def test_dict_exceeds_limit(self, xlang, ref):
         """Dict exceeding limit should raise ValueError."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_map_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
 
         data = {str(i): i for i in range(10)}
         serialized = fory_writer.serialize(data)
@@ -234,21 +210,10 @@ class TestMapLengthLimit:
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_map_limit_disabled_by_default(self, xlang, ref):
-        """Default limit (-1) should allow any map size."""
-        fory = Fory(xlang=xlang, ref=ref)
-        assert fory.max_map_length == -1
-
-        data = {str(i): i for i in range(1000)}
-        result = fory.deserialize(fory.serialize(data))
-        assert result == data
-
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
     def test_empty_dict_always_allowed(self, xlang, ref):
         """Empty dict should always be allowed regardless of limit."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_map_length=0)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=0)
 
         data = {}
         serialized = fory_writer.serialize(data)
@@ -264,7 +229,7 @@ class TestNestedStructures:
     def test_nested_list_inner_exceeds_limit(self, xlang, ref):
         """Nested list where inner list exceeds limit should raise ValueError."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
 
         # Outer list has 2 elements, inner list has 10 elements
         data = [[1, 2], list(range(10))]
@@ -273,68 +238,9 @@ class TestNestedStructures:
         with pytest.raises(ValueError, match="exceeds the configured limit"):
             fory_reader.deserialize(serialized)
 
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
-    def test_list_with_string_exceeds_string_limit(self, xlang, ref):
-        """List containing string that exceeds string limit should raise ValueError."""
-        fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=5)
-
-        data = ["short", "this is a long string"]
-        serialized = fory_writer.serialize(data)
-
-        with pytest.raises(ValueError, match="exceeds the configured limit"):
-            fory_reader.deserialize(serialized)
-
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
-    def test_dict_with_string_key_exceeds_limit(self, xlang, ref):
-        """Dict with string key that exceeds limit should raise ValueError."""
-        fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=5)
-
-        data = {"this_key_is_too_long": 1}
-        serialized = fory_writer.serialize(data)
-
-        with pytest.raises(ValueError, match="exceeds the configured limit"):
-            fory_reader.deserialize(serialized)
-
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
-    def test_dict_with_string_value_exceeds_limit(self, xlang, ref):
-        """Dict with string value that exceeds limit should raise ValueError."""
-        fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=5)
-
-        data = {"k": "this_value_is_too_long"}
-        serialized = fory_writer.serialize(data)
-
-        with pytest.raises(ValueError, match="exceeds the configured limit"):
-            fory_reader.deserialize(serialized)
-
 
 class TestDataclassWithLimits:
     """Test limits with dataclass serialization."""
-
-    def test_dataclass_string_field_exceeds_limit(self):
-        """Dataclass with string field exceeding limit should raise ValueError."""
-
-        @dataclass
-        class Person:
-            name: str
-            age: pyfory.int32
-
-        fory_writer = Fory(xlang=True, ref=False)
-        fory_writer.register(Person)
-
-        fory_reader = Fory(xlang=True, ref=False, max_string_bytes_length=5)
-        fory_reader.register(Person)
-
-        data = Person(name="a_very_long_name", age=25)
-        serialized = fory_writer.serialize(data)
-
-        with pytest.raises(ValueError, match="exceeds the configured limit"):
-            fory_reader.deserialize(serialized)
 
     def test_dataclass_list_field_exceeds_limit(self):
         """Dataclass with list field exceeding limit should raise ValueError."""
@@ -346,7 +252,7 @@ class TestDataclassWithLimits:
         fory_writer = Fory(xlang=True, ref=False)
         fory_writer.register(Container)
 
-        fory_reader = Fory(xlang=True, ref=False, max_collection_length=5)
+        fory_reader = Fory(xlang=True, ref=False, max_collection_size=5)
         fory_reader.register(Container)
 
         data = Container(items=list(range(10)))
@@ -357,42 +263,16 @@ class TestDataclassWithLimits:
 
 
 class TestIndependentLimits:
-    """Test that different limits work independently."""
+    """Test that binary and collection limits work independently."""
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_string_limit_does_not_affect_collection(self, xlang, ref):
-        """String limit should not affect collection size."""
+    def test_binary_limit_does_not_affect_collection(self, xlang, ref):
+        """Binary limit should not affect collection size."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_string_bytes_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_binary_size=5)
 
-        # Large list with short strings should work
-        data = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
-        serialized = fory_writer.serialize(data)
-        result = fory_reader.deserialize(serialized)
-        assert result == data
-
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
-    def test_collection_limit_does_not_affect_map(self, xlang, ref):
-        """Collection limit should not affect map size."""
-        fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=5)
-
-        # Large dict should work since map limit is not set
-        data = {str(i): i for i in range(100)}
-        serialized = fory_writer.serialize(data)
-        result = fory_reader.deserialize(serialized)
-        assert result == data
-
-    @pytest.mark.parametrize("xlang", [False, True])
-    @pytest.mark.parametrize("ref", [False, True])
-    def test_map_limit_does_not_affect_collection(self, xlang, ref):
-        """Map limit should not affect collection size."""
-        fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_map_length=5)
-
-        # Large list should work since collection limit is not set
+        # Large list should work since collection limit is default
         data = list(range(100))
         serialized = fory_writer.serialize(data)
         result = fory_reader.deserialize(serialized)
@@ -400,15 +280,27 @@ class TestIndependentLimits:
 
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
-    def test_all_limits_together(self, xlang, ref):
-        """All limits can be set together and work independently."""
+    def test_collection_limit_does_not_affect_binary(self, xlang, ref):
+        """Collection limit should not affect binary size."""
+        fory_writer = Fory(xlang=xlang, ref=ref)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
+
+        # Large binary should work since binary limit is default
+        data = b"a" * 1000
+        serialized = fory_writer.serialize(data)
+        result = fory_reader.deserialize(serialized)
+        assert result == data
+
+    @pytest.mark.parametrize("xlang", [False, True])
+    @pytest.mark.parametrize("ref", [False, True])
+    def test_both_limits_together(self, xlang, ref):
+        """Both limits can be set together and work independently."""
         fory_writer = Fory(xlang=xlang, ref=ref)
         fory_reader = Fory(
             xlang=xlang,
             ref=ref,
-            max_string_bytes_length=100,
-            max_collection_length=50,
-            max_map_length=50,
+            max_binary_size=1000,
+            max_collection_size=50,
         )
 
         # Data within all limits
@@ -430,7 +322,7 @@ class TestBoundaryConditions:
     def test_collection_exactly_at_limit(self, xlang, ref):
         """Collection exactly at limit should succeed."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
 
         data = [1, 2, 3, 4, 5]  # Exactly 5 elements
         serialized = fory_writer.serialize(data)
@@ -442,7 +334,7 @@ class TestBoundaryConditions:
     def test_collection_one_over_limit(self, xlang, ref):
         """Collection one over limit should fail."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=5)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=5)
 
         data = [1, 2, 3, 4, 5, 6]  # 6 elements, limit is 5
         serialized = fory_writer.serialize(data)
@@ -455,7 +347,7 @@ class TestBoundaryConditions:
     def test_map_exactly_at_limit(self, xlang, ref):
         """Map exactly at limit should succeed."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_map_length=3)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=3)
 
         data = {"a": 1, "b": 2, "c": 3}  # Exactly 3 entries
         serialized = fory_writer.serialize(data)
@@ -467,7 +359,7 @@ class TestBoundaryConditions:
     def test_map_one_over_limit(self, xlang, ref):
         """Map one over limit should fail."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_map_length=3)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=3)
 
         data = {"a": 1, "b": 2, "c": 3, "d": 4}  # 4 entries, limit is 3
         serialized = fory_writer.serialize(data)
@@ -480,10 +372,57 @@ class TestBoundaryConditions:
     def test_limit_of_zero_blocks_non_empty(self, xlang, ref):
         """Limit of 0 should block any non-empty collection."""
         fory_writer = Fory(xlang=xlang, ref=ref)
-        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_length=0)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_collection_size=0)
 
         data = [1]  # Single element
         serialized = fory_writer.serialize(data)
 
         with pytest.raises(ValueError, match="exceeds the configured limit"):
             fory_reader.deserialize(serialized)
+
+    @pytest.mark.parametrize("xlang", [False, True])
+    @pytest.mark.parametrize("ref", [False, True])
+    def test_binary_exactly_at_limit(self, xlang, ref):
+        """Binary exactly at limit should succeed."""
+        fory_writer = Fory(xlang=xlang, ref=ref)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_binary_size=5)
+
+        data = b"12345"  # Exactly 5 bytes
+        serialized = fory_writer.serialize(data)
+        result = fory_reader.deserialize(serialized)
+        assert result == data
+
+    @pytest.mark.parametrize("xlang", [False, True])
+    @pytest.mark.parametrize("ref", [False, True])
+    def test_binary_one_over_limit(self, xlang, ref):
+        """Binary one over limit should fail."""
+        fory_writer = Fory(xlang=xlang, ref=ref)
+        fory_reader = Fory(xlang=xlang, ref=ref, max_binary_size=5)
+
+        data = b"123456"  # 6 bytes, limit is 5
+        serialized = fory_writer.serialize(data)
+
+        with pytest.raises(ValueError, match="exceeds the configured limit"):
+            fory_reader.deserialize(serialized)
+
+
+class TestStringNotLimited:
+    """Test that strings are NOT limited (per mentor feedback)."""
+
+    @pytest.mark.parametrize("xlang", [False, True])
+    @pytest.mark.parametrize("ref", [False, True])
+    def test_large_string_works_regardless_of_limits(self, xlang, ref):
+        """Large strings should work regardless of any limits set."""
+        fory_writer = Fory(xlang=xlang, ref=ref)
+        # Set small limits - strings should still work
+        fory_reader = Fory(
+            xlang=xlang,
+            ref=ref,
+            max_binary_size=5,
+            max_collection_size=5,
+        )
+
+        data = "a" * 10000  # Large string
+        serialized = fory_writer.serialize(data)
+        result = fory_reader.deserialize(serialized)
+        assert result == data

@@ -283,8 +283,10 @@ cdef class Buffer:
         if length > 0:
             self.c_buffer.write_bytes(&data[0], length)
 
-    cpdef inline bytes read_bytes_and_size(self):
+    cpdef inline bytes read_bytes_and_size(self, int32_t max_binary_size=-1):
         cdef int32_t length = self.read_var_uint32()
+        if max_binary_size >= 0 and length > max_binary_size:
+            raise ValueError(f"Binary size {length} exceeds the configured limit of {max_binary_size}")
         return self.read_bytes(length)
 
     cpdef inline write_bytes(self, bytes value):
@@ -560,11 +562,9 @@ cdef class Buffer:
         self.c_buffer.copy_from(offset, <const uint8_t *>buffer, 0, buffer_size)
         self.c_buffer.increase_writer_index(buffer_size)
 
-    cpdef inline str read_string(self, int32_t max_string_bytes_length=-1):
+    cpdef inline str read_string(self):
         cdef uint64_t header = self.read_var_uint64()
         cdef uint32_t size = header >> 2
-        if max_string_bytes_length >= 0 and size > <uint32_t>max_string_bytes_length:
-            raise ValueError(f"String size {size} exceeds the configured limit of {max_string_bytes_length}")
         cdef uint32_t encoding = header & <uint32_t>0b11
         if size == 0:
             return ""

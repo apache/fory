@@ -525,7 +525,7 @@ class PythonNDArraySerializer(NDArraySerializer):
 
         buffer.set_reader_index(reader_index)
         fory = self.fory
-        dtype = np.dtype(buffer.read_string(self.fory.max_string_bytes_length))
+        dtype = np.dtype(buffer.read_string())
         ndim = buffer.read_var_uint32()
         shape = tuple(buffer.read_var_uint32() for _ in range(ndim))
         if dtype.kind == "O":
@@ -549,7 +549,7 @@ class BytesSerializer(Serializer):
 
     def read(self, buffer):
         if not self.fory.is_peer_out_of_band_enabled:
-            return buffer.read_bytes_and_size()
+            return buffer.read_bytes_and_size(self.fory.max_binary_size)
         fory_buf = self.fory.read_buffer_object(buffer)
         if isinstance(fory_buf, memoryview):
             return bytes(fory_buf)
@@ -845,8 +845,8 @@ class TypeSerializer(Serializer):
             return self._deserialize_local_class(buffer)
         else:
             # Global class - import by module and name
-            module_name = buffer.read_string(self.fory.max_string_bytes_length)
-            qualname = buffer.read_string(self.fory.max_string_bytes_length)
+            module_name = buffer.read_string()
+            qualname = buffer.read_string()
             cls = importlib.import_module(module_name)
             for name in qualname.split("."):
                 cls = getattr(cls, name)
@@ -901,8 +901,8 @@ class TypeSerializer(Serializer):
         fory = self.fory
         assert fory.track_ref, "Reference tracking must be enabled for local classes deserialization"
         # Read basic class information
-        module = buffer.read_string(self.fory.max_string_bytes_length)
-        qualname = buffer.read_string(self.fory.max_string_bytes_length)
+        module = buffer.read_string()
+        qualname = buffer.read_string()
         name = qualname.rsplit(".", 1)[-1]
         ref_id = fory.ref_resolver.last_preserved_ref_id()
 
@@ -916,7 +916,7 @@ class TypeSerializer(Serializer):
 
         # classmethods
         for i in range(buffer.read_var_uint32()):
-            attr_name = buffer.read_string(self.fory.max_string_bytes_length)
+            attr_name = buffer.read_string()
             func = fory.read_ref(buffer)
             method = types.MethodType(func, cls)
             setattr(cls, attr_name, method)
@@ -945,7 +945,7 @@ class ModuleSerializer(Serializer):
         buffer.write_string(value.__name__)
 
     def read(self, buffer):
-        mod_name = buffer.read_string(self.fory.max_string_bytes_length)
+        mod_name = buffer.read_string()
         result = self.fory.policy.validate_module(mod_name)
         if result is not None:
             if isinstance(result, types.ModuleType):
@@ -1105,7 +1105,7 @@ class FunctionSerializer(Serializer):
         if func_type_id == 0:
             # Handle bound methods
             self_obj = self.fory.read_ref(buffer)
-            method_name = buffer.read_string(self.fory.max_string_bytes_length)
+            method_name = buffer.read_string()
             func = getattr(self_obj, method_name)
             result = self.fory.policy.validate_function(func, is_local=False)
             if result is not None:
@@ -1113,8 +1113,8 @@ class FunctionSerializer(Serializer):
             return func
 
         if func_type_id == 1:
-            module = buffer.read_string(self.fory.max_string_bytes_length)
-            qualname = buffer.read_string(self.fory.max_string_bytes_length)
+            module = buffer.read_string()
+            qualname = buffer.read_string()
             mod = importlib.import_module(module)
             for name in qualname.split("."):
                 mod = getattr(mod, name)
@@ -1124,8 +1124,8 @@ class FunctionSerializer(Serializer):
             return mod
 
         # Regular function or lambda
-        module = buffer.read_string(self.fory.max_string_bytes_length)
-        qualname = buffer.read_string(self.fory.max_string_bytes_length)
+        module = buffer.read_string()
+        qualname = buffer.read_string()
         name = qualname.rsplit(".")[-1]
 
         # Use marshal to load the code object, which handles all Python versions correctly
@@ -1162,7 +1162,7 @@ class FunctionSerializer(Serializer):
         num_freevars = buffer.read_var_uint32()
         freevars = []
         for _ in range(num_freevars):
-            freevars.append(buffer.read_string(self.fory.max_string_bytes_length))
+            freevars.append(buffer.read_string())
 
         # Handle globals
         globals_dict = self.fory.read_ref(buffer)
@@ -1223,9 +1223,9 @@ class NativeFuncMethodSerializer(Serializer):
             self.fory.write_ref(buffer, obj)
 
     def read(self, buffer):
-        name = buffer.read_string(self.fory.max_string_bytes_length)
+        name = buffer.read_string()
         if buffer.read_bool():
-            module = buffer.read_string(self.fory.max_string_bytes_length)
+            module = buffer.read_string()
             mod = importlib.import_module(module)
             func = getattr(mod, name)
         else:
@@ -1254,7 +1254,7 @@ class MethodSerializer(Serializer):
 
     def read(self, buffer):
         instance = self.fory.read_ref(buffer)
-        method_name = buffer.read_string(self.fory.max_string_bytes_length)
+        method_name = buffer.read_string()
 
         method = getattr(instance, method_name)
         cls = method.__self__.__class__
@@ -1301,7 +1301,7 @@ class ObjectSerializer(Serializer):
         fory.ref_resolver.reference(obj)
         num_fields = buffer.read_var_uint32()
         for _ in range(num_fields):
-            field_name = buffer.read_string(self.fory.max_string_bytes_length)
+            field_name = buffer.read_string()
             field_value = fory.read_ref(buffer)
             setattr(obj, field_name, field_value)
         return obj

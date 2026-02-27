@@ -187,9 +187,8 @@ cdef class CollectionSerializer(Serializer):
             buffer.write_string(s)
 
     cdef inline _read_string(self, Buffer buffer, int64_t len_, object collection_):
-        cdef int32_t max_string_bytes_length = self.fory.max_string_bytes_length
         for i in range(len_):
-            self._add_element(collection_, i, buffer.read_string(max_string_bytes_length))
+            self._add_element(collection_, i, buffer.read_string())
 
     cdef inline _write_int(self, Buffer buffer, value):
         for s in value:
@@ -299,8 +298,8 @@ cdef class ListSerializer(CollectionSerializer):
         cdef MapRefResolver ref_resolver = self.fory.ref_resolver
         cdef TypeResolver type_resolver = self.fory.type_resolver
         cdef int32_t len_ = buffer.read_var_uint32()
-        if self.fory.max_collection_length >= 0 and len_ > self.fory.max_collection_length:
-            raise ValueError(f"List size {len_} exceeds the configured limit of {self.fory.max_collection_length}")
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"List size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         cdef list list_ = PyList_New(len_)
         if len_ == 0:
             return list_
@@ -347,7 +346,7 @@ cdef class ListSerializer(CollectionSerializer):
             if tracking_ref:
                 # When ref tracking is enabled, read with ref handling
                 for i in range(len_):
-                    elem = get_next_element(buffer, ref_resolver, type_resolver, self.fory.max_string_bytes_length)
+                    elem = get_next_element(buffer, ref_resolver, type_resolver)
                     Py_INCREF(elem)
                     PyList_SET_ITEM(list_, i, elem)
             elif not has_null:
@@ -385,7 +384,6 @@ cdef inline get_next_element(
         Buffer buffer,
         MapRefResolver ref_resolver,
         TypeResolver type_resolver,
-        int32_t max_string_bytes_length=-1
 ):
     cdef int32_t ref_id
     cdef TypeInfo typeinfo
@@ -399,7 +397,7 @@ cdef inline get_next_element(
     # must match corresponding writing operations. Otherwise, ref tracking will
     # error.
     if type_id == <uint8_t>TypeId.STRING:
-        return buffer.read_string(max_string_bytes_length)
+        return buffer.read_string()
     elif type_id == <uint8_t>TypeId.VARINT32:
         return buffer.read_varint64()
     elif type_id == <uint8_t>TypeId.BOOL:
@@ -418,8 +416,8 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef MapRefResolver ref_resolver = self.fory.ref_resolver
         cdef TypeResolver type_resolver = self.fory.type_resolver
         cdef int32_t len_ = buffer.read_var_uint32()
-        if self.fory.max_collection_length >= 0 and len_ > self.fory.max_collection_length:
-            raise ValueError(f"Tuple size {len_} exceeds the configured limit of {self.fory.max_collection_length}")
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"Tuple size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         cdef tuple tuple_ = PyTuple_New(len_)
         if len_ == 0:
             return tuple_
@@ -465,7 +463,7 @@ cdef class TupleSerializer(CollectionSerializer):
             if tracking_ref:
                 # When ref tracking is enabled, read with ref handling
                 for i in range(len_):
-                    elem = get_next_element(buffer, ref_resolver, type_resolver, self.fory.max_string_bytes_length)
+                    elem = get_next_element(buffer, ref_resolver, type_resolver)
                     Py_INCREF(elem)
                     PyTuple_SET_ITEM(tuple_, i, elem)
             elif not has_null:
@@ -514,8 +512,8 @@ cdef class SetSerializer(CollectionSerializer):
         cdef set instance = set()
         ref_resolver.reference(instance)
         cdef int32_t len_ = buffer.read_var_uint32()
-        if self.fory.max_collection_length >= 0 and len_ > self.fory.max_collection_length:
-            raise ValueError(f"Set size {len_} exceeds the configured limit of {self.fory.max_collection_length}")
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"Set size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         if len_ == 0:
             return instance
         cdef int8_t collect_flag = buffer.read_int8()
@@ -569,7 +567,7 @@ cdef class SetSerializer(CollectionSerializer):
                     typeinfo = type_resolver.read_type_info(buffer)
                     type_id = typeinfo.type_id
                     if type_id == <uint8_t>TypeId.STRING:
-                        instance.add(buffer.read_string(self.fory.max_string_bytes_length))
+                        instance.add(buffer.read_string())
                     elif type_id == <uint8_t>TypeId.VARINT64:
                         instance.add(buffer.read_varint64())
                     elif type_id == <uint8_t>TypeId.BOOL:
@@ -589,7 +587,7 @@ cdef class SetSerializer(CollectionSerializer):
                     typeinfo = type_resolver.read_type_info(buffer)
                     type_id = typeinfo.type_id
                     if type_id == <uint8_t>TypeId.STRING:
-                        instance.add(buffer.read_string(self.fory.max_string_bytes_length))
+                        instance.add(buffer.read_string())
                     elif type_id == <uint8_t>TypeId.VARINT64:
                         instance.add(buffer.read_varint64())
                     elif type_id == <uint8_t>TypeId.BOOL:
@@ -611,7 +609,7 @@ cdef class SetSerializer(CollectionSerializer):
                         typeinfo = type_resolver.read_type_info(buffer)
                         type_id = typeinfo.type_id
                         if type_id == <uint8_t>TypeId.STRING:
-                            instance.add(buffer.read_string(self.fory.max_string_bytes_length))
+                            instance.add(buffer.read_string())
                         elif type_id == <uint8_t>TypeId.VARINT64:
                             instance.add(buffer.read_varint64())
                         elif type_id == <uint8_t>TypeId.BOOL:
@@ -867,8 +865,8 @@ cdef class MapSerializer(Serializer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
         cdef int32_t size = buffer.read_var_uint32()
-        if self.fory.max_map_length >= 0 and size > self.fory.max_map_length:
-            raise ValueError(f"Map size {size} exceeds the configured limit of {self.fory.max_map_length}")
+        if size > self.fory.max_collection_size:
+            raise ValueError(f"Map size {size} exceeds the configured limit of {self.fory.max_collection_size}")
         cdef dict map_ = _PyDict_NewPresized(size)
         ref_resolver.reference(map_)
         cdef int32_t ref_id
@@ -972,7 +970,7 @@ cdef class MapSerializer(Serializer):
                         ref_resolver.set_read_object(ref_id, key)
                 else:
                     if key_serializer_type is StringSerializer:
-                        key = buffer.read_string(self.fory.max_string_bytes_length)
+                        key = buffer.read_string()
                     elif key_serializer_type is Int64Serializer:
                         key = buffer.read_varint64()
                     elif key_serializer_type is Float64Serializer:
@@ -998,7 +996,7 @@ cdef class MapSerializer(Serializer):
                         ref_resolver.set_read_object(ref_id, value)
                 else:
                     if value_serializer_type is StringSerializer:
-                        value = buffer.read_string(self.fory.max_string_bytes_length)
+                        value = buffer.read_string()
                     elif value_serializer_type is Int64Serializer:
                         value = buffer.read_varint64()
                     elif value_serializer_type is Float64Serializer:

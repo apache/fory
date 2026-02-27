@@ -208,7 +208,7 @@ cdef class StringSerializer(Serializer):
         buffer.write_string(value)
 
     cpdef inline read(self, Buffer buffer):
-        return buffer.read_string(self.fory.max_string_bytes_length)
+        return buffer.read_string()
 
 
 cdef _base_date = datetime.date(1970, 1, 1)

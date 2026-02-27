@@ -153,9 +153,8 @@ class Fory:
         "depth",
         "field_nullable",
         "policy",
-        "max_collection_length",
-        "max_map_length",
-        "max_string_bytes_length",
+        "max_collection_size",
+        "max_binary_size",
     )
 
     def __init__(
@@ -168,9 +167,8 @@ class Fory:
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
-        max_collection_length: int = -1,
-        max_map_length: int = -1,
-        max_string_bytes_length: int = -1,
+        max_collection_size: int = 1_000_000,
+        max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -209,14 +207,13 @@ class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
-            max_collection_length: Maximum allowed length for collections (lists, sets, tuples).
-                Raises an exception if exceeded during deserialization. Default is -1 (no limit).
+            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
+                and maps (dicts) during deserialization. Raises an exception if exceeded.
+                Default is 1,000,000.
 
-            max_map_length: Maximum allowed length for maps (dicts). Raises
-                an exception if exceeded during deserialization. Default is -1 (no limit).
-
-            max_string_bytes_length: Maximum allowed byte length for strings. Raises
-                an exception if exceeded during deserialization. Default is -1 (no limit).
+            max_binary_size: Maximum allowed byte size for binary data during
+                deserialization. Raises an exception if exceeded.
+                Default is 64MB (64 * 1024 * 1024).
 
         Example:
             >>> # Python-native mode with reference tracking
@@ -251,9 +248,8 @@ class Fory:
         self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
-        self.max_collection_length = max_collection_length
-        self.max_map_length = max_map_length
-        self.max_string_bytes_length = max_string_bytes_length
+        self.max_collection_size = max_collection_size
+        self.max_binary_size = max_binary_size
 
     def register(
         self,
@@ -621,10 +617,6 @@ class Fory:
         if serializer is None:
             serializer = self.type_resolver.read_type_info(buffer).serializer
 
-        cls = serializer.type_ if hasattr(serializer, "type_") else None
-        if cls is str:
-            return buffer.read_string(self.max_string_bytes_length)
-
         self.inc_depth()
         o = serializer.read(buffer)
         self.dec_depth()
@@ -772,12 +764,10 @@ class ThreadSafeFory:
         strict (bool): Whether to require type registration. Defaults to True.
         compatible (bool): Whether to enable compatible mode. Defaults to False.
         max_depth (int): Maximum depth for deserialization. Defaults to 50.
-        max_collection_length (int): Maximum allowed length for collections during deserialization.
-            Defaults to -1 (no limit).
-        max_map_length (int): Maximum allowed length for maps (dicts) during deserialization.
-            Defaults to -1 (no limit).
-        max_string_bytes_length (int): Maximum allowed byte length for strings during deserialization.
-            Defaults to -1 (no limit).
+        max_collection_size (int): Maximum allowed size for collections and maps during
+            deserialization. Defaults to 1,000,000.
+        max_binary_size (int): Maximum allowed byte size for binary data during
+            deserialization. Defaults to 64MB.
 
     Example:
         >>> import pyfury
