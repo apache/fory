@@ -1,0 +1,75 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/master.swiftdeps"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/Operator.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/Operator.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/Operator.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/Operator~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/Operator.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/Operator.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorError+Diagnostics.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError+Diagnostics.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError+Diagnostics.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError+Diagnostics~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError+Diagnostics.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError+Diagnostics.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorError.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorError.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable+Defaults.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Defaults.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Defaults.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Defaults~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Defaults.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Defaults.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable+Folding.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Folding.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Folding.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Folding~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Folding.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Folding.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable+Semantics.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Semantics.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Semantics.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Semantics~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Semantics.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable+Semantics.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/OperatorTable.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/PrecedenceGraph.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGraph.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGraph.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGraph~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGraph.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGraph.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/PrecedenceGroup.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGroup.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGroup.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGroup~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGroup.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/PrecedenceGroup.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftOperators/SyntaxSynthesis.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/SyntaxSynthesis.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/SyntaxSynthesis.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/SyntaxSynthesis~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/SyntaxSynthesis.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftOperators.build/SyntaxSynthesis.dia"
+  }
+}

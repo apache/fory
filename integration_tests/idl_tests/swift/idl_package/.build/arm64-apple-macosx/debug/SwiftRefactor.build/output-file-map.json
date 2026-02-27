@@ -1,0 +1,68 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/master.swiftdeps"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/AddSeparatorsToIntegerLiteral.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/AddSeparatorsToIntegerLiteral.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/AddSeparatorsToIntegerLiteral.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/AddSeparatorsToIntegerLiteral~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/AddSeparatorsToIntegerLiteral.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/AddSeparatorsToIntegerLiteral.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/CallToTrailingClosures.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/CallToTrailingClosures.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/CallToTrailingClosures.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/CallToTrailingClosures~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/CallToTrailingClosures.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/CallToTrailingClosures.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/ExpandEditorPlaceholder.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/ExpandEditorPlaceholder.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/ExpandEditorPlaceholder.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/ExpandEditorPlaceholder~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/ExpandEditorPlaceholder.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/ExpandEditorPlaceholder.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/FormatRawStringLiteral.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/FormatRawStringLiteral.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/FormatRawStringLiteral.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/FormatRawStringLiteral~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/FormatRawStringLiteral.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/FormatRawStringLiteral.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/IntegerLiteralUtilities.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/IntegerLiteralUtilities.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/IntegerLiteralUtilities.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/IntegerLiteralUtilities~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/IntegerLiteralUtilities.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/IntegerLiteralUtilities.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/MigrateToNewIfLetSyntax.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/MigrateToNewIfLetSyntax.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/MigrateToNewIfLetSyntax.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/MigrateToNewIfLetSyntax~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/MigrateToNewIfLetSyntax.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/MigrateToNewIfLetSyntax.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/OpaqueParameterToGeneric.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/OpaqueParameterToGeneric.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/OpaqueParameterToGeneric.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/OpaqueParameterToGeneric~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/OpaqueParameterToGeneric.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/OpaqueParameterToGeneric.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/RefactoringProvider.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RefactoringProvider.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RefactoringProvider.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RefactoringProvider~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RefactoringProvider.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RefactoringProvider.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftRefactor/RemoveSeparatorsFromIntegerLiteral.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RemoveSeparatorsFromIntegerLiteral.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RemoveSeparatorsFromIntegerLiteral.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RemoveSeparatorsFromIntegerLiteral~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RemoveSeparatorsFromIntegerLiteral.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftRefactor.build/RemoveSeparatorsFromIntegerLiteral.dia"
+  }
+}

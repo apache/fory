@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/master.swiftdeps"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxGenericTestSupport/AssertEqualWithDiff.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/AssertEqualWithDiff.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/AssertEqualWithDiff.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/AssertEqualWithDiff~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/AssertEqualWithDiff.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/AssertEqualWithDiff.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/_SwiftSyntaxGenericTestSupport/String+TrimmingTrailingWhitespace.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/String+TrimmingTrailingWhitespace.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/String+TrimmingTrailingWhitespace.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/String+TrimmingTrailingWhitespace~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/String+TrimmingTrailingWhitespace.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/_SwiftSyntaxGenericTestSupport.build/String+TrimmingTrailingWhitespace.dia"
+  }
+}

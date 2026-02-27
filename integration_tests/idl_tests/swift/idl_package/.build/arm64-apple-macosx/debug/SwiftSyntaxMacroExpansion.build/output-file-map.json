@@ -1,0 +1,68 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/master.swiftdeps"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/BasicMacroExpansionContext.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/BasicMacroExpansionContext.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/BasicMacroExpansionContext.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/BasicMacroExpansionContext~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/BasicMacroExpansionContext.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/BasicMacroExpansionContext.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/FunctionParameterUtils.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/FunctionParameterUtils.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/FunctionParameterUtils.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/FunctionParameterUtils~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/FunctionParameterUtils.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/FunctionParameterUtils.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/IndentationUtils.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/IndentationUtils.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/IndentationUtils.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/IndentationUtils~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/IndentationUtils.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/IndentationUtils.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/MacroArgument.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroArgument.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroArgument.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroArgument~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroArgument.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroArgument.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/MacroExpansion.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansion.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansion.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansion~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansion.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansion.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/MacroExpansionDiagnosticMessages.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansionDiagnosticMessages.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansionDiagnosticMessages.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansionDiagnosticMessages~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansionDiagnosticMessages.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroExpansionDiagnosticMessages.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/MacroReplacement.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroReplacement.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroReplacement.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroReplacement~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroReplacement.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroReplacement.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/MacroSpec.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSpec.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSpec.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSpec~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSpec.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSpec.dia"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacroExpansion/MacroSystem.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSystem.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSystem.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSystem~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSystem.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntaxMacroExpansion.build/MacroSystem.dia"
+  }
+}

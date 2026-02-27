@@ -742,6 +742,58 @@ public static class AddressbookForyRegistration
 When explicit type IDs are not provided, generated registration uses computed
 numeric IDs (same behavior as other targets).
 
+## Swift
+
+### Output Layout
+
+Swift output is one `.swift` file per schema, for example:
+
+- `<swift_out>/addressbook/addressbook.swift`
+
+### Type Generation
+
+The generator creates namespaced Swift models with `@ForyObject` and field IDs:
+
+```swift
+public enum Addressbook {
+    @ForyObject
+    public enum Animal: Equatable {
+        @ForyField(id: 1)
+        case dog(Addressbook.Dog)
+        @ForyField(id: 2)
+        case cat(Addressbook.Cat)
+    }
+
+    @ForyObject
+    public struct Person: Equatable {
+        @ForyField(id: 1)
+        public var name: String = ""
+        @ForyField(id: 8)
+        public var pet: Addressbook.Animal = .foryDefault()
+    }
+}
+```
+
+Unions are generated as tagged Swift enums with associated payload values.
+Messages with `ref`/`weak_ref` fields are generated as `final class` models to preserve reference semantics.
+
+### Registration
+
+Each schema includes a registration helper with transitive import registration:
+
+```swift
+public enum ForyRegistration {
+    public static func register(_ fory: Fory) throws {
+        try ComplexPb.ForyRegistration.register(fory)
+        fory.register(Addressbook.Person.self, id: 100)
+        fory.register(Addressbook.Animal.self, id: 106)
+    }
+}
+```
+
+For schemas without explicit `[id=...]`, registration uses computed numeric IDs.
+If `option enable_auto_type_id = false;` is set, generated code uses name-based registration APIs.
+
 ## Cross-Language Notes
 
 ### Type ID Behavior
@@ -760,6 +812,7 @@ numeric IDs (same behavior as other targets).
 | C++      | `Person::PhoneNumber`          |
 | Go       | `Person_PhoneNumber` (default) |
 | C#       | `Person.PhoneNumber`           |
+| Swift    | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
 
@@ -771,3 +824,4 @@ numeric IDs (same behavior as other targets).
 | C++      | `to_bytes` / `from_bytes` |
 | Go       | `ToBytes` / `FromBytes`   |
 | C#       | `ToBytes` / `FromBytes`   |
+| Swift    | `toBytes` / `fromBytes`   |

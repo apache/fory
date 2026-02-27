@@ -1,0 +1,76 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift",
+          "kind" : "fileSystem",
+          "location" : "/Users/chaokunyang/Desktop/dev/fory_swift/swift",
+          "name" : "fory-swift"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/chaokunyang/Desktop/dev/fory_swift/swift"
+        },
+        "subpath" : "swift"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-syntax",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/swiftlang/swift-syntax.git",
+          "name" : "swift-syntax"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0687f71944021d616d34d922343dcef086855920",
+            "version" : "600.0.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-syntax"
+      }
+    ],
+    "prebuilts" : [
+      {
+        "cModules" : [
+
+        ],
+        "checkoutPath" : "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax",
+        "identity" : "swift-syntax",
+        "includePath" : [
+          "Sources/_SwiftLibraryPluginProviderCShims/include",
+          "Sources/_SwiftSyntaxCShims/include"
+        ],
+        "libraryName" : "MacroSupport",
+        "path" : "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/prebuilts/swift-syntax/600.0.1/swiftlang-6.2.1.4.8-MacroSupport-macos_aarch64",
+        "products" : [
+          "swift-syntaxPackageTests",
+          "SwiftBasicFormat",
+          "SwiftCompilerPlugin",
+          "SwiftDiagnostics",
+          "SwiftIDEUtils",
+          "SwiftOperators",
+          "SwiftParser",
+          "SwiftParserDiagnostics",
+          "SwiftRefactor",
+          "SwiftSyntax",
+          "SwiftSyntaxBuilder",
+          "SwiftSyntaxMacros",
+          "SwiftSyntaxMacroExpansion",
+          "SwiftSyntaxMacrosTestSupport",
+          "SwiftSyntaxMacrosGenericTestSupport",
+          "_SwiftCompilerPluginMessageHandling",
+          "_SwiftLibraryPluginProvider"
+        ],
+        "version" : "600.0.1"
+      }
+    ]
+  },
+  "version" : 7
+}

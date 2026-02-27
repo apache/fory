@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntax509.build/master.swiftdeps"
+  },
+  "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/checkouts/swift-syntax/Sources/VersionMarkerModules/SwiftSyntax509/Empty.swift": {
+    "dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntax509.build/Empty.d",
+    "object": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntax509.build/Empty.swift.o",
+    "swiftmodule": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntax509.build/Empty~partial.swiftmodule",
+    "swift-dependencies": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntax509.build/Empty.swiftdeps",
+    "diagnostics": "/Users/chaokunyang/Desktop/dev/fory_swift/integration_tests/idl_tests/swift/idl_package/.build/arm64-apple-macosx/debug/SwiftSyntax509.build/Empty.dia"
+  }
+}

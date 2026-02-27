@@ -449,6 +449,12 @@ public final class ReadContext {
         return last
     }
 
+    @inline(__always)
+    public func consumeCompatibleTypeMetaIfPresent<T: Serializer>(for type: T.Type) -> TypeMeta? {
+        let typeID = ObjectIdentifier(type)
+        return pendingCompatibleTypeMeta[typeID]?.last
+    }
+
     public func setDynamicTypeInfo<T: Serializer>(for type: T.Type, _ typeInfo: DynamicTypeInfo) {
         pendingDynamicTypeInfo[ObjectIdentifier(type)] = typeInfo
     }

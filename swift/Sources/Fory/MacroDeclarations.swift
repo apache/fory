@@ -42,5 +42,6 @@ public enum ForyFieldEncoding: String {
 
 @attached(peer)
 public macro ForyField(
-    encoding: ForyFieldEncoding
+    id: Int? = nil,
+    encoding: ForyFieldEncoding? = nil
 ) = #externalMacro(module: "ForyMacro", type: "ForyFieldMacro")

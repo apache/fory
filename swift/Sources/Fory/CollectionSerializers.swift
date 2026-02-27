@@ -35,7 +35,7 @@ private enum MapHeader {
 }
 
 private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> TypeId? {
-    if Element.self == UInt8.self { return .binary }
+    if Element.self == UInt8.self { return .uint8Array }
     if Element.self == Bool.self { return .boolArray }
     if Element.self == Int8.self { return .int8Array }
     if Element.self == Int16.self { return .int16Array }
