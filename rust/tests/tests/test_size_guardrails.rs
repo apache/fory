@@ -252,3 +252,58 @@ fn test_buffer_truncation_rejected() {
         );
     }
 }
+
+#[test]
+fn test_vec_buffer_truncation_rejected() {
+    // Exercises the buffer-remaining guard in read_vec_data (collection.rs).
+    // Serializes a valid Vec<i32>, then truncates the payload so the declared
+    // element count cannot possibly be satisfied — must be rejected with
+    // default (i32::MAX) limits, proving the check fires before with_capacity.
+    let fory_write = Fory::default();
+    let items: Vec<i32> = vec![1, 2, 3, 4, 5, 6, 7, 8];
+    let bytes = fory_write.serialize(&items).unwrap();
+
+    // Keep only the first 6 bytes — enough for the outer framing but not
+    // the element payload (8 i32s = 32 bytes minimum).
+    let truncated = &bytes[..bytes.len().saturating_sub(bytes.len() / 2)];
+    let fory_read = Fory::default();
+
+    if fory_core::error::PANIC_ON_ERROR {
+        let _ = std::panic::catch_unwind(|| {
+            let _: Result<Vec<i32>, _> = fory_read.deserialize(truncated);
+        });
+    } else {
+        let result: Result<Vec<i32>, _> = fory_read.deserialize(truncated);
+        assert!(
+            result.is_err(),
+            "Truncated Vec<i32> buffer must be rejected by buffer-remaining check"
+        );
+    }
+}
+
+#[test]
+fn test_primitive_list_buffer_truncation_rejected() {
+    // Exercises the buffer-remaining guard in primitive_list.rs fory_read_data.
+    // Vec<i64> uses the bulk-copy (primitive_list) path, NOT the generic
+    // collection path. Previously there was no buffer check before
+    // Vec::with_capacity on this path — this test pins that fix.
+    let fory_write = Fory::default();
+    let items: Vec<i64> = vec![100i64, 200, 300, 400, 500, 600, 700, 800];
+    let bytes = fory_write.serialize(&items).unwrap();
+
+    // Truncate to about half — enough for headers but not the full i64 payload.
+    let truncated = &bytes[..bytes.len().saturating_sub(bytes.len() / 2)];
+    let fory_read = Fory::default();
+
+    if fory_core::error::PANIC_ON_ERROR {
+        let _ = std::panic::catch_unwind(|| {
+            let _: Result<Vec<i64>, _> = fory_read.deserialize(truncated);
+        });
+    } else {
+        let result: Result<Vec<i64>, _> = fory_read.deserialize(truncated);
+        assert!(
+            result.is_err(),
+            "Truncated Vec<i64> buffer must be rejected by primitive_list buffer-remaining check"
+        );
+    }
+}
