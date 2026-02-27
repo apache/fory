@@ -478,6 +478,7 @@ impl<'a> ReadContext<'a> {
         self.meta_string_resolver.read_meta_string(&mut self.reader)
     }
 
+    #[inline(always)]
     pub fn check_string_bytes(&self, byte_len: usize) -> Result<(), Error> {
         if byte_len > self.max_string_bytes {
             return Err(Error::invalid_data(format!(
