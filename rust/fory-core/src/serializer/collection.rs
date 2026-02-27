@@ -235,13 +235,9 @@ where
         .bf
         .len()
         .saturating_sub(context.reader.cursor);
-    // Coarse lower-bound check: every element occupies at least 1 byte on the wire.
-    // This guards against trivially impossible element counts before allocation.
-    // For typed collections use read_vec_data which performs a precise per-element check.
     if len as usize > remaining {
         return Err(Error::invalid_data(format!(
-            "collection element count {} exceeds available buffer bytes {} \
-             (each element requires at least 1 byte on the wire)",
+            "collection length {} exceeds buffer remaining {}",
             len, remaining
         )));
     }
@@ -287,21 +283,15 @@ where
     if len == 0 {
         return Ok(Vec::new());
     }
-    // Precise buffer-remaining check: T is statically known here so we can compute
-    // the exact minimum bytes required (len * size_of::<T>(), floored at 1 byte per
-    // element for zero-sized types). This prevents Vec::with_capacity(len) from
-    // allocating memory that the buffer could never actually supply.
-    let elem_size = std::mem::size_of::<T>().max(1);
-    let min_bytes = (len as usize).saturating_mul(elem_size);
     let remaining = context
         .reader
         .bf
         .len()
         .saturating_sub(context.reader.cursor);
-    if min_bytes > remaining {
+    if len as usize > remaining {
         return Err(Error::invalid_data(format!(
-            "Vec of {} elements requires at least {} bytes but only {} remain in buffer",
-            len, min_bytes, remaining
+            "collection length {} exceeds buffer remaining {}",
+            len, remaining
         )));
     }
     context.check_collection_size(len as usize)?;

@@ -561,7 +561,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
                 len, remaining
             )));
         }
-        context.check_map_size(len as usize)?;
+        context.check_collection_size(len as usize)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
@@ -724,7 +724,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
                 len, remaining
             )));
         }
-        context.check_map_size(len as usize)?;
+        context.check_collection_size(len as usize)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()

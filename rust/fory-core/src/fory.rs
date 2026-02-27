@@ -321,21 +321,21 @@ impl Fory {
         self
     }
 
-    /// Sets the maximum byte length of a single deserialized string. Default is no limit.
+    /// Sets the maximum byte length of a single deserialized binary payload.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use fory_core::Fory;
     ///
-    /// let fory = Fory::default().max_string_bytes(1024 * 1024);
+    /// let fory = Fory::default().max_binary_size(64 * 1024 * 1024);
     /// ```
-    pub fn max_string_bytes(mut self, max: usize) -> Self {
-        self.config.max_string_bytes = max;
+    pub fn max_binary_size(mut self, max: usize) -> Self {
+        self.config.max_binary_size = max;
         self
     }
 
-    /// Sets the maximum element count of a single deserialized collection. Default is no limit.
+    /// Sets the maximum element count of a single deserialized collection or map.
     ///
     /// # Examples
     ///
@@ -346,20 +346,6 @@ impl Fory {
     /// ```
     pub fn max_collection_size(mut self, max: usize) -> Self {
         self.config.max_collection_size = max;
-        self
-    }
-
-    /// Sets the maximum entry count of a single deserialized map. Default is no limit.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// let fory = Fory::default().max_map_size(10_000);
-    /// ```
-    pub fn max_map_size(mut self, max: usize) -> Self {
-        self.config.max_map_size = max;
         self
     }
 

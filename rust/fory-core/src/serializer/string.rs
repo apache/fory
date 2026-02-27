@@ -67,7 +67,6 @@ impl Serializer for String {
                 byte_len, remaining
             )));
         }
-        context.check_string_bytes(byte_len)?;
         let s = match encoding {
             0 => context.reader.read_latin1_string(len as usize),
             1 => context.reader.read_utf16_string(len as usize),
