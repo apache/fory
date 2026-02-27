@@ -452,7 +452,7 @@ class DataClassSerializer(Serializer):
         elif isinstance(serializer, Float64Serializer):
             return f"{field_value} = {buffer}.read_float64()"
         elif isinstance(serializer, StringSerializer):
-            return f"{field_value} = {buffer}.read_string()"
+            return f"{field_value} = {buffer}.read_string({self.fory.max_string_bytes_length})"
         else:
             return None  # Complex type, needs ref handling
 
@@ -494,7 +494,7 @@ class DataClassSerializer(Serializer):
         elif isinstance(serializer, Float64Serializer):
             return buffer.read_float64()
         elif isinstance(serializer, StringSerializer):
-            return buffer.read_string()
+            return buffer.read_string(self.fory.max_string_bytes_length)
         else:
             return self.fory.read_ref_pyobject(buffer)
 
@@ -516,7 +516,7 @@ class DataClassSerializer(Serializer):
             return None
         else:
             if isinstance(serializer, StringSerializer):
-                return buffer.read_string()
+                return buffer.read_string(self.fory.max_string_bytes_length)
             else:
                 return self.fory.read_ref_pyobject(buffer)
 
@@ -864,7 +864,7 @@ class DataClassSerializer(Serializer):
                     stmts.extend(
                         [
                             f"if {buffer}.read_int8() >= {NOT_NULL_VALUE_FLAG}:",
-                            f"    {field_value} = {buffer}.read_string()",
+                            f"    {field_value} = {buffer}.read_string({self.fory.max_string_bytes_length})",
                             "else:",
                             f"    {field_value} = None",
                         ]

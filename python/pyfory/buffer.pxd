@@ -204,7 +204,7 @@ cdef class Buffer:
 
     cpdef inline write_string(self, str value)
 
-    cpdef inline str read_string(self)
+    cpdef inline str read_string(self, int32_t max_string_bytes_length=*)
 
     cpdef inline write(self, value)
 

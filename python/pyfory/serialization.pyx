@@ -1037,6 +1037,9 @@ cdef class Fory:
     cdef public bint is_peer_out_of_band_enabled
     cdef int32_t max_depth
     cdef int32_t depth
+    cdef public int32_t max_collection_length
+    cdef public int32_t max_map_length
+    cdef public int32_t max_string_bytes_length
 
     def __init__(
             self,
@@ -1048,6 +1051,9 @@ cdef class Fory:
             max_depth: int = 50,
             field_nullable: bool = False,
             meta_compressor=None,
+            max_collection_length: int = -1,
+            max_map_length: int = -1,
+            max_string_bytes_length: int = -1,
     ):
         """
         Initialize a Fory serialization instance.
@@ -1115,6 +1121,9 @@ cdef class Fory:
         self.is_peer_out_of_band_enabled = False
         self.depth = 0
         self.max_depth = max_depth
+        self.max_collection_length = max_collection_length
+        self.max_map_length = max_map_length
+        self.max_string_bytes_length = max_string_bytes_length
 
     def register_serializer(self, cls: Union[type, TypeVar], Serializer serializer):
         """
@@ -1465,7 +1474,7 @@ cdef class Fory:
             typeinfo = self.type_resolver.read_type_info(buffer)
             cls = typeinfo.cls
             if cls is str:
-                return buffer.read_string()
+                return buffer.read_string(self.max_string_bytes_length)
             elif cls is int:
                 return buffer.read_varint64()
             elif cls is bool:
@@ -1708,9 +1717,9 @@ cpdef inline read_nullable_pyfloat64(Buffer buffer):
     else:
         return None
 
-cpdef inline read_nullable_pystr(Buffer buffer):
+cpdef inline read_nullable_pystr(Buffer buffer, int32_t max_string_bytes_length=-1):
     if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
-        return buffer.read_string()
+        return buffer.read_string(max_string_bytes_length)
     else:
         return None
 
