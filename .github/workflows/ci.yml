@@ -214,7 +214,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CSharpXlangTest
       - name: Run C# IDL Tests
@@ -278,7 +278,7 @@ jobs:
           FORY_SWIFT_JAVA_CI: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
       - name: Generate Swift IDL test code
@@ -387,7 +387,7 @@ jobs:
             ${{ runner.os }}-maven-
       - uses: sbt/setup-sbt@1cad58d595b729a71ca2254cdf5b43dd6f42d4bb # v1.1.18
       - name: Install fory java
-        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests && cd -
+        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true && cd -
       - name: Test
         run: |
           cd scala && sbt +test && cd -
@@ -483,7 +483,7 @@ jobs:
           FORY_JAVASCRIPT_JAVA_CI: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest -DforkCount=0
 
@@ -542,7 +542,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.RustXlangTest
       - name: Run Rust IDL Tests
@@ -640,7 +640,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CPPXlangTest
       - name: Run C++ IDL Tests
@@ -772,7 +772,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PythonXlangTest
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PyCrossLanguageTest
@@ -847,7 +847,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.GoXlangTest
       - name: Run Go IDL Tests
@@ -892,7 +892,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.DartXlangTest
 
