@@ -17,7 +17,10 @@
  * under the License.
  */
 
+import 'package:fory/src/codegen/rules/code_rules.dart';
 import 'package:fory/src/const/types.dart';
+import 'package:meta/meta_meta.dart';
+import 'package:fory/src/const/meta_string_const.dart';
 
 abstract class ForyException extends Error {
   ForyException();
@@ -326,3 +329,400 @@ class InvalidDataException extends ForyException {
     buf.write(message);
   }
 }
+
+abstract class ForyCodegenException extends ForyException {
+  final String? _where;
+  ForyCodegenException([this._where]);
+
+  /// will generate warning and error location
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    buf.write('''[FORY]: Analysis error detected!
+You need to make sure your codes don't contain any grammar error itself.
+And review the error messages below, correct the issues, and then REGENERATE the code.
+''');
+    if (_where != null && _where.isNotEmpty) {
+      buf.write('where: ');
+      buf.write(_where);
+      buf.write('\n');
+    }
+  }
+}
+
+class ClassLevelException extends ForyCodegenException {
+  final String _libPath;
+  final String _className;
+
+  ClassLevelException(this._libPath, this._className, [super._where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('related class: ');
+    buf.write(_libPath);
+    buf.write('@');
+    buf.write(_className);
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+abstract class FieldException extends ForyConstraintViolation {
+  final String _libPath;
+  final String _className;
+  final List<String> _invalidFields;
+
+  FieldException(
+      this._libPath, this._className, this._invalidFields, super._constraint,
+      [super.where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('related class: ');
+    buf.write(_libPath);
+    buf.write('@');
+    buf.write(_className);
+    buf.write('\n');
+    buf.write('invalidFields: ');
+    buf.writeAll(_invalidFields, ', ');
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    StringBuffer buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+abstract class ForyConstraintViolation extends ForyCodegenException {
+  final String _constraint;
+
+  ForyConstraintViolation(this._constraint, [super._where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('constraint: ');
+    buf.write(_constraint);
+    buf.write('\n');
+  }
+}
+
+class CircularIncapableRisk extends ForyConstraintViolation {
+  final String libPath;
+  final String className;
+
+  CircularIncapableRisk(
+    this.libPath,
+    this.className,
+  ) : super(
+          CodeRules.circularReferenceIncapableRisk,
+        );
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('related class: ');
+    buf.write(libPath);
+    buf.write('@');
+    buf.write(className);
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class InformalConstructorParamException extends ClassLevelException {
+  final List<String> _invalidParams;
+
+  // There is no need to add the reason field, because the reason is actually just invalidParams
+  InformalConstructorParamException(
+      String libPath, String className, this._invalidParams,
+      [String? where])
+      : super(libPath, className, where);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write(CodeRules.consParamsOnlySupportThisAndSuper);
+    buf.write('invalidParams: ');
+    buf.writeAll(_invalidParams, ', ');
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class FieldOverridingException extends FieldException {
+  FieldOverridingException(
+      String libPath, String className, List<String> invalidFields,
+      [String? where])
+      : super(libPath, className, invalidFields,
+            CodeRules.unsupportFieldOverriding, where);
+}
+
+class NoUsableConstructorException extends ForyCodegenException {
+  final String libPath;
+  final String className;
+  final String reason;
+
+  NoUsableConstructorException(this.libPath, this.className, this.reason)
+      : super('$libPath@$className');
+}
+
+class CodegenUnsupportedTypeException extends ForyCodegenException {
+  final String clsLibPath;
+  final String clsName;
+  final String fieldName;
+
+  final String typeScheme;
+  final String typePath;
+  final String typeName;
+
+  CodegenUnsupportedTypeException(
+    this.clsLibPath,
+    this.clsName,
+    this.fieldName,
+    this.typeScheme,
+    this.typePath,
+    this.typeName,
+  ) : super('$clsLibPath@$clsName');
+
+  /// will generate warning and error location
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('Unsupported type: ');
+    buf.write(typeScheme);
+    buf.write(':');
+    buf.write(typePath);
+    buf.write('@');
+    buf.write(typeName);
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    StringBuffer buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class ConstraintViolationException extends FieldException {
+  ConstraintViolationException(
+    String libPath,
+    String className,
+    String fieldName,
+    String constraint, [
+    String? where,
+  ]) : super(libPath, className, [fieldName], constraint, where);
+}
+
+
+enum FieldAccessErrorType {
+  noWayToAssign(
+      "This field needs to be assigned a value because it's includedFromFory, but it's not a constructor parameter and can't be assigned via a setter."),
+  noWayToGet(
+      "This field needs to be read because it's includedFromFory, but it's not public and it can't be read via a getter."),
+  notIncludedButConsDemand(
+      "This field is included in the constructor, but it's not includedFromFory. ");
+
+  final String warning;
+
+  const FieldAccessErrorType(this.warning);
+}
+
+class FieldAccessException extends FieldException {
+  final FieldAccessErrorType errorType;
+
+  FieldAccessException(
+    String libPath,
+    String clsName,
+    List<String> fieldNames,
+    this.errorType,
+  ) : super(
+          libPath,
+          clsName,
+          fieldNames,
+          errorType.warning,
+        );
+}
+
+abstract class AnnotationException extends ForyCodegenException {
+  AnnotationException(super._where);
+}
+
+class InvalidClassTagException extends ForyCodegenException {
+  final List<String>? _classesWithEmptyTag;
+  final List<String>? _classesWithTooLongTag;
+  final Map<String, List<String>>? _repeatedTags;
+
+  InvalidClassTagException(this._classesWithEmptyTag,
+      this._classesWithTooLongTag, this._repeatedTags,
+      [super._where]) {
+    assert(_classesWithEmptyTag != null ||
+        _repeatedTags != null ||
+        _classesWithTooLongTag != null);
+  }
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    if (_classesWithEmptyTag != null) {
+      buf.write('Classes with empty tag:');
+      buf.writeAll(_classesWithEmptyTag, ', ');
+      buf.write('\n');
+    }
+
+    if (_classesWithTooLongTag != null) {
+      buf.write('Classes with too long tag (should be less than ');
+      buf.write(MetaStringConst.metaStrMaxLen);
+      buf.write('):');
+      buf.writeAll(_classesWithTooLongTag, ', ');
+      buf.write('\n');
+    }
+
+    if (_repeatedTags != null) {
+      buf.write('Classes with repeated tags:');
+      for (String c in _repeatedTags.keys) {
+        buf.write(c);
+        buf.write(': ');
+        buf.writeAll(_repeatedTags[c]!, ', ');
+        buf.write('\n');
+      }
+    }
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class ConflictAnnotationException extends AnnotationException {
+  final String _targetAnnotation;
+  final String _conflictAnnotation;
+
+  ConflictAnnotationException(this._targetAnnotation, this._conflictAnnotation,
+      [super._where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write(
+        'The annotation $_targetAnnotation conflicts with $_conflictAnnotation.');
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class DuplicatedAnnotationException extends AnnotationException {
+  final String _annotation;
+  final String _displayName;
+
+  DuplicatedAnnotationException(this._annotation, this._displayName,
+      [super._where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write(_displayName);
+    buf.write(' has multiple ');
+    buf.write(_annotation);
+    buf.write(' annotations.');
+    buf.write('\n');
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class CodegenUnregisteredTypeException extends AnnotationException {
+  final String _libPath;
+  final String _clsName;
+
+  final String _annotation;
+
+  CodegenUnregisteredTypeException(
+      this._libPath, this._clsName, this._annotation,
+      [super._where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('Unregistered type: ');
+    buf.write(_libPath);
+    buf.write('@');
+    buf.write(_clsName);
+    buf.write('\nit should be registered with the annotation: ');
+    buf.write(_annotation);
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+
+class InvalidAnnotationTargetException extends AnnotationException {
+  final String _annotation;
+  final String _theTarget;
+  final List<TargetKind> _supported;
+
+  InvalidAnnotationTargetException(
+      this._annotation, this._theTarget, this._supported,
+      [super._where]);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    super.giveExceptionMessage(buf);
+    buf.write('Unsupported target for annotation: ');
+    buf.writeln(_annotation);
+    buf.write('Target: ');
+    buf.writeln(_theTarget);
+    buf.write('Supported targets: ');
+    buf.writeAll(_supported, ', ');
+  }
+
+  @override
+  String toString() {
+    final buf = StringBuffer();
+    giveExceptionMessage(buf);
+    return buf.toString();
+  }
+}
+

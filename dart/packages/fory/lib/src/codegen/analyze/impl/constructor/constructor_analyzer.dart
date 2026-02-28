@@ -29,7 +29,7 @@ import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/constructor_param.dart';
 import 'package:fory/src/codegen/entity/constructor_params.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/constraint_violation_exception.dart'
+import 'package:fory/src/fory_exception.dart'
     show
         CircularIncapableRisk,
         InformalConstructorParamException,

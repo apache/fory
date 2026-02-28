@@ -33,7 +33,7 @@ import 'package:fory/src/codegen/analyze/interface/field_analyzer.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/constraint_violation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
 import 'package:fory/src/codegen/meta/impl/type_spec_generator.dart';
 import 'package:fory/src/codegen/meta/public_accessor_descriptor.dart';

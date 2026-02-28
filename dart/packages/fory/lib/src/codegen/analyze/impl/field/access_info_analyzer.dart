@@ -23,7 +23,7 @@ import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart'
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/constructor_params.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/field_exception.dart'
+import 'package:fory/src/fory_exception.dart'
     show FieldAccessErrorType, FieldAccessException;
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
 import 'package:fory/src/codegen/meta/impl/fields_spec_generator.dart';

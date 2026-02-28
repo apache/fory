@@ -23,7 +23,7 @@ import 'package:source_gen/source_gen.dart';
 import 'package:fory/src/annotation/fory_object.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
-import 'package:fory/src/codegen/exception/annotation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/codegen/meta/generated_code_part.dart';
 import 'package:fory/src/annotation/fory_enum.dart';
 import 'package:fory/src/annotation/fory_class.dart';
