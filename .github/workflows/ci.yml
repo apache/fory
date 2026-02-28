@@ -478,6 +478,7 @@ jobs:
         run: |
           cd javascript
           npm install
+          npm run build
       - name: Run JavaScript Xlang Test
         env:
           FORY_JAVASCRIPT_JAVA_CI: "1"

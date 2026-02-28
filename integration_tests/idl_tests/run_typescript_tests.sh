@@ -21,18 +21,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "=== Generating TypeScript IDL code ==="
 python "${SCRIPT_DIR}/generate_idl.py" --lang typescript
 
-echo "=== Installing dependencies ==="
 cd "${SCRIPT_DIR}/typescript"
 npm install
-
-echo "=== Building Fory JS runtime ==="
-cd "${SCRIPT_DIR}/../../javascript"
-npm install
-npm run build
-
-echo "=== Running TypeScript IDL tests ==="
-cd "${SCRIPT_DIR}/typescript"
-npx jest --ci --reporters=default
+ENABLE_FORY_DEBUG_OUTPUT=1 npx jest --ci
