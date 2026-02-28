@@ -448,6 +448,33 @@ extension Array: Serializer where Element: Serializer {
         primitiveArrayTypeID(for: Element.self) ?? .list
     }
 
+    public static func foryWriteTypeInfo(_ context: WriteContext) throws {
+        if Element.self == UInt8.self, context.compatible {
+            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.binary.rawValue))
+            return
+        }
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws {
+        let rawTypeID = try context.buffer.readVarUInt32()
+        guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
+            throw ForyError.invalidData("unknown type id \(rawTypeID)")
+        }
+
+        if Element.self == UInt8.self {
+            if actualTypeID == .uint8Array || actualTypeID == .binary {
+                return
+            }
+            throw ForyError.typeMismatch(expected: TypeId.uint8Array.rawValue, actual: rawTypeID)
+        }
+
+        let expectedTypeID = staticTypeId
+        if actualTypeID != expectedTypeID {
+            throw ForyError.typeMismatch(expected: expectedTypeID.rawValue, actual: rawTypeID)
+        }
+    }
+
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         if primitiveArrayTypeID(for: Element.self) != nil {
             writePrimitiveArray(self, context: context)

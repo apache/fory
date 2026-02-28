@@ -1686,9 +1686,7 @@ private func unwrapOptional(_ typeText: String) -> (isOptional: Bool, type: Stri
     if trimmed.hasSuffix("?") {
         return (true, String(trimmed.dropLast()))
     }
-    if trimmed.hasPrefix("Optional<") && trimmed.hasSuffix(">") {
-        let start = trimmed.index(trimmed.startIndex, offsetBy: "Optional<".count)
-        let inner = String(trimmed[start..<trimmed.index(before: trimmed.endIndex)])
+    if let inner = extractGenericTypeContent(trimmed, baseNames: ["Optional", "Swift.Optional"]) {
         return (true, inner)
     }
     return (false, trimmed)
@@ -1709,7 +1707,7 @@ private struct TypeClassification {
 }
 
 private func classifyType(_ typeText: String) -> TypeClassification {
-    let normalized = trimType(typeText)
+    let normalized = trimKnownModulePrefix(trimType(typeText))
     if isDynamicAnyConcreteType(normalized) {
         return .init(typeID: 0, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     }
@@ -1739,9 +1737,9 @@ private func classifyType(_ typeText: String) -> TypeClassification {
         return .init(typeID: 20, isPrimitive: true, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 8)
     case "String":
         return .init(typeID: 21, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
-    case "Data", "Foundation.Data":
+    case "Data":
         return .init(typeID: 41, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
-    case "Date", "Foundation.Date", "ForyTimestamp":
+    case "Date", "ForyTimestamp":
         return .init(typeID: 38, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     case "ForyDate":
         return .init(typeID: 39, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
@@ -1829,18 +1827,15 @@ private func classifyType(_ typeText: String) -> TypeClassification {
 }
 
 private func parseArrayElement(_ type: String) -> String? {
-    if type.hasPrefix("[") && type.hasSuffix("]") {
-        let content = String(type.dropFirst().dropLast())
+    let normalized = trimType(type)
+    if normalized.hasPrefix("[") && normalized.hasSuffix("]") {
+        let content = String(normalized.dropFirst().dropLast())
         if content.contains(":") {
             return nil
         }
         return content
     }
-    if type.hasPrefix("Array<") && type.hasSuffix(">") {
-        let start = type.index(type.startIndex, offsetBy: "Array<".count)
-        return String(type[start..<type.index(before: type.endIndex)])
-    }
-    return nil
+    return extractGenericTypeContent(normalized, baseNames: ["Array", "Swift.Array"])
 }
 
 private func dynamicAnyDefaultExpr(typeText: String) -> String {
@@ -1898,33 +1893,80 @@ private func normalizeTypeForDynamicAny(_ typeText: String) -> String {
 }
 
 private func parseSetElement(_ type: String) -> String? {
-    if type.hasPrefix("Set<") && type.hasSuffix(">") {
-        let start = type.index(type.startIndex, offsetBy: "Set<".count)
-        return String(type[start..<type.index(before: type.endIndex)])
+    extractGenericTypeContent(trimType(type), baseNames: ["Set", "Swift.Set"])
+}
+
+private func parseDictionary(_ type: String) -> (String, String)? {
+    let normalized = trimType(type)
+    if normalized.hasPrefix("[") && normalized.hasSuffix("]") {
+        let content = String(normalized.dropFirst().dropLast())
+        if let colon = findTopLevelSeparatorIndex(in: content, separator: ":") {
+            let key = String(content[..<colon])
+            let value = String(content[content.index(after: colon)...])
+            return (trimType(key), trimType(value))
+        }
+    }
+
+    if let content = extractGenericTypeContent(normalized, baseNames: ["Dictionary", "Swift.Dictionary"]) {
+        if let comma = findTopLevelSeparatorIndex(in: content, separator: ",") {
+            let key = String(content[..<comma])
+            let value = String(content[content.index(after: comma)...])
+            return (trimType(key), trimType(value))
+        }
+    }
+
+    return nil
+}
+
+private func trimKnownModulePrefix(_ type: String) -> String {
+    if type.hasPrefix("Swift.") {
+        return String(type.dropFirst("Swift.".count))
+    }
+    if type.hasPrefix("Foundation.") {
+        return String(type.dropFirst("Foundation.".count))
+    }
+    return type
+}
+
+private func extractGenericTypeContent(_ type: String, baseNames: [String]) -> String? {
+    for baseName in baseNames {
+        let prefix = "\(baseName)<"
+        if type.hasPrefix(prefix), type.hasSuffix(">") {
+            let start = type.index(type.startIndex, offsetBy: prefix.count)
+            return String(type[start..<type.index(before: type.endIndex)])
+        }
     }
     return nil
 }
 
-private func parseDictionary(_ type: String) -> (String, String)? {
-    if type.hasPrefix("[") && type.hasSuffix("]") {
-        let content = String(type.dropFirst().dropLast())
-        if let colon = content.firstIndex(of: ":") {
-            let key = String(content[..<colon])
-            let value = String(content[content.index(after: colon)...])
-            return (key, value)
+private func findTopLevelSeparatorIndex(in content: String, separator: Character) -> String.Index? {
+    var angleDepth = 0
+    var squareDepth = 0
+    var roundDepth = 0
+
+    for index in content.indices {
+        let character = content[index]
+        switch character {
+        case "<":
+            angleDepth += 1
+        case ">":
+            angleDepth = max(0, angleDepth - 1)
+        case "[":
+            squareDepth += 1
+        case "]":
+            squareDepth = max(0, squareDepth - 1)
+        case "(":
+            roundDepth += 1
+        case ")":
+            roundDepth = max(0, roundDepth - 1)
+        default:
+            break
+        }
+
+        if character == separator && angleDepth == 0 && squareDepth == 0 && roundDepth == 0 {
+            return index
         }
     }
-
-    if type.hasPrefix("Dictionary<") && type.hasSuffix(">") {
-        let start = type.index(type.startIndex, offsetBy: "Dictionary<".count)
-        let content = String(type[start..<type.index(before: type.endIndex)])
-        if let comma = content.firstIndex(of: ",") {
-            let key = String(content[..<comma])
-            let value = String(content[content.index(after: comma)...])
-            return (key, value)
-        }
-    }
-
     return nil
 }
 

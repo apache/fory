@@ -18,7 +18,7 @@
 """Swift code generator."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
+from typing import Dict, List, Optional, Set, Union as TypingUnion
 
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
@@ -357,7 +357,9 @@ class SwiftGenerator(BaseGenerator):
         if self.schema.source_file:
             base_dir = Path(self.schema.source_file).resolve().parent
             for imp in self.schema.imports:
-                candidate = self._normalize_import_path(str((base_dir / imp.path).resolve()))
+                candidate = self._normalize_import_path(
+                    str((base_dir / imp.path).resolve())
+                )
                 if candidate in by_file and candidate not in used_paths:
                     ordered.append(by_file[candidate])
                     used_paths.add(candidate)
@@ -752,9 +754,7 @@ class SwiftGenerator(BaseGenerator):
         for value in enum.values:
             stripped_name = self.strip_enum_prefix(enum.name, value.name)
             case_name = self.safe_enum_case_name(stripped_name)
-            lines.append(
-                f"{ind}{self.indent_str}case {case_name} = {value.value}"
-            )
+            lines.append(f"{ind}{self.indent_str}case {case_name} = {value.value}")
         lines.append("")
         lines.extend(self.generate_bytes_methods(type_name, indent + 1))
         lines.append(f"{ind}}}")
@@ -812,7 +812,9 @@ class SwiftGenerator(BaseGenerator):
         if is_class:
             declaration = f"public final class {type_name}"
         else:
-            conformance = ": Equatable" if self.message_supports_equatable(message) else ""
+            conformance = (
+                ": Equatable" if self.message_supports_equatable(message) else ""
+            )
             declaration = f"public struct {type_name}{conformance}"
         lines.append(f"{ind}{declaration} {{")
 
@@ -942,7 +944,9 @@ class SwiftGenerator(BaseGenerator):
         lines: List[str] = []
         registration_path = self.registration_type_path()
         lines.append(f"{ind}public func toBytes() throws -> Data {{")
-        lines.append(f"{ind}{self.indent_str}try {registration_path}.getFory().serialize(self)")
+        lines.append(
+            f"{ind}{self.indent_str}try {registration_path}.getFory().serialize(self)"
+        )
         lines.append(f"{ind}}}")
         lines.append("")
         lines.append(
@@ -1022,7 +1026,9 @@ class SwiftGenerator(BaseGenerator):
         lines.append(f"{ind}{self.indent_str}" + "}")
         lines.append("")
 
-        lines.append(f"{ind}{self.indent_str}public static func register(_ fory: Fory) throws {{")
+        lines.append(
+            f"{ind}{self.indent_str}public static func register(_ fory: Fory) throws {{"
+        )
         for imported_registration in self._collect_imported_registration_paths():
             lines.append(
                 f"{ind}{self.indent_str * 2}try {imported_registration}.register(fory)"
