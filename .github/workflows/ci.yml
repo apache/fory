@@ -179,6 +179,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -213,6 +217,8 @@ jobs:
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CSharpXlangTest
+      - name: Run C# IDL Tests
+        run: ./integration_tests/idl_tests/run_csharp_tests.sh
 
   swift:
     name: Swift CI
