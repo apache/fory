@@ -667,6 +667,8 @@ if err := f.RegisterNamedUnion(Holder{}, "myapp.models.Holder", fory.NewUnionSer
 option go_nested_type_style = "camelcase";
 ```
 
+The CLI flag `--go_nested_type_style` overrides this schema option when both are set.
+
 ### Usage
 
 ```go
@@ -752,7 +754,16 @@ Swift output is one `.swift` file per schema, for example:
 
 ### Type Generation
 
-The generator creates namespaced Swift models with `@ForyObject` and field IDs:
+The generator creates Swift models with `@ForyObject` and field IDs.
+
+When package/namespace is non-empty, namespace shaping is controlled by `swift_namespace_style`:
+
+- `enum` (default): nested enum namespace wrappers.
+- `flatten`: package-derived prefix on top-level type names (for example `Demo_Foo_User`).
+
+When package/namespace is empty, no enum wrapper or flatten prefix is applied.
+
+For non-empty package with default `enum` style:
 
 ```swift
 public enum Addressbook {
@@ -774,6 +785,15 @@ public enum Addressbook {
 }
 ```
 
+For non-empty package with `flatten` style:
+
+```swift
+@ForyObject
+public struct Addressbook_Person: Equatable { ... }
+```
+
+The CLI flag `--swift_namespace_style` overrides schema option `swift_namespace_style` when both are set.
+
 Unions are generated as tagged Swift enums with associated payload values.
 Messages with `ref`/`weak_ref` fields are generated as `final class` models to preserve reference semantics.
 
@@ -790,6 +810,8 @@ public enum ForyRegistration {
     }
 }
 ```
+
+With non-empty package and `flatten` style, the helper is prefixed too (for example `Addressbook_ForyRegistration`).
 
 For schemas without explicit `[id=...]`, registration uses computed numeric IDs.
 If `option enable_auto_type_id = false;` is set, generated code uses name-based registration APIs.

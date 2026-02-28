@@ -66,8 +66,11 @@ Compile options:
 | `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
 | `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                        | (none)        |
 | `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`  |
+| `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`            | `enum`        |
 | `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`       |
 | `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)      |
+
+For both `go_nested_type_style` and `swift_namespace_style`, schema-level file options are supported (`option ... = ...;`) and the CLI flag overrides the schema option when both are present.
 
 Scan options (with `--scan-generated`):
 
