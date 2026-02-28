@@ -25,7 +25,7 @@ import 'package:fory/src/exception/fory_exception.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('maxCollectionSize guardrail', () {
+  group('maxCollectionSize guard check', () {
     test('list within limit deserializes successfully', () {
       final foryWrite = Fory();
       final bytes = foryWrite.serialize([1, 2, 3]);
@@ -115,7 +115,7 @@ void main() {
     });
   });
 
-  group('maxBinarySize guardrail', () {
+  group('maxBinarySize guard check', () {
     test('binary within limit deserializes successfully', () {
       final foryWrite = Fory();
       final data = Uint8List.fromList([1, 2, 3, 4, 5]);
@@ -169,7 +169,7 @@ void main() {
     });
   });
 
-  group('combined guardrails', () {
+  group('combined guard check', () {
     test('both limits enforced independently', () {
       final foryWrite = Fory();
 
