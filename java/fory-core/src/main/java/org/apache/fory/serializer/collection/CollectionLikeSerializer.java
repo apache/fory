@@ -437,13 +437,14 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    */
   public Collection newCollection(MemoryBuffer buffer) {
     numElements = buffer.readVarUint32Small7();
-    
+
     int maxCollectionSize = fory.getConfig().maxCollectionSize();
     if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-        throw new IllegalArgumentException(
-            "Collection size " + numElements +
-            " exceeds configured maxCollectionSize " + maxCollectionSize
-        );
+      throw new IllegalArgumentException(
+          "Collection size "
+              + numElements
+              + " exceeds configured maxCollectionSize "
+              + maxCollectionSize);
     }
     if (constructor == null) {
       constructor = ReflectionUtils.getCtrHandle(type, true);

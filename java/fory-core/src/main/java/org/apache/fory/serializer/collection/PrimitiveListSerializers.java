@@ -84,10 +84,8 @@ public class PrimitiveListSerializers {
       int size = buffer.readVarUint32Small7();
       int maxBinarySize = fory.getConfig().maxBinarySize();
       if (maxBinarySize > 0 && size > maxBinarySize) {
-          throw new IllegalArgumentException(
-              "Binary size " + size +
-              " exceeds configured maxBinarySize " + maxBinarySize
-          );
+        throw new IllegalArgumentException(
+            "Binary size " + size + " exceeds configured maxBinarySize " + maxBinarySize);
       }
       byte[] array = new byte[size];
       buffer.readBytes(array);
@@ -290,10 +288,8 @@ public class PrimitiveListSerializers {
       int size = buffer.readVarUint32Small7();
       int maxBinarySize = fory.getConfig().maxBinarySize();
       if (maxBinarySize > 0 && size > maxBinarySize) {
-          throw new IllegalArgumentException(
-              "Binary size " + size +
-              " exceeds configured maxBinarySize " + maxBinarySize
-          );
+        throw new IllegalArgumentException(
+            "Binary size " + size + " exceeds configured maxBinarySize " + maxBinarySize);
       }
       byte[] array = new byte[size];
       buffer.readBytes(array);

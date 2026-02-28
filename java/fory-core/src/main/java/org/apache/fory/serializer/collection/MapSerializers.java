@@ -63,10 +63,11 @@ public class MapSerializers {
       int numElements = buffer.readVarUint32Small7();
       int maxCollectionSize = fory.getConfig().maxCollectionSize();
       if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-          throw new IllegalArgumentException(
-              "Map size " + numElements +
-              " exceeds configured maxCollectionSize " + maxCollectionSize
-          );
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
       }
 
       setNumElements(numElements);
@@ -91,10 +92,11 @@ public class MapSerializers {
       int numElements = buffer.readVarUint32Small7();
       int maxCollectionSize = fory.getConfig().maxCollectionSize();
       if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-          throw new IllegalArgumentException(
-              "Map size " + numElements +
-              " exceeds configured maxCollectionSize " + maxCollectionSize
-          );
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
       }
 
       setNumElements(numElements);
@@ -119,10 +121,11 @@ public class MapSerializers {
       int numElements = buffer.readVarUint32Small7();
       int maxCollectionSize = fory.getConfig().maxCollectionSize();
       if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-          throw new IllegalArgumentException(
-              "Map size " + numElements +
-              " exceeds configured maxCollectionSize " + maxCollectionSize
-          );
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
       }
 
       setNumElements(numElements);
@@ -295,10 +298,11 @@ public class MapSerializers {
       int numElements = buffer.readVarUint32Small7();
       int maxCollectionSize = fory.getConfig().maxCollectionSize();
       if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-          throw new IllegalArgumentException(
-              "Map size " + numElements +
-              " exceeds configured maxCollectionSize " + maxCollectionSize
-          );
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
       }
 
       setNumElements(numElements);
@@ -334,10 +338,11 @@ public class MapSerializers {
       int numElements = buffer.readVarUint32Small7();
       int maxCollectionSize = fory.getConfig().maxCollectionSize();
       if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-          throw new IllegalArgumentException(
-              "Map size " + numElements +
-              " exceeds configured maxCollectionSize " + maxCollectionSize
-          );
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
       }
 
       setNumElements(numElements);
@@ -538,10 +543,11 @@ public class MapSerializers {
       int numElements = buffer.readVarUint32Small7();
       int maxCollectionSize = fory.getConfig().maxCollectionSize();
       if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
-          throw new IllegalArgumentException(
-              "Map size " + numElements +
-              " exceeds configured maxCollectionSize " + maxCollectionSize
-          );
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
       }
 
       setNumElements(numElements);
