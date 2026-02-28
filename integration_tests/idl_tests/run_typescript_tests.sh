@@ -26,3 +26,4 @@ python "${SCRIPT_DIR}/generate_idl.py" --lang typescript
 cd "${SCRIPT_DIR}/typescript"
 npm install
 ENABLE_FORY_DEBUG_OUTPUT=1 npx jest --ci
+
