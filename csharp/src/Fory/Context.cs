@@ -229,6 +229,8 @@ public sealed class ReadContext
     private readonly Dictionary<Type, List<TypeMeta>> _pendingCompatibleTypeMeta = [];
     private readonly Dictionary<Type, DynamicTypeInfo> _pendingDynamicTypeInfo = [];
     private readonly Dictionary<CanonicalReferenceSignature, List<CanonicalReferenceEntry>> _canonicalReferenceCache = [];
+    private readonly int _maxDynamicReadDepth;
+    private int _currentDynamicReadDepth;
 
     public ReadContext(
         ByteReader reader,
@@ -237,8 +239,14 @@ public sealed class ReadContext
         bool compatible = false,
         bool checkStructVersion = false,
         CompatibleTypeDefReadState? compatibleTypeDefState = null,
-        MetaStringReadState? metaStringReadState = null)
+        MetaStringReadState? metaStringReadState = null,
+        int maxDynamicReadDepth = 20)
     {
+        if (maxDynamicReadDepth <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDynamicReadDepth), "MaxDepth must be greater than 0.");
+        }
+
         Reader = reader;
         TypeResolver = typeResolver;
         TrackRef = trackRef;
@@ -247,6 +255,7 @@ public sealed class ReadContext
         RefReader = new RefReader();
         CompatibleTypeDefState = compatibleTypeDefState ?? new CompatibleTypeDefReadState();
         MetaStringReadState = metaStringReadState ?? new MetaStringReadState();
+        _maxDynamicReadDepth = maxDynamicReadDepth;
     }
 
     public ByteReader Reader { get; private set; }
@@ -322,6 +331,24 @@ public sealed class ReadContext
         _pendingDynamicTypeInfo.Remove(type);
     }
 
+    public void IncreaseDynamicReadDepth()
+    {
+        _currentDynamicReadDepth += 1;
+        if (_currentDynamicReadDepth > _maxDynamicReadDepth)
+        {
+            throw new InvalidDataException(
+                $"maximum dynamic object nesting depth ({_maxDynamicReadDepth}) exceeded. current depth: {_currentDynamicReadDepth}");
+        }
+    }
+
+    public void DecreaseDynamicReadDepth()
+    {
+        if (_currentDynamicReadDepth > 0)
+        {
+            _currentDynamicReadDepth -= 1;
+        }
+    }
+
     public T CanonicalizeNonTrackingReference<T>(T value, int start, int end)
     {
         if (!TrackRef || end <= start || value is null || value is not object obj)
@@ -361,6 +388,7 @@ public sealed class ReadContext
         _pendingCompatibleTypeMeta.Clear();
         _pendingDynamicTypeInfo.Clear();
         _canonicalReferenceCache.Clear();
+        _currentDynamicReadDepth = 0;
     }
 
     public void Reset()

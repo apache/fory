@@ -29,3 +29,14 @@ abstract class ForyException extends Error {
     return buf.toString();
   }
 }
+
+class InvalidDataException extends ForyException {
+  final String message;
+
+  InvalidDataException(this.message);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    buf.write(message);
+  }
+}

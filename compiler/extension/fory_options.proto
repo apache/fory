@@ -29,6 +29,8 @@
 // File-level options:
 //   option (fory).use_record_for_java_message = true;
 //   option (fory).enable_auto_type_id = true;
+//   option (fory).go_nested_type_style = "camelcase";
+//   option (fory).swift_namespace_style = "flatten";
 //
 // Message options:
 //   message MyMessage {
@@ -79,6 +81,20 @@ message ForyFileOptions {
   // When false, messages default to STRUCT/NAMED_STRUCT unless overridden.
   // Default: true.
   optional bool evolving = 4;
+
+  // Go nested type naming style.
+  // - "underscore" (default): Parent_Child
+  // - "camelcase": ParentChild
+  // Equivalent to compiler flag: --go_nested_type_style
+  optional string go_nested_type_style = 5;
+
+  // Swift package namespace style.
+  // - "enum" (default): nested enum namespace wrappers
+  // - "flatten": package-derived prefix on top-level type names
+  // Equivalent to compiler flag: --swift_namespace_style
+  //
+  // Note: namespace wrapper/prefixing is only applied when package/namespace is non-empty.
+  optional string swift_namespace_style = 6;
 }
 
 extend google.protobuf.FileOptions { optional ForyFileOptions fory = 50001; }

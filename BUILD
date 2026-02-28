@@ -31,6 +31,7 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
+        "//cpp/fory/python:_pyfory",
         "//cpp/fory/util:fory_util",
     ],
 )

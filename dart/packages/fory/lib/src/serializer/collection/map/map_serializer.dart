@@ -18,6 +18,7 @@
  */
 
 import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/exception/fory_exception.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/memory/byte_reader.dart';
@@ -51,6 +52,11 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   @override
   T read(ByteReader br, int refId, DeserializationContext pack) {
     int remaining = br.readVarUint32Small7();
+    if (remaining > pack.config.maxCollectionSize) {
+      throw InvalidDataException(
+          'Map size $remaining exceeds maxCollectionSize ${pack.config.maxCollectionSize}. '
+          'The input data may be malicious, or need to increase the maxCollectionSize when creating Fory.');
+    }
     T map = newMap(remaining);
     if (writeRef) {
       pack.refResolver.setRefTheLatestId(map);
