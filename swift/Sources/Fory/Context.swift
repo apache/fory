@@ -295,8 +295,8 @@ public final class ReadContext {
     public let trackRef: Bool
     public let compatible: Bool
     public let checkClassVersion: Bool
-    public let maxCollectionLength: Int
-    public let maxBinaryLength: Int
+    public let maxCollectionSize: Int
+    public let maxBinarySize: Int
     public let maxDepth: Int
     public let refReader: RefReader
     public let compatibleTypeDefState: CompatibleTypeDefReadState
@@ -316,8 +316,8 @@ public final class ReadContext {
         trackRef: Bool,
         compatible: Bool = false,
         checkClassVersion: Bool = true,
-        maxCollectionLength: Int = 1_000_000,
-        maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxCollectionSize: Int = 1_000_000,
+        maxBinarySize: Int = 64 * 1024 * 1024,
         maxDepth: Int = 5,
         compatibleTypeDefState: CompatibleTypeDefReadState = CompatibleTypeDefReadState(),
         metaStringReadState: MetaStringReadState = MetaStringReadState()
@@ -327,8 +327,8 @@ public final class ReadContext {
         self.trackRef = trackRef
         self.compatible = compatible
         self.checkClassVersion = checkClassVersion
-        self.maxCollectionLength = maxCollectionLength
-        self.maxBinaryLength = maxBinaryLength
+        self.maxCollectionSize = maxCollectionSize
+        self.maxBinarySize = maxBinarySize
         self.maxDepth = maxDepth
         self.refReader = RefReader()
         self.compatibleTypeDefState = compatibleTypeDefState
@@ -361,9 +361,9 @@ public final class ReadContext {
         if length < 0 {
             throw ForyError.invalidData("\(label) length is negative")
         }
-        if length > maxCollectionLength {
+        if length > maxCollectionSize {
             throw ForyError.invalidData(
-                "\(label) length \(length) exceeds configured maxCollectionLength \(maxCollectionLength)"
+                "\(label) length \(length) exceeds configured maxCollectionSize \(maxCollectionSize)"
             )
         }
     }
@@ -373,9 +373,9 @@ public final class ReadContext {
         if length < 0 {
             throw ForyError.invalidData("\(label) size is negative")
         }
-        if length > maxBinaryLength {
+        if length > maxBinarySize {
             throw ForyError.invalidData(
-                "\(label) size \(length) exceeds configured maxBinaryLength \(maxBinaryLength)"
+                "\(label) size \(length) exceeds configured maxBinarySize \(maxBinarySize)"
             )
         }
     }

@@ -22,8 +22,8 @@ public struct ForyConfig {
     public var trackRef: Bool
     public var compatible: Bool
     public var checkClassVersion: Bool
-    public var maxCollectionLength: Int
-    public var maxBinaryLength: Int
+    public var maxCollectionSize: Int
+    public var maxBinarySize: Int
     public var maxDepth: Int
 
     public init(
@@ -31,16 +31,16 @@ public struct ForyConfig {
         trackRef: Bool = false,
         compatible: Bool = false,
         checkClassVersion: Bool = true,
-        maxCollectionLength: Int = 1_000_000,
-        maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxCollectionSize: Int = 1_000_000,
+        maxBinarySize: Int = 64 * 1024 * 1024,
         maxDepth: Int = 5
     ) {
         self.xlang = xlang
         self.trackRef = trackRef
         self.compatible = compatible
         self.checkClassVersion = checkClassVersion
-        self.maxCollectionLength = maxCollectionLength
-        self.maxBinaryLength = maxBinaryLength
+        self.maxCollectionSize = maxCollectionSize
+        self.maxBinarySize = maxBinarySize
         self.maxDepth = maxDepth
     }
 }
@@ -77,8 +77,8 @@ private final class ForyRuntimeContext {
             trackRef: config.trackRef,
             compatible: config.compatible,
             checkClassVersion: config.checkClassVersion,
-            maxCollectionLength: config.maxCollectionLength,
-            maxBinaryLength: config.maxBinaryLength,
+            maxCollectionSize: config.maxCollectionSize,
+            maxBinarySize: config.maxBinarySize,
             maxDepth: config.maxDepth,
             compatibleTypeDefState: CompatibleTypeDefReadState(),
             metaStringReadState: MetaStringReadState()
@@ -152,8 +152,8 @@ public final class Fory {
         trackRef: Bool = false,
         compatible: Bool = false,
         checkClassVersion: Bool? = nil,
-        maxCollectionLength: Int = 1_000_000,
-        maxBinaryLength: Int = 64 * 1024 * 1024,
+        maxCollectionSize: Int = 1_000_000,
+        maxBinarySize: Int = 64 * 1024 * 1024,
         maxDepth: Int = 5
     ) {
         let effectiveCheckClassVersion = checkClassVersion ?? (xlang && !compatible)
@@ -162,8 +162,8 @@ public final class Fory {
             trackRef: trackRef,
             compatible: compatible,
             checkClassVersion: effectiveCheckClassVersion,
-            maxCollectionLength: maxCollectionLength,
-            maxBinaryLength: maxBinaryLength,
+            maxCollectionSize: maxCollectionSize,
+            maxBinarySize: maxBinarySize,
             maxDepth: maxDepth
         )
         self.typeResolver = TypeResolver()
@@ -176,8 +176,8 @@ public final class Fory {
             trackRef: config.trackRef,
             compatible: config.compatible,
             checkClassVersion: config.checkClassVersion,
-            maxCollectionLength: config.maxCollectionLength,
-            maxBinaryLength: config.maxBinaryLength,
+            maxCollectionSize: config.maxCollectionSize,
+            maxBinarySize: config.maxBinarySize,
             maxDepth: config.maxDepth
         )
     }
@@ -570,8 +570,8 @@ public final class Fory {
             trackRef: config.trackRef,
             compatible: config.compatible,
             checkClassVersion: config.checkClassVersion,
-            maxCollectionLength: config.maxCollectionLength,
-            maxBinaryLength: config.maxBinaryLength,
+            maxCollectionSize: config.maxCollectionSize,
+            maxBinarySize: config.maxBinarySize,
             maxDepth: config.maxDepth,
             compatibleTypeDefState: CompatibleTypeDefReadState(),
             metaStringReadState: MetaStringReadState()
