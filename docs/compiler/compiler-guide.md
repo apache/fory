@@ -64,9 +64,13 @@ Compile options:
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
 | `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
+| `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                        | (none)        |
 | `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`  |
+| `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`            | `enum`        |
 | `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`       |
 | `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)      |
+
+For both `go_nested_type_style` and `swift_namespace_style`, schema-level file options are supported (`option ... = ...;`) and the CLI flag overrides the schema option when both are present.
 
 Scan options (with `--scan-generated`):
 
@@ -111,7 +115,7 @@ foryc schema.fdl
 **Compile for specific languages:**
 
 ```bash
-foryc schema.fdl --lang java,python,csharp
+foryc schema.fdl --lang java,python,csharp,swift
 ```
 
 **Specify output directory:**
@@ -158,7 +162,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --swift_out=./swift/gen
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
@@ -235,6 +239,7 @@ Compiling src/main.fdl...
 | Rust     | `rust`   | `.rs`            | Structs with derive macros   |
 | C++      | `cpp`    | `.h`             | Structs with FORY macros     |
 | C#       | `csharp` | `.cs`            | Classes with Fory attributes |
+| Swift    | `swift`  | `.swift`         | `@ForyObject` Swift models   |
 
 ## Output Structure
 
@@ -319,6 +324,22 @@ generated/
 - Imported schemas are registered transitively (for example `root.idl` importing
   `addressbook.fdl` and `tree.fdl`)
 
+### Swift
+
+```
+generated/
+└── swift/
+    └── addressbook/
+        └── addressbook.swift
+```
+
+- Single `.swift` file per schema
+- Package segments are mapped to nested Swift enums (for example `addressbook.*` -> `Addressbook.*`)
+- Generated messages/unions/enums use `@ForyObject` and `@ForyField(id: ...)`
+- Union types are generated as tagged enums with associated payload values
+- Each schema includes `ForyRegistration` and `toBytes`/`fromBytes` helpers
+- Imported schemas are registered transitively by generated registration helpers
+
 ### C# IDL Matrix Verification
 
 Run the end-to-end C# IDL matrix (FDL/IDL/Proto/FBS generation plus roundtrip tests):
@@ -338,6 +359,20 @@ This runner executes schema-consistent and compatible roundtrips across:
 - `monster.fbs` and `complex_fbs.fbs`
 - `root.idl` cross-package import coverage
 - evolving schema compatibility cases
+
+### Swift IDL Matrix Verification
+
+Run the end-to-end Swift IDL matrix (FDL/IDL/Proto/FBS generation plus roundtrip tests):
+
+```bash
+cd integration_tests/idl_tests
+./run_swift_tests.sh
+```
+
+This runs:
+
+- local Swift IDL roundtrip tests in both compatible and schema-consistent modes
+- Java-driven peer roundtrip validation with `IDL_PEER_LANG=swift`
 
 The script also sets `DATA_FILE*` variables so file-based roundtrip paths are exercised.
 

@@ -60,7 +60,6 @@ extension AnyHashable: Serializer {
         guard let typeInfo = context.dynamicTypeInfo(for: Self.self) else {
             throw ForyError.invalidData("dynamic AnyHashable key requires type info")
         }
-        context.clearDynamicTypeInfo(for: Self.self)
         if typeInfo.wireTypeID == .none {
             throw ForyError.invalidData("dynamic AnyHashable key cannot be null")
         }
@@ -165,7 +164,6 @@ private struct DynamicAnyValue: Serializer {
         guard let typeInfo = context.dynamicTypeInfo(for: Self.self) else {
             throw ForyError.invalidData("dynamic Any value requires type info")
         }
-        context.clearDynamicTypeInfo(for: Self.self)
         if typeInfo.wireTypeID == .none {
             return .foryDefault()
         }

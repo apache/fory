@@ -24,7 +24,7 @@ import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/annotation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 
 class ClassAnnotationAnalyzer {
   const ClassAnnotationAnalyzer();

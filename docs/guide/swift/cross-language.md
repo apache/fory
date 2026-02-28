@@ -54,6 +54,40 @@ try fory.register(Order.self, namespace: "com.example", name: "Order")
 - Use compatible mode when independently evolving schemas
 - Register all user-defined concrete types used by dynamic fields (`Any`, `any Serializer`)
 
+## Swift IDL Workflow
+
+Generate Swift models directly from Fory IDL/Proto/FBS inputs:
+
+```bash
+foryc schema.fdl --swift_out ./Sources/Generated
+```
+
+Generated Swift code includes:
+
+- `@ForyObject` models and `@ForyField(id: ...)` metadata
+- Tagged union enums (associated-value enum cases)
+- `ForyRegistration.register(_:)` helpers with transitive import registration
+- `toBytes` / `fromBytes` helpers on generated types
+
+Use generated registration before cross-language serialization:
+
+```swift
+let fory = Fory(xlang: true, trackRef: true, compatible: true)
+try Addressbook.ForyRegistration.register(fory)
+
+let payload = try fory.serialize(book)
+let decoded: Addressbook.AddressBook = try fory.deserialize(payload)
+```
+
+### Run Swift IDL Integration Tests
+
+```bash
+cd integration_tests/idl_tests
+./run_swift_tests.sh
+```
+
+This runs Swift roundtrip matrix tests and Java peer roundtrip checks (`IDL_PEER_LANG=swift`).
+
 ## Debugging Cross-language Tests
 
 Enable debug output when running xlang tests:
