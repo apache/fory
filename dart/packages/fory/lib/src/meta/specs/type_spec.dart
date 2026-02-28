@@ -19,39 +19,55 @@
 
 import 'package:collection/collection.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/meta/specs/enum_spec.dart';
+import 'package:fory/src/meta/specs/custom_type_spec.dart';
+import 'package:fory/src/meta/specs/field_spec.dart';
 
-class TypeSpec{
-  final Type type;
-  final ObjType objType;
-  final bool nullable;
-  final bool certainForSer;
-  final EnumSpec? enumSpec;
-  final List<TypeSpec> genericsArgs;
+typedef HasArgsCons = Object Function(List<Object?>);
+typedef NoArgsCons = Object Function();
 
-  const TypeSpec(
-    this.type,
-    this.objType,
-    this.nullable,
-    this.certainForSer,
-    this.enumSpec,
-    this.genericsArgs,
-  );
+class TypeSpec extends CustomTypeSpec {
+  final List<FieldSpec> fields;
+  final bool promiseAcyclic;
+  final bool
+      noCyclicRisk; // No risk of cyclic references obtained by analyzing the code, for example, all fields are
+  final HasArgsCons? construct;
+  // Think, is noArgs really necessary? If a constructor with only basic type parameters is provided, is it acceptable?
+  // No, during the deserialization phase, the order of fields is not arbitrary, it follows the field order (basic types are not necessarily at the beginning of the order)
+  final NoArgsCons? noArgConstruct;
+
+  TypeSpec(
+    Type dartType,
+    this.promiseAcyclic,
+    this.noCyclicRisk,
+    this.fields,
+    this.construct,
+    this.noArgConstruct,
+  ) : super(
+            dartType,
+            ObjType
+                .NAMED_STRUCT) // Currently, a class can only be a named structure
+  {
+    assert(construct != null || noArgConstruct != null,
+        'construct and noArgConstruct can not be both non-null');
+    // If noArgConstruct is null, then promiseAcyclic is required, A->B is equivalent to !A || B
+    assert(noArgConstruct != null || promiseAcyclic || noCyclicRisk);
+  }
 
   @override
-  int get hashCode => Object.hash(type, objType, nullable, certainForSer, enumSpec, genericsArgs);
+  int get hashCode => Object.hash(
+      fields, promiseAcyclic, noCyclicRisk, construct, noArgConstruct);
 
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-      (other is TypeSpec &&
-        runtimeType == other.runtimeType &&
-        type == other.type &&
-        objType == other.objType &&
-        nullable == other.nullable &&
-        certainForSer == other.certainForSer &&
-        enumSpec == other.enumSpec &&
-        genericsArgs.equals(other.genericsArgs)
-      );
+        (other is TypeSpec &&
+            runtimeType == other.runtimeType &&
+            fields.equals(other.fields) &&
+            promiseAcyclic == other.promiseAcyclic &&
+            noCyclicRisk == other.noCyclicRisk &&
+            ((identical(construct, other.construct)) ||
+                (construct == null) == (construct == null)) &&
+            ((identical(noArgConstruct, other.noArgConstruct)) ||
+                (noArgConstruct == null) == (other.noArgConstruct == null)));
   }
 }

@@ -26,9 +26,13 @@ from fory_compiler.frontend.proto.ast import (
     ProtoField,
     ProtoType,
     ProtoOneof,
+    ProtoService,
+    ProtoRpcMethod,
 )
 from fory_compiler.ir.ast import (
     Schema,
+    Service,
+    RpcMethod,
     Message,
     Enum,
     Union,
@@ -101,6 +105,7 @@ class ProtoTranslator:
             imports=self._translate_imports(),
             enums=[self._translate_enum(e) for e in self.proto_schema.enums],
             messages=[self._translate_message(m) for m in self.proto_schema.messages],
+            services=[self._translate_service(s) for s in self.proto_schema.services],
             options=self._translate_file_options(self.proto_schema.options),
             source_file=self.proto_schema.source_file,
             source_format="proto",
@@ -143,11 +148,15 @@ class ProtoTranslator:
     def _translate_message(self, proto_msg: ProtoMessage) -> Message:
         type_id, options = self._translate_type_options(proto_msg.options)
         fields = [self._translate_field(f) for f in proto_msg.fields]
-        nested_unions = [self._translate_oneof(o, proto_msg) for o in proto_msg.oneofs]
+        nested_unions = []
         for oneof in proto_msg.oneofs:
+            oneof_type_name = self._oneof_type_name(oneof.name)
+            nested_unions.append(
+                self._translate_oneof(oneof, oneof_type_name, proto_msg)
+            )
             if not oneof.fields:
                 continue
-            union_field = self._translate_oneof_field_reference(oneof)
+            union_field = self._translate_oneof_field_reference(oneof, oneof_type_name)
             fields.append(union_field)
         nested_messages = [
             self._translate_message(m) for m in proto_msg.nested_messages
@@ -191,6 +200,8 @@ class ProtoTranslator:
         if ref and isinstance(field_type, ListType):
             element_ref = True
             element_ref_options = ref_options
+            field_type.element_ref = True
+            field_type.element_ref_options = ref_options
             ref = False
         if ref and isinstance(field_type, MapType):
             field_type = MapType(
@@ -229,10 +240,21 @@ class ProtoTranslator:
             location=self._location(proto_field.line, proto_field.column),
         )
 
-    def _translate_oneof(self, oneof: ProtoOneof, parent: ProtoMessage) -> Union:
+    def _oneof_type_name(self, oneof_name: str) -> str:
+        segments = [segment for segment in oneof_name.split("_") if segment]
+        if not segments:
+            return oneof_name[:1].upper() + oneof_name[1:]
+        return "".join(segment[:1].upper() + segment[1:] for segment in segments)
+
+    def _translate_oneof(
+        self,
+        oneof: ProtoOneof,
+        oneof_type_name: str,
+        _parent: ProtoMessage,
+    ) -> Union:
         fields = [self._translate_oneof_case(f) for f in oneof.fields]
         return Union(
-            name=oneof.name,
+            name=oneof_type_name,
             type_id=None,
             fields=fields,
             options={},
@@ -263,12 +285,14 @@ class ProtoTranslator:
             location=self._location(proto_field.line, proto_field.column),
         )
 
-    def _translate_oneof_field_reference(self, oneof: ProtoOneof) -> Field:
+    def _translate_oneof_field_reference(
+        self, oneof: ProtoOneof, oneof_type_name: str
+    ) -> Field:
         first_case = min(oneof.fields, key=lambda f: f.number)
         return Field(
             name=oneof.name,
             field_type=NamedType(
-                oneof.name, location=self._location(oneof.line, oneof.column)
+                oneof_type_name, location=self._location(oneof.line, oneof.column)
             ),
             number=first_case.number,
             optional=True,
@@ -316,6 +340,8 @@ class ProtoTranslator:
                 type_id = value
             elif name.startswith("fory."):
                 translated[name.removeprefix("fory.")] = value
+            else:
+                translated[name] = value
         return type_id, translated
 
     def _translate_field_options(
@@ -361,3 +387,36 @@ class ProtoTranslator:
         if isinstance(field_type, PrimitiveType):
             return PrimitiveType(override, location=self._location(line, column))
         raise ValueError("fory.type overrides are only supported for primitive fields")
+
+    def _translate_service(self, proto_service: ProtoService) -> Service:
+        # Translate ProtoService to Service
+        _, options = self._translate_type_options(proto_service.options)
+        return Service(
+            name=proto_service.name,
+            methods=[self._translate_rpc_method(m) for m in proto_service.methods],
+            options=options,
+            line=proto_service.line,
+            column=proto_service.column,
+            location=self._location(proto_service.line, proto_service.column),
+        )
+
+    def _translate_rpc_method(self, proto_method: ProtoRpcMethod) -> RpcMethod:
+        # Translate ProtoRpcMethod to RpcMethod
+        _, options = self._translate_type_options(proto_method.options)
+        return RpcMethod(
+            name=proto_method.name,
+            request_type=NamedType(
+                name=proto_method.request_type,
+                location=self._location(proto_method.line, proto_method.column),
+            ),
+            response_type=NamedType(
+                name=proto_method.response_type,
+                location=self._location(proto_method.line, proto_method.column),
+            ),
+            client_streaming=proto_method.client_streaming,
+            server_streaming=proto_method.server_streaming,
+            options=options,
+            line=proto_method.line,
+            column=proto_method.column,
+            location=self._location(proto_method.line, proto_method.column),
+        )

@@ -166,7 +166,7 @@ install_jdks() {
 
 graalvm_test() {
   cd "$ROOT"/java
-  mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'
+  mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'
   echo "Start to build graalvm native image"
   cd "$ROOT"/integration_tests/graalvm_tests
   mvn -DskipTests=true --no-transfer-progress -Pnative package
@@ -180,7 +180,7 @@ integration_tests() {
   cd "$ROOT"/java
   mvn -T10 -B --no-transfer-progress clean install -DskipTests
   echo "benchmark tests"
-  cd "$ROOT"/benchmarks/java_benchmark
+  cd "$ROOT"/benchmarks/java
   mvn -T10 -B --no-transfer-progress clean test install -Pjmh
   echo "Start JPMS tests"
   cd "$ROOT"/integration_tests/jpms_tests
@@ -233,7 +233,7 @@ windows_java21_test() {
   echo "Executing fory java tests"
   cd "$ROOT/java"
   set +e
-  mvn -T10 --batch-mode --no-transfer-progress test install -pl '!fory-format,!fory-testsuite'
+  mvn -T10 --batch-mode --no-transfer-progress test install -pl '!fory-testsuite'
   testcode=$?
   if [[ $testcode -ne 0 ]]; then
     exit $testcode

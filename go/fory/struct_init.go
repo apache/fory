@@ -373,6 +373,14 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		}
 		// Pre-compute WriteType: true for struct fields in compatible mode
 		writeType := typeResolver.Compatible() && isStructField(baseType)
+		var cachedTypeInfo *TypeInfo
+		if writeType {
+			cachedType := baseType
+			if cachedType.Kind() == reflect.Ptr {
+				cachedType = cachedType.Elem()
+			}
+			cachedTypeInfo = typeResolver.getTypeInfoByType(cachedType)
+		}
 
 		// Pre-compute DispatchId, with special handling for enum fields and pointer-to-numeric
 		dispatchId := getDispatchIdFromTypeId(fieldTypeId, nullableFlag)
@@ -410,6 +418,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 				Nullable:       nullableFlag, // Use same logic as TypeDef's nullable flag for consistent ref handling
 				FieldIndex:     i,
 				WriteType:      writeType,
+				CachedTypeInfo: cachedTypeInfo,
 				HasGenerics:    isCollectionType(fieldTypeId), // Container fields have declared element types
 				OptionalInfo:   optionalInfo,
 				TagID:          foryTag.ID,
@@ -847,6 +856,14 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 		}
 		// Pre-compute WriteType: true for struct fields in compatible mode
 		writeType := typeResolver.Compatible() && isStructField(baseType)
+		var cachedTypeInfo *TypeInfo
+		if writeType {
+			cachedType := baseType
+			if cachedType.Kind() == reflect.Ptr {
+				cachedType = cachedType.Elem()
+			}
+			cachedTypeInfo = typeResolver.getTypeInfoByType(cachedType)
+		}
 
 		// Pre-compute DispatchId, with special handling for pointer-to-numeric and enum fields
 		// IMPORTANT: For compatible mode reading, we must use the REMOTE nullable flag
@@ -905,17 +922,18 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			Kind:       fieldKind,
 			Serializer: fieldSerializer,
 			Meta: &FieldMeta{
-				Name:         fieldName,
-				Type:         fieldType,
-				TypeId:       fieldTypeId,
-				Nullable:     def.nullable, // Use remote nullable flag
-				FieldIndex:   fieldIndex,
-				FieldDef:     def, // Save original FieldDef for skipping
-				WriteType:    writeType,
-				HasGenerics:  isCollectionType(fieldTypeId), // Container fields have declared element types
-				OptionalInfo: optionalInfo,
-				TagID:        def.tagID,
-				HasForyTag:   def.tagID >= 0,
+				Name:           fieldName,
+				Type:           fieldType,
+				TypeId:         fieldTypeId,
+				Nullable:       def.nullable, // Use remote nullable flag
+				FieldIndex:     fieldIndex,
+				FieldDef:       def, // Save original FieldDef for skipping
+				WriteType:      writeType,
+				CachedTypeInfo: cachedTypeInfo,
+				HasGenerics:    isCollectionType(fieldTypeId), // Container fields have declared element types
+				OptionalInfo:   optionalInfo,
+				TagID:          def.tagID,
+				HasForyTag:     def.tagID >= 0,
 			},
 		}
 		fields = append(fields, fieldInfo)

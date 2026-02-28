@@ -22,7 +22,7 @@ import 'package:fory/fory.dart';
 part '../generated/some_class.g.dart';
 
 @foryClass
-class SomeClass with _$SomeClassFory {
+class SomeClass {
   late int id;
   late String name;
   late Map<String, double> map;

@@ -17,82 +17,103 @@
  * under the License.
  */
 
-import 'dart:collection';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/meta/specs/field_spec.dart';
+import 'package:fory/src/util/murmur3hash.dart';
 import 'package:fory/src/util/string_util.dart';
 
-class StructHashResolver{
+class StructHashResolver {
   // singleton
   static final StructHashResolver _instance = StructHashResolver._internal();
   static StructHashResolver get inst => _instance;
   StructHashResolver._internal();
 
-  // key: utf8 string objectIdentityHash, value: hash value
-  final Map<int, int> _stringObjToHash = HashMap();
-
-  StructHashPair computeHash(List<FieldSpec> fields, String Function(Type type) getTagByType) {
-    if (fields.isEmpty) {
-      return const StructHashPair(17, 17);
-    }
-    int hashF = 17;
-    int hashT = 17;
-    // Here, checking whether align means to see if includeFromFory and includeToFory are the same,
-    // and both cannot be false at the same time, otherwise static analysis will not retain this field,
-    // so actually both are true.
-    bool stillAlign = fields[0].includeFromFory == fields[0].includeToFory;
-
-    for (int i = 0; i < fields.length; ++i){
-      if (stillAlign){
-        // Here, stillAlign means fields[i] is aligned
-        if (i < fields.length - 1){
-          stillAlign = fields[i+1].includeFromFory == fields[i+1].includeToFory;
-        }
-        hashF = _computeFieldHash(hashF, fields[i], getTagByType);
-        hashT = hashF;
-        continue;
+  StructHashPair computeHash(
+      List<FieldSpec> fields, String Function(Type type) _) {
+    final List<FieldSpec> fromFields = <FieldSpec>[];
+    final List<FieldSpec> toFields = <FieldSpec>[];
+    for (int i = 0; i < fields.length; ++i) {
+      final FieldSpec field = fields[i];
+      if (field.includeFromFory) {
+        fromFields.add(field);
       }
-      // Here, stillAlign means fields[i] is unaligned
-      if (fields[i].includeFromFory) hashF = _computeFieldHash(hashF, fields[i], getTagByType);
-      if (fields[i].includeToFory) hashT = _computeFieldHash(hashT, fields[i], getTagByType);
+      if (field.includeToFory) {
+        toFields.add(field);
+      }
     }
-    return StructHashPair(hashF, hashT);
+    if (fromFields.length == toFields.length) {
+      bool same = true;
+      for (int i = 0; i < fromFields.length; ++i) {
+        if (!identical(fromFields[i], toFields[i])) {
+          same = false;
+          break;
+        }
+      }
+      if (same) {
+        final int hash = _computeFingerprintHash(fromFields);
+        return StructHashPair(hash, hash);
+      }
+    }
+    return StructHashPair(
+      _computeFingerprintHash(fromFields),
+      _computeFingerprintHash(toFields),
+    );
   }
 
-  int _computeFieldHash(int hash, FieldSpec field, String Function(Type type) getTagByType) {
-    late int id;
-    String tag;
-    ObjType objType = field.typeSpec.objType;
-    switch(objType){
-      case ObjType.LIST:
-        id = ObjType.LIST.id;
-        break;
-      case ObjType.MAP:
-        id = ObjType.MAP.id;
-        break;
-      case ObjType.UNKNOWN:
-        id = 0;
-        break;
-      default:
-        if (objType.isStructType()){
-          tag = getTagByType(field.typeSpec.type);
-          int tagObjHashCode = identityHashCode(tag);
-          int? hashVal = _stringObjToHash[tagObjHashCode];
-          if (hashVal != null) {
-            id = hashVal;
-          }else{
-            id = StringUtil.computeUtf8StringHash(tag);
-            _stringObjToHash[tagObjHashCode] = id;
-          }
-        }else {
-          id = objType.id.abs();
-        }
+  int _computeFingerprintHash(List<FieldSpec> fields) {
+    final List<String> entries =
+        List<String>.filled(fields.length, '', growable: false);
+    for (int i = 0; i < fields.length; ++i) {
+      final FieldSpec field = fields[i];
+      final String fieldName =
+          StringUtil.lowerCamelToLowerUnderscore(field.name);
+      final int typeId = _fingerprintTypeId(field.typeSpec.objType);
+      final int trackingRef = field.trackingRef ? 1 : 0;
+      final int nullable = field.typeSpec.nullable ? 1 : 0;
+      entries[i] = '$fieldName,$typeId,$trackingRef,$nullable;';
     }
-    int fieldHash = hash * 31 + id;
-    while (fieldHash > 0x7FFFFFFF){
-      fieldHash ~/= 7;
+    entries.sort();
+    final StringBuffer fingerprint = StringBuffer();
+    for (int i = 0; i < entries.length; ++i) {
+      fingerprint.write(entries[i]);
     }
-    return fieldHash;
+    final Uint8List bytes =
+        Uint8List.fromList(utf8.encode(fingerprint.toString()));
+    final int hash64 = Murmur3Hash.hash128x64(bytes, bytes.length, 0, 47).$1;
+    return (hash64 & 0xffffffff).toSigned(32);
+  }
+
+  int _fingerprintTypeId(ObjType objType) {
+    if (objType == ObjType.INT32) {
+      return ObjType.VAR_INT32.id;
+    }
+    if (objType == ObjType.INT64) {
+      return ObjType.VAR_INT64.id;
+    }
+    if (objType == ObjType.UNKNOWN) {
+      return ObjType.UNKNOWN.id;
+    }
+    if (objType == ObjType.LIST ||
+        objType == ObjType.SET ||
+        objType == ObjType.MAP) {
+      return objType.id;
+    }
+    if (objType == ObjType.ENUM ||
+        objType == ObjType.NAMED_ENUM ||
+        objType == ObjType.STRUCT ||
+        objType == ObjType.COMPATIBLE_STRUCT ||
+        objType == ObjType.NAMED_STRUCT ||
+        objType == ObjType.NAMED_COMPATIBLE_STRUCT ||
+        objType == ObjType.EXT ||
+        objType == ObjType.NAMED_EXT ||
+        objType == ObjType.UNION ||
+        objType == ObjType.TYPED_UNION ||
+        objType == ObjType.NAMED_UNION) {
+      return ObjType.UNKNOWN.id;
+    }
+    return objType.id;
   }
 }

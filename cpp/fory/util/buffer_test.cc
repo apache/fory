@@ -25,8 +25,50 @@
 #include "gtest/gtest.h"
 
 #include "fory/util/buffer.h"
+#include "fory/util/stream.h"
 
 namespace fory {
+
+class OneByteStreamBuf : public std::streambuf {
+public:
+  explicit OneByteStreamBuf(std::vector<uint8_t> data)
+      : data_(std::move(data)), pos_(0) {}
+
+protected:
+  std::streamsize xsgetn(char *s, std::streamsize count) override {
+    if (pos_ >= data_.size() || count <= 0) {
+      return 0;
+    }
+    s[0] = static_cast<char>(data_[pos_]);
+    ++pos_;
+    return 1;
+  }
+
+  int_type underflow() override {
+    if (pos_ >= data_.size()) {
+      return traits_type::eof();
+    }
+    current_ = static_cast<char>(data_[pos_]);
+    setg(&current_, &current_, &current_ + 1);
+    return traits_type::to_int_type(current_);
+  }
+
+private:
+  std::vector<uint8_t> data_;
+  size_t pos_;
+  char current_ = 0;
+};
+
+class OneByteIStream : public std::istream {
+public:
+  explicit OneByteIStream(std::vector<uint8_t> data)
+      : std::istream(nullptr), buf_(std::move(data)) {
+    rdbuf(&buf_);
+  }
+
+private:
+  OneByteStreamBuf buf_;
+};
 
 TEST(Buffer, to_string) {
   std::shared_ptr<Buffer> buffer;
@@ -118,6 +160,158 @@ TEST(Buffer, TestGetBytesAsInt64) {
   EXPECT_EQ(result, 0);
   EXPECT_TRUE(buffer->get_bytes_as_int64(0, 1, &result).ok());
   EXPECT_EQ(result, 100);
+}
+
+TEST(Buffer, TestGetBytesAsInt64OutOfBound) {
+  std::shared_ptr<Buffer> buffer;
+  allocate_buffer(8, &buffer);
+  int64_t result = -1;
+  auto oob = buffer->get_bytes_as_int64(7, 2, &result);
+  EXPECT_FALSE(oob.ok());
+  auto invalid = buffer->get_bytes_as_int64(0, 9, &result);
+  EXPECT_FALSE(invalid.ok());
+}
+
+TEST(Buffer, TestGetVarUint32Truncated) {
+  std::vector<uint8_t> bytes = {0x80};
+  Buffer buffer(bytes);
+  uint32_t read_bytes = 123;
+  uint32_t value = buffer.get_var_uint32(0, &read_bytes);
+  EXPECT_EQ(value, 0U);
+  EXPECT_EQ(read_bytes, 0U);
+
+  Error error;
+  uint32_t decoded = buffer.read_var_uint32(error);
+  EXPECT_EQ(decoded, 0U);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(buffer.reader_index(), 0U);
+}
+
+TEST(Buffer, TestGetVarUint64Truncated) {
+  std::vector<uint8_t> bytes(8, 0x80);
+  Buffer buffer(bytes);
+  uint32_t read_bytes = 123;
+  uint64_t value = buffer.get_var_uint64(0, &read_bytes);
+  EXPECT_EQ(value, 0ULL);
+  EXPECT_EQ(read_bytes, 0U);
+
+  Error error;
+  uint64_t decoded = buffer.read_var_uint64(error);
+  EXPECT_EQ(decoded, 0ULL);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(buffer.reader_index(), 0U);
+}
+
+TEST(Buffer, TestReadVarUint36SmallTruncated) {
+  std::vector<uint8_t> bytes = {0x80, 0x80, 0x80, 0x80};
+  Buffer buffer(bytes);
+
+  Error error;
+  uint64_t decoded = buffer.read_var_uint36_small(error);
+  EXPECT_EQ(decoded, 0ULL);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(buffer.reader_index(), 0U);
+}
+
+TEST(Buffer, StreamReadFromOneByteSource) {
+  std::vector<uint8_t> raw;
+  raw.reserve(64);
+  Buffer writer(raw);
+  writer.write_uint32(0x01020304U);
+  writer.write_int64(-1234567890LL);
+  writer.write_var_uint32(300);
+  writer.write_var_int64(-4567890123LL);
+  writer.write_tagged_uint64(0x123456789ULL);
+  writer.write_var_uint36_small(0x1FFFFULL);
+
+  raw.resize(writer.writer_index());
+  OneByteIStream one_byte_stream(raw);
+  ForyInputStream stream(one_byte_stream, 8);
+  Buffer reader(stream);
+  Error error;
+
+  EXPECT_EQ(reader.read_uint32(error), 0x01020304U);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.read_int64(error), -1234567890LL);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.read_var_uint32(error), 300U);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.read_var_int64(error), -4567890123LL);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.read_tagged_uint64(error), 0x123456789ULL);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.read_var_uint36_small(error), 0x1FFFFULL);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+}
+
+TEST(Buffer, StreamGetAndReaderIndexFromOneByteSource) {
+  std::vector<uint8_t> raw{0x11, 0x22, 0x33, 0x44, 0x55};
+  OneByteIStream one_byte_stream(raw);
+  ForyInputStream stream(one_byte_stream, 2);
+  Buffer reader(stream);
+  Error error;
+  ASSERT_TRUE(reader.ensure_readable(4, error)) << error.to_string();
+
+  EXPECT_EQ(reader.get<uint32_t>(0), 0x44332211U);
+  reader.reader_index(4);
+  EXPECT_EQ(reader.read_uint8(error), 0x55);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+}
+
+TEST(Buffer, StreamReadBytesAndSkipAdvanceReaderIndex) {
+  std::vector<uint8_t> raw{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  OneByteIStream one_byte_stream(raw);
+  ForyInputStream stream(one_byte_stream, 2);
+  Buffer reader(stream);
+  Error error;
+  uint8_t out[5] = {0};
+
+  reader.read_bytes(out, 5, error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.reader_index(), 5U);
+  EXPECT_EQ(out[0], 0U);
+  EXPECT_EQ(out[4], 4U);
+
+  reader.skip(3, error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.reader_index(), 8U);
+  EXPECT_EQ(reader.read_uint8(error), 8U);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+}
+
+TEST(Buffer, StreamSkipAndUnread) {
+  std::vector<uint8_t> raw{0x01, 0x02, 0x03, 0x04, 0x05};
+  OneByteIStream one_byte_stream(raw);
+  ForyInputStream stream(one_byte_stream, 2);
+  auto fill_result = stream.fill_buffer(4);
+  ASSERT_TRUE(fill_result.ok()) << fill_result.error().to_string();
+
+  Buffer &view = stream.get_buffer();
+  EXPECT_EQ(view.size(), 4U);
+  EXPECT_EQ(view.reader_index(), 0U);
+
+  auto skip_result = stream.skip(3);
+  ASSERT_TRUE(skip_result.ok()) << skip_result.error().to_string();
+  EXPECT_EQ(view.reader_index(), 3U);
+
+  auto unread_result = stream.unread(2);
+  ASSERT_TRUE(unread_result.ok()) << unread_result.error().to_string();
+  EXPECT_EQ(view.reader_index(), 1U);
+
+  skip_result = stream.skip(1);
+  ASSERT_TRUE(skip_result.ok()) << skip_result.error().to_string();
+  EXPECT_EQ(view.reader_index(), 2U);
+}
+
+TEST(Buffer, StreamReadErrorWhenInsufficientData) {
+  std::vector<uint8_t> raw{0x01, 0x02, 0x03};
+  OneByteIStream one_byte_stream(raw);
+  ForyInputStream stream(one_byte_stream, 2);
+  Buffer reader(stream);
+  Error error;
+  EXPECT_EQ(reader.read_uint32(error), 0U);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(error.code(), ErrorCode::BufferOutOfBound);
 }
 } // namespace fory
 

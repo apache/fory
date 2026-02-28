@@ -31,6 +31,8 @@ import (
 	collection "github.com/apache/fory/integration_tests/idl_tests/go/collection/generated"
 	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs/generated"
 	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb/generated"
+	evolving1 "github.com/apache/fory/integration_tests/idl_tests/go/evolving1/generated"
+	evolving2 "github.com/apache/fory/integration_tests/idl_tests/go/evolving2/generated"
 	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph/generated"
 	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster/generated"
 	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types/generated"
@@ -102,6 +104,80 @@ func TestAutoIdRoundTripCompatible(t *testing.T) {
 
 func TestAutoIdRoundTripSchemaConsistent(t *testing.T) {
 	runAutoIdRoundTrip(t, false)
+}
+
+func TestEvolvingRoundTrip(t *testing.T) {
+	foryV1 := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(false),
+		fory.WithCompatible(true),
+	)
+	if err := evolving1.RegisterTypes(foryV1); err != nil {
+		t.Fatalf("register evolving1 types: %v", err)
+	}
+	foryV2 := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(false),
+		fory.WithCompatible(true),
+	)
+	if err := evolving2.RegisterTypes(foryV2); err != nil {
+		t.Fatalf("register evolving2 types: %v", err)
+	}
+
+	msgV1 := evolving1.EvolvingMessage{
+		Id:   1,
+		Name: "Alice",
+		City: "NYC",
+	}
+	data, err := foryV1.Serialize(&msgV1)
+	if err != nil {
+		t.Fatalf("serialize evolving message v1: %v", err)
+	}
+	var msgV2 evolving2.EvolvingMessage
+	if err := foryV2.Deserialize(data, &msgV2); err != nil {
+		t.Fatalf("deserialize evolving message v2: %v", err)
+	}
+	if msgV2.Id != msgV1.Id || msgV2.Name != msgV1.Name || msgV2.City != msgV1.City {
+		t.Fatalf("evolving message mismatch: v1=%+v v2=%+v", msgV1, msgV2)
+	}
+	msgV2.Email = optional.Some("alice@example.com")
+	roundBytes, err := foryV2.Serialize(&msgV2)
+	if err != nil {
+		t.Fatalf("serialize evolving message v2: %v", err)
+	}
+	var msgV1Round evolving1.EvolvingMessage
+	if err := foryV1.Deserialize(roundBytes, &msgV1Round); err != nil {
+		t.Fatalf("deserialize evolving message v1: %v", err)
+	}
+	if !reflect.DeepEqual(msgV1Round, msgV1) {
+		t.Fatalf("evolving round trip mismatch: %v vs %v", msgV1Round, msgV1)
+	}
+
+	fixedV1 := evolving1.FixedMessage{
+		Id:    10,
+		Name:  "Bob",
+		Score: 90,
+		Note:  "note",
+	}
+	fixedData, err := foryV1.Serialize(&fixedV1)
+	if err != nil {
+		t.Fatalf("serialize fixed message v1: %v", err)
+	}
+	var fixedV2 evolving2.FixedMessage
+	if err := foryV2.Deserialize(fixedData, &fixedV2); err != nil {
+		return
+	}
+	fixedRound, err := foryV2.Serialize(&fixedV2)
+	if err != nil {
+		return
+	}
+	var fixedV1Round evolving1.FixedMessage
+	if err := foryV1.Deserialize(fixedRound, &fixedV1Round); err != nil {
+		return
+	}
+	if reflect.DeepEqual(fixedV1Round, fixedV1) {
+		t.Fatalf("fixed message unexpectedly compatible: %v", fixedV1Round)
+	}
 }
 
 func runAddressBookRoundTrip(t *testing.T, compatible bool) {

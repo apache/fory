@@ -19,8 +19,7 @@
 
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
 
-class DeserializationNoRefResolver implements DeserializationRefResolver{
-
+class DeserializationNoRefResolver implements DeserializationRefResolver {
   const DeserializationNoRefResolver();
 
   // @override
@@ -55,5 +54,4 @@ class DeserializationNoRefResolver implements DeserializationRefResolver{
   // void setRefForLaterRefId(Object o) {
   //   // do nothing
   // }
-
 }

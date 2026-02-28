@@ -30,6 +30,7 @@
  */
 
 #include "fory/serialization/fory.h"
+#include "fory/type/type.h"
 #include "gtest/gtest.h"
 #include <cfloat>
 #include <climits>
@@ -78,6 +79,32 @@ struct ManyFieldsStruct {
   }
   FORY_STRUCT(ManyFieldsStruct, b1, i8, i16, i32, i64, f32, f64, str);
 };
+
+struct FieldConfigTaggedStruct {
+  int32_t a;
+  int64_t b;
+  std::string c;
+
+  bool operator==(const FieldConfigTaggedStruct &other) const {
+    return a == other.a && b == other.b && c == other.c;
+  }
+  FORY_STRUCT(FieldConfigTaggedStruct, a, b, c);
+};
+
+struct FieldTagsTaggedStruct {
+  int32_t a;
+  int64_t b;
+  std::string c;
+
+  bool operator==(const FieldTagsTaggedStruct &other) const {
+    return a == other.a && b == other.b && c == other.c;
+  }
+  FORY_STRUCT(FieldTagsTaggedStruct, a, b, c);
+};
+
+FORY_FIELD_CONFIG(FieldConfigTaggedStruct, (a, fory::F().id(1)),
+                  (b, fory::F().id(2)), (c, fory::F().id(3)));
+FORY_FIELD_TAGS(FieldTagsTaggedStruct, (a, 1), (b, 2), (c, 3));
 
 class PrivateFieldsStruct {
 public:
@@ -187,6 +214,20 @@ struct Scene {
   }
   FORY_STRUCT(Scene, camera, light, viewport);
 };
+
+struct EvolvingStruct {
+  int32_t id;
+
+  FORY_STRUCT(EvolvingStruct, id);
+};
+
+struct FixedStruct {
+  int32_t id;
+
+  FORY_STRUCT(FixedStruct, id);
+};
+
+FORY_STRUCT_EVOLVING(FixedStruct, false);
 
 // Containers
 struct VectorStruct {
@@ -459,6 +500,28 @@ TEST(StructComprehensiveTest, ManyFieldsStruct) {
                                   -9223372036854775807LL - 1, -1.0f, -1.0, ""});
 }
 
+TEST(StructComprehensiveTest, FieldTagsMatchFieldConfigSize) {
+  FieldConfigTaggedStruct config_obj{1, 2, "config"};
+  FieldTagsTaggedStruct tags_obj{1, 2, "config"};
+
+  auto fory_config =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto fory_tags =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+
+  ASSERT_TRUE(fory_config.register_struct<FieldConfigTaggedStruct>(101).ok());
+  ASSERT_TRUE(fory_tags.register_struct<FieldTagsTaggedStruct>(101).ok());
+
+  auto config_bytes = fory_config.serialize(config_obj);
+  ASSERT_TRUE(config_bytes.ok())
+      << "Serialization failed: " << config_bytes.error().to_string();
+  auto tags_bytes = fory_tags.serialize(tags_obj);
+  ASSERT_TRUE(tags_bytes.ok())
+      << "Serialization failed: " << tags_bytes.error().to_string();
+
+  EXPECT_EQ(config_bytes->size(), tags_bytes->size());
+}
+
 TEST(StructComprehensiveTest, PrivateFieldsStruct) {
   test_roundtrip(PrivateFieldsStruct{42, "secret", {1, 2, 3}});
 }
@@ -645,6 +708,22 @@ TEST(StructComprehensiveTest, ExternalStruct) {
 
 TEST(StructComprehensiveTest, ExternalEmptyStruct) {
   test_roundtrip(external_test::ExternalEmpty{});
+}
+
+TEST(StructComprehensiveTest, StructEvolvingOverride) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<EvolvingStruct>(1).ok());
+  ASSERT_TRUE(fory.register_struct<FixedStruct>(2).ok());
+
+  auto evolving_info = fory.type_resolver().get_type_info<EvolvingStruct>();
+  ASSERT_TRUE(evolving_info.ok());
+  EXPECT_EQ(evolving_info.value()->type_id,
+            static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT));
+
+  auto fixed_info = fory.type_resolver().get_type_info<FixedStruct>();
+  ASSERT_TRUE(fixed_info.ok());
+  EXPECT_EQ(fixed_info.value()->type_id, static_cast<uint32_t>(TypeId::STRUCT));
 }
 
 } // namespace test

@@ -25,7 +25,10 @@ class ConstructorParams {
   final List<ConstructorParam> positional;
   final List<ConstructorParam> named;
 
-  const ConstructorParams(this.positional, this.named,);
+  const ConstructorParams(
+    this.positional,
+    this.named,
+  );
 
   Iterable<ConstructorParam> get iterator sync* {
     for (var param in positional) {

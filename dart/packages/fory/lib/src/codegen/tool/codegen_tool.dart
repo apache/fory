@@ -17,7 +17,7 @@
  * under the License.
  */
 
-class CodegenTool{
+class CodegenTool {
   static const String _2Spaces = '  ';
   static const String _4Spaces = _2Spaces + _2Spaces;
   static const String _6Spaces = _4Spaces + _2Spaces;
@@ -27,7 +27,7 @@ class CodegenTool{
   static const String _14Spaces = _12Spaces + _2Spaces;
   static const String _16Spaces = _14Spaces + _2Spaces;
   static const String _18Spaces = _16Spaces + _2Spaces;
-  
+
   static const List<String> _spaces = [
     _2Spaces,
     _4Spaces,
@@ -43,7 +43,7 @@ class CodegenTool{
   static const List<int> _spacesNum = [2, 4, 6, 8, 10, 12, 14, 16, 18];
 
   /// Instead of directly looping to write spaces, use binary search to minimize the number of writes
-  static void writeIndent(StringBuffer buf, int indent){
+  static void writeIndent(StringBuffer buf, int indent) {
     int low = 0;
     int high = _spacesNum.length - 1;
     int result = -1;
@@ -56,7 +56,7 @@ class CodegenTool{
       } else if (_spacesNum[mid] > indent) {
         // Current element >= target, narrow the range to the left
         high = mid - 1;
-      }else{
+      } else {
         // Current element == target, return directly
         buf.write(_spaces[mid]);
         return;
@@ -66,7 +66,7 @@ class CodegenTool{
       buf.write(_spaces[result]);
     }
     indent -= (result == -1 ? 0 : _spacesNum[result]);
-    for (int i = 0; i < indent; ++i){
+    for (int i = 0; i < indent; ++i) {
       buf.write(' ');
     }
   }

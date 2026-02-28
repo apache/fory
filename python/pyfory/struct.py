@@ -89,9 +89,6 @@ from pyfory import (
 
 logger = logging.getLogger(__name__)
 
-# Time types that are not dynamic by default in native mode
-_time_types = {datetime.date, datetime.datetime, datetime.timedelta}
-
 
 @dataclasses.dataclass
 class FieldInfo:
@@ -129,35 +126,25 @@ def _is_abstract_type(type_hint: type) -> bool:
         return False
 
 
-def _default_field_meta(type_hint: type, field_nullable: bool = False, xlang: bool = False) -> ForyFieldMeta:
+def _default_field_meta(type_hint: type, field_nullable: bool = False) -> ForyFieldMeta:
     """Returns default field metadata for fields without pyfory.field().
 
-    For native mode, a field is considered nullable if:
+    A field is considered nullable if:
     1. It's Optional[T], OR
-    2. It's a non-primitive type (all reference types can be None), OR
-    3. Global field_nullable is True
-
-    For xlang mode, a field is nullable only if:
-    1. It's Optional[T]
+    2. Global field_nullable is True
 
     For ref, defaults to False to preserve original serialization behavior.
-    Non-nullable complex fields use xwrite_no_ref (no ref header in buffer).
+    Non-nullable complex fields use write_no_ref (no ref header in buffer).
     Users can explicitly set ref=True in pyfory.field() to enable ref tracking.
 
     For dynamic, defaults to None (auto-detect):
     - Abstract classes: always True (type info must be written)
-    - Native mode: True for object types, False for numeric/str/time types
-    - Xlang mode: False for concrete types
+    - Concrete types use type-id based dynamic detection
     """
     unwrapped_type, is_optional = unwrap_optional(type_hint)
-    if xlang:
-        # For xlang: nullable=False by default, except for Optional[T] types
-        nullable = is_optional
-    else:
-        # For native: Non-primitive types (str, list, dict, etc.) are all nullable by default
-        nullable = is_optional or not is_primitive_type(unwrapped_type) or field_nullable
+    nullable = is_optional or field_nullable
     # Default ref=False to preserve original serialization behavior where non-nullable
-    # fields use xwrite_no_ref. Users can explicitly set ref=True in pyfory.field()
+    # fields use write_no_ref. Users can explicitly set ref=True in pyfory.field()
     # to enable per-field ref tracking when fory.track_ref is enabled.
     # Default dynamic=None for auto-detection based on type and mode
     return ForyFieldMeta(id=-1, nullable=nullable, ref=False, ignore=False, dynamic=None)
@@ -167,7 +154,6 @@ def _extract_field_infos(
     fory,
     clz: type,
     type_hints: dict,
-    xlang: bool = False,
 ) -> tuple[list[FieldInfo], dict[str, ForyFieldMeta]]:
     """
     Extract FieldInfo list from a dataclass.
@@ -178,9 +164,6 @@ def _extract_field_infos(
     - Computing effective nullable based on Optional[T]
     - Computing runtime ref tracking based on global config
     - Inheritance: parent fields first, subclass fields override parent fields
-
-    Args:
-        xlang: If True, use xlang defaults (nullable=False except for Optional[T])
 
     Returns:
         Tuple of (field_infos, field_metas) where field_metas maps field name to ForyFieldMeta
@@ -213,7 +196,7 @@ def _extract_field_infos(
             # Field without pyfory.field() - use defaults
             # Auto-detect Optional[T] for nullable, also respect global field_nullable
             field_type = type_hints.get(field_name, typing.Any)
-            meta = _default_field_meta(field_type, global_field_nullable, xlang=xlang)
+            meta = _default_field_meta(field_type, global_field_nullable)
 
         field_metas[field_name] = meta
 
@@ -233,13 +216,8 @@ def _extract_field_infos(
         type_hint = type_hints.get(field_name, typing.Any)
         unwrapped_type, is_optional = unwrap_optional(type_hint)
 
-        # Compute effective nullable based on mode
-        if xlang:
-            # For xlang: respect explicit annotation or default to is_optional only
-            effective_nullable = meta.nullable or is_optional
-        else:
-            # For native: Optional[T] or non-primitive types are nullable
-            effective_nullable = meta.nullable or is_optional or not is_primitive_type(unwrapped_type)
+        # Optional[T] should always be nullable regardless of explicit meta.
+        effective_nullable = meta.nullable or is_optional
 
         # Compute runtime ref tracking: field.ref AND global config
         runtime_ref = meta.ref and global_ref_tracking
@@ -253,11 +231,10 @@ def _extract_field_infos(
         else:
             type_id = TypeId.UNKNOWN
 
-        # Compute effective dynamic based on type and mode
+        # Compute effective dynamic based on type.
         # - Abstract classes: always True (type info must be written)
         # - If explicitly set (not None): use that value
-        # - Xlang mode: write type info for user-defined types
-        # - Native mode: True for object types, False for numeric/str/time types
+        # - Otherwise: write type info for polymorphic types that are not registered by id
         is_abstract = _is_abstract_type(unwrapped_type)
         if is_abstract:
             # Abstract classes always need type info
@@ -265,15 +242,9 @@ def _extract_field_infos(
         elif meta.dynamic is not None:
             # Explicit configuration takes precedence
             effective_dynamic = meta.dynamic
-        elif xlang:
-            # Xlang mode: write type info only when the declared type isn't registered by id.
+        else:
             # Registered-by-id types have stable serializers, so no per-field type info is needed.
             effective_dynamic = is_polymorphic_type(type_id) and not fory.type_resolver.is_registered_by_id(unwrapped_type)
-        else:
-            # Native mode: False for numeric/str/time types, True for other object types
-            # Check if the type is a primitive, string, or time type
-            is_non_dynamic_type = is_primitive_type(unwrapped_type) or unwrapped_type in (str, bytes) or unwrapped_type in _time_types
-            effective_dynamic = not is_non_dynamic_type
 
         field_info = FieldInfo(
             name=field_name,
@@ -311,14 +282,12 @@ class DataClassSerializer(Serializer):
         self,
         fory,
         clz: type,
-        xlang: bool = False,
         field_names: List[str] = None,
         serializers: List[Serializer] = None,
         nullable_fields: Dict[str, bool] = None,
         dynamic_fields: Dict[str, bool] = None,
     ):
         super().__init__(fory, clz)
-        self._xlang = xlang
 
         self._type_hints = get_type_hints(clz)
         self._has_slots = hasattr(clz, "__slots__")
@@ -339,8 +308,7 @@ class DataClassSerializer(Serializer):
             self._field_metas = {}
         else:
             # Extract field infos using new pyfory.field() metadata
-            # Pass xlang to get correct nullable defaults for the mode
-            self._field_infos, self._field_metas = _extract_field_infos(fory, clz, self._type_hints, xlang=xlang)
+            self._field_infos, self._field_metas = _extract_field_infos(fory, clz, self._type_hints)
 
             if self._field_infos:
                 # Use new field info based approach
@@ -374,53 +342,31 @@ class DataClassSerializer(Serializer):
         # Cache unwrapped type hints
         self._unwrapped_hints = self._compute_unwrapped_hints()
 
-        if self._xlang:
-            # In xlang mode, compute struct meta for hash and field sorting
-            # BUT if fields come from TypeDef (wire data), preserve their order for deserialization
-            if self._fields_from_typedef:
-                # Fields from wire - only compute hash, don't re-sort
-                # The sender already sorted the fields, we must use their order for correct deserialization
-                hash_str = compute_struct_fingerprint(
-                    fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos
-                )
-                hash_bytes = hash_str.encode("utf-8")
-                if len(hash_bytes) == 0:
-                    self._hash = 47
-                else:
-                    from pyfory.lib.mmh3 import hash_buffer
-
-                    full_hash = hash_buffer(hash_bytes, seed=47)[0]
-                    type_hash_32 = full_hash & 0xFFFFFFFF
-                    if full_hash & 0x80000000:
-                        type_hash_32 = type_hash_32 - 0x100000000
-                    self._hash = type_hash_32
+        # Compute struct hash and field order.
+        # If fields come from TypeDef (wire schema), preserve field order and only compute hash.
+        if self._fields_from_typedef:
+            hash_str = compute_struct_fingerprint(fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos)
+            hash_bytes = hash_str.encode("utf-8")
+            if len(hash_bytes) == 0:
+                self._hash = 47
             else:
-                # Fields extracted locally - sort them for consistent serialization
-                self._hash, self._field_names, self._serializers = compute_struct_meta(
-                    fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos
-                )
-            self._generated_xwrite_method = self._gen_xwrite_method()
-            self._generated_xread_method = self._gen_xread_method()
-            if _ENABLE_FORY_PYTHON_JIT:
-                self.xwrite = self._generated_xwrite_method
-                self.xread = self._generated_xread_method
-            if not self.fory.xlang:
-                logger.warning(
-                    "Type of class %s shouldn't be serialized using cross-language serializer",
-                    clz,
-                )
+                from pyfory.lib.mmh3 import hash_buffer
+
+                full_hash = hash_buffer(hash_bytes, seed=47)[0]
+                type_hash_32 = full_hash & 0xFFFFFFFF
+                if full_hash & 0x80000000:
+                    type_hash_32 = type_hash_32 - 0x100000000
+                self._hash = type_hash_32
         else:
-            # In non-xlang mode, only sort fields in non-compatible mode
-            # In compatible mode, maintain stable field ordering for schema evolution
-            if not fory.compatible:
-                self._hash, self._field_names, self._serializers = compute_struct_meta(
-                    fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos
-                )
-            self._generated_write_method = self._gen_write_method()
-            self._generated_read_method = self._gen_read_method()
-            if _ENABLE_FORY_PYTHON_JIT:
-                self.write = self._generated_write_method
-                self.read = self._generated_read_method
+            self._hash, self._field_names, self._serializers = compute_struct_meta(
+                fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos
+            )
+
+        self._generated_write_method = self._gen_generated_write_method()
+        self._generated_read_method = self._gen_generated_read_method()
+        if _ENABLE_FORY_PYTHON_JIT:
+            self.write = self._generated_write_method
+            self.read = self._generated_read_method
 
     def _get_field_names(self, clz):
         if hasattr(clz, "__dict__"):
@@ -766,8 +712,8 @@ class DataClassSerializer(Serializer):
         )
         return func
 
-    def _gen_xwrite_method(self):
-        """Generate JIT-compiled xwrite method.
+    def _gen_generated_write_method(self):
+        """Generate JIT-compiled write method.
 
         Per xlang spec, struct format is:
         - Schema consistent mode: |4-byte hash|field values|
@@ -780,7 +726,7 @@ class DataClassSerializer(Serializer):
         context[fory] = self.fory
         context["_serializers"] = self._serializers
         stmts = [
-            f'"""xwrite method for {self.type_}"""',
+            f'"""write method for {self.type_}"""',
         ]
         if not self.fory.compatible:
             stmts.append(f"{buffer}.write_int32({self._hash})")
@@ -821,16 +767,16 @@ class DataClassSerializer(Serializer):
                     # dynamic=True: don't pass serializer, write actual type info
                     # dynamic=False: pass serializer, use declared type
                     serializer_arg = "None" if is_dynamic else serializer_var
-                    stmts.append(f"{fory}.xwrite_ref({buffer}, {field_value}, serializer={serializer_arg})")
+                    stmts.append(f"{fory}.write_ref({buffer}, {field_value}, serializer={serializer_arg})")
             else:
                 stmt = self._get_write_stmt_for_codegen(serializer, buffer, field_value)
                 if stmt is None:
-                    # For non-nullable complex types, use xwrite_no_ref
+                    # For non-nullable complex types, use write_no_ref
                     # dynamic=True: don't pass serializer, write actual type info
                     if is_dynamic:
-                        stmt = f"{fory}.xwrite_no_ref({buffer}, {field_value})"
+                        stmt = f"{fory}.write_no_ref({buffer}, {field_value})"
                     else:
-                        stmt = f"{fory}.xwrite_no_ref({buffer}, {field_value}, serializer={serializer_var})"
+                        stmt = f"{fory}.write_no_ref({buffer}, {field_value}, serializer={serializer_var})"
                 # In compatible mode, handle None for non-nullable fields (schema evolution)
                 # Write zero/default value when field is None due to missing from remote schema
                 if self.fory.compatible:
@@ -850,16 +796,16 @@ class DataClassSerializer(Serializer):
                         stmts.append(stmt)
                 else:
                     stmts.append(stmt)
-        self._xwrite_method_code, func = compile_function(
-            f"xwrite_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
+        self._generated_write_method_code, func = compile_function(
+            f"write_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
             [buffer, value],
             stmts,
             context,
         )
         return func
 
-    def _gen_xread_method(self):
-        """Generate JIT-compiled xread method.
+    def _gen_generated_read_method(self):
+        """Generate JIT-compiled read method.
 
         Per xlang spec, struct format is:
         - Schema consistent mode: |4-byte hash|field values|
@@ -881,7 +827,7 @@ class DataClassSerializer(Serializer):
         context["_serializers"] = self._serializers
         current_class_field_names = set(self._get_field_names(self.type_))
         stmts = [
-            f'"""xread method for {self.type_}"""',
+            f'"""read method for {self.type_}"""',
         ]
         if not self.fory.strict:
             context["checker"] = self.fory.policy
@@ -927,16 +873,16 @@ class DataClassSerializer(Serializer):
                     # dynamic=True: don't pass serializer, read type info from buffer
                     # dynamic=False: pass serializer, use declared type
                     serializer_arg = "None" if is_dynamic else serializer_var
-                    stmts.append(f"{field_value} = {fory}.xread_ref({buffer}, serializer={serializer_arg})")
+                    stmts.append(f"{field_value} = {fory}.read_ref({buffer}, serializer={serializer_arg})")
             else:
                 stmt = self._get_read_stmt_for_codegen(serializer, buffer, field_value)
                 if stmt is None:
-                    # For non-nullable complex types, use xread_no_ref
+                    # For non-nullable complex types, use read_no_ref
                     # dynamic=True: don't pass serializer, read type info from buffer
                     if is_dynamic:
-                        stmt = f"{field_value} = {fory}.xread_no_ref({buffer})"
+                        stmt = f"{field_value} = {fory}.read_no_ref({buffer})"
                     else:
-                        stmt = f"{field_value} = {fory}.xread_no_ref({buffer}, serializer={serializer_var})"
+                        stmt = f"{field_value} = {fory}.read_no_ref({buffer}, serializer={serializer_var})"
                 stmts.append(stmt)
 
             if field_name not in current_class_field_names:
@@ -970,68 +916,22 @@ class DataClassSerializer(Serializer):
                         # else: field has no default, leave it unset
 
         stmts.append(f"return {obj}")
-        self._xread_method_code, func = compile_function(
-            f"xread_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
+        self._generated_read_method_code, func = compile_function(
+            f"read_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
             [buffer],
             stmts,
             context,
         )
         return func
 
-    def write(self, buffer, value):
-        """Write dataclass instance to buffer in Python native format."""
-        self._write_header(buffer)
+    def write(self, buffer: Buffer, value):
+        """Write dataclass instance to buffer.
 
-        for index, field_name in enumerate(self._field_names):
-            field_value = getattr(value, field_name)
-            serializer = self._serializers[index]
-            is_nullable = self._nullable_fields.get(field_name, False)
-            is_dynamic = self._dynamic_fields.get(field_name, False)
-            # For dynamic=False, get typeinfo for declared type
-            typeinfo = None
-            if not is_dynamic and serializer is not None:
-                typeinfo = self.fory.type_resolver.get_type_info(serializer.type_)
-
-            if is_nullable:
-                self._write_nullable_field(buffer, field_value, serializer, typeinfo)
-            else:
-                self._write_non_nullable_field(buffer, field_value, serializer, typeinfo)
-
-    def read(self, buffer):
-        """Read dataclass instance from buffer in Python native format."""
-        num_fields_written = self._read_header(buffer)
-
-        obj = self.type_.__new__(self.type_)
-        self.fory.ref_resolver.reference(obj)
-        current_class_field_names = set(self._get_field_names(self.type_))
-
-        for index, field_name in enumerate(self._field_names):
-            # Only read if this field was written
-            if index >= num_fields_written:
-                break
-
-            serializer = self._serializers[index]
-            is_nullable = self._nullable_fields.get(field_name, False)
-
-            if is_nullable:
-                field_value = self._read_nullable_field(buffer, serializer)
-            else:
-                field_value = self._read_non_nullable_field(buffer, serializer)
-
-            if field_name in current_class_field_names:
-                setattr(obj, field_name, field_value)
-        return obj
-
-    def xwrite(self, buffer: Buffer, value):
-        """Write dataclass instance to buffer in cross-language format.
-
-        Per xlang spec, struct format is:
+        Struct format:
         - Schema consistent mode: |4-byte hash|field values|
         - Schema evolution mode (compatible): |field values| (no field count prefix!)
         The field count is in TypeDef meta written at the end, not in object data.
         """
-        if not self._xlang:
-            raise TypeError("xwrite can only be called when DataClassSerializer is in xlang mode")
         if not self.fory.compatible:
             buffer.write_int32(self._hash)
         for index, field_name in enumerate(self._field_names):
@@ -1041,7 +941,7 @@ class DataClassSerializer(Serializer):
             is_dynamic = self._dynamic_fields.get(field_name, False)
             if _ENABLE_FORY_DEBUG_OUTPUT:
                 print(
-                    f"xwrite field '{field_name}': {field_value!r}, writer_index={buffer.get_writer_index()}, "
+                    f"write field '{field_name}': {field_value!r}, writer_index={buffer.get_writer_index()}, "
                     f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
                 )
             if is_nullable:
@@ -1050,23 +950,21 @@ class DataClassSerializer(Serializer):
                 else:
                     # dynamic=True: don't pass serializer, write actual type info
                     # dynamic=False: pass serializer, use declared type
-                    self.fory.xwrite_ref(buffer, field_value, serializer=None if is_dynamic else serializer)
+                    self.fory.write_ref(buffer, field_value, serializer=None if is_dynamic else serializer)
             else:
                 if is_dynamic:
-                    self.fory.xwrite_no_ref(buffer, field_value)
+                    self.fory.write_no_ref(buffer, field_value)
                 else:
-                    self.fory.xwrite_no_ref(buffer, field_value, serializer=serializer)
+                    self.fory.write_no_ref(buffer, field_value, serializer=serializer)
 
-    def xread(self, buffer):
-        """Read dataclass instance from buffer in cross-language format.
+    def read(self, buffer):
+        """Read dataclass instance from buffer.
 
-        Per xlang spec, struct format is:
+        Struct format:
         - Schema consistent mode: |4-byte hash|field values|
         - Schema evolution mode (compatible): |field values| (no field count prefix!)
         The field count is in TypeDef meta written at the end, not in object data.
         """
-        if not self._xlang:
-            raise TypeError("xread can only be called when DataClassSerializer is in xlang mode")
         if not self.fory.compatible:
             hash_ = buffer.read_int32()
             if hash_ != self._hash:
@@ -1083,7 +981,7 @@ class DataClassSerializer(Serializer):
             is_dynamic = self._dynamic_fields.get(field_name, False)
             if _ENABLE_FORY_DEBUG_OUTPUT:
                 print(
-                    f"xread field '{field_name}': reader_index={buffer.get_reader_index()}, "
+                    f"read field '{field_name}': reader_index={buffer.get_reader_index()}, "
                     f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
                 )
             if is_nullable:
@@ -1094,12 +992,12 @@ class DataClassSerializer(Serializer):
                     buffer.set_reader_index(buffer.get_reader_index() - 1)
                     # dynamic=True: don't pass serializer, read type info from buffer
                     # dynamic=False: pass serializer, use declared type
-                    field_value = self.fory.xread_ref(buffer, serializer=None if is_dynamic else serializer)
+                    field_value = self.fory.read_ref(buffer, serializer=None if is_dynamic else serializer)
             else:
                 if is_dynamic:
-                    field_value = self.fory.xread_no_ref(buffer)
+                    field_value = self.fory.read_no_ref(buffer)
                 else:
-                    field_value = self.fory.xread_no_ref(buffer, serializer=serializer)
+                    field_value = self.fory.read_no_ref(buffer, serializer=serializer)
             if field_name in current_class_field_names:
                 setattr(obj, field_name, field_value)
                 read_field_names.add(field_name)
@@ -1119,9 +1017,8 @@ class DataClassSerializer(Serializer):
 
 
 class DataClassStubSerializer(DataClassSerializer):
-    def __init__(self, fory, clz: type, xlang: bool = False):
+    def __init__(self, fory, clz: type):
         Serializer.__init__(self, fory, clz)
-        self.xlang = xlang
 
     def write(self, buffer, value):
         self._replace().write(buffer, value)
@@ -1129,15 +1026,9 @@ class DataClassStubSerializer(DataClassSerializer):
     def read(self, buffer):
         return self._replace().read(buffer)
 
-    def xwrite(self, buffer, value):
-        self._replace().xwrite(buffer, value)
-
-    def xread(self, buffer):
-        return self._replace().xread(buffer)
-
     def _replace(self):
         typeinfo = self.fory.type_resolver.get_type_info(self.type_)
-        typeinfo.serializer = DataClassSerializer(self.fory, self.type_, self.xlang)
+        typeinfo.serializer = DataClassSerializer(self.fory, self.type_)
         return typeinfo.serializer
 
 

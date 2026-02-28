@@ -23,7 +23,7 @@ import 'package:fory_test/extensions/map_ext.dart';
 part '../generated/complex_obj_2.g.dart';
 
 @ForyClass(promiseAcyclic: true)
-class ComplexObject2 with _$ComplexObject2Fory {
+class ComplexObject2 {
   final Object f1;
   final Map<Int8, Int32> f2;
 
@@ -35,10 +35,9 @@ class ComplexObject2 with _$ComplexObject2Fory {
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-      (other is ComplexObject2 &&
-          runtimeType == other.runtimeType &&
-          f1 == other.f1 &&
-          f2.equals(other.f2)
-      );
+        (other is ComplexObject2 &&
+            runtimeType == other.runtimeType &&
+            f1 == other.f1 &&
+            f2.equals(other.f2));
   }
 }

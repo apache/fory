@@ -118,6 +118,34 @@ func TestOptionFieldSerialization(t *testing.T) {
 	require.Equal(t, true, out.OptBool.Unwrap())
 }
 
+type evolvingStruct struct {
+	ID int32
+}
+
+type fixedStruct struct {
+	ID int32
+}
+
+func (fixedStruct) ForyEvolving() bool {
+	return false
+}
+
+func TestStructEvolvingOverride(t *testing.T) {
+	f := New(WithXlang(true), WithCompatible(true))
+	require.NoError(t, f.RegisterStruct(evolvingStruct{}, 100))
+	require.NoError(t, f.RegisterStruct(fixedStruct{}, 101))
+
+	resolver := f.GetTypeResolver()
+
+	evolvingInfo, err := resolver.GetTypeInfo(reflect.ValueOf(evolvingStruct{}), true)
+	require.NoError(t, err)
+	require.Equal(t, uint32(COMPATIBLE_STRUCT), evolvingInfo.TypeID)
+
+	fixedInfo, err := resolver.GetTypeInfo(reflect.ValueOf(fixedStruct{}), true)
+	require.NoError(t, err)
+	require.Equal(t, uint32(STRUCT), fixedInfo.TypeID)
+}
+
 func TestOptionFieldUnsupportedTypes(t *testing.T) {
 	type Nested struct {
 		Name string

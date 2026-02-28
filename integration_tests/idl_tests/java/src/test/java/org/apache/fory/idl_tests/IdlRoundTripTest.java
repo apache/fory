@@ -48,6 +48,10 @@ import complex_fbs.Note;
 import complex_fbs.Payload;
 import complex_fbs.ScalarPack;
 import complex_fbs.Status;
+import evolving1.Evolving1ForyRegistration;
+import evolving1.EvolvingMessage;
+import evolving1.FixedMessage;
+import evolving2.Evolving2ForyRegistration;
 import graph.Edge;
 import graph.Graph;
 import graph.GraphForyRegistration;
@@ -114,6 +118,11 @@ public class IdlRoundTripTest {
     runAutoIdRoundTrip(false);
   }
 
+  @Test
+  public void testEvolvingRoundTrip() {
+    runEvolvingRoundTrip();
+  }
+
   private void runAddressBookRoundTrip(boolean compatible) throws Exception {
     Fory fory = buildFory(compatible);
     AddressbookForyRegistration.register(fory);
@@ -173,6 +182,48 @@ public class IdlRoundTripTest {
       Object roundTrip = fory.deserialize(peerBytes);
       Assert.assertTrue(roundTrip instanceof Envelope);
       Assert.assertEquals(roundTrip, envelope);
+    }
+  }
+
+  private void runEvolvingRoundTrip() {
+    Fory foryV1 = buildFory(true);
+    Fory foryV2 = buildFory(true);
+    Evolving1ForyRegistration.register(foryV1);
+    Evolving2ForyRegistration.register(foryV2);
+
+    EvolvingMessage messageV1 = new EvolvingMessage();
+    messageV1.setId(1);
+    messageV1.setName("Alice");
+    messageV1.setCity("NYC");
+
+    byte[] bytes = foryV1.serialize(messageV1);
+    Object decoded = foryV2.deserialize(bytes);
+    Assert.assertTrue(decoded instanceof evolving2.EvolvingMessage);
+    evolving2.EvolvingMessage messageV2 = (evolving2.EvolvingMessage) decoded;
+    Assert.assertEquals(messageV2.getId(), messageV1.getId());
+    Assert.assertEquals(messageV2.getName(), messageV1.getName());
+    Assert.assertEquals(messageV2.getCity(), messageV1.getCity());
+    messageV2.setEmail("alice@example.com");
+
+    byte[] roundTripBytes = foryV2.serialize(messageV2);
+    Object roundTrip = foryV1.deserialize(roundTripBytes);
+    Assert.assertTrue(roundTrip instanceof EvolvingMessage);
+    Assert.assertEquals(roundTrip, messageV1);
+
+    FixedMessage fixedV1 = new FixedMessage();
+    fixedV1.setId(10);
+    fixedV1.setName("Bob");
+    fixedV1.setScore(90);
+    fixedV1.setNote("note");
+
+    byte[] fixedBytes = foryV1.serialize(fixedV1);
+    try {
+      Object fixedDecoded = foryV2.deserialize(fixedBytes);
+      byte[] fixedRoundTripBytes = foryV2.serialize(fixedDecoded);
+      Object fixedRoundTrip = foryV1.deserialize(fixedRoundTripBytes);
+      Assert.assertNotEquals(fixedRoundTrip, fixedV1);
+    } catch (Exception ignored) {
+      // Expected failure for non-evolving struct.
     }
   }
 
@@ -573,7 +624,7 @@ public class IdlRoundTripTest {
             .filter(value -> !value.isEmpty())
             .collect(Collectors.toList());
     if (peers.contains("all")) {
-      return Arrays.asList("python", "go", "rust", "cpp");
+      return Arrays.asList("python", "go", "rust", "cpp", "swift");
     }
     return peers;
   }
@@ -623,6 +674,15 @@ public class IdlRoundTripTest {
         break;
       case "cpp":
         command = Collections.singletonList("./cpp/run.sh");
+        break;
+      case "swift":
+        workDir = idlRoot.resolve("swift").resolve("idl_package");
+        String swiftTest =
+            compatible
+                ? "IdlRoundTripTests/testAddressBookRoundTripCompatible"
+                : "IdlRoundTripTests/testAddressBookRoundTripSchemaConsistent";
+        command = Arrays.asList("swift", "test", "--filter", swiftTest);
+        peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
         break;
       default:
         throw new IllegalArgumentException("Unknown peer language: " + peer);

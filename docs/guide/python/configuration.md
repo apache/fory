@@ -33,35 +33,37 @@ class Fory:
         ref: bool = False,
         strict: bool = True,
         compatible: bool = False,
-        max_depth: int = 50
+        max_depth: int = 50,
+        policy: DeserializationPolicy = None,
+        field_nullable: bool = False,
+        meta_compressor=None,
     )
 ```
 
 ## ThreadSafeFory Class
 
-Thread-safe serialization interface using thread-local storage:
+Thread-safe serialization interface using a pooled wrapper:
 
 ```python
 class ThreadSafeFory:
     def __init__(
-        self,
-        xlang: bool = False,
-        ref: bool = False,
-        strict: bool = True,
-        compatible: bool = False,
-        max_depth: int = 50
+        self, fory_factory=None, **kwargs
     )
 ```
 
 ## Parameters
 
-| Parameter    | Type   | Default | Description                                                                                                                                                                                |
-| ------------ | ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `xlang`      | `bool` | `False` | Enable cross-language serialization. When `False`, enables Python-native mode supporting all Python objects. When `True`, enables cross-language mode compatible with Java, Go, Rust, etc. |
-| `ref`        | `bool` | `False` | Enable reference tracking for shared/circular references. Disable for better performance if your data has no shared references.                                                            |
-| `strict`     | `bool` | `True`  | Require type registration for security. **Highly recommended** for production. Only disable in trusted environments.                                                                       |
-| `compatible` | `bool` | `False` | Enable schema evolution in cross-language mode, allowing fields to be added/removed while maintaining compatibility.                                                                       |
-| `max_depth`  | `int`  | `50`    | Maximum deserialization depth for security, preventing stack overflow attacks.                                                                                                             |
+| Parameter         | Type                            | Default | Description                                                                                                                                                                                |
+| ----------------- | ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `xlang`           | `bool`                          | `False` | Enable cross-language serialization. When `False`, enables Python-native mode supporting all Python objects. When `True`, enables cross-language mode compatible with Java, Go, Rust, etc. |
+| `ref`             | `bool`                          | `False` | Enable reference tracking for shared/circular references. Disable for better performance if your data has no shared references.                                                            |
+| `strict`          | `bool`                          | `True`  | Require type registration for security. **Highly recommended** for production. Only disable in trusted environments.                                                                       |
+| `compatible`      | `bool`                          | `False` | Enable schema evolution in cross-language mode, allowing fields to be added/removed while maintaining compatibility.                                                                       |
+| `max_depth`       | `int`                           | `50`    | Maximum deserialization depth for security, preventing stack overflow attacks.                                                                                                             |
+| `policy`          | `DeserializationPolicy \| None` | `None`  | Deserialization policy used for security checks. Strongly recommended when `strict=False`.                                                                                                 |
+| `field_nullable`  | `bool`                          | `False` | Treat dataclass fields as nullable by default (regardless of `xlang`).                                                                                                                     |
+| `meta_compressor` | `Any`                           | `None`  | Optional metadata compressor used for compatible-mode metadata encoding.                                                                                                                   |
+| `fory_factory`    | `Callable \| None`              | `None`  | `ThreadSafeFory` factory hook. When set, `ThreadSafeFory` creates instances via this callback; otherwise it forwards `**kwargs` to `Fory` construction.                                    |
 
 ## Key Methods
 

@@ -22,8 +22,9 @@ import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
 class FieldsCacheUnit {
   final List<FieldSpecImmutable> fieldImmutables;
   final Set<String> fieldNames;
-  final bool allFieldIndependent;
+  final bool allFieldsIndependent;
   bool fieldSorted = false;
 
-  FieldsCacheUnit(this.fieldImmutables, this.allFieldIndependent, this.fieldNames);
+  FieldsCacheUnit(
+      this.fieldImmutables, this.allFieldsIndependent, this.fieldNames);
 }

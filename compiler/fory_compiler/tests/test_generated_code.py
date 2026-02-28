@@ -31,6 +31,8 @@ from fory_compiler.generators.go import GoGenerator
 from fory_compiler.generators.java import JavaGenerator
 from fory_compiler.generators.python import PythonGenerator
 from fory_compiler.generators.rust import RustGenerator
+from fory_compiler.generators.csharp import CSharpGenerator
+from fory_compiler.generators.swift import SwiftGenerator
 from fory_compiler.ir.ast import Schema
 
 
@@ -40,6 +42,8 @@ GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
     CppGenerator,
     RustGenerator,
     GoGenerator,
+    CSharpGenerator,
+    SwiftGenerator,
 )
 
 
@@ -185,6 +189,48 @@ def test_generated_code_integer_encoding_variants_equivalent():
     python_output = render_files(generate_files(schemas["fdl"], PythonGenerator))
     assert "pyfory.tagged_int64" in python_output
     assert "pyfory.tagged_uint64" in python_output
+
+
+def test_generated_code_list_modifier_aliases_equivalent():
+    repeated = dedent(
+        """
+        package gen;
+
+        message Item {
+            string name = 1;
+        }
+
+        message Container {
+            repeated string tags = 1;
+            optional repeated string labels = 2;
+            repeated optional string aliases = 3;
+            ref repeated Item items = 4;
+            repeated ref Item children = 5;
+        }
+        """
+    )
+    list_syntax = dedent(
+        """
+        package gen;
+
+        message Item {
+            string name = 1;
+        }
+
+        message Container {
+            list<string> tags = 1;
+            optional list<string> labels = 2;
+            list<optional string> aliases = 3;
+            ref list<Item> items = 4;
+            list<ref Item> children = 5;
+        }
+        """
+    )
+    schemas = {
+        "repeated": parse_fdl(repeated),
+        "list": parse_fdl(list_syntax),
+    }
+    assert_all_languages_equal(schemas)
 
 
 def test_generated_code_primitive_arrays_equivalent():
@@ -478,3 +524,31 @@ def test_java_float16_equals_hash_contract_generation():
         "((optF16.toBits() & 0x7FFF) == 0) ? 0 : Short.hashCode(optF16.toBits())"
         in java_output
     )
+def test_go_bfloat16_generation():
+    idl = dedent(
+        """
+        package bfloat16_test;
+
+        message BFloat16Message {
+            bfloat16 val = 1;
+            optional bfloat16 opt_val = 2;
+            list<bfloat16> list_val = 3;
+        }
+        """
+    )
+    schema = parse_fdl(idl)
+    files = generate_files(schema, GoGenerator)
+
+    assert len(files) == 1
+    content = list(files.values())[0]
+
+    # Check imports
+    assert 'bfloat16 "github.com/apache/fory/go/fory/bfloat16"' in content
+
+    # Check fields
+    assert '\tVal bfloat16.BFloat16 `fory:"id=1"`' in content
+    assert (
+        '\tOptVal optional.Optional[bfloat16.BFloat16] `fory:"id=2,nullable"`'
+        in content
+    )
+    assert "\tListVal []bfloat16.BFloat16" in content

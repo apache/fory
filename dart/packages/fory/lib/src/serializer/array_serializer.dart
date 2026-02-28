@@ -18,10 +18,12 @@
  */
 
 import 'dart:typed_data';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/const/types.dart';
+import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/exception/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/math_checker.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -30,21 +32,25 @@ import 'package:fory/src/serializer/serializer_cache.dart';
 /// Whether the host machine is little-endian
 final bool isLittleEndian = Endian.host == Endian.little;
 
-abstract base class ArraySerializerCache extends SerializerCache{
+abstract base class ArraySerializerCache extends SerializerCache {
   const ArraySerializerCache();
 
   @override
-  Serializer getSerializer(ForyConfig conf,){
-    return getSerWithRef(conf.refTracking);
+  Serializer getSerializer(
+    ForyConfig conf,
+  ) {
+    return getSerializerWithRef(conf.ref);
   }
-  Serializer getSerWithRef(bool writeRef);
+
+  Serializer getSerializerWithRef(bool writeRef);
 }
 
 abstract base class ArraySerializer<T> extends Serializer<List<T>> {
   const ArraySerializer(super.type, super.writeRef);
 }
 
-abstract base class NumericArraySerializer<T extends num> extends ArraySerializer<T> {
+abstract base class NumericArraySerializer<T extends num>
+    extends ArraySerializer<T> {
   const NumericArraySerializer(super.type, super.writeRef);
 
   /// Reads bytes and converts to a typed list.
@@ -54,8 +60,13 @@ abstract base class NumericArraySerializer<T extends num> extends ArraySerialize
   int get bytesPerNum;
 
   @override
-  TypedDataList<T> read(ByteReader br, int refId, DeserializerPack pack) {
+  TypedDataList<T> read(ByteReader br, int refId, DeserializationContext pack) {
     int numBytes = br.readVarUint32Small7();
+    if (objType == ObjType.BINARY && numBytes > pack.config.maxBinarySize) {
+      throw InvalidDataException(
+          'Binary size $numBytes exceeds maxBinarySize ${pack.config.maxBinarySize}. '
+          'The input data may be malicious, or need to increase the maxBinarySize when creating Fory.');
+    }
     int length = numBytes ~/ bytesPerNum;
     if (isLittleEndian || bytesPerNum == 1) {
       // Fast path: direct memory copy on little-endian or for single-byte types
@@ -69,13 +80,16 @@ abstract base class NumericArraySerializer<T extends num> extends ArraySerialize
   /// Read elements one by one on big-endian machines.
   /// Default implementation; subclasses should override for multi-byte types.
   TypedDataList<T> readToListBigEndian(int length, ByteReader br) {
-    throw UnsupportedError('readToListBigEndian not implemented for $runtimeType');
+    throw UnsupportedError(
+        'readToListBigEndian not implemented for $runtimeType');
   }
 
   @override
-  void write(ByteWriter bw, covariant TypedDataList<T> v, SerializerPack pack) {
-    if (!MathChecker.validInt32(v.lengthInBytes)){
-      throw ArgumentError('NumArray lengthInBytes is not valid int32: ${v.lengthInBytes}');
+  void write(
+      ByteWriter bw, covariant TypedDataList<T> v, SerializationContext pack) {
+    if (!MathChecker.validInt32(v.lengthInBytes)) {
+      throw ArgumentError(
+          'NumArray lengthInBytes is not valid int32: ${v.lengthInBytes}');
     }
     bw.writeVarUint32(v.lengthInBytes);
     if (isLittleEndian || bytesPerNum == 1) {
@@ -90,6 +104,7 @@ abstract base class NumericArraySerializer<T extends num> extends ArraySerialize
   /// Write elements one by one on big-endian machines.
   /// Default implementation; subclasses should override for multi-byte types.
   void writeListBigEndian(ByteWriter bw, TypedDataList<T> v) {
-    throw UnsupportedError('writeListBigEndian not implemented for $runtimeType');
+    throw UnsupportedError(
+        'writeListBigEndian not implemented for $runtimeType');
   }
 }

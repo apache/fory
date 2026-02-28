@@ -17,60 +17,109 @@
  * under the License.
  */
 
+import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/exception/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/collection/iterable_serializer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
 abstract base class ListSerializer extends IterableSerializer {
+  const ListSerializer(bool writeRef) : super(ObjType.LIST, writeRef);
 
-  const ListSerializer(bool writeRef): super(ObjType.LIST, writeRef);
-  
   List newList(int size, bool nullable);
 
   @override
-  List read(ByteReader br, int refId, DeserializerPack pack) {
+  List read(ByteReader br, int refId, DeserializationContext pack) {
     int num = br.readVarUint32Small7();
+    if (num > pack.config.maxCollectionSize) {
+      throw InvalidDataException(
+          'List size $num exceeds maxCollectionSize ${pack.config.maxCollectionSize}. '
+          'The input data may be malicious, or need to increase the maxCollectionSize when creating Fory.');
+    }
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
     List list = newList(
       num,
       elemWrap == null || elemWrap.nullable,
     );
-    if (writeRef){
+    if (writeRef) {
       pack.refResolver.setRefTheLatestId(list);
     }
-    if (elemWrap == null){
-      for (int i = 0; i < num; ++i) {
-        Object? o = pack.foryDeser.xReadRefNoSer(br, pack);
-        list[i] = o;
-      }
+    if (num == 0) {
       return list;
     }
-    if (elemWrap.hasGenericsParam){
+
+    int flags = br.readUint8();
+    bool hasGenericsParam = elemWrap != null && elemWrap.hasGenericsParam;
+    if (hasGenericsParam) {
       pack.typeWrapStack.push(elemWrap);
     }
-    if (!elemWrap.certainForSer){
-      for (int i = 0; i < num; ++i) {
-        Object? o = pack.foryDeser.xReadRefNoSer(br, pack);
-        list[i] = o;
-      }
-    }else {
-      Serializer? ser = elemWrap.ser;
-      if (ser == null){
-        for (int i = 0; i < num; ++i) {
-          Object? o = pack.foryDeser.xReadRefNoSer(br, pack);
-          list[i] = o;
+
+    if ((flags & IterableSerializer.isSameTypeFlag) ==
+        IterableSerializer.isSameTypeFlag) {
+      Serializer? serializer;
+      bool isDeclElemType =
+          (flags & IterableSerializer.isDeclElementTypeFlag) ==
+              IterableSerializer.isDeclElementTypeFlag;
+      if (isDeclElemType) {
+        if (elemWrap == null) {
+          throw StateError(
+              'List element declared type flag set but element type is unavailable');
         }
-      }else{
+        serializer = elemWrap.serializer ??
+            pack.typeResolver.getRegisteredSerializer(elemWrap.type);
+      }
+      if (serializer == null) {
+        serializer = pack.typeResolver.readTypeInfo(br).serializer;
+      }
+
+      if ((flags & IterableSerializer.trackingRefFlag) ==
+          IterableSerializer.trackingRefFlag) {
         for (int i = 0; i < num; ++i) {
-          Object? o = pack.foryDeser.xReadRefWithSer(br, ser, pack);
-          list[i] = o;
+          list[i] = pack.deserializationDispatcher
+              .readWithSerializer(br, serializer, pack);
+        }
+      } else if ((flags & IterableSerializer.hasNullFlag) ==
+          IterableSerializer.hasNullFlag) {
+        for (int i = 0; i < num; ++i) {
+          if (br.readInt8() == RefFlag.NULL.id) {
+            list[i] = null;
+          } else {
+            list[i] = serializer.read(br, -1, pack);
+          }
+        }
+      } else {
+        for (int i = 0; i < num; ++i) {
+          list[i] = serializer.read(br, -1, pack);
+        }
+      }
+    } else {
+      if ((flags & IterableSerializer.trackingRefFlag) ==
+          IterableSerializer.trackingRefFlag) {
+        for (int i = 0; i < num; ++i) {
+          list[i] = pack.deserializationDispatcher.readDynamicWithRef(br, pack);
+        }
+      } else if ((flags & IterableSerializer.hasNullFlag) ==
+          IterableSerializer.hasNullFlag) {
+        for (int i = 0; i < num; ++i) {
+          if (br.readInt8() == RefFlag.NULL.id) {
+            list[i] = null;
+          } else {
+            list[i] =
+                pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
+          }
+        }
+      } else {
+        for (int i = 0; i < num; ++i) {
+          list[i] =
+              pack.deserializationDispatcher.readDynamicWithoutRef(br, pack);
         }
       }
     }
-    if (elemWrap.hasGenericsParam){
+
+    if (hasGenericsParam) {
       pack.typeWrapStack.pop();
     }
     return list;

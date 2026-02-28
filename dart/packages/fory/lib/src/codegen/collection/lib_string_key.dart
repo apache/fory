@@ -18,7 +18,7 @@
  */
 
 // Currently not used
-class LibStringKey{
+class LibStringKey {
   final String scheme; // It seems there are only two types: dart and package
   final String path;
 
@@ -29,10 +29,10 @@ class LibStringKey{
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-          other is LibStringKey &&
-              runtimeType == other.runtimeType &&
-              scheme == other.scheme &&
-              path == other.path;
+      other is LibStringKey &&
+          runtimeType == other.runtimeType &&
+          scheme == other.scheme &&
+          path == other.path;
 
   @override
   int get hashCode {

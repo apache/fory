@@ -60,28 +60,21 @@ describe('protocol', () => {
         const nullableUnspecified = Type.struct({
             typeName: "example.nullableUnspecified"
         }, {
-            a: Type.string(),
-        }, {
-            fieldInfo: {a: { nullable: true }}
+            a: Type.string().setNullable(true),
         });
         const { serialize, deserialize } = fory.registerSerializer(nullableUnspecified);
         expect(deserialize(serialize({ a: null }))).toEqual({ a: null });
     });
 
     test('should enforce nullable flag in schema-consistent mode', () => {
-        const fory = new Fory({ mode: 'SCHEMA_CONSISTENT' as any });
+        const fory = new Fory({ compatible: false });
 
         const schema = Type.struct(
             { typeName: 'example.schemaConsistentNullable' },
             {
                 a: Type.string(),
-                b: Type.string(),
+                b: Type.string().setNullable(true),
             },
-            {
-                fieldInfo: {
-                    b: { nullable: true}
-                }
-            }
         );
 
         const { serialize, deserialize } = fory.registerSerializer(schema);

@@ -31,6 +31,8 @@ SCHEMAS = [
     IDL_DIR / "idl" / "tree.fdl",
     IDL_DIR / "idl" / "graph.fdl",
     IDL_DIR / "idl" / "root.idl",
+    IDL_DIR / "idl" / "evolving1.idl",
+    IDL_DIR / "idl" / "evolving2.idl",
     IDL_DIR / "idl" / "any_example.fdl",
     IDL_DIR / "idl" / "any_example.proto",
     IDL_DIR / "idl" / "monster.fbs",
@@ -44,6 +46,9 @@ LANG_OUTPUTS = {
     "cpp": REPO_ROOT / "integration_tests/idl_tests/cpp/generated",
     "go": REPO_ROOT / "integration_tests/idl_tests/go/generated",
     "rust": REPO_ROOT / "integration_tests/idl_tests/rust/src/generated",
+    "csharp": REPO_ROOT / "integration_tests/idl_tests/csharp/IdlTests/Generated",
+    "swift": REPO_ROOT
+    / "integration_tests/idl_tests/swift/idl_package/Sources/IdlGenerated/generated",
 }
 
 GO_OUTPUT_OVERRIDES = {
@@ -55,6 +60,8 @@ GO_OUTPUT_OVERRIDES = {
     "tree.fdl": IDL_DIR / "go" / "tree" / "generated",
     "graph.fdl": IDL_DIR / "go" / "graph" / "generated",
     "root.idl": IDL_DIR / "go" / "root" / "generated",
+    "evolving1.idl": IDL_DIR / "go" / "evolving1" / "generated",
+    "evolving2.idl": IDL_DIR / "go" / "evolving2" / "generated",
     "any_example.fdl": IDL_DIR / "go" / "any_example" / "generated",
     "any_example.proto": IDL_DIR / "go" / "any_example_pb" / "generated",
     "complex_pb.proto": IDL_DIR / "go" / "complex_pb" / "generated",

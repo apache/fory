@@ -17,7 +17,7 @@
 
 name: fory_dart
 description: apache fory dart support
-version: 0.15.0-dev
+version: 0.16.0-dev
 # repository: https://github.com/my_org/my_repo
 
 environment:
@@ -25,7 +25,7 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
-  fory: 0.15.0-dev
+  fory: 0.16.0-dev
   build_runner: ^2.4.13
 dev_dependencies:
   lints: ^5.0.0

@@ -36,10 +36,10 @@ void main() {
       });
 
       test('wraps on overflow', () {
-        var a = UInt8(256);  // Overflow to 0
-        var b = UInt8(257);  // Overflow to 1
-        var c = UInt8(512);  // Overflow to 0
-        var d = UInt8(-1);   // Wraps to 255
+        var a = UInt8(256); // Overflow to 0
+        var b = UInt8(257); // Overflow to 1
+        var c = UInt8(512); // Overflow to 0
+        var d = UInt8(-1); // Wraps to 255
 
         expect(a.value, 0);
         expect(b.value, 1);
@@ -143,9 +143,9 @@ void main() {
       });
 
       test('wraps on overflow', () {
-        var a = UInt16(65536);  // Overflow to 0
-        var b = UInt16(65537);  // Overflow to 1
-        var c = UInt16(-1);     // Wraps to 65535
+        var a = UInt16(65536); // Overflow to 0
+        var b = UInt16(65537); // Overflow to 1
+        var c = UInt16(-1); // Wraps to 65535
 
         expect(a.value, 0);
         expect(b.value, 1);
@@ -192,9 +192,9 @@ void main() {
       });
 
       test('wraps on overflow', () {
-        var a = UInt32(4294967296);  // Overflow to 0
-        var b = UInt32(4294967297);  // Overflow to 1
-        var c = UInt32(-1);          // Wraps to 4294967295
+        var a = UInt32(4294967296); // Overflow to 0
+        var b = UInt32(4294967297); // Overflow to 1
+        var c = UInt32(-1); // Wraps to 4294967295
 
         expect(a.value, 0);
         expect(b.value, 1);

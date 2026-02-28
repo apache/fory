@@ -215,7 +215,7 @@ def bump_java_version(new_version):
         "integration_tests/jdk_compatibility_tests",
         "integration_tests/jpms_tests",
         "integration_tests/idl_tests/java",
-        "benchmarks/java_benchmark",
+        "benchmarks/java",
         "java/fory-core",
         "java/fory-format",
         "java/fory-simd",
@@ -250,7 +250,7 @@ def bump_rust_version(new_version):
     rust_version = _normalize_rust_version(new_version)
     _bump_version("rust", "Cargo.toml", rust_version, _update_rust_version)
     _bump_version(
-        "benchmarks/rust_benchmark",
+        "benchmarks/rust",
         "Cargo.toml",
         rust_version,
         _update_cargo_package_version,
@@ -266,7 +266,7 @@ def bump_rust_version(new_version):
 def bump_cpp_version(new_version):
     for p in [
         "cpp",
-        "benchmarks/cpp_benchmark",
+        "benchmarks/cpp",
         "integration_tests/idl_tests/cpp",
     ]:
         _bump_version(p, "CMakeLists.txt", new_version, _update_cmake_project_version)
@@ -274,7 +274,7 @@ def bump_cpp_version(new_version):
 
 def bump_go_version(new_version):
     for p in [
-        "benchmarks/go_benchmark",
+        "benchmarks/go",
         "integration_tests/idl_tests/go",
     ]:
         _bump_version(p, "go.mod", new_version, _update_go_mod_version)

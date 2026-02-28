@@ -35,13 +35,13 @@ void main() {
 
       // Serialize
       var fory = Fory();
-      fory.register($UIntStruct);
-      var bytes = fory.toFory(original);
+      fory.register(UIntStruct);
+      var bytes = fory.serialize(original);
 
       expect(bytes.isNotEmpty, isTrue);
 
       // Deserialize
-      var decoded = fory.fromFory(bytes) as UIntStruct;
+      var decoded = fory.deserialize(bytes) as UIntStruct;
 
       // Verify values
       expect(decoded.age.value, 25);
@@ -51,15 +51,15 @@ void main() {
 
     test('handles max values correctly', () {
       var original = UIntStruct(
-        UInt8(255),  // Max UInt8
-        UInt16(65535),  // Max UInt16
-        UInt32(4294967295),  // Max UInt32
+        UInt8(255), // Max UInt8
+        UInt16(65535), // Max UInt16
+        UInt32(4294967295), // Max UInt32
       );
 
       var fory = Fory();
-      fory.register($UIntStruct);
-      var bytes = fory.toFory(original);
-      var decoded = fory.fromFory(bytes) as UIntStruct;
+      fory.register(UIntStruct);
+      var bytes = fory.serialize(original);
+      var decoded = fory.deserialize(bytes) as UIntStruct;
 
       expect(decoded.age.value, 255);
       expect(decoded.port.value, 65535);
@@ -74,9 +74,9 @@ void main() {
       );
 
       var fory = Fory();
-      fory.register($UIntStruct);
-      var bytes = fory.toFory(original);
-      var decoded = fory.fromFory(bytes) as UIntStruct;
+      fory.register(UIntStruct);
+      var bytes = fory.serialize(original);
+      var decoded = fory.deserialize(bytes) as UIntStruct;
 
       expect(decoded.age.value, 0);
       expect(decoded.port.value, 0);

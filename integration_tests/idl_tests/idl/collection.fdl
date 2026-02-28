@@ -18,53 +18,53 @@
 package collection;
 
 message NumericCollections [id=210] {
-    repeated int8 int8_values = 1;
-    repeated int16 int16_values = 2;
-    repeated int32 int32_values = 3;
-    repeated int64 int64_values = 4;
-    repeated uint8 uint8_values = 5;
-    repeated uint16 uint16_values = 6;
-    repeated uint32 uint32_values = 7;
-    repeated uint64 uint64_values = 8;
-    repeated float32 float32_values = 9;
-    repeated float64 float64_values = 10;
+    list<int8> int8_values = 1;
+    list<int16> int16_values = 2;
+    list<int32> int32_values = 3;
+    list<int64> int64_values = 4;
+    list<uint8> uint8_values = 5;
+    list<uint16> uint16_values = 6;
+    list<uint32> uint32_values = 7;
+    list<uint64> uint64_values = 8;
+    list<float32> float32_values = 9;
+    list<float64> float64_values = 10;
 }
 
 union NumericCollectionUnion [id=211] {
-    repeated int8 int8_values = 1;
-    repeated int16 int16_values = 2;
-    repeated int32 int32_values = 3;
-    repeated int64 int64_values = 4;
-    repeated uint8 uint8_values = 5;
-    repeated uint16 uint16_values = 6;
-    repeated uint32 uint32_values = 7;
-    repeated uint64 uint64_values = 8;
-    repeated float32 float32_values = 9;
-    repeated float64 float64_values = 10;
+    list<int8> int8_values = 1;
+    list<int16> int16_values = 2;
+    list<int32> int32_values = 3;
+    list<int64> int64_values = 4;
+    list<uint8> uint8_values = 5;
+    list<uint16> uint16_values = 6;
+    list<uint32> uint32_values = 7;
+    list<uint64> uint64_values = 8;
+    list<float32> float32_values = 9;
+    list<float64> float64_values = 10;
 }
 
 message NumericCollectionsArray [id=212] {
-    repeated int8 int8_values = 1 [java_array = true];
-    repeated int16 int16_values = 2 [java_array = true];
-    repeated int32 int32_values = 3 [java_array = true];
-    repeated int64 int64_values = 4 [java_array = true];
-    repeated uint8 uint8_values = 5 [java_array = true];
-    repeated uint16 uint16_values = 6 [java_array = true];
-    repeated uint32 uint32_values = 7 [java_array = true];
-    repeated uint64 uint64_values = 8 [java_array = true];
-    repeated float32 float32_values = 9 [java_array = true];
-    repeated float64 float64_values = 10 [java_array = true];
+    list<int8> int8_values = 1 [java_array = true];
+    list<int16> int16_values = 2 [java_array = true];
+    list<int32> int32_values = 3 [java_array = true];
+    list<int64> int64_values = 4 [java_array = true];
+    list<uint8> uint8_values = 5 [java_array = true];
+    list<uint16> uint16_values = 6 [java_array = true];
+    list<uint32> uint32_values = 7 [java_array = true];
+    list<uint64> uint64_values = 8 [java_array = true];
+    list<float32> float32_values = 9 [java_array = true];
+    list<float64> float64_values = 10 [java_array = true];
 }
 
 union NumericCollectionArrayUnion [id=213] {
-    repeated int8 int8_values = 1 [java_array = true];
-    repeated int16 int16_values = 2 [java_array = true];
-    repeated int32 int32_values = 3 [java_array = true];
-    repeated int64 int64_values = 4 [java_array = true];
-    repeated uint8 uint8_values = 5 [java_array = true];
-    repeated uint16 uint16_values = 6 [java_array = true];
-    repeated uint32 uint32_values = 7 [java_array = true];
-    repeated uint64 uint64_values = 8 [java_array = true];
-    repeated float32 float32_values = 9 [java_array = true];
-    repeated float64 float64_values = 10 [java_array = true];
+    list<int8> int8_values = 1 [java_array = true];
+    list<int16> int16_values = 2 [java_array = true];
+    list<int32> int32_values = 3 [java_array = true];
+    list<int64> int64_values = 4 [java_array = true];
+    list<uint8> uint8_values = 5 [java_array = true];
+    list<uint16> uint16_values = 6 [java_array = true];
+    list<uint32> uint32_values = 7 [java_array = true];
+    list<uint64> uint64_values = 8 [java_array = true];
+    list<float32> float32_values = 9 [java_array = true];
+    list<float64> float64_values = 10 [java_array = true];
 }

@@ -21,35 +21,36 @@ import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/annotation/fory_class.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/annotation/fory_enum.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
 
 class EnumAnnotationAnalyzer {
-
   const EnumAnnotationAnalyzer();
 
   ForyEnum analyze(
     List<ElementAnnotation> metadata,
-    @LocationEnsure(LocationLevel.clsLevel)LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureClassLevel);
     late DartObject anno;
     late ClassElement annoClsElement;
     bool getForyEnum = false;
-    for (ElementAnnotation annoElement in metadata){
+    for (ElementAnnotation annoElement in metadata) {
       anno = annoElement.computeConstantValue()!;
       annoClsElement = anno.type!.element as ClassElement;
-      if (AnalysisTypeIdentifier.isForyEnum(annoClsElement)){
-        if (getForyEnum){
-          throw DuplicatedAnnotationException(ForyClass.name, locationMark.clsName, locationMark.libPath);
+      if (AnalysisTypeIdentifier.isForyEnum(annoClsElement)) {
+        if (getForyEnum) {
+          throw DuplicatedAnnotationException(
+              ForyClass.name, locationMark.clsName, locationMark.libPath);
         }
         getForyEnum = true;
       }
     }
-    assert (getForyEnum); // There will definitely be a ForyMeta annotation, otherwise this class wouldn't be analyzed.
+    assert(
+        getForyEnum); // There will definitely be a ForyMeta annotation, otherwise this class wouldn't be analyzed.
     // TODO: This is still under modification, no fields yet, but maintaining the code structure.
     return ForyEnum();
   }
@@ -57,10 +58,10 @@ class EnumAnnotationAnalyzer {
   // This method does not perform annotation validity checks, nor does it perform caching operations.
   bool hasForyEnumAnnotation(List<ElementAnnotation> metadata) {
     DartObject? anno;
-    for (ElementAnnotation annoElement in metadata){
+    for (ElementAnnotation annoElement in metadata) {
       anno = annoElement.computeConstantValue()!;
       ClassElement annoClsElement = anno.type!.element as ClassElement;
-      if (AnalysisTypeIdentifier.isForyEnum(annoClsElement)){
+      if (AnalysisTypeIdentifier.isForyEnum(annoClsElement)) {
         return true;
       }
     }

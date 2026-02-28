@@ -55,7 +55,7 @@ def test_unsigned_array_typedef_type_ids():
 
 def test_unsigned_array_fingerprint_type_ids():
     fory = Fory(xlang=True)
-    serializer = DataClassSerializer(fory, UnsignedArrays, xlang=True)
+    serializer = DataClassSerializer(fory, UnsignedArrays)
 
     fingerprint = compute_struct_fingerprint(
         fory.type_resolver,

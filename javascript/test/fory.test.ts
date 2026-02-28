@@ -73,7 +73,7 @@ describe('fory', () => {
         testTypeInfo(typeinfo6, 123.456789)
 
         const typeinfo7 = Type.binary()
-        testTypeInfo(typeinfo7, new Uint8Array([1, 2, 3]), fromUint8Array(new Uint8Array([1, 2, 3])));
+        testTypeInfo(typeinfo7, new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3]));
 
         const typeinfo8 = Type.string()
         testTypeInfo(typeinfo8, '123')

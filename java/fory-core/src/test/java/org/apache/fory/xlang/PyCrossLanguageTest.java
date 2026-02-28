@@ -635,29 +635,19 @@ public class PyCrossLanguageTest extends ForyTestBase {
 
     @Override
     public void write(MemoryBuffer buffer, ComplexObject1 value) {
-      xwrite(buffer, value);
-    }
-
-    @Override
-    public ComplexObject1 read(MemoryBuffer buffer) {
-      return xread(buffer);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, ComplexObject1 value) {
-      fory.xwriteRef(buffer, value.f1);
-      fory.xwriteRef(buffer, value.f2);
-      fory.xwriteRef(buffer, value.f3);
+      fory.writeRef(buffer, value.f1);
+      fory.writeRef(buffer, value.f2);
+      fory.writeRef(buffer, value.f3);
     }
 
     @SuppressWarnings("unchecked")
     @Override
-    public ComplexObject1 xread(MemoryBuffer buffer) {
+    public ComplexObject1 read(MemoryBuffer buffer) {
       ComplexObject1 obj = new ComplexObject1();
       fory.getRefResolver().reference(obj);
-      obj.f1 = fory.xreadRef(buffer);
-      obj.f2 = (String) fory.xreadRef(buffer);
-      obj.f3 = (List<String>) fory.xreadRef(buffer);
+      obj.f1 = fory.readRef(buffer);
+      obj.f2 = (String) fory.readRef(buffer);
+      obj.f3 = (List<String>) fory.readRef(buffer);
       return obj;
     }
   }

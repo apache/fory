@@ -19,18 +19,44 @@
 
 package org.apache.fory.resolver;
 
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyObject;
 import org.apache.fory.config.Language;
+import org.apache.fory.type.Types;
 import org.testng.annotations.Test;
 
 public class TypeInfoTest {
+  public static class EvolvingStruct {
+    public int id;
+  }
+
+  @ForyObject(evolving = false)
+  public static class FixedStruct {
+    public int id;
+  }
+
   @Test
   public void testEncodePackageNameAndTypeName() {
     Fory fory1 = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
     TypeInfo info1 = fory1.getClassResolver().getTypeInfo(org.apache.fory.test.bean.Foo.class);
     assertNotNull(info1.namespaceBytes);
     assertNotNull(info1.typeNameBytes);
+  }
+
+  @Test
+  public void testStructEvolvingOverride() {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).withCompatible(true).build();
+    fory.register(EvolvingStruct.class, "test", "EvolvingStruct");
+    fory.register(FixedStruct.class, "test", "FixedStruct");
+
+    TypeInfo evolvingInfo = fory.getTypeResolver().getTypeInfo(EvolvingStruct.class, false);
+    TypeInfo fixedInfo = fory.getTypeResolver().getTypeInfo(FixedStruct.class, false);
+    assertNotNull(evolvingInfo);
+    assertNotNull(fixedInfo);
+    assertEquals(evolvingInfo.getTypeId(), Types.NAMED_COMPATIBLE_STRUCT);
+    assertEquals(fixedInfo.getTypeId(), Types.NAMED_STRUCT);
   }
 }

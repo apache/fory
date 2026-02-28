@@ -54,13 +54,15 @@ func main() {
 }
 ```
 
-## How to Test
+## Benchmark
 
-```bash
-cd go/fory
-go test -v ./...
-go test -v fory_xlang_test.go
-```
+Fory Go demonstrates excellent performance compared to other go serialization frameworks.
+
+<p align="center">
+<img src="../docs/benchmarks/go/benchmark_combined.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [Go Benchmark](../benchmarks/go).
 
 ## Code Style
 

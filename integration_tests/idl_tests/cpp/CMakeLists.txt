@@ -18,7 +18,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(fory_idl_tests
-    VERSION 0.15.0
+    VERSION 0.16.0
     DESCRIPTION "Fory IDL compiler integration tests"
     LANGUAGES CXX
 )

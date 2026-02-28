@@ -21,38 +21,50 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { Mode, Serializer, TypeId } from "../type";
+import { Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
+import { TypeMeta } from "../meta/TypeMeta";
 
 export class AnyHelper {
   static detectSerializer(fory: Fory) {
-    const typeId = fory.binaryReader.uint8();
+    const typeId = fory.binaryReader.readUint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT) {
       userTypeId = fory.binaryReader.readVarUint32Small7();
     }
     let serializer: Serializer | undefined;
+
+    function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
+      if (!serializer) {
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+      }
+      const hash = serializer.getHash();
+      if (hash !== typeMeta.getHash()) {
+        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta, serializer);
+      }
+      return serializer;
+    }
+
     switch (typeId) {
       case TypeId.COMPATIBLE_STRUCT:
+        {
+          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
+          serializer = fory.typeResolver.getSerializerById(typeId, typeMeta.getUserTypeId());
+          serializer = tryUpdateSerializer(serializer, typeMeta);
+        }
+        break;
       case TypeId.NAMED_ENUM:
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_EXT:
       case TypeId.NAMED_UNION:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
-        if (fory.config.mode === Mode.Compatible || typeId === TypeId.COMPATIBLE_STRUCT) {
+        if (fory.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
           const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();
           const named = `${ns}$${typeName}`;
-          serializer = fory.typeResolver.getSerializerByName(named);
-          if (!serializer) {
-            throw new Error(`can't find implements of typeId: ${typeId}`);
-          }
-          const hash = serializer.getHash();
-          if (hash !== typeMeta.getHash()) {
-            serializer = fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
-          }
+          serializer = tryUpdateSerializer(fory.typeResolver.getSerializerByName(named), typeMeta);
         } else {
           const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
           const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);

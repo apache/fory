@@ -31,6 +31,7 @@
 #include "fory/util/string_util.h"
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string_view>
@@ -681,6 +682,47 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
+  /// Returns true if the field needs per-field type info in compatible mode.
+  /// This matches write_single_field/read_single_field logic:
+  /// - struct/ext fields always write type info in compatible mode
+  /// - polymorphic fields write type info when dynamic_value is AUTO/TRUE
+  template <size_t Index>
+  static constexpr bool field_needs_type_info_in_compatible() {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      using PtrT = std::tuple_element_t<Index, FieldPtrs>;
+      using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
+      using FieldType = unwrap_field_t<RawFieldType>;
+
+      constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
+      constexpr bool is_struct = is_struct_type(field_type_id);
+      constexpr bool is_ext = is_ext_type(field_type_id);
+      constexpr bool is_polymorphic = field_type_id == TypeId::UNKNOWN;
+      constexpr int dynamic_val = field_dynamic_value<Index>();
+
+      constexpr bool polymorphic_write_type =
+          (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic);
+      return polymorphic_write_type || is_struct || is_ext;
+    }
+  }
+
+  template <size_t... Indices>
+  static constexpr bool
+  any_field_needs_type_info_in_compatible(std::index_sequence<Indices...>) {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      return (field_needs_type_info_in_compatible<Indices>() || ...);
+    }
+  }
+
+  /// True if it's safe to use schema-consistent fast path in compatible mode
+  /// (no struct/ext fields and no polymorphic fields that require type info).
+  static constexpr bool strict_compatible_safe =
+      !any_field_needs_type_info_in_compatible(
+          std::make_index_sequence<FieldCount>{});
+
   /// get the underlying field type (unwraps fory::field<> if present)
   template <size_t Index> struct UnwrappedFieldTypeHelper {
     using PtrT = std::tuple_element_t<Index, FieldPtrs>;
@@ -790,6 +832,12 @@ template <typename T> struct CompileTimeFieldHelpers {
 
       if constexpr (is_configurable_int_v<FieldType>) {
         return configurable_int_max_varint_bytes<FieldType, T, Index>();
+      } else if constexpr (std::is_same_v<FieldType, int32_t> ||
+                           std::is_same_v<FieldType, int>) {
+        return 5;
+      } else if constexpr (std::is_same_v<FieldType, int64_t> ||
+                           std::is_same_v<FieldType, long long>) {
+        return 10;
       }
       return 0;
     }
@@ -2712,11 +2760,8 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
 
     // Phase 1: Read leading fixed-size primitives if any
     if constexpr (fixed_count > 0 && fixed_bytes > 0) {
-      // Pre-check bounds for all fixed-size fields at once
-      if (FORY_PREDICT_FALSE(buffer.reader_index() + fixed_bytes >
-                             buffer.size())) {
-        ctx.set_error(Error::buffer_out_of_bound(buffer.reader_index(),
-                                                 fixed_bytes, buffer.size()));
+      if (FORY_PREDICT_FALSE(!buffer.ensure_readable(
+              static_cast<uint32_t>(fixed_bytes), ctx.error()))) {
         return;
       }
       // Fast read fixed-size primitives
@@ -2728,6 +2773,12 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
     // Note: varint bounds checking is done per-byte during reading since
     // varint lengths are variable (actual size << max possible size)
     if constexpr (varint_count > 0) {
+      if (FORY_PREDICT_FALSE(buffer.is_stream_backed())) {
+        // Stream-backed buffers may not have all varint bytes materialized yet.
+        // Fall back to per-field readers that propagate stream read errors.
+        read_remaining_fields<T, fixed_count, total_count>(obj, ctx);
+        return;
+      }
       // Track offset locally for batch varint reading
       uint32_t offset = buffer.reader_index();
       // Fast read varint primitives (bounds checking happens in
@@ -2748,6 +2799,56 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
 
   // NORMAL PATH: compatible mode - all fields need full serialization
   (read_field_at_sorted_position<T, Indices>(obj, ctx), ...);
+}
+
+/// Read struct fields in sorted order using the fast primitive paths.
+/// Used when compatible mode is enabled but the remote schema matches locally.
+template <typename T, size_t... Indices>
+FORY_ALWAYS_INLINE void
+read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
+                             std::index_sequence<Indices...>) {
+  using Helpers = CompileTimeFieldHelpers<T>;
+  constexpr size_t fixed_count = Helpers::leading_fixed_count;
+  constexpr size_t fixed_bytes = Helpers::leading_fixed_size_bytes;
+  constexpr size_t varint_count = Helpers::varint_count;
+  constexpr size_t total_count = sizeof...(Indices);
+
+  Buffer &buffer = ctx.buffer();
+
+  // Phase 1: Read leading fixed-size primitives if any
+  if constexpr (fixed_count > 0 && fixed_bytes > 0) {
+    if (FORY_PREDICT_FALSE(!buffer.ensure_readable(
+            static_cast<uint32_t>(fixed_bytes), ctx.error()))) {
+      return;
+    }
+    // Fast read fixed-size primitives
+    read_fixed_primitive_fields<T>(obj, buffer,
+                                   std::make_index_sequence<fixed_count>{});
+  }
+
+  // Phase 2: Read consecutive varint primitives (int32, int64) if any
+  if constexpr (varint_count > 0) {
+    if (FORY_PREDICT_FALSE(buffer.is_stream_backed())) {
+      // Stream-backed buffers may not have all varint bytes materialized yet.
+      // Fall back to per-field readers that propagate stream read errors.
+      read_remaining_fields<T, fixed_count, total_count>(obj, ctx);
+      return;
+    }
+    // Track offset locally for batch varint reading
+    uint32_t offset = buffer.reader_index();
+    // Fast read varint primitives (bounds checking happens in
+    // get_var_uint32/64)
+    read_varint_primitive_fields<T, fixed_count>(
+        obj, buffer, offset, std::make_index_sequence<varint_count>{});
+    // Update reader_index once after all varints
+    buffer.reader_index(offset);
+  }
+
+  // Phase 3: Read remaining fields (if any) with normal path
+  constexpr size_t fast_count = fixed_count + varint_count;
+  if constexpr (fast_count < total_count) {
+    read_remaining_fields<T, fast_count, total_count>(obj, ctx);
+  }
 }
 
 /// Read struct fields with schema evolution (compatible mode)
@@ -3098,6 +3199,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
 
   static T read_compatible(ReadContext &ctx, const TypeInfo *remote_type_info) {
     // Read and verify struct version if enabled (matches write_data behavior)
+    const TypeInfo *local_type_info = nullptr;
     if (ctx.check_struct_version()) {
       int32_t read_version = ctx.buffer().read_int32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -3109,7 +3211,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         ctx.set_error(std::move(local_type_info_res).error());
         return T{};
       }
-      const TypeInfo *local_type_info = local_type_info_res.value();
+      local_type_info = local_type_info_res.value();
       if (!local_type_info->type_meta) {
         ctx.set_error(Error::type_error(
             "Type metadata not initialized for requested struct"));
@@ -3123,6 +3225,19 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         ctx.set_error(std::move(version_res).error());
         return T{};
       }
+    } else {
+      auto local_type_info_res =
+          ctx.type_resolver().template get_type_info<T>();
+      if (!local_type_info_res.ok()) {
+        ctx.set_error(std::move(local_type_info_res).error());
+        return T{};
+      }
+      local_type_info = local_type_info_res.value();
+      if (!local_type_info->type_meta) {
+        ctx.set_error(Error::type_error(
+            "Type metadata not initialized for requested struct"));
+        return T{};
+      }
     }
 
     T obj{};
@@ -3134,6 +3249,29 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     if (!remote_type_info || !remote_type_info->type_meta) {
       ctx.set_error(Error::type_error("Remote type metadata not available"));
       return T{};
+    }
+
+    // Fast path: same schema hash, read fields in local sorted order.
+    if (local_type_info &&
+        remote_type_info->type_meta->hash == local_type_info->type_meta->hash) {
+      if constexpr (detail::CompileTimeFieldHelpers<
+                        T>::strict_compatible_safe) {
+        // Safe to use schema-consistent fast path (no per-field type info).
+        detail::read_struct_fields_impl_fast(
+            obj, ctx, std::make_index_sequence<field_count>{});
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return T{};
+        }
+        return obj;
+      }
+
+      // Compatible fast path: same order, but allow per-field type info.
+      detail::read_struct_fields_impl_fast(
+          obj, ctx, std::make_index_sequence<field_count>{});
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return T{};
+      }
+      return obj;
     }
 
     // Use remote TypeMeta for schema evolution - field IDs already assigned

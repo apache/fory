@@ -21,13 +21,15 @@ import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
-abstract base class CollectionSerializerCache extends SerializerCache{
+abstract base class CollectionSerializerCache extends SerializerCache {
   const CollectionSerializerCache();
 
   @override
-  Serializer getSerializer(ForyConfig conf,){
-    return getSerWithRef(conf.refTracking);
+  Serializer getSerializer(
+    ForyConfig conf,
+  ) {
+    return getSerializerWithRef(conf.ref);
   }
 
-  Serializer getSerWithRef(bool writeRef);
+  Serializer getSerializerWithRef(bool writeRef);
 }

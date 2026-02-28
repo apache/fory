@@ -186,11 +186,11 @@ def run_windows_java21():
     # Use double quotes for Windows compatibility
     if common.is_windows():
         common.exec_cmd(
-            'mvn -T10 --batch-mode --no-transfer-progress test install -pl "!fory-format,!fory-testsuite"'
+            'mvn -T10 --batch-mode --no-transfer-progress test install -pl "!fory-testsuite"'
         )
     else:
         common.exec_cmd(
-            "mvn -T10 --batch-mode --no-transfer-progress test install -pl '!fory-format,!fory-testsuite'"
+            "mvn -T10 --batch-mode --no-transfer-progress test install -pl '!fory-testsuite'"
         )
 
     logging.info("Executing fory java tests succeeds")
@@ -205,11 +205,11 @@ def run_integration_tests():
 
     common.cd_project_subdir("java")
     common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'"
+        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'"
     )
 
     logging.info("benchmark tests")
-    common.cd_project_subdir("benchmarks/java_benchmark")
+    common.cd_project_subdir("benchmarks/java")
     common.exec_cmd("mvn -T10 -B --no-transfer-progress clean test install -Pjmh")
 
     logging.info("Start JPMS tests")
@@ -258,7 +258,7 @@ def run_graalvm_test():
 
     common.cd_project_subdir("java")
     common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'"
+        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'"
     )
 
     logging.info("Start to build graalvm native image")

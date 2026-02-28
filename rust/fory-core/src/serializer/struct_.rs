@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::serializer::Serializer;
+use crate::serializer::{Serializer, StructSerializer};
 use crate::types::{RefFlag, RefMode, TypeId};
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
 use std::any::Any;
@@ -48,6 +49,36 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     context.read_any_type_info()?;
+    Ok(())
+}
+
+#[inline(always)]
+pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Result<(), Error> {
+    if context.is_compatible() || context.is_xlang() {
+        return read_type_info::<T>(context);
+    }
+    let local_type_id = context
+        .get_type_resolver()
+        .get_type_id_by_index(T::fory_type_index())?;
+    let local_type_id_u32 = local_type_id as u32;
+    if !crate::types::needs_user_type_id(local_type_id_u32) {
+        return read_type_info::<T>(context);
+    }
+    let remote_type_id = context.reader.read_u8()? as u32;
+    ensure!(
+        local_type_id_u32 == remote_type_id,
+        Error::type_mismatch(local_type_id_u32, remote_type_id)
+    );
+    let remote_user_type_id = context.reader.read_varuint32()?;
+    let local_user_type_id = context
+        .get_type_resolver()
+        .get_user_type_id_by_index(&std::any::TypeId::of::<T>(), T::fory_type_index())?;
+    if remote_user_type_id != local_user_type_id {
+        return Err(Error::type_error(format!(
+            "User type id mismatch: local {} vs remote {}",
+            local_user_type_id, remote_user_type_id
+        )));
+    }
     Ok(())
 }
 

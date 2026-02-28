@@ -252,6 +252,7 @@ class CppGenerator(BaseGenerator):
         enum_macros: List[str] = []
         union_macros: List[str] = []
         field_config_macros: List[str] = []
+        evolving_macros: List[str] = []
         definition_items = self.get_definition_order()
 
         # Collect includes (including from nested types)
@@ -341,6 +342,7 @@ class CppGenerator(BaseGenerator):
                     enum_macros,
                     union_macros,
                     field_config_macros,
+                    evolving_macros,
                     "",
                 )
             )
@@ -364,6 +366,10 @@ class CppGenerator(BaseGenerator):
 
         if namespace:
             lines.append(f"}} // namespace {namespace}")
+            lines.append("")
+
+        if evolving_macros:
+            lines.extend(evolving_macros)
             lines.append("")
 
         # End header guard
@@ -872,6 +878,7 @@ class CppGenerator(BaseGenerator):
         enum_macros: List[str],
         union_macros: List[str],
         field_config_macros: List[str],
+        evolving_macros: List[str],
         indent: str,
     ) -> List[str]:
         """Generate a C++ class definition with nested types."""
@@ -901,6 +908,7 @@ class CppGenerator(BaseGenerator):
                     enum_macros,
                     union_macros,
                     field_config_macros,
+                    evolving_macros,
                     body_indent,
                 )
             )
@@ -963,6 +971,10 @@ class CppGenerator(BaseGenerator):
             )
         else:
             lines.append(f"{body_indent}FORY_STRUCT({struct_type_name});")
+
+        if not self.get_effective_evolving(message):
+            qualified_name = self.get_namespaced_type_name(message.name, parent_stack)
+            evolving_macros.append(f"FORY_STRUCT_EVOLVING({qualified_name}, false);")
 
         lines.append(f"{indent}}};")
 

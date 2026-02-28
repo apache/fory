@@ -104,7 +104,8 @@ class TimeStamp {
 
   /// Returns the difference between this timestamp and [other] as a [Duration].
   Duration difference(TimeStamp other) {
-    return Duration(microseconds: microsecondsSinceEpoch - other.microsecondsSinceEpoch);
+    return Duration(
+        microseconds: microsecondsSinceEpoch - other.microsecondsSinceEpoch);
   }
 
   /// Formats this timestamp as a string using the specified [pattern].
@@ -127,18 +128,22 @@ class TimeStamp {
   }
 
   /// Returns true if this timestamp is before [other].
-  bool isBefore(TimeStamp other) => microsecondsSinceEpoch < other.microsecondsSinceEpoch;
+  bool isBefore(TimeStamp other) =>
+      microsecondsSinceEpoch < other.microsecondsSinceEpoch;
 
   /// Returns true if this timestamp is after [other].
-  bool isAfter(TimeStamp other) => microsecondsSinceEpoch > other.microsecondsSinceEpoch;
+  bool isAfter(TimeStamp other) =>
+      microsecondsSinceEpoch > other.microsecondsSinceEpoch;
 
   /// Returns true if this timestamp is at the same time as [other].
-  bool isAtSameMomentAs(TimeStamp other) => microsecondsSinceEpoch == other.microsecondsSinceEpoch;
+  bool isAtSameMomentAs(TimeStamp other) =>
+      microsecondsSinceEpoch == other.microsecondsSinceEpoch;
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is TimeStamp && other.microsecondsSinceEpoch == microsecondsSinceEpoch;
+    return other is TimeStamp &&
+        other.microsecondsSinceEpoch == microsecondsSinceEpoch;
   }
 
   @override

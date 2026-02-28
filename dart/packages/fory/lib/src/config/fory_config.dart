@@ -17,35 +17,25 @@
  * under the License.
  */
 
-import 'package:fory/src/config/config.dart';
+final class ForyConfig {
+  final bool compatible;
+  final bool ref;
+  final bool basicTypesRefIgnored;
+  final bool timeRefIgnored;
+  final bool stringRefIgnored;
+  final int maxBinarySize;
+  final int maxCollectionSize;
 
-class ForyConfig extends Config{
-  final int  _configId;
-  final bool _refTracking;
-  final bool _basicTypesRefIgnored;
-  final bool _timeRefIgnored;
-  final bool _stringRefIgnored;
+  static const int defaultMaxBinarySize = 64 * 1024 * 1024;
+  static const int defaultMaxCollectionSize = 1000000;
 
-  ForyConfig.onlyForManager(
-    this._configId, {
-    bool refTracking = true,
-    bool basicTypesRefIgnored = true,
-    bool timeRefIgnored = true,
-    // bool stringRefIgnored = true,
-  })
-  : _refTracking = refTracking,
-    _basicTypesRefIgnored = basicTypesRefIgnored,
-    _timeRefIgnored = timeRefIgnored,
-    _stringRefIgnored = false
-  {
-    // some checking works
-    // assert(_xlangMode == true, 'currently only support xlang mode');
-  }
-
-  //getters
-  bool get refTracking => _refTracking;
-  int get configId => _configId;
-  bool get basicTypesRefIgnored => _basicTypesRefIgnored;
-  bool get timeRefIgnored => _timeRefIgnored;
-  bool get stringRefIgnored => _stringRefIgnored;
+  const ForyConfig({
+    this.compatible = false,
+    this.ref = false,
+    this.basicTypesRefIgnored = true,
+    this.timeRefIgnored = true,
+    this.stringRefIgnored = false,
+    this.maxBinarySize = defaultMaxBinarySize,
+    this.maxCollectionSize = defaultMaxCollectionSize,
+  });
 }

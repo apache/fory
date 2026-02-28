@@ -134,7 +134,7 @@ func New(opts ...Option) *Fory {
 	// Initialize meta context if compatible mode is enabled
 	if f.config.Compatible {
 		f.metaContext = &MetaContext{
-			typeMap:               make(map[reflect.Type]uint32),
+			typeMap:               make(map[uintptr]uint32),
 			readTypeInfos:         make([]*TypeInfo, 0),
 			scopedMetaShareEnable: true,
 		}
@@ -214,12 +214,7 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 
 	// Determine the internal type ID based on config
 	var internalTypeID TypeId
-	// Use COMPATIBLE_STRUCT when compatible mode is enabled (matches Java behavior)
-	if f.config.Compatible {
-		internalTypeID = COMPATIBLE_STRUCT
-	} else {
-		internalTypeID = STRUCT
-	}
+	internalTypeID = f.typeResolver.structTypeID(t, false)
 
 	return f.typeResolver.RegisterStruct(t, internalTypeID, typeID)
 }

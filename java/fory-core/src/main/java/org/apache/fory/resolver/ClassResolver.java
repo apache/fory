@@ -654,7 +654,9 @@ public class ClassResolver extends TypeResolver {
     } else if (serializer != null && !isStructSerializer(serializer)) {
       return Types.EXT;
     } else {
-      return metaContextShareEnabled ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
+      return metaContextShareEnabled && isStructEvolving(cls)
+          ? Types.COMPATIBLE_STRUCT
+          : Types.STRUCT;
     }
   }
 
@@ -1196,7 +1198,7 @@ public class ClassResolver extends TypeResolver {
   @Override
   public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
     boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+        fory.getConfig().isCodeGenEnabled() && supportCodegenForJavaSerialization(cls);
     return getSerializerClass(cls, codegen);
   }
 
@@ -1344,7 +1346,7 @@ public class ClassResolver extends TypeResolver {
   public Class<? extends Serializer> getObjectSerializerClass(
       Class<?> cls, JITContext.SerializerJITCallback<Class<? extends Serializer>> callback) {
     boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+        fory.getConfig().isCodeGenEnabled() && supportCodegenForJavaSerialization(cls);
     return getObjectSerializerClass(cls, false, codegen, callback);
   }
 

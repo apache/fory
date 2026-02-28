@@ -23,4 +23,4 @@ apache/fory-site@main:
   - source: docs/compiler/
     dest: docs/compiler/
   - source: docs/benchmarks/
-    dest: static/img/benchmarks/
+    dest: docs/benchmarks/

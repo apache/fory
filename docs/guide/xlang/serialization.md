@@ -57,7 +57,7 @@ public class Example1 {
 import pyfory
 import numpy as np
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 object_list = [True, False, "str", -1.1, 1,
                np.full(100, 0, dtype=np.int32), np.full(20, 0.0, dtype=np.double)]
 data = fory.serialize(object_list)
@@ -80,7 +80,7 @@ import "fmt"
 
 func main() {
   list := []any{true, false, "str", -1.1, 1, make([]int32, 10), make([]float64, 20)}
-  fory := forygo.NewFory()
+  fory := forygo.NewFory(forygo.WithXlang(true))
   bytes, err := fory.Marshal(list)
   if err != nil {
     panic(err)
@@ -130,12 +130,12 @@ console.log(result);
 ### Rust
 
 ```rust
-use fory::{from_buffer, to_buffer, Fory};
-use std::collections::HashMap;
+use fory::Fory;
 
 fn run() {
-    let bin: Vec<u8> = to_buffer(&"hello".to_string());
-    let obj: String = from_buffer(&bin).expect("should success");
+    let fory = Fory::default().xlang(true);
+    let bin = fory.serialize(&"hello".to_string()).expect("serialize success");
+    let obj: String = fory.deserialize(&bin).expect("deserialize success");
     assert_eq!("hello".to_string(), obj);
 }
 ```
@@ -238,7 +238,7 @@ class SomeClass2:
 
 
 if __name__ == "__main__":
-    f = pyfory.Fory()
+    f = pyfory.Fory(xlang=True)
     f.register_type(SomeClass1, typename="example.SomeClass1")
     f.register_type(SomeClass2, typename="example.SomeClass2")
     obj1 = SomeClass1(f1=True, f2={-1: 2})
@@ -271,6 +271,11 @@ import "fmt"
 
 func main() {
   type SomeClass1 struct {
+    F1 any
+    F2 map[int8]int32
+  }
+
+  type SomeClass2 struct {
     F1  any
     F2  string
     F3  []any
@@ -282,44 +287,37 @@ func main() {
     F9  float32
     F10 float64
     F11 []int16
-    F12 fory.Int16Slice
+    F12 []int16
   }
-
-  type SomeClass2 struct {
-    F1 any
-    F2 map[int8]int32
-  }
-  fory := forygo.NewFory()
-  if err := fory.RegisterTagType("example.SomeClass1", SomeClass1{}); err != nil {
+  serializer := forygo.NewFory(forygo.WithXlang(true))
+  if err := serializer.RegisterNamedStruct(SomeClass1{}, "example.SomeClass1"); err != nil {
     panic(err)
   }
-  if err := fory.RegisterTagType("example.SomeClass2", SomeClass2{}); err != nil {
+  if err := serializer.RegisterNamedStruct(SomeClass2{}, "example.SomeClass2"); err != nil {
     panic(err)
   }
-  obj1 := &SomeClass1{}
-  obj1.F1 = true
-  obj1.F2 = map[int8]int32{-1: 2}
-  obj := &SomeClass1{}
-  obj.F1 = obj1
-  obj.F2 = "abc"
-  obj.F3 = []any{"abc", "abc"}
-  f4 := map[int8]int32{1: 2}
-  obj.F4 = f4
-  obj.F5 = fory.MaxInt8
-  obj.F6 = fory.MaxInt16
-  obj.F7 = fory.MaxInt32
-  obj.F8 = fory.MaxInt64
-  obj.F9 = 1.0 / 2
-  obj.F10 = 1 / 3.0
-  obj.F11 = []int16{1, 2}
-  obj.F12 = []int16{-1, 4}
-  bytes, err := fory.Marshal(obj);
+  obj1 := &SomeClass1{F1: true, F2: map[int8]int32{-1: 2}}
+  obj := &SomeClass2{
+    F1:  obj1,
+    F2:  "abc",
+    F3:  []any{"abc", "abc"},
+    F4:  map[int8]int32{1: 2},
+    F5:  127,
+    F6:  32767,
+    F7:  2147483647,
+    F8:  9223372036854775807,
+    F9:  1.0 / 2,
+    F10: 1.0 / 3.0,
+    F11: []int16{1, 2},
+    F12: []int16{-1, 4},
+  }
+  bytes, err := serializer.Marshal(obj)
   if err != nil {
     panic(err)
   }
   var newValue any
   // bytes can be deserialized by other languages
-  if err := fory.Unmarshal(bytes, &newValue); err != nil {
+  if err := serializer.Unmarshal(bytes, &newValue); err != nil {
     panic(err)
   }
   fmt.Println(newValue)
@@ -354,19 +352,17 @@ console.log(result);
 
 ```rust
 use chrono::{NaiveDate, NaiveDateTime};
-use fory::{from_buffer, to_buffer, Fory};
+use fory::{Fory, ForyObject};
 use std::collections::HashMap;
 
 #[test]
 fn complex_struct() {
-    #[derive(Fory, Debug, PartialEq)]
-    #[tag("example.foo2")]
+    #[derive(ForyObject, Debug, PartialEq)]
     struct Animal {
         category: String,
     }
 
-    #[derive(Fory, Debug, PartialEq)]
-    #[tag("example.foo")]
+    #[derive(ForyObject, Debug, PartialEq)]
     struct Person {
         c1: Vec<u8>,  // binary
         c2: Vec<i16>, // primitive array
@@ -403,8 +399,15 @@ fn complex_struct() {
         c6: 4.0,
     };
 
-    let bin: Vec<u8> = to_buffer(&person);
-    let obj: Person = from_buffer(&bin).expect("should success");
+    let mut fory = Fory::default().xlang(true);
+    fory
+        .register_by_namespace::<Animal>("example", "foo2")
+        .expect("register Animal");
+    fory
+        .register_by_namespace::<Person>("example", "foo")
+        .expect("register Person");
+    let bin = fory.serialize(&person).expect("serialize success");
+    let obj: Person = fory.deserialize(&bin).expect("deserialize success");
     assert_eq!(person, obj);
 }
 ```
@@ -458,7 +461,7 @@ class SomeClass:
     f2: Dict[str, str]
     f3: Dict[str, str]
 
-fory = pyfory.Fory(ref=True)
+fory = pyfory.Fory(xlang=True, ref=True)
 fory.register_type(SomeClass, typename="example.SomeClass")
 obj = SomeClass()
 obj.f2 = {"k1": "v1", "k2": "v2"}
@@ -482,8 +485,11 @@ func main() {
     F2 map[string]string
     F3 map[string]string
   }
-  fory := forygo.NewFory(true)
-  if err := fory.Register(SomeClass{}, 65); err != nil {
+  fory := forygo.NewFory(
+    forygo.WithXlang(true),
+    forygo.WithTrackRef(true),
+  )
+  if err := fory.RegisterStruct(SomeClass{}, 65); err != nil {
     panic(err)
   }
   value := &SomeClass{F2: map[string]string{"k1": "v1", "k2": "v2"}}

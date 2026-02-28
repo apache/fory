@@ -31,13 +31,14 @@ class MetaString {
   late final bool stripLastChar;
 
   int? _hash;
-  
-  MetaString(this.value, this.encoding, this.specialChar1, this.specialChar2, this.bytes){
-    if (encoding != MetaStringEncoding.utf8){
+
+  MetaString(this.value, this.encoding, this.specialChar1, this.specialChar2,
+      this.bytes) {
+    if (encoding != MetaStringEncoding.utf8) {
       // if not utf8, then the bytes should not be empty
       assert(bytes.isNotEmpty);
       stripLastChar = (bytes[0] & 0x80) != 0;
-    } else{
+    } else {
       stripLastChar = false;
     }
   }
@@ -45,7 +46,7 @@ class MetaString {
   @override
   int get hashCode {
     // TODO: Imitate the hash implementation from foryJava, maybe there is a better way
-    if (_hash == null){
+    if (_hash == null) {
       _hash = Object.hash(stripLastChar, encoding, specialChar1, specialChar2);
       _hash = 31 * _hash! + HashUtil.hashIntList(bytes);
     }
@@ -55,13 +56,12 @@ class MetaString {
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
-      (other is MetaString &&
-        other.runtimeType == runtimeType &&
-        other.encoding == encoding &&
-        other.stripLastChar == stripLastChar &&
-        other.specialChar1 == specialChar1 &&
-        other.specialChar2 == specialChar2 &&
-        bytes.memEquals(other.bytes)
-      );
+        (other is MetaString &&
+            other.runtimeType == runtimeType &&
+            other.encoding == encoding &&
+            other.stripLastChar == stripLastChar &&
+            other.specialChar1 == specialChar1 &&
+            other.specialChar2 == specialChar2 &&
+            bytes.memEquals(other.bytes));
   }
 }

@@ -33,8 +33,21 @@ use crate::types::format_type_id;
 use thiserror::Error;
 
 /// Global flag to check if FORY_PANIC_ON_ERROR environment variable is set at compile time.
-/// Set FORY_PANIC_ON_ERROR=1 at compile time to enable panic on error.
-pub const PANIC_ON_ERROR: bool = option_env!("FORY_PANIC_ON_ERROR").is_some();
+/// Set FORY_PANIC_ON_ERROR=1 (or true) at compile time to enable panic on error.
+const fn is_truthy_env(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    (bytes.len() == 1 && bytes[0] == b'1')
+        || (bytes.len() == 4
+            && (bytes[0] | 0x20) == b't'
+            && (bytes[1] | 0x20) == b'r'
+            && (bytes[2] | 0x20) == b'u'
+            && (bytes[3] | 0x20) == b'e')
+}
+
+pub const PANIC_ON_ERROR: bool = match option_env!("FORY_PANIC_ON_ERROR") {
+    Some(value) => is_truthy_env(value),
+    None => false,
+};
 
 /// Check if FORY_PANIC_ON_ERROR environment variable is set.
 #[inline(always)]

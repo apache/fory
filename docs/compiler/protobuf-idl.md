@@ -1,5 +1,5 @@
 ---
-title: Protocol Buffers IDL
+title: Protobuf IDL Support
 sidebar_position: 10
 id: protobuf_idl_support
 license: |
@@ -19,24 +19,57 @@ license: |
   limitations under the License.
 ---
 
-This document compares Google's Protocol Buffers (protobuf) with Fory Definition Language (FDL), helping you understand when to use each and how to migrate between them.
+This page explains how Apache Fory works with Protocol Buffers (`.proto`) schemas,
+how protobuf concepts map to Fory, and how to use protobuf-only Fory extension options.
 
-## Overview
+## What This Page Covers
 
-| Aspect                 | Protocol Buffers                  | FDL                                 |
-| ---------------------- | --------------------------------- | ----------------------------------- |
-| **Primary Purpose**    | RPC and message interchange       | Cross-language object serialization |
-| **Design Philosophy**  | Schema evolution, backward compat | Performance, native integration     |
-| **Reference Tracking** | Not supported                     | First-class support (`ref`)         |
-| **Generated Code**     | Custom message types              | Native language constructs          |
-| **Serialization**      | Tag-length-value encoding         | Fory binary protocol                |
-| **Performance**        | Good                              | Excellent (up to 170x faster)       |
+- Choosing protobuf vs Fory for your use case
+- Syntax and semantic differences that matter during migration
+- Supported Fory extension options in protobuf files
+- Practical migration patterns from protobuf to Fory
 
-## Syntax Comparison
+## Quick Decision Guide
 
-### Package Declaration
+| Situation                                                     | Recommended Format |
+| ------------------------------------------------------------- | ------------------ |
+| You are building gRPC APIs and rely on protobuf tooling       | Protocol Buffers   |
+| You need maximum object-graph performance and ref tracking    | Fory               |
+| You need circular/shared references in serialized data        | Fory               |
+| You need strong unknown-field behavior for wire compatibility | Protocol Buffers   |
+| You need native structs/classes instead of protobuf wrappers  | Fory               |
 
-**Protocol Buffers:**
+## Protobuf vs Fory at a Glance
+
+| Aspect             | Protocol Buffers              | Fory                                  |
+| ------------------ | ----------------------------- | ------------------------------------- |
+| Primary purpose    | RPC/message contracts         | High-performance object serialization |
+| Encoding model     | Tag-length-value              | Fory binary protocol                  |
+| Reference tracking | Not built-in                  | First-class (`ref`)                   |
+| Circular refs      | Not supported                 | Supported                             |
+| Unknown fields     | Preserved                     | Not preserved                         |
+| Generated types    | Protobuf-specific model types | Native language constructs            |
+| gRPC ecosystem     | Native                        | In progress (active development)      |
+
+Fory gRPC support is under active development. For production gRPC
+workflows today, protobuf remains the mature/default choice.
+
+## Why Use Apache Fory
+
+- Idiomatic generated code: Fory IDL generates language-idiomatic classes and
+  structs that can be used directly as domain objects.
+- Faster serialization: In Fory benchmarks, Fory can be around 10x faster than
+  protobuf for object serialization workloads.
+- Better graph modeling: Shared and circular references are first-class features
+  instead of application-level ID-link workarounds.
+
+See benchmark details under [Performance References](#performance-references).
+
+## Syntax and Semantic Mapping
+
+### Package and File Options
+
+**Protocol Buffers**
 
 ```protobuf
 syntax = "proto3";
@@ -45,46 +78,18 @@ option java_package = "com.example.models";
 option go_package = "example.com/models";
 ```
 
-**FDL:**
+**Fory**
 
 ```protobuf
 package example.models;
 ```
 
-FDL uses a single package declaration that maps to all languages automatically.
+Fory uses one package namespace for cross-language registration. Language-specific
+package placement is still configurable in code generation.
 
-### Enum Definition
+### Message and Enum Definitions
 
-**Protocol Buffers:**
-
-```protobuf
-enum Status {
-  STATUS_UNSPECIFIED = 0;
-  STATUS_PENDING = 1;
-  STATUS_ACTIVE = 2;
-  STATUS_COMPLETED = 3;
-}
-```
-
-**FDL:**
-
-```protobuf
-enum Status [id=100] {
-    PENDING = 0;
-    ACTIVE = 1;
-    COMPLETED = 2;
-}
-```
-
-Key differences:
-
-- FDL supports optional type IDs (`[id=100]`) for efficient serialization
-- Protobuf requires `_UNSPECIFIED = 0` by convention; FDL uses explicit values
-- FDL enum values don't require prefixes
-
-### Message Definition
-
-**Protocol Buffers:**
+**Protocol Buffers**
 
 ```protobuf
 message User {
@@ -95,9 +100,14 @@ message User {
   repeated string tags = 5;
   map<string, string> metadata = 6;
 }
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_ACTIVE = 1;
+}
 ```
 
-**FDL:**
+**Fory**
 
 ```protobuf
 message User [id=101] {
@@ -105,258 +115,30 @@ message User [id=101] {
     string name = 2;
     optional string email = 3;
     int32 age = 4;
-    repeated string tags = 5;
+    list<string> tags = 5;
     map<string, string> metadata = 6;
 }
+
+enum Status [id=102] {
+    UNKNOWN = 0;
+    ACTIVE = 1;
+}
 ```
 
-Syntax is nearly identical, but FDL adds:
+Key differences:
 
-- Type IDs (`[id=101]`) for cross-language registration
-- `ref` modifier for reference tracking
+- Fory can assign stable type IDs directly (`[id=...]`).
+- Fory uses `list<T>` (with `repeated T` as alias).
+- Enum naming conventions are language-driven instead of protobuf prefix style.
 
-### Nested Types
+### `oneof` to `union`
 
-**Protocol Buffers:**
+Protobuf `oneof` is translated to a nested Fory `union` plus an optional field
+referencing that union.
+
+**Protocol Buffers**
 
 ```protobuf
-message Order {
-  message Item {
-    string product_id = 1;
-    int32 quantity = 2;
-  }
-  repeated Item items = 1;
-}
-```
-
-**FDL:**
-
-```protobuf
-message OrderItem [id=200] {
-    string product_id = 1;
-    int32 quantity = 2;
-}
-
-message Order [id=201] {
-    repeated OrderItem items = 1;
-}
-```
-
-FDL supports nested types, but generators may flatten them for languages where nested types are not idiomatic.
-
-### Imports
-
-**Protocol Buffers:**
-
-```protobuf
-import "other.proto";
-import "google/protobuf/timestamp.proto";
-```
-
-**FDL:**
-
-FDL currently requires all types in a single file or uses forward references within the same file.
-
-## Feature Comparison
-
-### Reference Tracking
-
-FDL's killer feature is first-class reference tracking:
-
-**FDL:**
-
-```protobuf
-message TreeNode [id=300] {
-    string value = 1;
-    ref TreeNode parent = 2;
-    repeated ref TreeNode children = 3; // Element refs
-    ref repeated TreeNode path = 4;     // Collection ref
-}
-
-message Graph [id=301] {
-    repeated ref Node nodes = 1;  // Shared references preserved (elements)
-}
-```
-
-**Protocol Buffers:**
-
-Protobuf cannot represent circular or shared references. You must use workarounds:
-
-```protobuf
-// Workaround: Use IDs instead of references
-message TreeNode {
-  string id = 1;
-  string value = 2;
-  string parent_id = 3;        // Manual ID reference
-  repeated string child_ids = 4;
-}
-```
-
-When using protobuf IDL with the Fory compiler, you can opt into reference
-tracking via Fory extension options. `weak_ref` implies `ref`, while
-`thread_safe_pointer` does not:
-
-```protobuf
-message TreeNode {
-  TreeNode parent = 1 [(fory).weak_ref = true];
-  TreeNode child = 2 [(fory).ref = true, (fory).thread_safe_pointer = false];
-}
-```
-
-### Type System
-
-| Type       | Protocol Buffers                                                                                       | FDL                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Boolean    | `bool`                                                                                                 | `bool`                                                                                          |
-| Integers   | `int32`, `int64`, `sint32`, `sint64`, `uint32`, `uint64`, `fixed32`, `fixed64`, `sfixed32`, `sfixed64` | `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `fixed_*`, `tagged_*` |
-| Floats     | `float`, `double`                                                                                      | `float32`, `float64`                                                                            |
-| String     | `string`                                                                                               | `string`                                                                                        |
-| Binary     | `bytes`                                                                                                | `bytes`                                                                                         |
-| Timestamp  | `google.protobuf.Timestamp`                                                                            | `timestamp`                                                                                     |
-| Date       | Not built-in                                                                                           | `date`                                                                                          |
-| Duration   | `google.protobuf.Duration`                                                                             | Not built-in                                                                                    |
-| List       | `repeated T`                                                                                           | `repeated T`                                                                                    |
-| Map        | `map<K, V>`                                                                                            | `map<K, V>`                                                                                     |
-| Nullable   | `optional T` (proto3)                                                                                  | `optional T`                                                                                    |
-| Oneof      | `oneof`                                                                                                | `union` (case id = field number)                                                                |
-| Any        | `google.protobuf.Any`                                                                                  | `any`                                                                                           |
-| Extensions | `extend`                                                                                               | Not supported                                                                                   |
-
-### Wire Format
-
-**Protocol Buffers:**
-
-- Tag-length-value encoding
-- Variable-length integers (varints)
-- Field numbers encoded in wire format
-- Unknown fields preserved
-
-**FDL/Fory:**
-
-- Optimized binary format
-- Schema-aware encoding
-- Type IDs for fast lookup
-- Reference tracking support
-- Zero-copy deserialization where possible
-
-### Generated Code Style
-
-**Protocol Buffers** generates custom types with builders and accessors:
-
-```java
-// Protobuf generated Java
-User user = User.newBuilder()
-    .setId("u123")
-    .setName("Alice")
-    .setAge(30)
-    .build();
-```
-
-**FDL** generates native POJOs:
-
-```java
-// FDL generated Java
-User user = new User();
-user.setId("u123");
-user.setName("Alice");
-user.setAge(30);
-```
-
-### Comparison Table
-
-| Feature                    | Protocol Buffers  | FDL       |
-| -------------------------- | ----------------- | --------- |
-| Schema evolution           | Excellent         | Good      |
-| Backward compatibility     | Excellent         | Good      |
-| Reference tracking         | No                | Yes       |
-| Circular references        | No                | Yes       |
-| Native code generation     | No (custom types) | Yes       |
-| Unknown field preservation | Yes               | No        |
-| Schema-less mode           | No                | Yes\*     |
-| RPC integration (gRPC)     | Yes               | No        |
-| Zero-copy deserialization  | Limited           | Yes       |
-| Human-readable format      | JSON, TextFormat  | No        |
-| Performance                | Good              | Excellent |
-
-\*Fory supports schema-less serialization without FDL
-
-## When to Use Each
-
-### Use Protocol Buffers When:
-
-1. **Building gRPC services**: Protobuf is the native format for gRPC
-2. **Maximum backward compatibility**: Protobuf's unknown field handling is robust
-3. **Schema evolution is critical**: Adding/removing fields across versions
-4. **You need Any types**: Protobuf-specific dynamic payloads
-5. **Human-readable debugging**: TextFormat and JSON transcoding available
-6. **Ecosystem integration**: Wide tooling support (linting, documentation)
-
-### Use FDL/Fory When:
-
-1. **Performance is critical**: Up to 170x faster than protobuf
-2. **Cross-language object graphs**: Serialize Java objects, deserialize in Python
-3. **Circular/shared references**: Object graphs with cycles
-4. **Native code preferred**: Standard POJOs, dataclasses, structs
-5. **Memory efficiency**: Zero-copy deserialization
-6. **Existing object models**: Minimal changes to existing code
-
-## Performance Comparison
-
-Benchmarks show Fory significantly outperforms Protocol Buffers, see more details from below links:
-
-- Benchmark result: https://fory.apache.org/docs/introduction/benchmark
-- Benchmark code: https://github.com/apache/fory/tree/main/benchmarks
-- Benchmark docs: https://github.com/apache/fory/tree/main/benchmarks
-
-## Migration Guide
-
-### From Protocol Buffers to FDL
-
-#### Step 1: Convert Syntax
-
-**Before (proto):**
-
-```protobuf
-syntax = "proto3";
-package myapp;
-
-message Person {
-  string name = 1;
-  int32 age = 2;
-  repeated string emails = 3;
-  Address address = 4;
-}
-
-message Address {
-  string street = 1;
-  string city = 2;
-}
-```
-
-**After (FDL):**
-
-```protobuf
-package myapp;
-
-message Address [id=100] {
-    string street = 1;
-    string city = 2;
-}
-
-message Person [id=101] {
-    string name = 1;
-    int32 age = 2;
-    repeated string emails = 3;
-    Address address = 4;
-}
-```
-
-#### Step 2: Handle Special Cases
-
-**oneof fields:**
-
-```protobuf
-// Proto
 message Event {
   oneof payload {
     string text = 1;
@@ -365,152 +147,190 @@ message Event {
 }
 ```
 
+**Fory-style shape after translation**
+
 ```protobuf
-// FDL - oneof becomes a nested union plus an optional field referencing it
-message Event [id=102] {
+message Event {
     union payload {
         string text = 1;
         int32 number = 2;
     }
     optional payload payload = 1;
 }
-// Case ids are preserved from the oneof field numbers
-// The field number is the smallest case id in the oneof
 ```
 
-**Well-known types:**
+Notes:
+
+- Union case IDs are derived from the original `oneof` field numbers.
+- The synthetic union field uses the smallest `oneof` case number.
+
+### Imports and Well-Known Types
+
+Protobuf imports are supported. Common well-known types map directly:
+
+- `google.protobuf.Timestamp` -> `timestamp`
+- `google.protobuf.Duration` -> `duration`
+- `google.protobuf.Any` -> `any`
+
+## Type Mapping Highlights
+
+| Protobuf Type                            | Fory Mapping                             |
+| ---------------------------------------- | ---------------------------------------- |
+| `bool`                                   | `bool`                                   |
+| `int32`, `uint32`                        | variable-length 32-bit integer kinds     |
+| `sint32`                                 | zigzag 32-bit integer                    |
+| `int64`, `uint64`                        | variable-length 64-bit integer kinds     |
+| `sint64`                                 | zigzag 64-bit integer                    |
+| `fixed32`, `fixed64`                     | fixed-width unsigned integer kinds       |
+| `sfixed32`, `sfixed64`                   | fixed-width signed integer kinds         |
+| `float`, `double`                        | `float32`, `float64`                     |
+| `string`, `bytes`                        | `string`, `bytes`                        |
+| `repeated T`                             | `list<T>`                                |
+| `map<K, V>`                              | `map<K, V>`                              |
+| `optional T`                             | `optional T`                             |
+| `oneof`                                  | `union` + optional union reference field |
+| `int64 [(fory).type = "tagged_int64"]`   | `tagged_int64` encoding                  |
+| `uint64 [(fory).type = "tagged_uint64"]` | `tagged_uint64` encoding                 |
+
+## Fory Extension Options (Protobuf)
+
+Fory-specific options in `.proto` use the `(fory).` prefix.
 
 ```protobuf
-// Proto
-import "google/protobuf/timestamp.proto";
-message Event {
-  google.protobuf.Timestamp created_at = 1;
+option (fory).enable_auto_type_id = true;
+
+message TreeNode {
+  TreeNode parent = 1 [(fory).weak_ref = true];
+  repeated TreeNode children = 2 [(fory).ref = true];
 }
 ```
 
+### File-Level Options
+
+| Option                               | Type   | Description                                                                                  |
+| ------------------------------------ | ------ | -------------------------------------------------------------------------------------------- |
+| `(fory).use_record_for_java_message` | bool   | Generate Java records for all messages in this file                                          |
+| `(fory).polymorphism`                | bool   | Enable polymorphic serialization metadata by default                                         |
+| `(fory).enable_auto_type_id`         | bool   | Auto-generate type IDs when omitted (compiler default is true)                               |
+| `(fory).evolving`                    | bool   | Default schema-evolution behavior for messages                                               |
+| `(fory).go_nested_type_style`        | string | Go nested naming style: `underscore` (default) or `camelcase`                                |
+| `(fory).swift_namespace_style`       | string | Swift namespace style: `enum` (default) or `flatten`; applies only when package is non-empty |
+
+### Message and Enum Options
+
+| Option                       | Applies To    | Type   | Description                              |
+| ---------------------------- | ------------- | ------ | ---------------------------------------- |
+| `(fory).id`                  | message, enum | int    | Explicit type ID for registration        |
+| `(fory).alias`               | message, enum | string | Alternate name used for auto-ID hashing  |
+| `(fory).evolving`            | message       | bool   | Override file-level evolution setting    |
+| `(fory).use_record_for_java` | message       | bool   | Generate Java record for this message    |
+| `(fory).deprecated`          | message, enum | bool   | Mark type as deprecated                  |
+| `(fory).namespace`           | message       | string | Override default package-based namespace |
+
+### Field-Level Options
+
+| Option                       | Type   | Description                                                  |
+| ---------------------------- | ------ | ------------------------------------------------------------ |
+| `(fory).ref`                 | bool   | Enable reference tracking for this field                     |
+| `(fory).nullable`            | bool   | Treat field as nullable (`optional`)                         |
+| `(fory).weak_ref`            | bool   | Generate weak pointer semantics (C++/Rust codegen)           |
+| `(fory).thread_safe_pointer` | bool   | Rust pointer flavor for ref fields (`Arc` vs `Rc`)           |
+| `(fory).deprecated`          | bool   | Mark field as deprecated                                     |
+| `(fory).type`                | string | Primitive override, currently `tagged_int64`/`tagged_uint64` |
+
+Reference option behavior:
+
+- `weak_ref = true` implies ref tracking.
+- For `repeated` fields, `(fory).ref = true` applies to list elements.
+- For `map<K, V>` fields, `(fory).ref = true` applies to map values.
+- `weak_ref` and `thread_safe_pointer` are codegen hints for C++/Rust.
+
+### Option Examples by Shape
+
 ```protobuf
-// FDL
-message Event [id=103] {
-    timestamp created_at = 1;
+message Graph {
+  Node root = 1 [(fory).ref = true, (fory).thread_safe_pointer = false];
+  repeated Node nodes = 2 [(fory).ref = true];
+  map<string, Node> cache = 3 [(fory).ref = true];
+  Node parent = 4 [(fory).weak_ref = true];
 }
 ```
 
-#### Step 3: Add Type IDs
+## Reference Tracking vs Protobuf IDs
 
-Assign unique type IDs for cross-language compatibility:
+Protobuf itself does not preserve shared/cyclic object graphs. With Fory
+protobuf extensions, you can opt into graph semantics.
+
+**Without Fory ref options (protobuf-style IDs):**
 
 ```protobuf
-// Reserve ranges for different domains
-// 100-199: Common types
-// 200-299: User domain
-// 300-399: Order domain
-
-message Address [id=100] { ... }
-message Person [id=200] { ... }
-message Order [id=300] { ... }
+message TreeNode {
+  string id = 1;
+  string parent_id = 2;
+  repeated string child_ids = 3;
+}
 ```
 
-#### Step 4: Update Build Configuration
+**With Fory ref options (object graph):**
 
-**Before (Maven with protobuf):**
-
-```xml
-<plugin>
-  <groupId>org.xolstice.maven.plugins</groupId>
-  <artifactId>protobuf-maven-plugin</artifactId>
-  <!-- ... -->
-</plugin>
+```protobuf
+message TreeNode {
+  TreeNode parent = 1 [(fory).weak_ref = true];
+  repeated TreeNode children = 2 [(fory).ref = true];
+}
 ```
 
-**After (Maven with FDL):**
+## Migration Guide: Protobuf to Fory
 
-```xml
-<plugin>
-  <groupId>org.codehaus.mojo</groupId>
-  <artifactId>exec-maven-plugin</artifactId>
-  <executions>
-    <execution>
-      <id>generate-fory-types</id>
-      <phase>generate-sources</phase>
-      <goals><goal>exec</goal></goals>
-      <configuration>
-        <executable>fory</executable>
-        <arguments>
-          <argument>compile</argument>
-          <argument>${project.basedir}/src/main/fdl/schema.fdl</argument>
-          <argument>--lang</argument>
-          <argument>java</argument>
-          <argument>--output</argument>
-          <argument>${project.build.directory}/generated-sources/fdl</argument>
-        </arguments>
-      </configuration>
-    </execution>
-  </executions>
-</plugin>
-```
+### Step 1: Translate Schema Syntax
 
-#### Step 5: Update Application Code
+- Keep package names stable.
+- Replace `repeated T` with `list<T>` (or keep `repeated` alias).
+- Add explicit `[id=...]` where you need stable numeric registration.
 
-**Before (Protobuf Java):**
+### Step 2: Convert `oneof` and Special Types
+
+- `oneof` -> `union` + optional union field.
+- Map protobuf well-known types to Fory primitives (`timestamp`, `duration`, `any`).
+
+### Step 3: Replace Protobuf Workarounds with `ref`
+
+Where protobuf used manual ID links for object graphs, switch to Fory `ref`
+modifiers (and optional `ref(weak=true)` where needed).
+
+### Step 4: Update Build/Codegen
+
+Replace protobuf generation steps with the Fory compiler invocation for target
+languages.
+
+### Step 5: Run Compatibility Checks
+
+For staged migrations, keep both formats in parallel and verify payload-level
+parity with integration tests.
+
+## Coexistence Strategy
+
+You can run protobuf and Fory in parallel during migration:
 
 ```java
-// Protobuf style
-Person.Builder builder = Person.newBuilder();
-builder.setName("Alice");
-builder.setAge(30);
-Person person = builder.build();
-
-byte[] data = person.toByteArray();
-Person restored = Person.parseFrom(data);
-```
-
-**After (Fory Java):**
-
-```java
-// Fory style
-Person person = new Person();
-person.setName("Alice");
-person.setAge(30);
-
-Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
-MyappForyRegistration.register(fory);
-
-byte[] data = fory.serialize(person);
-Person restored = (Person) fory.deserialize(data);
-```
-
-### Coexistence Strategy
-
-For gradual migration, you can run both systems in parallel:
-
-```java
-// Dual serialization during migration
 public byte[] serialize(Object obj, Format format) {
     if (format == Format.PROTOBUF) {
         return ((MessageLite) obj).toByteArray();
-    } else {
-        return fory.serialize(obj);
     }
-}
-
-// Convert between formats
-public ForyPerson fromProto(ProtoPerson proto) {
-    ForyPerson person = new ForyPerson();
-    person.setName(proto.getName());
-    person.setAge(proto.getAge());
-    return person;
+    return fory.serialize(obj);
 }
 ```
 
+Use translators at service boundaries while internal object-graph heavy paths
+migrate first.
+
+## Performance References
+
+- Benchmarks: https://fory.apache.org/docs/introduction/benchmark
+- Benchmark code: https://github.com/apache/fory/tree/main/benchmarks
+
 ## Summary
 
-| Aspect           | Choose Protocol Buffers | Choose FDL/Fory        |
-| ---------------- | ----------------------- | ---------------------- |
-| Use case         | RPC, API contracts      | Object serialization   |
-| Performance      | Acceptable              | Critical               |
-| References       | Not needed              | Circular/shared needed |
-| Code style       | Builder pattern OK      | Native POJOs preferred |
-| Schema evolution | Complex requirements    | Simpler requirements   |
-| Ecosystem        | Need gRPC, tooling      | Need raw performance   |
-
-Both tools excel in their domains. Protocol Buffers shines for RPC and API contracts with strong schema evolution guarantees. FDL/Fory excels at high-performance object serialization with native language integration and reference tracking support.
+Use protobuf when your primary concern is API contracts and gRPC ecosystem
+integration. Use Fory when object-graph performance, native models, and
+reference semantics are the primary concern.

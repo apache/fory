@@ -31,14 +31,14 @@ This guide covers installation and basic setup for cross-language serialization 
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 ```
 
 **Gradle:**
 
 ```gradle
-implementation 'org.apache.fory:fory-core:0.14.1'
+implementation 'org.apache.fory:fory-core:0.15.0'
 ```
 
 ### Python
@@ -91,11 +91,11 @@ Fory fory = Fory.builder()
 ```python
 import pyfory
 
-# xlang mode is enabled by default
-fory = pyfory.Fory()
+# Cross-language mode must be enabled explicitly
+fory = pyfory.Fory(xlang=True)
 
-# Explicit configuration
-fory = pyfory.Fory(ref=True)
+# Enable reference tracking when needed
+fory = pyfory.Fory(xlang=True, ref=True)
 ```
 
 ### Go
@@ -103,9 +103,9 @@ fory = pyfory.Fory(ref=True)
 ```go
 import forygo "github.com/apache/fory/go/fory"
 
-fory := forygo.NewFory()
+fory := forygo.NewFory(forygo.WithXlang(true))
 // Or with reference tracking
-fory := forygo.NewFory(true)
+fory := forygo.NewFory(forygo.WithXlang(true), forygo.WithTrackRef(true))
 ```
 
 ### Rust
@@ -113,7 +113,7 @@ fory := forygo.NewFory(true)
 ```rust
 use fory::Fory;
 
-let fory = Fory::default();
+let fory = Fory::default().xlang(true);
 ```
 
 ### JavaScript
@@ -159,18 +159,24 @@ fory.register_type(Person, typename="example.Person")
 **Go:**
 
 ```go
-fory.RegisterNamedType(Person{}, "example.Person")
+fory.RegisterNamedStruct(Person{}, "example.Person")
 ```
 
 **Rust:**
 
 ```rust
-#[derive(Fory)]
-#[tag("example.Person")]
+use fory::{Fory, ForyObject};
+
+#[derive(ForyObject)]
 struct Person {
     name: String,
     age: i32,
 }
+
+let mut fory = Fory::default().xlang(true);
+fory
+    .register_by_namespace::<Person>("example", "Person")
+    .expect("register Person");
 ```
 
 **JavaScript:**
@@ -210,7 +216,7 @@ fory.register_type(Person, type_id=100)
 **Go:**
 
 ```go
-fory.Register(Person{}, 100)
+fory.RegisterStruct(Person{}, 100)
 ```
 
 **C++:**
@@ -266,7 +272,7 @@ class Person:
     name: str
     age: pyfory.Int32Type
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 fory.register_type(Person, typename="example.Person")
 
 with open("person.bin", "rb") as f:

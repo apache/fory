@@ -25,22 +25,22 @@ describe('writer', () => {
     test('should dumpOwn dispose work', () => {
         const writer = new BinaryWriter({});
         {
-            writer.uint8(256);
+            writer.writeUint8(256);
             const { get, dispose } = writer.dumpAndOwn();
             const ab = get();
             expect(ab.byteLength).toBe(1);
             expect(ab[0]).toBe(0);
-            expect(writer.getCursor()).toBe(1);
+            expect(writer.writeGetCursor()).toBe(1);
             dispose();
         }
         writer.reset();
         {
-            writer.uint8(256);
+            writer.writeUint8(256);
             const { get, dispose } = writer.dumpAndOwn();
             const ab = get();
             expect(ab.byteLength).toBe(1);
             expect(ab[0]).toBe(0);
-            expect(writer.getCursor()).toBe(1);
+            expect(writer.writeGetCursor()).toBe(1);
             dispose();
         }
     });
@@ -48,12 +48,12 @@ describe('writer', () => {
     test('should dumpOwn work', () => {
         const writer = new BinaryWriter({});
         {
-            writer.uint8(256);
+            writer.writeUint8(256);
             const { get } = writer.dumpAndOwn();
             const ab = get();
             expect(ab.byteLength).toBe(1);
             expect(ab[0]).toBe(0);
-            expect(writer.getCursor()).toBe(1);
+            expect(writer.writeGetCursor()).toBe(1);
         }
         try {
             writer.reset();

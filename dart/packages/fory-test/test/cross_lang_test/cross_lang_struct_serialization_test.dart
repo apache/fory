@@ -37,32 +37,34 @@ void main() {
   group('Cross-language struct serialization', () {
     test('round-trips SimpleStruct1', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($SimpleStruct1, "SimpleStruct1");
+      fory.register(SimpleStruct1, typename: "SimpleStruct1");
       SimpleStruct1 obj = SimpleStruct1();
       obj.a = Int32.maxValue;
-      Uint8List lis = fory.toFory(obj);
-      Object? obj2 = fory.fromFory(lis);
+      Uint8List lis = fory.serialize(obj);
+      Object? obj2 = fory.deserialize(lis);
       check(obj2).equals(obj);
     });
 
     test('round-trips ComplexObject2', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
-      ComplexObject2 o = ComplexObject2(true,{Int8(-1):Int32(2)});
+      fory.register(ComplexObject2, typename: "test.ComplexObject2");
+      ComplexObject2 o = ComplexObject2(true, {Int8(-1): Int32(2)});
       CrossLangUtil.structRoundBack(fory, o, "test_serialize_simple_struct");
-    }, skip: 'Cross-language serialization with Python needs protocol alignment');
+    },
+        skip:
+            'Cross-language serialization with Python needs protocol alignment');
 
     test('round-trips ComplexObject1 with nested data', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject2, "test.ComplexObject2");
-      fory.register($ComplexObject1, "test.ComplexObject1");
-      ComplexObject2 obj2 = ComplexObject2(true,{Int8(-1):Int32(2)});
+      fory.register(ComplexObject2, typename: "test.ComplexObject2");
+      fory.register(ComplexObject1, typename: "test.ComplexObject1");
+      ComplexObject2 obj2 = ComplexObject2(true, {Int8(-1): Int32(2)});
       ComplexObject1 obj = ComplexObject1();
       obj.f1 = obj2;
       obj.f2 = "abc";
@@ -75,13 +77,15 @@ void main() {
       obj.f9 = Float32(1.0 / 2);
       obj.f10 = 1 / 3.0;
       obj.f11 = Int16List.fromList([1, 2]);
-      obj.f12 = [Int16(-1),Int16(4)];
+      obj.f12 = [Int16(-1), Int16(4)];
       CrossLangUtil.structRoundBack(fory, obj, "test_serialize_complex_struct");
-    }, skip: 'Cross-language serialization with Python needs protocol alignment');
+    },
+        skip:
+            'Cross-language serialization with Python needs protocol alignment');
 
     test('preserves cross-language references', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
       List<Object> list = [];
       Map<Object, Object> map = {};
@@ -90,28 +94,32 @@ void main() {
       map['k1'] = map;
       map['k2'] = list;
 
-      Uint8List bytes = fory.toFory(list);
+      Uint8List bytes = fory.serialize(list);
 
-      File file = TestFileUtil.getWriteFile('test_cross_language_reference.data', bytes);
-      bool exeRes = CrossLangUtil.executeWithPython('test_cross_language_reference', file.path);
+      File file = TestFileUtil.getWriteFile(
+          'test_cross_language_reference.data', bytes);
+      bool exeRes = CrossLangUtil.executeWithPython(
+          'test_cross_language_reference', file.path);
       check(exeRes).isTrue();
 
       // deserialize
       bytes = file.readAsBytesSync();
-      Object? obj = fory.fromFory(bytes);
+      Object? obj = fory.deserialize(bytes);
       check(obj).isNotNull();
       List list1 = obj as List<Object?>;
       check(list1).identicalTo(list1[0]);
       Map<Object?, Object?> map1 = list1[1] as Map<Object?, Object?>;
       check(map1['k1']).identicalTo(map1['k1']);
       check(map1['k2']).identicalTo(list1);
-    }, skip: 'Cross-language serialization with Python needs protocol alignment');
+    },
+        skip:
+            'Cross-language serialization with Python needs protocol alignment');
 
     test('round-trips ComplexObject3 with nested collections', () {
       Fory fory = Fory(
-        refTracking: true,
+        ref: true,
       );
-      fory.register($ComplexObject3, "test.ComplexObject3");
+      fory.register(ComplexObject3, typename: "test.ComplexObject3");
       ComplexObject3 obj = ComplexObject3();
 
       Map<int, Float32> map1 = {
@@ -124,8 +132,10 @@ void main() {
       };
       obj.f1 = [map1, map2];
 
-      SplayTreeMap<int, Float32> splayTreeMap1 = SplayTreeMap<int, Float32>.of(map1);
-      SplayTreeMap<int, Float32> splayTreeMap2 = SplayTreeMap<int, Float32>.of(map2);
+      SplayTreeMap<int, Float32> splayTreeMap1 =
+          SplayTreeMap<int, Float32>.of(map1);
+      SplayTreeMap<int, Float32> splayTreeMap2 =
+          SplayTreeMap<int, Float32>.of(map2);
       List<SplayTreeMap<int, Float32>> list1 = [splayTreeMap1, splayTreeMap2];
       HashMap<String, List<SplayTreeMap<int, Float32>>> map3 = HashMap();
       map3['key1'] = list1;
@@ -136,11 +146,10 @@ void main() {
       map4['key2'] = set1;
       obj.f3 = map4;
 
-      Uint8List bytes = fory.toFory(obj);
-      Object? obj2 = fory.fromFory(bytes);
+      Uint8List bytes = fory.serialize(obj);
+      Object? obj2 = fory.deserialize(bytes);
       check(obj2).isNotNull();
       check(obj2).equals(obj);
     });
-
   });
 }

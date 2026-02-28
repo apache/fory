@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"unsafe"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 )
 
@@ -869,5 +870,79 @@ func (s float16ArraySerializer) Read(ctx *ReadContext, refMode RefMode, readType
 }
 
 func (s float16ArraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+// ============================================================================
+// bfloat16ArraySerializer - optimized [N]bfloat16.BFloat16 serialization
+// ============================================================================
+
+type bfloat16ArraySerializer struct {
+	arrayType reflect.Type
+}
+
+func (s bfloat16ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	length := value.Len()
+	size := length * 2
+	buf.WriteLength(size)
+	if length > 0 {
+		if value.CanAddr() && isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			buf.WriteBinary(unsafe.Slice((*byte)(ptr), size))
+		} else {
+			for i := 0; i < length; i++ {
+				// We can't easily cast the whole array if not addressable/little-endian
+				// So we iterate.
+				val := value.Index(i).Interface().(bfloat16.BFloat16)
+				buf.WriteUint16(val.Bits())
+			}
+		}
+	}
+}
+
+func (s bfloat16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	writeArrayRefAndType(ctx, refMode, writeType, value, BFLOAT16_ARRAY)
+	if ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s bfloat16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
+	size := buf.ReadLength(ctxErr)
+	length := size / 2
+	if ctx.HasError() {
+		return
+	}
+	if length != value.Type().Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+		return
+	}
+
+	if length > 0 {
+		if isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			raw := buf.ReadBinary(size, ctxErr)
+			copy(unsafe.Slice((*byte)(ptr), size), raw)
+		} else {
+			for i := 0; i < length; i++ {
+				value.Index(i).Set(reflect.ValueOf(bfloat16.BFloat16FromBits(buf.ReadUint16(ctxErr))))
+			}
+		}
+	}
+}
+
+func (s bfloat16ArraySerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done := readArrayRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s bfloat16ArraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }

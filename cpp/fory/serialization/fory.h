@@ -37,6 +37,7 @@
 #include "fory/util/error.h"
 #include "fory/util/pool.h"
 #include "fory/util/result.h"
+#include "fory/util/stream.h"
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -230,7 +231,9 @@ public:
   /// fory.register_struct<MyStruct>(1);
   /// ```
   template <typename T> Result<void, Error> register_struct(uint32_t type_id) {
-    return type_resolver_->template register_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_by_id<T>(type_id);
+    });
   }
 
   /// Register a struct type with namespace and type name.
@@ -250,7 +253,9 @@ public:
   template <typename T>
   Result<void, Error> register_struct(const std::string &ns,
                                       const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_by_name<T>(ns, type_name);
+    });
   }
 
   /// Register a struct type with type name only (no namespace).
@@ -267,7 +272,9 @@ public:
   /// ```
   template <typename T>
   Result<void, Error> register_struct(const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_by_name<T>("", type_name);
+    });
   }
 
   /// Register an enum type with a numeric type ID.
@@ -288,7 +295,9 @@ public:
   /// fory.register_enum<Color>(1);
   /// ```
   template <typename T> Result<void, Error> register_enum(uint32_t type_id) {
-    return type_resolver_->template register_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_by_id<T>(type_id);
+    });
   }
 
   /// Register an enum type with namespace and type name.
@@ -308,7 +317,9 @@ public:
   template <typename T>
   Result<void, Error> register_enum(const std::string &ns,
                                     const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_by_name<T>(ns, type_name);
+    });
   }
 
   /// Register an enum type with type name only (no namespace).
@@ -325,7 +336,9 @@ public:
   /// ```
   template <typename T>
   Result<void, Error> register_enum(const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_by_name<T>("", type_name);
+    });
   }
 
   /// Register a union type with a numeric type ID.
@@ -336,7 +349,9 @@ public:
   /// @param type_id Unique numeric identifier for this union type.
   /// @return Success or error if registration fails.
   template <typename T> Result<void, Error> register_union(uint32_t type_id) {
-    return type_resolver_->template register_union_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_union_by_id<T>(type_id);
+    });
   }
 
   /// Register a union type with namespace and type name.
@@ -348,7 +363,9 @@ public:
   template <typename T>
   Result<void, Error> register_union(const std::string &ns,
                                      const std::string &type_name) {
-    return type_resolver_->template register_union_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_union_by_name<T>(ns, type_name);
+    });
   }
 
   /// Register a union type with type name only (no namespace).
@@ -358,7 +375,9 @@ public:
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_union(const std::string &type_name) {
-    return type_resolver_->template register_union_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_union_by_name<T>("", type_name);
+    });
   }
 
   /// Register an extension type with a numeric type ID.
@@ -371,7 +390,9 @@ public:
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_extension_type(uint32_t type_id) {
-    return type_resolver_->template register_ext_type_by_id<T>(type_id);
+    return register_type([this, type_id]() {
+      return type_resolver_->template register_ext_type_by_id<T>(type_id);
+    });
   }
 
   /// Register an extension type with namespace and type name.
@@ -383,7 +404,10 @@ public:
   template <typename T>
   Result<void, Error> register_extension_type(const std::string &ns,
                                               const std::string &type_name) {
-    return type_resolver_->template register_ext_type_by_name<T>(ns, type_name);
+    return register_type([this, &ns, &type_name]() {
+      return type_resolver_->template register_ext_type_by_name<T>(ns,
+                                                                   type_name);
+    });
   }
 
   /// Register an extension type with type name only (no namespace).
@@ -393,10 +417,29 @@ public:
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_extension_type(const std::string &type_name) {
-    return type_resolver_->template register_ext_type_by_name<T>("", type_name);
+    return register_type([this, &type_name]() {
+      return type_resolver_->template register_ext_type_by_name<T>("",
+                                                                   type_name);
+    });
+  }
+
+private:
+  template <typename RegisterFn>
+  Result<void, Error> register_type(RegisterFn &&fn) {
+    std::lock_guard<std::mutex> lock(registration_mutex_);
+    if (FORY_PREDICT_FALSE(registration_locked_)) {
+      return Unexpected(Error::invalid(
+          "Cannot register types after first serialize/deserialize call"));
+    }
+    return std::forward<RegisterFn>(fn)();
   }
 
 protected:
+  void lock_registration() const {
+    std::lock_guard<std::mutex> lock(registration_mutex_);
+    registration_locked_ = true;
+  }
+
   /// Protected constructor - only derived classes can instantiate.
   explicit BaseFory(const Config &config,
                     std::shared_ptr<TypeResolver> resolver)
@@ -412,6 +455,8 @@ protected:
 
   Config config_;
   std::shared_ptr<TypeResolver> type_resolver_;
+  mutable std::mutex registration_mutex_;
+  mutable bool registration_locked_{false};
 };
 
 // ============================================================================
@@ -469,9 +514,9 @@ public:
       ensure_finalized();
     }
     // Swap in the caller's buffer so all writes go there.
-    std::swap(buffer, write_ctx_->buffer());
+    buffer.swap(write_ctx_->buffer());
     auto result = serialize_impl(obj, write_ctx_->buffer());
-    std::swap(buffer, write_ctx_->buffer());
+    buffer.swap(write_ctx_->buffer());
     // reset internal state after use without clobbering caller buffer.
     write_ctx_->reset();
     return result;
@@ -527,6 +572,12 @@ public:
     if (header.is_null) {
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
     }
+    if (FORY_PREDICT_FALSE(header.is_xlang != config_.xlang)) {
+      return Unexpected(Error::invalid_data(
+          "Protocol mismatch: payload xlang=" +
+          std::string(header.is_xlang ? "true" : "false") +
+          ", local xlang=" + std::string(config_.xlang ? "true" : "false")));
+    }
 
     read_ctx_->attach(buffer);
     ReadContextGuard guard(*read_ctx_);
@@ -556,14 +607,56 @@ public:
     if (FORY_PREDICT_FALSE(!finalized_)) {
       ensure_finalized();
     }
-    FORY_TRY(header, read_header(buffer));
+    auto header_result = read_header(buffer);
+    if (FORY_PREDICT_FALSE(!header_result.ok())) {
+      return Unexpected(std::move(header_result).error());
+    }
+    auto header = std::move(header_result).value();
     if (header.is_null) {
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
+    }
+    if (FORY_PREDICT_FALSE(header.is_xlang != config_.xlang)) {
+      return Unexpected(Error::invalid_data(
+          "Protocol mismatch: payload xlang=" +
+          std::string(header.is_xlang ? "true" : "false") +
+          ", local xlang=" + std::string(config_.xlang ? "true" : "false")));
     }
 
     read_ctx_->attach(buffer);
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
+  }
+
+  /// Deserialize an object from a stream reader.
+  ///
+  /// This overload obtains the reader-owned Buffer via get_buffer() and
+  /// continues deserialization on that buffer.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param stream_reader Stream reader to read from.
+  /// @return Deserialized object, or error.
+  template <typename T>
+  Result<T, Error> deserialize(StreamReader &stream_reader) {
+    struct StreamShrinkGuard {
+      StreamReader *stream_reader = nullptr;
+      ~StreamShrinkGuard() {
+        if (stream_reader != nullptr) {
+          stream_reader->shrink_buffer();
+        }
+      }
+    };
+    StreamShrinkGuard shrink_guard{&stream_reader};
+    Buffer &buffer = stream_reader.get_buffer();
+    return deserialize<T>(buffer);
+  }
+
+  /// Deserialize an object from ForyInputStream.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param stream Input stream wrapper to read from.
+  /// @return Deserialized object, or error.
+  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+    return deserialize<T>(static_cast<StreamReader &>(stream));
   }
 
   // ==========================================================================
@@ -601,6 +694,7 @@ private:
   /// Finalize the type resolver on first use.
   void ensure_finalized() {
     if (!finalized_) {
+      lock_registration();
       auto final_result = type_resolver_->build_final_type_resolver();
       FORY_CHECK(final_result.ok())
           << "Failed to build finalized TypeResolver: "
@@ -735,6 +829,17 @@ public:
     return deserialize<T>(data.data(), data.size());
   }
 
+  template <typename T>
+  Result<T, Error> deserialize(StreamReader &stream_reader) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(stream_reader);
+  }
+
+  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(stream);
+  }
+
 private:
   explicit ThreadSafeFory(const Config &config,
                           std::shared_ptr<TypeResolver> resolver)
@@ -746,6 +851,7 @@ private:
 
   std::shared_ptr<TypeResolver> get_finalized_resolver() const {
     std::call_once(finalized_once_flag_, [this]() {
+      lock_registration();
       auto final_result = type_resolver_->build_final_type_resolver();
       FORY_CHECK(final_result.ok())
           << "Failed to build finalized TypeResolver: "

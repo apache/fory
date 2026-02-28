@@ -18,14 +18,13 @@
  */
 
 import 'package:analyzer/dart/element/element.dart';
-import 'package:fory/src/codegen/analyze/analysis_wrappers.dart';
+import 'package:fory/src/codegen/analyze/type_analysis_models.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
 import 'package:fory/src/const/dart_type.dart';
 
 class CustomTypeAnalyzer {
-
   const CustomTypeAnalyzer();
   /*
    Here is an explanation
@@ -35,7 +34,9 @@ class CustomTypeAnalyzer {
    Additionally, for now, annotations are simple and it seems possible to analyze everything at once, but in the future, as fields may gradually increase, handling it here would be overstepping, so it is not cached now.
    */
   // Here, the left of either is the result found without prohibition, and the right is the prohibited type.
-  Either<ObjTypeWrapper, DartTypeEnum> analyzeType(InterfaceElement element){
+  Either<ObjectTypeAnalysis, DartTypeEnum> resolveType(
+    InterfaceElement element,
+  ) {
     String name = element.name;
     Uri libLoc = element.library.source.uri;
     String scheme = libLoc.scheme;
@@ -47,22 +48,24 @@ class CustomTypeAnalyzer {
       if (dartTypeEnum.objType == null) {
         return Either.right(dartTypeEnum);
       }
-      return Either.left(
-        ObjTypeWrapper(dartTypeEnum.objType!, dartTypeEnum.certainForSer)
-      );
+      return Either.left(ObjectTypeAnalysis(
+        dartTypeEnum.objType!,
+        dartTypeEnum.serializationCertain,
+      ));
     }
     // Not found in built-in types, considered as a custom type
-    if (element is EnumElement){
-      if (!Analyzer.enumAnnotationAnalyzer.hasForyEnumAnnotation(element.metadata)){
+    if (element is EnumElement) {
+      if (!Analyzer.enumAnnotationAnalyzer
+          .hasForyEnumAnnotation(element.metadata)) {
         throw CodegenUnregisteredTypeException(path, name, 'ForyEnum');
       }
-      return Either.left(ObjTypeWrapper.namedEnum);
+      return Either.left(ObjectTypeAnalysis.namedEnumType);
     }
     assert(element is ClassElement);
-    if (Analyzer.classAnnotationAnalyzer.hasForyClassAnnotation(element.metadata)){
-      return Either.left(ObjTypeWrapper.namedStruct);
+    if (Analyzer.classAnnotationAnalyzer
+        .hasForyClassAnnotation(element.metadata)) {
+      return Either.left(ObjectTypeAnalysis.namedStructType);
     }
-    return Either.left(ObjTypeWrapper.unknownStruct);
+    return Either.left(ObjectTypeAnalysis.unknownStructType);
   }
-
 }

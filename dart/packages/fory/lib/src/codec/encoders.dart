@@ -24,10 +24,14 @@ import 'package:fory/src/codec/meta_string_decoder.dart';
 
 final class Encoders {
   // Here, to use const optimization, we rely on specific implementation classes for performance considerations
-  static const MetaStringEncoder genericEncoder = ForyMetaStringEncoder(46, 95); // '.', '_'
-  static const MetaStringDecoder genericDecoder = ForyMetaStringDecoder(46, 95); // '.', '_'
+  static const MetaStringEncoder genericEncoder =
+      ForyMetaStringEncoder(46, 95); // '.', '_'
+  static const MetaStringDecoder genericDecoder =
+      ForyMetaStringDecoder(46, 95); // '.', '_'
   static const MetaStringEncoder packageEncoder = genericEncoder;
   static const MetaStringDecoder packageDecoder = genericDecoder;
-  static const MetaStringEncoder typeNameEncoder = ForyMetaStringEncoder(36, 95); // '$', '_'
-  static const MetaStringDecoder typeNameDecoder = ForyMetaStringDecoder(36, 95); // '$', '_'
+  static const MetaStringEncoder typeNameEncoder =
+      ForyMetaStringEncoder(36, 95); // '$', '_'
+  static const MetaStringDecoder typeNameDecoder =
+      ForyMetaStringDecoder(36, 95); // '$', '_'
 }

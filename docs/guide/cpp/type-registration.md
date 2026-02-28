@@ -137,7 +137,7 @@ For cross-language compatibility, ensure:
 ### Java
 
 ```java
-Fory fory = Fory.builder().build();
+Fory fory = Fory.builder().withXlang(true).build();
 fory.register(Person.class, 100);
 fory.register(Address.class, 101);
 ```
@@ -147,9 +147,9 @@ fory.register(Address.class, 101);
 ```python
 import pyfory
 
-fory = pyfory.Fory()
-fory.register(Person, 100)
-fory.register(Address, 101)
+fory = pyfory.Fory(xlang=True)
+fory.register(Person, type_id=100)
+fory.register(Address, type_id=101)
 ```
 
 ### C++

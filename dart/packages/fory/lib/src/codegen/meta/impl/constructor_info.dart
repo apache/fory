@@ -20,17 +20,17 @@
 import 'package:fory/src/codegen/entity/constructor_params.dart';
 
 class ConstructorInfo {
-  final bool flexibleOrUnnamedCons;
-  final String? flexibleConsName;
-  final ConstructorParams? unnamedConsParams;
+  final bool usesFlexibleConstructor;
+  final String? flexibleConstructorName;
+  final ConstructorParams? unnamedConstructorParams;
 
-  const ConstructorInfo.useFlexibleCons(
-    this.flexibleConsName,
-  ) : unnamedConsParams = null,
-       flexibleOrUnnamedCons = true;
+  const ConstructorInfo.flexibleConstructor(
+    this.flexibleConstructorName,
+  )   : unnamedConstructorParams = null,
+        usesFlexibleConstructor = true;
 
-  const ConstructorInfo.useUnnamedCons(
-    this.unnamedConsParams,
-  ) : flexibleConsName = null,
-       flexibleOrUnnamedCons = false;
+  const ConstructorInfo.unnamedConstructor(
+    this.unnamedConstructorParams,
+  )   : flexibleConstructorName = null,
+        usesFlexibleConstructor = false;
 }

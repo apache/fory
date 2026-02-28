@@ -49,23 +49,24 @@ fory = pyfory.Fory(xlang=True, ref=True)
 ### Go
 
 ```go
-fory := forygo.NewFory(true)  // true enables ref tracking
+fory := forygo.NewFory(
+    forygo.WithXlang(true),
+    forygo.WithTrackRef(true),
+)
 ```
 
 ### C++
 
 ```cpp
-auto fory = fory::Fory::create(fory::Config{
-    .track_ref = true
-});
+auto fory = fory::Fory::builder().xlang(true).track_ref(true).build();
 ```
 
 ### Rust
 
 ```rust
-let fory = Fory::builder()
-    .with_ref_tracking(true)
-    .build();
+let fory = Fory::default()
+    .xlang(true)
+    .track_ref(true);
 ```
 
 ## Wire Format
@@ -162,8 +163,10 @@ To disable reference tracking for C++ entirely, set
 #### Rust: Field Attributes
 
 ```rust
-#[derive(Fory)]
-#[tag("example.Document")]
+use fory::ForyObject;
+use std::rc::Rc;
+
+#[derive(ForyObject)]
 struct Document {
     title: String,
 
@@ -171,7 +174,7 @@ struct Document {
     author: Rc<Author>,
 
     // Explicitly enable ref tracking
-    #[track_ref]
+    #[fory(ref = true)]
     tags: Vec<Tag>,
 }
 ```

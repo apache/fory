@@ -419,10 +419,15 @@ class RustGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, "//")
         if comment:
             lines.append(comment)
-        derives = ["ForyObject", "Debug"]
+        needs_safe_debug = self.message_needs_safe_debug(message)
+        derives = ["ForyObject"]
+        if not needs_safe_debug:
+            derives.append("Debug")
         if not self.message_has_any(message):
             derives.extend(["Clone", "PartialEq", "Default"])
         lines.append(f"#[derive({', '.join(derives)})]")
+        if not self.get_effective_evolving(message):
+            lines.append("#[fory(evolving = false)]")
 
         lines.append(f"pub struct {type_name} {{")
 
@@ -435,6 +440,9 @@ class RustGenerator(BaseGenerator):
 
         lines.append("}")
         lines.append("")
+        if needs_safe_debug:
+            lines.extend(self.generate_debug_impl(message))
+            lines.append("")
         lines.extend(self.generate_bytes_impl(type_name))
 
         return lines
@@ -456,6 +464,68 @@ class RustGenerator(BaseGenerator):
                 field_type.key_type
             ) or self.field_type_has_any(field_type.value_type)
         return False
+
+    def field_has_ref(self, field: Field) -> bool:
+        if field.ref:
+            return True
+        if isinstance(field.field_type, ListType):
+            return field.element_ref
+        if isinstance(field.field_type, MapType):
+            return field.field_type.value_ref
+        return False
+
+    def field_needs_safe_debug(self, field: Field) -> bool:
+        return self.field_has_ref(field) or self.field_type_has_any(field.field_type)
+
+    def message_needs_safe_debug(self, message: Message) -> bool:
+        return any(self.field_needs_safe_debug(field) for field in message.fields)
+
+    def rust_string_literal(self, value: str) -> str:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
+    def generate_debug_impl(self, message: Message) -> List[str]:
+        """Generate a Debug impl that avoids recursive ref expansion."""
+        lines: List[str] = []
+        type_name = message.name
+        lines.append(f"impl std::fmt::Debug for {type_name} {{")
+        lines.append(
+            "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {"
+        )
+        if not message.fields:
+            lines.append(
+                f"        f.write_str({self.rust_string_literal(type_name + ' {}')})"
+            )
+            lines.append("    }")
+            lines.append("}")
+            return lines
+        lines.append(
+            f"        f.write_str({self.rust_string_literal(type_name + ' { ')})?;"
+        )
+        for i, field in enumerate(message.fields):
+            field_name = self.to_snake_case(field.name)
+            if i > 0:
+                lines.append('        f.write_str(", ")?;')
+            lines.append(
+                f"        f.write_str({self.rust_string_literal(field_name + ': ')})?;"
+            )
+            if self.field_needs_safe_debug(field):
+                placeholder = f"{self.format_idl_type(field.field_type)}(...)"
+                placeholder_literal = self.rust_string_literal(placeholder)
+                if field.optional:
+                    lines.append(f"        if self.{field_name}.is_some() {{")
+                    lines.append(f"            f.write_str({placeholder_literal})?;")
+                    lines.append("        } else {")
+                    lines.append('            f.write_str("None")?;')
+                    lines.append("        }")
+                else:
+                    lines.append(f"        f.write_str({placeholder_literal})?;")
+            else:
+                lines.append(f'        write!(f, "{{:?}}", self.{field_name})?;')
+        lines.append('        f.write_str(" }")')
+        lines.append("    }")
+        lines.append("}")
+        return lines
 
     def generate_nested_module(
         self,

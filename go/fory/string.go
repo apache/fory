@@ -81,7 +81,15 @@ func readLatin1(buf *ByteBuffer, size int, err *Error) string {
 }
 
 func readUTF16LE(buf *ByteBuffer, byteCount int, err *Error) string {
+	if byteCount&1 != 0 {
+		err.SetError(InvalidUTF16StringError(byteCount))
+		return ""
+	}
+
 	data := buf.ReadBinary(byteCount, err)
+	if err.HasError() {
+		return ""
+	}
 
 	// Reconstruct UTF-16 code units
 	charCount := byteCount / 2

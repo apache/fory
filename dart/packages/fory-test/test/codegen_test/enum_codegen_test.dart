@@ -25,19 +25,14 @@ import 'package:fory/fory.dart';
 import 'package:fory_test/entity/enum_foo.dart';
 import 'package:test/test.dart';
 
-void main(){
+void main() {
   group('Simple Enum Code Generation', () {
     test('test enum spec generation', () async {
-      EnumSpec enumSpec = EnumSpec(
-        EnumFoo,
-        [EnumFoo.A, EnumFoo.B]
-      );
-      EnumSpec enumSubClassSpec = EnumSpec(
-        EnumSubClass,
-        [EnumSubClass.A, EnumSubClass.B]
-      );
+      EnumSpec enumSpec = EnumSpec(EnumFoo, [EnumFoo.A, EnumFoo.B]);
+      EnumSpec enumSubTypeSpec =
+          EnumSpec(EnumSubClass, [EnumSubClass.A, EnumSubClass.B]);
       check($EnumFoo).equals(enumSpec);
-      check($EnumSubClass).equals(enumSubClassSpec);
+      check($EnumSubClass).equals(enumSubTypeSpec);
     });
   });
 }

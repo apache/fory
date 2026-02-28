@@ -21,15 +21,16 @@ import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/meta/specs/custom_type_spec.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-abstract base class SerializerCache{
-
+abstract base class SerializerCache {
   const SerializerCache();
 
-  Serializer getSerializer(ForyConfig conf){
-    throw UnimplementedError('SerCache does not support getSer');
+  Serializer getSerializer(ForyConfig conf) {
+    throw UnimplementedError('SerializerCache does not support getSer');
   }
 
-  Serializer getSerializerWithSpec(ForyConfig conf, CustomTypeSpec spec, Type dartType){
-    throw UnimplementedError('SerCache does not support getEnumSerWithSpec');
+  Serializer getSerializerWithSpec(
+      ForyConfig conf, CustomTypeSpec spec, Type dartType) {
+    throw UnimplementedError(
+        'SerializerCache does not support getEnumSerializerWithSpec');
   }
 }

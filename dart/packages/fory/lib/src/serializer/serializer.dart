@@ -18,14 +18,13 @@
  */
 
 import 'package:fory/src/const/types.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 
 /// Planned to only handle non-null type serializers. Null values should be handled externally.
 abstract base class Serializer<T> {
-
   final ObjType objType;
   // final bool forceNoRefWrite; // Not controlled by Fory's Config; indicates no reference writing for this type
   final bool writeRef; // Indicates whether to write references
@@ -35,9 +34,9 @@ abstract base class Serializer<T> {
     this.writeRef,
     // [this.forceNoRefWrite = false]
   );
-  T read(ByteReader br, int refId, DeserializerPack pack);
+  T read(ByteReader br, int refId, DeserializationContext pack);
 
-  void write(ByteWriter bw, T v, SerializerPack pack);
+  void write(ByteWriter bw, T v, SerializationContext pack);
 
   String get tag => throw UnimplementedError('tag is not implemented');
 }

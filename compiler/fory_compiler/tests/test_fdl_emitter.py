@@ -28,8 +28,8 @@ def test_emit_round_trip_preserves_list_modifiers():
     package demo;
 
     message Foo [id=10] {
-        repeated optional string tags = 1;
-        repeated ref Bar items = 2;
+        list<optional string> tags = 1;
+        list<ref Bar> items = 2;
         fixed_uint32 count = 3;
     }
 
@@ -43,8 +43,8 @@ def test_emit_round_trip_preserves_list_modifiers():
 
     emitted = FDLEmitter(schema).emit()
     assert "message Foo [id=10]" in emitted
-    assert "repeated optional string tags = 1;" in emitted
-    assert "repeated ref Bar items = 2;" in emitted
+    assert "list<optional string> tags = 1;" in emitted
+    assert "list<ref Bar> items = 2;" in emitted
     assert "fixed_uint32 count = 3;" in emitted
 
     round_trip = Parser(Lexer(emitted).tokenize()).parse()

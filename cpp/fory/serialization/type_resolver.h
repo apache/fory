@@ -713,6 +713,12 @@ constexpr int16_t compute_field_id() {
   if constexpr (is_fory_field_v<ActualFieldType>) {
     return field_tag_id_v<ActualFieldType>;
   }
+  if constexpr (::fory::detail::has_field_tags_v<T>) {
+    constexpr int16_t tag_id = ::fory::detail::GetFieldTagEntry<T, Index>::id;
+    if constexpr (tag_id >= 0) {
+      return tag_id;
+    }
+  }
   return -1;
 }
 
@@ -1344,8 +1350,9 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
 
   if constexpr (is_fory_serializable_v<T>) {
     uint32_t actual_type_id =
-        compatible_ ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
-                    : static_cast<uint32_t>(TypeId::STRUCT);
+        compatible_ && meta::StructEvolving<T>::value
+            ? static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
+            : static_cast<uint32_t>(TypeId::STRUCT);
     uint32_t user_type_id = type_id;
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, user_type_id, "",
@@ -1398,8 +1405,9 @@ TypeResolver::register_by_name(const std::string &ns,
 
   if constexpr (is_fory_serializable_v<T>) {
     uint32_t actual_type_id =
-        compatible_ ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
-                    : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
+        compatible_ && meta::StructEvolving<T>::value
+            ? static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT)
+            : static_cast<uint32_t>(TypeId::NAMED_STRUCT);
 
     FORY_TRY(info, build_struct_type_info<T>(actual_type_id, kInvalidUserTypeId,
                                              ns, type_name, true));
@@ -1852,44 +1860,59 @@ TypeResolver::register_type_internal(uint64_t ctid,
         Error::invalid("TypeInfo or harness is invalid during registration"));
   }
 
-  // Store in primary storage and get raw pointer
+  // Validate all uniqueness constraints before mutating resolver state so
+  // failed registration leaves no partial entries behind.
   TypeInfo *raw_ptr = info.get();
-  type_infos_.push_back(std::move(info));
+  const bool is_internal = ::fory::is_internal_type(raw_ptr->type_id);
+  const bool has_user_type_key =
+      !raw_ptr->register_by_name && raw_ptr->user_type_id != kInvalidUserTypeId;
+  uint64_t user_type_key = 0;
+  std::string name_key;
 
-  type_info_by_ctid_.put(ctid, raw_ptr);
-
-  if (::fory::is_internal_type(raw_ptr->type_id)) {
+  if (is_internal) {
     TypeInfo *existing =
         type_info_by_id_.get_or_default(raw_ptr->type_id, nullptr);
-    if (existing != nullptr && existing != raw_ptr) {
+    if (existing != nullptr) {
       return Unexpected(Error::invalid("Type id already registered: " +
                                        std::to_string(raw_ptr->type_id)));
     }
-    type_info_by_id_.put(raw_ptr->type_id, raw_ptr);
-  } else if (!raw_ptr->register_by_name &&
-             raw_ptr->user_type_id != kInvalidUserTypeId) {
-    uint64_t key = make_user_type_key(raw_ptr->type_id, raw_ptr->user_type_id);
-    TypeInfo *existing = user_type_info_by_id_.get_or_default(key, nullptr);
-    if (existing != nullptr && existing != raw_ptr) {
+  } else if (has_user_type_key) {
+    user_type_key = make_user_type_key(raw_ptr->type_id, raw_ptr->user_type_id);
+    TypeInfo *existing =
+        user_type_info_by_id_.get_or_default(user_type_key, nullptr);
+    if (existing != nullptr) {
       return Unexpected(Error::invalid(
           "Type id already registered: " + std::to_string(raw_ptr->type_id) +
           "/" + std::to_string(raw_ptr->user_type_id)));
     }
-    user_type_info_by_id_.put(key, raw_ptr);
   }
 
   if (raw_ptr->register_by_name) {
-    auto key = make_name_key(raw_ptr->namespace_name, raw_ptr->type_name);
-    auto it = type_info_by_name_.find(key);
-    if (it != type_info_by_name_.end() && it->second != raw_ptr) {
+    name_key = make_name_key(raw_ptr->namespace_name, raw_ptr->type_name);
+    auto it = type_info_by_name_.find(name_key);
+    if (it != type_info_by_name_.end()) {
       return Unexpected(Error::invalid(
           "Type already registered for namespace '" + raw_ptr->namespace_name +
           "' and name '" + raw_ptr->type_name + "'"));
     }
-    type_info_by_name_[key] = raw_ptr;
   }
 
-  return raw_ptr;
+  // Commit all state after validation passes.
+  type_infos_.push_back(std::move(info));
+  TypeInfo *stored_ptr = type_infos_.back().get();
+  type_info_by_ctid_.put(ctid, stored_ptr);
+
+  if (is_internal) {
+    type_info_by_id_.put(stored_ptr->type_id, stored_ptr);
+  } else if (has_user_type_key) {
+    user_type_info_by_id_.put(user_type_key, stored_ptr);
+  }
+
+  if (stored_ptr->register_by_name) {
+    type_info_by_name_[name_key] = stored_ptr;
+  }
+
+  return stored_ptr;
 }
 
 inline void

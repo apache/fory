@@ -16,6 +16,16 @@ The C++ implementation provides high-performance serialization with compile-time
 - **Two Formats**: Object graph serialization and zero-copy row-based format
 - **Modern C++17**: Clean API using modern C++ features
 
+## Benchmark
+
+Fory C++ demonstrates competitive performance compared to protobuf c++ serialization framework.
+
+<p align="center">
+<img src="../docs/benchmarks/cpp/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [C++ Benchmarks](../benchmarks/cpp).
+
 ## Quick Start
 
 ### Basic Example

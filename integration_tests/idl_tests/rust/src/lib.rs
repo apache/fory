@@ -30,6 +30,10 @@ pub mod generated {
     pub mod complex_fbs;
     #[path = "../generated/complex_pb.rs"]
     pub mod complex_pb;
+    #[path = "../generated/evolving1.rs"]
+    pub mod evolving1;
+    #[path = "../generated/evolving2.rs"]
+    pub mod evolving2;
     #[path = "../generated/graph.rs"]
     pub mod graph;
     #[path = "../generated/monster.rs"]

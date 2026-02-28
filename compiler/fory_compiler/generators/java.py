@@ -445,6 +445,8 @@ class JavaGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, "//")
         if comment:
             lines.append(comment)
+        if not self.get_effective_evolving(message):
+            lines.append("@ForyObject(evolving = false)")
         lines.append(f"public class {message.name} {{")
 
         # Generate nested enums as static inner classes
@@ -487,6 +489,10 @@ class JavaGenerator(BaseGenerator):
 
         # toBytes/fromBytes
         for line in self.generate_bytes_methods(message.name):
+            lines.append(f"    {line}")
+
+        # toString method
+        for line in self.generate_tostring_method(message):
             lines.append(f"    {line}")
 
         # equals method
@@ -586,6 +592,9 @@ class JavaGenerator(BaseGenerator):
         """Collect imports for a message and all its nested types recursively."""
         for field in message.fields:
             self.collect_field_imports(field, imports)
+
+        if not self.get_effective_evolving(message):
+            imports.add("org.apache.fory.annotation.ForyObject")
 
         # Add imports for equals/hashCode
         imports.add("java.util.Objects")
@@ -947,6 +956,10 @@ class JavaGenerator(BaseGenerator):
             "char",
         }
 
+    def java_string_literal(self, value: str) -> str:
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
     def generate_nested_message(
         self,
         message: Message,
@@ -961,6 +974,8 @@ class JavaGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, "    " * indent + "//")
         if comment:
             lines.append(comment)
+        if not self.get_effective_evolving(message):
+            lines.append("@ForyObject(evolving = false)")
         lines.append(f"public static class {message.name} {{")
 
         # Generate nested enums
@@ -1008,6 +1023,10 @@ class JavaGenerator(BaseGenerator):
 
         # toBytes/fromBytes
         for line in self.generate_bytes_methods(message.name):
+            lines.append(f"    {line}")
+
+        # toString method
+        for line in self.generate_tostring_method(message):
             lines.append(f"    {line}")
 
         # equals method
@@ -1359,6 +1378,66 @@ class JavaGenerator(BaseGenerator):
                     and not field.element_ref
                 )
         return False
+
+    def field_type_has_any(self, field_type: FieldType) -> bool:
+        """Return True if field type or its children is any."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind == PrimitiveKind.ANY
+        if isinstance(field_type, ListType):
+            return self.field_type_has_any(field_type.element_type)
+        if isinstance(field_type, MapType):
+            return self.field_type_has_any(
+                field_type.key_type
+            ) or self.field_type_has_any(field_type.value_type)
+        return False
+
+    def field_has_ref(self, field: Field) -> bool:
+        if field.ref:
+            return True
+        if isinstance(field.field_type, ListType):
+            return field.element_ref
+        if isinstance(field.field_type, MapType):
+            return field.field_type.value_ref
+        return False
+
+    def field_needs_safe_repr(self, field: Field) -> bool:
+        return self.field_has_ref(field) or self.field_type_has_any(field.field_type)
+
+    def message_needs_safe_repr(self, message: Message) -> bool:
+        return any(self.field_needs_safe_repr(field) for field in message.fields)
+
+    def generate_tostring_method(self, message: Message) -> List[str]:
+        """Generate toString() method for a message."""
+        lines: List[str] = []
+        lines.append("@Override")
+        lines.append("public String toString() {")
+        if not message.fields:
+            lines.append(f'    return "{message.name}()";')
+            lines.append("}")
+            lines.append("")
+            return lines
+        lines.append("    StringBuilder sb = new StringBuilder();")
+        lines.append(f'    sb.append("{message.name}(");')
+        for i, field in enumerate(message.fields):
+            field_name = self.to_camel_case(field.name)
+            if i > 0:
+                lines.append('    sb.append(", ");')
+            lines.append(f'    sb.append("{field_name}=");')
+            if self.field_needs_safe_repr(field):
+                placeholder = f"{self.format_idl_type(field.field_type)}(...)"
+                placeholder_literal = self.java_string_literal(placeholder)
+                lines.append(
+                    f'    sb.append({field_name} == null ? "null" : {placeholder_literal});'
+                )
+            elif self.is_primitive_array_field(field):
+                lines.append(f"    sb.append(Arrays.toString({field_name}));")
+            else:
+                lines.append(f"    sb.append({field_name});")
+        lines.append('    sb.append(")");')
+        lines.append("    return sb.toString();")
+        lines.append("}")
+        lines.append("")
+        return lines
 
     def generate_equals_method(self, message: Message) -> List[str]:
         """Generate equals() method for a message."""

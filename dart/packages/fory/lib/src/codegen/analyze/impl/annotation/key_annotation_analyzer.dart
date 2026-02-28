@@ -20,30 +20,29 @@
 import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
 import 'package:fory/src/annotation/fory_key.dart';
 
 class KeyAnnotationAnalyzer {
-
   const KeyAnnotationAnalyzer();
 
   // Currently, ForyKey will analyze only once at a run, so there is no need to use a caching mechanism.
   ForyKey analyze(
     List<ElementAnnotation> metadata,
-    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.fieldLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureFieldLevel);
     DartObject? anno;
     late ClassElement annoClsElement;
     bool getMeta = false;
-    for (ElementAnnotation annoElement in metadata){
+    for (ElementAnnotation annoElement in metadata) {
       anno = annoElement.computeConstantValue()!;
       annoClsElement = anno.type!.element as ClassElement;
-      if (AnalysisTypeIdentifier.isForyKey(annoClsElement)){
-        if (getMeta){
+      if (AnalysisTypeIdentifier.isForyKey(annoClsElement)) {
+        if (getMeta) {
           throw DuplicatedAnnotationException(
             ForyKey.name,
             locationMark.fieldName!,
@@ -57,9 +56,11 @@ class KeyAnnotationAnalyzer {
     // If there is no annotation, both includeFromFory and includeToFory default to true.
     bool includeFromFory = true;
     bool includeToFory = true;
-    if (getMeta && anno != null){
+    bool ref = false;
+    if (getMeta && anno != null) {
       includeFromFory = anno.getField("includeFromFory")!.toBoolValue()!;
       includeToFory = anno.getField("includeToFory")!.toBoolValue()!;
+      ref = anno.getField("ref")!.toBoolValue()!;
       // serializeToVar = anno.getField("serializeTo")?.variable;
       // deserializeFromVar = anno.getField("deserializeFrom")?.variable;
       // if (serializeToVar != null){
@@ -75,6 +76,7 @@ class KeyAnnotationAnalyzer {
       // deserializeFrom: deserializeFrom,
       includeFromFory: includeFromFory,
       includeToFory: includeToFory,
+      ref: ref,
     );
     return foryKey;
   }

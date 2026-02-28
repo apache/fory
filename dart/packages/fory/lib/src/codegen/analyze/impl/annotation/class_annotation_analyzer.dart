@@ -21,35 +21,36 @@ import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/annotation/fory_class.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
 
 class ClassAnnotationAnalyzer {
-
   const ClassAnnotationAnalyzer();
 
   ForyClass analyze(
     List<ElementAnnotation> metadata,
     int classElementId,
-    @LocationEnsure(LocationLevel.clsLevel)LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureClassLevel);
     late DartObject anno;
     late ClassElement annoClsElement;
     bool getForyClass = false;
-    for (ElementAnnotation annoElement in metadata){
+    for (ElementAnnotation annoElement in metadata) {
       anno = annoElement.computeConstantValue()!;
       annoClsElement = anno.type!.element as ClassElement;
-      if (AnalysisTypeIdentifier.isForyClass(annoClsElement)){
-        if (getForyClass){
-          throw DuplicatedAnnotationException(ForyClass.name, locationMark.clsName, locationMark.libPath);
+      if (AnalysisTypeIdentifier.isForyClass(annoClsElement)) {
+        if (getForyClass) {
+          throw DuplicatedAnnotationException(
+              ForyClass.name, locationMark.clsName, locationMark.libPath);
         }
         getForyClass = true;
       }
     }
-    assert (getForyClass); // There must be a ForyMeta annotation, otherwise this class would not be analyzed
+    assert(
+        getForyClass); // There must be a ForyMeta annotation, otherwise this class would not be analyzed
     bool promiseAcyclic = anno.getField("promiseAcyclic")!.toBoolValue()!;
     return ForyClass(
       promiseAcyclic: promiseAcyclic,
@@ -59,10 +60,10 @@ class ClassAnnotationAnalyzer {
   // This method does not check the validity of the annotation, nor does it perform caching operations
   bool hasForyClassAnnotation(List<ElementAnnotation> metadata) {
     DartObject? anno;
-    for (ElementAnnotation annoElement in metadata){
+    for (ElementAnnotation annoElement in metadata) {
       anno = annoElement.computeConstantValue()!;
       ClassElement annoClsElement = anno.type!.element as ClassElement;
-      if (AnalysisTypeIdentifier.isForyClass(annoClsElement)){
+      if (AnalysisTypeIdentifier.isForyClass(annoClsElement)) {
         return true;
       }
     }

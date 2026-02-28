@@ -43,8 +43,8 @@ message AllOptionalTypes [id=120] {
     optional bytes bytes_value = 24;
     optional date date_value = 25;
     optional timestamp timestamp_value = 26;
-    optional repeated int32 int32_list = 27;
-    optional repeated string string_list = 28;
+    optional list<int32> int32_list = 27;
+    optional list<string> string_list = 28;
     optional map<string, int64> int64_map = 29;
 }
 

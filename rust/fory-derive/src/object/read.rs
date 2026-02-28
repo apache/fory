@@ -186,6 +186,10 @@ pub(crate) fn declare_var(source_fields: &[SourceField<'_>]) -> Vec<TokenStream>
                         quote! {
                             let mut #var_name: Option<#ty> = None;
                         }
+                    } else if extract_type_name(&field.ty) == "float16" {
+                        quote! {
+                            let mut #var_name: fory_core::float16::float16 = fory_core::float16::float16::ZERO;
+                        }
                     } else if extract_type_name(&field.ty) == "bool" {
                         quote! {
                             let mut #var_name: bool = false;
@@ -441,7 +445,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
 
 pub fn gen_read_type_info() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::read_type_info::<Self>(context)
+        fory_core::serializer::struct_::read_type_info_fast::<Self>(context)
     }
 }
 
@@ -1068,23 +1072,36 @@ pub(crate) fn gen_read_compatible_with_construction(
         quote! {}
     };
 
-    quote! {
-        let mut fields = type_info.get_type_meta().get_field_infos().clone();
-        #variant_field_remap
-        #(#declare_ts)*
-        let meta = context.get_type_info(&std::any::TypeId::of::<Self>())?.get_type_meta();
-        let local_type_hash = meta.get_hash();
-        let remote_type_hash = type_info.get_type_meta().get_hash();
-        if remote_type_hash == local_type_hash {
-            <Self as fory_core::Serializer>::fory_read_data(context)
-        } else {
-            for _field in fields.iter() {
-                match _field.field_id {
-                    #(#match_arms)*
-                    #skip_arm
-                }
-            }
-            #construction
+    let fields_binding = if variant_ident.is_some() {
+        quote! {
+            let mut fields = remote_meta.get_field_infos().clone();
+            #variant_field_remap
         }
+    } else {
+        quote! {
+            let fields = remote_meta.get_field_infos();
+        }
+    };
+
+    quote! {
+        let meta = context.get_type_resolver().get_type_meta_by_index_ref(
+            &std::any::TypeId::of::<Self>(),
+            <Self as fory_core::StructSerializer>::fory_type_index(),
+        )?;
+        let local_type_hash = meta.get_hash();
+        let remote_meta = type_info.get_type_meta_ref();
+        let remote_type_hash = remote_meta.get_hash();
+        if remote_type_hash == local_type_hash {
+            return <Self as fory_core::Serializer>::fory_read_data(context);
+        }
+        #fields_binding
+        #(#declare_ts)*
+        for _field in fields.iter() {
+            match _field.field_id {
+                #(#match_arms)*
+                #skip_arm
+            }
+        }
+        #construction
     }
 }

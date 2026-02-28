@@ -19,17 +19,19 @@
 
 import 'dart:typed_data';
 import 'package:fory/src/dev_annotation/optimize.dart';
+import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 
-final class ByteReaderImpl extends ByteReader{
-
-  ByteReaderImpl(Uint8List data, {int offset = 0, bool endian = true, int? length})
+final class ByteReaderImpl extends ByteReader {
+  ByteReaderImpl(Uint8List data,
+      {int offset = 0, bool endian = true, int? length})
       : _offset = offset,
         _length = length ?? data.length,
-        _bd = ByteData.sublistView(data, offset, length == null ? null : offset + length),
-        super.internal(){
-        // This section checks if the ByteData length is valid.
-        // It is checked internally, so no explicit checks are performed here.
+        _bd = ByteData.sublistView(
+            data, offset, length == null ? null : offset + length),
+        super.internal() {
+    // This section checks if the ByteData length is valid.
+    // It is checked internally, so no explicit checks are performed here.
   }
 
   final ByteData _bd;
@@ -37,7 +39,10 @@ final class ByteReaderImpl extends ByteReader{
   final int _length;
 
   @override
-  void skip(int length){
+  int get remaining => _length - _offset;
+
+  @override
+  void skip(int length) {
     assert(length > 0);
     _offset += length;
     assert(_offset <= _length);
@@ -115,6 +120,13 @@ final class ByteReaderImpl extends ByteReader{
   }
 
   @override
+  Float16 readFloat16() {
+    int value = _bd.getUint16(_offset, endian);
+    _offset += 2;
+    return Float16.fromBits(value);
+  }
+
+  @override
   Uint8List readBytesView(int length) {
     // create a view of the original list
     Uint8List view = _bd.buffer.asUint8List(_offset, length);
@@ -124,9 +136,10 @@ final class ByteReaderImpl extends ByteReader{
 
   /// To get a view of Uint16List, the start offset must be even, so copying is necessary
   @override
-  Uint16List readCopyUint16List(int byteNum){
+  Uint16List readCopyUint16List(int byteNum) {
     int len = byteNum ~/ 2;
-    Uint8List subCopy = Uint8List.fromList(_bd.buffer.asUint8List(_offset, byteNum));
+    Uint8List subCopy =
+        Uint8List.fromList(_bd.buffer.asUint8List(_offset, byteNum));
     Uint16List view = subCopy.buffer.asUint16List(0, len);
     _offset += byteNum;
     return view;
@@ -141,8 +154,10 @@ final class ByteReaderImpl extends ByteReader{
 
   // no prob:2
   @inline
-  int _truncateInt32(int v){
-    return (v & 0x80000000) != 0 ? v | 0xffffffff00000000 : v & 0x00000000ffffffff;
+  int _truncateInt32(int v) {
+    return (v & 0x80000000) != 0
+        ? v | 0xffffffff00000000
+        : v & 0x00000000ffffffff;
   }
 
   /*---------var int----------------------------------------------------------------------*/
@@ -211,7 +226,7 @@ final class ByteReaderImpl extends ByteReader{
   @inline
   @override
   int readVarInt32() {
-    int result =  _readVarUint36Slow();
+    int result = _readVarUint36Slow();
     result &= 0xffffffff;
     result = (result >>> 1) ^ -(result & 1);
     _truncateInt32(result);
@@ -223,18 +238,18 @@ final class ByteReaderImpl extends ByteReader{
   @override
   int readVarInt64() {
     late int res;
-    if (_length - _offset < 9){
+    if (_length - _offset < 9) {
       res = _readVarUint64Slow();
-    }else{
+    } else {
       int bulkVal = _bd.getInt64(_offset, endian);
       ++_offset;
       res = bulkVal & 0x7F;
-      if ((bulkVal & 0x80) != 0){
+      if ((bulkVal & 0x80) != 0) {
         ++_offset;
         // // 0x3f80: 0b1111111 << 7
         res |= ((bulkVal >>> 1) & 0x3f80);
         // 0x8000: 0b1 << 15
-        if ((bulkVal & 0x8000) != 0){
+        if ((bulkVal & 0x8000) != 0) {
           res = _continueReadVarInt64(bulkVal, res);
         }
       }
@@ -250,15 +265,15 @@ final class ByteReaderImpl extends ByteReader{
     if ((b & 0x80) == 0) {
       ++_offset;
       return b;
-    } else{
+    } else {
       return readVarUint32Small14();
     }
   }
-  
+
   // no prob: untested
   @inline
   @override
-  int readBytesAsInt64(int length){
+  int readBytesAsInt64(int length) {
     int remaining = _length - _offset;
     if (remaining >= 8) {
       // means we can directly read 8 bytes
@@ -266,10 +281,15 @@ final class ByteReaderImpl extends ByteReader{
       int off = 64 - length * 8;
       if (endian == Endian.little) {
         int v = _bd.getInt64(_offset, endian);
-        res = length == 0 ? v : v & (0xffffffffffffffff >>> off); //TODO: currently sync with fory java
+        res = length == 0
+            ? v
+            : v &
+                (0xffffffffffffffff >>>
+                    off); //TODO: currently sync with fory java
         _offset += length;
       } else {
-        res = (_bd.getInt64(_offset, endian) >>> off) & (0xffffffffffffffff >>> off);
+        res = (_bd.getInt64(_offset, endian) >>> off) &
+            (0xffffffffffffffff >>> off);
         _offset += length;
       }
       return res;
@@ -279,7 +299,7 @@ final class ByteReaderImpl extends ByteReader{
 
   // no prob: untested
   @inline
-  int _slowReadBytesAsInt64(int len){
+  int _slowReadBytesAsInt64(int len) {
     // ensure the length is valid
     // assert(_offset + len <= _length);
     int res = 0;
@@ -355,24 +375,24 @@ final class ByteReaderImpl extends ByteReader{
     if (_length - _offset < 9) {
       return _readVarUint36Slow();
     }
-    int bulkVal = _bd.getInt64(_offset,endian);
+    int bulkVal = _bd.getInt64(_offset, endian);
     ++_offset;
     int res = bulkVal & 0x7F;
-    if ((bulkVal & 0x80) != 0){
+    if ((bulkVal & 0x80) != 0) {
       ++_offset;
       // // 0x3f80: 0b1111111 << 7
       res |= ((bulkVal >>> 1) & 0x3f80);
       // 0x8000: 0b1 << 15
-      if ((bulkVal & 0x8000) != 0){
+      if ((bulkVal & 0x8000) != 0) {
         // now continue
         ++_offset;
         // 0x1fc000: 0b1111111 << 14
         res |= (bulkVal >>> 2) & 0x1fc000;
-        if ((bulkVal & 0x800000) != 0){
+        if ((bulkVal & 0x800000) != 0) {
           ++_offset;
           // 0xfe00000: 0b1111111 << 21
           res |= (bulkVal >>> 3) & 0xfe00000;
-          if ((bulkVal & 0x80000000) != 0){
+          if ((bulkVal & 0x80000000) != 0) {
             ++_offset;
             // 0xfe00000: 0b1111111 << 28
             res |= (bulkVal >>> 4) & 0xff0000000;
@@ -384,10 +404,10 @@ final class ByteReaderImpl extends ByteReader{
   }
 
   // no prob: 1
-  int _continueReadVarInt64(int bulkVal, int res){
+  int _continueReadVarInt64(int bulkVal, int res) {
     ++_offset;
     res |= ((bulkVal >>> 2) & 0x1fc000);
-    if ((bulkVal & 0x800000) != 0){
+    if ((bulkVal & 0x800000) != 0) {
       ++_offset;
       res |= (bulkVal >>> 3) & 0xfe00000;
       if ((bulkVal & 0x80000000) != 0) {
@@ -419,18 +439,19 @@ final class ByteReaderImpl extends ByteReader{
   @inline
   @override
   int readVarUint32Small14() {
-    if (_length - _offset < 5){
+    if (_length - _offset < 5) {
       return _readVarUint36Slow() & 0xffffffff;
     }
-    int forByteVal = _bd.getUint32(_offset, endian); // Keep the high 32 bits as 0
+    int forByteVal =
+        _bd.getUint32(_offset, endian); // Keep the high 32 bits as 0
     ++_offset;
     int val = forByteVal & 0x7F;
-    if ((forByteVal & 0x80) != 0){
+    if ((forByteVal & 0x80) != 0) {
       ++_offset;
       // // 0x3f80: 0b1111111 << 7
       val |= ((forByteVal >>> 1) & 0x3f80);
       // 0x8000: 0b1 << 15
-      if ((forByteVal & 0x8000) != 0){
+      if ((forByteVal & 0x8000) != 0) {
         return _continueReadVarUint32(forByteVal, val);
       }
     }
@@ -439,10 +460,10 @@ final class ByteReaderImpl extends ByteReader{
 
   // no prob: untested
   @inline
-  int _continueReadVarUint32(bulkVal, val){
+  int _continueReadVarUint32(bulkVal, val) {
     ++_offset;
     val |= (bulkVal >>> 2) & 0x1fc000;
-    if ((bulkVal & 0x800000) != 0){
+    if ((bulkVal & 0x800000) != 0) {
       ++_offset;
       val |= (bulkVal >>> 3) & 0xfe00000;
       if ((bulkVal & 0x80000000) != 0) {
@@ -454,26 +475,26 @@ final class ByteReaderImpl extends ByteReader{
 
   @override
   int readVarUint32() {
-    if (_length - _offset < 5){
+    if (_length - _offset < 5) {
       return _truncateInt32(_readVarUint36Slow());
     }
     int bulkVal = _bd.getUint32(_offset, endian);
     ++_offset;
     int res = bulkVal & 0x7F;
-    if ((bulkVal & 0x80) != 0){
+    if ((bulkVal & 0x80) != 0) {
       ++_offset;
       // // 0x3f80: 0b1111111 << 7
       res |= ((bulkVal >>> 1) & 0x3f80);
       // 0x8000: 0b1 << 15
-      if ((bulkVal & 0x8000) != 0){
+      if ((bulkVal & 0x8000) != 0) {
         ++_offset;
         // 0x1fc000: 0b1111111 << 14
         res |= (bulkVal >>> 2) & 0x1fc000;
-        if ((bulkVal & 0x800000) != 0){
+        if ((bulkVal & 0x800000) != 0) {
           ++_offset;
           // 0xfe00000: 0b1111111 << 21
           res |= (bulkVal >>> 3) & 0xfe00000;
-          if ((bulkVal & 0x80000000) != 0){
+          if ((bulkVal & 0x80000000) != 0) {
             // 0xfe00000: 0b1111111 << 21
             res |= (_bd.getUint8(_offset++) & 0x0f) << 28;
           }

@@ -186,13 +186,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     this.fory = fory;
     typeResolver = fory.getTypeResolver();
     this.parentSerializerClass = parentSerializerClass;
-    if (fory.isCrossLanguage()) {
-      writeMethodName = "xwrite";
-      readMethodName = "xread";
-    } else {
-      writeMethodName = "write";
-      readMethodName = "read";
-    }
+    writeMethodName = "write";
+    readMethodName = "read";
     addCommonImports();
     ctx.reserveName(REF_RESOLVER_NAME);
     ctx.reserveName(TYPE_RESOLVER_NAME);
@@ -231,7 +226,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     StringBuilder nameBuilder = new StringBuilder(name);
     if (fory.isCrossLanguage()) {
       // Generated classes are different when xlang mode is enabled.
-      // So we need to use a different name to generate xwrite/xread methods.
+      // So we need to use a different class name for generated serializers.
       nameBuilder.append("Xlang");
     }
     if (fory.trackingRef()) {

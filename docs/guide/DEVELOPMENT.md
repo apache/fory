@@ -21,93 +21,83 @@ license: |
 
 ## How to build Apache Fory™
 
-Please checkout the source tree from https://github.com/apache/fory.
+Clone the source tree from https://github.com/apache/fory.
 
 ### Build Apache Fory™ Java
 
 ```bash
 cd java
-mvn clean compile -DskipTests
+mvn -T16 package
 ```
 
 #### Environment Requirements
 
-- java 1.8+
-- maven 3.6.3+
+- JDK 17+
+- Maven 3.6.3+
 
 ### Build Apache Fory™ Python
 
 ```bash
 cd python
-# Uninstall numpy first so that when we install pyarrow, it will install the correct numpy version automatically.
-# For Python versions less than 3.13, numpy 2 is not currently supported.
-pip uninstall -y numpy
-# Install necessary environment for Python < 3.13.
-pip install pyarrow Cython wheel pytest
-# pip install pyarrow Cython wheel pytest
 pip install -v -e .
+
+# Optional: build Cython extension (replace X.Y with your Python version)
+bazel build //:cp_fory_so --@rules_python//python/config_settings:python_version=X.Y
 ```
 
 #### Environment Requirements
 
-- python 3.6+
+- CPython 3.8+
+- Bazel 8+ (required when building Cython extensions)
 
 ### Build Apache Fory™ C++
 
-Build fory row format：
-
 ```bash
-bazel build //cpp/fory/row:fory_row_format
-```
-
-Build fory row format encoder:
-
-```bash
-bazel build //cpp/fory/encoder:fory_encoder
+cd cpp
+bazel build //cpp/...
 ```
 
 #### Environment Requirements
 
-- compilers with C++17 support
-- bazel 6.3.2
+- C++17 compiler
+- Bazel 8+
 
-### Build Apache Fory™ GoLang
+### Build Apache Fory™ Go
 
 ```bash
 cd go/fory
-# run test
 go test -v ./...
-# run xlang test
-go test -v fory_xlang_test.go
+```
+
+Run Go xlang tests from Java test module:
+
+```bash
+cd java
+mvn -T16 install -DskipTests
+cd fory-core
+FORY_GO_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn test -Dtest=org.apache.fory.xlang.GoXlangTest
 ```
 
 #### Environment Requirements
 
-- go 1.13+
+- Go 1.24+
 
 ### Build Apache Fory™ Rust
 
 ```bash
 cd rust
-# build
 cargo build
-# run test
-cargo test
-# run specific test
-cargo test -p tests  --test $test_file $test_method
-# run specific test under subdirectory
-cargo test --test mod $dir$::$test_file::$test_method
-# debug specific test under subdirectory and get backtrace
-RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 cargo test --test mod $dir$::$test_file::$test_method
-# inspect generated code by fory derive macro
-cargo expand --test mod $mod$::$file$ > expanded.rs
+cargo test --features tests
+
+# Debug a specific test
+RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 ENABLE_FORY_DEBUG_OUTPUT=1 \
+  cargo test --test mod $dir$::$test_file::$test_method -- --nocapture
 ```
 
 #### Environment Requirements
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+- Rust toolchain via rustup
+- `cargo-expand` (optional, for macro expansion debugging)
 
 ### Build Apache Fory™ JavaScript
 
@@ -115,32 +105,27 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cd javascript
 npm install
 
-# run build
 npm run build
-# run test
-npm run test
+node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit
 ```
 
 #### Environment Requirements
 
-- node 14+
-- npm 8+
+- Node.js (LTS)
+- npm
 
 ### Lint Markdown Docs
 
 ```bash
-# Install prettier globally
-npm install -g prettier
-
-# Fix markdown files
-prettier --write "**/*.md"
+cd docs
+npx prettier --write "**/*.md"
 ```
 
 #### Environment Requirements
 
-- node 14+
-- npm 8+
+- Node.js (LTS)
+- npm
 
 ## Contributing
 
-For more information, please refer to [How to contribute to Apache Fory™](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).
+For contribution details, see [How to contribute to Apache Fory™](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).

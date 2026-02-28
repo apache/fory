@@ -29,6 +29,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 	"github.com/apache/fory/go/fory/meta"
 )
@@ -77,6 +78,7 @@ var (
 	float32SliceType     = reflect.TypeOf((*[]float32)(nil)).Elem()
 	float64SliceType     = reflect.TypeOf((*[]float64)(nil)).Elem()
 	float16SliceType     = reflect.TypeOf((*[]float16.Float16)(nil)).Elem()
+	bfloat16SliceType    = reflect.TypeOf((*[]bfloat16.BFloat16)(nil)).Elem()
 	interfaceSliceType   = reflect.TypeOf((*[]any)(nil)).Elem()
 	interfaceMapType     = reflect.TypeOf((*map[any]any)(nil)).Elem()
 	stringStringMapType  = reflect.TypeOf((*map[string]string)(nil)).Elem()
@@ -103,6 +105,7 @@ var (
 	float32Type          = reflect.TypeOf((*float32)(nil)).Elem()
 	float64Type          = reflect.TypeOf((*float64)(nil)).Elem()
 	float16Type          = reflect.TypeOf((*float16.Float16)(nil)).Elem()
+	bfloat16Type         = reflect.TypeOf((*bfloat16.BFloat16)(nil)).Elem()
 	dateType             = reflect.TypeOf((*Date)(nil)).Elem()
 	timestampType        = reflect.TypeOf((*time.Time)(nil)).Elem()
 	genericSetType       = reflect.TypeOf((*Set[any])(nil)).Elem()
@@ -248,6 +251,9 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 	for _, t := range []reflect.Type{
 		boolType,
 		byteType,
+		uint16Type,
+		uint32Type,
+		uint64Type,
 		int8Type,
 		int16Type,
 		int32Type,
@@ -256,6 +262,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		float32Type,
 		float64Type,
 		float16Type,
+		bfloat16Type,
 		stringType,
 		dateType,
 		timestampType,
@@ -413,6 +420,7 @@ func (r *TypeResolver) initialize() {
 		{float32SliceType, FLOAT32_ARRAY, float32SliceSerializer{}},
 		{float64SliceType, FLOAT64_ARRAY, float64SliceSerializer{}},
 		{float16SliceType, FLOAT16_ARRAY, float16SliceSerializer{}},
+		{bfloat16SliceType, BFLOAT16_ARRAY, bfloat16SliceSerializer{}},
 		// Register common map types for fast path with optimized serializers
 		{stringStringMapType, MAP, stringStringMapSerializer{}},
 		{stringInt64MapType, MAP, stringInt64MapSerializer{}},
@@ -437,6 +445,7 @@ func (r *TypeResolver) initialize() {
 		{float32Type, FLOAT32, float32Serializer{}},
 		{float64Type, FLOAT64, float64Serializer{}},
 		{float16Type, FLOAT16, float16Serializer{}},
+		{bfloat16Type, BFLOAT16, bfloat16Serializer{}},
 		{dateType, DATE, dateSerializer{}},
 		{timestampType, TIMESTAMP, timeSerializer{}},
 		{genericSetType, SET, setSerializer{}},
@@ -760,17 +769,9 @@ func (r *TypeResolver) RegisterNamedStruct(
 	var internalTypeID TypeId
 	userTypeID := invalidUserTypeID
 	if typeId == 0 {
-		if r.metaShareEnabled() {
-			internalTypeID = NAMED_COMPATIBLE_STRUCT
-		} else {
-			internalTypeID = NAMED_STRUCT
-		}
+		internalTypeID = r.structTypeID(type_, true)
 	} else {
-		if r.metaShareEnabled() {
-			internalTypeID = COMPATIBLE_STRUCT
-		} else {
-			internalTypeID = STRUCT
-		}
+		internalTypeID = r.structTypeID(type_, false)
 		userTypeID = typeId
 	}
 	if registerById {
@@ -1169,11 +1170,11 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	   All other slice types are treated as lists (typeID 21).
 	*/
 	if value.Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Type(), true))
 	} else if value.IsValid() && value.Kind() == reflect.Interface && value.Elem().Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Elem().Type(), true))
 	} else if value.IsValid() && value.Kind() == reflect.Ptr && value.Elem().Kind() == reflect.Struct {
-		typeID = NAMED_STRUCT
+		typeID = uint32(r.structTypeID(value.Elem().Type(), true))
 	} else if value.Kind() == reflect.Map {
 		typeID = MAP
 	} else if value.Kind() == reflect.Array {
@@ -1418,6 +1419,25 @@ func (r *TypeResolver) metaShareEnabled() bool {
 	return r.fory != nil && r.fory.metaContext != nil && r.fory.config.Compatible
 }
 
+func (r *TypeResolver) structTypeID(type_ reflect.Type, named bool) TypeId {
+	useCompatible := r.metaShareEnabled()
+	if useCompatible {
+		if evolving, ok := structEvolvingOverride(type_); ok && !evolving {
+			useCompatible = false
+		}
+	}
+	if named {
+		if useCompatible {
+			return NAMED_COMPATIBLE_STRUCT
+		}
+		return NAMED_STRUCT
+	}
+	if useCompatible {
+		return COMPATIBLE_STRUCT
+	}
+	return STRUCT
+}
+
 // WriteTypeInfo writes type info to buffer.
 // This is exported for use by generated code.
 func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err *Error) {
@@ -1449,36 +1469,96 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 
 func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInfo, err *Error) {
 	context := r.fory.MetaContext()
-	typ := typeInfo.Type
-
-	if index, exists := context.typeMap[typ]; exists {
-		// Reference to previously written type: (index << 1) | 1, LSB=1
-		buffer.WriteVarUint32((index << 1) | 1)
-		return
+	key := typePointer(typeInfo.Type)
+	writeTypeDefInline := func() {
+		// Only build TypeDef for struct types - enums don't have field definitions
+		actualType := typeInfo.Type
+		if actualType.Kind() == reflect.Ptr {
+			actualType = actualType.Elem()
+		}
+		if actualType.Kind() == reflect.Struct {
+			typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
+			if typeDefErr != nil {
+				err.SetError(typeDefErr)
+				return
+			}
+			// Write TypeDef bytes inline
+			typeDef.writeTypeDef(buffer, err)
+		}
 	}
-
-	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
-	newIndex := uint32(len(context.typeMap))
-	buffer.WriteVarUint32(newIndex << 1)
-	context.typeMap[typ] = newIndex
-
-	// Only build TypeDef for struct types - enums don't have field definitions
-	actualType := typ
-	if actualType.Kind() == reflect.Ptr {
-		actualType = actualType.Elem()
-	}
-	if actualType.Kind() == reflect.Struct {
+	writeTypeDefWithZeroMarker := func() {
+		actualType := typeInfo.Type
+		if actualType.Kind() == reflect.Ptr {
+			actualType = actualType.Elem()
+		}
+		if actualType.Kind() != reflect.Struct {
+			buffer.WriteUint8(0)
+			return
+		}
 		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
 		if typeDefErr != nil {
 			err.SetError(typeDefErr)
 			return
 		}
-		// Write TypeDef bytes inline
+		buffer.WriteUint8(0)
 		typeDef.writeTypeDef(buffer, err)
 	}
+	if !context.typeMapActive {
+		if !context.hasFirstType {
+			context.hasFirstType = true
+			context.firstTypePtr = key
+			// New type: index << 1, LSB=0, followed by TypeDef bytes inline
+			writeTypeDefWithZeroMarker()
+			return
+		}
+		if key == context.firstTypePtr {
+			// Reference to first type: (0 << 1) | 1
+			buffer.WriteUint8(1)
+			return
+		}
+		context.typeMapActive = true
+		if context.typeMap == nil {
+			context.typeMap = make(map[uintptr]uint32, 8)
+		} else if len(context.typeMap) != 0 {
+			for k := range context.typeMap {
+				delete(context.typeMap, k)
+			}
+		}
+		context.typeMap[context.firstTypePtr] = 0
+	} else if key == context.firstTypePtr {
+		buffer.WriteUint8(1)
+		return
+	}
+
+	if index, exists := context.typeMap[key]; exists {
+		// Reference to previously written type: (index << 1) | 1, LSB=1
+		marker := (index << 1) | 1
+		if marker < 0x80 {
+			buffer.WriteUint8(uint8(marker))
+		} else {
+			buffer.WriteVarUint32(marker)
+		}
+		return
+	}
+
+	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
+	newIndex := uint32(len(context.typeMap))
+	marker := newIndex << 1
+	if marker < 0x80 {
+		buffer.WriteUint8(uint8(marker))
+	} else {
+		buffer.WriteVarUint32(marker)
+	}
+	context.typeMap[key] = newIndex
+	writeTypeDefInline()
 }
 
 func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, error) {
+	// Normalize pointer types to their element type for consistent caching.
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
 	if existingTypeDef, exists := r.typeToTypeDef[typ]; exists {
 		return existingTypeDef, nil
 	}
@@ -1487,10 +1567,6 @@ func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 		return nil, fmt.Errorf("TypeDef not found for type %s", typ)
 	}
 
-	// don't create TypeDef for pointer types, we create TypeDef for its element type instead.
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
-	}
 	zero := reflect.Zero(typ)
 	typeDef, err := buildTypeDef(r.fory, zero)
 	if err != nil {
@@ -1552,14 +1628,14 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 		td = newTd
 	}
 
-	typeInfo, typeInfoErr := td.buildTypeInfoWithResolver(r)
+	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
 	if typeInfoErr != nil {
 		err.SetError(typeInfoErr)
 		return nil
 	}
 
-	context.readTypeInfos = append(context.readTypeInfos, &typeInfo)
-	return &typeInfo
+	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+	return typeInfo
 }
 
 func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s Serializer, err error) {
@@ -1637,6 +1713,20 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		case reflect.Uint8:
 			// []byte uses byteSliceSerializer
 			return byteSliceSerializer{}, nil
+		case reflect.Uint16:
+			// Check for fory.Float16 (aliased to uint16)
+			if elem == float16Type {
+				return float16SliceSerializer{}, nil
+			}
+			// Check for fory.BFloat16 (aliased to uint16)
+			if elem == bfloat16Type {
+				return bfloat16SliceSerializer{}, nil
+			}
+			return uint16SliceSerializer{}, nil
+		case reflect.Uint32:
+			return uint32SliceSerializer{}, nil
+		case reflect.Uint64:
+			return uint64SliceSerializer{}, nil
 		case reflect.String:
 			return stringSliceSerializer{}, nil
 		}
@@ -1680,9 +1770,12 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			return int32ArraySerializer{arrayType: type_}, nil
 		case reflect.Uint16:
 			// Check for fory.Float16 (aliased to uint16)
-			// Check name first to avoid slow PkgPath call
-			if elem.Name() == "Float16" && (elem.PkgPath() == "github.com/apache/fory/go/fory/float16" || strings.HasSuffix(elem.PkgPath(), "/float16")) {
+			if elem == float16Type {
 				return float16ArraySerializer{arrayType: type_}, nil
+			}
+			// Check for fory.BFloat16 (aliased to uint16)
+			if elem == bfloat16Type {
+				return bfloat16ArraySerializer{arrayType: type_}, nil
 			}
 			return uint16ArraySerializer{arrayType: type_}, nil
 		case reflect.Uint32:
@@ -2330,9 +2423,12 @@ var ErrTypeMismatch = errors.New("fory: type ID mismatch")
 
 // MetaContext holds metadata for schema evolution and type sharing
 type MetaContext struct {
-	typeMap               map[reflect.Type]uint32 // For writing: tracks written types
-	readTypeInfos         []*TypeInfo             // For reading: types read inline
+	typeMap               map[uintptr]uint32 // For writing: tracks written types
+	readTypeInfos         []*TypeInfo        // For reading: types read inline
 	scopedMetaShareEnable bool
+	firstTypePtr          uintptr
+	hasFirstType          bool
+	typeMapActive         bool
 }
 
 // IsScopedMetaShareEnabled returns whether scoped meta share is enabled
@@ -2342,6 +2438,10 @@ func (m *MetaContext) IsScopedMetaShareEnabled() bool {
 
 // Reset clears the meta context for reuse
 func (m *MetaContext) Reset() {
-	m.typeMap = make(map[reflect.Type]uint32)
-	m.readTypeInfos = nil
+	m.hasFirstType = false
+	m.typeMapActive = false
+	m.firstTypePtr = 0
+	if m.readTypeInfos != nil {
+		m.readTypeInfos = m.readTypeInfos[:0]
+	}
 }

@@ -24,7 +24,6 @@ import 'package:fory/src/resolver/impl/serialization_no_ref_resolver.dart';
 typedef SerializationRefMeta = ({RefFlag refFlag, int? refId});
 
 abstract base class SerializationRefResolver {
-
   static SerializationRefResolver noRefResolver = SerializationNoRefResolver();
 
   static SerializationRefResolver getOne(bool enableRefTracking) {
@@ -35,7 +34,7 @@ abstract base class SerializationRefResolver {
 
   SerializationRefMeta getRefId(Object? obj);
 
-  RefFlag getRefFlag(Object? obj){
+  RefFlag getRefFlag(Object? obj) {
     throw UnimplementedError('getRefFlag not implemented');
   }
 }

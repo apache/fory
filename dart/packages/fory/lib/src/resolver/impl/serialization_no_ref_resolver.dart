@@ -21,14 +21,17 @@ import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/resolver/serialization_ref_resolver.dart';
 
-final class SerializationNoRefResolver extends SerializationRefResolver{
-  static const SerializationNoRefResolver _instance = SerializationNoRefResolver._();
+final class SerializationNoRefResolver extends SerializationRefResolver {
+  static const SerializationNoRefResolver _instance =
+      SerializationNoRefResolver._();
   factory SerializationNoRefResolver() => _instance;
   // private constructor
   const SerializationNoRefResolver._();
 
-  static final SerializationRefMeta noRef = (refFlag: RefFlag.NULL, refId: null);
-  static final SerializationRefMeta untrackedNotNull = (refFlag: RefFlag.UNTRACKED_NOT_NULL, refId: null);
+  static final SerializationRefMeta noRef =
+      (refFlag: RefFlag.NULL, refId: null);
+  static final SerializationRefMeta untrackedNotNull =
+      (refFlag: RefFlag.UNTRACKED_NOT_NULL, refId: null);
 
   @inline
   @override

@@ -19,49 +19,47 @@
 
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/datatype/local_date.dart';
-import 'package:fory/src/deserializer_pack.dart';
+import 'package:fory/src/deserialization_context.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serializer/time/time_serializer_cache.dart';
-import 'package:fory/src/serializer_pack.dart';
+import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/math_checker.dart';
 
-final class _DateSerializerCache extends TimeSerializerCache{
-  static DateSerializer? serRef;
-  static DateSerializer? serNoRef;
+final class _DateSerializerCache extends TimeSerializerCache {
+  static DateSerializer? serializerWithRef;
+  static DateSerializer? serializerWithoutRef;
 
   const _DateSerializerCache();
 
   @override
-  Serializer getSerWithRef(bool writeRef) {
-    if (writeRef){
-      serRef ??= DateSerializer._(true);
-      return serRef!;
+  Serializer getSerializerWithRef(bool writeRef) {
+    if (writeRef) {
+      serializerWithRef ??= DateSerializer._(true);
+      return serializerWithRef!;
     } else {
-      serNoRef ??= DateSerializer._(false);
-      return serNoRef!;
+      serializerWithoutRef ??= DateSerializer._(false);
+      return serializerWithoutRef!;
     }
   }
 }
 
-
 final class DateSerializer extends Serializer<LocalDate> {
-
   static const SerializerCache cache = _DateSerializerCache();
 
   DateSerializer._(bool writeRef) : super(ObjType.DATE, writeRef);
 
   @override
-  LocalDate read(ByteReader br, int refId, DeserializerPack pack) {
+  LocalDate read(ByteReader br, int refId, DeserializationContext pack) {
     return LocalDate.fromEpochDay(br.readInt32(), utc: true);
   }
 
   @override
-  void write(ByteWriter bw, LocalDate v, SerializerPack pack) {
+  void write(ByteWriter bw, LocalDate v, SerializationContext pack) {
     int days = v.toEpochDay(utc: true);
-    if (!MathChecker.validInt32(days)){
+    if (!MathChecker.validInt32(days)) {
       throw ArgumentError('Date toEpochDay is not valid int32: $days');
     }
     bw.writeInt32(days);

@@ -18,26 +18,24 @@
 
 ## Key Features
 
-### 🚀 High-Performance Serialization
+### High-Performance Serialization
 
-Apache Fory™ delivers exceptional performance through advanced optimization techniques:
+Apache Fory™ delivers excellent performance through advanced optimization techniques:
 
 - **JIT Compilation**: Runtime code generation for Java eliminates virtual method calls and inlines hot paths
 - **Static Code Generation**: Compile-time code generation for Rust, C++, and Go delivers peak performance without runtime overhead
-- **Zero-Copy Operations**: Direct memory access without intermediate buffer copies; row format enables random access and partial serialization
-- **Meta Packing & Sharing**: Class metadata packing and sharing reduces redundant type information across serializations
+- **Meta Packing & Sharing**: Class metadata packing and sharing reduces redundant type information across objects on one stream
 
-### 🌍 Cross-Language Serialization
+### Cross-Language Serialization
 
 The **[xlang serialization format](docs/specification/xlang_serialization_spec.md)** enables seamless data exchange across programming languages:
 
-- **Automatic Type Mapping**: Automatic conversion between language-specific types ([type mapping](docs/specification/xlang_type_mapping.md))
 - **Reference Preservation**: Shared and circular references work correctly across languages
 - **Polymorphism**: Objects serialize/deserialize with their actual runtime types
 - **Schema Evolution**: Optional forward/backward compatibility for evolving schemas
-- **Automatic Serialization**: No IDL or schema definitions required; serialize any object directly without code generation
+- **Automatic Serialization**: Serialize domain objects automatically, no IDL or schema definitions required
 
-### 📊 Row Format
+### Row Format
 
 A cache-friendly **[row format](docs/specification/row_format_spec.md)** optimized for analytics workloads:
 
@@ -46,88 +44,80 @@ A cache-friendly **[row format](docs/specification/row_format_spec.md)** optimiz
 - **Apache Arrow Integration**: Seamless conversion to columnar format for analytics pipelines
 - **Multi-Language**: Available in Java, Python, Rust and C++
 
-### 🔒 Security & Production-Readiness
+### Security & Production-Readiness
 
-Enterprise-grade security and compatibility:
+Built for production environments with secure defaults and explicit control:
 
-- **Class Registration**: Whitelist-based deserialization control (enabled by default)
-- **Depth Limiting**: Protection against recursive object graph attacks
-- **Configurable Policies**: Custom class checkers and deserialization policies
-- **Platform Support**: Java 8-24, GraalVM native image, multiple OS platforms
+- **Class Registration**: Whitelist-based deserialization control is enabled by default to block untrusted classes.
+- **Depth Limiting**: Configurable object graph depth limits mitigate recursive and stack exhaustion attacks.
+- **Configurable Policies**: Custom class checkers and deserialization policies let teams enforce internal security rules.
+- **Platform Support**: Runs on Java 8 through 25, supports GraalVM native image, and works across major operating systems.
 
 ## Protocols
 
-Apache Fory™ implements multiple binary protocols optimized for different scenarios:
+Apache Fory™ provides three protocol families optimized for different scenarios:
 
-| Protocol                                                                  | Use Case                       | Key Features                                           |
-| ------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------ |
-| **[Xlang Serialization](docs/specification/xlang_serialization_spec.md)** | Cross-language object exchange | Automatic serialization, references, polymorphism      |
-| **[Java Serialization](docs/specification/java_serialization_spec.md)**   | High-performance Java-only     | Drop-in JDK serialization replacement, 100x faster     |
-| **[Row Format](docs/specification/row_format_spec.md)**                   | Analytics and data processing  | Zero-copy random access, Arrow compatibility           |
-| **Python Native**                                                         | Python-specific serialization  | Pickle/cloudpickle replacement with better performance |
+| Protocol Family                                                           | Use Case                       | Key Features                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[Xlang Serialization](docs/specification/xlang_serialization_spec.md)** | Cross-language object exchange | Automatic serialization, reference preservation, polymorphism                                                                                                                                                                 |
+| **[Row Format](docs/specification/row_format_spec.md)**                   | Analytics and data processing  | Zero-copy random access, partial operations, Apache Arrow compatibility                                                                                                                                                       |
+| **Native Serialization**                                                  | Language-specific optimization | Native protocol implementations per language, including **[Java Serialization](docs/specification/java_serialization_spec.md)** and Python Native. Python Native extends Xlang with more type support and better performance. |
 
-All protocols share the same optimized codebase, allowing improvements in one protocol to benefit others.
+All protocol families share the same optimized codebase, allowing improvements in one family to benefit others.
 
 ## Benchmarks
 
-> **Note**: Different serialization frameworks excel in different scenarios. Benchmark results are for reference only.
-> For your specific use case, conduct benchmarks with appropriate configurations and workloads.
-
 ### Java Serialization Performance
 
-The following benchmarks compare Fory against popular Java serialization frameworks. Charts labeled **"compatible"** show schema evolution mode with forward/backward compatibility enabled, while others show schema consistent mode where class schemas must match.
-
-**Test Classes**:
-
-- `Struct`: Class with [100 primitive fields](docs/benchmarks#Struct)
-- `MediaContent`: Class from [jvm-serializers](https://github.com/eishay/jvm-serializers/blob/master/tpc/src/data/media/MediaContent.java)
-- `Sample`: Class from [Kryo benchmark](https://github.com/EsotericSoftware/kryo/blob/master/benchmarks/src/main/java/com/esotericsoftware/kryo/benchmarks/data/Sample.java)
+Charts labeled **"compatible"** show schema evolution mode with forward/backward compatibility enabled, while others show schema consistent mode where class schemas must match.
 
 **Serialization Throughput**:
 
 <p align="center">
-<img width="24%" alt="Struct Serialization Compatible" src="docs/benchmarks/compatible/bench_serialize_compatible_STRUCT_to_directBuffer_tps.png">
-<img width="24%" alt="MediaContent Serialization Compatible" src="docs/benchmarks/compatible/bench_serialize_compatible_MEDIA_CONTENT_to_array_tps.png">
-<img width="24%" alt="MediaContent Serialization" src="docs/benchmarks/serialization/bench_serialize_MEDIA_CONTENT_to_array_tps.png">
-<img width="24%" alt="Sample Serialization" src="docs/benchmarks/serialization/bench_serialize_SAMPLE_to_array_tps.png">
+<img src="docs/benchmarks/java/java_repo_serialization_throughput.png" width="95%" alt="Java Serialization Throughput">
 </p>
 
 **Deserialization Throughput**:
 
 <p align="center">
-<img width="24%" alt="Struct Deserialization Compatible" src="docs/benchmarks/compatible/bench_deserialize_compatible_STRUCT_from_directBuffer_tps.png">
-<img width="24%" alt="MediaContent Deserialization Compatible" src="docs/benchmarks/compatible/bench_deserialize_compatible_MEDIA_CONTENT_from_array_tps.png">
-<img width="24%" alt="MediaContent Deserialization" src="docs/benchmarks/deserialization/bench_deserialize_MEDIA_CONTENT_from_array_tps.png">
-<img width="24%" alt="Sample Deserialization" src="docs/benchmarks/deserialization/bench_deserialize_SAMPLE_from_array_tps.png">
+<img src="docs/benchmarks/java/java_repo_deserialization_throughput.png" width="95%" alt="Java Deserialization Throughput">
 </p>
 
-**Important**: Fory's runtime code generation requires proper warm-up for performance measurement:
-
-For additional benchmarks covering type forward/backward compatibility, off-heap support, and zero-copy serialization, see [Java Benchmarks](docs/benchmarks).
+See [Java Benchmarks](docs/benchmarks/java) for more details.
 
 ### Rust Serialization Performance
 
 Fory Rust demonstrates competitive performance compared to other Rust serialization frameworks.
 
 <p align="center">
-<img src="docs/benchmarks/rust/ecommerce_data.png" width="70%">
+<img src="docs/benchmarks/rust/ecommerce_data.png" width="90%">
 </p>
 
 <p align="center">
-<img src="docs/benchmarks/rust/system_data.png" width="70%">
+<img src="docs/benchmarks/rust/system_data.png" width="90%">
 </p>
 
-For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust_benchmark).
+For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust).
 
 ### C++ Serialization Performance
 
-Fory Rust demonstrates competitive performance compared to protobuf c++ serialization framework.
+Fory C++ demonstrates competitive performance compared to protobuf c++ serialization framework.
 
 <p align="center">
-<img src="docs/benchmarks/cpp/throughput.png" width="70%">
+<img src="docs/benchmarks/cpp/throughput.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp_benchmark).
+For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp).
+
+### Go Serialization Performance
+
+Fory Go demonstrates excellent performance compared to other go serialization frameworks:
+
+<p align="center">
+<img src="docs/benchmarks/go/benchmark_combined.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go).
 
 ## Installation
 
@@ -137,7 +127,7 @@ For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cp
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 ```
 
@@ -147,10 +137,10 @@ Snapshots are available from `https://repository.apache.org/snapshots/` (version
 
 ```sbt
 // Scala 2.13
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.14.1"
+libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.15.0"
 
 // Scala 3
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.14.1"
+libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.15.0"
 ```
 
 **Kotlin**:
@@ -159,7 +149,7 @@ libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.14.1"
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.14.1</version>
+  <version>0.15.0</version>
 </dependency>
 ```
 

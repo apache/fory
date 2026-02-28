@@ -21,8 +21,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:fory/src/dev_annotation/optimize.dart';
 
-class StringUtil{
-
+class StringUtil {
   static final RegExp _nonLatinRegex = RegExp(r'[^\x00-\xFF]');
 
   @inline
@@ -58,9 +57,9 @@ class StringUtil{
     StringBuffer buf = StringBuffer();
     int len = str.length;
     int fromIndex = 0;
-    for (int i = 0; i< len; ++i){
+    for (int i = 0; i < len; ++i) {
       int codeUnit = str.codeUnitAt(i);
-      if (codeUnit >= 65 && codeUnit <= 90){
+      if (codeUnit >= 65 && codeUnit <= 90) {
         // Uppercase letter
         buf.write(str.substring(fromIndex, i));
         buf.write("_");
@@ -68,18 +67,18 @@ class StringUtil{
         fromIndex = i + 1;
       }
     }
-    if (fromIndex < len){
+    if (fromIndex < len) {
       buf.write(str.substring(fromIndex, len));
     }
     return buf.toString();
   }
 
-  static int computeUtf8StringHash(String str){
+  static int computeUtf8StringHash(String str) {
     int hash = 17;
     Uint8List utf8Bytes = utf8.encode(str);
-    for (int byte in utf8Bytes){
+    for (int byte in utf8Bytes) {
       hash = hash * 31 + byte;
-      while (hash > 0x7FFFFFFF){
+      while (hash > 0x7FFFFFFF) {
         hash ~/= 7;
       }
     }
@@ -96,8 +95,9 @@ class StringUtil{
 
     // Adjust the mask according to the byte order
     const highByteMaskLittle = 0xFF00FF00FF00FF00; // Little-endian mask
-    const highByteMaskBig = 0x00FF00FF00FF00FF;    // Big-endian mask
-    final highByteMask = endian == Endian.little ? highByteMaskLittle : highByteMaskBig;
+    const highByteMaskBig = 0x00FF00FF00FF00FF; // Big-endian mask
+    final highByteMask =
+        endian == Endian.little ? highByteMaskLittle : highByteMaskBig;
 
     // Convert codeUnits to byte data (directly shared memory)
     final buffer = Uint16List.fromList(codeUnits).buffer;

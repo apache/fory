@@ -29,23 +29,25 @@ export 'src/annotation/fory_constructor.dart';
 export 'src/annotation/uint_types.dart';
 
 // Analysis meta
-export 'src/meta/specs/class_spec.dart';
-export 'src/meta/specs/field_spec.dart';
 export 'src/meta/specs/type_spec.dart';
+export 'src/meta/specs/field_spec.dart';
+export 'src/meta/specs/field_type_spec.dart';
 export 'src/meta/specs/enum_spec.dart';
 
 // Fory implementation
 export 'src/fory_impl.dart';
+export 'src/config/fory_config.dart';
 
 // Constants
 export 'src/const/types.dart';
+export 'src/resolver/spec_lookup.dart';
 
 // User-related
-export 'src/furiable.dart';
+export 'src/fory_type_provider.dart';
 
-// Serialization Components
-export 'src/serializer_pack.dart';
-export 'src/deserializer_pack.dart';
+// Serialization internals for custom serializer implementations.
+export 'src/serialization_context.dart';
+export 'src/deserialization_context.dart';
 
 // External packages
 export 'package:decimal/decimal.dart';

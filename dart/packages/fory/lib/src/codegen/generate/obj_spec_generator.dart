@@ -24,43 +24,39 @@ import 'package:fory/src/annotation/fory_object.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
 import 'package:fory/src/codegen/exception/annotation_exception.dart';
-import 'package:fory/src/codegen/meta/gen_export.dart';
+import 'package:fory/src/codegen/meta/generated_code_part.dart';
 import 'package:fory/src/annotation/fory_enum.dart';
 import 'package:fory/src/annotation/fory_class.dart';
 
 class ObjSpecGenerator extends GeneratorForAnnotation<ForyObject> {
-
   static int? enumElementId;
   static int? classElementId;
 
   @override
   Future<String> generateForAnnotatedElement(
-    Element element,
-    ConstantReader annotation,
-    BuildStep buildStep
-  ) async {
+      Element element, ConstantReader annotation, BuildStep buildStep) async {
     Element anno = annotation.objectValue.type!.element!;
-    late GenExport spec;
+    late GeneratedCodePart spec;
     late bool enumOrClass;
-    if (enumElementId != null){
+    if (enumElementId != null) {
       enumOrClass = anno.id == enumElementId;
-    }else{
+    } else {
       if (classElementId != null) {
         enumOrClass = anno.id != classElementId;
-      }else{
-        if (anno.name == 'ForyClass'){
+      } else {
+        if (anno.name == 'ForyClass') {
           enumOrClass = false;
           classElementId = anno.id;
-          AnalysisTypeIdentifier.giveForyClassId(anno.id);
-        }else{
+          AnalysisTypeIdentifier.cacheForyClassAnnotationId(anno.id);
+        } else {
           enumOrClass = true;
           enumElementId = anno.id;
-          AnalysisTypeIdentifier.giveForyEnumId(anno.id);
+          AnalysisTypeIdentifier.cacheForyEnumAnnotationId(anno.id);
         }
       }
     }
 
-    if (enumOrClass){
+    if (enumOrClass) {
       if (element is! EnumElement) {
         throw InvalidAnnotationTargetException(
           ForyEnum.name,
@@ -69,7 +65,7 @@ class ObjSpecGenerator extends GeneratorForAnnotation<ForyObject> {
         );
       }
       spec = Analyzer.enumAnalyzer.analyze(element);
-    }else {
+    } else {
       if (element is! ClassElement) {
         throw InvalidAnnotationTargetException(
           ForyClass.name,
@@ -81,7 +77,7 @@ class ObjSpecGenerator extends GeneratorForAnnotation<ForyObject> {
     }
 
     StringBuffer buf = StringBuffer();
-    spec.genCode(buf);
+    spec.writeCode(buf);
     return buf.toString();
   }
 }

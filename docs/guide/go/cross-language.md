@@ -69,7 +69,7 @@ class User:
     id: pyfory.Int64Type
     name: str
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 fory.register(User, type_id=1)
 user = fory.deserialize(data)
 ```
@@ -161,7 +161,7 @@ class Message:
     content: str
     timestamp: pyfory.Int64Type
 
-fory = pyfory.Fory()
+fory = pyfory.Fory(xlang=True)
 fory.register(Message, type_id=1)
 
 msg = Message(id=1, content="Hello from Python", timestamp=1234567890)

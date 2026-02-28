@@ -57,7 +57,7 @@ let mut fory = Fory::default()
     .xlang(true);
 
 // Register with namespace-based naming
-fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
+fory.register_by_namespace::<MyStruct>("com.example", "MyStruct")?;
 ```
 
 ## Register Custom Serializer
@@ -66,12 +66,12 @@ For types that need custom serialization logic:
 
 ```rust
 let mut fory = Fory::default();
-fory.register_serializer::<CustomType>(100);
+fory.register_serializer::<CustomType>(100)?;
 ```
 
-## Registration Order
+## Registration Consistency
 
-When using ID-based registration without explicit IDs, the registration order matters. Ensure consistent registration order between serialization and deserialization:
+Rust registration APIs use explicit IDs or explicit namespace/type names. Keep the same registration mapping on serializer and deserializer peers:
 
 ```rust
 // Serializer side
@@ -80,7 +80,7 @@ fory.register::<TypeA>(1)?;
 fory.register::<TypeB>(2)?;
 fory.register::<TypeC>(3)?;
 
-// Deserializer side - MUST use same order
+// Deserializer side - MUST use the same ID mapping
 let mut fory = Fory::default();
 fory.register::<TypeA>(1)?;
 fory.register::<TypeB>(2)?;

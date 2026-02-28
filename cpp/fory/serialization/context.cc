@@ -60,7 +60,7 @@ static const std::vector<MetaEncoding> k_type_name_encodings = {
 WriteContext::WriteContext(const Config &config,
                            std::unique_ptr<TypeResolver> type_resolver)
     : buffer_(), config_(&config), type_resolver_(std::move(type_resolver)),
-      current_dyn_depth_(0) {}
+      current_dyn_depth_(0), write_type_info_index_map_(8) {}
 
 WriteContext::~WriteContext() = default;
 
@@ -75,17 +75,51 @@ WriteContext::write_type_meta(const std::type_index &type_id) {
 }
 
 void WriteContext::write_type_meta(const TypeInfo *type_info) {
-  auto it = write_type_info_index_map_.find(type_info);
-  if (it != write_type_info_index_map_.end()) {
+  const uint64_t key =
+      static_cast<uint64_t>(reinterpret_cast<uintptr_t>(type_info));
+  if (!type_info_index_map_active_) {
+    if (!has_first_type_info_) {
+      has_first_type_info_ = true;
+      first_type_info_ = type_info;
+      buffer_.write_uint8(0); // (index << 1), index=0
+      buffer_.write_bytes(type_info->type_def.data(),
+                          type_info->type_def.size());
+      return;
+    }
+    if (type_info == first_type_info_) {
+      buffer_.write_uint8(1); // (index << 1) | 1, index=0
+      return;
+    }
+    type_info_index_map_active_ = true;
+    write_type_info_index_map_.clear();
+    const uint64_t first_key =
+        static_cast<uint64_t>(reinterpret_cast<uintptr_t>(first_type_info_));
+    write_type_info_index_map_.put(first_key, 0);
+  } else if (type_info == first_type_info_) {
+    buffer_.write_uint8(1); // (index << 1) | 1, index=0
+    return;
+  }
+
+  if (auto *entry = write_type_info_index_map_.find(key)) {
     // Reference to previously written type: (index << 1) | 1, LSB=1
-    buffer_.write_var_uint32(static_cast<uint32_t>((it->second << 1) | 1));
+    uint32_t marker = static_cast<uint32_t>((entry->value << 1) | 1);
+    if (marker < 0x80) {
+      buffer_.write_uint8(static_cast<uint8_t>(marker));
+    } else {
+      buffer_.write_var_uint32(marker);
+    }
     return;
   }
 
   // New type: index << 1, LSB=0, followed by TypeDef bytes inline
-  size_t index = write_type_info_index_map_.size();
-  buffer_.write_var_uint32(static_cast<uint32_t>(index << 1));
-  write_type_info_index_map_[type_info] = index;
+  uint32_t index = static_cast<uint32_t>(write_type_info_index_map_.size());
+  uint32_t marker = static_cast<uint32_t>(index << 1);
+  if (marker < 0x80) {
+    buffer_.write_uint8(static_cast<uint8_t>(marker));
+  } else {
+    buffer_.write_var_uint32(marker);
+  }
+  write_type_info_index_map_.put(key, index);
 
   // write TypeDef bytes inline
   buffer_.write_bytes(type_info->type_def.data(), type_info->type_def.size());
@@ -368,6 +402,9 @@ void WriteContext::reset() {
   ref_writer_.reset();
   // Clear meta map for streaming TypeMeta (size is used as counter)
   write_type_info_index_map_.clear();
+  first_type_info_ = nullptr;
+  has_first_type_info_ = false;
+  type_info_index_map_active_ = false;
   current_dyn_depth_ = 0;
   // reset buffer indices for reuse - no memory operations needed
   buffer_.writer_index(0);
@@ -460,12 +497,50 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   }
 
   // Check if we already parsed this type meta (cache lookup by header)
+  if (has_last_meta_header_ && meta_header == last_meta_header_) {
+    // Fast path: same header as last parsed
+    const TypeInfo *cached = last_meta_type_info_;
+    reading_type_infos_.push_back(cached);
+    if (cached && !cached->type_def.empty()) {
+      const size_t type_def_size = cached->type_def.size();
+      if (type_def_size >= sizeof(int64_t) &&
+          type_def_size <= std::numeric_limits<uint32_t>::max()) {
+        Error skip_error;
+        buffer_->skip(static_cast<uint32_t>(type_def_size - sizeof(int64_t)),
+                      skip_error);
+        if (FORY_PREDICT_FALSE(!skip_error.ok())) {
+          return Unexpected(std::move(skip_error));
+        }
+        return cached;
+      }
+    }
+    FORY_RETURN_NOT_OK(TypeMeta::skip_bytes(*buffer_, meta_header));
+    return cached;
+  }
+
   auto cache_it = parsed_type_infos_.find(meta_header);
   if (cache_it != parsed_type_infos_.end()) {
     // Found in cache - reuse and skip the bytes
-    reading_type_infos_.push_back(cache_it->second);
+    const TypeInfo *cached = cache_it->second;
+    reading_type_infos_.push_back(cached);
+    has_last_meta_header_ = true;
+    last_meta_header_ = meta_header;
+    last_meta_type_info_ = cached;
+    if (cached && !cached->type_def.empty()) {
+      const size_t type_def_size = cached->type_def.size();
+      if (type_def_size >= sizeof(int64_t) &&
+          type_def_size <= std::numeric_limits<uint32_t>::max()) {
+        Error skip_error;
+        buffer_->skip(static_cast<uint32_t>(type_def_size - sizeof(int64_t)),
+                      skip_error);
+        if (FORY_PREDICT_FALSE(!skip_error.ok())) {
+          return Unexpected(std::move(skip_error));
+        }
+        return cached;
+      }
+    }
     FORY_RETURN_NOT_OK(TypeMeta::skip_bytes(*buffer_, meta_header));
-    return cache_it->second;
+    return cached;
   }
 
   // Not in cache - parse the TypeMeta
@@ -525,11 +600,16 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   const TypeInfo *raw_ptr = type_info.get();
 
   // Store in primary storage
-  owned_reading_type_infos_.push_back(std::move(type_info));
-
-  // Cache the parsed TypeInfo (with size limit to prevent OOM)
   if (parsed_type_infos_.size() < k_max_parsed_num_type_defs) {
+    cached_type_infos_.push_back(std::move(type_info));
+    raw_ptr = cached_type_infos_.back().get();
     parsed_type_infos_[meta_header] = raw_ptr;
+    has_last_meta_header_ = true;
+    last_meta_header_ = meta_header;
+    last_meta_type_info_ = raw_ptr;
+  } else {
+    owned_reading_type_infos_.push_back(std::move(type_info));
+    raw_ptr = owned_reading_type_infos_.back().get();
   }
 
   reading_type_infos_.push_back(raw_ptr);
@@ -607,7 +687,6 @@ void ReadContext::reset() {
   error_ = Error();
   ref_reader_.reset();
   reading_type_infos_.clear();
-  parsed_type_infos_.clear();
   owned_reading_type_infos_.clear();
   current_dyn_depth_ = 0;
   meta_string_table_.reset();

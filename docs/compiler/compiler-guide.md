@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This guide covers installation, usage, and integration of the FDL compiler.
+This guide covers installation, usage, and integration of the Fory IDL compiler.
 
 ## Installation
 
@@ -50,22 +50,40 @@ foryc --scan-generated [OPTIONS]
 
 ### Options
 
+Compile options:
+
 | Option                                | Description                                           | Default       |
 | ------------------------------------- | ----------------------------------------------------- | ------------- |
 | `--lang`                              | Comma-separated target languages                      | `all`         |
 | `--output`, `-o`                      | Output directory                                      | `./generated` |
-| `--package`                           | Override package name from FDL file                   | (from file)   |
+| `--package`                           | Override package name from Fory IDL file              | (from file)   |
 | `-I`, `--proto_path`, `--import_path` | Add directory to import search path (can be repeated) | (none)        |
 | `--java_out=DST_DIR`                  | Generate Java code in DST_DIR                         | (none)        |
 | `--python_out=DST_DIR`                | Generate Python code in DST_DIR                       | (none)        |
 | `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                          | (none)        |
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
-| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | (none)        |
+| `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
+| `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                        | (none)        |
+| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`  |
+| `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`            | `enum`        |
+| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`       |
+| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)      |
+
+For both `go_nested_type_style` and `swift_namespace_style`, schema-level file options are supported (`option ... = ...;`) and the CLI flag overrides the schema option when both are present.
+
+Scan options (with `--scan-generated`):
+
+| Option       | Description                    | Default |
+| ------------ | ------------------------------ | ------- |
+| `--root`     | Root directory to scan         | `.`     |
+| `--relative` | Print paths relative to root   | `false` |
+| `--delete`   | Delete matched generated files | `false` |
+| `--dry-run`  | Scan/print only, do not delete | `false` |
 
 ### Scan Generated Files
 
-Use `--scan-generated` to find files produced by the Fory compiler. The scanner walks
+Use `--scan-generated` to find files produced by `foryc`. The scanner walks
 the tree recursively, skips `build/`, `target/`, and hidden directories, and prints
 each generated file as it is found.
 
@@ -97,7 +115,7 @@ foryc schema.fdl
 **Compile for specific languages:**
 
 ```bash
-foryc schema.fdl --lang java,python
+foryc schema.fdl --lang java,python,csharp,swift
 ```
 
 **Specify output directory:**
@@ -144,7 +162,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --swift_out=./swift/gen
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
@@ -153,12 +171,22 @@ foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
 When using `--{lang}_out` options:
 
 - Only the specified languages are generated (not all languages)
-- Files are placed directly in the specified directory (not in a `{lang}/` subdirectory)
+- The compiler writes under the specified directory (language-specific generators may still create package/module subdirectories)
 - This is compatible with protoc-style workflows
+
+**Inspect translated Fory IDL from proto/fbs input:**
+
+```bash
+# Print translated Fory IDL to stdout
+foryc schema.proto --emit-fdl
+
+# Write translated Fory IDL to a directory
+foryc schema.fbs --emit-fdl --emit-fdl-path ./translated
+```
 
 ## Import Path Resolution
 
-When compiling FDL files with imports, the compiler searches for imported files in this order:
+When compiling Fory IDL files with imports, the compiler searches for imported files in this order:
 
 1. **Relative to the importing file (default)** - The directory containing the file with the import statement is always searched first, automatically. No `-I` flag needed for same-directory imports.
 2. **Each `-I` path in order** - Additional search paths specified on the command line
@@ -203,13 +231,15 @@ Compiling src/main.fdl...
 
 ## Supported Languages
 
-| Language | Flag     | Output Extension | Description                 |
-| -------- | -------- | ---------------- | --------------------------- |
-| Java     | `java`   | `.java`          | POJOs with Fory annotations |
-| Python   | `python` | `.py`            | Dataclasses with type hints |
-| Go       | `go`     | `.go`            | Structs with struct tags    |
-| Rust     | `rust`   | `.rs`            | Structs with derive macros  |
-| C++      | `cpp`    | `.h`             | Structs with FORY macros    |
+| Language | Flag     | Output Extension | Description                  |
+| -------- | -------- | ---------------- | ---------------------------- |
+| Java     | `java`   | `.java`          | POJOs with Fory annotations  |
+| Python   | `python` | `.py`            | Dataclasses with type hints  |
+| Go       | `go`     | `.go`            | Structs with struct tags     |
+| Rust     | `rust`   | `.rs`            | Structs with derive macros   |
+| C++      | `cpp`    | `.h`             | Structs with FORY macros     |
+| C#       | `csharp` | `.cs`            | Classes with Fory attributes |
+| Swift    | `swift`  | `.swift`         | `@ForyObject` Swift models   |
 
 ## Output Structure
 
@@ -227,7 +257,7 @@ generated/
 ```
 
 - One file per type (enum or message)
-- Package structure matches FDL package
+- Package structure matches Fory IDL package
 - Registration helper class generated
 
 ### Python
@@ -247,11 +277,12 @@ generated/
 ```
 generated/
 └── go/
-    └── example.go
+    └── example/
+        └── example.go
 ```
 
 - Single file with all types
-- Package name from last component of FDL package
+- Directory and package name are derived from `go_package` or the Fory IDL package
 - Registration function included
 
 ### Rust
@@ -278,6 +309,73 @@ generated/
 - Namespace matches package (dots to `::`)
 - Header guards and forward declarations
 
+### C\#
+
+```
+generated/
+└── csharp/
+    └── example/
+        └── example.cs
+```
+
+- Single `.cs` file per schema
+- Namespace uses `csharp_namespace` (if set) or Fory IDL package
+- Includes registration helper and `ToBytes`/`FromBytes` methods
+- Imported schemas are registered transitively (for example `root.idl` importing
+  `addressbook.fdl` and `tree.fdl`)
+
+### Swift
+
+```
+generated/
+└── swift/
+    └── addressbook/
+        └── addressbook.swift
+```
+
+- Single `.swift` file per schema
+- Package segments are mapped to nested Swift enums (for example `addressbook.*` -> `Addressbook.*`)
+- Generated messages/unions/enums use `@ForyObject` and `@ForyField(id: ...)`
+- Union types are generated as tagged enums with associated payload values
+- Each schema includes `ForyRegistration` and `toBytes`/`fromBytes` helpers
+- Imported schemas are registered transitively by generated registration helpers
+
+### C# IDL Matrix Verification
+
+Run the end-to-end C# IDL matrix (FDL/IDL/Proto/FBS generation plus roundtrip tests):
+
+```bash
+cd integration_tests/idl_tests
+./run_csharp_tests.sh
+```
+
+This runner executes schema-consistent and compatible roundtrips across:
+
+- `addressbook`, `auto_id`, `complex_pb` primitives
+- `collection` and union/list variants
+- `optional_types`
+- `any_example` (`.fdl`) and `any_example` (`.proto`)
+- `tree` and `graph` reference-tracking cases
+- `monster.fbs` and `complex_fbs.fbs`
+- `root.idl` cross-package import coverage
+- evolving schema compatibility cases
+
+### Swift IDL Matrix Verification
+
+Run the end-to-end Swift IDL matrix (FDL/IDL/Proto/FBS generation plus roundtrip tests):
+
+```bash
+cd integration_tests/idl_tests
+./run_swift_tests.sh
+```
+
+This runs:
+
+- local Swift IDL roundtrip tests in both compatible and schema-consistent modes
+- Java-driven peer roundtrip validation with `IDL_PEER_LANG=swift`
+
+The script also sets `DATA_FILE*` variables so file-based roundtrip paths are exercised.
+
 ## Build Integration
 
 ### Maven (Java)
@@ -299,14 +397,11 @@ Add to your `pom.xml`:
             <goal>exec</goal>
           </goals>
           <configuration>
-            <executable>fory</executable>
+            <executable>foryc</executable>
             <arguments>
-              <argument>compile</argument>
               <argument>${project.basedir}/src/main/fdl/schema.fdl</argument>
-              <argument>--lang</argument>
-              <argument>java</argument>
-              <argument>--output</argument>
-              <argument>${project.build.directory}/generated-sources/fdl</argument>
+              <argument>--java_out</argument>
+              <argument>${project.build.directory}/generated-sources/fory</argument>
             </arguments>
           </configuration>
         </execution>
@@ -333,7 +428,7 @@ Add generated sources:
           </goals>
           <configuration>
             <sources>
-              <source>${project.build.directory}/generated-sources/fdl</source>
+              <source>${project.build.directory}/generated-sources/fory</source>
             </sources>
           </configuration>
         </execution>
@@ -349,10 +444,9 @@ Add to `build.gradle`:
 
 ```groovy
 task generateForyTypes(type: Exec) {
-    commandLine 'fory', 'compile',
+    commandLine 'foryc',
         "${projectDir}/src/main/fdl/schema.fdl",
-        '--lang', 'java',
-        '--output', "${buildDir}/generated/sources/fdl"
+        '--java_out', "${buildDir}/generated/sources/fory"
 }
 
 compileJava.dependsOn generateForyTypes
@@ -360,7 +454,7 @@ compileJava.dependsOn generateForyTypes
 sourceSets {
     main {
         java {
-            srcDir "${buildDir}/generated/sources/fdl/java"
+            srcDir "${buildDir}/generated/sources/fory"
         }
     }
 }
@@ -376,18 +470,17 @@ from setuptools import setup
 from setuptools.command.build_py import build_py
 import subprocess
 
-class BuildWithFdl(build_py):
+class BuildWithForyIdl(build_py):
     def run(self):
         subprocess.run([
-            'fory', 'compile',
+            'foryc',
             'schema.fdl',
-            '--lang', 'python',
-            '--output', 'src/generated'
+            '--python_out', 'src/generated'
         ], check=True)
         super().run()
 
 setup(
-    cmdclass={'build_py': BuildWithFdl},
+    cmdclass={'build_py': BuildWithForyIdl},
     # ...
 )
 ```
@@ -417,13 +510,13 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=schema.fdl");
 
-    let status = Command::new("fory")
-        .args(&["compile", "schema.fdl", "--lang", "rust", "--output", "src/generated"])
+    let status = Command::new("foryc")
+        .args(&["schema.fdl", "--rust_out", "src/generated"])
         .status()
-        .expect("Failed to run fory compiler");
+        .expect("Failed to run foryc");
 
     if !status.success() {
-        panic!("FDL compilation failed");
+        panic!("Fory IDL compilation failed");
     }
 }
 ```
@@ -433,22 +526,21 @@ fn main() {
 Add to `CMakeLists.txt`:
 
 ```cmake
-find_program(FORY_COMPILER fory)
+find_program(FORY_COMPILER foryc)
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/generated/example.h
-    COMMAND ${FORY_COMPILER} compile
+    COMMAND ${FORY_COMPILER}
         ${CMAKE_CURRENT_SOURCE_DIR}/schema.fdl
-        --lang cpp
-        --output ${CMAKE_CURRENT_SOURCE_DIR}/generated
+        --cpp_out ${CMAKE_CURRENT_SOURCE_DIR}/generated
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/schema.fdl
-    COMMENT "Generating FDL types"
+    COMMENT "Generating Fory IDL types"
 )
 
-add_custom_target(generate_fdl DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/generated/example.h)
+add_custom_target(generate_fory_idl DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/generated/example.h)
 
 add_library(mylib ...)
-add_dependencies(mylib generate_fdl)
+add_dependencies(mylib generate_fory_idl)
 target_include_directories(mylib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/generated)
 ```
 
@@ -461,7 +553,7 @@ genrule(
     name = "generate_fdl",
     srcs = ["schema.fdl"],
     outs = ["generated/example.h"],
-    cmd = "$(location //:fory_compiler) compile $(SRCS) --lang cpp --output $(RULEDIR)/generated",
+    cmd = "$(location //:fory_compiler) $(SRCS) --cpp_out $(RULEDIR)/generated",
     tools = ["//:fory_compiler"],
 )
 
@@ -531,13 +623,13 @@ project/
 
 ### Version Control
 
-- **Track**: FDL schema files
+- **Track**: Fory IDL schema files
 - **Ignore**: Generated code (can be regenerated)
 
 Add to `.gitignore`:
 
 ```
-# Generated FDL code
+# Generated Fory IDL code
 src/generated/
 generated/
 ```
@@ -549,7 +641,7 @@ Always regenerate during builds:
 ```yaml
 # GitHub Actions example
 steps:
-  - name: Install FDL Compiler
+  - name: Install Fory IDL Compiler
     run: pip install ./compiler
 
   - name: Generate Types
@@ -582,7 +674,7 @@ message User [id=100] {
 ### Command Not Found
 
 ```
-fory: command not found
+foryc: command not found
 ```
 
 **Solution:** Ensure the compiler is installed and in your PATH:
@@ -613,7 +705,7 @@ chmod -R u+w ./generated
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.14.1</version>
+  <version>${fory.version}</version>
 </dependency>
 ```
 
@@ -633,7 +725,7 @@ go get github.com/apache/fory/go/fory
 
 ```toml
 [dependencies]
-fory = "0.13"
+fory = "x.y.z"
 ```
 
 **C++:** Ensure Fory headers are in include path.

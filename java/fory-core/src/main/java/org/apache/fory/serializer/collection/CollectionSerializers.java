@@ -117,28 +117,25 @@ public class CollectionSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, List<?> value) {
-      try {
-        final Object[] array = (Object[]) Platform.getObject(value, arrayFieldOffset);
-        fory.writeRef(buffer, array);
-      } catch (Exception e) {
-        throw new RuntimeException(e);
+      if (isJava) {
+        try {
+          final Object[] array = (Object[]) Platform.getObject(value, arrayFieldOffset);
+          fory.writeRef(buffer, array);
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      } else {
+        super.write(buffer, value);
       }
     }
 
     @Override
     public List<?> read(MemoryBuffer buffer) {
-      final Object[] array = (Object[]) fory.readRef(buffer);
-      Preconditions.checkNotNull(array);
-      return Arrays.asList(array);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, List<?> value) {
-      super.write(buffer, value);
-    }
-
-    @Override
-    public List<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        final Object[] array = (Object[]) fory.readRef(buffer);
+        Preconditions.checkNotNull(array);
+        return Arrays.asList(array);
+      }
       return super.read(buffer);
     }
 
@@ -183,15 +180,23 @@ public class CollectionSerializers {
   }
 
   public static class SortedSetSerializer<T extends SortedSet> extends CollectionSerializer<T> {
-    private MethodHandle constructor;
+    private MethodHandle comparatorConstructor;
+    private MethodHandle noArgConstructor;
 
     public SortedSetSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, true);
       if (cls != TreeSet.class) {
         try {
-          constructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
+          comparatorConstructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
         } catch (Exception e) {
-          throw new UnsupportedOperationException(e);
+          // Subclass doesn't have a (Comparator) constructor, fall back to no-arg constructor.
+          try {
+            noArgConstructor = ReflectionUtils.getCtrHandle(cls);
+          } catch (Exception e2) {
+            throw new UnsupportedOperationException(
+                "Class " + cls.getName() + " requires either a (Comparator) or no-arg constructor",
+                e2);
+          }
         }
       }
     }
@@ -217,7 +222,11 @@ public class CollectionSerializers {
         collection = (T) new TreeSet(comparator);
       } else {
         try {
-          collection = (T) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            collection = (T) comparatorConstructor.invoke(comparator);
+          } else {
+            collection = (T) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
@@ -234,7 +243,11 @@ public class CollectionSerializers {
         collection = new TreeSet(comparator);
       } else {
         try {
-          collection = (T) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            collection = (T) comparatorConstructor.invoke(comparator);
+          } else {
+            collection = (T) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
@@ -247,7 +260,7 @@ public class CollectionSerializers {
   // For cross-language serialization, if the data is passed from python, the data will be
   // deserialized by `MapSerializers` and `CollectionSerializers`.
   // But if the data is serialized by following collections serializers, we need to ensure the real
-  // type of `xread` is the same as the type when serializing.
+  // type of read result is the same as the type when serializing.
   public static final class EmptyListSerializer extends CollectionSerializer<List<?>> {
 
     public EmptyListSerializer(Fory fory, Class<List<?>> cls) {
@@ -255,22 +268,18 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, List<?> value) {}
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, List<?> value) {
-      // write length
-      buffer.writeVarUint32Small7(0);
+    public void write(MemoryBuffer buffer, List<?> value) {
+      if (!isJava) {
+        // write length
+        buffer.writeVarUint32Small7(0);
+      }
     }
 
     @Override
     public List<?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_LIST;
-    }
-
-    @Override
-    public List<?> xread(MemoryBuffer buffer) {
-      buffer.readVarUint32Small7();
+      if (!isJava) {
+        buffer.readVarUint32Small7();
+      }
       return Collections.EMPTY_LIST;
     }
   }
@@ -348,20 +357,17 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Set<?> value) {}
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Set<?> value) {
-      super.write(buffer, value);
+    public void write(MemoryBuffer buffer, Set<?> value) {
+      if (!isJava) {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Set<?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_SET;
-    }
-
-    @Override
-    public Set<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.EMPTY_SET;
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -373,20 +379,17 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, SortedSet<?> value) {}
+    public void write(MemoryBuffer buffer, SortedSet<?> value) {
+      if (!isJava) {
+        super.write(buffer, value);
+      }
+    }
 
     @Override
     public SortedSet<?> read(MemoryBuffer buffer) {
-      return Collections.emptySortedSet();
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, SortedSet<?> value) {
-      super.write(buffer, value);
-    }
-
-    @Override
-    public SortedSet<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.emptySortedSet();
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -405,21 +408,18 @@ public class CollectionSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, List<?> value) {
-      fory.writeRef(buffer, value.get(0));
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, List<?> value) {
-      super.write(buffer, value);
+      if (isJava) {
+        fory.writeRef(buffer, value.get(0));
+      } else {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public List<?> read(MemoryBuffer buffer) {
-      return Collections.singletonList(fory.readRef(buffer));
-    }
-
-    @Override
-    public List<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.singletonList(fory.readRef(buffer));
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -437,21 +437,18 @@ public class CollectionSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Set<?> value) {
-      fory.writeRef(buffer, value.iterator().next());
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Set<?> value) {
-      super.write(buffer, value);
+      if (isJava) {
+        fory.writeRef(buffer, value.iterator().next());
+      } else {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Set<?> read(MemoryBuffer buffer) {
-      return Collections.singleton(fory.readRef(buffer));
-    }
-
-    @Override
-    public Set<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.singleton(fory.readRef(buffer));
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -657,6 +654,9 @@ public class CollectionSerializers {
         elemClass = tmp.iterator().next().getClass();
       } else {
         elemClass = object.iterator().next().getClass();
+      }
+      if (!elemClass.isEnum()) {
+        elemClass = elemClass.getEnclosingClass();
       }
       fory.getClassResolver().writeClassAndUpdateCache(buffer, elemClass);
       Serializer serializer = fory.getClassResolver().getSerializer(elemClass);

@@ -36,12 +36,12 @@ final class ForyHeaderSerializer {
   HeaderBrief? read(ByteReader br, ForyConfig conf) {
     int bitmap = br.readInt8();
     // header: nullFlag
-    if ((bitmap & ForyHeaderConst.nullFlag) != 0){
+    if ((bitmap & ForyHeaderConst.nullFlag) != 0) {
       return null;
     }
     // header: xlang
     bool isXLang = (bitmap & ForyHeaderConst.crossLanguageFlag) != 0;
-    assert (isXLang, 'Now Fory Dart only supports xlang mode');
+    assert(isXLang, 'Now Fory Dart only supports xlang mode');
     bool oobEnabled = (bitmap & ForyHeaderConst.outOfBandFlag) != 0;
     //TODO: oobEnabled unsupported yet.
     return (
@@ -52,7 +52,7 @@ final class ForyHeaderSerializer {
 
   void write(ByteWriter bd, bool objNull, ForyConfig conf) {
     int bitmap = ForyHeaderConst.crossLanguageFlag;
-    if (objNull){
+    if (objNull) {
       bitmap |= ForyHeaderConst.nullFlag;
     }
     // callback must be null

@@ -22,7 +22,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from fory_compiler.ir.ast import Schema, FieldType
+from fory_compiler.ir.ast import (
+    Schema,
+    FieldType,
+    PrimitiveType,
+    NamedType,
+    ListType,
+    MapType,
+)
 
 
 @dataclass
@@ -40,6 +47,8 @@ class GeneratorOptions:
     output_dir: Path
     package_override: Optional[str] = None
     go_nested_type_style: Optional[str] = None
+    swift_namespace_style: Optional[str] = None
+    grpc: bool = False
 
 
 class BaseGenerator(ABC):
@@ -63,6 +72,14 @@ class BaseGenerator(ABC):
     def generate(self) -> List[GeneratedFile]:
         """Generate code and return a list of generated files."""
         pass
+
+    def generate_services(self) -> List[GeneratedFile]:
+        """Generate service-related code (e.g. gRPC stubs).
+
+        Base implementation returns empty list. Subclasses should override
+        if they support service generation.
+        """
+        return []
 
     @abstractmethod
     def generate_type(self, field_type: FieldType, nullable: bool = False) -> str:
@@ -195,6 +212,32 @@ class BaseGenerator(ABC):
         """Return True if a type should be registered by numeric ID."""
         type_id = getattr(type_def, "type_id", None)
         return type_id is not None
+
+    def get_effective_evolving(self, message) -> bool:
+        """Return effective evolving flag for a message."""
+        if message is None:
+            return True
+        if "evolving" in message.options:
+            return bool(message.options.get("evolving"))
+        file_default = self.schema.get_option("evolving")
+        if file_default is None:
+            return True
+        return bool(file_default)
+
+    def format_idl_type(self, field_type: FieldType) -> str:
+        """Return an IDL-style type name for display purposes."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind.value
+        if isinstance(field_type, NamedType):
+            return field_type.name
+        if isinstance(field_type, ListType):
+            element = self.format_idl_type(field_type.element_type)
+            return f"list<{element}>"
+        if isinstance(field_type, MapType):
+            key = self.format_idl_type(field_type.key_type)
+            value = self.format_idl_type(field_type.value_type)
+            return f"map<{key}, {value}>"
+        return "object"
 
     def get_license_header(self, comment_prefix: str = "//") -> str:
         """Get the Apache license header."""

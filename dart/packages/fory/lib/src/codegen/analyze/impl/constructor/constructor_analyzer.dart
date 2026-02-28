@@ -24,37 +24,42 @@ import 'package:analyzer/dart/constant/value.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/analysis_cache.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/constructor_param.dart';
 import 'package:fory/src/codegen/entity/constructor_params.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/constraint_violation_exception.dart' show CircularIncapableRisk, InformalConstructorParamException, NoUsableConstructorException;
-import 'package:fory/src/codegen/meta/impl/constructor_info.dart' show ConstructorInfo;
+import 'package:fory/src/codegen/exception/constraint_violation_exception.dart'
+    show
+        CircularIncapableRisk,
+        InformalConstructorParamException,
+        NoUsableConstructorException;
+import 'package:fory/src/codegen/meta/impl/constructor_info.dart'
+    show ConstructorInfo;
 
 class ConstructorAnalyzer {
-
   const ConstructorAnalyzer();
 
-  ConstructorParams? _analyzeInner(
-    ConstructorElement element,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-    [int? classElementId,
-      int depth = 0]
-  ){
+  ConstructorParams? _analyzeInner(ConstructorElement element,
+      @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+      [int? classElementId, int depth = 0]) {
     classElementId ??= element.enclosingElement3.id;
     // Each annotated class will only be analyzed once, and a class has only one UnnamedConstructor.
     // Therefore, for depth = 0, it must be the first time the class is being analyzed,
     // so it is definitely not in the cache and there is no need to check.
-    if (depth != 0){
-      assert (depth > 0);
-      if (element.superConstructor == null) return null; // There's nothing to analyze once the inheritance chain reaches Object
+    if (depth != 0) {
+      assert(depth > 0);
+      if (element.superConstructor == null) {
+        return null; // There's nothing to analyze once the inheritance chain reaches Object
+      }
       // now got key, check cache
-      ConstructorParams? cParams = AnalysisCache.getUnnamedCons(classElementId);
+      ConstructorParams? cParams =
+          AnalysisCache.getUnnamedConstructorParams(classElementId);
       if (cParams != null) return cParams;
     }
 
-    ConstructorParams? superConsParams = _analyzeInner(element.superConstructor!, locationMark, null, depth+1);
+    ConstructorParams? superConsParams =
+        _analyzeInner(element.superConstructor!, locationMark, null, depth + 1);
     final List<ConstructorParam>? superPositional = superConsParams?.positional;
 
     final params = element.parameters;
@@ -62,41 +67,42 @@ class ConstructorAnalyzer {
     final List<ConstructorParam> named = [];
 
     int superPositionalCount = 0;
-    for (int i = 0; i < params.length; ++i){
+    for (int i = 0; i < params.length; ++i) {
       final param = params[i];
-      if (param.isInitializingFormal){
-        if (param.isPositional){
-          positional.add(ConstructorParam.withName(param.name, param.isOptional));
-        }else{
+      if (param.isInitializingFormal) {
+        if (param.isPositional) {
+          positional
+              .add(ConstructorParam.withName(param.name, param.isOptional));
+        } else {
           // is named
           assert(param.isNamed);
           named.add(ConstructorParam.withName(param.name, param.isOptional));
         }
-      }else if (param.isSuperFormal){
+      } else if (param.isSuperFormal) {
         // If it indicates super, then we can be sure that superConsParams is not null
-        if (param.isPositional){
-          positional.add(
-            superPositional![superPositionalCount++].copyWithOptional(param.isOptional)
-          ); // Must copy, otherwise it will lead to inconsistency
-        }else{
+        if (param.isPositional) {
+          positional.add(superPositional![superPositionalCount++]
+              .copyWithOptional(param
+                  .isOptional)); // Must copy, otherwise it will lead to inconsistency
+        } else {
           assert(param.isNamed);
           named.add(ConstructorParam.withName(param.name, param.isOptional));
         }
-      }else {
+      } else {
         // Indicates a regular parameter
-        if (param.isOptional){
+        if (param.isOptional) {
           // TODO: Maybe we can enforce stricter limitations here
           // This indicates that it is neither an initialization parameter nor a super parameter, which means it is a regular parameter.
           // However, for optional parameters, we will not throw an exception here, but this does not mean it passes the check,
           // because later we will analyze it with the fields to see if all required fields have a chance to be assigned a value.
           // TODO: The handling of non-exceptional cases (e.g., WARNING) is relatively simple here, we can try to establish a dedicated logging component later.
-          print("[WARNING] constructor param ${param.name} isn't initializing formal or super formal, but optional, please check");
-        }else {
+          print(
+              "[WARNING] constructor param ${param.name} isn't initializing formal or super formal, but optional, please check");
+        } else {
           throw InformalConstructorParamException(
-              locationMark.libPath,
-              locationMark.clsName,
-              [param.name,]
-          );
+              locationMark.libPath, locationMark.clsName, [
+            param.name,
+          ]);
         }
       }
     }
@@ -105,16 +111,15 @@ class ConstructorAnalyzer {
       positional,
       named,
     );
-    AnalysisCache.putUnnamedCons(classElementId, cParams);
+    AnalysisCache.putUnnamedConstructorParams(classElementId, cParams);
     return cParams;
   }
 
-
   ConstructorElement? _findUnnamedCons(
     List<ConstructorElement> cons,
-  ){
-    for (var consEle in cons){
-      if (consEle.name.isEmpty){
+  ) {
+    for (var consEle in cons) {
+      if (consEle.name.isEmpty) {
         return consEle;
       }
     }
@@ -123,14 +128,15 @@ class ConstructorAnalyzer {
 
   ConstructorElement? _findSpecifiedCons(
     List<ConstructorElement> cons,
-  ){
+  ) {
     late DartObject anno;
     late ClassElement annoClsElement;
-    for (var consEle in cons){
-      for (var annoEle in consEle.metadata){
+    for (var consEle in cons) {
+      for (var annoEle in consEle.metadata) {
         anno = annoEle.computeConstantValue()!;
         annoClsElement = anno.type!.element as ClassElement;
-        if (AnalysisTypeIdentifier.isForyCons(annoClsElement)){
+        if (AnalysisTypeIdentifier.isForyConstructorAnnotation(
+            annoClsElement)) {
           return consEle;
         }
       }
@@ -141,53 +147,50 @@ class ConstructorAnalyzer {
   /// looking for flexible constructor
   ConstructorElement? _findFlexibleCons(
     List<ConstructorElement> cons,
-  ){
-    for (var consEle in cons){
-      if (_isFlexible(consEle)){
+  ) {
+    for (var consEle in cons) {
+      if (_isFlexible(consEle)) {
         return consEle;
       }
     }
     return null;
   }
 
-
   bool _isFlexible(
     ConstructorElement cons,
-  ){
-    for (final param in cons.parameters){
+  ) {
+    for (final param in cons.parameters) {
       if (param.isOptional) continue;
       return false;
     }
     return true;
   }
 
-
   void _checkCircularRisk(
     bool isFlex,
     bool allFieldsPrimitive,
     bool promiseAcyclic,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     if (isFlex || allFieldsPrimitive || promiseAcyclic) return;
     throw CircularIncapableRisk(
-        locationMark.libPath,
-        locationMark.clsName,
+      locationMark.libPath,
+      locationMark.clsName,
     );
   }
-
 
   ConstructorInfo analyze(
     List<ConstructorElement> cons,
     int classElementId,
     bool promiseAcyclic,
     bool allFieldsPrimitive,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
-  ){
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
+  ) {
     assert(locationMark.ensureClassLevel);
     // Look for whether the user has specified a constructor
     late bool isFlexible;
     ConstructorElement? consEle = _findSpecifiedCons(cons);
-    if (consEle != null){
+    if (consEle != null) {
       isFlexible = _isFlexible(consEle);
       _checkCircularRisk(
         isFlexible,
@@ -195,7 +198,7 @@ class ConstructorAnalyzer {
         promiseAcyclic,
         locationMark,
       );
-    }else {
+    } else {
       consEle = _findFlexibleCons(cons);
       isFlexible = consEle != null;
       if (!isFlexible) {
@@ -211,7 +214,7 @@ class ConstructorAnalyzer {
             "or a constructor that takes no parameters, "
             "to the point that it can't continue analyzing it",
           );
-        }else{
+        } else {
           // Found the UnnamedConstructor, so this is the only one that can be used
           _checkCircularRisk(
             false,
@@ -223,14 +226,14 @@ class ConstructorAnalyzer {
         isFlexible = false;
       }
     }
-    if (isFlexible){
-      return ConstructorInfo.useFlexibleCons(consEle.name);
+    if (isFlexible) {
+      return ConstructorInfo.flexibleConstructor(consEle.name);
     }
     // Indicates the specified constructor
-    assert(consEle.superConstructor != null); // Currently analyzing a class, it cannot be Object. In Dart, only the Object class does not have a super class.
-    return ConstructorInfo.useUnnamedCons(
+    assert(consEle.superConstructor !=
+        null); // Currently analyzing a class, it cannot be Object. In Dart, only the Object class does not have a super class.
+    return ConstructorInfo.unnamedConstructor(
       _analyzeInner(consEle, locationMark, classElementId, 0),
     );
   }
-
 }

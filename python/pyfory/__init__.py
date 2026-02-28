@@ -33,7 +33,6 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
 
 from pyfory.serializer import (  # noqa: F401 # pylint: disable=unused-import
     Serializer,
-    XlangCompatibleSerializer,
     BooleanSerializer,
     ByteSerializer,
     Int16Serializer,
@@ -69,7 +68,7 @@ from pyfory.serializer import (  # noqa: F401 # pylint: disable=unused-import
     StatefulSerializer,
 )
 from pyfory.struct import DataClassSerializer
-from pyfory.field import field  # noqa: F401 # pylint: disable=unused-import
+from pyfory.field import dataclass, field  # noqa: F401 # pylint: disable=unused-import
 from pyfory.types import (  # noqa: F401 # pylint: disable=unused-import
     TypeId,
     Ref,
@@ -119,7 +118,7 @@ from pyfory.type_util import (  # noqa: F401 # pylint: disable=unused-import
 from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=unused-import
 from pyfory.buffer import Buffer  # noqa: F401 # pylint: disable=unused-import
 
-__version__ = "0.15.0.dev0"
+__version__ = "0.16.0.dev0"
 
 __all__ = [
     # Core classes
@@ -130,6 +129,7 @@ __all__ = [
     "DeserializationPolicy",
     # Field metadata
     "field",
+    "dataclass",
     # Type utilities
     "record_class_factory",
     "get_qualified_classname",
@@ -175,7 +175,6 @@ __all__ = [
     "dataslots",
     # Serializers
     "Serializer",
-    "XlangCompatibleSerializer",
     "BooleanSerializer",
     "ByteSerializer",
     "Int16Serializer",

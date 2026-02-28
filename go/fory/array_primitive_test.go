@@ -20,6 +20,7 @@ package fory
 import (
 	"testing"
 
+	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,21 @@ func TestPrimitiveArraySerializer(t *testing.T) {
 		err = f.Unmarshal(bytes, &result)
 		require.NoError(t, err)
 		require.Equal(t, arr, result)
+	})
+
+	t.Run("bfloat16_array", func(t *testing.T) {
+		arr := [3]bfloat16.BFloat16{
+			bfloat16.BFloat16FromFloat32(1.0),
+			bfloat16.BFloat16FromFloat32(2.5),
+			bfloat16.BFloat16FromFloat32(-3.5),
+		}
+		data, err := f.Serialize(arr)
+		assert.NoError(t, err)
+
+		var result [3]bfloat16.BFloat16
+		err = f.Deserialize(data, &result)
+		assert.NoError(t, err)
+		assert.Equal(t, arr, result)
 	})
 }
 

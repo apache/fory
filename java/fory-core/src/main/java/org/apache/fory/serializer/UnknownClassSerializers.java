@@ -70,13 +70,11 @@ public final class UnknownClassSerializers {
         computeVarUint32Size(ClassResolver.NONEXISTENT_META_SHARED_ID);
     private final TypeDef typeDef;
     private final LongMap<ClassFieldsInfo> fieldsInfoMap;
-    private final SerializationBinding binding;
 
     public UnknownStructSerializer(Fory fory, TypeDef typeDef) {
       super(fory, UnknownClass.UnknownStruct.class);
       this.typeDef = typeDef;
       fieldsInfoMap = new LongMap<>();
-      binding = SerializationBinding.createBinding(fory);
       Preconditions.checkArgument(fory.getConfig().isMetaShareEnabled());
       if (Utils.DEBUG_OUTPUT_ENABLED && typeDef != null) {
         LOG.info("========== UnknownClassSerializer TypeDef for {} ==========", type.getName());
@@ -180,23 +178,26 @@ public final class UnknownClassSerializers {
       ClassFieldsInfo fieldsInfo = getClassFieldsInfo(typeDef);
       Fory fory = this.fory;
       RefResolver refResolver = fory.getRefResolver();
+      TypeResolver typeResolver = fory.getTypeResolver();
       if (fory.checkClassVersion()) {
         buffer.writeInt32(fieldsInfo.classVersionHash);
       }
       // write order: primitive,boxed,final,other,collection,map
       for (SerializationFieldInfo fieldInfo : fieldsInfo.buildInFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
-        AbstractObjectSerializer.writeBuildInFieldValue(binding, fieldInfo, buffer, fieldValue);
+        AbstractObjectSerializer.writeBuildInFieldValue(
+            fory, typeResolver, refResolver, fieldInfo, buffer, fieldValue);
       }
       Generics generics = fory.getGenerics();
       for (SerializationFieldInfo fieldInfo : fieldsInfo.containerFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
         AbstractObjectSerializer.writeContainerFieldValue(
-            binding, refResolver, generics, fieldInfo, buffer, fieldValue);
+            fory, typeResolver, refResolver, generics, fieldInfo, buffer, fieldValue);
       }
       for (SerializationFieldInfo fieldInfo : fieldsInfo.otherFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
-        binding.writeField(fieldInfo, buffer, fieldValue);
+        AbstractObjectSerializer.writeField(
+            fory, typeResolver, refResolver, fieldInfo, buffer, fieldValue);
       }
     }
 
@@ -226,37 +227,31 @@ public final class UnknownClassSerializers {
       UnknownClass.UnknownStruct obj = new UnknownClass.UnknownStruct(typeDef);
       Fory fory = this.fory;
       RefResolver refResolver = fory.getRefResolver();
+      TypeResolver typeResolver = fory.getTypeResolver();
       refResolver.reference(obj);
       List<MapEntry> entries = new ArrayList<>();
       // read order: primitive,boxed,final,other,collection,map
       ClassFieldsInfo allFieldsInfo = getClassFieldsInfo(typeDef);
       for (SerializationFieldInfo fieldInfo : allFieldsInfo.buildInFields) {
         Object fieldValue =
-            AbstractObjectSerializer.readBuildInFieldValue(binding, fieldInfo, buffer);
+            AbstractObjectSerializer.readBuildInFieldValue(
+                fory, typeResolver, refResolver, fieldInfo, buffer);
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
       Generics generics = fory.getGenerics();
       for (SerializationFieldInfo fieldInfo : allFieldsInfo.containerFields) {
         Object fieldValue =
-            AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+            AbstractObjectSerializer.readContainerFieldValue(
+                fory, typeResolver, refResolver, generics, fieldInfo, buffer);
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
       for (SerializationFieldInfo fieldInfo : allFieldsInfo.otherFields) {
-        Object fieldValue = binding.readField(fieldInfo, buffer);
+        Object fieldValue =
+            AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
       obj.setEntries(entries);
       return obj;
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Object value) {
-      write(buffer, value);
-    }
-
-    @Override
-    public Object xread(MemoryBuffer buffer) {
-      return read(buffer);
     }
   }
 

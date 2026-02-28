@@ -17,15 +17,26 @@
  * under the License.
  */
 
-abstract class ForyException extends Error{
+abstract class ForyException extends Error {
   ForyException();
 
-  void giveExceptionMessage(StringBuffer buf){}
+  void giveExceptionMessage(StringBuffer buf) {}
 
   @override
   String toString() {
     final buf = StringBuffer();
     giveExceptionMessage(buf);
     return buf.toString();
+  }
+}
+
+class InvalidDataException extends ForyException {
+  final String message;
+
+  InvalidDataException(this.message);
+
+  @override
+  void giveExceptionMessage(StringBuffer buf) {
+    buf.write(message);
   }
 }

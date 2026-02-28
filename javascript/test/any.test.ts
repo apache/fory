@@ -47,7 +47,7 @@ describe('bool', () => {
     test('should write big number work', () => {
         const fory = new Fory();
         const bin = fory.serialize(3000000000);
-        expect(fory.deserialize(bin)).toBe(3000000000);
+        expect(fory.deserialize(bin)).toBe(3000000000n);
     });
 
     test('should write INFINITY work', () => {
@@ -59,7 +59,7 @@ describe('bool', () => {
     test('should write float work', () => {
         const fory = new Fory();
         const bin = fory.serialize(123.123);
-        expect(fory.deserialize(bin)).toBe(123.123)
+        expect(fory.deserialize(bin).toFixed(3)).toBe("123.123")
     });
 
     test('should write bigint work', () => {

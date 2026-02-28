@@ -21,7 +21,7 @@ message Dog [id=103] {
 message Cat [id=104] {
     ref Dog friend = 1;
     optional string name = 2;
-    repeated string tags = 3;
+    list<string> tags = 3;
     map<string, int32> scores = 4;
     int32 lives = 5;
 }
@@ -29,10 +29,10 @@ message Cat [id=104] {
 // Demonstrates primitive arrays for numeric types
 message SensorData [id=105] {
     string sensor_id = 1;
-    repeated int32 readings = 2;
-    repeated float64 temperatures = 3;
-    repeated int64 timestamps = 4;
-    repeated bool flags = 5;
+    list<int32> readings = 2;
+    list<float64> temperatures = 3;
+    list<int64> timestamps = 4;
+    list<bool> flags = 5;
 }
 
 // No type ID - uses name-based registration

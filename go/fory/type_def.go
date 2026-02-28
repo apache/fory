@@ -54,6 +54,7 @@ type TypeDef struct {
 	fieldDefs      []FieldDef
 	encoded        []byte
 	type_          reflect.Type
+	cachedTypeInfo *TypeInfo
 }
 
 func NewTypeDef(typeId uint32, userTypeId uint32, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
@@ -262,6 +263,18 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 		TypeDef:      td,
 	}
 	return info, nil
+}
+
+func (td *TypeDef) getOrBuildTypeInfo(resolver *TypeResolver) (*TypeInfo, error) {
+	if td.cachedTypeInfo != nil {
+		return td.cachedTypeInfo, nil
+	}
+	info, err := td.buildTypeInfoWithResolver(resolver)
+	if err != nil {
+		return nil, err
+	}
+	td.cachedTypeInfo = &info
+	return td.cachedTypeInfo, nil
 }
 
 func readTypeDef(fory *Fory, buffer *ByteBuffer, header int64, err *Error) *TypeDef {

@@ -36,6 +36,7 @@ class TokenType(Enum):
     OPTIONAL = auto()
     REF = auto()
     REPEATED = auto()
+    LIST = auto()
     MAP = auto()
     OPTION = auto()
     TRUE = auto()
@@ -43,6 +44,10 @@ class TokenType(Enum):
     RESERVED = auto()
     TO = auto()
     MAX = auto()
+    SERVICE = auto()
+    RPC = auto()
+    RETURNS = auto()
+    STREAM = auto()
 
     # Literals
     IDENT = auto()
@@ -103,6 +108,7 @@ class Lexer:
         "optional": TokenType.OPTIONAL,
         "ref": TokenType.REF,
         "repeated": TokenType.REPEATED,
+        "list": TokenType.LIST,
         "map": TokenType.MAP,
         "option": TokenType.OPTION,
         "true": TokenType.TRUE,
@@ -110,6 +116,10 @@ class Lexer:
         "reserved": TokenType.RESERVED,
         "to": TokenType.TO,
         "max": TokenType.MAX,
+        "service": TokenType.SERVICE,
+        "rpc": TokenType.RPC,
+        "returns": TokenType.RETURNS,
+        "stream": TokenType.STREAM,
     }
 
     PUNCTUATION = {

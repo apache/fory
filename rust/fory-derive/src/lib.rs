@@ -111,6 +111,8 @@
 //! - **`#[fory(debug)]` / `#[fory(debug = true)]`**: Enables per-field debug instrumentation
 //!   for the annotated struct, allowing you to install custom hooks via
 //!   `fory_core::serializer::struct_`.
+//! - **`#[fory(evolving = false)]`**: Disables compatible struct type IDs for the annotated
+//!   struct, forcing STRUCT/NAMED_STRUCT even when compatible mode is enabled.
 //! - **`#[fory(skip)]`**: Marks an individual field (or enum variant) to be ignored by the
 //!   generated serializer, retaining compatibility with previous releases.
 //! - **`#[fory(generate_default)]`**: Enables the macro to generate `Default` implementation.
@@ -253,12 +255,14 @@ pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream
 pub(crate) struct ForyAttrs {
     pub debug_enabled: bool,
     pub generate_default: bool,
+    pub evolving: Option<bool>,
 }
 
 /// Parse fory attributes and return ForyAttrs
 fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
     let mut debug_flag: Option<bool> = None;
     let mut generate_default_flag: Option<bool> = None;
+    let mut evolving_flag: Option<bool> = None;
 
     for attr in attrs {
         if attr.path().is_ident("fory") {
@@ -297,6 +301,23 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
                         Some(_) => generate_default_flag,
                         None => Some(value),
                     };
+                } else if meta.path.is_ident("evolving") {
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    evolving_flag = match evolving_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `evolving` attribute values",
+                            ));
+                        }
+                        Some(_) => evolving_flag,
+                        None => Some(value),
+                    };
                 }
                 Ok(())
             })?;
@@ -306,5 +327,6 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
     Ok(ForyAttrs {
         debug_enabled: debug_flag.unwrap_or(false),
         generate_default: generate_default_flag.unwrap_or(false),
+        evolving: evolving_flag,
     })
 }

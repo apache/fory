@@ -23,7 +23,8 @@ import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/resolver/serialization_ref_resolver.dart';
 
 final class SerializationMapRefResolver extends SerializationRefResolver {
-  static final SerializationRefMeta noRef = (refFlag: RefFlag.NULL, refId: null);
+  static final SerializationRefMeta noRef =
+      (refFlag: RefFlag.NULL, refId: null);
 
   final Map<int, int> idenHashToRefId = HashMap();
 

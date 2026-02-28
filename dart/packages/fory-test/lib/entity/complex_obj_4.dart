@@ -23,7 +23,7 @@ import 'package:fory_test/extensions/map_ext.dart';
 part '../generated/complex_obj_4.g.dart';
 
 @foryClass
-class ComplexObject4 with _$ComplexObject4Fory{
+class ComplexObject4 {
   late String f1;
   late String f2;
   late List<String> f3;
@@ -40,7 +40,8 @@ class ComplexObject4 with _$ComplexObject4Fory{
   ComplexObject4();
 
   @override
-  int get hashCode => Object.hash(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12);
+  int get hashCode =>
+      Object.hash(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12);
 
   // define ==
   @override
@@ -64,20 +65,22 @@ class ComplexObject4 with _$ComplexObject4Fory{
 
   @override
   ComplexObject4.fromJson(Map<String, dynamic> json)
-  :f1 = json['f1'] as String,
-    f2 = json['f2'] as String,
-    f3 = (json['f3'] as List<dynamic>).map((e) => e as String).toList(),
-    f4 = (json['f4'] as Map<String, dynamic>).map(
-      (k, e) => MapEntry(int.parse(k), (e as num).toDouble()),
-    ),
-    f5 = json['f5'] as int,
-    f6 = json['f6'] as int,
-    f7 = json['f7'] as int,
-    f8 = json['f8'] as int,
-    f9 = (json['f9'] as num).toDouble(),
-    f10 = (json['f10'] as num).toDouble(),
-    f11 = (json['f11'] as List<dynamic>).map((e) => (e as num).toDouble()).toList(),
-    f12 = (json['f12'] as List<dynamic>).map((e) => e as int).toList();
+      : f1 = json['f1'] as String,
+        f2 = json['f2'] as String,
+        f3 = (json['f3'] as List<dynamic>).map((e) => e as String).toList(),
+        f4 = (json['f4'] as Map<String, dynamic>).map(
+          (k, e) => MapEntry(int.parse(k), (e as num).toDouble()),
+        ),
+        f5 = json['f5'] as int,
+        f6 = json['f6'] as int,
+        f7 = json['f7'] as int,
+        f8 = json['f8'] as int,
+        f9 = (json['f9'] as num).toDouble(),
+        f10 = (json['f10'] as num).toDouble(),
+        f11 = (json['f11'] as List<dynamic>)
+            .map((e) => (e as num).toDouble())
+            .toList(),
+        f12 = (json['f12'] as List<dynamic>).map((e) => e as int).toList();
 
   Map<String, dynamic> toJson() {
     return {

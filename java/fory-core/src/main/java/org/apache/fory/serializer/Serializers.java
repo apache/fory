@@ -178,19 +178,11 @@ public class Serializers {
   }
 
   public static <T> void write(MemoryBuffer buffer, Serializer<T> serializer, T obj) {
-    if (serializer.isJava) {
-      serializer.write(buffer, obj);
-    } else {
-      serializer.xwrite(buffer, obj);
-    }
+    serializer.write(buffer, obj);
   }
 
   public static <T> T read(MemoryBuffer buffer, Serializer<T> serializer) {
-    if (serializer.isJava) {
-      return serializer.read(buffer);
-    } else {
-      return serializer.xread(buffer);
-    }
+    return serializer.read(buffer);
   }
 
   public abstract static class CrossLanguageCompatibleSerializer<T> extends Serializer<T> {
@@ -202,16 +194,6 @@ public class Serializers {
     public CrossLanguageCompatibleSerializer(
         Fory fory, Class<T> cls, boolean needToWriteRef, boolean immutable) {
       super(fory, cls, needToWriteRef, immutable);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, T value) {
-      write(buffer, value);
-    }
-
-    @Override
-    public T xread(MemoryBuffer buffer) {
-      return read(buffer);
     }
   }
 
@@ -240,32 +222,31 @@ public class Serializers {
     }
 
     @Override
-    public void xwrite(MemoryBuffer buffer, T value) {
-      stringSerializer.writeString(buffer, value.toString());
-    }
-
-    @Override
     public void write(MemoryBuffer buffer, T value) {
-      if (GET_CODER != null) {
-        int coder = GET_CODER.applyAsInt(value);
-        byte[] v = (byte[]) GET_VALUE.apply(value);
-        int bytesLen = value.length();
-        if (coder != 0) {
-          if (coder != 1) {
-            throw new UnsupportedOperationException("Unsupported coder " + coder);
+      if (isJava) {
+        if (GET_CODER != null) {
+          int coder = GET_CODER.applyAsInt(value);
+          byte[] v = (byte[]) GET_VALUE.apply(value);
+          int bytesLen = value.length();
+          if (coder != 0) {
+            if (coder != 1) {
+              throw new UnsupportedOperationException("Unsupported coder " + coder);
+            }
+            bytesLen <<= 1;
           }
-          bytesLen <<= 1;
-        }
-        long header = ((long) bytesLen << 2) | coder;
-        buffer.writeVarUint64(header);
-        buffer.writeBytes(v, 0, bytesLen);
-      } else {
-        char[] v = (char[]) GET_VALUE.apply(value);
-        if (StringUtils.isLatin(v)) {
-          stringSerializer.writeCharsLatin1(buffer, v, value.length());
+          long header = ((long) bytesLen << 2) | coder;
+          buffer.writeVarUint64(header);
+          buffer.writeBytes(v, 0, bytesLen);
         } else {
-          stringSerializer.writeCharsUTF16(buffer, v, value.length());
+          char[] v = (char[]) GET_VALUE.apply(value);
+          if (StringUtils.isLatin(v)) {
+            stringSerializer.writeCharsLatin1(buffer, v, value.length());
+          } else {
+            stringSerializer.writeCharsUTF16(buffer, v, value.length());
+          }
         }
+      } else {
+        stringSerializer.writeString(buffer, value.toString());
       }
     }
   }
@@ -284,12 +265,11 @@ public class Serializers {
 
     @Override
     public StringBuilder read(MemoryBuffer buffer) {
-      return new StringBuilder(stringSerializer.readJavaString(buffer));
-    }
-
-    @Override
-    public StringBuilder xread(MemoryBuffer buffer) {
-      return new StringBuilder(stringSerializer.readString(buffer));
+      if (isJava) {
+        return new StringBuilder(stringSerializer.readString(buffer));
+      } else {
+        return new StringBuilder(stringSerializer.readString(buffer));
+      }
     }
   }
 
@@ -307,12 +287,11 @@ public class Serializers {
 
     @Override
     public StringBuffer read(MemoryBuffer buffer) {
-      return new StringBuffer(stringSerializer.readJavaString(buffer));
-    }
-
-    @Override
-    public StringBuffer xread(MemoryBuffer buffer) {
-      return new StringBuffer(stringSerializer.readString(buffer));
+      if (isJava) {
+        return new StringBuffer(stringSerializer.readString(buffer));
+      } else {
+        return new StringBuffer(stringSerializer.readString(buffer));
+      }
     }
   }
 
@@ -456,12 +435,12 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, Currency object) {
-      fory.writeJavaString(buffer, object.getCurrencyCode());
+      fory.writeString(buffer, object.getCurrencyCode());
     }
 
     @Override
     public Currency read(MemoryBuffer buffer) {
-      String currencyCode = fory.readJavaString(buffer);
+      String currencyCode = fory.readString(buffer);
       return Currency.getInstance(currencyCode);
     }
   }
@@ -473,11 +452,11 @@ public class Serializers {
     }
 
     public void write(MemoryBuffer buffer, T object) {
-      fory.writeJavaString(buffer, object.name());
+      fory.writeString(buffer, object.name());
     }
 
     public T read(MemoryBuffer buffer) {
-      return (T) Charset.forName(fory.readJavaString(buffer));
+      return (T) Charset.forName(fory.readString(buffer));
     }
   }
 
@@ -505,13 +484,13 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, Pattern pattern) {
-      fory.writeJavaString(buffer, pattern.pattern());
+      fory.writeString(buffer, pattern.pattern());
       buffer.writeInt32(pattern.flags());
     }
 
     @Override
     public Pattern read(MemoryBuffer buffer) {
-      String regex = fory.readJavaString(buffer);
+      String regex = fory.readString(buffer);
       int flags = buffer.readInt32();
       return Pattern.compile(regex, flags);
     }
@@ -569,14 +548,6 @@ public class Serializers {
 
     @Override
     public Object read(MemoryBuffer buffer) {
-      return new Object();
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Object value) {}
-
-    @Override
-    public Object xread(MemoryBuffer buffer) {
       return new Object();
     }
   }

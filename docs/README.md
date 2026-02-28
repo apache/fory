@@ -6,16 +6,16 @@
 - For Scala Guide, see [scala guide](guide/scala_guide.md) doc.
 - For using Apache Fory™ with GraalVM native image, see [graalvm native image guide](guide/graalvm_guide.md) doc.
 
-## FDL Schema (Fory Definition Language)
+## Fory IDL Schema
 
-Define cross-language data structures with FDL and generate native code for multiple languages.
+Define cross-language data structures with Fory IDL and generate native code for multiple languages.
 
-- [FDL Overview](compiler/index.md) - Introduction and quick start
-- [FDL Syntax Reference](compiler/fdl-syntax.md) - Complete language syntax
-- [Type System](compiler/type-system.md) - Primitive types, collections, and mappings
+- [Fory IDL Overview](compiler/index.md) - Introduction and quick start
+- [Fory Schema IDL](compiler/schema-idl.md) - Complete language syntax
+- [Type System](compiler/schema-idl.md#type-system) - Primitive types, collections, and mappings
 - [Compiler Guide](compiler/compiler-guide.md) - CLI usage and build integration
 - [Generated Code](compiler/generated-code.md) - Output format for each language
-- [Protocol Buffers vs FDL](compiler/protobuf-idl.md) - Feature comparison and migration
+- [Protocol Buffers vs Fory IDL](compiler/protobuf-idl.md) - Feature comparison and migration
 
 ## Serialization Format
 
@@ -26,12 +26,12 @@ Define cross-language data structures with FDL and generate native code for mult
 ## Benchmarks
 
 - Benchmark source code:
-  - Java: [Java Benchmarks Source](../benchmarks/java_benchmark)
-  - Python: [Python Benchmarks Source](../benchmarks/cpython_benchmark)
-  - Rust: [Rust Benchmarks Source](../benchmarks/rust_benchmark/)
+  - Java: [Java Benchmarks Source](../benchmarks/java)
+  - Python: [Python Benchmarks Source](../benchmarks/python)
+  - Rust: [Rust Benchmarks Source](../benchmarks/rust/)
 - Benchmark result:
-  - Java: [Java Benchmarks](benchmarks/)
-  - Rust: [Rust Benchmarks](benchmarks/rust_benchmark).
+  - Java: [Java Benchmarks](benchmarks/java/)
+  - Rust: [Rust Benchmarks](benchmarks/rust).
 
 ## Development
 

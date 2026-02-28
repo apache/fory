@@ -5,7 +5,7 @@ _Generated on 2025-10-26 18:36:41_
 How to generate performance report:
 
 ```bash
-cd benchmarks/rust_benchmark
+cd benchmarks/rust
 cargo bench 2>&1 | tee cargo_bench.log
 python benchmark_report.py --log-file cargo_bench.log --output-dir=report_output
 ```
@@ -25,45 +25,31 @@ python benchmark_report.py --log-file cargo_bench.log --output-dir=report_output
 
 **company**
 
-<p align="center">
-<img src="company.png" width="90%">
-</p>
+![Company](company.png)
 
 **ecommerce_data**
 
-<p align="center">
-<img src="ecommerce_data.png" width="90%">
-</p>
+![Ecommerce Data](ecommerce_data.png)
 
 **person**
 
-<p align="center">
-<img src="person.png" width="90%">
-</p>
+![Person](person.png)
 
 **simple_list**
 
-<p align="center">
-<img src="simple_list.png" width="90%">
-</p>
+![Simple List](simple_list.png)
 
 **simple_map**
 
-<p align="center">
-<img src="simple_map.png" width="90%">
-</p>
+![Simple Map](simple_map.png)
 
 **simple_struct**
 
-<p align="center">
-<img src="simple_struct.png" width="90%">
-</p>
+![Simple Struct](simple_struct.png)
 
 **system_data**
 
-<p align="center">
-<img src="system_data.png" width="90%">
-</p>
+![System Data](system_data.png)
 
 ### Serialize Results
 

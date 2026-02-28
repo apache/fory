@@ -19,11 +19,13 @@ license: |
   limitations under the License.
 ---
 
-Fory Definition Language (FDL) is a schema definition language for Apache Fory that enables type-safe cross-language serialization. Define your data structures once and generate native data structure code for Java, Python, Go, Rust, and C++.
+Fory IDL is a schema definition language for Apache Fory that enables type-safe
+cross-language serialization. Define your data structures once and generate
+native data structure code for Java, Python, Go, Rust, C++, C#, and Swift.
 
-## Overview
+## Example Schema
 
-FDL provides a simple, intuitive syntax for defining cross-language data structures:
+Fory IDL provides a simple, intuitive syntax for defining cross-language data structures:
 
 ```protobuf
 package example;
@@ -38,12 +40,17 @@ message User {
     string name = 1;
     int32 age = 2;
     optional string email = 3;
-    repeated string tags = 4;
+    list<string> tags = 4;
+}
+
+message Item {
+    string sku = 1;
+    int32 quantity = 2;
 }
 
 message Order {
     ref User customer = 1;
-    repeated Item items = 2;
+    list<Item> items = 2;
     Status status = 3;
     map<string, int32> metadata = 4;
 }
@@ -64,11 +71,11 @@ union Animal [id=106] {
 }
 ```
 
-## Why FDL?
+## Why Fory IDL?
 
 ### Schema-First Development
 
-Define your data model once in FDL and generate consistent, type-safe code across all languages. This ensures:
+Define your data model once in Fory IDL and generate consistent, type-safe code across all languages. This ensures:
 
 - **Type Safety**: Catch type errors at compile time, not runtime
 - **Consistency**: All languages use the same field names, types, and structures
@@ -77,14 +84,14 @@ Define your data model once in FDL and generate consistent, type-safe code acros
 
 ### Fory-Native Features
 
-Unlike generic IDLs, FDL is designed specifically for Fory serialization:
+Unlike generic IDLs, Fory IDL is designed specifically for Fory serialization:
 
 - **Reference Tracking**: First-class support for shared and circular references via `ref`
 - **Nullable Fields**: Explicit `optional` modifier for nullable types
 - **Type Registration**: Built-in support for both numeric IDs and namespace-based registration
 - **Native Code Generation**: Generates idiomatic code with Fory annotations/macros
 
-### Zero Runtime Overhead
+### Low Integration Overhead
 
 Generated code uses native language constructs:
 
@@ -93,6 +100,8 @@ Generated code uses native language constructs:
 - Go: Structs with struct tags
 - Rust: Structs with `#[derive(ForyObject)]`
 - C++: Structs with `FORY_STRUCT` macros
+- C#: Classes with `[ForyObject]` and registration helpers
+- Swift: `@ForyObject` models with `@ForyField` metadata and registration helpers
 
 ## Quick Start
 
@@ -100,6 +109,13 @@ Generated code uses native language constructs:
 
 ```bash
 pip install fory-compiler
+```
+
+Or install from source:
+
+```bash
+cd compiler
+pip install -e .
 ```
 
 ### 2. Write Your Schema
@@ -123,7 +139,7 @@ message Person {
 foryc example.fdl --output ./generated
 
 # Generate for specific languages
-foryc example.fdl --lang java,python --output ./generated
+foryc example.fdl --lang java,python,csharp,swift --output ./generated
 ```
 
 ### 4. Use Generated Code
@@ -151,8 +167,8 @@ data = bytes(person) # or `person.to_bytes()`
 
 | Document                                        | Description                                       |
 | ----------------------------------------------- | ------------------------------------------------- |
-| [FDL Syntax Reference](fdl-syntax.md)           | Complete language syntax and grammar              |
-| [Type System](type-system.md)                   | Primitive types, collections, and type rules      |
+| [Fory IDL Syntax](schema-idl.md)                | Complete language syntax and grammar              |
+| [Type System](schema-idl.md#type-system)        | Primitive types, collections, and type rules      |
 | [Compiler Guide](compiler-guide.md)             | CLI options and build integration                 |
 | [Generated Code](generated-code.md)             | Output format for each target language            |
 | [Protocol Buffers IDL Support](protobuf-idl.md) | Comparison with protobuf and migration guide      |
@@ -164,27 +180,27 @@ data = bytes(person) # or `person.to_bytes()`
 
 - **`optional`**: Field can be null/None
 - **`ref`**: Enable reference tracking for shared/circular references
-- **`repeated`**: Field is a list/array
+- **`list`**: Field is a list/array (alias: `repeated`)
 
 ```protobuf
 message Example {
     optional string nullable = 1;
     ref Node parent = 2;
-    repeated int32 numbers = 3;
+    list<int32> numbers = 3;
 }
 ```
 
 ### Cross-Language Compatibility
 
-FDL types map to native types in each language:
+Fory IDL types map to native types in each language:
 
-| FDL Type | Java      | Python | Go       | Rust     | C++           |
-| -------- | --------- | ------ | -------- | -------- | ------------- |
-| `int32`  | `int`     | `int`  | `int32`  | `i32`    | `int32_t`     |
-| `string` | `String`  | `str`  | `string` | `String` | `std::string` |
-| `bool`   | `boolean` | `bool` | `bool`   | `bool`   | `bool`        |
+| Fory IDL Type | Java      | Python         | Go       | Rust     | C++           | C#       | Swift    |
+| ------------- | --------- | -------------- | -------- | -------- | ------------- | -------- | -------- |
+| `int32`       | `int`     | `pyfory.int32` | `int32`  | `i32`    | `int32_t`     | `int`    | `Int32`  |
+| `string`      | `String`  | `str`          | `string` | `String` | `std::string` | `string` | `String` |
+| `bool`        | `boolean` | `bool`         | `bool`   | `bool`   | `bool`        | `bool`   | `Bool`   |
 
-See [Type System](type-system.md) for complete mappings.
+See [Type System](schema-idl.md#type-system) for complete mappings.
 
 ## Best Practices
 

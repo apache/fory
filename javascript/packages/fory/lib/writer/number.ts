@@ -28,7 +28,7 @@ export function toFloat16(value: number) {
   const significand = floatValue & 0x7fffff; // extract significand from floatValue
 
   if (exponent === 128) { // floatValue is NaN or Infinity
-    return sign | ((exponent === 128) ? 0x7c00 : 0x7fff);
+    return sign | 0x7c00 | (significand !== 0 ? 0x0200 : 0);
   }
 
   if (exponent > 15) {
@@ -36,12 +36,32 @@ export function toFloat16(value: number) {
   }
 
   if (exponent < -14) {
-    return sign | 0x3ff; // returns ±max subnormal
-  }
-
-  if (exponent <= 0) {
-    return sign | ((significand | 0x800000) >> (1 - exponent + 10));
+    // subnormal
+    // shift amount = 13 - 14 - exponent = -1 - exponent
+    return sign | ((significand | 0x800000) >> (13 - 14 - exponent));
   }
 
   return sign | ((exponent + 15) << 10) | (significand >> 13);
+}
+
+const float32ViewBf = new Float32Array(1);
+const uint32ViewBf = new Uint32Array(float32ViewBf.buffer);
+
+/**
+ * Convert float32 to bfloat16 bits (round-to-nearest, ties-to-even).
+ * BFloat16 layout: 1 sign, 8 exponent, 7 mantissa.
+ */
+export function toBFloat16(value: number): number {
+  float32ViewBf[0] = value;
+  const bits = uint32ViewBf[0];
+  const exponent = (bits >> 23) & 0xff;
+  if (exponent === 255) {
+    return (bits >> 16) & 0xffff;
+  }
+  const remainder = bits & 0x1ffff;
+  let u = (bits + 0x8000) >> 16;
+  if (remainder === 0x8000 && (u & 1) !== 0) {
+    u--;
+  }
+  return u & 0xffff;
 }

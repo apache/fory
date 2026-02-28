@@ -120,6 +120,8 @@ template <typename T>
 constexpr inline bool IsPairIterable =
     decltype(details::is_pair_iterable_impl<T>(0))::value;
 
+template <typename T> struct StructEvolving : std::true_type {};
+
 } // namespace meta
 
 } // namespace fory

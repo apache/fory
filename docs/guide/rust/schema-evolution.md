@@ -69,6 +69,20 @@ assert_eq!(person_v2.age, 30);
 assert_eq!(person_v2.phone, None);
 ```
 
+### Disable Evolution for Stable Structs
+
+If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Use `#[fory(evolving = false)]`:
+
+```rust
+use fory::ForyObject;
+
+#[derive(ForyObject)]
+#[fory(evolving = false)]
+struct StableMessage {
+    id: i32,
+}
+```
+
 ## Schema Evolution Features
 
 - Add new fields with default values
@@ -141,7 +155,7 @@ enum NewEvent {
     KeyPress(String),  // New variant
 }
 
-let mut fory = Fory::builder().compatible().build();
+let mut fory = Fory::default().compatible(true);
 
 // Serialize with old schema
 let old_bytes = fory.serialize(&OldEvent::Click { x: 100, y: 200 })?;

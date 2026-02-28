@@ -17,7 +17,7 @@
  * under the License.
  */
 
-enum LocationLevel{
+enum LocationLevel {
   clsLevel,
   fieldLevel,
 }

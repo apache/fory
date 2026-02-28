@@ -19,19 +19,28 @@ license: |
   limitations under the License.
 ---
 
-This document provides a complete reference for the Fory Definition Language (FDL) syntax.
+This document provides the syntax and semantic reference for Fory IDL.
+
+For compiler usage and build integration, see
+[Compiler Guide](compiler-guide.md). For protobuf/FlatBuffers frontend mapping
+rules, see [Protocol Buffers IDL Support](protobuf-idl.md) and
+[FlatBuffers IDL Support](flatbuffers-idl.md).
 
 ## File Structure
 
-An FDL file consists of:
+An Fory IDL file typically consists of:
 
 1. Optional package declaration
-2. Optional import statements
-3. Type definitions (enums, messages, and unions)
+2. Optional file-level options
+3. Optional import statements
+4. Type definitions (enums, messages, and unions)
 
 ```protobuf
 // Optional package declaration
 package com.example.models;
+
+// Optional file-level options
+option java_package = "com.example.models";
 
 // Import statements
 import "common/types.fdl";
@@ -45,7 +54,7 @@ union Event [id=103] { ... }
 
 ## Comments
 
-FDL supports both single-line and block comments:
+Fory IDL supports both single-line and block comments:
 
 ```protobuf
 // This is a single-line comment
@@ -91,6 +100,7 @@ package com.example.models alias models_v1;
 | Go       | Package name (last component)     |
 | Rust     | Module name (dots to underscores) |
 | C++      | Namespace (dots to `::`)          |
+| C#       | Namespace                         |
 
 ## File-Level Options
 
@@ -119,7 +129,7 @@ message Payment {
 
 - Generated Java files will be in `com/mycorp/payment/v1/` directory
 - Java package declaration will be `package com.mycorp.payment.v1;`
-- Type registration still uses the FDL package (`payment`) for cross-language compatibility
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
 
 ### Go Package Option
 
@@ -140,7 +150,70 @@ message Payment {
 
 - Generated Go files will have `package paymentv1`
 - The import path can be used in other Go code
-- Type registration still uses the FDL package (`payment`) for cross-language compatibility
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
+
+### C# Namespace Option
+
+Override the C# namespace for generated code:
+
+```protobuf
+package payment;
+option csharp_namespace = "MyCorp.Payment.V1";
+
+message Payment {
+    string id = 1;
+}
+```
+
+**Effect:**
+
+- Generated C# files use `namespace MyCorp.Payment.V1;`
+- Output path follows namespace segments (`MyCorp/Payment/V1/` under `--csharp_out`)
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
+
+### Go Nested Type Style Option
+
+Control Go naming for nested message/enum/union types:
+
+```protobuf
+package payment;
+option go_nested_type_style = "camelcase";
+
+message Envelope {
+    message Payload {
+        string id = 1;
+    }
+}
+```
+
+**Values:**
+
+- `underscore` (default): `Envelope_Payload`
+- `camelcase`: `EnvelopePayload`
+
+The CLI flag `--go_nested_type_style` overrides this schema option when both are set.
+
+### Swift Namespace Style Option
+
+Control how package namespace is reflected in Swift generated type names:
+
+```protobuf
+package payment.v1;
+option swift_namespace_style = "flatten";
+
+message Payment {
+    string id = 1;
+}
+```
+
+**Values:**
+
+- `enum` (default): namespace wrappers (for example `Payment.V1.Payment`)
+- `flatten`: package prefix on top-level types (for example `Payment_V1_Payment`)
+
+**Important:** namespace wrapper/prefixing is only applied when package is non-empty. If package is empty, Swift emits top-level types directly for both styles.
+
+The CLI flag `--swift_namespace_style` overrides this schema option when both are set.
 
 ### Java Outer Classname Option
 
@@ -263,25 +336,24 @@ message Payment {
 }
 ```
 
-### Fory Extension Options
+### Protobuf Extension Syntax
 
-FDL supports protobuf-style extension options for Fory-specific configuration:
+In `.fdl` files, use native Fory IDL syntax only (for example, `[id=100]`, `ref`,
+`optional`, `nullable=true`).
 
-```protobuf
-option (fory).use_record_for_java_message = true;
-option (fory).polymorphism = true;
-option (fory).enable_auto_type_id = true;
-```
+Protobuf extension syntax with `(fory).` is for `.proto` files and the protobuf
+frontend only.
 
-See the [Fory Extension Options](#fory-extension-options) section for the complete list of file, message, enum, union, and field options.
+For protobuf extension options, see
+[Protocol Buffers IDL Support](protobuf-idl.md#fory-extension-options-protobuf).
 
 ### Option Priority
 
-For language-specific packages:
+For language-specific packages/namespaces:
 
 1. Command-line package override (highest priority)
-2. Language-specific option (`java_package`, `go_package`)
-3. FDL package declaration (fallback)
+2. Language-specific option (`java_package`, `go_package`, `csharp_namespace`)
+3. Fory IDL package declaration (fallback)
 
 **Example:**
 
@@ -318,7 +390,7 @@ All languages will register `User` with namespace `myapp.models`, enabling:
 
 ## Import Statement
 
-Import statements allow you to use types defined in other FDL files.
+Import statements allow you to use types defined in other Fory IDL files.
 
 ### Basic Syntax
 
@@ -400,9 +472,9 @@ import public "other.fdl";
 import weak "other.fdl";
 ```
 
-**`import public`**: FDL uses a simpler import model. All imported types are available to the importing file only. Re-exporting is not supported. Import each file directly where needed.
+**`import public`**: Fory IDL uses a simpler import model. All imported types are available to the importing file only. Re-exporting is not supported. Import each file directly where needed.
 
-**`import weak`**: FDL requires all imports to be present at compile time. Optional dependencies are not supported.
+**`import weak`**: Fory IDL requires all imports to be present at compile time. Optional dependencies are not supported.
 
 ### Import Errors
 
@@ -451,21 +523,22 @@ enum Status {
 }
 ```
 
-### Enum Options
+### Enum Type Options
 
-Options can be specified within enums:
+Enum-level options are declared inline in `[]` after the enum name:
 
 ```protobuf
-enum Status {
-    option deprecated = true;  // Allowed
+enum Status [deprecated=true] {
     PENDING = 0;
     ACTIVE = 1;
 }
 ```
 
-**Forbidden Options:**
+FDL does not support `option ...;` statements inside enum bodies.
 
-- `option allow_alias = true` is **not supported**. Each enum value must have a unique integer.
+**Unsupported:**
+
+- `allow_alias` is **not supported**. Each enum value must have a unique integer.
 
 ### Language Mapping
 
@@ -508,8 +581,7 @@ enum DeviceTier {
 enum_def     := 'enum' IDENTIFIER [type_options] '{' enum_body '}'
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value
-enum_body    := (option_stmt | reserved_stmt | enum_value)*
-option_stmt  := 'option' IDENTIFIER '=' option_value ';'
+enum_body    := (reserved_stmt | enum_value)*
 reserved_stmt := 'reserved' reserved_items ';'
 enum_value   := IDENTIFIER '=' INTEGER ';'
 ```
@@ -593,17 +665,18 @@ message User {
 }
 ```
 
-### Message Options
+### Message Type Options
 
-Options can be specified within messages:
+Message-level options are declared inline in `[]` after the message name:
 
 ```protobuf
-message User {
-    option deprecated = true;
+message User [deprecated=true] {
     string id = 1;
     string name = 2;
 }
 ```
+
+FDL does not support `option ...;` statements inside message or enum bodies.
 
 **Grammar:**
 
@@ -611,8 +684,8 @@ message User {
 message_def  := 'message' IDENTIFIER [type_options] '{' message_body '}'
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value
-message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
-nested_type  := enum_def | message_def
+message_body := (reserved_stmt | nested_type | field_def)*
+nested_type  := enum_def | message_def | union_def
 ```
 
 **Rules:**
@@ -621,7 +694,7 @@ nested_type  := enum_def | message_def
 
 ## Nested Types
 
-Messages can contain nested message and enum definitions. This is useful for defining types that are closely related to their parent message.
+Messages can contain nested message, enum, and union definitions. This is useful for defining types that are closely related to their parent message.
 
 ### Nested Messages
 
@@ -630,9 +703,9 @@ message SearchResponse {
     message Result {
         string url = 1;
         string title = 2;
-        repeated string snippets = 3;
+        list<string> snippets = 3;
     }
-    repeated Result results = 1;
+    list<Result> results = 1;
 }
 ```
 
@@ -664,7 +737,7 @@ message SearchResponse {
 message SearchResultCache {
     // Reference nested type with qualified name
     SearchResponse.Result cached_result = 1;
-    repeated SearchResponse.Result all_results = 2;
+    list<SearchResponse.Result> all_results = 2;
 }
 ```
 
@@ -699,7 +772,7 @@ message OtherMessage {
 | Rust     | Nested modules (`search_response::Result`)                                        |
 | C++      | Nested classes (`SearchResponse::Result`)                                         |
 
-**Note:** Go defaults to underscore-separated nested names; set `option (fory).go_nested_type_style = "camelcase";` to use concatenated names. Rust emits nested modules for nested types.
+**Note:** Go defaults to underscore-separated nested names; set `option go_nested_type_style = "camelcase";` to use concatenated names. Rust emits nested modules for nested types.
 
 ### Nested Type Rules
 
@@ -735,7 +808,7 @@ message Person [id=100] {
 ### Rules
 
 - Case IDs must be unique within the union
-- Cases cannot be `optional`, `repeated`, or `ref`
+- Cases cannot be `optional` or `ref`
 - Union cases do not support field options
 - Case types can be primitives, enums, messages, or other named types
 - Union type IDs follow the rules in [Type IDs](#type-ids).
@@ -760,22 +833,23 @@ field_type field_name = field_number;
 ### With Modifiers
 
 ```protobuf
-optional repeated string tags = 1;  // Nullable list
-repeated optional string tags = 2;  // Elements may be null
-ref repeated Node nodes = 3;        // Collection tracked as a reference
-repeated ref Node nodes = 4;        // Elements tracked as references
+optional list<string> tags = 1;  // Nullable list
+list<optional string> tags = 2;  // Elements may be null
+ref list<Node> nodes = 3;        // Collection tracked as a reference
+list<ref Node> nodes = 4;        // Elements tracked as references
 ```
 
 **Grammar:**
 
 ```
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER ';'
-modifiers    := { 'optional' | 'ref' } ['repeated' { 'optional' | 'ref' }]
-field_type   := primitive_type | named_type | map_type
+modifiers    := { 'optional' | 'ref' }
+field_type   := primitive_type | named_type | list_type | map_type
+list_type    := 'list' '<' { 'optional' | 'ref' } field_type '>'
 ```
 
-Modifiers before `repeated` apply to the field/collection. Modifiers after
-`repeated` apply to list elements.
+Modifiers apply to the field/collection. Use `list<...>` to describe element
+modifiers. `repeated` is accepted as an alias for `list`.
 
 ### Field Modifiers
 
@@ -815,7 +889,7 @@ Enables reference tracking for shared/circular references:
 message Node {
     string value = 1;
     ref Node parent = 2;     // Can point to shared object
-    repeated ref Node children = 3;
+    list<ref Node> children = 3;
 }
 ```
 
@@ -835,17 +909,18 @@ message Node {
 | Rust     | `parent: Node` | `parent: Arc<Node>`                       |
 | C++      | `Node parent`  | `std::shared_ptr<Node> parent`            |
 
-Rust uses `Arc` by default; use `ref(thread_safe = false)` or `ref(weak = true)`
-to customize pointer types (see [Field-Level Fory Options](#field-level-fory-options)).
+Rust uses `Arc` by default; use `ref(thread_safe=false)` or `ref(weak=true)`
+to customize pointer types. For protobuf option syntax, see
+[Protocol Buffers IDL Support](protobuf-idl.md#field-level-options).
 
-#### `repeated`
+#### `list`
 
 Marks the field as a list/array:
 
 ```protobuf
 message Document {
-    repeated string tags = 1;
-    repeated User authors = 2;
+    list<string> tags = 1;
+    list<User> authors = 2;
 }
 ```
 
@@ -865,27 +940,27 @@ Modifiers can be combined:
 
 ```fdl
 message Example {
-    optional repeated string tags = 1;  // Nullable list
-    repeated optional string aliases = 2; // Elements may be null
-    ref repeated Node nodes = 3;          // Collection tracked as a reference
-    repeated ref Node children = 4;       // Elements tracked as references
+    optional list<string> tags = 1;  // Nullable list
+    list<optional string> aliases = 2; // Elements may be null
+    ref list<Node> nodes = 3;          // Collection tracked as a reference
+    list<ref Node> children = 4;       // Elements tracked as references
     optional ref User owner = 5;          // Nullable tracked reference
 }
 ```
 
-Modifiers before `repeated` apply to the field/collection. Modifiers after
-`repeated` apply to elements.
+Modifiers before `list` apply to the field/collection. Modifiers after `list`
+apply to elements. `repeated` is accepted as an alias for `list`.
 
 **List modifier mapping:**
 
-| FDL                        | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
-| -------------------------- | ---------------------------------------------- | --------------------------------------- | ----------------------- | --------------------- | ----------------------------------------- |
-| `optional repeated string` | `List<String>` + `@ForyField(nullable = true)` | `Optional[List[str]]`                   | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` |
-| `repeated optional string` | `List<String>` (nullable elements)             | `List[Optional[str]]`                   | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` |
-| `ref repeated User`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
-| `repeated ref User`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
+| Fory IDL                | Java                                           | Python                                  | Go                      | Rust                  | C++                                       |
+| ----------------------- | ---------------------------------------------- | --------------------------------------- | ----------------------- | --------------------- | ----------------------------------------- |
+| `optional list<string>` | `List<String>` + `@ForyField(nullable = true)` | `Optional[List[str]]`                   | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` |
+| `list<optional string>` | `List<String>` (nullable elements)             | `List[Optional[str]]`                   | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` |
+| `ref list<User>`        | `List<User>` + `@ForyField(ref = true)`        | `List[User]` + `pyfory.field(ref=True)` | `[]User` + `ref`        | `Arc<Vec<User>>`      | `std::shared_ptr<std::vector<User>>`      |
+| `list<ref User>`        | `List<User>`                                   | `List[User]`                            | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      |
 
-Use `ref(thread_safe = false)` in FDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
+Use `ref(thread_safe=false)` in Fory IDL (or `[(fory).thread_safe_pointer = false]` in protobuf)
 to generate `Rc` instead of `Arc` in Rust.
 
 ## Field Numbers
@@ -900,24 +975,20 @@ message Example {
 }
 ```
 
-**Rules:**
+**Rules and best practices:**
 
-- Must be unique within a message
-- Must be positive integers
-- Used for field ordering and identification
-- Gaps in numbering are allowed (useful for deprecating fields)
-
-**Best Practices:**
-
-- Use sequential numbers starting from 1
-- Reserve number ranges for different categories
-- Never reuse numbers for different fields (even after deletion)
+- Numbers must be unique within a message.
+- Numbers must be positive integers.
+- Gaps are allowed and are useful when fields are removed.
+- Prefer sequential numbering from `1`.
+- Never reuse a removed field number for a different field.
 
 ## Type System
 
-FDL provides a cross-language type system for primitives, named types, and collections.
-Field modifiers like `optional`, `repeated`, and `ref` define nullability, collections, and
-reference tracking (see [Field Modifiers](#field-modifiers)).
+Fory IDL provides a cross-language type system for primitives, named types, and
+collections. Field modifiers (`optional`, `list`, `ref`) control nullability,
+collection behavior, and reference tracking (see
+[Field Modifiers](#field-modifiers)).
 
 ### Primitive Types
 
@@ -950,10 +1021,6 @@ reference tracking (see [Field Modifiers](#field-modifiers)).
 
 #### Boolean
 
-```protobuf
-bool is_active = 1;
-```
-
 | Language | Type                  | Notes              |
 | -------- | --------------------- | ------------------ |
 | Java     | `boolean` / `Boolean` | Primitive or boxed |
@@ -964,27 +1031,27 @@ bool is_active = 1;
 
 #### Integer Types
 
-FDL provides fixed-width signed integers (varint encoding for 32/64-bit by default):
+Fory IDL provides fixed-width signed integers (varint encoding for 32/64-bit by default):
 
-| FDL Type | Size   | Range             |
-| -------- | ------ | ----------------- |
-| `int8`   | 8-bit  | -128 to 127       |
-| `int16`  | 16-bit | -32,768 to 32,767 |
-| `int32`  | 32-bit | -2^31 to 2^31 - 1 |
-| `int64`  | 64-bit | -2^63 to 2^63 - 1 |
+| Fory IDL Type | Size   | Range             |
+| ------------- | ------ | ----------------- |
+| `int8`        | 8-bit  | -128 to 127       |
+| `int16`       | 16-bit | -32,768 to 32,767 |
+| `int32`       | 32-bit | -2^31 to 2^31 - 1 |
+| `int64`       | 64-bit | -2^63 to 2^63 - 1 |
 
 **Language Mapping (Signed):**
 
-| FDL     | Java    | Python         | Go      | Rust  | C++       |
-| ------- | ------- | -------------- | ------- | ----- | --------- |
-| `int8`  | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  |
-| `int16` | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
-| `int32` | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
-| `int64` | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
+| Fory IDL | Java    | Python         | Go      | Rust  | C++       |
+| -------- | ------- | -------------- | ------- | ----- | --------- |
+| `int8`   | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  |
+| `int16`  | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
+| `int32`  | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
+| `int64`  | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
 
-FDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
+Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
 
-| FDL      | Size   | Range         |
+| Fory IDL | Size   | Range         |
 | -------- | ------ | ------------- |
 | `uint8`  | 8-bit  | 0 to 255      |
 | `uint16` | 16-bit | 0 to 65,535   |
@@ -993,44 +1060,19 @@ FDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by def
 
 **Language Mapping (Unsigned):**
 
-| FDL      | Java    | Python          | Go       | Rust  | C++        |
+| Fory IDL | Java    | Python          | Go       | Rust  | C++        |
 | -------- | ------- | --------------- | -------- | ----- | ---------- |
 | `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  |
 | `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` |
 | `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` |
 | `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` |
 
-**Examples:**
-
-```protobuf
-message Counters {
-    int8 tiny = 1;
-    int16 small = 2;
-    int32 medium = 3;
-    int64 large = 4;
-}
-```
-
-**Python type hints:**
-
-```python
-from dataclasses import dataclass
-from pyfory import int8, int16, int32
-
-@dataclass
-class Counters:
-    tiny: int8
-    small: int16
-    medium: int32
-    large: int  # int64 maps to native int
-```
-
 #### Integer Encoding Variants
 
-For 32/64-bit integers, FDL uses varint encoding by default. Use explicit types when
+For 32/64-bit integers, Fory IDL uses varint encoding by default. Use explicit types when
 you need fixed-width or tagged encoding:
 
-| FDL Type        | Encoding | Notes                    |
+| Fory IDL Type   | Encoding | Notes                    |
 | --------------- | -------- | ------------------------ |
 | `fixed_int32`   | fixed    | Signed 32-bit            |
 | `fixed_int64`   | fixed    | Signed 64-bit            |
@@ -1041,25 +1083,19 @@ you need fixed-width or tagged encoding:
 
 #### Floating-Point Types
 
-| FDL Type  | Size   | Precision     |
-| --------- | ------ | ------------- |
-| `float32` | 32-bit | ~7 digits     |
-| `float64` | 64-bit | ~15-16 digits |
+| Fory IDL Type | Size   | Precision     |
+| ------------- | ------ | ------------- |
+| `float32`     | 32-bit | ~7 digits     |
+| `float64`     | 64-bit | ~15-16 digits |
 
 **Language Mapping:**
 
-| FDL       | Java     | Python           | Go        | Rust  | C++      |
+| Fory IDL  | Java     | Python           | Go        | Rust  | C++      |
 | --------- | -------- | ---------------- | --------- | ----- | -------- |
 | `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  |
 | `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` |
 
 #### String Type
-
-UTF-8 encoded text:
-
-```protobuf
-string name = 1;
-```
 
 | Language | Type          | Notes                 |
 | -------- | ------------- | --------------------- |
@@ -1070,12 +1106,6 @@ string name = 1;
 | C++      | `std::string` |                       |
 
 #### Bytes Type
-
-Raw binary data:
-
-```protobuf
-bytes data = 1;
-```
 
 | Language | Type                   | Notes     |
 | -------- | ---------------------- | --------- |
@@ -1089,12 +1119,6 @@ bytes data = 1;
 
 ##### Date
 
-Calendar date without time:
-
-```protobuf
-date birth_date = 1;
-```
-
 | Language | Type                        | Notes                   |
 | -------- | --------------------------- | ----------------------- |
 | Java     | `java.time.LocalDate`       |                         |
@@ -1104,12 +1128,6 @@ date birth_date = 1;
 | C++      | `fory::serialization::Date` |                         |
 
 ##### Timestamp
-
-Date and time with nanosecond precision:
-
-```protobuf
-timestamp created_at = 1;
-```
 
 | Language | Type                             | Notes                   |
 | -------- | -------------------------------- | ----------------------- |
@@ -1121,12 +1139,6 @@ timestamp created_at = 1;
 
 #### Any
 
-Dynamic value with runtime type information:
-
-```protobuf
-any payload = 1;
-```
-
 | Language | Type           | Notes                |
 | -------- | -------------- | -------------------- |
 | Java     | `Object`       | Runtime type written |
@@ -1135,13 +1147,41 @@ any payload = 1;
 | Rust     | `Box<dyn Any>` | Runtime type written |
 | C++      | `std::any`     | Runtime type written |
 
+**Example:**
+
+```protobuf
+enum EventType [id=120] {
+    CREATED = 0;
+    DELETED = 1;
+}
+
+message UserCreated [id=121] {
+    string user_id = 1;
+}
+
+message Envelope [id=122] {
+    EventType type = 1;
+    any payload = 2;
+}
+```
+
+**Generated Code (`Envelope.payload`):**
+
+| Language | Generated Field Type    |
+| -------- | ----------------------- |
+| Java     | `Object payload`        |
+| Python   | `payload: Any`          |
+| Go       | `Payload any`           |
+| Rust     | `payload: Box<dyn Any>` |
+| C++      | `std::any payload`      |
+
 **Notes:**
 
 - `any` always writes a null flag (same as `nullable`) because values may be empty.
 - Allowed runtime values are limited to `bool`, `string`, `enum`, `message`, and `union`.
   Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a
   message or use explicit fields instead.
-- `ref` is not allowed on `any` fields (including repeated/map values). Wrap `any` in a message
+- `ref` is not allowed on `any` fields (including list/map values). Wrap `any` in a message
   if you need reference tracking.
 - The runtime type must be registered in the target language schema/IDL registration; unknown
   types fail to deserialize.
@@ -1162,10 +1202,13 @@ message Order {
 
 ### Collection Types
 
-#### List (repeated)
+#### List (`list`)
 
-Use the `repeated` modifier for list types. See [Field Modifiers](#field-modifiers) for
+Use the `list<...>` type for list fields. `repeated` is accepted as an alias. See [Field Modifiers](#field-modifiers) for
 modifier combinations and language mapping.
+
+Nested collection types are not supported. Use a message wrapper if you need
+`list<list<...>>`, `list<map<...>>`, or `map<..., list<...>>`.
 
 #### Map
 
@@ -1181,7 +1224,7 @@ message Config {
 
 **Language Mapping:**
 
-| FDL                  | Java                   | Python            | Go                 | Rust                    | C++                              |
+| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              |
 | -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- |
 | `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` |
 | `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    |
@@ -1217,7 +1260,7 @@ Y = Safe conversion, - = Not recommended
 - Use `string` for text data (UTF-8) and `bytes` for binary data.
 - Use `optional` only when the field may legitimately be absent.
 - Use `ref` only when needed for shared or circular references.
-- Prefer `repeated` for ordered sequences and `map` for key-value lookups.
+- Prefer `list` for ordered sequences and `map` for key-value lookups.
 
 ## Type IDs
 
@@ -1254,22 +1297,14 @@ message Config { ... }  // Auto-generated when enable_auto_type_id = true
 
 You can set `[alias="..."]` to change the hash source without renaming the type.
 
-### Pay-as-you-go principle
+### Practical Notes
 
-- IDs: Messages, unions, and enums use numeric IDs; if omitted and
-  `enable_auto_type_id = true`, the compiler auto-generates one.
-- Auto-generation: If no ID is provided, fory generates one using
-  MurmurHash3(utf8(package.type_name)) (32-bit). If a package alias is specified,
-  the alias is used instead of the package name; if a type alias is specified,
-  the alias is used instead of the type name.
-- Space Efficiency:
-  - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
-  - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
-- Conflict Resolution: While the collision probability is extremely low, conflicts are detected
-  at compile-time. The compiler raises an error and asks you to specify an explicit `id` or use
-  the `alias` option to change the hash source.
-
-Explicit is better than implicit, but automation is better than toil.
+- If a type omits `id` and `enable_auto_type_id = true`, Fory generates an ID
+  with `MurmurHash3(utf8(package.type_name))` (32-bit).
+- Package alias and type alias change the hash input and can be used to resolve
+  hash collisions without renaming public types.
+- Manual IDs in the small varint range (`0-127`) are compact on the wire; auto
+  IDs are typically larger and usually consume 4-5 bytes.
 
 ### ID Assignment Strategy
 
@@ -1333,7 +1368,7 @@ message Product [id=202] {
     string description = 3;
     float64 price = 4;
     int32 stock = 5;
-    repeated string categories = 6;
+    list<string> categories = 6;
     map<string, string> attributes = 7;
 }
 
@@ -1346,7 +1381,7 @@ message OrderItem [id=203] {
 message Order [id=204] {
     string id = 1;
     ref Customer customer = 2;
-    repeated OrderItem items = 3;
+    list<OrderItem> items = 3;
     OrderStatus status = 4;
     PaymentMethod payment_method = 5;
     float64 total = 6;
@@ -1360,175 +1395,12 @@ message ShopConfig {
     string store_name = 1;
     string currency = 2;
     float64 tax_rate = 3;
-    repeated string supported_countries = 4;
+    list<string> supported_countries = 4;
 }
 ```
 
-## Fory Extension Options
-
-FDL supports protobuf-style extension options for Fory-specific configuration. These use the `(fory)` prefix to indicate they are Fory extensions.
-
-### File-Level Fory Options
-
-```protobuf
-option (fory).use_record_for_java_message = true;
-option (fory).polymorphism = true;
-option (fory).enable_auto_type_id = true;
-```
-
-| Option                        | Type   | Description                                                  |
-| ----------------------------- | ------ | ------------------------------------------------------------ |
-| `use_record_for_java_message` | bool   | Generate Java records instead of classes                     |
-| `polymorphism`                | bool   | Enable polymorphism for all types                            |
-| `enable_auto_type_id`         | bool   | Auto-generate numeric type IDs when omitted (default: true)  |
-| `go_nested_type_style`        | string | Go nested type naming: `underscore` (default) or `camelcase` |
-
-### Message-Level Fory Options
-
-Options can be specified inside the message body:
-
-```protobuf
-message MyMessage {
-    option (fory).id = 100;
-    option (fory).evolving = false;
-    option (fory).use_record_for_java = true;
-    string name = 1;
-}
-```
-
-| Option                | Type   | Description                                                                          |
-| --------------------- | ------ | ------------------------------------------------------------------------------------ |
-| `id`                  | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true) |
-| `alias`               | string | Alternate name used as hash source for auto-generated IDs                            |
-| `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct  |
-| `use_record_for_java` | bool   | Generate Java record for this message                                                |
-| `deprecated`          | bool   | Mark this message as deprecated                                                      |
-| `namespace`           | string | Custom namespace for type registration                                               |
-
-**Note:** `option (fory).id = 100` is equivalent to the inline syntax `message MyMessage [id=100]`.
-
-### Union-Level Fory Options
-
-```protobuf
-union MyUnion [id=100, alias="MyUnionAlias"] {
-    string text = 1;
-}
-```
-
-| Option       | Type   | Description                                                                          |
-| ------------ | ------ | ------------------------------------------------------------------------------------ |
-| `id`         | int    | Type ID for serialization (auto-generated if omitted and enable_auto_type_id = true) |
-| `alias`      | string | Alternate name used as hash source for auto-generated IDs                            |
-| `deprecated` | bool   | Mark this union as deprecated                                                        |
-
-### Enum-Level Fory Options
-
-```protobuf
-enum Status {
-    option (fory).id = 101;
-    option (fory).deprecated = true;
-    UNKNOWN = 0;
-    ACTIVE = 1;
-}
-```
-
-| Option       | Type | Description                              |
-| ------------ | ---- | ---------------------------------------- |
-| `id`         | int  | Type ID for serialization (sets type_id) |
-| `deprecated` | bool | Mark this enum as deprecated             |
-
-### Field-Level Fory Options
-
-Field options are specified in brackets after the field number (FDL uses `ref` modifiers instead
-of bracket options for reference settings):
-
-```protobuf
-message Example {
-    ref MyType friend = 1;
-    string nickname = 2 [nullable = true];
-    ref MyType data = 3 [nullable = true];
-    ref(weak = true) MyType parent = 4;
-}
-```
-
-| Option                | Type | Description                                               |
-| --------------------- | ---- | --------------------------------------------------------- |
-| `ref`                 | bool | Enable reference tracking (protobuf extension option)     |
-| `nullable`            | bool | Mark field as nullable (sets optional flag)               |
-| `deprecated`          | bool | Mark this field as deprecated                             |
-| `thread_safe_pointer` | bool | Rust only: use `Arc` (true) or `Rc` (false) for ref types |
-| `weak_ref`            | bool | C++/Rust only: generate weak pointers for `ref` fields    |
-
-**Note:** For FDL, use `ref` (and optional `ref(...)`) modifiers:
-`ref MyType friend = 1;`, `repeated ref(weak = true) Child children = 2;`,
-`map<string, ref(weak = true) Node> nodes = 3;`. For protobuf, use
-`[(fory).ref = true]` and `[(fory).weak_ref = true]`. `weak_ref` is a codegen
-hint for C++/Rust and is ignored by Java/Python/Go. It must be used with `ref`
-(`repeated ref` for collections, or `map<..., ref T>` for map values).
-
-To use `Rc` instead of `Arc` in Rust for a specific field:
-
-```fdl
-message Graph {
-    ref(thread_safe = false) Node root = 1;
-}
-```
-
-### Combining Standard and Fory Options
-
-You can combine standard options with Fory extension options:
-
-```protobuf
-message User {
-    option deprecated = true;        // Standard option
-    option (fory).evolving = false; // Fory extension option
-
-    string name = 1;
-    MyType data = 2 [deprecated = true, (fory).ref = true];
-}
-```
-
-### Fory Options Proto File
-
-For reference, the Fory options are defined in `extension/fory_options.proto`:
-
-```protobuf
-// File-level options
-extend google.protobuf.FileOptions {
-    optional ForyFileOptions fory = 50001;
-}
-
-message ForyFileOptions {
-    optional bool use_record_for_java_message = 1;
-    optional bool polymorphism = 2;
-    optional bool enable_auto_type_id = 3;
-}
-
-// Message-level options
-extend google.protobuf.MessageOptions {
-    optional ForyMessageOptions fory = 50001;
-}
-
-message ForyMessageOptions {
-    optional int32 id = 1;
-    optional bool evolving = 2;
-    optional bool use_record_for_java = 3;
-    optional bool deprecated = 4;
-    optional string namespace = 5;
-}
-
-// Field-level options
-extend google.protobuf.FieldOptions {
-    optional ForyFieldOptions fory = 50001;
-}
-
-message ForyFieldOptions {
-    optional bool ref = 1;
-    optional bool nullable = 2;
-    optional bool deprecated = 3;
-    optional bool weak_ref = 4;
-}
-```
+For protobuf-specific extension options and `(fory).` syntax, see
+[Protocol Buffers IDL Support](protobuf-idl.md#fory-extension-options-protobuf).
 
 ## Grammar Summary
 
@@ -1539,35 +1411,32 @@ package_decl := 'package' package_name ['alias' package_name] ';'
 package_name := IDENTIFIER ('.' IDENTIFIER)*
 
 file_option  := 'option' option_name '=' option_value ';'
-option_name  := IDENTIFIER | extension_name
-extension_name := '(' IDENTIFIER ')' '.' IDENTIFIER   // e.g., (fory).polymorphism
+option_name  := IDENTIFIER
 
 import_decl  := 'import' STRING ';'
 
 type_def     := enum_def | message_def | union_def
 
 enum_def     := 'enum' IDENTIFIER [type_options] '{' enum_body '}'
-enum_body    := (option_stmt | reserved_stmt | enum_value)*
+enum_body    := (reserved_stmt | enum_value)*
 enum_value   := IDENTIFIER '=' INTEGER ';'
 
 message_def  := 'message' IDENTIFIER [type_options] '{' message_body '}'
-message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
-nested_type  := enum_def | message_def
+message_body := (reserved_stmt | nested_type | field_def)*
+nested_type  := enum_def | message_def | union_def
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER [field_options] ';'
 
 union_def    := 'union' IDENTIFIER [type_options] '{' union_field* '}'
-union_field  := field_type IDENTIFIER '=' INTEGER ';'
-
-option_stmt  := 'option' option_name '=' option_value ';'
+union_field  := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';'
 option_value := 'true' | 'false' | IDENTIFIER | INTEGER | STRING
 
 reserved_stmt := 'reserved' reserved_items ';'
 reserved_items := reserved_item (',' reserved_item)*
 reserved_item := INTEGER | INTEGER 'to' INTEGER | INTEGER 'to' 'max' | STRING
 
-modifiers    := { 'optional' | 'ref' } ['repeated' { 'optional' | 'ref' }]
+modifiers    := { 'optional' | 'ref' | 'repeated' }
 
-field_type   := primitive_type | named_type | map_type
+field_type   := primitive_type | named_type | list_type | map_type
 primitive_type := 'bool'
                | 'int8' | 'int16' | 'int32' | 'int64'
                | 'uint8' | 'uint16' | 'uint32' | 'uint64'
@@ -1579,12 +1448,13 @@ primitive_type := 'bool'
                | 'any'
 named_type   := qualified_name
 qualified_name := IDENTIFIER ('.' IDENTIFIER)*   // e.g., Parent.Child
+list_type    := 'list' '<' { 'optional' | 'ref' } field_type '>'
 map_type     := 'map' '<' field_type ',' field_type '>'
 
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value         // e.g., id=100, deprecated=true
 field_options := '[' field_option (',' field_option)* ']'
-field_option := option_name '=' option_value        // e.g., deprecated=true, (fory).ref=true
+field_option := IDENTIFIER '=' option_value         // e.g., deprecated=true, ref=true
 
 STRING       := '"' [^"\n]* '"' | "'" [^'\n]* "'"
 IDENTIFIER   := [a-zA-Z_][a-zA-Z0-9_]*

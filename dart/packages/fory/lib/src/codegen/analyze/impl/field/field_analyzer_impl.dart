@@ -28,33 +28,32 @@
 // tips: In Dart, fields and getters/setters cannot have the same name
 import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
-import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
+import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/analyze/interface/field_analyzer.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/constraint_violation_exception.dart';
 import 'package:fory/src/codegen/meta/impl/field_spec_immutable.dart';
-import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
-import 'package:fory/src/codegen/meta/public_accessor_field.dart';
+import 'package:fory/src/codegen/meta/impl/type_spec_generator.dart';
+import 'package:fory/src/codegen/meta/public_accessor_descriptor.dart';
 import 'package:fory/src/annotation/fory_key.dart';
 
-class FieldAnalyzerImpl implements FieldAnalyzer{
-
+class FieldAnalyzerImpl implements FieldAnalyzer {
   const FieldAnalyzerImpl();
 
   @override
-  Either<FieldSpecImmutable, PublicAccessorField>? analyze(
+  Either<FieldSpecImmutable, PublicAccessorDescriptor>? analyze(
     FieldElement element,
     FieldOverrideChecker fieldOverrideChecker,
-    @LocationEnsure(LocationLevel.clsLevel) LocationMark locationMark,
+    @RequireLocationLevel(LocationLevel.clsLevel) LocationMark locationMark,
   ) {
     assert(locationMark.ensureClassLevel);
     assert(!element.isStatic);
 
     String fieldName = element.name;
     /*---------Field override check--------------------------------------------*/
-    if (fieldOverrideChecker(fieldName)){
+    if (fieldOverrideChecker(fieldName)) {
       throw FieldOverridingException(
         locationMark.libPath,
         locationMark.clsName,
@@ -62,30 +61,27 @@ class FieldAnalyzerImpl implements FieldAnalyzer{
       );
     }
     /*---------Handle synthetic fields--------------------------------------------*/
-    if(element.isSynthetic){
+    if (element.isSynthetic) {
       // Synthetic fields, here they are synthesized getters and setters
-      if (element.isPublic){
+      if (element.isPublic) {
         return Either.right(
-          PublicAccessorField(
-            fieldName,
-            element.setter != null,
-            element.getter != null
-          ),
+          PublicAccessorDescriptor(
+              fieldName, element.setter != null, element.getter != null),
         );
       }
       // indicate the composite field is private
       return null;
     }
     /*---------Location record--------------------------------------------*/
-    locationMark = locationMark.copyWithFieldName(fieldName); // Note that fieldName is added here
+    locationMark = locationMark
+        .copyWithFieldName(fieldName); // Note that fieldName is added here
 
     ForyKey key = Analyzer.keyAnnotationAnalyzer.analyze(
       element.metadata,
       locationMark,
     );
 
-    
-    if (!key.includeFromFory && !key.includeToFory){
+    if (!key.includeFromFory && !key.includeToFory) {
       // If both are false, return null directly, this field is ignored
       return null;
     }
@@ -96,7 +92,7 @@ class FieldAnalyzerImpl implements FieldAnalyzer{
       locationMark,
     );
 
-    TypeSpecGen fieldType;
+    TypeSpecGenerator fieldType;
     if (uintAnnotationResult.hasAnnotation) {
       // Validate that @uint is only used on int fields
       if (!element.type.isDartCoreInt) {
@@ -108,19 +104,19 @@ class FieldAnalyzerImpl implements FieldAnalyzer{
         );
       }
       // Use annotation-based type override
-      fieldType = Analyzer.typeAnalyzer.getTypeImmutableAndTagWithOverride(
+      fieldType = Analyzer.typeAnalyzer.resolveTypeSpecWithOverride(
         Analyzer.typeSystemAnalyzer.decideInterfaceType(element.type),
         locationMark,
         uintAnnotationResult.objType!,
       );
     } else {
       // Use default type resolution
-      fieldType = Analyzer.typeAnalyzer.getTypeImmutableAndTag(
+      fieldType = Analyzer.typeAnalyzer.resolveTypeSpec(
         Analyzer.typeSystemAnalyzer.decideInterfaceType(element.type),
         locationMark,
       );
     }
-    
+
     return Either.left(
       FieldSpecImmutable.publicOr(
         element.isPublic,
@@ -132,6 +128,7 @@ class FieldAnalyzerImpl implements FieldAnalyzer{
         hasInitializer: element.hasInitializer,
         includeFromFory: key.includeFromFory,
         includeToFory: key.includeToFory,
+        trackingRef: key.ref,
       ),
     );
   }

@@ -23,9 +23,8 @@ import 'package:fory_test/extensions/map_ext.dart';
 
 part '../generated/complex_obj_3.g.dart';
 
-
 @foryClass
-class ComplexObject3 with _$ComplexObject3Fory{
+class ComplexObject3 {
   late final List<Map<int, Float32>> f1;
   late final HashMap<String, List<SplayTreeMap<int, Float32>>> f2;
   late final LinkedHashMap<String, HashSet<Int8>> f3;
