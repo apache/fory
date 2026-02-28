@@ -63,6 +63,7 @@ def test_infer_field():
     result = _infer_field("", X)
     assert result.type.id == TypeId.STRUCT
 
+
 def test_infer_field_unannotated_class():
     """Classes without annotations should be treated as structs, not raise TypeError."""
 
@@ -95,7 +96,8 @@ def test_infer_field_nested_custom_class():
         pass
 
     result = _infer_field("", List[Inner])
-    assert result.type.id == TypeId.LIST    
+    assert result.type.id == TypeId.LIST
+
 
 def test_infer_class_schema():
     schema = infer_schema(Foo)
