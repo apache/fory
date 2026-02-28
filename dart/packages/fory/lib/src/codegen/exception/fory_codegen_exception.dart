@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/exception/fory_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 
 abstract class ForyCodegenException extends ForyException {
   final String? _where;
