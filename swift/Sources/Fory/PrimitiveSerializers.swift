@@ -414,6 +414,16 @@ extension Data: Serializer {
 
     public static func foryDefault() -> Data { Data() }
 
+    public static func foryReadTypeInfo(_ context: ReadContext) throws {
+        let rawTypeID = try context.buffer.readVarUInt32()
+        guard let typeID = TypeId(rawValue: rawTypeID) else {
+            throw ForyError.invalidData("unknown type id \(rawTypeID)")
+        }
+        if typeID != .binary && typeID != .uint8Array {
+            throw ForyError.typeMismatch(expected: TypeId.binary.rawValue, actual: rawTypeID)
+        }
+    }
+
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         context.buffer.writeVarUInt32(UInt32(self.count))
         context.buffer.writeData(self)

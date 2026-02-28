@@ -48,6 +48,8 @@ LANG_OUTPUTS = {
     "rust": REPO_ROOT / "integration_tests/idl_tests/rust/src/generated",
     "csharp": REPO_ROOT / "integration_tests/idl_tests/csharp/IdlTests/Generated",
     "typescript": REPO_ROOT / "integration_tests/idl_tests/typescript/generated",
+    "swift": REPO_ROOT
+    / "integration_tests/idl_tests/swift/idl_package/Sources/IdlGenerated/generated",
 }
 
 GO_OUTPUT_OVERRIDES = {

@@ -207,13 +207,14 @@ message TreeNode {
 
 ### File-Level Options
 
-| Option                               | Type   | Description                                                    |
-| ------------------------------------ | ------ | -------------------------------------------------------------- |
-| `(fory).use_record_for_java_message` | bool   | Generate Java records for all messages in this file            |
-| `(fory).polymorphism`                | bool   | Enable polymorphic serialization metadata by default           |
-| `(fory).enable_auto_type_id`         | bool   | Auto-generate type IDs when omitted (compiler default is true) |
-| `(fory).evolving`                    | bool   | Default schema-evolution behavior for messages                 |
-| `(fory).go_nested_type_style`        | string | Go nested naming style: `underscore` (default) or `camelcase`  |
+| Option                               | Type   | Description                                                                                  |
+| ------------------------------------ | ------ | -------------------------------------------------------------------------------------------- |
+| `(fory).use_record_for_java_message` | bool   | Generate Java records for all messages in this file                                          |
+| `(fory).polymorphism`                | bool   | Enable polymorphic serialization metadata by default                                         |
+| `(fory).enable_auto_type_id`         | bool   | Auto-generate type IDs when omitted (compiler default is true)                               |
+| `(fory).evolving`                    | bool   | Default schema-evolution behavior for messages                                               |
+| `(fory).go_nested_type_style`        | string | Go nested naming style: `underscore` (default) or `camelcase`                                |
+| `(fory).swift_namespace_style`       | string | Swift namespace style: `enum` (default) or `flatten`; applies only when package is non-empty |
 
 ### Message and Enum Options
 

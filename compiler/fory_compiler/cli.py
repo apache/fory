@@ -264,7 +264,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--lang",
         type=str,
         default="all",
-        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp,typescript). Default: all",
+        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp,typescript,swift). Default: all",
     )
 
     parser.add_argument(
@@ -350,6 +350,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         metavar="DST_DIR",
         help="Generate TypeScript code in DST_DIR",
     )
+    
+    parser.add_argument (
+      "--swift_out",
+        type=Path,
+        default=None,
+        metavar="DST_DIR",
+        help="Generate Swift code in DST_DIR",
+    )
 
     parser.add_argument(
         "--go_nested_type_style",
@@ -357,6 +365,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         choices=["camelcase", "underscore"],
         help="Go nested type naming style: camelcase or underscore (default)",
+    )
+
+    parser.add_argument(
+        "--swift_namespace_style",
+        type=str,
+        default=None,
+        choices=["enum", "flatten"],
+        help="Swift package namespace style: enum (default) or flatten",
     )
 
     parser.add_argument(
@@ -444,6 +460,7 @@ def compile_file(
     package_override: Optional[str] = None,
     import_paths: Optional[List[Path]] = None,
     go_nested_type_style: Optional[str] = None,
+    swift_namespace_style: Optional[str] = None,
     emit_fdl: bool = False,
     emit_fdl_path: Optional[Path] = None,
     resolve_cache: Optional[Dict[Path, Schema]] = None,
@@ -509,6 +526,7 @@ def compile_file(
             output_dir=lang_output,
             package_override=package_override,
             go_nested_type_style=go_nested_type_style,
+            swift_namespace_style=swift_namespace_style,
             grpc=grpc,
         )
 
@@ -534,6 +552,7 @@ def compile_file_recursive(
     package_override: Optional[str],
     import_paths: List[Path],
     go_nested_type_style: Optional[str],
+    swift_namespace_style: Optional[str],
     emit_fdl: bool,
     emit_fdl_path: Optional[Path],
     generated: Set[Path],
@@ -598,6 +617,7 @@ def compile_file_recursive(
             None,
             import_paths,
             go_nested_type_style,
+            swift_namespace_style,
             emit_fdl,
             emit_fdl_path,
             generated,
@@ -616,6 +636,7 @@ def compile_file_recursive(
         package_override,
         import_paths,
         go_nested_type_style,
+        swift_namespace_style,
         emit_fdl,
         emit_fdl_path,
         resolve_cache,
@@ -638,6 +659,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
         "rust": args.rust_out,
         "csharp": args.csharp_out,
         "typescript": args.typescript_out,
+        "swift": args.swift_out,
     }
 
     # Determine which languages to generate
@@ -704,6 +726,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 args.package,
                 import_paths,
                 args.go_nested_type_style,
+                args.swift_namespace_style,
                 args.emit_fdl,
                 args.emit_fdl_path,
                 generated,

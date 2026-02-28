@@ -667,6 +667,8 @@ if err := f.RegisterNamedUnion(Holder{}, "myapp.models.Holder", fory.NewUnionSer
 option go_nested_type_style = "camelcase";
 ```
 
+The CLI flag `--go_nested_type_style` overrides this schema option when both are set.
+
 ### Usage
 
 ```go
@@ -786,6 +788,78 @@ export type Animal =
   | { case: AnimalCase.CAT; value: Cat };
 ```
 
+## Swift
+
+### Output Layout
+
+Swift output is one `.swift` file per schema, for example:
+
+- `<swift_out>/addressbook/addressbook.swift`
+
+### Type Generation
+
+The generator creates Swift models with `@ForyObject` and field IDs.
+
+When package/namespace is non-empty, namespace shaping is controlled by `swift_namespace_style`:
+
+- `enum` (default): nested enum namespace wrappers.
+- `flatten`: package-derived prefix on top-level type names (for example `Demo_Foo_User`).
+
+When package/namespace is empty, no enum wrapper or flatten prefix is applied.
+
+For non-empty package with default `enum` style:
+
+```swift
+public enum Addressbook {
+    @ForyObject
+    public enum Animal: Equatable {
+        @ForyField(id: 1)
+        case dog(Addressbook.Dog)
+        @ForyField(id: 2)
+        case cat(Addressbook.Cat)
+    }
+
+    @ForyObject
+    public struct Person: Equatable {
+        @ForyField(id: 1)
+        public var name: String = ""
+        @ForyField(id: 8)
+        public var pet: Addressbook.Animal = .foryDefault()
+    }
+}
+```
+
+For non-empty package with `flatten` style:
+
+```swift
+@ForyObject
+public struct Addressbook_Person: Equatable { ... }
+```
+
+The CLI flag `--swift_namespace_style` overrides schema option `swift_namespace_style` when both are set.
+
+Unions are generated as tagged Swift enums with associated payload values.
+Messages with `ref`/`weak_ref` fields are generated as `final class` models to preserve reference semantics.
+
+### Registration
+
+Each schema includes a registration helper with transitive import registration:
+
+```swift
+public enum ForyRegistration {
+    public static func register(_ fory: Fory) throws {
+        try ComplexPb.ForyRegistration.register(fory)
+        fory.register(Addressbook.Person.self, id: 100)
+        fory.register(Addressbook.Animal.self, id: 106)
+    }
+}
+```
+
+With non-empty package and `flatten` style, the helper is prefixed too (for example `Addressbook_ForyRegistration`).
+
+For schemas without explicit `[id=...]`, registration uses computed numeric IDs.
+If `option enable_auto_type_id = false;` is set, generated code uses name-based registration APIs.
+
 ### Registration
 
 Each schema generates a registration helper function:
@@ -824,6 +898,7 @@ numeric IDs (same behavior as other targets).
 | Go       | `Person_PhoneNumber` (default) |
 | C#       | `Person.PhoneNumber`           |
 | TS       | `PhoneNumber` (flat)           |
+| Swift    | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
 
@@ -836,3 +911,4 @@ numeric IDs (same behavior as other targets).
 | Go       | `ToBytes` / `FromBytes`   |
 | C#       | `ToBytes` / `FromBytes`   |
 | TS       | (via `fory.serialize()`)  |
+| Swift    | `toBytes` / `fromBytes`   |
