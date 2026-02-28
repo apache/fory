@@ -18,7 +18,9 @@
  */
 
 import 'dart:typed_data';
+import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/serialization_context.dart';
@@ -60,6 +62,12 @@ abstract base class NumericArraySerializer<T extends num>
   @override
   TypedDataList<T> read(ByteReader br, int refId, DeserializationContext pack) {
     int numBytes = br.readVarUint32Small7();
+    if (objType == ObjType.BINARY) {
+      final int? maxBinarySize = pack.config.maxBinarySize;
+      if (maxBinarySize != null && numBytes > maxBinarySize) {
+        throw DeserializationSizeException('Binary', numBytes, maxBinarySize);
+      }
+    }
     int length = numBytes ~/ bytesPerNum;
     if (isLittleEndian || bytesPerNum == 1) {
       // Fast path: direct memory copy on little-endian or for single-byte types

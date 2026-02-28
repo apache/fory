@@ -18,6 +18,7 @@
  */
 
 import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/exception/deserialization_exception.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/memory/byte_reader.dart';
@@ -51,6 +52,11 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   @override
   T read(ByteReader br, int refId, DeserializationContext pack) {
     int remaining = br.readVarUint32Small7();
+    final int? maxCollectionSize = pack.config.maxCollectionSize;
+    if (maxCollectionSize != null && remaining > maxCollectionSize) {
+      throw DeserializationSizeException(
+          'Collection', remaining, maxCollectionSize);
+    }
     T map = newMap(remaining);
     if (writeRef) {
       pack.refResolver.setRefTheLatestId(map);
