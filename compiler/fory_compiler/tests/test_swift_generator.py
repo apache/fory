@@ -145,3 +145,52 @@ def test_swift_generator_renames_namespace_when_colliding_with_type_name():
     assert "public enum GraphNamespace" in content
     assert "public struct Graph" in content
     assert "public var nodes: [GraphNamespace.Node] = []" in content
+
+
+def test_swift_generator_no_namespace_wrapper_when_package_empty():
+    source = """
+    message User [id=1] {
+        string name = 1;
+    }
+    """
+    content = generate_swift(source)
+    assert "public enum Generated" not in content
+    assert "public struct User" in content
+    assert "try ForyRegistration.getFory().serialize(self)" in content
+    assert "fory.register(User.self, id: 1)" in content
+
+
+def test_swift_generator_supports_flatten_namespace_style_option():
+    source = """
+    package demo.foo;
+    option swift_namespace_style = "flatten";
+
+    message User [id=1] {
+        string name = 1;
+    }
+
+    message Group [id=2] {
+        User user = 1;
+    }
+    """
+    content = generate_swift(source)
+    assert "public enum Demo {" not in content
+    assert "public struct Demo_Foo_User" in content
+    assert "public struct Demo_Foo_Group" in content
+    assert "public var user: Demo_Foo_User" in content
+    assert "public enum Demo_Foo_ForyRegistration" in content
+    assert "try Demo_Foo_ForyRegistration.getFory().serialize(self)" in content
+
+
+def test_swift_generator_supports_explicit_enum_namespace_style_option():
+    source = """
+    package demo.foo;
+    option swift_namespace_style = "enum";
+
+    message User [id=1] {
+        string name = 1;
+    }
+    """
+    content = generate_swift(source)
+    assert "public enum Demo {" in content
+    assert "public struct User" in content

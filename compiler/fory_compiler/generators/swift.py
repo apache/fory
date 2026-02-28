@@ -225,11 +225,32 @@ class SwiftGenerator(BaseGenerator):
     def namespace_path(self) -> str:
         return ".".join(self.get_namespace_components())
 
-    def registration_type_path(self) -> str:
-        namespace_path = self.namespace_path()
-        if namespace_path:
-            return f"{namespace_path}.ForyRegistration"
+    def get_namespace_style(self) -> str:
+        style = self.schema.get_option("swift_namespace_style")
+        if style is None:
+            return "enum"
+        normalized = str(style).strip().lower()
+        if normalized not in ("enum", "flatten"):
+            raise ValueError(
+                f"Invalid swift_namespace_style: {style}. Use 'enum' or 'flatten'."
+            )
+        return normalized
+
+    def _registration_helper_name_for_schema(self, schema: Schema) -> str:
+        prefix = self._namespace_prefix_for_schema(schema)
+        if prefix:
+            return self.safe_type_identifier(f"{prefix}_ForyRegistration")
         return "ForyRegistration"
+
+    def _registration_type_path_for_schema(self, schema: Schema) -> str:
+        namespace_path = ".".join(self._namespace_components_for_schema(schema))
+        registration_type_name = self._registration_helper_name_for_schema(schema)
+        if namespace_path:
+            return f"{namespace_path}.{registration_type_name}"
+        return registration_type_name
+
+    def registration_type_path(self) -> str:
+        return self._registration_type_path_for_schema(self.schema)
 
     def safe_identifier(self, name: str) -> str:
         if not name:
@@ -290,18 +311,47 @@ class SwiftGenerator(BaseGenerator):
         self._schema_cache[path] = schema
         return schema
 
-    def _namespace_components_for_schema(self, schema: Schema) -> List[str]:
+    def _package_components_for_schema(self, schema: Schema) -> List[str]:
         package = schema.package
         if not package:
-            return ["Generated"]
-        components = [
+            return []
+        return [
             self.safe_type_identifier(self.to_pascal_case(part))
             for part in package.split(".")
+            if part
         ]
+
+    def _namespace_components_for_schema(self, schema: Schema) -> List[str]:
+        if self.get_namespace_style() != "enum":
+            return []
+        components = self._package_components_for_schema(schema)
+        if not components:
+            return []
         top_level_types = self._local_top_level_type_names(schema)
         if components and components[-1] in top_level_types:
             components[-1] = self.safe_type_identifier(f"{components[-1]}Namespace")
         return components
+
+    def _namespace_prefix_for_schema(self, schema: Schema) -> str:
+        if self.get_namespace_style() != "flatten":
+            return ""
+        components = self._package_components_for_schema(schema)
+        if not components:
+            return ""
+        return "_".join(components)
+
+    def _flattened_type_path(self, schema: Schema, qualified_name: str) -> str:
+        parts = qualified_name.split(".")
+        if not parts:
+            return qualified_name
+        top_level = self.safe_type_identifier(self.to_pascal_case(parts[0]))
+        prefix = self._namespace_prefix_for_schema(schema)
+        if prefix:
+            top_level = self.safe_type_identifier(f"{prefix}_{top_level}")
+        nested = [
+            self.safe_type_identifier(self.to_pascal_case(part)) for part in parts[1:]
+        ]
+        return ".".join([top_level, *nested])
 
     def _local_top_level_type_names(self, schema: Schema) -> Set[str]:
         names: Set[str] = set()
@@ -349,8 +399,7 @@ class SwiftGenerator(BaseGenerator):
             schema = self._load_schema(file_path)
             if schema is None:
                 continue
-            namespace_path = ".".join(self._namespace_components_for_schema(schema))
-            by_file[normalized] = f"{namespace_path}.ForyRegistration"
+            by_file[normalized] = self._registration_type_path_for_schema(schema)
 
         ordered: List[str] = []
         used_paths: Set[str] = set()
@@ -465,24 +514,47 @@ class SwiftGenerator(BaseGenerator):
                 return nested
         return self.schema.get_type(name)
 
+    def _schema_for_type(self, type_def: object) -> Schema:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        schema = self._load_schema(file_path) if file_path else None
+        if schema is not None:
+            return schema
+        return self.schema
+
+    def _declared_type_name(
+        self,
+        name: str,
+        parent_stack: Optional[List[Message]] = None,
+    ) -> str:
+        type_name = self.safe_type_identifier(self.to_pascal_case(name))
+        if parent_stack:
+            return type_name
+        prefix = self._namespace_prefix_for_schema(self.schema)
+        if not prefix:
+            return type_name
+        return self.safe_type_identifier(f"{prefix}_{type_name}")
+
     def _qualified_type_path(
         self,
         resolved: Optional[TypingUnion[Message, Enum, Union]],
         fallback_name: str,
     ) -> str:
+        owner_schema = self.schema
         if resolved is None:
-            qualified = self.sanitize_qualified_name(fallback_name)
-            namespace = self.namespace_path()
-            if namespace:
-                return f"{namespace}.{qualified}"
-            return qualified
+            qualified_name = fallback_name
+        else:
+            owner_schema = self._schema_for_type(resolved)
+            qualified_name = self._qualified_type_names.get(id(resolved), fallback_name)
 
-        namespace = self._namespace_path_for_type(resolved)
-        qualified_name = self._qualified_type_names.get(id(resolved), fallback_name)
+        if self.get_namespace_style() == "flatten":
+            return self._flattened_type_path(owner_schema, qualified_name)
+
+        namespace = ".".join(self._namespace_components_for_schema(owner_schema))
         sanitized = self.sanitize_qualified_name(qualified_name)
-        if namespace:
-            return f"{namespace}.{sanitized}"
-        return sanitized
+        if not namespace:
+            return sanitized
+        return f"{namespace}.{sanitized}"
 
     def _named_type_reference(
         self,
@@ -742,10 +814,11 @@ class SwiftGenerator(BaseGenerator):
         self,
         enum: Enum,
         indent: int = 0,
+        parent_stack: Optional[List[Message]] = None,
     ) -> List[str]:
         lines: List[str] = []
         ind = self.indent_str * indent
-        type_name = self.safe_type_identifier(self.to_pascal_case(enum.name))
+        type_name = self._declared_type_name(enum.name, parent_stack)
         comment = self.format_type_id_comment(enum, f"{ind}//")
         if comment:
             lines.append(comment)
@@ -768,7 +841,7 @@ class SwiftGenerator(BaseGenerator):
     ) -> List[str]:
         lines: List[str] = []
         ind = self.indent_str * indent
-        type_name = self.safe_type_identifier(self.to_pascal_case(union.name))
+        type_name = self._declared_type_name(union.name, parent_stack)
         comment = self.format_type_id_comment(union, f"{ind}//")
         if comment:
             lines.append(comment)
@@ -801,7 +874,7 @@ class SwiftGenerator(BaseGenerator):
         ind = self.indent_str * indent
         parent_stack = parent_stack or []
         lineage = parent_stack + [message]
-        type_name = self.safe_type_identifier(self.to_pascal_case(message.name))
+        type_name = self._declared_type_name(message.name, parent_stack)
         is_class = self.message_is_class(message)
 
         comment = self.format_type_id_comment(message, f"{ind}//")
@@ -820,7 +893,13 @@ class SwiftGenerator(BaseGenerator):
 
         for nested_enum in message.nested_enums:
             lines.append("")
-            lines.extend(self.generate_enum(nested_enum, indent=indent + 1))
+            lines.extend(
+                self.generate_enum(
+                    nested_enum,
+                    indent=indent + 1,
+                    parent_stack=lineage,
+                )
+            )
 
         for nested_union in message.nested_unions:
             lines.append("")
@@ -1000,7 +1079,8 @@ class SwiftGenerator(BaseGenerator):
     def generate_registration_type(self, indent: int = 0) -> List[str]:
         lines: List[str] = []
         ind = self.indent_str * indent
-        lines.append(f"{ind}public enum ForyRegistration {{")
+        registration_type_name = self._registration_helper_name_for_schema(self.schema)
+        lines.append(f"{ind}public enum {registration_type_name} {{")
 
         lines.append(f"{ind}{self.indent_str}private enum Holder {{")
         lines.append(
