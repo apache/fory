@@ -26,6 +26,7 @@ cc_library(
     strip_include_prefix = "/python/pyfory/cpp",
     include_prefix = "fory/python",
     deps = [
+        "//cpp/fory/type:fory_type",
         "//cpp/fory/util:fory_util",
         "@rules_python//python/cc:current_py_cc_headers",
     ],

@@ -18,16 +18,18 @@
  */
 
 #pragma once
+#include <cstdint>
 #include <string>
 
 #include "Python.h"
 #include "fory/util/buffer.h"
 
 namespace fory {
-int Fory_PyBooleanSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
-                                        Py_ssize_t start_index);
-int Fory_PyFloatSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
-                                      Py_ssize_t start_index);
+int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
+                                            Buffer *buffer, uint8_t type_id);
+int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
+                                             Buffer *buffer, Py_ssize_t size,
+                                             uint8_t type_id);
 int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
                                   Buffer **out, std::string *error_message);
 } // namespace fory

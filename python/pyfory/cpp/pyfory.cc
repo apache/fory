@@ -26,7 +26,9 @@
 #include <memory>
 #include <vector>
 
+#include "fory/type/type.h"
 #include "fory/util/stream.h"
+#include "fory/util/string_util.h"
 
 static PyObject **py_sequence_get_items(PyObject *collection) {
   if (PyList_CheckExact(collection)) {
@@ -367,32 +369,519 @@ private:
   std::unique_ptr<Buffer> owned_buffer_;
 };
 
-int Fory_PyBooleanSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
-                                        Py_ssize_t start_index) {
-  PyObject **items = py_sequence_get_items(collection);
-  if (items == nullptr) {
+enum class PythonCollectionKind : uint8_t {
+  List = 0,
+  Tuple = 1,
+  Set = 2,
+};
+
+static PythonCollectionKind
+resolve_python_collection_kind(PyObject *collection) {
+  if (PyList_CheckExact(collection)) {
+    return PythonCollectionKind::List;
+  }
+  if (PyTuple_CheckExact(collection)) {
+    return PythonCollectionKind::Tuple;
+  }
+  if (PySet_CheckExact(collection)) {
+    return PythonCollectionKind::Set;
+  }
+  PyErr_Format(PyExc_TypeError,
+               "fastpath only supports list/tuple/set collections, got %.200s",
+               Py_TYPE(collection)->tp_name);
+  return PythonCollectionKind::List;
+}
+
+static int set_buffer_error(const Error &error) {
+  PyErr_SetString(PyExc_BufferError, error.to_string().c_str());
+  return -1;
+}
+
+static bool py_long_to_int64(PyObject *value, int64_t *out) {
+  int overflow = 0;
+  long long converted = PyLong_AsLongLongAndOverflow(value, &overflow);
+  if (converted == -1 && PyErr_Occurred()) {
+    return false;
+  }
+  if (overflow != 0) {
+    PyErr_SetString(PyExc_OverflowError,
+                    "integer out of range for int64 fastpath");
+    return false;
+  }
+  *out = static_cast<int64_t>(converted);
+  return true;
+}
+
+template <typename T>
+static bool py_long_to_integral_range(PyObject *value, const char *type_name,
+                                      T *out) {
+  int64_t converted = 0;
+  if (!py_long_to_int64(value, &converted)) {
+    return false;
+  }
+  constexpr int64_t k_min = static_cast<int64_t>(std::numeric_limits<T>::min());
+  constexpr int64_t k_max = static_cast<int64_t>(std::numeric_limits<T>::max());
+  if (converted < k_min || converted > k_max) {
+    PyErr_Format(PyExc_OverflowError, "integer out of range for %s", type_name);
+    return false;
+  }
+  *out = static_cast<T>(converted);
+  return true;
+}
+
+static int write_python_string(Buffer *buffer, PyObject *value) {
+  if (FORY_PREDICT_FALSE(!PyUnicode_Check(value))) {
+    PyErr_Format(PyExc_TypeError, "expected str, got %.200s",
+                 Py_TYPE(value)->tp_name);
     return -1;
   }
-  Py_ssize_t size = Py_SIZE(collection);
-  for (Py_ssize_t i = 0; i < size; i++) {
-    bool b = items[i] == Py_True;
-    buffer->unsafe_put(start_index, b);
-    start_index += sizeof(bool);
+  if (FORY_PREDICT_FALSE(PyUnicode_READY(value) < 0)) {
+    return -1;
   }
+  const Py_ssize_t length = PyUnicode_GET_LENGTH(value);
+  const int kind = PyUnicode_KIND(value);
+  const void *data = PyUnicode_DATA(value);
+  uint64_t header = 0;
+  uint32_t buffer_size = 0;
+
+  if (kind == PyUnicode_1BYTE_KIND) {
+    if (FORY_PREDICT_FALSE(length > std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError,
+                      "string too large for fastpath encoding");
+      return -1;
+    }
+    buffer_size = static_cast<uint32_t>(length);
+    header = (static_cast<uint64_t>(length) << 2U) | 0ULL;
+  } else if (kind == PyUnicode_2BYTE_KIND) {
+    const uint64_t bytes = static_cast<uint64_t>(length) << 1U;
+    if (FORY_PREDICT_FALSE(bytes > std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError,
+                      "string too large for fastpath encoding");
+      return -1;
+    }
+    buffer_size = static_cast<uint32_t>(bytes);
+    // Keep wire format exactly aligned with Buffer.write_string in buffer.pyx.
+    header = (static_cast<uint64_t>(length) << 3U) | 1ULL;
+  } else {
+    Py_ssize_t utf8_size = 0;
+    const char *utf8 = PyUnicode_AsUTF8AndSize(value, &utf8_size);
+    if (FORY_PREDICT_FALSE(utf8 == nullptr)) {
+      return -1;
+    }
+    if (FORY_PREDICT_FALSE(utf8_size > std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError,
+                      "string too large for fastpath encoding");
+      return -1;
+    }
+    data = utf8;
+    buffer_size = static_cast<uint32_t>(utf8_size);
+    header = (static_cast<uint64_t>(buffer_size) << 2U) | 2ULL;
+  }
+
+  buffer->write_var_uint64(header);
+  if (buffer_size == 0) {
+    return 0;
+  }
+  const uint32_t writer_index = buffer->writer_index();
+  buffer->grow(buffer_size);
+  buffer->unsafe_put(writer_index, data, buffer_size);
+  buffer->increase_writer_index(buffer_size);
   return 0;
 }
 
-int Fory_PyFloatSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
-                                      Py_ssize_t start_index) {
-  PyObject **items = py_sequence_get_items(collection);
-  if (items == nullptr) {
+static PyObject *read_python_string(Buffer *buffer) {
+  Error error;
+  const uint64_t header = buffer->read_var_uint64(error);
+  if (FORY_PREDICT_FALSE(!error.ok())) {
+    set_buffer_error(error);
+    return nullptr;
+  }
+  const uint64_t size64 = header >> 2U;
+  if (FORY_PREDICT_FALSE(size64 > std::numeric_limits<uint32_t>::max())) {
+    PyErr_SetString(PyExc_OverflowError,
+                    "string length too large for fastpath decoding");
+    return nullptr;
+  }
+  const uint32_t size = static_cast<uint32_t>(size64);
+  const uint32_t encoding = static_cast<uint32_t>(header & 0b11ULL);
+  if (size == 0) {
+    return PyUnicode_FromStringAndSize("", 0);
+  }
+
+  uint32_t reader_index = buffer->reader_index();
+  if (FORY_PREDICT_FALSE(size > buffer->size() - reader_index)) {
+    if (FORY_PREDICT_FALSE(!buffer->ensure_readable(size, error))) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    reader_index = buffer->reader_index();
+  }
+  const char *data =
+      reinterpret_cast<const char *>(buffer->data() + reader_index);
+  buffer->reader_index(reader_index + size);
+
+  if (encoding == 0) {
+    return PyUnicode_DecodeLatin1(data, static_cast<Py_ssize_t>(size),
+                                  "strict");
+  }
+  if (encoding == 1) {
+    if (FORY_PREDICT_FALSE((size & 1U) != 0U)) {
+      PyErr_SetString(PyExc_ValueError, "invalid utf16 string length");
+      return nullptr;
+    }
+    const auto *utf16_data = reinterpret_cast<const uint16_t *>(data);
+    if (utf16_has_surrogate_pairs(utf16_data,
+                                  static_cast<size_t>(size >> 1U))) {
+      int byteorder = -1; // little-endian
+      return PyUnicode_DecodeUTF16(data, static_cast<Py_ssize_t>(size),
+                                   "strict", &byteorder);
+    }
+    return PyUnicode_FromKindAndData(PyUnicode_2BYTE_KIND, data,
+                                     static_cast<Py_ssize_t>(size >> 1U));
+  }
+  if (encoding == 2) {
+    return PyUnicode_DecodeUTF8(data, static_cast<Py_ssize_t>(size), "strict");
+  }
+  PyErr_Format(PyExc_ValueError, "unsupported string encoding tag: %u",
+               encoding);
+  return nullptr;
+}
+
+static int write_primitive_item(Buffer *buffer, PyObject *value,
+                                uint8_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRING:
+    return write_python_string(buffer, value);
+  case TypeId::VARINT64: {
+    int64_t v = 0;
+    if (FORY_PREDICT_FALSE(!py_long_to_int64(value, &v))) {
+      return -1;
+    }
+    buffer->write_var_int64(v);
+    return 0;
+  }
+  case TypeId::VARINT32: {
+    int32_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_integral_range<int32_t>(value, "int32", &v))) {
+      return -1;
+    }
+    buffer->write_var_int32(v);
+    return 0;
+  }
+  case TypeId::BOOL:
+    buffer->write_int8(value == Py_True ? 1 : 0);
+    return 0;
+  case TypeId::FLOAT64: {
+    double v;
+    if (PyFloat_CheckExact(value)) {
+      v = reinterpret_cast<PyFloatObject *>(value)->ob_fval;
+    } else {
+      v = PyFloat_AsDouble(value);
+      if (FORY_PREDICT_FALSE(v == -1.0 && PyErr_Occurred())) {
+        return -1;
+      }
+    }
+    buffer->write_double(v);
+    return 0;
+  }
+  case TypeId::INT8: {
+    int8_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_integral_range<int8_t>(value, "int8", &v))) {
+      return -1;
+    }
+    buffer->write_int8(v);
+    return 0;
+  }
+  case TypeId::INT16: {
+    int16_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_integral_range<int16_t>(value, "int16", &v))) {
+      return -1;
+    }
+    buffer->write_int16(v);
+    return 0;
+  }
+  case TypeId::INT32: {
+    int32_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_integral_range<int32_t>(value, "int32", &v))) {
+      return -1;
+    }
+    buffer->write_int32(v);
+    return 0;
+  }
+  default:
+    PyErr_Format(PyExc_ValueError, "unsupported primitive fastpath type id: %u",
+                 static_cast<unsigned>(type_id));
     return -1;
   }
-  Py_ssize_t size = Py_SIZE(collection);
-  for (Py_ssize_t i = 0; i < size; i++) {
-    auto *f = (PyFloatObject *)items[i];
-    buffer->unsafe_put(start_index, f->ob_fval);
-    start_index += sizeof(double);
+}
+
+static int write_primitive_sequence(PyObject **items, Py_ssize_t size,
+                                    Buffer *buffer, uint8_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::BOOL: {
+    const uint64_t byte_size64 = static_cast<uint64_t>(size) * sizeof(bool);
+    if (FORY_PREDICT_FALSE(byte_size64 >
+                           std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError, "bool collection too large");
+      return -1;
+    }
+    const uint32_t byte_size = static_cast<uint32_t>(byte_size64);
+    const uint32_t writer_index = buffer->writer_index();
+    buffer->grow(byte_size);
+    uint32_t offset = writer_index;
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      buffer->unsafe_put_byte(offset++, static_cast<uint8_t>(items[i] == Py_True));
+    }
+    buffer->increase_writer_index(byte_size);
+    return 0;
+  }
+  case TypeId::FLOAT64: {
+    const uint64_t byte_size64 = static_cast<uint64_t>(size) * sizeof(double);
+    if (FORY_PREDICT_FALSE(byte_size64 >
+                           std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError, "float collection too large");
+      return -1;
+    }
+    const uint32_t byte_size = static_cast<uint32_t>(byte_size64);
+    const uint32_t writer_index = buffer->writer_index();
+    buffer->grow(byte_size);
+    uint32_t offset = writer_index;
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject *value = items[i];
+      double v;
+      if (PyFloat_CheckExact(value)) {
+        v = reinterpret_cast<PyFloatObject *>(value)->ob_fval;
+      } else {
+        v = PyFloat_AsDouble(value);
+        if (FORY_PREDICT_FALSE(v == -1.0 && PyErr_Occurred())) {
+          return -1;
+        }
+      }
+      buffer->unsafe_put(offset, v);
+      offset += sizeof(double);
+    }
+    buffer->increase_writer_index(byte_size);
+    return 0;
+  }
+  case TypeId::INT8: {
+    const uint64_t byte_size64 = static_cast<uint64_t>(size) * sizeof(int8_t);
+    if (FORY_PREDICT_FALSE(byte_size64 >
+                           std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError, "int8 collection too large");
+      return -1;
+    }
+    const uint32_t byte_size = static_cast<uint32_t>(byte_size64);
+    const uint32_t writer_index = buffer->writer_index();
+    buffer->grow(byte_size);
+    uint32_t offset = writer_index;
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      int8_t v = 0;
+      if (FORY_PREDICT_FALSE(
+              !py_long_to_integral_range<int8_t>(items[i], "int8", &v))) {
+        return -1;
+      }
+      buffer->unsafe_put_byte(offset++, v);
+    }
+    buffer->increase_writer_index(byte_size);
+    return 0;
+  }
+  case TypeId::INT16: {
+    const uint64_t byte_size64 = static_cast<uint64_t>(size) * sizeof(int16_t);
+    if (FORY_PREDICT_FALSE(byte_size64 >
+                           std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError, "int16 collection too large");
+      return -1;
+    }
+    const uint32_t byte_size = static_cast<uint32_t>(byte_size64);
+    const uint32_t writer_index = buffer->writer_index();
+    buffer->grow(byte_size);
+    uint32_t offset = writer_index;
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      int16_t v = 0;
+      if (FORY_PREDICT_FALSE(
+              !py_long_to_integral_range<int16_t>(items[i], "int16", &v))) {
+        return -1;
+      }
+      buffer->unsafe_put(offset, v);
+      offset += sizeof(int16_t);
+    }
+    buffer->increase_writer_index(byte_size);
+    return 0;
+  }
+  case TypeId::INT32: {
+    const uint64_t byte_size64 = static_cast<uint64_t>(size) * sizeof(int32_t);
+    if (FORY_PREDICT_FALSE(byte_size64 >
+                           std::numeric_limits<uint32_t>::max())) {
+      PyErr_SetString(PyExc_OverflowError, "int32 collection too large");
+      return -1;
+    }
+    const uint32_t byte_size = static_cast<uint32_t>(byte_size64);
+    const uint32_t writer_index = buffer->writer_index();
+    buffer->grow(byte_size);
+    uint32_t offset = writer_index;
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      int32_t v = 0;
+      if (FORY_PREDICT_FALSE(
+              !py_long_to_integral_range<int32_t>(items[i], "int32", &v))) {
+        return -1;
+      }
+      buffer->unsafe_put(offset, v);
+      offset += sizeof(int32_t);
+    }
+    buffer->increase_writer_index(byte_size);
+    return 0;
+  }
+  default:
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      if (FORY_PREDICT_FALSE(write_primitive_item(buffer, items[i], type_id) !=
+                             0)) {
+        return -1;
+      }
+    }
+    return 0;
+  }
+}
+
+static PyObject *read_primitive_item(Buffer *buffer, uint8_t type_id) {
+  Error error;
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRING:
+    return read_python_string(buffer);
+  case TypeId::VARINT64: {
+    const int64_t v = buffer->read_var_int64(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromLongLong(v);
+  }
+  case TypeId::VARINT32: {
+    const int32_t v = buffer->read_var_int32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromLong(v);
+  }
+  case TypeId::BOOL: {
+    const uint8_t v = buffer->read_uint8(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyBool_FromLong(v != 0);
+  }
+  case TypeId::FLOAT64: {
+    const double v = buffer->read_double(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyFloat_FromDouble(v);
+  }
+  case TypeId::INT8: {
+    const int8_t v = buffer->read_int8(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromLong(v);
+  }
+  case TypeId::INT16: {
+    const int16_t v = buffer->read_int16(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromLong(v);
+  }
+  case TypeId::INT32: {
+    const int32_t v = buffer->read_int32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromLong(v);
+  }
+  default:
+    PyErr_Format(PyExc_ValueError, "unsupported primitive fastpath type id: %u",
+                 static_cast<unsigned>(type_id));
+    return nullptr;
+  }
+}
+
+int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
+                                            Buffer *buffer, uint8_t type_id) {
+  PyObject **items = py_sequence_get_items(collection);
+  if (items != nullptr) {
+    return write_primitive_sequence(items, Py_SIZE(collection), buffer,
+                                    type_id);
+  }
+  PyObject *iterator = PyObject_GetIter(collection);
+  if (FORY_PREDICT_FALSE(iterator == nullptr)) {
+    return -1;
+  }
+  int rc = 0;
+  for (PyObject *item = PyIter_Next(iterator); item != nullptr;
+       item = PyIter_Next(iterator)) {
+    if (FORY_PREDICT_FALSE(write_primitive_item(buffer, item, type_id) != 0)) {
+      Py_DECREF(item);
+      rc = -1;
+      break;
+    }
+    Py_DECREF(item);
+  }
+  if (FORY_PREDICT_FALSE(rc == 0 && PyErr_Occurred() != nullptr)) {
+    rc = -1;
+  }
+  Py_DECREF(iterator);
+  return rc;
+}
+
+int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
+                                             Buffer *buffer, Py_ssize_t size,
+                                             uint8_t type_id) {
+  if (FORY_PREDICT_FALSE(size < 0)) {
+    PyErr_SetString(PyExc_ValueError, "negative collection size");
+    return -1;
+  }
+
+  const PythonCollectionKind kind = resolve_python_collection_kind(collection);
+  if (FORY_PREDICT_FALSE(PyErr_Occurred() != nullptr)) {
+    return -1;
+  }
+  if (kind == PythonCollectionKind::List && Py_SIZE(collection) < size) {
+    PyErr_SetString(PyExc_ValueError,
+                    "list collection size is smaller than requested read size");
+    return -1;
+  }
+  if (kind == PythonCollectionKind::Tuple && Py_SIZE(collection) < size) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        "tuple collection size is smaller than requested read size");
+    return -1;
+  }
+
+  for (Py_ssize_t i = 0; i < size; ++i) {
+    PyObject *item = read_primitive_item(buffer, type_id);
+    if (FORY_PREDICT_FALSE(item == nullptr)) {
+      return -1;
+    }
+    if (kind == PythonCollectionKind::List) {
+      PyList_SET_ITEM(collection, i, item);
+    } else if (kind == PythonCollectionKind::Tuple) {
+      PyTuple_SET_ITEM(collection, i, item);
+    } else {
+      if (FORY_PREDICT_FALSE(PySet_Add(collection, item) < 0)) {
+        Py_DECREF(item);
+        return -1;
+      }
+      Py_DECREF(item);
+    }
   }
   return 0;
 }
