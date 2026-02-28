@@ -350,9 +350,9 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         metavar="DST_DIR",
         help="Generate TypeScript code in DST_DIR",
     )
-    
-    parser.add_argument (
-      "--swift_out",
+
+    parser.add_argument(
+        "--swift_out",
         type=Path,
         default=None,
         metavar="DST_DIR",

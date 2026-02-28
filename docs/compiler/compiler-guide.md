@@ -241,7 +241,7 @@ Compiling src/main.fdl...
 | C++      | `cpp`        | `.h`             | Structs with FORY macros              |
 | C#       | `csharp`     | `.cs`            | Classes with Fory attributes          |
 | TS       | `typescript` | `.ts`            | Interfaces with registration function |
-| Swift    | `swift`  | `.swift`         | `@ForyObject` Swift models   |
+| Swift    | `swift`      | `.swift`         | `@ForyObject` Swift models            |
 
 ## Output Structure
 
