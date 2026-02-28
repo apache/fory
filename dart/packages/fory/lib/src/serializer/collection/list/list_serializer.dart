@@ -20,7 +20,7 @@
 import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_context.dart';
-import 'package:fory/src/exception/fory_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/collection/iterable_serializer.dart';

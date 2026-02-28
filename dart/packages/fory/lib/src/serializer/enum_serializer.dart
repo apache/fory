@@ -20,7 +20,7 @@
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_context.dart';
-import 'package:fory/src/exception/deserialization_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/specs/enum_spec.dart';
