@@ -58,6 +58,7 @@ class DeserializationDispatcher {
     DeserializationContext deserializationContext = DeserializationContext(
       StructHashResolver.inst,
       typeResolver.getRegisteredTag,
+      conf,
       header,
       this,
       DeserializationRefResolver.getOne(conf.ref),

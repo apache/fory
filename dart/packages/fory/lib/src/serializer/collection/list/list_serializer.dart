@@ -20,6 +20,7 @@
 import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/exception/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/collection/iterable_serializer.dart';
@@ -33,6 +34,11 @@ abstract base class ListSerializer extends IterableSerializer {
   @override
   List read(ByteReader br, int refId, DeserializationContext pack) {
     int num = br.readVarUint32Small7();
+    if (num > pack.config.maxCollectionSize) {
+      throw InvalidDataException(
+          'List size $num exceeds maxCollectionSize ${pack.config.maxCollectionSize}. '
+          'The input data may be malicious, or need to increase the maxCollectionSize when creating Fory.');
+    }
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
     List list = newList(
       num,
