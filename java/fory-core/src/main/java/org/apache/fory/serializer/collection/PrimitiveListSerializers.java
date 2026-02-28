@@ -82,6 +82,13 @@ public class PrimitiveListSerializers {
     @Override
     public Int8List read(MemoryBuffer buffer) {
       int size = buffer.readVarUint32Small7();
+      int maxBinarySize = fory.getConfig().maxBinarySize();
+      if (maxBinarySize > 0 && size > maxBinarySize) {
+          throw new IllegalArgumentException(
+              "Binary size " + size +
+              " exceeds configured maxBinarySize " + maxBinarySize
+          );
+      }
       byte[] array = new byte[size];
       buffer.readBytes(array);
       return new Int8List(array);
@@ -281,6 +288,13 @@ public class PrimitiveListSerializers {
     @Override
     public Uint8List read(MemoryBuffer buffer) {
       int size = buffer.readVarUint32Small7();
+      int maxBinarySize = fory.getConfig().maxBinarySize();
+      if (maxBinarySize > 0 && size > maxBinarySize) {
+          throw new IllegalArgumentException(
+              "Binary size " + size +
+              " exceeds configured maxBinarySize " + maxBinarySize
+          );
+      }
       byte[] array = new byte[size];
       buffer.readBytes(array);
       return new Uint8List(array);

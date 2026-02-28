@@ -65,6 +65,8 @@ public class Config implements Serializable {
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
+  private final int maxBinarySize;
+  private final int maxCollectionSize;
   private final float mapRefLoadFactor;
 
   public Config(ForyBuilder builder) {
@@ -106,6 +108,8 @@ public class Config implements Serializable {
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
+    maxBinarySize = builder.maxBinarySize;
+    maxCollectionSize = builder.maxCollectionSize;
     mapRefLoadFactor = builder.mapRefLoadFactor;
   }
 
@@ -326,6 +330,8 @@ public class Config implements Serializable {
         && scalaOptimizationEnabled == config.scalaOptimizationEnabled
         && xlang == config.xlang
         && compatibleMode == config.compatibleMode
+        && maxBinarySize == config.maxBinarySize
+        && maxCollectionSize == config.maxCollectionSize
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding;
   }
@@ -353,6 +359,8 @@ public class Config implements Serializable {
         compressIntArray,
         compressLongArray,
         bufferSizeLimitBytes,
+        maxBinarySize,
+        maxCollectionSize,
         requireClassRegistration,
         suppressClassRegistrationWarnings,
         registerGuavaTypes,
@@ -379,6 +387,14 @@ public class Config implements Serializable {
   /** Returns max depth for deserialization, when depth exceeds, an exception will be thrown. */
   public int maxDepth() {
     return maxDepth;
+  }
+
+  public int maxBinarySize() {
+    return maxBinarySize;
+  }
+
+  public int maxCollectionSize() {
+    return maxCollectionSize;
   }
 
   /** Returns loadFactor of MacRef's writtenObjects. */
