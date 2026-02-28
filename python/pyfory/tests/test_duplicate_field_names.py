@@ -21,6 +21,7 @@ Tests for field shadowing in inheritance.
 
 from dataclasses import dataclass
 from pyfory import Fory
+from pyfory.meta.typedef_encoder import encode_typedef
 
 
 @dataclass
@@ -40,6 +41,10 @@ def test_shadowed_fields_serialization():
     fory = Fory(xlang=True)
     fory.register(Parent, namespace="test", typename="Parent")
     fory.register(ChildWithShadow, namespace="test", typename="ChildWithShadow")
+
+    # Verify TypeDef has exactly 3 fields (no duplicate 'name')
+    typedef = encode_typedef(fory.type_resolver, ChildWithShadow)
+    assert len(typedef.fields) == 3
 
     obj = ChildWithShadow(name="shadowed", value=10, extra=3.14)
     data = fory.serialize(obj)
