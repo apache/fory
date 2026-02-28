@@ -31,7 +31,7 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
-        "//cpp/fory/python:_pyfory",
+        "//python/pyfory/cpp:_pyfory",
         "//cpp/fory/util:fory_util",
     ],
 )
@@ -66,7 +66,7 @@ pyx_library(
     deps = [
         "//cpp/fory/util:fory_util",
         "//cpp/fory/type:fory_type",
-        "//cpp/fory/python:_pyfory",
+        "//python/pyfory/cpp:_pyfory",
         "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )

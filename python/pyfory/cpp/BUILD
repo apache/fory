@@ -15,8 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
-load("//bazel:cython_library.bzl", "pyx_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "_pyfory",
@@ -24,7 +23,8 @@ cc_library(
     hdrs = ["pyfory.h"],
     alwayslink=True,
     linkstatic=True,
-    strip_include_prefix = "/cpp",
+    strip_include_prefix = "/python/pyfory/cpp",
+    include_prefix = "fory/python",
     deps = [
         "//cpp/fory/util:fory_util",
         "@rules_python//python/cc:current_py_cc_headers",
