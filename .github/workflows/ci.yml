@@ -295,7 +295,7 @@ jobs:
       - name: Prebuild Swift IDL package
         run: |
           cd integration_tests/idl_tests/swift/idl_package
-          swift build --disable-automatic-resolution
+          swift build --disable-automatic-resolution --build-tests
       - name: Run Swift IDL package tests
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
