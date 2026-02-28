@@ -25,6 +25,19 @@ please check [Apache Fory™ Java Benchmark](https://github.com/apache/fory/blob
 
 For more details, please check [pr-lint.yml](./.github/workflows/pr-lint.yml).
 
+## AI-assisted contributions
+
+For full requirements, see [AI Contribution Policy](./AI_CONTRIBUTION_POLICY.md).
+
+Key points:
+
+- AI tools are allowed as assistants, but contributors remain fully responsible for all submitted changes.
+- AI-assisted code must be reviewed carefully line by line before submission, and contributors must be able to explain and defend it during review.
+- For substantial AI assistance, provide privacy-safe disclosure in the PR and complete the AI checklist in the PR template.
+- Include human verification evidence (for example build/lint/test commands and results), and add/update tests and specs where required.
+- For protocol/type-mapping/wire-format or performance-sensitive changes, provide the required compatibility/performance validation evidence.
+- Ensure licensing and provenance compliance with [ASF Generative Tooling Guidance](https://www.apache.org/legal/generative-tooling.html) and do not submit content with uncertain provenance.
+
 ## Testing
 
 For environmental requirements, please check [DEVELOPMENT.md](./docs/guide/DEVELOPMENT.md).

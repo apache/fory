@@ -28,6 +28,17 @@ Is there any related issue? If this PR closes them you say say fix/closes:
 - Fixes #xxxx2
 -->
 
+## AI Contribution Checklist (required when AI assistance = `yes`)
+
+- [ ] AI assistance was used in this PR: `yes` / `no`
+- [ ] I can explain and defend all important changes without AI help.
+- [ ] I reviewed AI-assisted code changes line by line before submission.
+- [ ] I summarized AI assistance scope in `What does this PR do?`.
+- [ ] I listed affected files/subsystems in `What does this PR do?`.
+- [ ] I recorded human verification evidence (commands/tests/benchmarks and pass/fail summary) in this PR.
+- [ ] I added/updated tests and specs where required.
+- [ ] I validated protocol/performance impacts with evidence when applicable.
+
 ## Does this PR introduce any user-facing change?
 
 <!--
