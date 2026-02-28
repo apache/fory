@@ -236,6 +236,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -271,6 +275,8 @@ jobs:
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
+      - name: Run Swift IDL Tests
+        run: ./integration_tests/idl_tests/run_swift_tests.sh
 
   graalvm:
     name: GraalVM CI
