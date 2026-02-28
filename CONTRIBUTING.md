@@ -33,8 +33,8 @@ Key points:
 
 - AI tools are allowed as assistants, but contributors remain fully responsible for all submitted changes.
 - AI-assisted code must be reviewed carefully line by line before submission, and contributors must be able to explain and defend it during review.
-- For substantial AI assistance, provide privacy-safe disclosure in the PR and complete the AI checklist in the PR template.
-- Include human verification evidence (for example build/lint/test commands and results), and add/update tests and specs where required.
+- For substantial AI assistance, provide privacy-safe disclosure in the PR using the standard template in `.github/pull_request_template.md`. Minor/narrow AI assistance does not require full disclosure.
+- Include adequate human verification evidence (for example exact build/lint/test commands and pass/fail outcomes), and add/update tests and specs where required.
 - For protocol/type-mapping/wire-format or performance-sensitive changes, provide the required compatibility/performance validation evidence.
 - Ensure licensing and provenance compliance with [ASF Generative Tooling Guidance](https://www.apache.org/legal/generative-tooling.html) and do not submit content with uncertain provenance.
 

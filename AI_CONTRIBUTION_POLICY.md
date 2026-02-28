@@ -10,20 +10,44 @@ The key words MUST, MUST NOT, REQUIRED, SHOULD, and MAY are interpreted as descr
 - AI tools MAY assist contribution work.
 - AI tools MUST NOT replace contributor accountability.
 - The human submitter is responsible for correctness, safety, performance, and maintainability of all submitted changes.
+- License/provenance confirmation: contributors MUST confirm submitted material is legally compatible and traceable, and MUST comply with [ASF Generative Tooling Guidance](https://www.apache.org/legal/generative-tooling.html).
 - AI-assisted code MUST be reviewed carefully by the contributor line by line before submission.
 - Contributors MUST be able to explain and defend design and implementation details during review.
 
 ## 2. Disclosure (Privacy-Safe)
 
 For substantial AI assistance, PR descriptions MUST include a short `AI Usage Disclosure` section.
+For minor or narrow AI assistance, full disclosure is not required.
+
+Definition of substantial AI assistance:
+
+- Substantial means AI materially influenced technical content, not only writing style.
+- Contributors MUST mark AI assistance as substantial (`yes`) if any of the following apply:
+  - AI generated or rewrote non-trivial code/test logic (even for a small change or a single function).
+  - AI-generated or AI-refactored content is about 20 or more added/changed lines in aggregate.
+  - AI materially influenced API, protocol, type mapping, performance, memory, or architecture decisions.
+  - AI produced substantive technical text used in PR rationale (beyond grammar/translation cleanup).
+- Contributors MAY mark substantial AI assistance as `no` for minor or narrow assistance only, such as spelling/grammar fixes, formatting, trivial comment wording edits, or other non-technical edits with no behavior impact.
 
 Required disclosure fields:
 
 - Whether substantial AI assistance was used (`yes` or `no`)
 - Scope of assistance (for example: design drafting, code drafting, refactor suggestions, tests, docs)
 - Affected files or subsystems (high-level)
-- Human verification performed (commands/tests/benchmarks executed)
+- Human verification performed (checks run locally or in CI, and results reviewed by the contributor)
 - Provenance and license confirmation (see Section 6)
+
+Standard disclosure template (recommended):
+
+```text
+AI Usage Disclosure
+- substantial_ai_assistance: yes
+- scope: <design drafting | code drafting | refactor suggestions | tests | docs | other>
+- affected_files_or_subsystems: <high-level paths/modules>
+- human_verification: <checks run locally or in CI + pass/fail summary + contributor reviewed results>
+- performance_verification: <N/A or benchmark/regression evidence summary>
+- provenance_license_confirmation: <Apache-2.0-compatible provenance confirmed; no incompatible third-party code introduced>
+```
 
 To protect privacy and enterprise security:
 
@@ -49,10 +73,17 @@ For AI-assisted non-trivial work without prior alignment, maintainers MAY reques
 
 ## 5. Verification Requirements
 
-Every AI-assisted PR MUST provide verifiable evidence of local validation:
+Every AI-assisted PR MUST provide verifiable evidence of local or CI validation:
+
+Definition of adequate human verification:
+
+- The contributor personally runs the relevant checks locally or in project CI and reviews the results.
+- Verification includes concrete evidence (exact commands and pass/fail outcomes), not only claims.
+- Verification covers the changed behavior with targeted tests where applicable.
+- For protocol or performance-sensitive changes, verification includes the required compatibility tests and/or benchmark/regression evidence.
 
 - Confirmation that contributor performed line-by-line self-review of AI-assisted code changes
-- Build/lint/test commands run locally
+- Build/lint/test checks run locally or in CI
 - Targeted tests for changed behavior
 - Results summary (pass/fail and relevant environment context)
 
@@ -90,7 +121,7 @@ Maintainers MAY close or return PRs that materially fail project standards, incl
 
 - Contributor cannot explain key implementation logic
 - Missing required disclosure for substantial AI assistance
-- Missing verification evidence for changed behavior
+- Missing or inadequate human verification evidence for changed behavior
 - Redundant implementation of existing utilities without clear necessity
 - Introduction of dead code, unused helpers, or placeholder abstractions without justification
 - Protocol or performance claims without reproducible evidence
