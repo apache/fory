@@ -63,7 +63,6 @@ fn test_multiple_registrations_before_serialize_succeed() {
     assert_eq!(point, result);
 }
 
-
 // Negative tests
 
 /// ensures `register()` is forbidden after `serialize()` triggers snapshot init.
