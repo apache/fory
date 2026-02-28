@@ -49,8 +49,11 @@ func NewByteBufferFromReader(r io.Reader, minCap int) *ByteBuffer {
 }
 
 //go:noinline
-func (b *ByteBuffer) fill(n int) bool {
+func (b *ByteBuffer) fill(n int, errOut *Error) bool {
 	if b.reader == nil {
+		if errOut != nil {
+			*errOut = BufferOutOfBoundError(b.readerIndex, n, len(b.data))
+		}
 		return false
 	}
 
@@ -92,6 +95,13 @@ func (b *ByteBuffer) fill(n int) bool {
 		if err != nil {
 			if len(b.data) >= n {
 				return true
+			}
+			if errOut != nil {
+				if err == io.EOF {
+					*errOut = BufferOutOfBoundError(b.readerIndex, n, len(b.data))
+				} else {
+					*errOut = DeserializationError(fmt.Sprintf("stream read error: %v", err))
+				}
 			}
 			return false
 		}
@@ -250,8 +260,7 @@ func (b *ByteBuffer) WriteBinary(p []byte) {
 //go:inline
 func (b *ByteBuffer) ReadBool(err *Error) bool {
 	if b.readerIndex+1 > len(b.data) {
-		if !b.fill(1) {
-			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		if !b.fill(1, err) {
 			return false
 		}
 	}
@@ -265,8 +274,7 @@ func (b *ByteBuffer) ReadBool(err *Error) bool {
 //go:inline
 func (b *ByteBuffer) ReadByte(err *Error) byte {
 	if b.readerIndex+1 > len(b.data) {
-		if !b.fill(1) {
-			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		if !b.fill(1, err) {
 			return 0
 		}
 	}
@@ -280,8 +288,7 @@ func (b *ByteBuffer) ReadByte(err *Error) byte {
 //go:inline
 func (b *ByteBuffer) ReadInt8(err *Error) int8 {
 	if b.readerIndex+1 > len(b.data) {
-		if !b.fill(1) {
-			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		if !b.fill(1, err) {
 			return 0
 		}
 	}
@@ -295,8 +302,7 @@ func (b *ByteBuffer) ReadInt8(err *Error) int8 {
 //go:inline
 func (b *ByteBuffer) ReadInt16(err *Error) int16 {
 	if b.readerIndex+2 > len(b.data) {
-		if !b.fill(2) {
-			*err = BufferOutOfBoundError(b.readerIndex, 2, len(b.data))
+		if !b.fill(2, err) {
 			return 0
 		}
 	}
@@ -310,8 +316,7 @@ func (b *ByteBuffer) ReadInt16(err *Error) int16 {
 //go:inline
 func (b *ByteBuffer) ReadUint16(err *Error) uint16 {
 	if b.readerIndex+2 > len(b.data) {
-		if !b.fill(2) {
-			*err = BufferOutOfBoundError(b.readerIndex, 2, len(b.data))
+		if !b.fill(2, err) {
 			return 0
 		}
 	}
@@ -325,8 +330,7 @@ func (b *ByteBuffer) ReadUint16(err *Error) uint16 {
 //go:inline
 func (b *ByteBuffer) ReadUint32(err *Error) uint32 {
 	if b.readerIndex+4 > len(b.data) {
-		if !b.fill(4) {
-			*err = BufferOutOfBoundError(b.readerIndex, 4, len(b.data))
+		if !b.fill(4, err) {
 			return 0
 		}
 	}
@@ -340,8 +344,7 @@ func (b *ByteBuffer) ReadUint32(err *Error) uint32 {
 //go:inline
 func (b *ByteBuffer) ReadUint64(err *Error) uint64 {
 	if b.readerIndex+8 > len(b.data) {
-		if !b.fill(8) {
-			*err = BufferOutOfBoundError(b.readerIndex, 8, len(b.data))
+		if !b.fill(8, nil) {
 			return 0
 		}
 	}
@@ -387,8 +390,7 @@ func (b *ByteBuffer) Read(p []byte) (n int, err error) {
 // ReadBinary reads n bytes and sets error on bounds violation
 func (b *ByteBuffer) ReadBinary(length int, err *Error) []byte {
 	if b.readerIndex+length > len(b.data) {
-		if !b.fill(length) {
-			*err = BufferOutOfBoundError(b.readerIndex, length, len(b.data))
+		if !b.fill(length, err) {
 			return nil
 		}
 	}
@@ -981,7 +983,7 @@ func (b *ByteBuffer) WriteVaruint36Small(value uint64) {
 //
 //go:inline
 func (b *ByteBuffer) ReadVaruint36Small(err *Error) uint64 {
-	if b.remaining() >= 8 || (b.reader != nil && b.fill(8)) {
+	if b.remaining() >= 8 || (b.reader != nil && b.fill(8, nil)) {
 		return b.readVaruint36SmallFast()
 	}
 	return b.readVaruint36SmallSlow(err)
@@ -1027,8 +1029,7 @@ func (b *ByteBuffer) readVaruint36SmallSlow(err *Error) uint64 {
 
 	for {
 		if b.readerIndex >= len(b.data) {
-			if !b.fill(1) {
-				*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+			if !b.fill(1, err) {
 				return 0
 			}
 		}
@@ -1083,8 +1084,7 @@ func (b *ByteBuffer) WriteTaggedInt64(value int64) {
 // Otherwise, skip flag byte and read 8 bytes as int64.
 func (b *ByteBuffer) ReadTaggedInt64(err *Error) int64 {
 	if b.readerIndex+4 > len(b.data) {
-		if !b.fill(4) {
-			*err = BufferOutOfBoundError(b.readerIndex, 4, len(b.data))
+		if !b.fill(4, err) {
 			return 0
 		}
 	}
@@ -1099,8 +1099,7 @@ func (b *ByteBuffer) ReadTaggedInt64(err *Error) int64 {
 		return int64(i >> 1) // arithmetic right shift
 	}
 	if b.readerIndex+9 > len(b.data) {
-		if !b.fill(9) {
-			*err = BufferOutOfBoundError(b.readerIndex, 9, len(b.data))
+		if !b.fill(9, nil) {
 			return 0
 		}
 	}
@@ -1138,8 +1137,7 @@ func (b *ByteBuffer) WriteTaggedUint64(value uint64) {
 // Otherwise, skip flag byte and read 8 bytes as uint64.
 func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 	if b.readerIndex+4 > len(b.data) {
-		if !b.fill(4) {
-			*err = BufferOutOfBoundError(b.readerIndex, 4, len(b.data))
+		if !b.fill(4, err) {
 			return 0
 		}
 	}
@@ -1154,8 +1152,7 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 		return uint64(i >> 1)
 	}
 	if b.readerIndex+9 > len(b.data) {
-		if !b.fill(9) {
-			*err = BufferOutOfBoundError(b.readerIndex, 9, len(b.data))
+		if !b.fill(9, nil) {
 			return 0
 		}
 	}
@@ -1173,7 +1170,7 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 //
 //go:inline
 func (b *ByteBuffer) ReadVarUint64(err *Error) uint64 {
-	if b.remaining() >= 9 || (b.reader != nil && b.fill(9)) {
+	if b.remaining() >= 9 || (b.reader != nil && b.fill(9, nil)) {
 		return b.readVarUint64Fast()
 	}
 	return b.readVarUint64Slow(err)
@@ -1238,8 +1235,7 @@ func (b *ByteBuffer) readVarUint64Slow(err *Error) uint64 {
 	var shift uint
 	for i := 0; i < 8; i++ {
 		if b.readerIndex >= len(b.data) {
-			if !b.fill(1) {
-				*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+			if !b.fill(1, err) {
 				return 0
 			}
 		}
@@ -1252,8 +1248,7 @@ func (b *ByteBuffer) readVarUint64Slow(err *Error) uint64 {
 		shift += 7
 	}
 	if b.readerIndex >= len(b.data) {
-		if !b.fill(1) {
-			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		if !b.fill(1, err) {
 			return 0
 		}
 	}
@@ -1274,8 +1269,7 @@ func (b *ByteBuffer) remaining() int {
 //go:inline
 func (b *ByteBuffer) ReadUint8(err *Error) uint8 {
 	if b.readerIndex >= len(b.data) {
-		if !b.fill(1) {
-			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		if !b.fill(1, err) {
 			return 0
 		}
 	}
@@ -1350,7 +1344,7 @@ func (b *ByteBuffer) UnsafeReadVarUint64() uint64 {
 //
 //go:inline
 func (b *ByteBuffer) ReadVarUint32(err *Error) uint32 {
-	if b.remaining() >= 8 || (b.reader != nil && b.fill(8)) { // Need 8 bytes for bulk uint64 read in fast path
+	if b.remaining() >= 8 || (b.reader != nil && b.fill(8, nil)) { // Need 8 bytes for bulk uint64 read in fast path
 		return b.readVarUint32Fast()
 	}
 	return b.readVarUint32Slow(err)
@@ -1398,8 +1392,7 @@ func (b *ByteBuffer) readVarUint32Slow(err *Error) uint32 {
 	var shift uint
 	for {
 		if b.readerIndex >= len(b.data) {
-			if !b.fill(1) {
-				*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+			if !b.fill(1, err) {
 				return 0
 			}
 		}
@@ -1561,8 +1554,7 @@ func (b *ByteBuffer) UnsafePutTaggedUint64(offset int, value uint64) int {
 // ReadVarUint32Small7 reads a VarUint32 in small-7 format with error checking
 func (b *ByteBuffer) ReadVarUint32Small7(err *Error) uint32 {
 	if b.readerIndex >= len(b.data) {
-		if !b.fill(1) {
-			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		if !b.fill(1, err) {
 			return 0
 		}
 	}
@@ -1616,8 +1608,7 @@ func (b *ByteBuffer) readVaruint36Slow(err *Error) uint64 {
 	var result uint64
 	for {
 		if b.readerIndex >= len(b.data) {
-			if !b.fill(1) {
-				*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+			if !b.fill(1, err) {
 				return 0
 			}
 		}
@@ -1653,8 +1644,7 @@ func (b *ByteBuffer) IncreaseReaderIndex(n int) {
 // ReadBytes reads n bytes and sets error on bounds violation
 func (b *ByteBuffer) ReadBytes(n int, err *Error) []byte {
 	if b.readerIndex+n > len(b.data) {
-		if !b.fill(n) {
-			*err = BufferOutOfBoundError(b.readerIndex, n, len(b.data))
+		if !b.fill(n, err) {
 			return nil
 		}
 	}
@@ -1675,8 +1665,7 @@ func (b *ByteBuffer) ReadBytes(n int, err *Error) []byte {
 // Skip skips n bytes and sets error on bounds violation
 func (b *ByteBuffer) Skip(length int, err *Error) {
 	if b.readerIndex+length > len(b.data) {
-		if !b.fill(length) {
-			*err = BufferOutOfBoundError(b.readerIndex, length, len(b.data))
+		if !b.fill(length, err) {
 			return
 		}
 	}
