@@ -151,12 +151,12 @@ class ProtoTranslator:
         nested_unions = []
         for oneof in proto_msg.oneofs:
             oneof_type_name = self._oneof_type_name(oneof.name)
-            nested_unions.append(self._translate_oneof(oneof, oneof_type_name, proto_msg))
+            nested_unions.append(
+                self._translate_oneof(oneof, oneof_type_name, proto_msg)
+            )
             if not oneof.fields:
                 continue
-            union_field = self._translate_oneof_field_reference(
-                oneof, oneof_type_name
-            )
+            union_field = self._translate_oneof_field_reference(oneof, oneof_type_name)
             fields.append(union_field)
         nested_messages = [
             self._translate_message(m) for m in proto_msg.nested_messages

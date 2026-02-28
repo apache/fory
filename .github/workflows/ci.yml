@@ -289,7 +289,7 @@ jobs:
           path: |
             integration_tests/idl_tests/swift/idl_package/.build
             integration_tests/idl_tests/swift/idl_package/.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/idl/**', 'integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Tests/**', 'integration_tests/idl_tests/generate_idl.py', 'compiler/fory_compiler/**', 'swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/ForyMacro/**') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
       - name: Prebuild Swift IDL package
