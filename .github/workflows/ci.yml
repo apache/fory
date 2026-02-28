@@ -265,8 +265,7 @@ jobs:
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             swift/.build
-            integration_tests/idl_tests/swift/idl_package/.build
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**', 'integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Sources/**', 'integration_tests/idl_tests/swift/idl_package/Tests/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swiftpm-
       - name: Prebuild Swift xlang peer for cache reuse
@@ -284,12 +283,25 @@ jobs:
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
       - name: Generate Swift IDL test code
         run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
+      - name: Cache Swift IDL package build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            integration_tests/idl_tests/swift/idl_package/.build
+            integration_tests/idl_tests/swift/idl_package/.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/idl/**', 'integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Tests/**', 'integration_tests/idl_tests/generate_idl.py', 'compiler/fory_compiler/**', 'swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
+      - name: Prebuild Swift IDL package
+        run: |
+          cd integration_tests/idl_tests/swift/idl_package
+          swift build --disable-automatic-resolution
       - name: Run Swift IDL package tests
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd integration_tests/idl_tests/swift/idl_package
-          swift test --disable-automatic-resolution
+          swift test --disable-automatic-resolution --skip-build
       - name: Run Java IDL tests against Swift peer
         env:
           IDL_PEER_LANG: "swift"
