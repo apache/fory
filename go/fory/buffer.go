@@ -382,8 +382,27 @@ func (b *ByteBuffer) ReadFloat64(err *Error) float64 {
 }
 
 func (b *ByteBuffer) Read(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	if b.readerIndex+len(p) > len(b.data) && b.reader != nil {
+		var errOut Error
+		if !b.fill(len(p), &errOut) {
+			copied := copy(p, b.data[b.readerIndex:])
+			b.readerIndex += copied
+			if errOut.Kind() == ErrKindBufferOutOfBound {
+				return copied, io.EOF
+			}
+			return copied, errOut
+		}
+	}
+
 	copied := copy(p, b.data[b.readerIndex:])
 	b.readerIndex += copied
+	if copied == 0 {
+		return 0, io.EOF
+	}
 	return copied, nil
 }
 
