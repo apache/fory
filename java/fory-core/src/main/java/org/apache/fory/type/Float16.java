@@ -166,7 +166,7 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
       }
     } else if (exp == 0) {
       if (mant != 0) {
-        int shift = Integer.numberOfLeadingZeros(mant) - 22;
+        int shift = Integer.numberOfLeadingZeros(mant) - 21;
         mant = (mant << shift) & 0x3FF;
         int newExp = 1 - 15 - shift + 127;
         outBits |= newExp << 23;

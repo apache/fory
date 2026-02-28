@@ -448,6 +448,8 @@ public class Types {
       case TAGGED_UINT64:
         return Long.class;
       case FLOAT8:
+      case BFLOAT16:
+        return Float.class;
       case FLOAT16:
         return Float16.class;
       case FLOAT32:

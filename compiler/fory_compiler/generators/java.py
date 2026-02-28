@@ -1383,7 +1383,7 @@ class JavaGenerator(BaseGenerator):
                     kind = field.field_type.kind
                     if kind in (PrimitiveKind.FLOAT16,):
                         comparisons.append(
-                            f"{field_name}.equalsValue(that.{field_name})"
+                            f"({field_name} == null ? that.{field_name} == null : (that.{field_name} != null && {field_name}.equalsValue(that.{field_name})))"
                         )
                     elif kind in (PrimitiveKind.FLOAT32,):
                         comparisons.append(
@@ -1443,6 +1443,13 @@ class JavaGenerator(BaseGenerator):
                 field_name = self.to_camel_case(field.name)
                 if self.is_primitive_array_field(field):
                     array_fields.append(field_name)
+                elif (
+                    isinstance(field.field_type, PrimitiveType)
+                    and field.field_type.kind == PrimitiveKind.FLOAT16
+                ):
+                    hash_args.append(
+                        f"({field_name} == null ? 0 : ((({field_name}.toBits() & 0x7FFF) == 0) ? 0 : Short.hashCode({field_name}.toBits())))"
+                    )
                 else:
                     hash_args.append(field_name)
 

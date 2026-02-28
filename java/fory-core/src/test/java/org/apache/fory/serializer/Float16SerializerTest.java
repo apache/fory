@@ -100,6 +100,22 @@ public class Float16SerializerTest extends ForyTestBase {
   }
 
   @Test
+  public void testFloat16ArraySerializationWithNullElements() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+
+    Float16[] array = new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
+    byte[] bytes = fory.serialize(array);
+    Float16[] result = (Float16[]) fory.deserialize(bytes);
+
+    assertEquals(result.length, array.length);
+    assertEquals(result[0].toBits(), Float16.ONE.toBits());
+    assertNull(result[1]);
+    assertEquals(result[2].toBits(), Float16.valueOf(-2.5f).toBits());
+    assertNull(result[3]);
+    assertEquals(result[4].toBits(), Float16.MIN_VALUE.toBits());
+  }
+
+  @Test
   public void testFloat16EmptyArray() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
 
@@ -199,6 +215,58 @@ public class Float16SerializerTest extends ForyTestBase {
     Float16List result = (Float16List) fory.deserialize(bytes);
 
     assertFloat16ListBits(list, result);
+  }
+
+  @Test
+  public void testFloat16XlangTopLevelSerialization() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
+
+    Float16 scalar = Float16.valueOf(-1.75f);
+    byte[] bytes = fory.serialize(scalar);
+    Float16 scalarResult = (Float16) fory.deserialize(bytes);
+    assertEquals(scalarResult.toBits(), scalar.toBits());
+
+    Float16[] array = new Float16[] {Float16.ONE, Float16.valueOf(-0.5f), Float16.MIN_VALUE};
+    bytes = fory.serialize(array);
+    Float16[] arrayResult = (Float16[]) fory.deserialize(bytes);
+    assertEquals(arrayResult.length, array.length);
+    for (int i = 0; i < array.length; i++) {
+      assertEquals(arrayResult[i].toBits(), array[i].toBits(), "Index " + i + " should match");
+    }
+
+    Float16List list = buildFloat16List();
+    bytes = fory.serialize(list);
+    Object listResult = fory.deserialize(bytes);
+    if (listResult instanceof Float16List) {
+      assertFloat16ListBits(list, (Float16List) listResult);
+    } else {
+      Float16[] arrayResultFromList = (Float16[]) listResult;
+      assertEquals(arrayResultFromList.length, list.size());
+      for (int i = 0; i < arrayResultFromList.length; i++) {
+        assertEquals(arrayResultFromList[i].toBits(), list.getShort(i), "Index " + i + " should match");
+      }
+    }
+  }
+
+  @Test
+  public void testStructWithFloat16ListFieldInXlang() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
+    fory.register(StructWithFloat16List.class);
+
+    StructWithFloat16List obj = new StructWithFloat16List(buildFloat16List());
+    byte[] bytes = fory.serialize(obj);
+    StructWithFloat16List result = (StructWithFloat16List) fory.deserialize(bytes);
+    assertFloat16ListBits(obj.f16List, result.f16List);
   }
 
   @Test

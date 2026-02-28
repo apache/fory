@@ -83,6 +83,12 @@ public class Float16Test {
   }
 
   @Test
+  public void testSubnormalDecodeFromBits() {
+    assertEquals(Float16.fromBits((short) 0x0001).floatValue(), 5.9604645E-8f, 0.0f);
+    assertEquals(Float16.fromBits((short) 0x03FF).floatValue(), 6.097555E-5f, 0.0f);
+  }
+
+  @Test
   public void testOverflowUnderflow() {
     Float16 overflow = Float16.valueOf(70000.0f);
     assertTrue(overflow.isInfinite());
