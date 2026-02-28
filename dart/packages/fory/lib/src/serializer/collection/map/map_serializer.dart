@@ -54,7 +54,8 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
     int remaining = br.readVarUint32Small7();
     if (remaining > pack.config.maxCollectionSize) {
       throw InvalidDataException(
-          'Collection size $remaining exceeds limit ${pack.config.maxCollectionSize}');
+          'Map size $remaining exceeds maxCollectionSize ${pack.config.maxCollectionSize}. '
+          'The input data may be malicious, or need to increase the maxCollectionSize when creating Fory.');
     }
     T map = newMap(remaining);
     if (writeRef) {

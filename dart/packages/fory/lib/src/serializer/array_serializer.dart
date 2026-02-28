@@ -64,7 +64,8 @@ abstract base class NumericArraySerializer<T extends num>
     int numBytes = br.readVarUint32Small7();
     if (objType == ObjType.BINARY && numBytes > pack.config.maxBinarySize) {
       throw InvalidDataException(
-          'Binary size $numBytes exceeds limit ${pack.config.maxBinarySize}');
+          'Binary size $numBytes exceeds maxBinarySize ${pack.config.maxBinarySize}. '
+          'The input data may be malicious, or need to increase the maxBinarySize when creating Fory.');
     }
     int length = numBytes ~/ bytesPerNum;
     if (isLittleEndian || bytesPerNum == 1) {

@@ -36,7 +36,8 @@ abstract base class ListSerializer extends IterableSerializer {
     int num = br.readVarUint32Small7();
     if (num > pack.config.maxCollectionSize) {
       throw InvalidDataException(
-          'Collection size $num exceeds limit ${pack.config.maxCollectionSize}');
+          'List size $num exceeds maxCollectionSize ${pack.config.maxCollectionSize}. '
+          'The input data may be malicious, or need to increase the maxCollectionSize when creating Fory.');
     }
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
     List list = newList(
