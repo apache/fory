@@ -179,6 +179,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -210,9 +214,11 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CSharpXlangTest
+      - name: Run C# IDL Tests
+        run: ./integration_tests/idl_tests/run_csharp_tests.sh
 
   swift:
     name: Swift CI
@@ -236,6 +242,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -248,7 +258,7 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Cache Swift package dependencies
+      - name: Cache Swift package dependencies and build artifacts
         uses: actions/cache@v4
         with:
           path: |
@@ -268,9 +278,34 @@ jobs:
           FORY_SWIFT_JAVA_CI: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
+      - name: Generate Swift IDL test code
+        run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
+      - name: Cache Swift IDL package build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            integration_tests/idl_tests/swift/idl_package/.build
+            integration_tests/idl_tests/swift/idl_package/.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/ForyMacro/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
+      - name: Prebuild Swift IDL package
+        run: |
+          cd integration_tests/idl_tests/swift/idl_package
+          swift build --disable-automatic-resolution --build-tests
+      - name: Run Swift IDL package tests
+        env:
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+        run: |
+          cd integration_tests/idl_tests/swift/idl_package
+          swift test --disable-automatic-resolution --skip-build
+      - name: Run Java IDL tests against Swift peer
+        env:
+          IDL_PEER_LANG: "swift"
+        run: ./integration_tests/idl_tests/run_java_tests.sh
 
   graalvm:
     name: GraalVM CI
@@ -350,9 +385,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - uses: sbt/setup-sbt@v1
+      - uses: sbt/setup-sbt@1cad58d595b729a71ca2254cdf5b43dd6f42d4bb # v1.1.18
       - name: Install fory java
-        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests && cd -
+        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true && cd -
       - name: Test
         run: |
           cd scala && sbt +test && cd -
@@ -448,7 +483,7 @@ jobs:
           FORY_JAVASCRIPT_JAVA_CI: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest -DforkCount=0
 
@@ -507,7 +542,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.RustXlangTest
       - name: Run Rust IDL Tests
@@ -605,7 +640,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CPPXlangTest
       - name: Run C++ IDL Tests
@@ -737,7 +772,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PythonXlangTest
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PyCrossLanguageTest
@@ -812,7 +847,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.GoXlangTest
       - name: Run Go IDL Tests
@@ -857,7 +892,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.DartXlangTest
 
