@@ -226,7 +226,9 @@ class SwiftGenerator(BaseGenerator):
         return ".".join(self.get_namespace_components())
 
     def get_namespace_style(self) -> str:
-        style = self.schema.get_option("swift_namespace_style")
+        style = self.options.swift_namespace_style
+        if style is None:
+            style = self.schema.get_option("swift_namespace_style")
         if style is None:
             return "enum"
         normalized = str(style).strip().lower()

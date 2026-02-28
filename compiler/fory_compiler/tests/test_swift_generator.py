@@ -31,9 +31,15 @@ def parse_schema(source: str):
     return schema
 
 
-def generate_swift(source: str) -> str:
+def generate_swift(source: str, swift_namespace_style=None) -> str:
     schema = parse_schema(source)
-    generator = SwiftGenerator(schema, GeneratorOptions(output_dir=Path("/tmp")))
+    generator = SwiftGenerator(
+        schema,
+        GeneratorOptions(
+            output_dir=Path("/tmp"),
+            swift_namespace_style=swift_namespace_style,
+        ),
+    )
     files = generator.generate()
     assert len(files) == 1
     return files[0].content
@@ -194,3 +200,17 @@ def test_swift_generator_supports_explicit_enum_namespace_style_option():
     content = generate_swift(source)
     assert "public enum Demo {" in content
     assert "public struct User" in content
+
+
+def test_swift_generator_cli_option_overrides_schema_namespace_style():
+    source = """
+    package demo.foo;
+    option swift_namespace_style = "enum";
+
+    message User [id=1] {
+        string name = 1;
+    }
+    """
+    content = generate_swift(source, swift_namespace_style="flatten")
+    assert "public enum Demo {" not in content
+    assert "public struct Demo_Foo_User" in content
