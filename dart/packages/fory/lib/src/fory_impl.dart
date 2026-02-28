@@ -42,8 +42,8 @@ final class Fory {
     bool basicTypesRefIgnored = true,
     bool timeRefIgnored = true,
     bool stringRefIgnored = false,
-    int? maxBinarySize,
-    int? maxCollectionSize,
+    int maxBinarySize = ForyConfig.defaultMaxBinarySize,
+    int maxCollectionSize = ForyConfig.defaultMaxCollectionSize,
   }) : this.fromConfig(
           ForyConfig(
             compatible: compatible,

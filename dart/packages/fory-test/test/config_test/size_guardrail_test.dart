@@ -21,7 +21,7 @@ library;
 
 import 'dart:typed_data';
 import 'package:fory/fory.dart';
-import 'package:fory/src/exception/deserialization_exception.dart';
+import 'package:fory/src/exception/fory_exception.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -35,14 +35,14 @@ void main() {
       expect(result, equals([1, 2, 3]));
     });
 
-    test('list exceeding limit throws DeserializationSizeException', () {
+    test('list exceeding limit throws InvalidDataException', () {
       final foryWrite = Fory();
       final bytes = foryWrite.serialize([1, 2, 3, 4, 5]);
 
       final foryRead = Fory(maxCollectionSize: 3);
       expect(
         () => foryRead.deserialize(bytes),
-        throwsA(isA<DeserializationSizeException>()),
+        throwsA(isA<InvalidDataException>()),
       );
     });
 
@@ -64,14 +64,14 @@ void main() {
       expect(result, equals([]));
     });
 
-    test('map exceeding limit throws DeserializationSizeException', () {
+    test('map exceeding limit throws InvalidDataException', () {
       final foryWrite = Fory();
       final bytes = foryWrite.serialize({'a': 1, 'b': 2, 'c': 3});
 
       final foryRead = Fory(maxCollectionSize: 2);
       expect(
         () => foryRead.deserialize(bytes),
-        throwsA(isA<DeserializationSizeException>()),
+        throwsA(isA<InvalidDataException>()),
       );
     });
 
@@ -84,14 +84,14 @@ void main() {
       expect(result, equals({'a': 1, 'b': 2}));
     });
 
-    test('set exceeding limit throws DeserializationSizeException', () {
+    test('set exceeding limit throws InvalidDataException', () {
       final foryWrite = Fory();
       final bytes = foryWrite.serialize({1, 2, 3, 4, 5});
 
       final foryRead = Fory(maxCollectionSize: 2);
       expect(
         () => foryRead.deserialize(bytes),
-        throwsA(isA<DeserializationSizeException>()),
+        throwsA(isA<InvalidDataException>()),
       );
     });
 
@@ -104,7 +104,7 @@ void main() {
       expect(result, equals({1, 2, 3}));
     });
 
-    test('null maxCollectionSize allows any size', () {
+    test('default maxCollectionSize allows normal sizes', () {
       final foryWrite = Fory();
       final largeList = List.generate(1000, (i) => i);
       final bytes = foryWrite.serialize(largeList);
@@ -126,7 +126,7 @@ void main() {
       expect(result, equals(data));
     });
 
-    test('binary exceeding limit throws DeserializationSizeException', () {
+    test('binary exceeding limit throws InvalidDataException', () {
       final foryWrite = Fory();
       final data = Uint8List.fromList([1, 2, 3, 4, 5]);
       final bytes = foryWrite.serialize(data);
@@ -134,7 +134,7 @@ void main() {
       final foryRead = Fory(maxBinarySize: 3);
       expect(
         () => foryRead.deserialize(bytes),
-        throwsA(isA<DeserializationSizeException>()),
+        throwsA(isA<InvalidDataException>()),
       );
     });
 
@@ -158,7 +158,7 @@ void main() {
       expect(result, equals(data));
     });
 
-    test('null maxBinarySize allows any size', () {
+    test('default maxBinarySize allows normal sizes', () {
       final foryWrite = Fory();
       final data = Uint8List.fromList(List.generate(1000, (i) => i % 256));
       final bytes = foryWrite.serialize(data);
@@ -182,12 +182,18 @@ void main() {
       // Collection exceeds limit
       expect(
         () => foryRead.deserialize(listBytes),
-        throwsA(isA<DeserializationSizeException>()),
+        throwsA(isA<InvalidDataException>()),
       );
 
       // Binary within limit
       final result = foryRead.deserialize(binaryBytes) as Uint8List;
       expect(result.length, 5);
+    });
+
+    test('default values are applied', () {
+      final config = ForyConfig();
+      expect(config.maxCollectionSize, ForyConfig.defaultMaxCollectionSize);
+      expect(config.maxBinarySize, ForyConfig.defaultMaxBinarySize);
     });
   });
 }

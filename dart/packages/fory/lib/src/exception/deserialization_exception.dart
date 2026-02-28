@@ -147,22 +147,3 @@ class UnsupportedTypeException extends ForyException {
     buf.writeln(_objType);
   }
 }
-
-class DeserializationSizeException extends DeserializationException {
-  final String _kind;
-  final int _actual;
-  final int _limit;
-
-  DeserializationSizeException(this._kind, this._actual, this._limit,
-      [super._where]);
-
-  @override
-  void giveExceptionMessage(StringBuffer buf) {
-    super.giveExceptionMessage(buf);
-    buf.write(_kind);
-    buf.write(' size ');
-    buf.write(_actual);
-    buf.write(' exceeds limit ');
-    buf.writeln(_limit);
-  }
-}

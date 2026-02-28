@@ -28,7 +28,7 @@ library;
 import 'package:fory/src/const/ref_flag.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_context.dart';
-import 'package:fory/src/exception/deserialization_exception.dart';
+import 'package:fory/src/exception/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/serializer/collection/iterable_serializer.dart';
@@ -42,9 +42,9 @@ abstract base class SetSerializer extends IterableSerializer {
   @override
   Set read(ByteReader br, int refId, DeserializationContext pack) {
     int num = br.readVarUint32Small7();
-    final int? maxCollectionSize = pack.config.maxCollectionSize;
-    if (maxCollectionSize != null && num > maxCollectionSize) {
-      throw DeserializationSizeException('Collection', num, maxCollectionSize);
+    if (num > pack.config.maxCollectionSize) {
+      throw InvalidDataException(
+          'Collection size $num exceeds limit ${pack.config.maxCollectionSize}');
     }
     TypeSpecWrap? elemWrap = pack.typeWrapStack.peek?.param0;
     Set set = newSet(
