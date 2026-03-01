@@ -505,18 +505,27 @@ cdef inline get_next_element(
         MapRefResolver ref_resolver,
         TypeResolver type_resolver,
 ):
+    cdef int8_t head_flag = buffer.read_int8()
     cdef int32_t ref_id
     cdef TypeInfo typeinfo
-    ref_id = ref_resolver.try_preserve_ref_id(buffer)
-    if ref_id < NOT_NULL_VALUE_FLAG:
-        return ref_resolver.get_read_object()
     cdef uint8_t type_id
-    if ref_id == NOT_NULL_VALUE_FLAG:
-        type_id = buffer.read_uint8()
+    if head_flag == REF_FLAG:
+        ref_id = buffer.read_var_uint32()
+        return ref_resolver.get_read_object(ref_id)
+    if head_flag == NULL_FLAG:
+        return None
+    if head_flag == REF_VALUE_FLAG:
+        ref_id = ref_resolver.preserve_ref_id()
+        # Indicates the object is first read and referenceable.
+        typeinfo = type_resolver.read_type_info(buffer)
+        type_id = typeinfo.type_id
+        # Note that all read operations in fast paths of list/tuple/set/dict/sub_dict
+        # must match corresponding writing operations. Otherwise, ref tracking will
+        # error.
         if type_id == <uint8_t>TypeId.STRING:
             return buffer.read_string()
         elif type_id == <uint8_t>TypeId.VARINT64:
-            return buffer.read_varint64()
+            return read_varint64_as_pyint(buffer)
         elif type_id == <uint8_t>TypeId.VARINT32:
             return buffer.read_varint32()
         elif type_id == <uint8_t>TypeId.INT8:
@@ -529,18 +538,16 @@ cdef inline get_next_element(
             return buffer.read_bool()
         elif type_id == <uint8_t>TypeId.FLOAT64:
             return buffer.read_double()
-        typeinfo = type_resolver.get_type_info_by_id(type_id)
-        return typeinfo.serializer.read(buffer)
-    # indicates that the object is first read.
-    typeinfo = type_resolver.read_type_info(buffer)
-    type_id = typeinfo.type_id
-    # Note that all read operations in fast paths of list/tuple/set/dict/sub_dict
-    # must match corresponding writing operations. Otherwise, ref tracking will
-    # error.
+        else:
+            o = typeinfo.serializer.read(buffer)
+            ref_resolver.set_read_object(ref_id, o)
+            return o
+    # head_flag == NOT_NULL_VALUE_FLAG: non-reference value.
+    type_id = buffer.read_uint8()
     if type_id == <uint8_t>TypeId.STRING:
         return buffer.read_string()
     elif type_id == <uint8_t>TypeId.VARINT64:
-        return buffer.read_varint64()
+        return read_varint64_as_pyint(buffer)
     elif type_id == <uint8_t>TypeId.VARINT32:
         return buffer.read_varint32()
     elif type_id == <uint8_t>TypeId.INT8:
@@ -553,10 +560,11 @@ cdef inline get_next_element(
         return buffer.read_bool()
     elif type_id == <uint8_t>TypeId.FLOAT64:
         return buffer.read_double()
-    else:
-        o = typeinfo.serializer.read(buffer)
-        ref_resolver.set_read_object(ref_id, o)
-        return o
+    # For non-primitive values written with NOT_NULL_VALUE_FLAG, push a placeholder
+    # so nested serializer.reference() can pop and skip reference tracking.
+    ref_resolver.read_ref_ids.push_back(-1)
+    typeinfo = type_resolver.get_type_info_by_id(type_id)
+    return typeinfo.serializer.read(buffer)
 
 
 @cython.final

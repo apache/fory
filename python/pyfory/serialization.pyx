@@ -43,6 +43,7 @@ from pyfory.includes.libserialization cimport \
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
+from libc.limits cimport LONG_MAX, LONG_MIN
 from libcpp.vector cimport vector
 from cpython cimport PyObject
 from cpython.object cimport PyTypeObject
@@ -50,6 +51,7 @@ from cpython.dict cimport PyDict_Next
 from cpython.ref cimport *
 from cpython.list cimport PyList_New, PyList_SET_ITEM
 from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM
+from cpython.long cimport PyLong_FromLong, PyLong_FromLongLong
 from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
@@ -91,7 +93,7 @@ cdef int8_t REF_FLAG = -2
 cdef int8_t NOT_NULL_VALUE_FLAG = -1
 # this flag indicates that the object is a referencable and first read.
 cdef int8_t REF_VALUE_FLAG = 0
-DEF SMALL_REF_CACHE_CAPACITY = 32
+DEF SMALL_REF_CACHE_CAPACITY = 8
 # Global MetaString decoder for namespace bytes to str
 namespace_decoder = MetaStringDecoder(".", "_")
 # Global MetaString decoder for typename bytes to str
@@ -317,6 +319,16 @@ cdef int32_t NOT_NULL_STRING_FLAG = fmod.NOT_NULL_STRING_FLAG
 cdef int32_t SMALL_STRING_THRESHOLD = fmod.SMALL_STRING_THRESHOLD
 
 
+cdef inline c_bool is_internal_type_id_for_typeinfo(uint8_t type_id):
+    return (
+        (type_id > 0 and type_id <= <uint8_t>TypeId.MAP)
+        or (
+            type_id >= <uint8_t>TypeId.NONE
+            and type_id <= <uint8_t>TypeId.FLOAT64_ARRAY
+        )
+    )
+
+
 cdef inline uint64_t _mix64(uint64_t x):
     x ^= x >> 33
     x *= <uint64_t> 0xff51afd7ed558ccd
@@ -336,6 +348,38 @@ cdef inline int64_t _hash_small_metastring(int64_t v1,
     cdef uint64_t h = _mix64(x)
     h = (h & <uint64_t> 0xffffffffffffff00) | encoding
     return <int64_t> h
+
+
+cdef inline object int64_to_pyint(int64_t value):
+    if LONG_MIN <= value <= LONG_MAX:
+        return <object> PyLong_FromLong(<long> value)
+    return <object> PyLong_FromLongLong(value)
+
+
+cdef inline object read_varint64_as_pyint(Buffer buffer):
+    cdef uint32_t reader_index = buffer.c_buffer.reader_index()
+    cdef uint32_t size = buffer.c_buffer.size()
+    cdef uint8_t *data
+    cdef uint8_t b0
+    cdef uint8_t b1
+    cdef uint64_t raw
+    cdef int64_t value
+    if reader_index < size:
+        data = buffer.c_buffer.data()
+        b0 = data[reader_index]
+        if (b0 & 0x80) == 0:
+            buffer.c_buffer.reader_index(reader_index + 1)
+            raw = <uint64_t> b0
+            value = <int64_t> ((raw >> 1) ^ -<int64_t>(raw & 1))
+            return <object> PyLong_FromLong(<long> value)
+        if reader_index + 1 < size:
+            b1 = data[reader_index + 1]
+            raw = (<uint64_t> (b0 & 0x7F)) | (<uint64_t> (b1 & 0x7F) << 7)
+            if (b1 & 0x80) == 0:
+                buffer.c_buffer.reader_index(reader_index + 2)
+                value = <int64_t> ((raw >> 1) ^ -<int64_t>(raw & 1))
+                return <object> PyLong_FromLong(<long> value)
+    return int64_to_pyint(buffer.read_varint64())
 
 
 @cython.final
@@ -752,6 +796,8 @@ cdef class TypeResolver:
         if type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT:
             self.write_shared_type_meta(buffer, typeinfo)
             return
+        if is_internal_type_id_for_typeinfo(type_id):
+            return
         reg_kind = get_type_registration_kind(<TypeId>type_id)
         if reg_kind == TypeRegistrationKind.BY_ID:
             if typeinfo.user_type_id == NO_USER_TYPE_ID:
@@ -772,8 +818,16 @@ cdef class TypeResolver:
         cdef:
             uint32_t user_type_id = NO_USER_TYPE_ID
             MetaStringBytes namespace_bytes, typename_bytes
+            PyObject *typeinfo_ptr
         if type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT:
             return self.serialization_context.meta_context.read_shared_type_info_with_type_id(buffer, type_id)
+        if is_internal_type_id_for_typeinfo(type_id):
+            if type_id >= self._c_registered_id_to_type_info.size():
+                raise ValueError(f"Unexpected type_id {type_id}")
+            typeinfo_ptr = self._c_registered_id_to_type_info[type_id]
+            if typeinfo_ptr == NULL:
+                raise ValueError(f"Unexpected type_id {type_id}")
+            return <TypeInfo> typeinfo_ptr
         reg_kind = get_type_registration_kind(<TypeId>type_id)
         if reg_kind == TypeRegistrationKind.BY_NAME:
             if self.meta_share:
@@ -1493,17 +1547,17 @@ cdef class Fory:
     cdef inline _read_no_ref_internal(
             self, Buffer buffer, Serializer serializer):
         cdef TypeInfo typeinfo
-        cdef cls
+        cdef uint8_t type_id
         if serializer is None:
             typeinfo = self.type_resolver.read_type_info(buffer)
-            cls = typeinfo.cls
-            if cls is str:
+            type_id = typeinfo.type_id
+            if type_id == <uint8_t>TypeId.STRING:
                 return buffer.read_string()
-            elif cls is int:
-                return buffer.read_varint64()
-            elif cls is bool:
+            elif type_id == <uint8_t>TypeId.VARINT64:
+                return read_varint64_as_pyint(buffer)
+            elif type_id == <uint8_t>TypeId.BOOL:
                 return buffer.read_bool()
-            elif cls is float:
+            elif type_id == <uint8_t>TypeId.FLOAT64:
                 return buffer.read_double()
             serializer = typeinfo.serializer
         self.inc_depth()

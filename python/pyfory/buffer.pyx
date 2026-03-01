@@ -379,12 +379,26 @@ cdef class Buffer:
         return value != 0
 
     cpdef inline uint8_t read_uint8(self):
-        cdef uint8_t value = self.c_buffer.read_uint8(self._error)
+        cdef uint32_t reader_index = self.c_buffer.reader_index()
+        cdef uint32_t size = self.c_buffer.size()
+        cdef uint8_t value
+        if reader_index < size:
+            value = self.c_buffer.data()[reader_index]
+            self.c_buffer.reader_index(reader_index + 1)
+            return value
+        value = self.c_buffer.read_uint8(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline int8_t read_int8(self):
-        cdef int8_t value = self.c_buffer.read_int8(self._error)
+        cdef uint32_t reader_index = self.c_buffer.reader_index()
+        cdef uint32_t size = self.c_buffer.size()
+        cdef int8_t value
+        if reader_index < size:
+            value = <int8_t> self.c_buffer.data()[reader_index]
+            self.c_buffer.reader_index(reader_index + 1)
+            return value
+        value = self.c_buffer.read_int8(self._error)
         self._raise_if_error()
         return value
 
