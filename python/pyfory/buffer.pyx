@@ -129,7 +129,8 @@ cdef class Buffer:
         if value < 0:
             raise ValueError("reader_index must be >= 0")
         if not self.c_buffer.reader_index(<uint32_t>value, self._error):
-            self._raise_if_error()
+            if not self._error.ok():
+                self._raise_if_error()
 
     cpdef inline int32_t get_writer_index(self):
         return <int32_t>self.c_buffer.writer_index()
@@ -317,13 +318,15 @@ cdef class Buffer:
                 f"get_bytes_as_int64 length should be in range [0, 8], but got {length}",
             )
         if not self.c_buffer.ensure_readable(<uint32_t>length, self._error):
-            self._raise_if_error()
+            if not self._error.ok():
+                self._raise_if_error()
         offset = self.c_buffer.reader_index()
         res = self.c_buffer.get_bytes_as_int64(offset, <uint32_t>length, &result)
         if not res.ok():
             raise_fory_error(res.error().code(), res.error().message())
         self.c_buffer.increase_reader_index(<uint32_t>length, self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return result
 
     cpdef inline put_bytes(self, uint32_t offset, bytes value):
@@ -371,11 +374,13 @@ cdef class Buffer:
 
     cpdef inline skip(self, int32_t length):
         self.c_buffer.skip(length, self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
 
     cpdef inline c_bool read_bool(self):
         cdef uint8_t value = self.c_buffer.read_uint8(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value != 0
 
     cpdef inline uint8_t read_uint8(self):
@@ -387,7 +392,8 @@ cdef class Buffer:
             self.c_buffer.reader_index(reader_index + 1)
             return value
         value = self.c_buffer.read_uint8(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline int8_t read_int8(self):
@@ -399,62 +405,74 @@ cdef class Buffer:
             self.c_buffer.reader_index(reader_index + 1)
             return value
         value = self.c_buffer.read_int8(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline int16_t read_int16(self):
         cdef int16_t value = self.c_buffer.read_int16(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline int16_t read_int24(self):
         cdef int32_t value = self.c_buffer.read_int24(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline int32_t read_int32(self):
         cdef int32_t value = self.c_buffer.read_int32(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline int64_t read_int64(self):
         cdef int64_t value = self.c_buffer.read_int64(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline uint16_t read_uint16(self):
         cdef uint16_t value = self.c_buffer.read_uint16(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline uint32_t read_uint32(self):
         cdef uint32_t value = self.c_buffer.read_uint32(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline uint64_t read_uint64(self):
         cdef uint64_t value = self.c_buffer.read_uint64(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline float read_float(self):
         cdef float value = self.c_buffer.read_float(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline float read_float32(self):
         cdef float value = self.c_buffer.read_float(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline double read_double(self):
         cdef double value = self.c_buffer.read_double(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline double read_float64(self):
         cdef double value = self.c_buffer.read_double(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline bytes read(self, int32_t length):
@@ -488,12 +506,14 @@ cdef class Buffer:
 
     cpdef inline int32_t read_varint32(self):
         cdef int32_t value = self.c_buffer.read_var_int32(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline uint32_t read_var_uint32(self):
         cdef uint32_t value = self.c_buffer.read_var_uint32(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline write_varint64(self, int64_t value):
@@ -510,12 +530,14 @@ cdef class Buffer:
 
     cpdef inline int64_t read_varint64(self):
         cdef int64_t value = self.c_buffer.read_var_int64(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline int64_t read_var_uint64(self):
         cdef uint64_t value = self.c_buffer.read_var_uint64(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return <int64_t>value
 
     cpdef inline write_tagged_int64(self, int64_t value):
@@ -525,7 +547,8 @@ cdef class Buffer:
     cpdef inline int64_t read_tagged_int64(self):
         """Read signed fory Tagged(Small long as int) encoded int64."""
         cdef int64_t value = self.c_buffer.read_tagged_int64(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cpdef inline write_tagged_uint64(self, uint64_t value):
@@ -535,7 +558,8 @@ cdef class Buffer:
     cpdef inline uint64_t read_tagged_uint64(self):
         """Read unsigned fory Tagged(Small long as int) encoded uint64."""
         cdef uint64_t value = self.c_buffer.read_tagged_uint64(self._error)
-        self._raise_if_error()
+        if not self._error.ok():
+            self._raise_if_error()
         return value
 
     cdef inline write_c_buffer(self, const uint8_t* value, int32_t length):
