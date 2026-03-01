@@ -44,6 +44,7 @@ from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
 from libc.limits cimport LONG_MAX, LONG_MIN
 from libcpp.vector cimport vector
+from libcpp.memory cimport shared_ptr
 from cpython cimport PyObject
 from cpython.object cimport PyTypeObject
 from cpython.dict cimport PyDict_Next
@@ -55,6 +56,7 @@ from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
 from pyfory.includes.libabsl cimport flat_hash_map
+from pyfory.includes.libutil cimport CBuffer
 from pyfory.meta.metastring import MetaStringDecoder
 
 try:
@@ -65,6 +67,9 @@ except ImportError:
 cimport cython
 
 include "buffer.pxi"
+
+cdef inline object _wrap_buffer(shared_ptr[CBuffer] c_buffer):
+    return Buffer.wrap(c_buffer)
 
 logger = logging.getLogger(__name__)
 ENABLE_FORY_CYTHON_SERIALIZATION = os.environ.get(

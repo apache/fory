@@ -15,18 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# distutils: language = c++
-# cython: embedsignature = True
-# cython: language_level = 3
-# cython: annotate = True
+from libcpp.memory cimport shared_ptr
+from pyfory.includes.libutil cimport CBuffer
 
-from libc.stdint cimport *
-from libcpp.memory cimport *
 
-# Fory schema types
-include "schema.pxi"
-
-include "row.pxi"
-
-# Python encoder for row format
-include "encoder.pxi"
+cdef object _wrap_buffer(shared_ptr[CBuffer] c_buffer)

@@ -41,7 +41,9 @@ pyx_library(
         "python/pyfory/serialization.pyx",
         "python/pyfory/*.pxi",
         "python/pyfory/__init__.py",
-    ]),
+    ]) + [
+        "python/pyfory/serialization.pxd",
+    ],
     cc_kwargs = dict(
         linkstatic = 1,
     ),
@@ -65,7 +67,9 @@ pyx_library(
             "python/pyfory/format/*.pxi",
         ],
         allow_empty = True,
-    ),
+    ) + [
+        "python/pyfory/serialization.pxd",
+    ],
     cc_kwargs = dict(
         linkstatic = 1,
     ),
