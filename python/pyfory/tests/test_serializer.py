@@ -33,7 +33,7 @@ from dataclasses import dataclass
 import pytest
 
 import pyfory
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory import Fory, serialization, EnumSerializer
 from pyfory.serializer import (
     TimestampSerializer,

@@ -38,7 +38,7 @@ from pyfory.meta.typedef import (
 from pyfory.meta.metastring import MetaStringEncoder
 from pyfory._fory import NO_USER_TYPE_ID
 
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.lib.mmh3 import hash_buffer
 
 

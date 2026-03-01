@@ -61,7 +61,7 @@ from pyfory.type_util import (
     get_type_hints,
     unwrap_optional,
 )
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.codegen import (
     gen_write_nullable_basic_stmts,
     gen_read_nullable_basic_stmts,

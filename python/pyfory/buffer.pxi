@@ -1,28 +1,18 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-
-# distutils: language = c++
-# cython: embedsignature = True
-# cython: language_level = 3
-# cython: annotate = True
-
 cimport cython
-from cpython cimport *
-from cpython.unicode cimport *
+from cpython.object cimport PyObject
+from cpython.buffer cimport Py_buffer
+from cpython.unicode cimport (
+    PyUnicode_GET_LENGTH,
+    PyUnicode_KIND,
+    PyUnicode_1BYTE_KIND,
+    PyUnicode_2BYTE_KIND,
+    PyUnicode_DATA,
+    PyUnicode_AsUTF8AndSize,
+    PyUnicode_DecodeLatin1,
+    PyUnicode_DecodeUTF16,
+    PyUnicode_FromKindAndData,
+    PyUnicode_DecodeUTF8,
+)
 from cpython.bytes cimport PyBytes_AsString, PyBytes_FromStringAndSize, PyBytes_AS_STRING
 from libcpp.memory cimport shared_ptr
 from libcpp.utility cimport move
@@ -51,6 +41,14 @@ cdef class _SharedBufferOwner:
 
 @cython.final
 cdef class Buffer:
+    cdef:
+        CBuffer c_buffer
+        CError _error
+        # hold python buffer reference count
+        object data
+        Py_ssize_t shape[1]
+        Py_ssize_t stride[1]
+
     def __init__(self,  data not None, int32_t offset=0, length=None):
         self.data = data
         cdef int32_t buffer_len = len(data)

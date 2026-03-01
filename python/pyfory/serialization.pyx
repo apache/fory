@@ -27,7 +27,6 @@ import time
 import warnings
 from typing import TypeVar, Union, Iterable
 
-from pyfory.buffer import get_bit, set_bit, clear_bit
 from pyfory import _fory as fmod
 from pyfory._fory import _ENABLE_TYPE_REGISTRATION_FORCIBLY
 from pyfory.lib import mmh3
@@ -55,7 +54,6 @@ from cpython.long cimport PyLong_FromLong, PyLong_FromLongLong
 from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
-from pyfory.buffer cimport Buffer
 from pyfory.includes.libabsl cimport flat_hash_map
 from pyfory.meta.metastring import MetaStringDecoder
 
@@ -65,6 +63,8 @@ except ImportError:
     np = None
 
 cimport cython
+
+include "buffer.pxi"
 
 logger = logging.getLogger(__name__)
 ENABLE_FORY_CYTHON_SERIALIZATION = os.environ.get(

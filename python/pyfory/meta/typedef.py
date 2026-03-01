@@ -20,7 +20,7 @@ import typing
 from typing import List
 from pyfory.types import TypeId, is_polymorphic_type, is_union_type
 from pyfory._fory import NO_USER_TYPE_ID
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.type_util import infer_field
 from pyfory.meta.metastring import Encoding
 from pyfory.type_util import infer_field_types

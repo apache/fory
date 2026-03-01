@@ -23,7 +23,7 @@
 from libc.stdint cimport *
 from libcpp.memory cimport *
 
-# include "buffer.pxi"
+include "../buffer.pxi"
 
 # Fory schema types
 include "schema.pxi"

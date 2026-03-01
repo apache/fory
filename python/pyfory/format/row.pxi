@@ -23,7 +23,6 @@ from pyfory.includes.libformat cimport (
     CGetter, CArrayData, CMapData, CRow, CTypeId,
     CSchema, CListType, CMapType, fory_schema
 )
-from pyfory.buffer cimport Buffer
 from pyfory.includes.libutil cimport CBuffer
 from libcpp.memory cimport shared_ptr
 from libcpp.vector cimport vector

@@ -51,7 +51,7 @@ Benchmark Options:
         Number of times to repeat each iteration (default: 5)
 
     --number N
-        Number of times to call function per measurement (inner loop, default: 100)
+        Number of times to call function per measurement (inner loop, default: 1000)
 
     --help
         Show help message and exit
@@ -108,6 +108,8 @@ except ImportError:
 
 # The benchmark case is rewritten from pyperformance bm_pickle
 # https://github.com/python/pyperformance/blob/main/pyperformance/data-files/benchmarks/bm_pickle/run_benchmark.py
+BENCHMARK_RANDOM_SEED = 5
+
 DICT = {
     "ads_flags": 0,
     "age": 18,
@@ -171,8 +173,9 @@ TUPLE = (
     60,
 )
 LARGE_TUPLE = tuple(range(2**8 + 1))
-LARGE_FLOAT_TUPLE = tuple([random.random() * 10000 for _ in range(2**8 + 1)])
-LARGE_BOOLEAN_TUPLE = tuple([bool(random.random() > 0.5) for _ in range(2**8 + 1)])
+benchmark_random = random.Random(BENCHMARK_RANDOM_SEED)
+LARGE_FLOAT_TUPLE = tuple(benchmark_random.random() * 10000 for _ in range(2**8 + 1))
+LARGE_BOOLEAN_TUPLE = tuple(benchmark_random.random() > 0.5 for _ in range(2**8 + 1))
 
 
 LIST = [[list(range(10)), list(range(10))] for _ in range(10)]
@@ -188,7 +191,7 @@ def mutate_dict(orig_dict, random_source):
     return new_dict
 
 
-random_source = random.Random(5)
+random_source = random.Random(BENCHMARK_RANDOM_SEED)
 DICT_GROUP = [mutate_dict(DICT, random_source) for _ in range(3)]
 
 
@@ -382,8 +385,8 @@ def benchmark_args():
     parser.add_argument(
         "--number",
         type=int,
-        default=100,
-        help="Number of times to call function per measurement (inner loop, default: 10000)",
+        default=1000,
+        help="Number of times to call function per measurement (inner loop, default: 1000)",
     )
     return parser.parse_args()
 
@@ -502,6 +505,7 @@ def micro_benchmark():
     results = []
     for benchmark_name in selected_benchmarks:
         data = benchmark_data[benchmark_name]
+        benchmark_number = max(1, args.number // 10) if benchmark_name == "large_dict" else args.number
 
         if "fory" in selected_serializers:
             print(
@@ -516,7 +520,7 @@ def micro_benchmark():
                 warmup=args.warmup,
                 iterations=args.iterations,
                 repeat=args.repeat,
-                number=args.number,
+                number=benchmark_number,
             )
             results.append(("fory", benchmark_name, mean, stdev))
             print(f"{format_time(mean)} ± {format_time(stdev)}")
@@ -534,7 +538,7 @@ def micro_benchmark():
                 warmup=args.warmup,
                 iterations=args.iterations,
                 repeat=args.repeat,
-                number=args.number,
+                number=benchmark_number,
             )
             results.append(("pickle", benchmark_name, mean, stdev))
             print(f"{format_time(mean)} ± {format_time(stdev)}")
@@ -554,7 +558,7 @@ def micro_benchmark():
                 warmup=args.warmup,
                 iterations=args.iterations,
                 repeat=args.repeat,
-                number=args.number,
+                number=benchmark_number,
             )
             results.append(("msgpack", benchmark_name, mean, stdev))
             print(f"{format_time(mean)} ± {format_time(stdev)}")
