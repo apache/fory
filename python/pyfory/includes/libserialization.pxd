@@ -94,6 +94,7 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
 
 cdef extern from "fory/python/pyfory.h" namespace "fory":
     cdef c_bool Fory_IsInternalTypeId(uint8_t type_id)
+    cdef c_bool Fory_CanUsePrimitiveCollectionFastpath(uint8_t type_id)
     int Fory_PyPrimitiveCollectionWriteToBuffer(object collection, CBuffer *buffer, uint8_t type_id) except -1
     int Fory_PyPrimitiveSequenceWriteToBuffer(PyObject **items, int64_t size, CBuffer *buffer, uint8_t type_id) except -1
     int Fory_PyPrimitiveCollectionReadFromBuffer(object collection, CBuffer *buffer, int64_t size, uint8_t type_id) except -1

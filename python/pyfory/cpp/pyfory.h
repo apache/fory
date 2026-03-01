@@ -44,6 +44,22 @@ inline constexpr bool Fory_IsInternalTypeId(uint8_t type_id) {
   }
 }
 
+inline constexpr bool Fory_CanUsePrimitiveCollectionFastpath(uint8_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRING:
+  case TypeId::VARINT64:
+  case TypeId::VARINT32:
+  case TypeId::BOOL:
+  case TypeId::FLOAT64:
+  case TypeId::INT8:
+  case TypeId::INT16:
+  case TypeId::INT32:
+    return true;
+  default:
+    return false;
+  }
+}
+
 int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
                                             Buffer *buffer, uint8_t type_id);
 int Fory_PyPrimitiveSequenceWriteToBuffer(PyObject **items, Py_ssize_t size,

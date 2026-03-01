@@ -37,6 +37,7 @@ from pyfory.includes.libserialization cimport \
     (TypeId, TypeRegistrationKind, get_type_registration_kind,
      is_namespaced_type, is_type_share_meta,
      Fory_IsInternalTypeId,
+     Fory_CanUsePrimitiveCollectionFastpath,
      Fory_PyPrimitiveCollectionWriteToBuffer,
      Fory_PyPrimitiveSequenceWriteToBuffer,
      Fory_PyPrimitiveCollectionReadFromBuffer)

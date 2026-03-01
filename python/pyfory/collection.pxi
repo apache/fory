@@ -33,19 +33,6 @@ cdef int8_t COLL_DECL_SAME_TYPE_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_S
 cdef int8_t COLL_DECL_SAME_TYPE_NOT_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
 
 
-cdef inline c_bool _can_use_primitive_collection_fastpath(uint8_t type_id):
-    return (
-        type_id == <uint8_t>TypeId.STRING
-        or type_id == <uint8_t>TypeId.VARINT64
-        or type_id == <uint8_t>TypeId.VARINT32
-        or type_id == <uint8_t>TypeId.BOOL
-        or type_id == <uint8_t>TypeId.FLOAT64
-        or type_id == <uint8_t>TypeId.INT8
-        or type_id == <uint8_t>TypeId.INT16
-        or type_id == <uint8_t>TypeId.INT32
-    )
-
-
 cdef class CollectionSerializer(Serializer):
     cdef TypeResolver type_resolver
     cdef MapRefResolver ref_resolver
@@ -153,7 +140,7 @@ cdef class CollectionSerializer(Serializer):
         cdef c_bool has_null
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_HAS_NULL) == 0:
-                if _can_use_primitive_collection_fastpath(type_id):
+                if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._write_primitive_fastpath(buffer, value, type_id, items, size)
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
                     self._write_same_type_no_ref(buffer, value, elem_type_info)
@@ -178,8 +165,10 @@ cdef class CollectionSerializer(Serializer):
                             buffer.write_int16(NOT_NULL_STRING_FLAG)
                             buffer.write_string(s)
                         elif item_type == <PyTypeObject *> int:
-                            buffer.write_int16(NOT_NULL_INT64_FLAG)
-                            buffer.write_varint64(s)
+                            buffer.write_int8(NOT_NULL_VALUE_FLAG)
+                            typeinfo = type_resolver.get_type_info(<object> item_type)
+                            type_resolver.write_type_info(buffer, typeinfo)
+                            typeinfo.serializer.write(buffer, s)
                         elif item_type == <PyTypeObject *> bool:
                             buffer.write_int16(NOT_NULL_BOOL_FLAG)
                             buffer.write_bool(s)
@@ -199,8 +188,10 @@ cdef class CollectionSerializer(Serializer):
                             buffer.write_int16(NOT_NULL_STRING_FLAG)
                             buffer.write_string(s)
                         elif cls is int:
-                            buffer.write_int16(NOT_NULL_INT64_FLAG)
-                            buffer.write_varint64(s)
+                            buffer.write_int8(NOT_NULL_VALUE_FLAG)
+                            typeinfo = type_resolver.get_type_info(cls)
+                            type_resolver.write_type_info(buffer, typeinfo)
+                            typeinfo.serializer.write(buffer, s)
                         elif cls is bool:
                             buffer.write_int16(NOT_NULL_BOOL_FLAG)
                             buffer.write_bool(s)
@@ -420,7 +411,7 @@ cdef class ListSerializer(CollectionSerializer):
                 typeinfo = self.elem_type_info
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
-                if _can_use_primitive_collection_fastpath(type_id):
+                if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(buffer, len_, list_, type_id)
                     return list_
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
@@ -495,10 +486,6 @@ cdef inline get_next_element(
         # error.
         if type_id == <uint8_t>TypeId.STRING:
             return buffer.read_string()
-        elif type_id == <uint8_t>TypeId.VARINT64:
-            return <object> PyLong_FromLongLong(buffer.read_varint64())
-        elif type_id == <uint8_t>TypeId.VARINT32:
-            return buffer.read_varint32()
         elif type_id == <uint8_t>TypeId.INT8:
             return buffer.read_int8()
         elif type_id == <uint8_t>TypeId.INT16:
@@ -517,10 +504,6 @@ cdef inline get_next_element(
     type_id = buffer.read_uint8()
     if type_id == <uint8_t>TypeId.STRING:
         return buffer.read_string()
-    elif type_id == <uint8_t>TypeId.VARINT64:
-        return <object> PyLong_FromLongLong(buffer.read_varint64())
-    elif type_id == <uint8_t>TypeId.VARINT32:
-        return buffer.read_varint32()
     elif type_id == <uint8_t>TypeId.INT8:
         return buffer.read_int8()
     elif type_id == <uint8_t>TypeId.INT16:
@@ -560,7 +543,7 @@ cdef class TupleSerializer(CollectionSerializer):
                 typeinfo = self.elem_type_info
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
-                if _can_use_primitive_collection_fastpath(type_id):
+                if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(buffer, len_, tuple_, type_id)
                     return tuple_
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
@@ -642,7 +625,7 @@ cdef class SetSerializer(CollectionSerializer):
                 typeinfo = self.elem_type_info
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
-                if _can_use_primitive_collection_fastpath(type_id):
+                if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(buffer, len_, instance, type_id)
                     return instance
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
@@ -669,10 +652,6 @@ cdef class SetSerializer(CollectionSerializer):
                     type_id = typeinfo.type_id
                     if type_id == <uint8_t>TypeId.STRING:
                         instance.add(buffer.read_string())
-                    elif type_id == <uint8_t>TypeId.VARINT64:
-                        instance.add(buffer.read_varint64())
-                    elif type_id == <uint8_t>TypeId.VARINT32:
-                        instance.add(buffer.read_varint32())
                     elif type_id == <uint8_t>TypeId.INT8:
                         instance.add(buffer.read_int8())
                     elif type_id == <uint8_t>TypeId.INT16:
@@ -700,10 +679,6 @@ cdef class SetSerializer(CollectionSerializer):
                         type_id = typeinfo.type_id
                         if type_id == <uint8_t>TypeId.STRING:
                             instance.add(buffer.read_string())
-                        elif type_id == <uint8_t>TypeId.VARINT64:
-                            instance.add(buffer.read_varint64())
-                        elif type_id == <uint8_t>TypeId.VARINT32:
-                            instance.add(buffer.read_varint32())
                         elif type_id == <uint8_t>TypeId.INT8:
                             instance.add(buffer.read_int8())
                         elif type_id == <uint8_t>TypeId.INT16:
