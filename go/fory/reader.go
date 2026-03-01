@@ -43,6 +43,7 @@ type ReadContext struct {
 	err              Error         // Accumulated error state for deferred checking
 	lastTypePtr      uintptr
 	lastTypeInfo     *TypeInfo
+
 	maxBinarySize     int // Maximum byte length for a single binary payload (0 = no limit)
 	maxCollectionSize int // Maximum element count for a single collection or map (0 = no limit)
 }
