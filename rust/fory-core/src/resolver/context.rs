@@ -315,7 +315,6 @@ pub struct ReadContext<'a> {
     xlang: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
-    max_binary_size: usize,
     max_collection_size: usize,
 
     // Context-specific fields
@@ -344,7 +343,6 @@ impl<'a> ReadContext<'a> {
             xlang: config.xlang,
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
-            max_binary_size: config.max_binary_size,
             max_collection_size: config.max_collection_size,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
@@ -474,17 +472,6 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     pub fn read_meta_string(&mut self) -> Result<&MetaString, Error> {
         self.meta_string_resolver.read_meta_string(&mut self.reader)
-    }
-
-    #[inline(always)]
-    pub fn check_binary_size(&self, byte_len: usize) -> Result<(), Error> {
-        if byte_len > self.max_binary_size {
-            return Err(Error::invalid_data(format!(
-                "binary byte length {} exceeds configured limit {}",
-                byte_len, self.max_binary_size
-            )));
-        }
-        Ok(())
     }
 
     #[inline(always)]
