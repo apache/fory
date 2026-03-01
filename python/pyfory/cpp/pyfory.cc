@@ -393,9 +393,8 @@ resolve_python_collection_kind(PyObject *collection) {
   return PythonCollectionKind::List;
 }
 
-static int set_buffer_error(const Error &error) {
+static void set_buffer_error(const Error &error) {
   PyErr_SetString(PyExc_BufferError, error.to_string().c_str());
-  return -1;
 }
 
 static bool py_long_to_int64(PyObject *value, int64_t *out) {
@@ -860,13 +859,9 @@ static int write_primitive_sequence(PyObject **items, Py_ssize_t size,
     return 0;
   }
   default:
-    for (Py_ssize_t i = 0; i < size; ++i) {
-      if (FORY_PREDICT_FALSE(write_primitive_item(buffer, items[i], type_id) !=
-                             0)) {
-        return -1;
-      }
-    }
-    return 0;
+    PyErr_Format(PyExc_ValueError, "unsupported primitive fastpath type id: %u",
+                 static_cast<unsigned>(type_id));
+    return -1;
   }
 }
 
@@ -990,13 +985,7 @@ static int read_primitive_sequence_indexed(Buffer *buffer, Py_ssize_t size,
       }
       const int64_t v =
           static_cast<int64_t>((raw >> 1) ^ -static_cast<int64_t>(raw & 1ULL));
-      PyObject *item = nullptr;
-      if (v >= std::numeric_limits<long>::min() &&
-          v <= std::numeric_limits<long>::max()) {
-        item = PyLong_FromLong(static_cast<long>(v));
-      } else {
-        item = PyLong_FromLongLong(v);
-      }
+      PyObject *item = PyLong_FromLongLong(v);
       if (FORY_PREDICT_FALSE(item == nullptr)) {
         return -1;
       }
