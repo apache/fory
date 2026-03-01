@@ -173,7 +173,7 @@ public final class Animal extends Union {
     public Dog getDog() { ... }
     public void setDog(Dog v) { ... }
 }
-````
+```
 
 ### Registration
 
