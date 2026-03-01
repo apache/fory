@@ -29,7 +29,6 @@
 #include "fory/type/type.h"
 #include "fory/util/stream.h"
 #include "fory/util/string_util.h"
-#include "longintrepr.h"
 
 static PyObject **py_sequence_get_items(PyObject *collection) {
   if (PyList_CheckExact(collection)) {
@@ -398,74 +397,6 @@ static void set_buffer_error(const Error &error) {
 }
 
 static bool py_long_to_int64(PyObject *value, int64_t *out) {
-  if (PyLong_CheckExact(value)) {
-    auto *long_obj = reinterpret_cast<PyLongObject *>(value);
-    const Py_ssize_t signed_digit_count = Py_SIZE(long_obj);
-    if (signed_digit_count == 0) {
-      *out = 0;
-      return true;
-    }
-    if (signed_digit_count == 1) {
-      *out = static_cast<int64_t>(long_obj->ob_digit[0]);
-      return true;
-    }
-    if (signed_digit_count == -1) {
-      *out = -static_cast<int64_t>(long_obj->ob_digit[0]);
-      return true;
-    }
-    if (signed_digit_count == 2) {
-      const uint64_t unsigned_value =
-          static_cast<uint64_t>(long_obj->ob_digit[0]) |
-          (static_cast<uint64_t>(long_obj->ob_digit[1]) << PyLong_SHIFT);
-      *out = static_cast<int64_t>(unsigned_value);
-      return true;
-    }
-    if (signed_digit_count == -2) {
-      const uint64_t unsigned_value =
-          static_cast<uint64_t>(long_obj->ob_digit[0]) |
-          (static_cast<uint64_t>(long_obj->ob_digit[1]) << PyLong_SHIFT);
-      *out = -static_cast<int64_t>(unsigned_value);
-      return true;
-    }
-    const bool is_negative = signed_digit_count < 0;
-    const Py_ssize_t digit_count =
-        is_negative ? -signed_digit_count : signed_digit_count;
-    constexpr Py_ssize_t k_max_digit_count_for_i64 =
-        (64 + PyLong_SHIFT - 1) / PyLong_SHIFT;
-    if (FORY_PREDICT_FALSE(digit_count > k_max_digit_count_for_i64)) {
-      PyErr_SetString(PyExc_OverflowError,
-                      "integer out of range for int64 fastpath");
-      return false;
-    }
-    uint64_t unsigned_value = 0;
-    for (Py_ssize_t i = digit_count; i-- > 0;) {
-      unsigned_value = (unsigned_value << PyLong_SHIFT) |
-                       static_cast<uint64_t>(long_obj->ob_digit[i]);
-    }
-    if (!is_negative) {
-      if (FORY_PREDICT_FALSE(
-              unsigned_value >
-              static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
-        PyErr_SetString(PyExc_OverflowError,
-                        "integer out of range for int64 fastpath");
-        return false;
-      }
-      *out = static_cast<int64_t>(unsigned_value);
-      return true;
-    }
-    constexpr uint64_t k_abs_i64_min = uint64_t{1} << 63;
-    if (FORY_PREDICT_FALSE(unsigned_value > k_abs_i64_min)) {
-      PyErr_SetString(PyExc_OverflowError,
-                      "integer out of range for int64 fastpath");
-      return false;
-    }
-    if (unsigned_value == k_abs_i64_min) {
-      *out = std::numeric_limits<int64_t>::min();
-      return true;
-    }
-    *out = -static_cast<int64_t>(unsigned_value);
-    return true;
-  }
   int overflow = 0;
   long long converted = PyLong_AsLongLongAndOverflow(value, &overflow);
   if (converted == -1 && PyErr_Occurred()) {
@@ -478,6 +409,46 @@ static bool py_long_to_int64(PyObject *value, int64_t *out) {
   }
   *out = static_cast<int64_t>(converted);
   return true;
+}
+
+static bool can_use_list_sequence_fastpath(PyObject **items, Py_ssize_t size,
+                                           uint8_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRING:
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      if (!PyUnicode_CheckExact(items[i])) {
+        return false;
+      }
+    }
+    return true;
+  case TypeId::VARINT64:
+  case TypeId::VARINT32:
+  case TypeId::INT8:
+  case TypeId::INT16:
+  case TypeId::INT32:
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      if (!PyLong_CheckExact(items[i])) {
+        return false;
+      }
+    }
+    return true;
+  case TypeId::BOOL:
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      if (items[i] != Py_True && items[i] != Py_False) {
+        return false;
+      }
+    }
+    return true;
+  case TypeId::FLOAT64:
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      if (!PyFloat_CheckExact(items[i])) {
+        return false;
+      }
+    }
+    return true;
+  default:
+    return false;
+  }
 }
 
 template <typename T>
@@ -1159,8 +1130,13 @@ int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
                                             Buffer *buffer, uint8_t type_id) {
   PyObject **items = py_sequence_get_items(collection);
   if (items != nullptr) {
-    return write_primitive_sequence(items, Py_SIZE(collection), buffer,
-                                    type_id);
+    const Py_ssize_t size = Py_SIZE(collection);
+    // For list, keep raw ob_item fastpath only when element conversions are
+    // guaranteed not to execute Python callbacks that might mutate the list.
+    if (!PyList_CheckExact(collection) ||
+        can_use_list_sequence_fastpath(items, size, type_id)) {
+      return write_primitive_sequence(items, size, buffer, type_id);
+    }
   }
   PyObject *iterator = PyObject_GetIter(collection);
   if (FORY_PREDICT_FALSE(iterator == nullptr)) {

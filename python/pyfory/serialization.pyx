@@ -172,13 +172,17 @@ cdef class MapRefResolver:
         if not self.track_ref:
             return head_flag
         cdef int32_t ref_id
+        cdef int32_t size
         cdef PyObject * obj
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
             ref_id = buffer.read_var_uint32()
-            assert 0 <= ref_id < self.read_objects.size(), f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
+            size = self.read_objects.size()
+            if ref_id < 0 or ref_id >= size:
+                raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
             obj = self.read_objects[ref_id]
-            assert obj != NULL, f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
+            if obj == NULL:
+                raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
             self.read_object = <object> obj
             return REF_FLAG
         else:
@@ -200,14 +204,17 @@ cdef class MapRefResolver:
             return buffer.read_int8()
         head_flag = buffer.read_int8()
         cdef int32_t ref_id
+        cdef int32_t size
         cdef PyObject *obj
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
             ref_id = buffer.read_var_uint32()
-            # avoid wrong id cause crash
-            assert 0 <= ref_id < self.read_objects.size(), f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
+            size = self.read_objects.size()
+            if ref_id < 0 or ref_id >= size:
+                raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
             obj = self.read_objects[ref_id]
-            assert obj != NULL, f"Invalid ref id {ref_id}, current size {self.read_objects.size()}"
+            if obj == NULL:
+                raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
             self.read_object = <object> obj
             # `head_flag` except `REF_FLAG` can be used as stub reference id because
             # we use `ref_id >= NOT_NULL_VALUE_FLAG` to read data.
@@ -247,6 +254,9 @@ cdef class MapRefResolver:
         if id_ is None:
             return self.read_object
         cdef int32_t ref_id = id_
+        cdef int32_t size = self.read_objects.size()
+        if ref_id < 0 or ref_id >= size:
+            raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
         cdef PyObject * obj = self.read_objects[ref_id]
         if obj == NULL:
             return None

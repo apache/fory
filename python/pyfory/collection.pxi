@@ -358,7 +358,6 @@ cdef class CollectionSerializer(Serializer):
 
     cpdef _read_same_type_ref(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
         cdef MapRefResolver ref_resolver = self.ref_resolver
-        cdef TypeResolver type_resolver = self.type_resolver
         cdef PyObject **items = fory_sequence_get_items(collection_)
         cdef c_bool is_list = type(collection_) is list
         self.fory.inc_depth()
@@ -467,58 +466,17 @@ cdef inline get_next_element(
         MapRefResolver ref_resolver,
         TypeResolver type_resolver,
 ):
-    cdef int8_t head_flag = buffer.read_int8()
     cdef int32_t ref_id
     cdef TypeInfo typeinfo
-    cdef uint8_t type_id
-    if head_flag == REF_FLAG:
-        ref_id = buffer.read_var_uint32()
-        return ref_resolver.get_read_object(ref_id)
-    if head_flag == NULL_FLAG:
-        return None
-    if head_flag == REF_VALUE_FLAG:
-        ref_id = ref_resolver.preserve_ref_id()
-        # Indicates the object is first read and referenceable.
-        typeinfo = type_resolver.read_type_info(buffer)
-        type_id = typeinfo.type_id
-        # Note that all read operations in fast paths of list/tuple/set/dict/sub_dict
-        # must match corresponding writing operations. Otherwise, ref tracking will
-        # error.
-        if type_id == <uint8_t>TypeId.STRING:
-            return buffer.read_string()
-        elif type_id == <uint8_t>TypeId.INT8:
-            return buffer.read_int8()
-        elif type_id == <uint8_t>TypeId.INT16:
-            return buffer.read_int16()
-        elif type_id == <uint8_t>TypeId.INT32:
-            return buffer.read_int32()
-        elif type_id == <uint8_t>TypeId.BOOL:
-            return buffer.read_bool()
-        elif type_id == <uint8_t>TypeId.FLOAT64:
-            return buffer.read_double()
-        else:
-            o = typeinfo.serializer.read(buffer)
-            ref_resolver.set_read_object(ref_id, o)
-            return o
-    # head_flag == NOT_NULL_VALUE_FLAG: non-reference value.
-    type_id = buffer.read_uint8()
-    if type_id == <uint8_t>TypeId.STRING:
-        return buffer.read_string()
-    elif type_id == <uint8_t>TypeId.INT8:
-        return buffer.read_int8()
-    elif type_id == <uint8_t>TypeId.INT16:
-        return buffer.read_int16()
-    elif type_id == <uint8_t>TypeId.INT32:
-        return buffer.read_int32()
-    elif type_id == <uint8_t>TypeId.BOOL:
-        return buffer.read_bool()
-    elif type_id == <uint8_t>TypeId.FLOAT64:
-        return buffer.read_double()
-    # For non-primitive values written with NOT_NULL_VALUE_FLAG, push a placeholder
-    # so nested serializer.reference() can pop and skip reference tracking.
-    ref_resolver.read_ref_ids.push_back(-1)
-    typeinfo = type_resolver.get_type_info_by_id(type_id)
-    return typeinfo.serializer.read(buffer)
+    ref_id = ref_resolver.try_preserve_ref_id(buffer)
+    if ref_id < NOT_NULL_VALUE_FLAG:
+        return ref_resolver.get_read_object()
+    # Always route through serializer and preserve ref slot for cross-language
+    # payloads where first-seen primitive values may still be emitted as REF_VALUE.
+    typeinfo = type_resolver.read_type_info(buffer)
+    o = typeinfo.serializer.read(buffer)
+    ref_resolver.set_read_object(ref_id, o)
+    return o
 
 
 @cython.final
@@ -808,8 +766,6 @@ cdef class MapSerializer(Serializer):
                             value_write_ref = self.value_tracking_ref == 1
                             if value_write_ref:
                                 buffer.write_int8(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF)
-                                if not self.ref_resolver.write_ref_or_null(buffer, value):
-                                    value_serializer.write(buffer, value)
                                 if not self.ref_resolver.write_ref_or_null(buffer, value):
                                     value_serializer.write(buffer, value)
                             else:
