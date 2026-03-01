@@ -44,7 +44,6 @@ type ReadContext struct {
 	lastTypePtr      uintptr
 	lastTypeInfo     *TypeInfo
 
-	maxBinarySize     int // Maximum byte length for a single binary payload (0 = no limit)
 	maxCollectionSize int // Maximum element count for a single collection or map (0 = no limit)
 }
 
@@ -159,13 +158,6 @@ func (c *ReadContext) checkCollectionSize(size int) {
 	}
 }
 
-// checkBinarySize validates that a binary payload byte length does not exceed the configured limit.
-func (c *ReadContext) checkBinarySize(size int) {
-	if c.maxBinarySize > 0 && size > c.maxBinarySize {
-		c.SetError(DeserializationErrorf(
-			"fory: binary size %d exceeds limit %d", size, c.maxBinarySize))
-	}
-}
 
 // Inline primitive reads
 func (c *ReadContext) RawBool() bool         { return c.buffer.ReadBool(c.Err()) }

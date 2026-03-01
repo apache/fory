@@ -174,7 +174,6 @@ func New(opts ...Option) *Fory {
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
 	f.readCtx.xlang = f.config.IsXlang
-	f.readCtx.maxBinarySize = f.config.MaxBinarySize
 	f.readCtx.maxCollectionSize = f.config.MaxCollectionSize
 
 	return f
