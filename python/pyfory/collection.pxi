@@ -496,7 +496,7 @@ cdef inline get_next_element(
         if type_id == <uint8_t>TypeId.STRING:
             return buffer.read_string()
         elif type_id == <uint8_t>TypeId.VARINT64:
-            return read_varint64_as_pyint(buffer)
+            return <object> PyLong_FromLongLong(buffer.read_varint64())
         elif type_id == <uint8_t>TypeId.VARINT32:
             return buffer.read_varint32()
         elif type_id == <uint8_t>TypeId.INT8:
@@ -518,7 +518,7 @@ cdef inline get_next_element(
     if type_id == <uint8_t>TypeId.STRING:
         return buffer.read_string()
     elif type_id == <uint8_t>TypeId.VARINT64:
-        return read_varint64_as_pyint(buffer)
+        return <object> PyLong_FromLongLong(buffer.read_varint64())
     elif type_id == <uint8_t>TypeId.VARINT32:
         return buffer.read_varint32()
     elif type_id == <uint8_t>TypeId.INT8:

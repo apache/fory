@@ -43,7 +43,6 @@ from pyfory.includes.libserialization cimport \
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
-from libc.limits cimport LONG_MAX, LONG_MIN
 from libcpp.vector cimport vector
 from libcpp.memory cimport shared_ptr
 from cpython cimport PyObject
@@ -318,38 +317,6 @@ cdef inline int64_t _hash_small_metastring(int64_t v1,
     cdef uint64_t h = _mix64(x)
     h = (h & <uint64_t> 0xffffffffffffff00) | encoding
     return <int64_t> h
-
-
-cdef inline object int64_to_pyint(int64_t value):
-    if LONG_MIN <= value <= LONG_MAX:
-        return <object> PyLong_FromLong(<long> value)
-    return <object> PyLong_FromLongLong(value)
-
-
-cdef inline object read_varint64_as_pyint(Buffer buffer):
-    cdef uint32_t reader_index = buffer.c_buffer.reader_index()
-    cdef uint32_t size = buffer.c_buffer.size()
-    cdef uint8_t *data
-    cdef uint8_t b0
-    cdef uint8_t b1
-    cdef uint64_t raw
-    cdef int64_t value
-    if reader_index < size:
-        data = buffer.c_buffer.data()
-        b0 = data[reader_index]
-        if (b0 & 0x80) == 0:
-            buffer.c_buffer.reader_index(reader_index + 1)
-            raw = <uint64_t> b0
-            value = <int64_t> ((raw >> 1) ^ -<int64_t>(raw & 1))
-            return <object> PyLong_FromLong(<long> value)
-        if reader_index + 1 < size:
-            b1 = data[reader_index + 1]
-            raw = (<uint64_t> (b0 & 0x7F)) | (<uint64_t> (b1 & 0x7F) << 7)
-            if (b1 & 0x80) == 0:
-                buffer.c_buffer.reader_index(reader_index + 2)
-                value = <int64_t> ((raw >> 1) ^ -<int64_t>(raw & 1))
-                return <object> PyLong_FromLong(<long> value)
-    return int64_to_pyint(buffer.read_varint64())
 
 
 @cython.final
@@ -1524,7 +1491,7 @@ cdef class Fory:
             if type_id == <uint8_t>TypeId.STRING:
                 return buffer.read_string()
             elif type_id == <uint8_t>TypeId.VARINT64:
-                return read_varint64_as_pyint(buffer)
+                return <object> PyLong_FromLongLong(buffer.read_varint64())
             elif type_id == <uint8_t>TypeId.BOOL:
                 return buffer.read_bool()
             elif type_id == <uint8_t>TypeId.FLOAT64:
