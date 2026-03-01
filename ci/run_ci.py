@@ -125,7 +125,21 @@ def parse_args():
         action="store_true",
         help="Only install dependencies without running tests",
     )
-    cpp_parser.set_defaults(func=lambda install_deps_only: cpp.run(install_deps_only))
+    cpp_parser.add_argument(
+        "--skip-doc-tests",
+        action="store_true",
+        help="Skip documentation example tests",
+    )
+    cpp_parser.add_argument(
+        "--doc-tests-only",
+        action="store_true",
+        help="Only run documentation example tests",
+    )
+    cpp_parser.set_defaults(
+        func=lambda install_deps_only, skip_doc_tests, doc_tests_only: cpp.run(
+            install_deps_only, skip_doc_tests, doc_tests_only
+        )
+    )
 
     # Rust subparser
     rust_parser = subparsers.add_parser(
@@ -263,7 +277,11 @@ def parse_args():
                 run_shell_script(f"java{version}")
     elif command == "cpp":
         if USE_PYTHON_CPP:
-            func(arg_dict.get("install_deps_only", False))
+            func(
+                arg_dict.get("install_deps_only", False),
+                arg_dict.get("skip_doc_tests", False),
+                arg_dict.get("doc_tests_only", False),
+            )
         else:
             if arg_dict.get("install_deps_only", False):
                 run_shell_script("install_bazel")

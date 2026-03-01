@@ -225,7 +225,7 @@ int main() {
   doc.description = "A sample document";
   doc.metadata = nullptr;  // Allowed because nullable
   doc.parent = std::make_shared<Document>();
-  doc.parent->title = "Parent Doc";
+  doc.parent.get()->title = "Parent Doc";
   doc.related = nullptr;  // Allowed because nullable
 
   auto bytes = fory.serialize(doc).value();
