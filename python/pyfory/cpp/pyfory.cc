@@ -30,6 +30,18 @@
 #include "fory/util/stream.h"
 #include "fory/util/string_util.h"
 
+#if PY_VERSION_HEX < 0x030A0000
+static inline PyObject *Fory_PyNewRefCompat(PyObject *obj) {
+  Py_INCREF(obj);
+  return obj;
+}
+#define FORY_PY_NEWREF(obj) Fory_PyNewRefCompat(obj)
+#define FORY_PY_SET_CHECK_EXACT(obj) (Py_TYPE(obj) == &PySet_Type)
+#else
+#define FORY_PY_NEWREF(obj) Py_NewRef(obj)
+#define FORY_PY_SET_CHECK_EXACT(obj) PySet_CheckExact(obj)
+#endif
+
 static PyObject **py_sequence_get_items(PyObject *collection) {
   if (PyList_CheckExact(collection)) {
     return ((PyListObject *)collection)->ob_item;
@@ -383,7 +395,7 @@ resolve_python_collection_kind(PyObject *collection) {
   if (PyTuple_CheckExact(collection)) {
     return PythonCollectionKind::Tuple;
   }
-  if (PySet_CheckExact(collection)) {
+  if (FORY_PY_SET_CHECK_EXACT(collection)) {
     return PythonCollectionKind::Set;
   }
   PyErr_Format(PyExc_TypeError,
@@ -414,9 +426,10 @@ static bool py_long_to_int64(PyObject *value, int64_t *out) {
 static bool can_use_list_sequence_fastpath(PyObject **items, Py_ssize_t size,
                                            uint8_t type_id) {
   // This gate is not only about type checks:
-  // it enforces "no Python callback during conversion" for the raw ob_item path.
-  // If conversion can invoke user code (e.g. __int__/__float__/subclass hooks),
-  // a list may be mutated while iterating raw pointers, which is unsafe.
+  // it enforces "no Python callback during conversion" for the raw ob_item
+  // path. If conversion can invoke user code (e.g. __int__/__float__/subclass
+  // hooks), a list may be mutated while iterating raw pointers, which is
+  // unsafe.
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::STRING:
     for (Py_ssize_t i = 0; i < size; ++i) {
@@ -1027,7 +1040,7 @@ static int read_primitive_sequence_indexed(Buffer *buffer, Py_ssize_t size,
       const uint8_t *data = buffer->data() + offset;
       for (Py_ssize_t i = 0; i < size; ++i) {
         PyObject *item =
-            data[i] != 0 ? Py_NewRef(Py_True) : Py_NewRef(Py_False);
+            data[i] != 0 ? FORY_PY_NEWREF(Py_True) : FORY_PY_NEWREF(Py_False);
         set_item(i, item);
       }
       buffer->reader_index(offset + static_cast<uint32_t>(size));
