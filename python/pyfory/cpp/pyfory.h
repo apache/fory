@@ -22,9 +22,28 @@
 #include <string>
 
 #include "Python.h"
+#include "fory/type/type.h"
 #include "fory/util/buffer.h"
 
 namespace fory {
+inline constexpr bool Fory_IsInternalTypeId(uint8_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::NAMED_ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::NAMED_EXT:
+  case TypeId::TYPED_UNION:
+  case TypeId::NAMED_UNION:
+    return false;
+  default:
+    return true;
+  }
+}
+
 int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
                                             Buffer *buffer, uint8_t type_id);
 int Fory_PyPrimitiveSequenceWriteToBuffer(PyObject **items, Py_ssize_t size,

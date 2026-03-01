@@ -36,6 +36,7 @@ from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
 from pyfory.includes.libserialization cimport \
     (TypeId, TypeRegistrationKind, get_type_registration_kind,
      is_namespaced_type, is_type_share_meta,
+     Fory_IsInternalTypeId,
      Fory_PyPrimitiveCollectionWriteToBuffer,
      Fory_PyPrimitiveSequenceWriteToBuffer,
      Fory_PyPrimitiveCollectionReadFromBuffer)
@@ -98,7 +99,6 @@ cdef int8_t REF_FLAG = -2
 cdef int8_t NOT_NULL_VALUE_FLAG = -1
 # this flag indicates that the object is a referencable and first read.
 cdef int8_t REF_VALUE_FLAG = 0
-DEF SMALL_REF_CACHE_CAPACITY = 8
 # Global MetaString decoder for namespace bytes to str
 namespace_decoder = MetaStringDecoder(".", "_")
 # Global MetaString decoder for typename bytes to str
@@ -129,14 +129,10 @@ cdef class MapRefResolver:
     cdef vector[PyObject *] read_objects
     cdef vector[int32_t] read_ref_ids
     cdef object read_object
-    cdef int32_t small_written_size
-    cdef uint64_t[SMALL_REF_CACHE_CAPACITY] small_written_object_ids
-    cdef int32_t[SMALL_REF_CACHE_CAPACITY] small_written_ref_ids
     cdef c_bool track_ref
 
     def __cinit__(self, c_bool ref):
         self.read_object = None
-        self.small_written_size = 0
         self.track_ref = ref
 
     # Special methods of extension types must be declared with def, not cdef.
@@ -155,32 +151,12 @@ cdef class MapRefResolver:
             buffer.write_int8(NULL_FLAG)
             return True
         cdef uint64_t object_id = <uintptr_t> <PyObject *> obj
-        cdef uint64_t cached_object_id
-        cdef int32_t i
         cdef int32_t next_id
-        cdef pair[flat_hash_map[uint64_t, int32_t].iterator, bint] insert_result
-        if self.small_written_size >= 0:
-            for i in range(self.small_written_size):
-                if self.small_written_object_ids[i] == object_id:
-                    buffer.write_int8(REF_FLAG)
-                    buffer.write_var_uint32(<uint64_t> self.small_written_ref_ids[i])
-                    return True
-            next_id = self.written_objects.size()
-            if self.small_written_size < SMALL_REF_CACHE_CAPACITY:
-                self.small_written_object_ids[self.small_written_size] = object_id
-                self.small_written_ref_ids[self.small_written_size] = next_id
-                self.small_written_size += 1
-                self.written_objects.push_back(<PyObject *> obj)
-                Py_INCREF(obj)
-                buffer.write_int8(REF_VALUE_FLAG)
-                return False
-            for i in range(self.small_written_size):
-                cached_object_id = self.small_written_object_ids[i]
-                self.written_objects_id[cached_object_id] = self.small_written_ref_ids[i]
-            self.small_written_size = -1
-        next_id = self.written_objects_id.size()
-        insert_result = self.written_objects_id.insert(pair[uint64_t, int32_t](object_id, next_id))
-        if insert_result.second:
+        cdef flat_hash_map[uint64_t, int32_t].iterator it = \
+            self.written_objects_id.find(object_id)
+        if it == self.written_objects_id.end():
+            next_id = self.written_objects_id.size()
+            self.written_objects_id[object_id] = next_id
             self.written_objects.push_back(<PyObject *> obj)
             Py_INCREF(obj)
             buffer.write_int8(REF_VALUE_FLAG)
@@ -188,7 +164,7 @@ cdef class MapRefResolver:
         else:
             # The obj has been written previously.
             buffer.write_int8(REF_FLAG)
-            buffer.write_var_uint32(<uint64_t> deref(insert_result.first).second)
+            buffer.write_var_uint32(<uint64_t> deref(it).second)
             return True
 
     cpdef inline int8_t read_ref_or_null(self, Buffer buffer):
@@ -291,7 +267,6 @@ cdef class MapRefResolver:
 
     cpdef inline reset_write(self):
         self.written_objects_id.clear()
-        self.small_written_size = 0
         for item in self.written_objects:
             Py_XDECREF(item)
         self.written_objects.clear()
@@ -322,16 +297,6 @@ cdef int32_t NOT_NULL_FLOAT64_FLAG = fmod.NOT_NULL_FLOAT64_FLAG
 cdef int32_t NOT_NULL_BOOL_FLAG = fmod.NOT_NULL_BOOL_FLAG
 cdef int32_t NOT_NULL_STRING_FLAG = fmod.NOT_NULL_STRING_FLAG
 cdef int32_t SMALL_STRING_THRESHOLD = fmod.SMALL_STRING_THRESHOLD
-
-
-cdef inline c_bool is_internal_type_id_for_typeinfo(uint8_t type_id):
-    return (
-        (type_id > 0 and type_id <= <uint8_t>TypeId.MAP)
-        or (
-            type_id >= <uint8_t>TypeId.NONE
-            and type_id <= <uint8_t>TypeId.FLOAT64_ARRAY
-        )
-    )
 
 
 cdef inline uint64_t _mix64(uint64_t x):
@@ -801,7 +766,7 @@ cdef class TypeResolver:
         if type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT:
             self.write_shared_type_meta(buffer, typeinfo)
             return
-        if is_internal_type_id_for_typeinfo(type_id):
+        if Fory_IsInternalTypeId(type_id):
             return
         reg_kind = get_type_registration_kind(<TypeId>type_id)
         if reg_kind == TypeRegistrationKind.BY_ID:
@@ -826,7 +791,7 @@ cdef class TypeResolver:
             PyObject *typeinfo_ptr
         if type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT:
             return self.serialization_context.meta_context.read_shared_type_info_with_type_id(buffer, type_id)
-        if is_internal_type_id_for_typeinfo(type_id):
+        if Fory_IsInternalTypeId(type_id):
             if type_id >= self._c_registered_id_to_type_info.size():
                 raise ValueError(f"Unexpected type_id {type_id}")
             typeinfo_ptr = self._c_registered_id_to_type_info[type_id]
