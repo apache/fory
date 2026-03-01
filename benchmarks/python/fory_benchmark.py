@@ -15,9 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Apache Fory™ vs Pickle CPython Benchmark Suite
+"""Apache Fory™ vs Pickle vs Msgpack CPython Benchmark Suite
 
-Microbenchmark comparing Apache Fory™ and Pickle serialization performance in CPython.
+Microbenchmark comparing Apache Fory™, Pickle, and Msgpack serialization
+performance in CPython.
 
 Usage:
     python fory_benchmark.py [OPTIONS]
@@ -34,7 +35,7 @@ Benchmark Options:
 
     --serializers SERIALIZER_LIST
         Comma-separated list of serializers to benchmark. Default: all
-        Available: fory, pickle
+        Available: fory, pickle, msgpack
         Example: --serializers fory,pickle
 
     --no-ref
@@ -56,7 +57,7 @@ Benchmark Options:
         Show help message and exit
 
 Examples:
-    # Run all benchmarks with both Fory and Pickle
+    # Run all benchmarks with all serializers
     python fory_benchmark.py
 
     # Benchmark serialize only
@@ -74,6 +75,9 @@ Examples:
     # Compare only Pickle performance
     python fory_benchmark.py --serializers pickle
 
+    # Compare only Msgpack performance
+    python fory_benchmark.py --serializers msgpack
+
     # Run without reference tracking for Fory
     python fory_benchmark.py --no-ref
 
@@ -86,7 +90,7 @@ Examples:
 
 import argparse
 import array
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
 import datetime
 import pickle
 import random
@@ -95,6 +99,11 @@ import sys
 import timeit
 from typing import Any, Dict, List
 import pyfory
+
+try:
+    import msgpack
+except ImportError:
+    msgpack = None
 
 
 # The benchmark case is rewritten from pyperformance bm_pickle
@@ -259,6 +268,38 @@ def pickle_deserialize(binary):
     pickle.loads(binary)
 
 
+def msgpack_roundtrip(obj):
+    binary = msgpack.dumps(obj, use_bin_type=True)
+    msgpack.loads(binary, raw=False, strict_map_key=False)
+
+
+def msgpack_serialize(obj):
+    msgpack.dumps(obj, use_bin_type=True)
+
+
+def msgpack_deserialize(binary):
+    msgpack.loads(binary, raw=False, strict_map_key=False)
+
+
+def make_msgpack_compatible(obj):
+    if isinstance(obj, datetime.date):
+        return obj.isoformat()
+    if isinstance(obj, array.array):
+        return obj.tolist()
+    if is_dataclass(obj):
+        return {k: make_msgpack_compatible(v) for k, v in vars(obj).items()}
+    if isinstance(obj, dict):
+        return {
+            make_msgpack_compatible(k): make_msgpack_compatible(v)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [make_msgpack_compatible(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(make_msgpack_compatible(v) for v in obj)
+    return obj
+
+
 def build_fory_benchmark_case(operation: str, ref: bool, obj):
     if operation == "serialize":
         return fory_serialize, (ref, obj)
@@ -276,9 +317,17 @@ def build_pickle_benchmark_case(operation: str, obj):
     return pickle_roundtrip, (obj,)
 
 
+def build_msgpack_benchmark_case(operation: str, obj):
+    if operation == "serialize":
+        return msgpack_serialize, (obj,)
+    if operation == "deserialize":
+        return msgpack_deserialize, (msgpack.dumps(obj, use_bin_type=True),)
+    return msgpack_roundtrip, (obj,)
+
+
 def benchmark_args():
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Fory vs Pickle Benchmark")
+    parser = argparse.ArgumentParser(description="Fory vs Pickle vs Msgpack Benchmark")
     parser.add_argument(
         "--operation",
         type=str,
@@ -310,7 +359,7 @@ def benchmark_args():
         "--serializers",
         type=str,
         default="all",
-        help="Comma-separated list of serializers to benchmark. Available: fory, pickle. Default: all",
+        help="Comma-separated list of serializers to benchmark. Available: fory, pickle, msgpack. Default: all",
     )
     parser.add_argument(
         "--warmup",
@@ -414,9 +463,11 @@ def micro_benchmark():
             sys.exit(1)
 
     # Determine which serializers to run
-    available_serializers = {"fory", "pickle"}
+    available_serializers = {"fory", "pickle", "msgpack"}
     if args.serializers == "all":
         selected_serializers = ["fory", "pickle"]
+        if msgpack is not None:
+            selected_serializers.append("msgpack")
     else:
         selected_serializers = [s.strip() for s in args.serializers.split(",")]
         # Validate serializer names
@@ -425,6 +476,17 @@ def micro_benchmark():
             print(f"Error: Invalid serializer names: {', '.join(invalid)}")
             print(f"Available serializers: {', '.join(available_serializers)}")
             sys.exit(1)
+        if "msgpack" in selected_serializers and msgpack is None:
+            print("Error: msgpack is not installed.")
+            print("Install it with: pip install msgpack")
+            sys.exit(1)
+
+    msgpack_data = {}
+    if "msgpack" in selected_serializers:
+        msgpack_data = {
+            benchmark_name: make_msgpack_compatible(data)
+            for benchmark_name, data in benchmark_data.items()
+        }
 
     print(
         f"\nBenchmarking {len(selected_benchmarks)} benchmark(s) with {len(selected_serializers)} serializer(s)"
@@ -477,6 +539,26 @@ def micro_benchmark():
             results.append(("pickle", benchmark_name, mean, stdev))
             print(f"{format_time(mean)} ± {format_time(stdev)}")
 
+        if "msgpack" in selected_serializers:
+            print(
+                f"Running msgpack_{benchmark_name}_{args.operation}...",
+                end=" ",
+                flush=True,
+            )
+            msgpack_func, msgpack_args = build_msgpack_benchmark_case(
+                args.operation, msgpack_data[benchmark_name]
+            )
+            mean, stdev = run_benchmark(
+                msgpack_func,
+                *msgpack_args,
+                warmup=args.warmup,
+                iterations=args.iterations,
+                repeat=args.repeat,
+                number=args.number,
+            )
+            results.append(("msgpack", benchmark_name, mean, stdev))
+            print(f"{format_time(mean)} ± {format_time(stdev)}")
+
     # Print summary
     print("\n" + "=" * 80)
     print("SUMMARY")
@@ -488,33 +570,39 @@ def micro_benchmark():
             f"{serializer:<15} {benchmark:<25} {format_time(mean):<20} {format_time(stdev):<20}"
         )
 
-    # Calculate speedup if both serializers were tested
-    if "fory" in selected_serializers and "pickle" in selected_serializers:
-        print("\n" + "=" * 80)
-        print("SPEEDUP (Fory vs Pickle)")
-        print("=" * 80)
-        print(f"{'Benchmark':<25} {'Fory':<20} {'Pickle':<20} {'Speedup':<20}")
-        print("-" * 80)
+    # Calculate speedup if fory and at least one baseline serializer were tested.
+    if "fory" in selected_serializers:
+        for baseline in selected_serializers:
+            if baseline == "fory":
+                continue
+            print("\n" + "=" * 80)
+            print(f"SPEEDUP (Fory vs {baseline.capitalize()})")
+            print("=" * 80)
+            print(f"{'Benchmark':<25} {'Fory':<20} {baseline.capitalize():<20} {'Speedup':<20}")
+            print("-" * 80)
 
-        for benchmark_name in selected_benchmarks:
-            fory_result = next(
-                (r for r in results if r[0] == "fory" and r[1] == benchmark_name), None
-            )
-            pickle_result = next(
-                (r for r in results if r[0] == "pickle" and r[1] == benchmark_name),
-                None,
-            )
+            for benchmark_name in selected_benchmarks:
+                fory_result = next(
+                    (r for r in results if r[0] == "fory" and r[1] == benchmark_name),
+                    None,
+                )
+                baseline_result = next(
+                    (r for r in results if r[0] == baseline and r[1] == benchmark_name),
+                    None,
+                )
 
-            if fory_result and pickle_result:
-                fory_mean = fory_result[2]
-                pickle_mean = pickle_result[2]
-                speedup = pickle_mean / fory_mean
-                speedup_str = (
-                    f"{speedup:.2f}x" if speedup >= 1 else f"{1 / speedup:.2f}x slower"
-                )
-                print(
-                    f"{benchmark_name:<25} {format_time(fory_mean):<20} {format_time(pickle_mean):<20} {speedup_str:<20}"
-                )
+                if fory_result and baseline_result:
+                    fory_mean = fory_result[2]
+                    baseline_mean = baseline_result[2]
+                    speedup = baseline_mean / fory_mean
+                    speedup_str = (
+                        f"{speedup:.2f}x"
+                        if speedup >= 1
+                        else f"{1 / speedup:.2f}x slower"
+                    )
+                    print(
+                        f"{benchmark_name:<25} {format_time(fory_mean):<20} {format_time(baseline_mean):<20} {speedup_str:<20}"
+                    )
 
 
 if __name__ == "__main__":
