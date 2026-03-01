@@ -10,5 +10,5 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["test/**/*", "generated/**/*"]
+  "include": ["test/**/*", "generated/**/*", "roundtrip.ts"]
 }

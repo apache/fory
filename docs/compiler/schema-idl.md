@@ -93,15 +93,15 @@ package com.example.models alias models_v1;
 
 **Language Mapping:**
 
-| Language | Package Usage                     |
-| -------- | --------------------------------- |
-| Java     | Java package                      |
-| Python   | Module name (dots to underscores) |
-| Go       | Package name (last component)     |
-| Rust     | Module name (dots to underscores) |
-| C++      | Namespace (dots to `::`)          |
-| C#       | Namespace                         |
-| TS       | Module name (last segment)        |
+| Language   | Package Usage                     |
+| ---------- | --------------------------------- |
+| Java       | Java package                      |
+| Python     | Module name (dots to underscores) |
+| Go         | Package name (last component)     |
+| Rust       | Module name (dots to underscores) |
+| C++        | Namespace (dots to `::`)          |
+| C#         | Namespace                         |
+| JavaScript | Module name (last segment)        |
 
 ## File-Level Options
 
@@ -543,14 +543,14 @@ FDL does not support `option ...;` statements inside enum bodies.
 
 ### Language Mapping
 
-| Language | Implementation                         |
-| -------- | -------------------------------------- |
-| Java     | `enum Status { UNKNOWN, ACTIVE, ... }` |
-| Python   | `class Status(IntEnum): UNKNOWN = 0`   |
-| Go       | `type Status int32` with constants     |
-| Rust     | `#[repr(i32)] enum Status { Unknown }` |
-| C++      | `enum class Status : int32_t { ... }`  |
-| TS       | `export enum Status { UNKNOWN, ... }`  |
+| Language   | Implementation                         |
+| ---------- | -------------------------------------- |
+| Java       | `enum Status { UNKNOWN, ACTIVE, ... }` |
+| Python     | `class Status(IntEnum): UNKNOWN = 0`   |
+| Go         | `type Status int32` with constants     |
+| Rust       | `#[repr(i32)] enum Status { Unknown }` |
+| C++        | `enum class Status : int32_t { ... }`  |
+| JavaScript | `export enum Status { UNKNOWN, ... }`  |
 
 ### Enum Prefix Stripping
 
@@ -567,14 +567,14 @@ enum DeviceTier {
 
 **Generated code:**
 
-| Language | Output                                    | Style          |
-| -------- | ----------------------------------------- | -------------- |
-| Java     | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
-| Rust     | `Unknown, Tier1, Tier2`                   | Scoped enum    |
-| C++      | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
-| Python   | `UNKNOWN, TIER1, TIER2`                   | Scoped IntEnum |
-| Go       | `DeviceTierUnknown, DeviceTierTier1, ...` | Unscoped const |
-| TS       | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
+| Language   | Output                                    | Style          |
+| ---------- | ----------------------------------------- | -------------- |
+| Java       | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
+| Rust       | `Unknown, Tier1, Tier2`                   | Scoped enum    |
+| C++        | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
+| Python     | `UNKNOWN, TIER1, TIER2`                   | Scoped IntEnum |
+| Go         | `DeviceTierUnknown, DeviceTierTier1, ...` | Unscoped const |
+| JavaScript | `UNKNOWN, TIER1, TIER2`                   | Scoped enum    |
 
 **Note:** The prefix is only stripped if the remainder is a valid identifier. For example, `DEVICE_TIER_1` is kept unchanged because `1` is not a valid identifier name.
 
@@ -644,14 +644,14 @@ message Person {  // Auto-generated when enable_auto_type_id = true
 
 ### Language Mapping
 
-| Language | Implementation                      |
-| -------- | ----------------------------------- |
-| Java     | POJO class with getters/setters     |
-| Python   | `@dataclass` class                  |
-| Go       | Struct with exported fields         |
-| Rust     | Struct with `#[derive(ForyObject)]` |
-| C++      | Struct with `FORY_STRUCT` macro     |
-| TS       | `export interface` declaration      |
+| Language   | Implementation                      |
+| ---------- | ----------------------------------- |
+| Java       | POJO class with getters/setters     |
+| Python     | `@dataclass` class                  |
+| Go         | Struct with exported fields         |
+| Rust       | Struct with `#[derive(ForyObject)]` |
+| C++        | Struct with `FORY_STRUCT` macro     |
+| JavaScript | `export interface` declaration      |
 
 Type IDs control cross-language registration for messages, unions, and enums. See
 [Type IDs](#type-ids) for auto-generation, aliases, and collision handling.
@@ -768,14 +768,14 @@ message OtherMessage {
 
 ### Language-Specific Generation
 
-| Language | Nested Type Generation                                                            |
-| -------- | --------------------------------------------------------------------------------- |
-| Java     | Static inner classes (`SearchResponse.Result`)                                    |
-| Python   | Nested classes within dataclass                                                   |
-| Go       | Flat structs with underscore (`SearchResponse_Result`, configurable to camelcase) |
-| Rust     | Nested modules (`search_response::Result`)                                        |
-| C++      | Nested classes (`SearchResponse::Result`)                                         |
-| TS       | Flat names (`Result`)                                                             |
+| Language   | Nested Type Generation                                                            |
+| ---------- | --------------------------------------------------------------------------------- |
+| Java       | Static inner classes (`SearchResponse.Result`)                                    |
+| Python     | Nested classes within dataclass                                                   |
+| Go         | Flat structs with underscore (`SearchResponse_Result`, configurable to camelcase) |
+| Rust       | Nested modules (`search_response::Result`)                                        |
+| C++        | Nested classes (`SearchResponse::Result`)                                         |
+| JavaScript | Flat names (`Result`)                                                             |
 
 **Note:** Go defaults to underscore-separated nested names; set `option go_nested_type_style = "camelcase";` to use concatenated names. Rust emits nested modules for nested types.
 
@@ -871,14 +871,14 @@ message User {
 
 **Generated Code:**
 
-| Language | Non-optional       | Optional                                        |
-| -------- | ------------------ | ----------------------------------------------- |
-| Java     | `String name`      | `String email` with `@ForyField(nullable=true)` |
-| Python   | `name: str`        | `name: Optional[str]`                           |
-| Go       | `Name string`      | `Name *string`                                  |
-| Rust     | `name: String`     | `name: Option<String>`                          |
-| C++      | `std::string name` | `std::optional<std::string> name`               |
-| TS       | `name: string`     | `name?: string \| undefined`                    |
+| Language   | Non-optional       | Optional                                        |
+| ---------- | ------------------ | ----------------------------------------------- |
+| Java       | `String name`      | `String email` with `@ForyField(nullable=true)` |
+| Python     | `name: str`        | `name: Optional[str]`                           |
+| Go         | `Name string`      | `Name *string`                                  |
+| Rust       | `name: String`     | `name: Option<String>`                          |
+| C++        | `std::string name` | `std::optional<std::string> name`               |
+| JavaScript | `name: string`     | `name?: string \| undefined`                    |
 
 **Default Values:**
 
@@ -907,14 +907,14 @@ message Node {
 
 **Generated Code:**
 
-| Language | Without `ref`  | With `ref`                                |
-| -------- | -------------- | ----------------------------------------- |
-| Java     | `Node parent`  | `Node parent` with `@ForyField(ref=true)` |
-| Python   | `parent: Node` | `parent: Node = pyfory.field(ref=True)`   |
-| Go       | `Parent Node`  | `Parent *Node` with `fory:"ref"`          |
-| Rust     | `parent: Node` | `parent: Arc<Node>`                       |
-| C++      | `Node parent`  | `std::shared_ptr<Node> parent`            |
-| TS       | `parent: Node` | `parent: Node` (no ref distinction)       |
+| Language   | Without `ref`  | With `ref`                                |
+| ---------- | -------------- | ----------------------------------------- |
+| Java       | `Node parent`  | `Node parent` with `@ForyField(ref=true)` |
+| Python     | `parent: Node` | `parent: Node = pyfory.field(ref=True)`   |
+| Go         | `Parent Node`  | `Parent *Node` with `fory:"ref"`          |
+| Rust       | `parent: Node` | `parent: Arc<Node>`                       |
+| C++        | `Node parent`  | `std::shared_ptr<Node> parent`            |
+| JavaScript | `parent: Node` | `parent: Node` (no ref distinction)       |
 
 Rust uses `Arc` by default; use `ref(thread_safe=false)` or `ref(weak=true)`
 to customize pointer types. For protobuf option syntax, see
@@ -933,14 +933,14 @@ message Document {
 
 **Generated Code:**
 
-| Language | Type                       |
-| -------- | -------------------------- |
-| Java     | `List<String>`             |
-| Python   | `List[str]`                |
-| Go       | `[]string`                 |
-| Rust     | `Vec<String>`              |
-| C++      | `std::vector<std::string>` |
-| TS       | `string[]`                 |
+| Language   | Type                       |
+| ---------- | -------------------------- |
+| Java       | `List<String>`             |
+| Python     | `List[str]`                |
+| Go         | `[]string`                 |
+| Rust       | `Vec<String>`              |
+| C++        | `std::vector<std::string>` |
+| JavaScript | `string[]`                 |
 
 ### Combining Modifiers
 
@@ -1029,14 +1029,14 @@ collection behavior, and reference tracking (see
 
 #### Boolean
 
-| Language | Type                  | Notes              |
-| -------- | --------------------- | ------------------ |
-| Java     | `boolean` / `Boolean` | Primitive or boxed |
-| Python   | `bool`                |                    |
-| Go       | `bool`                |                    |
-| Rust     | `bool`                |                    |
-| C++      | `bool`                |                    |
-| TS       | `boolean`             |                    |
+| Language   | Type                  | Notes              |
+| ---------- | --------------------- | ------------------ |
+| Java       | `boolean` / `Boolean` | Primitive or boxed |
+| Python     | `bool`                |                    |
+| Go         | `bool`                |                    |
+| Rust       | `bool`                |                    |
+| C++        | `bool`                |                    |
+| JavaScript | `boolean`             |                    |
 
 #### Integer Types
 
@@ -1099,67 +1099,67 @@ you need fixed-width or tagged encoding:
 
 **Language Mapping:**
 
-| Fory IDL  | Java     | Python           | Go        | Rust  | C++      | TS       |
-| --------- | -------- | ---------------- | --------- | ----- | -------- | -------- |
-| `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  | `number` |
-| `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` | `number` |
+| Fory IDL  | Java     | Python           | Go        | Rust  | C++      | JavaScript |
+| --------- | -------- | ---------------- | --------- | ----- | -------- | ---------- |
+| `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  | `number`   |
+| `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` | `number`   |
 
 #### String Type
 
-| Language | Type          | Notes                 |
-| -------- | ------------- | --------------------- |
-| Java     | `String`      | Immutable             |
-| Python   | `str`         |                       |
-| Go       | `string`      | Immutable             |
-| Rust     | `String`      | Owned, heap-allocated |
-| C++      | `std::string` |                       |
-| TS       | `string`      |                       |
+| Language   | Type          | Notes                 |
+| ---------- | ------------- | --------------------- |
+| Java       | `String`      | Immutable             |
+| Python     | `str`         |                       |
+| Go         | `string`      | Immutable             |
+| Rust       | `String`      | Owned, heap-allocated |
+| C++        | `std::string` |                       |
+| JavaScript | `string`      |                       |
 
 #### Bytes Type
 
-| Language | Type                   | Notes     |
-| -------- | ---------------------- | --------- |
-| Java     | `byte[]`               |           |
-| Python   | `bytes`                | Immutable |
-| Go       | `[]byte`               |           |
-| Rust     | `Vec<u8>`              |           |
-| C++      | `std::vector<uint8_t>` |           |
-| TS       | `Uint8Array`           |           |
+| Language   | Type                   | Notes     |
+| ---------- | ---------------------- | --------- |
+| Java       | `byte[]`               |           |
+| Python     | `bytes`                | Immutable |
+| Go         | `[]byte`               |           |
+| Rust       | `Vec<u8>`              |           |
+| C++        | `std::vector<uint8_t>` |           |
+| JavaScript | `Uint8Array`           |           |
 
 #### Temporal Types
 
 ##### Date
 
-| Language | Type                        | Notes                   |
-| -------- | --------------------------- | ----------------------- |
-| Java     | `java.time.LocalDate`       |                         |
-| Python   | `datetime.date`             |                         |
-| Go       | `time.Time`                 | Time portion ignored    |
-| Rust     | `chrono::NaiveDate`         | Requires `chrono` crate |
-| C++      | `fory::serialization::Date` |                         |
-| TS       | `Date`                      |                         |
+| Language   | Type                        | Notes                   |
+| ---------- | --------------------------- | ----------------------- |
+| Java       | `java.time.LocalDate`       |                         |
+| Python     | `datetime.date`             |                         |
+| Go         | `time.Time`                 | Time portion ignored    |
+| Rust       | `chrono::NaiveDate`         | Requires `chrono` crate |
+| C++        | `fory::serialization::Date` |                         |
+| JavaScript | `Date`                      |                         |
 
 ##### Timestamp
 
-| Language | Type                             | Notes                   |
-| -------- | -------------------------------- | ----------------------- |
-| Java     | `java.time.Instant`              | UTC-based               |
-| Python   | `datetime.datetime`              |                         |
-| Go       | `time.Time`                      |                         |
-| Rust     | `chrono::NaiveDateTime`          | Requires `chrono` crate |
-| C++      | `fory::serialization::Timestamp` |                         |
-| TS       | `Date`                           |                         |
+| Language   | Type                             | Notes                   |
+| ---------- | -------------------------------- | ----------------------- |
+| Java       | `java.time.Instant`              | UTC-based               |
+| Python     | `datetime.datetime`              |                         |
+| Go         | `time.Time`                      |                         |
+| Rust       | `chrono::NaiveDateTime`          | Requires `chrono` crate |
+| C++        | `fory::serialization::Timestamp` |                         |
+| JavaScript | `Date`                           |                         |
 
 #### Any
 
-| Language | Type           | Notes                |
-| -------- | -------------- | -------------------- |
-| Java     | `Object`       | Runtime type written |
-| Python   | `Any`          | Runtime type written |
-| Go       | `any`          | Runtime type written |
-| Rust     | `Box<dyn Any>` | Runtime type written |
-| C++      | `std::any`     | Runtime type written |
-| TS       | `any`          | Runtime type written |
+| Language   | Type           | Notes                |
+| ---------- | -------------- | -------------------- |
+| Java       | `Object`       | Runtime type written |
+| Python     | `Any`          | Runtime type written |
+| Go         | `any`          | Runtime type written |
+| Rust       | `Box<dyn Any>` | Runtime type written |
+| C++        | `std::any`     | Runtime type written |
+| JavaScript | `any`          | Runtime type written |
 
 **Example:**
 
@@ -1181,14 +1181,14 @@ message Envelope [id=122] {
 
 **Generated Code (`Envelope.payload`):**
 
-| Language | Generated Field Type    |
-| -------- | ----------------------- |
-| Java     | `Object payload`        |
-| Python   | `payload: Any`          |
-| Go       | `Payload any`           |
-| Rust     | `payload: Box<dyn Any>` |
-| C++      | `std::any payload`      |
-| TS       | `payload: any`          |
+| Language   | Generated Field Type    |
+| ---------- | ----------------------- |
+| Java       | `Object payload`        |
+| Python     | `payload: Any`          |
+| Go         | `Payload any`           |
+| Rust       | `payload: Box<dyn Any>` |
+| C++        | `std::any payload`      |
+| JavaScript | `payload: any`          |
 
 **Notes:**
 

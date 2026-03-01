@@ -27,3 +27,5 @@ cd "${SCRIPT_DIR}/typescript"
 npm install
 ENABLE_FORY_DEBUG_OUTPUT=1 npx jest --ci
 
+IDL_PEER_LANG=typescript "${SCRIPT_DIR}/run_java_tests.sh"
+
