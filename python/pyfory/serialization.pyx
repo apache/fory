@@ -1037,6 +1037,7 @@ cdef class Fory:
     cdef public bint is_peer_out_of_band_enabled
     cdef int32_t max_depth
     cdef int32_t depth
+    cdef public int32_t max_collection_size
 
     def __init__(
             self,
@@ -1048,6 +1049,7 @@ cdef class Fory:
             max_depth: int = 50,
             field_nullable: bool = False,
             meta_compressor=None,
+            max_collection_size: int = 1_000_000,
     ):
         """
         Initialize a Fory serialization instance.
@@ -1086,6 +1088,12 @@ cdef class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
+            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
+                and maps (dicts) during deserialization. This limit is used to prevent
+                out-of-memory attacks from malicious payloads that claim extremely large
+                collection sizes, as collections preallocate memory based on the declared
+                size. Raises an exception if exceeded. Default is 1,000,000.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -1115,6 +1123,7 @@ cdef class Fory:
         self.is_peer_out_of_band_enabled = False
         self.depth = 0
         self.max_depth = max_depth
+        self.max_collection_size = max_collection_size
 
     def register_serializer(self, cls: Union[type, TypeVar], Serializer serializer):
         """

@@ -298,6 +298,9 @@ cdef class ListSerializer(CollectionSerializer):
         cdef MapRefResolver ref_resolver = self.fory.ref_resolver
         cdef TypeResolver type_resolver = self.fory.type_resolver
         cdef int32_t len_ = buffer.read_var_uint32()
+        # Check size limit before PyList_New preallocation to prevent OOM attacks
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"List size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         cdef list list_ = PyList_New(len_)
         if len_ == 0:
             return list_
@@ -414,6 +417,9 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef MapRefResolver ref_resolver = self.fory.ref_resolver
         cdef TypeResolver type_resolver = self.fory.type_resolver
         cdef int32_t len_ = buffer.read_var_uint32()
+        # Check size limit before PyTuple_New preallocation to prevent OOM attacks
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"Tuple size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         cdef tuple tuple_ = PyTuple_New(len_)
         if len_ == 0:
             return tuple_
@@ -508,6 +514,9 @@ cdef class SetSerializer(CollectionSerializer):
         cdef set instance = set()
         ref_resolver.reference(instance)
         cdef int32_t len_ = buffer.read_var_uint32()
+        # Check size limit to prevent OOM attacks from malicious payloads
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"Set size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         if len_ == 0:
             return instance
         cdef int8_t collect_flag = buffer.read_int8()
@@ -859,6 +868,9 @@ cdef class MapSerializer(Serializer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
         cdef int32_t size = buffer.read_var_uint32()
+        # Check size limit before _PyDict_NewPresized preallocation to prevent OOM attacks
+        if size > self.fory.max_collection_size:
+            raise ValueError(f"Map size {size} exceeds the configured limit of {self.fory.max_collection_size}")
         cdef dict map_ = _PyDict_NewPresized(size)
         ref_resolver.reference(map_)
         cdef int32_t ref_id
