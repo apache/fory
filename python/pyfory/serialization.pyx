@@ -38,6 +38,7 @@ from pyfory.includes.libserialization cimport \
     (TypeId, TypeRegistrationKind, get_type_registration_kind,
      is_namespaced_type, is_type_share_meta,
      Fory_PyPrimitiveCollectionWriteToBuffer,
+     Fory_PyPrimitiveSequenceWriteToBuffer,
      Fory_PyPrimitiveCollectionReadFromBuffer)
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t

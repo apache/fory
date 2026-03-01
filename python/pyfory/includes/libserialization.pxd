@@ -17,6 +17,7 @@
 
 from libc.stdint cimport int32_t, int64_t, uint8_t
 from libcpp cimport bool as c_bool
+from cpython.object cimport PyObject
 from pyfory.includes.libutil cimport CBuffer
 
 cdef extern from "fory/type/type.h" namespace "fory" nogil:
@@ -93,4 +94,5 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
 
 cdef extern from "fory/python/pyfory.h" namespace "fory":
     int Fory_PyPrimitiveCollectionWriteToBuffer(object collection, CBuffer *buffer, uint8_t type_id) except -1
+    int Fory_PyPrimitiveSequenceWriteToBuffer(PyObject **items, int64_t size, CBuffer *buffer, uint8_t type_id) except -1
     int Fory_PyPrimitiveCollectionReadFromBuffer(object collection, CBuffer *buffer, int64_t size, uint8_t type_id) except -1
