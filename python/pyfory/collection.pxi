@@ -70,30 +70,54 @@ cdef class CollectionSerializer(Serializer):
             if elem_tracking_ref is not None:
                 self.elem_tracking_ref = <int8_t> (1 if elem_tracking_ref else 0)
 
-    cdef inline pair[int8_t, int64_t] write_header(self, Buffer buffer, value):
+    cdef inline TypeInfo write_header(self, Buffer buffer, value, int8_t *collect_flag_ptr):
         cdef int8_t collect_flag = COLL_DEFAULT_FLAG
         elem_type = self.elem_type
         cdef TypeInfo elem_type_info = self.elem_type_info
         cdef c_bool has_null = False
         cdef c_bool has_same_type = True
+        cdef PyObject **items = fory_sequence_get_items(value)
+        cdef PyObject *item
+        cdef PyTypeObject *first_type = NULL
+        cdef Py_ssize_t i
+        cdef Py_ssize_t size = Py_SIZE(value)
         if elem_type is None:
-            for s in value:
-                if not has_null and s is None:
-                    has_null = True
-                    continue
-                if elem_type is None:
-                    elem_type = type(s)
-                elif has_same_type and type(s) is not elem_type:
-                    has_same_type = False
+            if items != NULL:
+                for i in range(size):
+                    item = items[i]
+                    if item == <PyObject *> None:
+                        has_null = True
+                        continue
+                    if first_type == NULL:
+                        first_type = item.ob_type
+                    elif has_same_type and item.ob_type != first_type:
+                        has_same_type = False
+                if first_type != NULL:
+                    elem_type = <object> first_type
+            else:
+                for s in value:
+                    if not has_null and s is None:
+                        has_null = True
+                        continue
+                    if elem_type is None:
+                        elem_type = type(s)
+                    elif has_same_type and type(s) is not elem_type:
+                        has_same_type = False
             if has_same_type:
                 collect_flag |= COLL_IS_SAME_TYPE
                 elem_type_info = self.type_resolver.get_type_info(elem_type)
         else:
             collect_flag |= COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
-            for s in value:
-                if s is None:
-                    has_null = True
-                    break
+            if items != NULL:
+                for i in range(size):
+                    if items[i] == <PyObject *> None:
+                        has_null = True
+                        break
+            else:
+                for s in value:
+                    if s is None:
+                        has_null = True
+                        break
         if has_null:
             collect_flag |= COLL_HAS_NULL
         if self.fory.track_ref:
@@ -107,16 +131,15 @@ cdef class CollectionSerializer(Serializer):
         if (has_same_type and
                 collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0):
             self.type_resolver.write_type_info(buffer, elem_type_info)
-        return pair[int8_t, int64_t](collect_flag, obj2int(elem_type_info))
+        collect_flag_ptr[0] = collect_flag
+        return elem_type_info
 
     cpdef write(self, Buffer buffer, value):
         if len(value) == 0:
             buffer.write_var_uint64(0)
             return
-        cdef pair[int8_t, int64_t] header_pair = self.write_header(buffer, value)
-        cdef int8_t collect_flag = header_pair.first
-        cdef int64_t elem_type_info_ptr = header_pair.second
-        cdef TypeInfo elem_type_info = <type> int2obj(elem_type_info_ptr)
+        cdef int8_t collect_flag
+        cdef TypeInfo elem_type_info = self.write_header(buffer, value, &collect_flag)
         cdef elem_type = elem_type_info.cls
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver

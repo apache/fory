@@ -44,6 +44,7 @@ from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
 from libcpp.vector cimport vector
 from cpython cimport PyObject
+from cpython.object cimport PyTypeObject
 from cpython.dict cimport PyDict_Next
 from cpython.ref cimport *
 from cpython.list cimport PyList_New, PyList_SET_ITEM
@@ -70,9 +71,13 @@ cdef extern from *:
     """
     #define int2obj(obj_addr) ((PyObject *)(obj_addr))
     #define obj2int(obj_ref) (Py_INCREF(obj_ref), ((int64_t)(obj_ref)))
+    #define fory_sequence_get_items(collection) \
+      (PyList_CheckExact(collection) ? ((PyListObject *)(collection))->ob_item : \
+      (PyTuple_CheckExact(collection) ? ((PyTupleObject *)(collection))->ob_item : NULL))
     """
     object int2obj(int64_t obj_addr)
     int64_t obj2int(object obj_ref)
+    PyObject **fory_sequence_get_items(object collection)
     dict _PyDict_NewPresized(Py_ssize_t minused)
     Py_ssize_t Py_SIZE(object obj)
 
@@ -85,6 +90,7 @@ cdef int8_t REF_FLAG = -2
 cdef int8_t NOT_NULL_VALUE_FLAG = -1
 # this flag indicates that the object is a referencable and first read.
 cdef int8_t REF_VALUE_FLAG = 0
+DEF SMALL_REF_CACHE_CAPACITY = 32
 # Global MetaString decoder for namespace bytes to str
 namespace_decoder = MetaStringDecoder(".", "_")
 # Global MetaString decoder for typename bytes to str
@@ -115,10 +121,14 @@ cdef class MapRefResolver:
     cdef vector[PyObject *] read_objects
     cdef vector[int32_t] read_ref_ids
     cdef object read_object
+    cdef int32_t small_written_size
+    cdef uint64_t[SMALL_REF_CACHE_CAPACITY] small_written_object_ids
+    cdef int32_t[SMALL_REF_CACHE_CAPACITY] small_written_ref_ids
     cdef c_bool track_ref
 
     def __cinit__(self, c_bool ref):
         self.read_object = None
+        self.small_written_size = 0
         self.track_ref = ref
 
     # Special methods of extension types must be declared with def, not cdef.
@@ -137,12 +147,32 @@ cdef class MapRefResolver:
             buffer.write_int8(NULL_FLAG)
             return True
         cdef uint64_t object_id = <uintptr_t> <PyObject *> obj
+        cdef uint64_t cached_object_id
+        cdef int32_t i
         cdef int32_t next_id
-        cdef flat_hash_map[uint64_t, int32_t].iterator it = \
-            self.written_objects_id.find(object_id)
-        if it == self.written_objects_id.end():
-            next_id = self.written_objects_id.size()
-            self.written_objects_id[object_id] = next_id
+        cdef pair[flat_hash_map[uint64_t, int32_t].iterator, bint] insert_result
+        if self.small_written_size >= 0:
+            for i in range(self.small_written_size):
+                if self.small_written_object_ids[i] == object_id:
+                    buffer.write_int8(REF_FLAG)
+                    buffer.write_var_uint32(<uint64_t> self.small_written_ref_ids[i])
+                    return True
+            next_id = self.written_objects.size()
+            if self.small_written_size < SMALL_REF_CACHE_CAPACITY:
+                self.small_written_object_ids[self.small_written_size] = object_id
+                self.small_written_ref_ids[self.small_written_size] = next_id
+                self.small_written_size += 1
+                self.written_objects.push_back(<PyObject *> obj)
+                Py_INCREF(obj)
+                buffer.write_int8(REF_VALUE_FLAG)
+                return False
+            for i in range(self.small_written_size):
+                cached_object_id = self.small_written_object_ids[i]
+                self.written_objects_id[cached_object_id] = self.small_written_ref_ids[i]
+            self.small_written_size = -1
+        next_id = self.written_objects_id.size()
+        insert_result = self.written_objects_id.insert(pair[uint64_t, int32_t](object_id, next_id))
+        if insert_result.second:
             self.written_objects.push_back(<PyObject *> obj)
             Py_INCREF(obj)
             buffer.write_int8(REF_VALUE_FLAG)
@@ -150,7 +180,7 @@ cdef class MapRefResolver:
         else:
             # The obj has been written previously.
             buffer.write_int8(REF_FLAG)
-            buffer.write_var_uint32(<uint64_t> deref(it).second)
+            buffer.write_var_uint32(<uint64_t> deref(insert_result.first).second)
             return True
 
     cpdef inline int8_t read_ref_or_null(self, Buffer buffer):
@@ -253,6 +283,7 @@ cdef class MapRefResolver:
 
     cpdef inline reset_write(self):
         self.written_objects_id.clear()
+        self.small_written_size = 0
         for item in self.written_objects:
             Py_XDECREF(item)
         self.written_objects.clear()

@@ -23,6 +23,10 @@ Usage:
     python fory_benchmark.py [OPTIONS]
 
 Benchmark Options:
+    --operation MODE
+        Benchmark operation mode. Default: roundtrip
+        Available: roundtrip, serialize, deserialize
+
     --benchmarks BENCHMARK_LIST
         Comma-separated list of benchmarks to run. Default: all
         Available: dict, large_dict, dict_group, tuple, large_tuple,
@@ -54,6 +58,12 @@ Benchmark Options:
 Examples:
     # Run all benchmarks with both Fory and Pickle
     python fory_benchmark.py
+
+    # Benchmark serialize only
+    python fory_benchmark.py --operation serialize
+
+    # Benchmark deserialize only
+    python fory_benchmark.py --operation deserialize
 
     # Run specific benchmarks with both serializers
     python fory_benchmark.py --benchmarks dict,large_dict,complex
@@ -220,31 +230,62 @@ for fory_instance in (fory_with_ref, fory_without_ref):
     fory_instance.register_type(ComplexObject2)
 
 
-def fory_object(ref, obj):
+def fory_roundtrip(ref, obj):
     fory = fory_with_ref if ref else fory_without_ref
     binary = fory.serialize(obj)
     fory.deserialize(binary)
 
 
-def fory_data_class(ref, obj):
+def fory_serialize(ref, obj):
     fory = fory_with_ref if ref else fory_without_ref
-    binary = fory.serialize(obj)
+    fory.serialize(obj)
+
+
+def fory_deserialize(ref, binary):
+    fory = fory_with_ref if ref else fory_without_ref
     fory.deserialize(binary)
 
 
-def pickle_object(obj):
+def pickle_roundtrip(obj):
     binary = pickle.dumps(obj)
     pickle.loads(binary)
 
 
-def pickle_data_class(obj):
-    binary = pickle.dumps(obj)
+def pickle_serialize(obj):
+    pickle.dumps(obj)
+
+
+def pickle_deserialize(binary):
     pickle.loads(binary)
+
+
+def build_fory_benchmark_case(operation: str, ref: bool, obj):
+    if operation == "serialize":
+        return fory_serialize, (ref, obj)
+    if operation == "deserialize":
+        fory = fory_with_ref if ref else fory_without_ref
+        return fory_deserialize, (ref, fory.serialize(obj))
+    return fory_roundtrip, (ref, obj)
+
+
+def build_pickle_benchmark_case(operation: str, obj):
+    if operation == "serialize":
+        return pickle_serialize, (obj,)
+    if operation == "deserialize":
+        return pickle_deserialize, (pickle.dumps(obj),)
+    return pickle_roundtrip, (obj,)
 
 
 def benchmark_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Fory vs Pickle Benchmark")
+    parser.add_argument(
+        "--operation",
+        type=str,
+        default="roundtrip",
+        choices=["roundtrip", "serialize", "deserialize"],
+        help="Benchmark operation mode: roundtrip, serialize, deserialize (default: roundtrip)",
+    )
     parser.add_argument(
         "--no-ref",
         action="store_true",
@@ -346,18 +387,18 @@ def micro_benchmark():
     args = benchmark_args()
     ref = not args.no_ref
 
-    # Define benchmark data and functions
+    # Define benchmark data
     benchmark_data = {
-        "dict": (DICT, fory_object, pickle_object),
-        "large_dict": (LARGE_DICT, fory_object, pickle_object),
-        "dict_group": (DICT_GROUP, fory_object, pickle_object),
-        "tuple": (TUPLE, fory_object, pickle_object),
-        "large_tuple": (LARGE_TUPLE, fory_object, pickle_object),
-        "large_float_tuple": (LARGE_FLOAT_TUPLE, fory_object, pickle_object),
-        "large_boolean_tuple": (LARGE_BOOLEAN_TUPLE, fory_object, pickle_object),
-        "list": (LIST, fory_object, pickle_object),
-        "large_list": (LARGE_LIST, fory_object, pickle_object),
-        "complex": (COMPLEX_OBJECT, fory_data_class, pickle_data_class),
+        "dict": DICT,
+        "large_dict": LARGE_DICT,
+        "dict_group": DICT_GROUP,
+        "tuple": TUPLE,
+        "large_tuple": LARGE_TUPLE,
+        "large_float_tuple": LARGE_FLOAT_TUPLE,
+        "large_boolean_tuple": LARGE_BOOLEAN_TUPLE,
+        "list": LIST,
+        "large_list": LARGE_LIST,
+        "complex": COMPLEX_OBJECT,
     }
 
     # Determine which benchmarks to run
@@ -388,6 +429,7 @@ def micro_benchmark():
     print(
         f"\nBenchmarking {len(selected_benchmarks)} benchmark(s) with {len(selected_serializers)} serializer(s)"
     )
+    print(f"Operation: {args.operation}")
     print(
         f"Warmup: {args.warmup}, Iterations: {args.iterations}, Repeat: {args.repeat}, Inner loop: {args.number}"
     )
@@ -397,14 +439,18 @@ def micro_benchmark():
     # Run selected benchmarks with selected serializers
     results = []
     for benchmark_name in selected_benchmarks:
-        data, fory_func, pickle_func = benchmark_data[benchmark_name]
+        data = benchmark_data[benchmark_name]
 
         if "fory" in selected_serializers:
-            print(f"\nRunning fory_{benchmark_name}...", end=" ", flush=True)
+            print(
+                f"\nRunning fory_{benchmark_name}_{args.operation}...",
+                end=" ",
+                flush=True,
+            )
+            fory_func, fory_args = build_fory_benchmark_case(args.operation, ref, data)
             mean, stdev = run_benchmark(
                 fory_func,
-                ref,
-                data,
+                *fory_args,
                 warmup=args.warmup,
                 iterations=args.iterations,
                 repeat=args.repeat,
@@ -414,10 +460,15 @@ def micro_benchmark():
             print(f"{format_time(mean)} ± {format_time(stdev)}")
 
         if "pickle" in selected_serializers:
-            print(f"Running pickle_{benchmark_name}...", end=" ", flush=True)
+            print(
+                f"Running pickle_{benchmark_name}_{args.operation}...",
+                end=" ",
+                flush=True,
+            )
+            pickle_func, pickle_args = build_pickle_benchmark_case(args.operation, data)
             mean, stdev = run_benchmark(
                 pickle_func,
-                data,
+                *pickle_args,
                 warmup=args.warmup,
                 iterations=args.iterations,
                 repeat=args.repeat,
