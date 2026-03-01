@@ -469,10 +469,18 @@ cdef inline get_next_element(
     cdef int32_t ref_id
     cdef TypeInfo typeinfo
     ref_id = ref_resolver.try_preserve_ref_id(buffer)
+    # Ref contract:
+    # - ref_id < NOT_NULL_VALUE_FLAG means this element was already seen.
+    # - ref_id >= NOT_NULL_VALUE_FLAG means this is a first-seen element and
+    #   the returned ref_id is either a preserved slot id (REF_VALUE_FLAG path)
+    #   or -1 sentinel (NOT_NULL_VALUE_FLAG path, non-referenceable value).
     if ref_id < NOT_NULL_VALUE_FLAG:
         return ref_resolver.get_read_object()
-    # Always route through serializer and preserve ref slot for cross-language
-    # payloads where first-seen primitive values may still be emitted as REF_VALUE.
+    # Important: do not bypass serializer.read() with primitive type_id fastpaths
+    # in this mixed-type ref-tracking path.
+    # Cross-language peers may emit REF_VALUE for primitive-typed elements, and
+    # in that case we must materialize the object and call set_read_object(ref_id, o)
+    # so later REF_FLAG references resolve to the same object.
     typeinfo = type_resolver.read_type_info(buffer)
     o = typeinfo.serializer.read(buffer)
     ref_resolver.set_read_object(ref_id, o)

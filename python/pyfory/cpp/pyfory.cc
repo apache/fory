@@ -413,6 +413,10 @@ static bool py_long_to_int64(PyObject *value, int64_t *out) {
 
 static bool can_use_list_sequence_fastpath(PyObject **items, Py_ssize_t size,
                                            uint8_t type_id) {
+  // This gate is not only about type checks:
+  // it enforces "no Python callback during conversion" for the raw ob_item path.
+  // If conversion can invoke user code (e.g. __int__/__float__/subclass hooks),
+  // a list may be mutated while iterating raw pointers, which is unsafe.
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::STRING:
     for (Py_ssize_t i = 0; i < size; ++i) {
@@ -1131,8 +1135,11 @@ int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
   PyObject **items = py_sequence_get_items(collection);
   if (items != nullptr) {
     const Py_ssize_t size = Py_SIZE(collection);
-    // For list, keep raw ob_item fastpath only when element conversions are
-    // guaranteed not to execute Python callbacks that might mutate the list.
+    // Refactor guard:
+    // - tuple is immutable, so raw item pointer iteration is always safe.
+    // - list is mutable, so use raw pointer path only when
+    //   can_use_list_sequence_fastpath(...) proves callback-free conversion.
+    // Otherwise we must fall back to iterator path for safety.
     if (!PyList_CheckExact(collection) ||
         can_use_list_sequence_fastpath(items, size, type_id)) {
       return write_primitive_sequence(items, size, buffer, type_id);

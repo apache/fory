@@ -222,9 +222,12 @@ cdef class MapRefResolver:
         else:
             self.read_object = None
             if head_flag == REF_VALUE_FLAG:
+                # Reserve a concrete slot for the first-seen referenceable object.
+                # The caller must eventually call set_read_object(slot_id, obj).
                 return self.preserve_ref_id()
             # For NOT_NULL_VALUE_FLAG, push -1 to read_ref_ids so reference() knows
             # this object is not referenceable (it's a value type, not a reference type)
+            # and must not consume/occupy a read_objects slot.
             self.read_ref_ids.push_back(-1)
             return head_flag
 
@@ -266,6 +269,8 @@ cdef class MapRefResolver:
         if not self.track_ref:
             return
         if ref_id >= 0:
+            # ref_id < 0 is the NOT_NULL_VALUE_FLAG sentinel path and intentionally
+            # has no slot in read_objects.
             need_inc = self.read_objects[ref_id] == NULL
             if need_inc:
                 Py_INCREF(obj)
