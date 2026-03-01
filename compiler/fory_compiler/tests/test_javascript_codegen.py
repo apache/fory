@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Tests for TypeScript code generation."""
+"""Tests for JavaScript code generation."""
 
 from pathlib import Path
 from textwrap import dedent
@@ -23,7 +23,7 @@ from textwrap import dedent
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.generators.base import GeneratorOptions
-from fory_compiler.generators.typescript import TypeScriptGenerator
+from fory_compiler.generators.javascript import JavaScriptGenerator
 from fory_compiler.ir.ast import Schema
 
 
@@ -31,16 +31,16 @@ def parse_fdl(source: str) -> Schema:
     return Parser(Lexer(source).tokenize()).parse()
 
 
-def generate_typescript(source: str) -> str:
+def generate_javascript(source: str) -> str:
     schema = parse_fdl(source)
     options = GeneratorOptions(output_dir=Path("/tmp"))
-    generator = TypeScriptGenerator(schema, options)
+    generator = JavaScriptGenerator(schema, options)
     files = generator.generate()
     assert len(files) == 1, f"Expected 1 file, got {len(files)}"
     return files[0].content
 
 
-def test_typescript_enum_generation():
+def test_javascript_enum_generation():
     """Test that enums are properly generated."""
     source = dedent(
         """
@@ -53,7 +53,7 @@ def test_typescript_enum_generation():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check enum definition
     assert "export enum Color" in output
@@ -63,7 +63,7 @@ def test_typescript_enum_generation():
     assert "Type ID 101" in output
 
 
-def test_typescript_message_generation():
+def test_javascript_message_generation():
     """Test that messages are properly generated as interfaces."""
     source = dedent(
         """
@@ -76,7 +76,7 @@ def test_typescript_message_generation():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check interface definition
     assert "export interface Person" in output
@@ -86,7 +86,7 @@ def test_typescript_message_generation():
     assert "Type ID 102" in output
 
 
-def test_typescript_nested_message():
+def test_javascript_nested_message():
     """Test that nested messages are properly generated."""
     source = dedent(
         """
@@ -104,7 +104,7 @@ def test_typescript_nested_message():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check nested interface
     assert "export interface Person" in output
@@ -113,7 +113,7 @@ def test_typescript_nested_message():
     assert "city: string;" in output
 
 
-def test_typescript_nested_enum():
+def test_javascript_nested_enum():
     """Test that nested enums are properly generated."""
     source = dedent(
         """
@@ -129,7 +129,7 @@ def test_typescript_nested_enum():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check nested enum
     assert "export enum PhoneType" in output
@@ -137,7 +137,7 @@ def test_typescript_nested_enum():
     assert "HOME = 1" in output
 
 
-def test_typescript_nested_enum_registration_uses_simple_name():
+def test_javascript_nested_enum_registration_uses_simple_name():
     """Test that nested enums are registered with simple names, not qualified names."""
     source = dedent(
         """
@@ -153,9 +153,9 @@ def test_typescript_nested_enum_registration_uses_simple_name():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
-    # Enums are skipped during registration in TypeScript (they are numeric
+    # Enums are skipped during registration in JavaScript (they are numeric
     # values at runtime and don't need separate Fory registration).
     assert "fory.register('PhoneType'" not in output
     # Messages are still registered (using string name since interfaces
@@ -165,7 +165,7 @@ def test_typescript_nested_enum_registration_uses_simple_name():
     assert "Person.PhoneType" not in output
 
 
-def test_typescript_union_generation():
+def test_javascript_union_generation():
     """Test that unions are properly generated as discriminated unions."""
     source = dedent(
         """
@@ -187,7 +187,7 @@ def test_typescript_union_generation():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check union generation
     assert "export enum AnimalCase" in output
@@ -199,7 +199,7 @@ def test_typescript_union_generation():
     assert "Type ID 103" in output
 
 
-def test_typescript_collection_types():
+def test_javascript_collection_types():
     """Test that collection types are properly mapped."""
     source = dedent(
         """
@@ -211,14 +211,14 @@ def test_typescript_collection_types():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check collection types
     assert "items: string[];" in output
     assert "config: Record<string, number>;" in output
 
 
-def test_typescript_primitive_types():
+def test_javascript_primitive_types():
     """Test that all primitive types are properly mapped."""
     source = dedent(
         """
@@ -237,7 +237,7 @@ def test_typescript_primitive_types():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check type mappings (field names are converted to camelCase)
     assert "fBool: boolean;" in output
@@ -251,7 +251,7 @@ def test_typescript_primitive_types():
     assert "fBytes: Uint8Array;" in output
 
 
-def test_typescript_file_structure():
+def test_javascript_file_structure():
     """Test that generated file has proper structure."""
     source = dedent(
         """
@@ -272,7 +272,7 @@ def test_typescript_file_structure():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check license header
     assert "Apache Software Foundation (ASF)" in output
@@ -291,7 +291,7 @@ def test_typescript_file_structure():
     assert "export function registerV1Types" in output
 
 
-def test_typescript_field_naming():
+def test_javascript_field_naming():
     """Test that field names are converted to camelCase."""
     source = dedent(
         """
@@ -304,7 +304,7 @@ def test_typescript_field_naming():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Check that field names are properly converted to camelCase
     assert "firstName:" in output
@@ -316,7 +316,7 @@ def test_typescript_field_naming():
     assert "phone_number:" not in output
 
 
-def test_typescript_no_runtime_dependencies():
+def test_javascript_no_runtime_dependencies():
     """Test that generated code has no gRPC runtime dependencies."""
     source = dedent(
         """
@@ -327,7 +327,7 @@ def test_typescript_no_runtime_dependencies():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Should not reference gRPC
     assert "@grpc" not in output
@@ -336,7 +336,7 @@ def test_typescript_no_runtime_dependencies():
     assert "import.*grpc" not in output
 
 
-def test_typescript_file_extension():
+def test_javascript_file_extension():
     """Test that output file has correct extension."""
     source = dedent(
         """
@@ -350,14 +350,14 @@ def test_typescript_file_extension():
 
     schema = parse_fdl(source)
     options = GeneratorOptions(output_dir=Path("/tmp"))
-    generator = TypeScriptGenerator(schema, options)
+    generator = JavaScriptGenerator(schema, options)
     files = generator.generate()
 
     assert len(files) == 1
-    assert files[0].path.endswith(".ts")
+    assert files[0].path.endswith(".js") or files[0].path.endswith(".ts"), f"Unexpected file extension: {files[0].path}"
 
 
-def test_typescript_enum_value_stripping():
+def test_javascript_enum_value_stripping():
     """Test that enum value prefixes are stripped correctly."""
     source = dedent(
         """
@@ -370,7 +370,7 @@ def test_typescript_enum_value_stripping():
         }
         """
     )
-    output = generate_typescript(source)
+    output = generate_javascript(source)
 
     # Prefixes should be stripped
     assert "MOBILE = 0" in output

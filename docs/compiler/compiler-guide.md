@@ -163,7 +163,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --typescript_out=./javascript/src --swift_out=./swift/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --javascript_out=./javascript/src --swift_out=./swift/gen
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/

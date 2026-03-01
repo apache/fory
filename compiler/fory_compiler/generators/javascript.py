@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""TypeScript/JavaScript code generator."""
+"""JavaScript/TypeScript code generator."""
 
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
@@ -37,10 +37,10 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class TypeScriptGenerator(BaseGenerator):
-    """Generates TypeScript type definitions and Fory registration helpers from IDL."""
+class JavaScriptGenerator(BaseGenerator):
+    """Generates JavaScript/TypeScript type definitions and Fory registration helpers from IDL."""
 
-    language_name = "typescript"
+    language_name = "javascript"
     file_extension = ".ts"
 
     # TypeScript/JavaScript reserved keywords that cannot be used as identifiers

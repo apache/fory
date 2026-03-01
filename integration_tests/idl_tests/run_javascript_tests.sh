@@ -21,11 +21,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-python "${SCRIPT_DIR}/generate_idl.py" --lang typescript
+python "${SCRIPT_DIR}/generate_idl.py" --lang javascript
 
-cd "${SCRIPT_DIR}/typescript"
+cd "${SCRIPT_DIR}/javascript"
 npm install
 ENABLE_FORY_DEBUG_OUTPUT=1 npx jest --ci
 
-IDL_PEER_LANG=typescript "${SCRIPT_DIR}/run_java_tests.sh"
+IDL_PEER_LANG=javascript "${SCRIPT_DIR}/run_java_tests.sh"
 

@@ -4,7 +4,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 
 ## Features
 
-- **Multi-language code generation**: Java, Python, Go, Rust, C++, C#, JS/TS
+- **Multi-language code generation**: Java, Python, Go, Rust, C++, C#, Javascript, and Swift
 - **Rich type system**: Primitives, enums, messages, lists, maps
 - **Cross-language serialization**: Generated code works seamlessly with Apache Fory
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
@@ -64,16 +64,16 @@ message Cat [id=103] {
 foryc schema.fdl --output ./generated
 
 # Generate for specific languages
-foryc schema.fdl --lang java,python,csharp,typescript --output ./generated
+foryc schema.fdl --lang java,python,csharp,javascript --output ./generated
 
 # Override package name
 foryc schema.fdl --package myapp.models --output ./generated
 
 # Language-specific output directories (protoc-style)
-foryc schema.fdl --java_out=./src/main/java --python_out=./python/src --csharp_out=./csharp/src/Generated --typescript_out=./javascript
+foryc schema.fdl --java_out=./src/main/java --python_out=./python/src --csharp_out=./csharp/src/Generated --javascript_out=./javascript
 
 # Combine with other options
-foryc schema.fdl --java_out=./gen --go_out=./gen/go --csharp_out=./gen/csharp --typescript_out=./gen/ts -I ./proto
+foryc schema.fdl --java_out=./gen --go_out=./gen/go --csharp_out=./gen/csharp --javascript_out=./gen/js -I ./proto
 ```
 
 ### 3. Use Generated Code
@@ -185,7 +185,7 @@ message Config { ... }  // Registered as "package.Config"
 
 ### Primitive Types
 
-| FDL Type    | Java        | Python              | Go          | Rust                    | C++                    | C#               | TypeScript         |
+| FDL Type    | Java        | Python              | Go          | Rust                    | C++                    | C#               | JavaScript         |
 | ----------- | ----------- | ------------------- | ----------- | ----------------------- | ---------------------- | ---------------- | ------------------ |
 | `bool`      | `boolean`   | `bool`              | `bool`      | `bool`                  | `bool`                 | `bool`           | `boolean`          |
 | `int8`      | `byte`      | `pyfory.int8`       | `int8`      | `i8`                    | `int8_t`               | `sbyte`          | `number`           |
@@ -286,7 +286,7 @@ fory_compiler/
     ├── rust.py           # Rust struct generator
     ├── cpp.py            # C++ struct generator
     ├── csharp.py         # C# class generator
-    └── typescript.py     # TypeScript interface generator
+    └── javascript.py     # JavaScript interface generator
 ```
 
 ### FDL Frontend
@@ -423,7 +423,7 @@ cd integration_tests/idl_tests
 ./run_csharp_tests.sh
 ```
 
-### TypeScript
+### JavaScript
 
 Generates interfaces with:
 
@@ -432,7 +432,7 @@ Generates interfaces with:
 - Discriminated unions with case enums
 - Registration helper function
 
-```typescript
+```javascript
 export interface Cat {
   friend?: Dog | undefined;
   name?: string | undefined;
@@ -451,7 +451,7 @@ Arguments:
   FILES                 FDL files to compile
 
 Options:
-  --lang TEXT          Target languages (java,python,cpp,rust,go,csharp,typescript or "all")
+  --lang TEXT          Target languages (java,python,cpp,rust,go,csharp,javascript or "all")
                        Default: all
   --output, -o PATH    Output directory
                        Default: ./generated
