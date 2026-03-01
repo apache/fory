@@ -237,7 +237,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     nameBuilder.append("Codec").append(codecSuffix());
     Map<String, Integer> subGenerator =
         idGenerator.computeIfAbsent(nameBuilder.toString(), k -> new ConcurrentHashMap<>());
-    String key = fory.getConfig().getConfigHash() + "_" + CodeGenerator.getClassUniqueId(beanClass);
+    String key = fory.getConfigHash() + "_" + CodeGenerator.getClassUniqueId(beanClass);
     Integer id = subGenerator.get(key);
     if (id == null) {
       synchronized (subGenerator) {

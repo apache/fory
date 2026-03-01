@@ -337,8 +337,10 @@ public class TimeSerializersTest extends ForyTestBase {
       {
         TimeStructRef struct = createTimeStructRef(new TimeStructRef());
         TimeStructRef struct2 = (TimeStructRef) serDeCheck(fory, struct);
-        // TimeStructRef serializer already generated, enable ref tracking doesn't take effect.
-        Assert.assertNotSame(struct2.date1, struct2.date2);
+
+        // Despite a TimeStructRef codegen serializer having already been generated, the change to
+        // enable ref tracking should now take effect due to improvements to the codegen caching
+        Assert.assertSame(struct2.date1, struct2.date2);
       }
       {
         TimeStructRef struct = createTimeStructRef(new TimeStructRef2());

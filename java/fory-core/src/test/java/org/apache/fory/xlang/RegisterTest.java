@@ -118,4 +118,52 @@ public class RegisterTest extends ForyTestBase {
     EmptyWrapper newWrapper = (EmptyWrapper) fory2.deserialize(buffer2);
     Assert.assertEquals(newWrapper, new EmptyWrapper());
   }
+
+  @Test
+  public void testCodegenCacheIsolation() {
+    Fory foryA =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(true)
+            .build();
+    foryA.register(Color.class, 101);
+    foryA.register(MyStruct.class, 102);
+    foryA.register(MyExt.class, 103);
+    foryA.registerSerializer(MyExt.class, MyExtSerializer.class);
+    foryA.register(MyWrapper.class, 104);
+
+    MyWrapper wrapperA = new MyWrapper();
+    wrapperA.color = Color.Red;
+    wrapperA.my_struct = new MyStruct(10);
+    wrapperA.my_ext = new MyExt(20);
+
+    Fory foryB =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(true)
+            .build();
+    foryB.register(Color.class, 101);
+    foryB.register(MyStruct.class, 102);
+    foryB.register(MyExt.class, 103);
+    // NO MyExtSerializer registered
+    foryB.register(MyWrapper.class, 104);
+
+    MyWrapper wrapperB = new MyWrapper();
+    wrapperB.color = Color.Blue;
+    wrapperB.my_struct = new MyStruct(30);
+    wrapperB.my_ext = new MyExt(40);
+
+    try {
+      byte[] serializedByB = foryB.serialize(wrapperB);
+      MyWrapper deserializedB = (MyWrapper) foryB.deserialize(serializedByB);
+
+      Assert.assertNotNull(deserializedB);
+      Assert.assertEquals(deserializedB.my_ext.id, 40);
+
+    } catch (Exception e) {
+      Assert.fail("foryB tried to use foryA's codegen. Exception: " + e.getMessage());
+    }
+  }
 }
