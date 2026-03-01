@@ -103,7 +103,8 @@ public class Float16SerializerTest extends ForyTestBase {
   public void testFloat16ArraySerializationWithNullElements() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
 
-    Float16[] array = new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
+    Float16[] array =
+        new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
     byte[] bytes = fory.serialize(array);
     Float16[] result = (Float16[]) fory.deserialize(bytes);
 
@@ -248,7 +249,8 @@ public class Float16SerializerTest extends ForyTestBase {
       Float16[] arrayResultFromList = (Float16[]) listResult;
       assertEquals(arrayResultFromList.length, list.size());
       for (int i = 0; i < arrayResultFromList.length; i++) {
-        assertEquals(arrayResultFromList[i].toBits(), list.getShort(i), "Index " + i + " should match");
+        assertEquals(
+            arrayResultFromList[i].toBits(), list.getShort(i), "Index " + i + " should match");
       }
     }
   }

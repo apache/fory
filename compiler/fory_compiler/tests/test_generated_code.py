@@ -519,11 +519,16 @@ def test_java_float16_equals_hash_contract_generation():
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "f16 == null ? that.f16 == null" in java_output
     assert "optF16 == null ? that.optF16 == null" in java_output
-    assert "((f16.toBits() & 0x7FFF) == 0) ? 0 : Short.hashCode(f16.toBits())" in java_output
+    assert (
+        "((f16.toBits() & 0x7FFF) == 0) ? 0 : Short.hashCode(f16.toBits())"
+        in java_output
+    )
     assert (
         "((optF16.toBits() & 0x7FFF) == 0) ? 0 : Short.hashCode(optF16.toBits())"
         in java_output
     )
+
+
 def test_go_bfloat16_generation():
     idl = dedent(
         """

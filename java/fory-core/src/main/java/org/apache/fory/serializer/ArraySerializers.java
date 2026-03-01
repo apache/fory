@@ -1000,10 +1000,7 @@ public class ArraySerializers {
       int consumed = buffer.readerIndex() - startIndex;
       if (consumed != payloadSize) {
         throw new IllegalStateException(
-            "Corrupted Float16[] payload size. expected="
-                + payloadSize
-                + ", consumed="
-                + consumed);
+            "Corrupted Float16[] payload size. expected=" + payloadSize + ", consumed=" + consumed);
       }
       return values;
     }
