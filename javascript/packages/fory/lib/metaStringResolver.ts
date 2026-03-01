@@ -108,4 +108,15 @@ export class MetaStringResolver {
     });
     this.dynamicNameId = 0;
   }
+
+  resetRead() {
+    // No state to reset for read operation
+  }
+
+  resetWrite() {
+    this.disposeMetaStringBytes.forEach((x) => {
+      x.dynamicWriteStringId = -1;
+    });
+    this.dynamicNameId = 0;
+  }
 }

@@ -35,6 +35,14 @@ export class ReferenceResolver {
     this.writeObjects = new Map();
   }
 
+  resetRead() {
+    this.readObjects = [];
+  }
+
+  resetWrite() {
+    this.writeObjects = new Map();
+  }
+
   getReadObject(refId: number) {
     return this.readObjects[refId];
   }

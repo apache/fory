@@ -121,4 +121,16 @@ export class TypeMetaResolver {
     this.dynamicTypeId = 0;
     this.typeMeta = [];
   }
+
+  resetRead() {
+    this.typeMeta = [];
+  }
+
+  resetWrite() {
+    this.disposeTypeInfo.forEach((x) => {
+      x.dynamicTypeId = -1;
+    });
+    this.disposeTypeInfo = [];
+    this.dynamicTypeId = 0;
+  }
 }

@@ -198,28 +198,38 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   }
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
     return `
+      fory.incReadDepth();
       ${this.readTypeInfo()}
-      ${this.read(assignStmt, refState)};
+      let ${result};
+      ${this.read(v => `${result} = ${v}`, refState)};
+      fory.decReadDepth();
+      ${assignStmt(result)};
     `;
   }
 
   readRefWithoutTypeInfo(assignStmt: (v: string) => string): string {
     const refFlag = this.scope.uniqueName("refFlag");
+    const result = this.scope.uniqueName("result");
     return `
         const ${refFlag} = ${this.builder.reader.readInt8()};
+        let ${result};
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                ${this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                fory.incReadDepth();
+                ${this.read(v => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                fory.decReadDepth();
                 break;
             case ${RefFlags.RefFlag}:
-                ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()))}
+                ${result} = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())};
                 break;
             case ${RefFlags.NullFlag}:
-                ${assignStmt("null")}
+                ${result} = null;
                 break;
         }
+        ${assignStmt(result)};
     `;
   }
 
