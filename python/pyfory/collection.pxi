@@ -245,9 +245,9 @@ cdef class CollectionSerializer(Serializer):
                             typeinfo.serializer.write(buffer, s)
 
     cdef inline _write_primitive_fastpath(self, Buffer buffer, value, uint8_t type_id, PyObject **items, Py_ssize_t size):
-        if items != NULL:
-            Fory_PyPrimitiveSequenceWriteToBuffer(items, size, &buffer.c_buffer, type_id)
-            return
+        # Always dispatch through collection API so list writes keep the C++ side
+        # mutation/callback safety guard (can_use_list_sequence_fastpath).
+        # Tuple still uses raw sequence fastpath inside C++ because it is immutable.
         Fory_PyPrimitiveCollectionWriteToBuffer(value, &buffer.c_buffer, type_id)
 
     cdef inline _read_primitive_fastpath(self, Buffer buffer, int64_t len_, object collection_, uint8_t type_id):
