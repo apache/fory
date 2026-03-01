@@ -354,7 +354,9 @@ def test_javascript_file_extension():
     files = generator.generate()
 
     assert len(files) == 1
-    assert files[0].path.endswith(".js") or files[0].path.endswith(".ts"), f"Unexpected file extension: {files[0].path}"
+    assert files[0].path.endswith(".js") or files[0].path.endswith(".ts"), (
+        f"Unexpected file extension: {files[0].path}"
+    )
 
 
 def test_javascript_enum_value_stripping():
