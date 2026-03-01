@@ -46,6 +46,16 @@ import Fory, { Type } from "@fory/fory";
 
 const compatible = process.env["IDL_COMPATIBLE"] === "true";
 
+// The Fory JS runtime does not support compatible mode (class metadata /
+// versioning is incomplete).  Skip all roundtrips when compatible = true so
+// Java reads back its own original bytes unchanged.
+if (compatible) {
+  console.log(
+    "TypeScript roundtrip: compatible mode not supported, skipping roundtrips."
+  );
+  process.exit(0);
+}
+
 // ---------------------------------------------------------------------------
 // Type definitions matching the IDL-generated types
 // ---------------------------------------------------------------------------

@@ -112,30 +112,25 @@ union Wrapper {
 
 ## Java
 
-## JavaScript
+### Output Layout
 
-JavaScript output is one `.ts` file per schema, for example:
+For `package addressbook`, Java output is generated under:
 
-### Registration
+- `<java_out>/addressbook/`
+- Type files: `AddressBook.java`, `Person.java`, `Dog.java`, `Cat.java`, `Animal.java`
+- Registration helper: `AddressbookForyRegistration.java`
 
-Each schema generates a registration helper function:
+### Type Generation
 
-```typescript
-export function registerAddressbookTypes(fory: any): void {
-  fory.register(PhoneType, 101);
-  fory.register(PhoneNumber, 102);
-  fory.register(Person, 100);
-  fory.register(Dog, 104);
-  fory.register(Cat, 105);
-  fory.registerUnion(Animal, 106);
-  fory.register(AddressBook, 103);
-}
-```
+Messages generate Java classes with `@ForyField`, default constructors, getters/setters, and byte helpers:
 
-| JavaScript | `PhoneNumber` (flat) |
-| JavaScript | (via `fory.serialize()`) |
-WORK;
-}
+```java
+public class Person {
+    public static enum PhoneType {
+        MOBILE,
+        HOME,
+        WORK;
+    }
 
     public static class PhoneNumber {
         @ForyField(id = 1)
@@ -156,10 +151,8 @@ WORK;
 
     public byte[] toBytes() { ... }
     public static Person fromBytes(byte[] bytes) { ... }
-
 }
-
-````
+```
 
 Unions generate classes extending `org.apache.fory.type.union.Union`:
 
@@ -751,13 +744,13 @@ public static class AddressbookForyRegistration
 When explicit type IDs are not provided, generated registration uses computed
 numeric IDs (same behavior as other targets).
 
-## TypeScript
+## JavaScript
 
 ### Output Layout
 
-TypeScript output is one `.ts` file per schema, for example:
+JavaScript output is one `.ts` file per schema, for example:
 
-- `<typescript_out>/addressbook.ts`
+- `<javascript_out>/addressbook.ts`
 
 ### Type Generation
 
@@ -867,25 +860,6 @@ With non-empty package and `flatten` style, the helper is prefixed too (for exam
 For schemas without explicit `[id=...]`, registration uses computed numeric IDs.
 If `option enable_auto_type_id = false;` is set, generated code uses name-based registration APIs.
 
-### Registration
-
-Each schema generates a registration helper function:
-
-```typescript
-export function registerAddressbookTypes(fory: any): void {
-  fory.register(PhoneType, 101);
-  fory.register(PhoneNumber, 102);
-  fory.register(Person, 100);
-  fory.register(Dog, 104);
-  fory.register(Cat, 105);
-  fory.registerUnion(Animal, 106);
-  fory.register(AddressBook, 103);
-}
-```
-
-When explicit type IDs are not provided, generated registration uses computed
-numeric IDs (same behavior as other targets).
-
 ## Cross-Language Notes
 
 ### Type ID Behavior
@@ -896,26 +870,26 @@ numeric IDs (same behavior as other targets).
 
 ### Nested Type Shape
 
-| Language | Nested type form               |
-| -------- | ------------------------------ |
-| Java     | `Person.PhoneNumber`           |
-| Python   | `Person.PhoneNumber`           |
-| Rust     | `person::PhoneNumber`          |
-| C++      | `Person::PhoneNumber`          |
-| Go       | `Person_PhoneNumber` (default) |
-| C#       | `Person.PhoneNumber`           |
-| TS       | `PhoneNumber` (flat)           |
-| Swift    | `Person.PhoneNumber`           |
+| Language   | Nested type form               |
+| ---------- | ------------------------------ |
+| Java       | `Person.PhoneNumber`           |
+| Python     | `Person.PhoneNumber`           |
+| Rust       | `person::PhoneNumber`          |
+| C++        | `Person::PhoneNumber`          |
+| Go         | `Person_PhoneNumber` (default) |
+| C#         | `Person.PhoneNumber`           |
+| JavaScript | `PhoneNumber` (flat)           |
+| Swift      | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
 
-| Language | Helpers                   |
-| -------- | ------------------------- |
-| Java     | `toBytes` / `fromBytes`   |
-| Python   | `to_bytes` / `from_bytes` |
-| Rust     | `to_bytes` / `from_bytes` |
-| C++      | `to_bytes` / `from_bytes` |
-| Go       | `ToBytes` / `FromBytes`   |
-| C#       | `ToBytes` / `FromBytes`   |
-| TS       | (via `fory.serialize()`)  |
-| Swift    | `toBytes` / `fromBytes`   |
+| Language   | Helpers                   |
+| ---------- | ------------------------- |
+| Java       | `toBytes` / `fromBytes`   |
+| Python     | `to_bytes` / `from_bytes` |
+| Rust       | `to_bytes` / `from_bytes` |
+| C++        | `to_bytes` / `from_bytes` |
+| Go         | `ToBytes` / `FromBytes`   |
+| C#         | `ToBytes` / `FromBytes`   |
+| JavaScript | (via `fory.serialize()`)  |
+| Swift      | `toBytes` / `fromBytes`   |
