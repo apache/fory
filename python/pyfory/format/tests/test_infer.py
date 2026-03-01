@@ -64,6 +64,25 @@ def test_infer_field():
     assert result.type.id == TypeId.STRUCT
 
 
+def test_infer_field_builtin_types_not_treated_as_struct():
+    """Built-in types must NOT be routed to visit_customized (regression guard)."""
+    assert _infer_field("", int).type.id == TypeId.INT64
+    assert _infer_field("", float).type.id == TypeId.FLOAT64
+    assert _infer_field("", str).type.id == TypeId.STRING
+    assert _infer_field("", bytes).type.id == TypeId.BINARY
+    assert _infer_field("", bool).type.id == TypeId.BOOL
+
+
+def test_infer_field_nested_custom_class():
+    """Custom class nested inside a List should also be handled correctly."""
+
+    class Inner:
+        pass
+
+    result = _infer_field("", List[Inner])
+    assert result.type.id == TypeId.LIST
+
+
 def test_infer_class_schema():
     schema = infer_schema(Foo)
     assert schema.num_fields == 7
