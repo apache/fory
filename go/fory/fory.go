@@ -50,21 +50,22 @@ const (
 
 // Config holds configuration options for Fory instances
 type Config struct {
-	TrackRef   bool
-	MaxDepth   int
-	IsXlang    bool
-	Compatible bool // Schema evolution compatibility mode
-	MaxStringBytes    int 
-    MaxCollectionSize int 
-    MaxMapSize        int 
+	TrackRef          bool
+	MaxDepth          int
+	IsXlang           bool
+	Compatible        bool // Schema evolution compatibility mode
+	MaxBinarySize     int  // Maximum byte length for a single deserialized binary payload (0 = no limit)
+	MaxCollectionSize int  // Maximum element count for a single deserialized collection or map (0 = no limit)
 }
 
 // defaultConfig returns the default configuration
 func defaultConfig() Config {
 	return Config{
-		TrackRef: false, // Match Java's default: reference tracking disabled
-		MaxDepth: 20,
-		IsXlang:  false,
+		TrackRef:          false,
+		MaxDepth:          20,
+		IsXlang:           false,
+		MaxBinarySize:     64 * 1024 * 1024, // 64 MB
+		MaxCollectionSize: 1_000_000,
 	}
 }
 
@@ -104,30 +105,19 @@ func WithCompatible(enabled bool) Option {
 	}
 }
 
-// WithMaxStringBytes sets the maximum allowed byte length for a single
-// deserialized string. 0 (default) means no limit.
-func WithMaxStringBytes(n int) Option {
-    return func(f *Fory) {
-        f.config.MaxStringBytes = n
-    }
+// WithMaxBinarySize sets the maximum byte length for a single deserialized binary payload.
+func WithMaxBinarySize(n int) Option {
+	return func(f *Fory) {
+		f.config.MaxBinarySize = n
+	}
 }
 
-// WithMaxCollectionSize sets the maximum allowed element count for a single
-// deserialized slice or list. 0 (default) means no limit.
+// WithMaxCollectionSize sets the maximum element count for a single deserialized collection or map.
 func WithMaxCollectionSize(n int) Option {
-    return func(f *Fory) {
-        f.config.MaxCollectionSize = n
-    }
+	return func(f *Fory) {
+		f.config.MaxCollectionSize = n
+	}
 }
-
-// WithMaxMapSize sets the maximum allowed entry count for a single
-// deserialized map. 0 (default) means no limit.
-func WithMaxMapSize(n int) Option {
-    return func(f *Fory) {
-        f.config.MaxMapSize = n
-    }
-}
-
 
 // ============================================================================
 // Fory - Main serialization instance
@@ -184,10 +174,8 @@ func New(opts ...Option) *Fory {
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
 	f.readCtx.xlang = f.config.IsXlang
-	f.readCtx.maxStringBytes    = f.config.MaxStringBytes
+	f.readCtx.maxBinarySize = f.config.MaxBinarySize
 	f.readCtx.maxCollectionSize = f.config.MaxCollectionSize
-	f.readCtx.maxMapSize        = f.config.MaxMapSize
-
 
 	return f
 }

@@ -262,6 +262,10 @@ func (s sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := int(buf.ReadVarUint32(ctxErr))
+	ctx.checkCollectionSize(length)
+	if ctx.HasError() {
+		return
+	}
 	sliceType := value.Type()
 	value.Set(reflect.MakeSlice(sliceType, length, length))
 	if length == 0 {

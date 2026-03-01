@@ -49,16 +49,10 @@ func writeString(buf *ByteBuffer, value string) {
 }
 
 // readString reads a string from buffer using xlang encoding
-func readString(buf *ByteBuffer, err *Error, maxBytes int) string {
+func readString(buf *ByteBuffer, err *Error) string {
 	header := buf.ReadVaruint36Small(err)
 	size := header >> 2       // Extract byte count
 	encoding := header & 0b11 // Extract encoding type
-
-	if maxBytes > 0 && int(size) > maxBytes {
-        err.SetError(DeserializationErrorf(
-            "fory: string byte length %d exceeds limit %d", int(size), maxBytes))
-        return ""
-    }
 
 	switch encoding {
 	case encodingLatin1:
@@ -138,7 +132,7 @@ func (s stringSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 
 func (s stringSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	err := ctx.Err()
-	str := readString(ctx.buffer, err, ctx.maxStringBytes)
+	str := readString(ctx.buffer, err)
 	if ctx.HasError() {
 		return
 	}
@@ -208,7 +202,7 @@ func (s ptrToStringSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 
 func (s ptrToStringSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	err := ctx.Err()
-	str := readString(ctx.buffer, err, ctx.maxStringBytes)
+	str := readString(ctx.buffer, err)
 	if ctx.HasError() {
 		return
 	}

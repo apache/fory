@@ -43,9 +43,8 @@ type ReadContext struct {
 	err              Error         // Accumulated error state for deferred checking
 	lastTypePtr      uintptr
 	lastTypeInfo     *TypeInfo
-	maxStringBytes    int
-    maxCollectionSize int
-    maxMapSize        int
+	maxBinarySize     int // Maximum byte length for a single binary payload (0 = no limit)
+	maxCollectionSize int // Maximum element count for a single collection or map (0 = no limit)
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -151,6 +150,22 @@ func (c *ReadContext) CheckError() error {
 	return nil
 }
 
+// checkCollectionSize validates that a collection/map element count does not exceed the configured limit.
+func (c *ReadContext) checkCollectionSize(size int) {
+	if c.maxCollectionSize > 0 && size > c.maxCollectionSize {
+		c.SetError(DeserializationErrorf(
+			"fory: collection/map size %d exceeds limit %d", size, c.maxCollectionSize))
+	}
+}
+
+// checkBinarySize validates that a binary payload byte length does not exceed the configured limit.
+func (c *ReadContext) checkBinarySize(size int) {
+	if c.maxBinarySize > 0 && size > c.maxBinarySize {
+		c.SetError(DeserializationErrorf(
+			"fory: binary size %d exceeds limit %d", size, c.maxBinarySize))
+	}
+}
+
 // Inline primitive reads
 func (c *ReadContext) RawBool() bool         { return c.buffer.ReadBool(c.Err()) }
 func (c *ReadContext) RawInt8() int8         { return int8(c.buffer.ReadByte(c.Err())) }
@@ -227,7 +242,7 @@ func (c *ReadContext) readFast(ptr unsafe.Pointer, ct DispatchId) {
 	case PrimitiveFloat16DispatchId:
 		*(*uint16)(ptr) = c.buffer.ReadUint16(err)
 	case StringDispatchId:
-		*(*string)(ptr) = readString(c.buffer, err, c.maxStringBytes)
+		*(*string)(ptr) = readString(c.buffer, err)
 	}
 }
 
@@ -254,7 +269,7 @@ func (c *ReadContext) ReadLength() int {
 
 // ReadString reads a string value (caller handles nullable/type meta)
 func (c *ReadContext) ReadString() string {
-	return readString(c.buffer, c.Err(), c.maxStringBytes)
+	return readString(c.buffer, c.Err())
 }
 
 // ReadBoolSlice reads []bool with ref/type info
@@ -465,7 +480,7 @@ func (c *ReadContext) ReadStringStringMap(refMode RefMode, readType bool) map[st
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringString(c.buffer, err)
+	return readMapStringString(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadStringInt64Map reads map[string]int64 with optional ref/type info
@@ -479,7 +494,7 @@ func (c *ReadContext) ReadStringInt64Map(refMode RefMode, readType bool) map[str
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringInt64(c.buffer, err)
+	return readMapStringInt64(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadStringInt32Map reads map[string]int32 with optional ref/type info
@@ -493,7 +508,7 @@ func (c *ReadContext) ReadStringInt32Map(refMode RefMode, readType bool) map[str
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringInt32(c.buffer, err)
+	return readMapStringInt32(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadStringIntMap reads map[string]int with optional ref/type info
@@ -507,7 +522,7 @@ func (c *ReadContext) ReadStringIntMap(refMode RefMode, readType bool) map[strin
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringInt(c.buffer, err)
+	return readMapStringInt(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadStringFloat64Map reads map[string]float64 with optional ref/type info
@@ -521,7 +536,7 @@ func (c *ReadContext) ReadStringFloat64Map(refMode RefMode, readType bool) map[s
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringFloat64(c.buffer, err)
+	return readMapStringFloat64(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadStringBoolMap reads map[string]bool with optional ref/type info
@@ -535,7 +550,7 @@ func (c *ReadContext) ReadStringBoolMap(refMode RefMode, readType bool) map[stri
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringBool(c.buffer, err)
+	return readMapStringBool(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadInt32Int32Map reads map[int32]int32 with optional ref/type info
@@ -549,7 +564,7 @@ func (c *ReadContext) ReadInt32Int32Map(refMode RefMode, readType bool) map[int3
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapInt32Int32(c.buffer, err)
+	return readMapInt32Int32(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadInt64Int64Map reads map[int64]int64 with optional ref/type info
@@ -563,7 +578,7 @@ func (c *ReadContext) ReadInt64Int64Map(refMode RefMode, readType bool) map[int6
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapInt64Int64(c.buffer, err)
+	return readMapInt64Int64(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadIntIntMap reads map[int]int with optional ref/type info
@@ -577,7 +592,7 @@ func (c *ReadContext) ReadIntIntMap(refMode RefMode, readType bool) map[int]int 
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapIntInt(c.buffer, err)
+	return readMapIntInt(c.buffer, err, c.maxCollectionSize)
 }
 
 // ReadBufferObject reads a buffer object
@@ -917,26 +932,3 @@ func (c *ReadContext) ReadArrayValue(target reflect.Value, refMode RefMode, read
 		c.RefResolver().SetReadObject(refID, target)
 	}
 }
-
-func (ctx *ReadContext) checkStringBytes(n int) {
-    if ctx.maxStringBytes > 0 && n > ctx.maxStringBytes {
-        ctx.SetError(DeserializationErrorf(
-            "fory: string byte length %d exceeds limit %d", n, ctx.maxStringBytes))
-    }
-}
-
-func (ctx *ReadContext) checkCollectionSize(n int) {
-    if ctx.maxCollectionSize > 0 && n > ctx.maxCollectionSize {
-        ctx.SetError(DeserializationErrorf(
-            "fory: collection size %d exceeds limit %d", n, ctx.maxCollectionSize))
-    }
-}
-
-func (ctx *ReadContext) checkMapSize(n int) {
-    if ctx.maxMapSize > 0 && n > ctx.maxMapSize {
-        ctx.SetError(DeserializationErrorf(
-            "fory: map size %d exceeds limit %d", n, ctx.maxMapSize))
-    }
-}
-
-
