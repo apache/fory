@@ -154,7 +154,6 @@ class Fory:
         "field_nullable",
         "policy",
         "max_collection_size",
-        "max_binary_size",
     )
 
     def __init__(
@@ -168,7 +167,6 @@ class Fory:
         field_nullable: bool = False,
         meta_compressor=None,
         max_collection_size: int = 1_000_000,
-        max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -208,12 +206,10 @@ class Fory:
                 Optional annotation.
 
             max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
-                and maps (dicts) during deserialization. Raises an exception if exceeded.
-                Default is 1,000,000.
-
-            max_binary_size: Maximum allowed byte size for binary data during
-                deserialization. Raises an exception if exceeded.
-                Default is 64MB (64 * 1024 * 1024).
+                and maps (dicts) during deserialization. This limit is used to prevent
+                out-of-memory attacks from malicious payloads that claim extremely large
+                collection sizes, as collections preallocate memory based on the declared
+                size. Raises an exception if exceeded. Default is 1,000,000.
 
         Example:
             >>> # Python-native mode with reference tracking
@@ -249,7 +245,6 @@ class Fory:
         self.max_depth = max_depth
         self.depth = 0
         self.max_collection_size = max_collection_size
-        self.max_binary_size = max_binary_size
 
     def register(
         self,
@@ -766,8 +761,6 @@ class ThreadSafeFory:
         max_depth (int): Maximum depth for deserialization. Defaults to 50.
         max_collection_size (int): Maximum allowed size for collections and maps during
             deserialization. Defaults to 1,000,000.
-        max_binary_size (int): Maximum allowed byte size for binary data during
-            deserialization. Defaults to 64MB.
 
     Example:
         >>> import pyfury

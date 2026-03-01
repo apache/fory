@@ -188,7 +188,7 @@ cdef class Buffer:
 
     cpdef inline write_bytes_and_size(self, bytes value)
 
-    cpdef inline bytes read_bytes_and_size(self, int32_t max_binary_size=*)
+    cpdef inline bytes read_bytes_and_size(self)
 
     cpdef inline write_bytes(self, bytes value)
 

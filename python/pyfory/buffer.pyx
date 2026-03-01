@@ -283,10 +283,8 @@ cdef class Buffer:
         if length > 0:
             self.c_buffer.write_bytes(&data[0], length)
 
-    cpdef inline bytes read_bytes_and_size(self, int32_t max_binary_size=-1):
+    cpdef inline bytes read_bytes_and_size(self):
         cdef int32_t length = self.read_var_uint32()
-        if max_binary_size >= 0 and length > max_binary_size:
-            raise ValueError(f"Binary size {length} exceeds the configured limit of {max_binary_size}")
         return self.read_bytes(length)
 
     cpdef inline write_bytes(self, bytes value):

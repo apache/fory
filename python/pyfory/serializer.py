@@ -549,7 +549,7 @@ class BytesSerializer(Serializer):
 
     def read(self, buffer):
         if not self.fory.is_peer_out_of_band_enabled:
-            return buffer.read_bytes_and_size(self.fory.max_binary_size)
+            return buffer.read_bytes_and_size()
         fory_buf = self.fory.read_buffer_object(buffer)
         if isinstance(fory_buf, memoryview):
             return bytes(fory_buf)
