@@ -38,12 +38,4 @@ public final class Float16Serializer extends ImmutableSerializer<Float16> {
   public Float16 read(MemoryBuffer buffer) {
     return Float16.fromBits(buffer.readInt16());
   }
-
-  public void xwrite(MemoryBuffer buffer, Float16 value) {
-    buffer.writeInt16(value.toBits());
-  }
-
-  public Float16 xread(MemoryBuffer buffer) {
-    return Float16.fromBits(buffer.readInt16());
-  }
 }
