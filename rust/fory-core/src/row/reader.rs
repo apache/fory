@@ -17,6 +17,7 @@
 
 use super::{bit_util::calculate_bitmap_width_in_bytes, row::Row};
 use byteorder::{ByteOrder, LittleEndian};
+use crate::buffer::Reader;
 
 struct FieldAccessorHelper<'a> {
     row: &'a [u8],
@@ -121,4 +122,8 @@ impl<'r> MapViewer<'r> {
 
 pub fn from_row<'a, T: Row<'a>>(row: &'a [u8]) -> T::ReadResult {
     T::cast(row)
+}
+
+pub fn from_row_from<'a, T: Row<'a>>(reader: &Reader<'a>) -> T::ReadResult {
+    T::cast(&reader.bf[reader.cursor..])
 }
