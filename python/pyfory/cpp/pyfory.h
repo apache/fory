@@ -62,8 +62,6 @@ inline constexpr bool Fory_CanUsePrimitiveCollectionFastpath(uint8_t type_id) {
 
 int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
                                             Buffer *buffer, uint8_t type_id);
-int Fory_PyPrimitiveSequenceWriteToBuffer(PyObject **items, Py_ssize_t size,
-                                          Buffer *buffer, uint8_t type_id);
 int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
                                              Buffer *buffer, Py_ssize_t size,
                                              uint8_t type_id);

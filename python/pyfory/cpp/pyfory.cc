@@ -1179,19 +1179,6 @@ int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
   return rc;
 }
 
-int Fory_PyPrimitiveSequenceWriteToBuffer(PyObject **items, Py_ssize_t size,
-                                          Buffer *buffer, uint8_t type_id) {
-  if (FORY_PREDICT_FALSE(items == nullptr)) {
-    PyErr_SetString(PyExc_ValueError, "items must not be null");
-    return -1;
-  }
-  if (FORY_PREDICT_FALSE(size < 0)) {
-    PyErr_SetString(PyExc_ValueError, "negative collection size");
-    return -1;
-  }
-  return write_primitive_sequence(items, size, buffer, type_id);
-}
-
 int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
                                              Buffer *buffer, Py_ssize_t size,
                                              uint8_t type_id) {
