@@ -226,7 +226,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long",
         PrimitiveKind.VAR_UINT64: "long",
         PrimitiveKind.TAGGED_UINT64: "long",
-        PrimitiveKind.FLOAT16: "float",
+        PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "String",
@@ -255,7 +255,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "Long",
         PrimitiveKind.VAR_UINT64: "Long",
         PrimitiveKind.TAGGED_UINT64: "Long",
-        PrimitiveKind.FLOAT16: "Float",
+        PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.FLOAT32: "Float",
         PrimitiveKind.FLOAT64: "Double",
         PrimitiveKind.ANY: "Object",
@@ -278,7 +278,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long[]",
         PrimitiveKind.VAR_UINT64: "long[]",
         PrimitiveKind.TAGGED_UINT64: "long[]",
-        PrimitiveKind.FLOAT16: "float[]",
+        PrimitiveKind.FLOAT16: "Float16[]",
         PrimitiveKind.FLOAT32: "float[]",
         PrimitiveKind.FLOAT64: "double[]",
     }
@@ -1184,6 +1184,8 @@ class JavaGenerator(BaseGenerator):
                 imports.add("java.time.LocalDate")
             elif field_type.kind == PrimitiveKind.TIMESTAMP:
                 imports.add("java.time.Instant")
+            elif field_type.kind == PrimitiveKind.FLOAT16:
+                imports.add("org.apache.fory.type.Float16")
 
         elif isinstance(field_type, ListType):
             # Primitive arrays don't need List import
@@ -1458,7 +1460,11 @@ class JavaGenerator(BaseGenerator):
                     )
                 elif isinstance(field.field_type, PrimitiveType):
                     kind = field.field_type.kind
-                    if kind in (PrimitiveKind.FLOAT32,):
+                    if kind in (PrimitiveKind.FLOAT16,):
+                        comparisons.append(
+                            f"({field_name} == null ? that.{field_name} == null : (that.{field_name} != null && {field_name}.equalsValue(that.{field_name})))"
+                        )
+                    elif kind in (PrimitiveKind.FLOAT32,):
                         comparisons.append(
                             f"Float.compare({field_name}, that.{field_name}) == 0"
                         )
@@ -1516,6 +1522,13 @@ class JavaGenerator(BaseGenerator):
                 field_name = self.to_camel_case(field.name)
                 if self.is_primitive_array_field(field):
                     array_fields.append(field_name)
+                elif (
+                    isinstance(field.field_type, PrimitiveType)
+                    and field.field_type.kind == PrimitiveKind.FLOAT16
+                ):
+                    hash_args.append(
+                        f"({field_name} == null ? 0 : ((({field_name}.toBits() & 0x7FFF) == 0) ? 0 : Short.hashCode({field_name}.toBits())))"
+                    )
                 else:
                     hash_args.append(field_name)
 

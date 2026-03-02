@@ -33,6 +33,7 @@ import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.ForyArrayAsListSerializer;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.Preconditions;
@@ -865,6 +866,146 @@ public class ArraySerializers {
     }
   }
 
+  public static final class Float16ArraySerializer extends PrimitiveArraySerializer<Float16[]> {
+    private static final int NULLABLE_ENCODING_FLAG = 1;
+
+    public Float16ArraySerializer(Fory fory) {
+      super(fory, Float16[].class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, Float16[] value) {
+      int length = value.length;
+      boolean hasNull = false;
+      for (int i = 0; i < length; i++) {
+        if (value[i] == null) {
+          hasNull = true;
+          break;
+        }
+      }
+      if (hasNull) {
+        writeNullable(buffer, value, length);
+        return;
+      }
+      writeNonNull(buffer, value, length);
+    }
+
+    private void writeNonNull(MemoryBuffer buffer, Float16[] value, int length) {
+      int size = length * 2;
+      buffer.writeVarUint32Small7(size);
+
+      if (Platform.IS_LITTLE_ENDIAN) {
+        int writerIndex = buffer.writerIndex();
+        buffer.ensure(writerIndex + size);
+        for (int i = 0; i < length; i++) {
+          buffer._unsafePutInt16(writerIndex + i * 2, value[i].toBits());
+        }
+        buffer._unsafeWriterIndex(writerIndex + size);
+      } else {
+        for (int i = 0; i < length; i++) {
+          buffer.writeInt16(value[i].toBits());
+        }
+      }
+    }
+
+    private void writeNullable(MemoryBuffer buffer, Float16[] value, int length) {
+      int bitmapSize = (length + 7) >>> 3;
+      int payloadSize = Integer.BYTES + bitmapSize + length * 2;
+      int encodedSize = (payloadSize << 1) | NULLABLE_ENCODING_FLAG;
+      byte[] bitmap = new byte[bitmapSize];
+      for (int i = 0; i < length; i++) {
+        if (value[i] != null) {
+          bitmap[i >>> 3] |= (byte) (1 << (i & 7));
+        }
+      }
+
+      buffer.writeVarUint32Small7(encodedSize);
+      buffer.writeInt32(length);
+      buffer.writeBytes(bitmap);
+
+      if (Platform.IS_LITTLE_ENDIAN) {
+        int writerIndex = buffer.writerIndex();
+        int size = length * 2;
+        buffer.ensure(writerIndex + size);
+        for (int i = 0; i < length; i++) {
+          Float16 elem = value[i];
+          buffer._unsafePutInt16(writerIndex + i * 2, elem == null ? 0 : elem.toBits());
+        }
+        buffer._unsafeWriterIndex(writerIndex + size);
+      } else {
+        for (int i = 0; i < length; i++) {
+          Float16 elem = value[i];
+          buffer.writeInt16(elem == null ? 0 : elem.toBits());
+        }
+      }
+    }
+
+    @Override
+    public Float16[] copy(Float16[] originArray) {
+      return Arrays.copyOf(originArray, originArray.length);
+    }
+
+    @Override
+    public Float16[] read(MemoryBuffer buffer) {
+      int encodedSize = buffer.readVarUint32Small7();
+      if ((encodedSize & NULLABLE_ENCODING_FLAG) != 0) {
+        return readNullable(buffer, encodedSize >>> 1);
+      }
+      int size = encodedSize;
+      int numElements = size / 2;
+      Float16[] values = new Float16[numElements];
+      if (Platform.IS_LITTLE_ENDIAN) {
+        int readerIndex = buffer.readerIndex();
+        buffer.checkReadableBytes(size);
+        for (int i = 0; i < numElements; i++) {
+          values[i] = Float16.fromBits(buffer._unsafeGetInt16(readerIndex + i * 2));
+        }
+        buffer._increaseReaderIndexUnsafe(size);
+      } else {
+        for (int i = 0; i < numElements; i++) {
+          values[i] = Float16.fromBits(buffer.readInt16());
+        }
+      }
+      return values;
+    }
+
+    private Float16[] readNullable(MemoryBuffer buffer, int payloadSize) {
+      int startIndex = buffer.readerIndex();
+      buffer.checkReadableBytes(payloadSize);
+      int numElements = buffer.readInt32();
+      int bitmapSize = (numElements + 7) >>> 3;
+      byte[] bitmap = new byte[bitmapSize];
+      if (bitmapSize > 0) {
+        buffer.readBytes(bitmap, 0, bitmapSize);
+      }
+      Float16[] values = new Float16[numElements];
+      if (Platform.IS_LITTLE_ENDIAN) {
+        int readerIndex = buffer.readerIndex();
+        int valueBytes = numElements * 2;
+        buffer.checkReadableBytes(valueBytes);
+        for (int i = 0; i < numElements; i++) {
+          if ((bitmap[i >>> 3] & (1 << (i & 7))) != 0) {
+            values[i] = Float16.fromBits(buffer._unsafeGetInt16(readerIndex + i * 2));
+          }
+        }
+        buffer._increaseReaderIndexUnsafe(valueBytes);
+      } else {
+        for (int i = 0; i < numElements; i++) {
+          short bits = buffer.readInt16();
+          if ((bitmap[i >>> 3] & (1 << (i & 7))) != 0) {
+            values[i] = Float16.fromBits(bits);
+          }
+        }
+      }
+      int consumed = buffer.readerIndex() - startIndex;
+      if (consumed != payloadSize) {
+        throw new IllegalStateException(
+            "Corrupted Float16[] payload size. expected=" + payloadSize + ", consumed=" + consumed);
+      }
+      return values;
+    }
+  }
+
   public static final class StringArraySerializer extends Serializer<String[]> {
     private final StringSerializer stringSerializer;
     private final ForyArrayAsListSerializer collectionSerializer;
@@ -989,6 +1130,7 @@ public class ArraySerializers {
     resolver.registerInternalSerializer(double[].class, new DoubleArraySerializer(fory));
     resolver.registerInternalSerializer(
         Double[].class, new ObjectArraySerializer<>(fory, Double[].class));
+    resolver.registerInternalSerializer(Float16[].class, new Float16ArraySerializer(fory));
     resolver.registerInternalSerializer(boolean[].class, new BooleanArraySerializer(fory));
     resolver.registerInternalSerializer(
         Boolean[].class, new ObjectArraySerializer<>(fory, Boolean[].class));

@@ -56,6 +56,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float16List;
 import org.apache.fory.collection.Float32List;
 import org.apache.fory.collection.Float64List;
 import org.apache.fory.collection.Int16List;
@@ -109,6 +110,7 @@ import org.apache.fory.serializer.collection.MapSerializers.XlangMapSerializer;
 import org.apache.fory.serializer.collection.PrimitiveListSerializers;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
@@ -494,6 +496,12 @@ public class XtypeResolver extends TypeResolver {
    * typename bytes.
    */
   private int determineTypeIdForClass(Class<?> type) {
+    if (type == Float16.class) {
+      return Types.FLOAT16;
+    }
+    if (type == Float16[].class || type == Float16List.class) {
+      return Types.FLOAT16_ARRAY;
+    }
     if (type.isArray()) {
       Class<?> componentType = type.getComponentType();
       if (componentType.isPrimitive()) {
@@ -855,6 +863,10 @@ public class XtypeResolver extends TypeResolver {
     registerType(
         Types.FLOAT32, float.class, new PrimitiveSerializers.FloatSerializer(fory, float.class));
     registerType(
+        Types.FLOAT16,
+        Float16.class,
+        new PrimitiveSerializers.Float16Serializer(fory, Float16.class));
+    registerType(
         Types.FLOAT64, Double.class, new PrimitiveSerializers.DoubleSerializer(fory, Double.class));
     registerType(
         Types.FLOAT64, double.class, new PrimitiveSerializers.DoubleSerializer(fory, double.class));
@@ -907,6 +919,8 @@ public class XtypeResolver extends TypeResolver {
         Types.FLOAT32_ARRAY, float[].class, new ArraySerializers.FloatArraySerializer(fory));
     registerType(
         Types.FLOAT64_ARRAY, double[].class, new ArraySerializers.DoubleArraySerializer(fory));
+    registerType(
+        Types.FLOAT16_ARRAY, Float16[].class, new ArraySerializers.Float16ArraySerializer(fory));
 
     // Primitive lists
     registerType(
@@ -941,6 +955,10 @@ public class XtypeResolver extends TypeResolver {
         Types.FLOAT64_ARRAY,
         Float64List.class,
         new PrimitiveListSerializers.Float64ListSerializer(fory));
+    registerType(
+        Types.FLOAT16_ARRAY,
+        Float16List.class,
+        new PrimitiveListSerializers.Float16ListSerializer(fory));
 
     // Collections
     registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(fory));

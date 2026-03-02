@@ -50,6 +50,7 @@ import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.type.Float16;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.GraalvmSupport.GraalvmSerializerHolder;
@@ -566,6 +567,7 @@ public class Serializers {
     resolver.registerInternalSerializer(URI.class, new URISerializer(fory));
     resolver.registerInternalSerializer(Pattern.class, new RegexSerializer(fory));
     resolver.registerInternalSerializer(UUID.class, new UUIDSerializer(fory));
+    resolver.registerInternalSerializer(Float16.class, new Float16Serializer(fory));
     resolver.registerInternalSerializer(Object.class, new EmptyObjectSerializer(fory));
   }
 }
