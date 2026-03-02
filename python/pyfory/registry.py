@@ -636,9 +636,18 @@ class TypeResolver:
             elif self._internal_py_serializer_map.get(type(serializer)) is not None:
                 type_id = self._internal_py_serializer_map.get(type(serializer))[1]
             if not self.require_registration:
-                from pyfory.struct import DataClassSerializer
+                from pyfory import struct as struct_module
 
-                if isinstance(serializer, DataClassSerializer):
+                data_class_types = tuple(
+                    cls
+                    for cls in (
+                        getattr(struct_module, "DataClassSerializer", None),
+                        getattr(struct_module, "DataClassStubSerializer", None),
+                        getattr(struct_module, "PythonDataClassSerializer", None),
+                    )
+                    if cls is not None
+                )
+                if data_class_types and isinstance(serializer, data_class_types):
                     type_id = TypeId.NAMED_STRUCT
         if type_id is None:
             raise TypeUnregisteredError(f"{cls} must be registered using `fory.register_type` API")

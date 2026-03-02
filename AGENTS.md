@@ -558,7 +558,7 @@ Fory python has two implementations for the protocol:
 - **Python mode**: Pure python implementation based on `xlang serialization format`, used for debugging and testing only. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=0` environment variable.
 - **Cython mode**: Cython based implementation based on `xlang serialization format`, which is used by default and has better performance than pure python. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=1` environment variable.
 - **Python mode** and **Cython mode** reused some code from each other to reduce code duplication.
-- **Debug Struct Serialization**: set `ENABLE_FORY_PYTHON_JIT=0` when debug struct fields serialization error, this mode is more easy to debug and add logs. Even struct serialization itself has no bug, by enable this mode and adding debug logs, we can narrow the bug scope more easily.
+- **Debug Struct Serialization**: set `ENABLE_FORY_DEBUG_OUTPUT=1` to enable detailed struct serialization/deserialization logs while debugging protocol behavior.
 
 Code structure:
 

@@ -19,7 +19,6 @@ from dataclasses import dataclass
 import datetime
 from typing import Dict, Any, List, Set, Optional
 
-import os
 import pytest
 import typing
 
@@ -250,8 +249,8 @@ def test_struct_evolving_override():
     assert fixed_info.type_id == TypeId.NAMED_STRUCT
 
 
-def test_data_class_serializer_xlang_codegen():
-    """Test that DataClassSerializer generates write/read methods correctly in xlang mode."""
+def test_data_class_serializer_xlang_serializer():
+    """Test DataClassSerializer round-trip behavior in xlang mode."""
     fory = Fory(xlang=True, ref=True)
 
     # Register types first
@@ -262,12 +261,6 @@ def test_data_class_serializer_xlang_codegen():
     fory.serialize(DataClassObject.create())
     # Get the serializer that was created during registration
     serializer = fory.type_resolver.get_serializer(DataClassObject)
-
-    # Check that the generated methods exist
-    assert hasattr(serializer, "_generated_write_method"), "Generated write method should exist"
-    assert hasattr(serializer, "_generated_read_method"), "Generated read method should exist"
-    assert hasattr(serializer, "_generated_write_method_code"), "Generated write method code should exist"
-    assert hasattr(serializer, "_generated_read_method_code"), "Generated read method code should exist"
 
     # Serializer API is unified: no mode-specific serializer attribute.
     assert not hasattr(serializer, "_xlang")
@@ -287,7 +280,6 @@ def test_data_class_serializer_xlang_codegen():
     )
 
     # Test serialization and deserialization using the normal fory flow
-    # This will use the generated methods internally
     binary = fory.serialize(test_obj)
     deserialized_obj = fory.deserialize(binary)
 
@@ -300,108 +292,6 @@ def test_data_class_serializer_xlang_codegen():
     assert deserialized_obj.f_dict == test_obj.f_dict
     assert deserialized_obj.f_any == test_obj.f_any
     assert deserialized_obj.f_complex == test_obj.f_complex
-
-
-def test_data_class_serializer_xlang_codegen_with_jit():
-    """Test that DataClassSerializer JIT compilation works correctly when enabled."""
-    # Save the original environment variable
-    original_jit_setting = os.environ.get("ENABLE_FORY_PYTHON_JIT")
-
-    try:
-        # Enable JIT
-        os.environ["ENABLE_FORY_PYTHON_JIT"] = "True"
-
-        # Import after setting environment variable to ensure it takes effect
-        import importlib
-        import pyfory.serializer
-
-        importlib.reload(pyfory.serializer)
-
-        fory = Fory(xlang=True, ref=True)
-
-        # Register types first
-        fory.register_type(ComplexObject, typename="example.ComplexObject")
-        fory.register_type(DataClassObject, typename="example.TestDataClassObject")
-
-        # Get the serializer that was created during registration
-        serializer = fory.type_resolver.get_serializer(DataClassObject)
-
-        # Check that JIT methods are assigned when JIT is enabled
-        # The methods should be the generated functions, not the original instance methods
-        assert callable(serializer.write)
-        assert callable(serializer.read)
-
-        # Test that the JIT-compiled methods work through normal serialization
-        test_obj = DataClassObject(
-            f_int=123,
-            f_float=45.67,
-            f_str="jit_test",
-            f_bool=False,
-            f_list=[10, 20, 30],
-            f_dict={"jit": 2.5},
-            f_any={"nested": "data"},
-            f_complex=None,
-        )
-
-        # Use normal serialization flow which will use the JIT-compiled methods internally
-        binary = fory.serialize(test_obj)
-        deserialized_obj = fory.deserialize(binary)
-
-        assert deserialized_obj.f_int == test_obj.f_int
-        assert deserialized_obj.f_float == test_obj.f_float
-        assert deserialized_obj.f_str == test_obj.f_str
-        assert deserialized_obj.f_bool == test_obj.f_bool
-        assert deserialized_obj.f_list == test_obj.f_list
-        assert deserialized_obj.f_dict == test_obj.f_dict
-        assert deserialized_obj.f_any == test_obj.f_any
-        assert deserialized_obj.f_complex == test_obj.f_complex
-
-    finally:
-        # Restore original environment variable
-        if original_jit_setting is None:
-            os.environ.pop("ENABLE_FORY_PYTHON_JIT", None)
-        else:
-            os.environ["ENABLE_FORY_PYTHON_JIT"] = original_jit_setting
-
-        # Reload to restore the original state
-        importlib.reload(pyfory.serializer)
-
-
-def test_data_class_serializer_xlang_codegen_generated_code():
-    """Test that the generated code contains expected elements."""
-    fory = Fory(xlang=True, ref=True)
-
-    # Register types first
-    fory.register_type(ComplexObject, typename="example.ComplexObject")
-    fory.register_type(DataClassObject, typename="example.TestDataClassObject")
-
-    # trigger lazy serializer replace
-    fory.serialize(DataClassObject.create())
-    # Get the serializer that was created during registration
-    serializer = fory.type_resolver.get_serializer(DataClassObject)
-
-    # Check that generated code exists and contains expected elements
-    write_code = serializer._generated_write_method_code
-    read_code = serializer._generated_read_method_code
-
-    assert isinstance(write_code, str)
-    assert isinstance(read_code, str)
-
-    # Check that write code contains expected elements
-    assert "def write_" in write_code
-    assert "buffer.write_int32" in write_code  # Hash writing
-    assert "fory.write_ref" in write_code  # Field serialization
-
-    # Check that read code contains expected elements
-    assert "def read_" in read_code
-    assert "buffer.read_int32" in read_code  # Hash reading
-    assert "fory.read_ref" in read_code  # Field deserialization
-    assert "TypeNotCompatibleError" in read_code  # Hash validation
-
-    # Check that field names are referenced in the code
-    for field_name in serializer._field_names:
-        # Field names should appear in the generated code
-        assert field_name in write_code or field_name in read_code
 
 
 def test_data_class_serializer_xlang_vs_non_xlang():
@@ -421,10 +311,6 @@ def test_data_class_serializer_xlang_vs_non_xlang():
 
     assert not hasattr(serializer_xlang, "_xlang")
     assert not hasattr(serializer_python, "_xlang")
-    assert hasattr(serializer_xlang, "_generated_write_method")
-    assert hasattr(serializer_xlang, "_generated_read_method")
-    assert hasattr(serializer_python, "_generated_write_method")
-    assert hasattr(serializer_python, "_generated_read_method")
 
     # Unified serializer metadata should be mode-independent.
     assert serializer_xlang._field_names == serializer_python._field_names
