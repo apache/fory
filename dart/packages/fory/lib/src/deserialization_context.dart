@@ -17,6 +17,7 @@
  * under the License.
  */
 
+import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/deserialization_dispatcher.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/resolver/deserialization_ref_resolver.dart';
@@ -26,6 +27,7 @@ import 'package:fory/src/runtime_context.dart';
 import 'package:fory/src/collection/stack.dart';
 
 final class DeserializationContext extends Pack {
+  final ForyConfig config;
   final HeaderBrief header;
 
   final DeserializationDispatcher deserializationDispatcher;
@@ -38,6 +40,7 @@ final class DeserializationContext extends Pack {
   const DeserializationContext(
     super.structHashResolver,
     super.getTagByDartType,
+    this.config,
     this.header,
     this.deserializationDispatcher,
     this.refResolver,

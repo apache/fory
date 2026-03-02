@@ -552,7 +552,7 @@ public sealed class RoundtripTests
     {
         any_example_pb.AnyUnion union = new()
         {
-            Kind = any_example_pb.AnyUnion.kind.Text("proto-union"),
+            KindValue = any_example_pb.AnyUnion.Kind.Text("proto-union"),
         };
 
         return new any_example_pb.AnyHolder
@@ -932,11 +932,11 @@ public sealed class RoundtripTests
 
         any_example_pb.AnyUnion expectedUnion = Assert.IsType<any_example_pb.AnyUnion>(expected.UnionValue);
         any_example_pb.AnyUnion actualUnion = Assert.IsType<any_example_pb.AnyUnion>(actual.UnionValue);
-        Assert.NotNull(expectedUnion.Kind);
-        Assert.NotNull(actualUnion.Kind);
-        Assert.Equal(expectedUnion.Kind.CaseId(), actualUnion.Kind.CaseId());
-        Assert.True(actualUnion.Kind.IsText);
-        Assert.Equal(expectedUnion.Kind.TextValue(), actualUnion.Kind.TextValue());
+        Assert.NotNull(expectedUnion.KindValue);
+        Assert.NotNull(actualUnion.KindValue);
+        Assert.Equal(expectedUnion.KindValue!.CaseId(), actualUnion.KindValue!.CaseId());
+        Assert.True(actualUnion.KindValue.IsText);
+        Assert.Equal(expectedUnion.KindValue.TextValue(), actualUnion.KindValue.TextValue());
 
         Assert.True(TryStringList(expected.ListValue, out List<string> expectedList));
         Assert.True(TryStringList(actual.ListValue, out List<string> actualList));

@@ -73,34 +73,34 @@ public static class FieldSkipper
             case (uint)TypeId.String:
                 return context.TypeResolver.GetSerializer<string>().Read(context, refMode, false);
             case (uint)TypeId.List:
-            {
-                if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
                 {
-                    throw new InvalidDataException("unsupported compatible list element type");
-                }
+                    if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
+                    {
+                        throw new InvalidDataException("unsupported compatible list element type");
+                    }
 
-                return context.TypeResolver.GetSerializer<List<string>>().Read(context, refMode, false);
-            }
+                    return context.TypeResolver.GetSerializer<List<string>>().Read(context, refMode, false);
+                }
             case (uint)TypeId.Set:
-            {
-                if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
                 {
-                    throw new InvalidDataException("unsupported compatible set element type");
-                }
+                    if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
+                    {
+                        throw new InvalidDataException("unsupported compatible set element type");
+                    }
 
-                return context.TypeResolver.GetSerializer<HashSet<string>>().Read(context, refMode, false);
-            }
+                    return context.TypeResolver.GetSerializer<HashSet<string>>().Read(context, refMode, false);
+                }
             case (uint)TypeId.Map:
-            {
-                if (fieldType.Generics.Count != 2 ||
-                    fieldType.Generics[0].TypeId != (uint)TypeId.String ||
-                    fieldType.Generics[1].TypeId != (uint)TypeId.String)
                 {
-                    throw new InvalidDataException("unsupported compatible map key/value type");
-                }
+                    if (fieldType.Generics.Count != 2 ||
+                        fieldType.Generics[0].TypeId != (uint)TypeId.String ||
+                        fieldType.Generics[1].TypeId != (uint)TypeId.String)
+                    {
+                        throw new InvalidDataException("unsupported compatible map key/value type");
+                    }
 
-                return context.TypeResolver.GetSerializer<Dictionary<string, string>>().Read(context, refMode, false);
-            }
+                    return context.TypeResolver.GetSerializer<Dictionary<string, string>>().Read(context, refMode, false);
+                }
             case (uint)TypeId.Enum:
                 return ReadEnumOrdinal(context, refMode);
             case (uint)TypeId.Union:

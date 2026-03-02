@@ -33,7 +33,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor GenericTypeNotSupported = new(
         id: "FORY001",
         title: "Generic types are not supported by ForyObject generator",
-        messageFormat: "Type '{0}' is generic and is not supported by [ForyObject].",
+        messageFormat: "Type '{0}' is generic and is not supported by [ForyObject]",
         category: "Fory",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -41,7 +41,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor MissingCtor = new(
         id: "FORY002",
         title: "Missing parameterless constructor",
-        messageFormat: "Class '{0}' must declare an accessible parameterless constructor for [ForyObject].",
+        messageFormat: "Class '{0}' must declare an accessible parameterless constructor for [ForyObject]",
         category: "Fory",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -49,7 +49,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static readonly DiagnosticDescriptor UnsupportedEncoding = new(
         id: "FORY003",
         title: "Unsupported Field encoding",
-        messageFormat: "Member '{0}' uses unsupported [Field] encoding for type '{1}'.",
+        messageFormat: "Member '{0}' uses unsupported [Field] encoding for type '{1}'",
         category: "Fory",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -505,7 +505,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"                global::Apache.Fory.TypeInfo {typeInfoVar};");
         sb.AppendLine($"                if (__Fory{cacheId}DictRuntimeType == {runtimeTypeVar} && __Fory{cacheId}DictTypeInfo is not null)");
         sb.AppendLine("                {");
-            sb.AppendLine($"                    {typeInfoVar} = __Fory{cacheId}DictTypeInfo;");
+        sb.AppendLine($"                    {typeInfoVar} = __Fory{cacheId}DictTypeInfo;");
         sb.AppendLine("                }");
         sb.AppendLine("                else");
         sb.AppendLine("                {");

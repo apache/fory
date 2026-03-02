@@ -26,7 +26,7 @@ import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart'
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/either.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/constraint_violation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/const/dart_type.dart';
 
 class TypeSystemAnalyzer {
@@ -41,7 +41,7 @@ class TypeSystemAnalyzer {
     Either<ObjectTypeAnalysis, DartTypeEnum> res =
         Analyzer.customTypeAnalyzer.resolveType(element);
     if (res.isRight) {
-      throw UnsupportedTypeException(
+      throw CodegenUnsupportedTypeException(
         locationMark.libPath,
         locationMark.clsName,
         locationMark.fieldName!,

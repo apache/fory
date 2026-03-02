@@ -6,6 +6,7 @@ This file provides comprehensive guidance to AI coding agents when working with 
 
 While working on Fory, please remember:
 
+- **Do not reserve any legacy code/docs unless requested clearly**.
 - **Performance First**: Performance is the top priority. Never introduce code that reduces performance without explicit justification.
 - **English Only**: Always use English in code, comments, and documentation.
 - **Meaningful Comments**: Only add comments when the code's behavior is difficult to understand or when documenting complex algorithms.
@@ -15,6 +16,7 @@ While working on Fory, please remember:
 - **GraalVM support using fory codegen**: For GraalVM, use `fory codegen` to generate the serializer when building a native image. Do not use GraalVM reflect-related configuration unless for JDK `proxy`.
 - **Xlang Type System**: Java `native mode(xlang=false)` shares same type systems between type id from `Types.BOOL~Types.STRING` with `xlang mode(xlang=true)`, but for other types, java `native mode` has different type ids.
 - **Remote git repository**: `git@github.com:apache/fory.git` is remote repository, do not use other remote repository when you want to check code under `main` branch, **`apache/main`** is the only target main branch instead of `origin/main`
+- **Refresh remote main before compare**: before any diff/review/compare against `apache/main`, always run `git fetch apache main` first so comparisons use the latest remote main.
 - **Contributor git repository**: A contributor should fork the `git@github.com:apache/fory.git` repo, and git push the code changes into their forked repo, then create a pull request from the branch in their forked repo into `git@github.com:apache/fory.git`.
 - **Debug Test Errors**: always set environment variable `ENABLE_FORY_DEBUG_OUTPUT` to `1` to see debug output.
 
@@ -61,6 +63,42 @@ mvn -T16 test
 
 # Run specific tests
 mvn -T16 test -Dtest=org.apache.fory.TestClass#testMethod
+```
+
+### C# Development
+
+- All dotnet commands must be executed within the `csharp` directory.
+- All changes to `csharp` must pass formatting and tests.
+- Fory C# requires .NET SDK `8.0+` and C# `12+`.
+- Use `dotnet format` to keep C# code style consistent.
+
+```bash
+# Restore
+dotnet restore Fory.sln
+
+# Build
+dotnet build Fory.sln -c Release --no-restore
+
+# Run tests
+dotnet test Fory.sln -c Release
+
+# Run specific test
+dotnet test tests/Fory.Tests/Fory.Tests.csproj -c Release --filter "FullyQualifiedName~ForyRuntimeTests.DynamicObjectReadDepthExceededThrows"
+
+# Format code
+dotnet format Fory.sln
+
+# Format check
+dotnet format Fory.sln --verify-no-changes
+```
+
+Run C# xlang tests:
+
+```bash
+cd java
+mvn -T16 install -DskipTests
+cd fory-core
+FORY_CSHARP_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 test -Dtest=org.apache.fory.xlang.CSharpXlangTest
 ```
 
 ### C++ Development
@@ -389,6 +427,7 @@ The `origin` points to forked repository instead of the official repository.
 
 - **Language Implementations**:
   - `java/`: Java implementation (maven-based, multi-module)
+  - `csharp/`: C# implementation (.NET SDK + source generator)
   - `python/`: Python implementation (pip/setuptools + bazel)
   - `cpp/`: C++ implementation (bazel-based)
   - `go/`: Go implementation (go modules)
@@ -519,7 +558,7 @@ Fory python has two implementations for the protocol:
 - **Python mode**: Pure python implementation based on `xlang serialization format`, used for debugging and testing only. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=0` environment variable.
 - **Cython mode**: Cython based implementation based on `xlang serialization format`, which is used by default and has better performance than pure python. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=1` environment variable.
 - **Python mode** and **Cython mode** reused some code from each other to reduce code duplication.
-- **Debug Struct Serialization**: set `ENABLE_FORY_PYTHON_JIT=0` when debug struct fields serialization error, this mode is more easy to debug and add logs. Even struct serialization itself has no bug, by enable this mode and adding debug logs, we can narrow the bug scope more easily.
+- **Debug Struct Serialization**: set `ENABLE_FORY_DEBUG_OUTPUT=1` to enable detailed struct serialization/deserialization logs while debugging protocol behavior.
 
 Code structure:
 
@@ -582,6 +621,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 ### Performance Guidelines
 
 - **Performance First**: Never introduce code that reduces performance without explicit justification
+- **Benchmark Required After Perf Optimizations**: For every code change expected to improve performance, run the relevant benchmark immediately after applying the change and report the measured results (command + before/after numbers) in your response/PR.
 - **Zero-Copy**: Leverage zero-copy techniques when possible
 - **JIT Compilation**: Consider JIT compilation opportunities
 - **Memory Layout**: Optimize for cache-friendly memory access patterns
@@ -609,7 +649,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 
 - **Unit Tests**: Focus on internal behavior verification
 - **Integration Tests**: Use `integration_tests/` for cross-language compatibility
-- **Language alignment and protocol compatibility**: Run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest` when changing xlang or type mapping behavior
+- **Language alignment and protocol compatibility**: Run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest` when changing xlang or type mapping behavior
 - **Performance Tests**: Include benchmarks for performance-critical changes
 
 ### Documentation Requirements

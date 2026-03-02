@@ -20,7 +20,11 @@ import os
 from abc import ABC, abstractmethod
 from typing import Union, Iterable, TypeVar
 
-from pyfory.buffer import Buffer
+_ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
+    "1",
+    "true",
+}
+
 from pyfory.resolver import (
     MapRefResolver,
     NoRefResolver,
@@ -58,6 +62,8 @@ NOT_NULL_FLOAT64_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (FLOAT64_TYPE_ID << 8
 NOT_NULL_BOOL_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (BOOL_TYPE_ID << 8)
 NOT_NULL_STRING_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (STRING_TYPE_ID << 8)
 SMALL_STRING_THRESHOLD = 16
+
+from pyfory.serialization import Buffer
 
 
 class BufferObject(ABC):
@@ -722,12 +728,6 @@ class Fory:
             f"Read depth exceed max depth: {self.depth}, the deserialization data may be malicious. If it's not malicious, "
             "please increase max read depth by Fory(..., max_depth=...)"
         )
-
-
-_ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
-    "1",
-    "true",
-}
 
 
 class ThreadSafeFory:

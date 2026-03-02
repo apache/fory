@@ -148,11 +148,15 @@ class ProtoTranslator:
     def _translate_message(self, proto_msg: ProtoMessage) -> Message:
         type_id, options = self._translate_type_options(proto_msg.options)
         fields = [self._translate_field(f) for f in proto_msg.fields]
-        nested_unions = [self._translate_oneof(o, proto_msg) for o in proto_msg.oneofs]
+        nested_unions = []
         for oneof in proto_msg.oneofs:
+            oneof_type_name = self._oneof_type_name(oneof.name)
+            nested_unions.append(
+                self._translate_oneof(oneof, oneof_type_name, proto_msg)
+            )
             if not oneof.fields:
                 continue
-            union_field = self._translate_oneof_field_reference(oneof)
+            union_field = self._translate_oneof_field_reference(oneof, oneof_type_name)
             fields.append(union_field)
         nested_messages = [
             self._translate_message(m) for m in proto_msg.nested_messages
@@ -236,10 +240,21 @@ class ProtoTranslator:
             location=self._location(proto_field.line, proto_field.column),
         )
 
-    def _translate_oneof(self, oneof: ProtoOneof, parent: ProtoMessage) -> Union:
+    def _oneof_type_name(self, oneof_name: str) -> str:
+        segments = [segment for segment in oneof_name.split("_") if segment]
+        if not segments:
+            return oneof_name[:1].upper() + oneof_name[1:]
+        return "".join(segment[:1].upper() + segment[1:] for segment in segments)
+
+    def _translate_oneof(
+        self,
+        oneof: ProtoOneof,
+        oneof_type_name: str,
+        _parent: ProtoMessage,
+    ) -> Union:
         fields = [self._translate_oneof_case(f) for f in oneof.fields]
         return Union(
-            name=oneof.name,
+            name=oneof_type_name,
             type_id=None,
             fields=fields,
             options={},
@@ -270,12 +285,14 @@ class ProtoTranslator:
             location=self._location(proto_field.line, proto_field.column),
         )
 
-    def _translate_oneof_field_reference(self, oneof: ProtoOneof) -> Field:
+    def _translate_oneof_field_reference(
+        self, oneof: ProtoOneof, oneof_type_name: str
+    ) -> Field:
         first_case = min(oneof.fields, key=lambda f: f.number)
         return Field(
             name=oneof.name,
             field_type=NamedType(
-                oneof.name, location=self._location(oneof.line, oneof.column)
+                oneof_type_name, location=self._location(oneof.line, oneof.column)
             ),
             number=first_case.number,
             optional=True,

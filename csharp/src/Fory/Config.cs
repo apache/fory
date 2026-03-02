@@ -17,6 +17,14 @@
 
 namespace Apache.Fory;
 
+/// <summary>
+/// Immutable runtime configuration used by <see cref="Fory"/> and <see cref="ThreadSafeFory"/>.
+/// </summary>
+/// <param name="Xlang">Whether cross-language protocol mode is enabled.</param>
+/// <param name="TrackRef">Whether shared and circular reference tracking is enabled.</param>
+/// <param name="Compatible">Whether schema-compatible mode is enabled.</param>
+/// <param name="CheckStructVersion">Whether generated struct schema hash checks are enforced.</param>
+/// <param name="MaxDepth">Maximum allowed nesting depth for dynamic object payload reads.</param>
 public sealed record Config(
     bool Xlang = true,
     bool TrackRef = false,
@@ -24,6 +32,9 @@ public sealed record Config(
     bool CheckStructVersion = false,
     int MaxDepth = 20);
 
+/// <summary>
+/// Fluent builder for creating <see cref="Fory"/> and <see cref="ThreadSafeFory"/> runtimes.
+/// </summary>
 public sealed class ForyBuilder
 {
     private bool _xlang = true;
@@ -32,30 +43,56 @@ public sealed class ForyBuilder
     private bool _checkStructVersion;
     private int _maxDepth = 20;
 
+    /// <summary>
+    /// Enables or disables cross-language protocol mode.
+    /// </summary>
+    /// <param name="enabled">Whether to enable cross-language mode. Defaults to <c>true</c>.</param>
+    /// <returns>The same builder instance.</returns>
     public ForyBuilder Xlang(bool enabled = true)
     {
         _xlang = enabled;
         return this;
     }
 
+    /// <summary>
+    /// Enables or disables reference tracking for shared and circular object graphs.
+    /// </summary>
+    /// <param name="enabled">Whether to enable reference tracking. Defaults to <c>false</c>.</param>
+    /// <returns>The same builder instance.</returns>
     public ForyBuilder TrackRef(bool enabled = false)
     {
         _trackRef = enabled;
         return this;
     }
 
+    /// <summary>
+    /// Enables or disables schema-compatible mode for schema evolution scenarios.
+    /// </summary>
+    /// <param name="enabled">Whether to enable compatible mode. Defaults to <c>false</c>.</param>
+    /// <returns>The same builder instance.</returns>
     public ForyBuilder Compatible(bool enabled = false)
     {
         _compatible = enabled;
         return this;
     }
 
+    /// <summary>
+    /// Enables or disables generated struct schema hash validation.
+    /// </summary>
+    /// <param name="enabled">Whether to enforce struct version checks. Defaults to <c>false</c>.</param>
+    /// <returns>The same builder instance.</returns>
     public ForyBuilder CheckStructVersion(bool enabled = false)
     {
         _checkStructVersion = enabled;
         return this;
     }
 
+    /// <summary>
+    /// Sets the maximum supported dynamic object nesting depth during deserialization.
+    /// </summary>
+    /// <param name="value">Depth limit. Must be greater than <c>0</c>.</param>
+    /// <returns>The same builder instance.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="value"/> is less than or equal to <c>0</c>.</exception>
     public ForyBuilder MaxDepth(int value)
     {
         if (value <= 0)
@@ -78,8 +115,9 @@ public sealed class ForyBuilder
     }
 
     /// <summary>
-    /// Builds a single-thread <see cref="Fory"/> instance.
+    /// Builds a single-threaded <see cref="Fory"/> instance.
     /// </summary>
+    /// <returns>A configured <see cref="Fory"/> runtime.</returns>
     public Fory Build()
     {
         return new Fory(BuildConfig());
@@ -88,6 +126,7 @@ public sealed class ForyBuilder
     /// <summary>
     /// Builds a multi-thread-safe wrapper that keeps one <see cref="Fory"/> per thread.
     /// </summary>
+    /// <returns>A configured <see cref="ThreadSafeFory"/> runtime.</returns>
     public ThreadSafeFory BuildThreadSafe()
     {
         return new ThreadSafeFory(BuildConfig());

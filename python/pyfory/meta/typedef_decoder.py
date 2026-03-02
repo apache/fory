@@ -23,7 +23,7 @@ This module implements the decoding of TypeDef objects according to the xlang se
 
 from dataclasses import make_dataclass
 from typing import List, Any
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.meta.typedef import TypeDef, FieldInfo, FieldType
 from pyfory.meta.typedef import (
     SMALL_NUM_FIELDS_THRESHOLD,

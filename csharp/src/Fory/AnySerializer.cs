@@ -88,29 +88,25 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 case RefFlag.Null:
                     return null;
                 case RefFlag.Ref:
-                {
-                    uint refId = context.Reader.ReadVarUInt32();
-                    return context.RefReader.ReadRefValue(refId);
-                }
+                    {
+                        uint refId = context.Reader.ReadVarUInt32();
+                        return context.RefReader.ReadRefValue(refId);
+                    }
                 case RefFlag.RefValue:
-                {
-                    uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.RefReader.PushPendingReference(reservedRefId);
-                    if (readTypeInfo)
                     {
-                        ReadAnyTypeInfo(context);
+                        uint reservedRefId = context.RefReader.ReserveRefId();
+                        context.RefReader.PushPendingReference(reservedRefId);
+                        try
+                        {
+                            object? value = ReadNonNullDynamicAny(context, readTypeInfo);
+                            context.RefReader.FinishPendingReferenceIfNeeded(value);
+                            return value;
+                        }
+                        finally
+                        {
+                            context.RefReader.PopPendingReference();
+                        }
                     }
-
-                    object? value = ReadData(context);
-                    if (readTypeInfo)
-                    {
-                        context.ClearDynamicTypeInfo(typeof(object));
-                    }
-
-                    context.RefReader.FinishPendingReferenceIfNeeded(value);
-                    context.RefReader.PopPendingReference();
-                    return value;
-                }
                 case RefFlag.NotNullValue:
                     break;
                 default:
@@ -118,18 +114,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
             }
         }
 
-        if (readTypeInfo)
-        {
-            ReadAnyTypeInfo(context);
-        }
-
-        object? result = ReadData(context);
-        if (readTypeInfo)
-        {
-            context.ClearDynamicTypeInfo(typeof(object));
-        }
-
-        return result;
+        return ReadNonNullDynamicAny(context, readTypeInfo);
     }
 
     private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
@@ -142,6 +127,31 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
     {
         DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
         context.SetDynamicTypeInfo(typeof(object), typeInfo);
+    }
+
+    private object? ReadNonNullDynamicAny(ReadContext context, bool readTypeInfo)
+    {
+        context.IncreaseDynamicReadDepth();
+        bool loadedDynamicTypeInfo = false;
+        try
+        {
+            if (readTypeInfo)
+            {
+                ReadAnyTypeInfo(context);
+                loadedDynamicTypeInfo = true;
+            }
+
+            return ReadData(context);
+        }
+        finally
+        {
+            if (loadedDynamicTypeInfo)
+            {
+                context.ClearDynamicTypeInfo(typeof(object));
+            }
+
+            context.DecreaseDynamicReadDepth();
+        }
     }
 }
 

@@ -54,6 +54,51 @@ struct EncodedNumberFields: Equatable {
 }
 
 @ForyObject
+struct FieldIdConfigured: Equatable {
+    @ForyField(id: 2)
+    var stableID: Int32
+
+    @ForyField(id: 5, encoding: .fixed)
+    var fixedValue: Int32
+}
+
+@ForyObject
+struct FieldIdSource: Equatable {
+    @ForyField(id: 1)
+    var value: Int32
+
+    @ForyField(id: 4)
+    var label: String
+}
+
+@ForyObject
+struct FieldIdTarget: Equatable {
+    @ForyField(id: 1)
+    var renamedValue: Int32
+
+    @ForyField(id: 4)
+    var renamedLabel: String
+}
+
+@ForyObject
+enum FieldIdUnionSource: Equatable {
+    @ForyField(id: 3)
+    case number(Int32)
+
+    @ForyField(id: 9)
+    case text(String)
+}
+
+@ForyObject
+enum FieldIdUnionTarget: Equatable {
+    @ForyField(id: 3)
+    case renamedNumber(Int32)
+
+    @ForyField(id: 9)
+    case renamedText(String)
+}
+
+@ForyObject
 final class Node {
     var value: Int32 = 0
     var next: Node?
@@ -195,7 +240,7 @@ func decodeLimitsRejectOversizedPayloads() throws {
     let writer = Fory()
 
     let oversizedCollection = try writer.serialize(["a", "b", "c"])
-    let collectionLimited = Fory(config: .init(maxCollectionLength: 2))
+    let collectionLimited = Fory(config: .init(maxCollectionSize: 2))
     do {
         let _: [String] = try collectionLimited.deserialize(oversizedCollection)
         #expect(Bool(false))
@@ -208,14 +253,14 @@ func decodeLimitsRejectOversizedPayloads() throws {
     } catch {}
 
     let oversizedBinary = try writer.serialize(Data([0x01, 0x02, 0x03, 0x04]))
-    let binaryLimited = Fory(config: .init(maxBinaryLength: 3))
+    let binaryLimited = Fory(config: .init(maxBinarySize: 3))
     do {
         let _: Data = try binaryLimited.deserialize(oversizedBinary)
         #expect(Bool(false))
     } catch {}
 
     let oversizedArrayPayload = try writer.serialize([UInt16(1), 2])
-    let payloadLimited = Fory(config: .init(maxCollectionLength: 1))
+    let payloadLimited = Fory(config: .init(maxCollectionSize: 1))
     do {
         let _: [UInt16] = try payloadLimited.deserialize(oversizedArrayPayload)
         #expect(Bool(false))
@@ -298,7 +343,7 @@ func primitiveArrayTypeIDs() throws {
 
     let uint8Data = try fory.serialize([UInt8(1), 2, 3])
     let uint8Bytes = [UInt8](uint8Data)
-    #expect(UInt32(uint8Bytes[2]) == TypeId.binary.rawValue)
+    #expect(UInt32(uint8Bytes[2]) == TypeId.uint8Array.rawValue)
 }
 
 @Test
@@ -616,6 +661,64 @@ func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
     #expect(fields[0].fieldType.typeID == TypeId.uint32.rawValue)
     #expect(fields[1].fieldName == "u64Tagged")
     #expect(fields[1].fieldType.typeID == TypeId.taggedUInt64.rawValue)
+}
+
+@Test
+func macroFieldIDsPopulateCompatibleTypeMeta() {
+    let fields = FieldIdConfigured.foryCompatibleTypeMetaFields(trackRef: false)
+    #expect(fields.count == 2)
+
+    var byID: [Int16: TypeMetaFieldInfo] = [:]
+    for field in fields {
+        if let id = field.fieldID {
+            byID[id] = field
+        }
+    }
+
+    #expect(byID[2]?.fieldName == "stableID")
+    #expect(byID[2]?.fieldType.typeID == TypeId.varint32.rawValue)
+    #expect(byID[5]?.fieldName == "fixedValue")
+    #expect(byID[5]?.fieldType.typeID == TypeId.int32.rawValue)
+}
+
+@Test
+func macroFieldIDsDriveCompatibleStructDecodeAcrossRenames() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(FieldIdSource.self, id: 9101)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(FieldIdTarget.self, id: 9101)
+
+    let source = FieldIdSource(value: 42, label: "alpha")
+    let bytes = try writer.serialize(source)
+    let decoded: FieldIdTarget = try reader.deserialize(bytes)
+
+    #expect(decoded.renamedValue == source.value)
+    #expect(decoded.renamedLabel == source.label)
+
+    let roundTrip = try reader.serialize(decoded)
+    let back: FieldIdSource = try writer.deserialize(roundTrip)
+    #expect(back == source)
+}
+
+@Test
+func macroFieldIDsDriveTaggedUnionDecodeAcrossRenames() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(FieldIdUnionSource.self, id: 9102)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(FieldIdUnionTarget.self, id: 9102)
+
+    let source = FieldIdUnionSource.number(123)
+    let bytes = try writer.serialize(source)
+    let decoded: FieldIdUnionTarget = try reader.deserialize(bytes)
+
+    switch decoded {
+    case .renamedNumber(let value):
+        #expect(value == 123)
+    default:
+        #expect(Bool(false))
+    }
 }
 
 @Test

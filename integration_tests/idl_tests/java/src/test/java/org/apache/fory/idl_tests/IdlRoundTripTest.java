@@ -624,7 +624,7 @@ public class IdlRoundTripTest {
             .filter(value -> !value.isEmpty())
             .collect(Collectors.toList());
     if (peers.contains("all")) {
-      return Arrays.asList("python", "go", "rust", "cpp");
+      return Arrays.asList("python", "go", "rust", "cpp", "swift");
     }
     return peers;
   }
@@ -674,6 +674,15 @@ public class IdlRoundTripTest {
         break;
       case "cpp":
         command = Collections.singletonList("./cpp/run.sh");
+        break;
+      case "swift":
+        workDir = idlRoot.resolve("swift").resolve("idl_package");
+        String swiftTest =
+            compatible
+                ? "IdlRoundTripTests/testAddressBookRoundTripCompatible"
+                : "IdlRoundTripTests/testAddressBookRoundTripSchemaConsistent";
+        command = Arrays.asList("swift", "test", "--filter", swiftTest);
+        peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
         break;
       default:
         throw new IllegalArgumentException("Unknown peer language: " + peer);

@@ -213,6 +213,8 @@ public enum FieldSkipper {
             return try readSet(context: context, fieldType: fieldType)
         case .map:
             return try readMap(context: context, fieldType: fieldType)
+        case .union, .typedUnion, .namedUnion:
+            return try readUnion(context: context)
         case .enumType, .namedEnum:
             return try context.buffer.readVarUInt32()
         default:
@@ -409,5 +411,10 @@ public enum FieldSkipper {
         }
 
         return [:]
+    }
+
+    private static func readUnion(context: ReadContext) throws -> Any {
+        _ = try context.buffer.readVarUInt32()
+        return try context.readAny(refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
     }
 }

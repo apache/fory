@@ -71,13 +71,17 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
         inline uint32_t reader_index()
 
+        inline c_bool ensure_readable(uint32_t length, CError& error)
+
         inline void writer_index(uint32_t writer_index)
 
         inline void increase_writer_index(uint32_t diff)
 
         inline void reader_index(uint32_t reader_index)
 
-        inline void increase_reader_index(uint32_t diff)
+        inline c_bool reader_index(uint32_t reader_index, CError& error)
+
+        inline void increase_reader_index(uint32_t diff, CError& error)
 
         void grow(uint32_t min_capacity)
 
@@ -223,3 +227,17 @@ cdef extern from "fory/util/bit_util.h" namespace "fory::util" nogil:
 
 cdef extern from "fory/util/string_util.h" namespace "fory" nogil:
     c_bool utf16_has_surrogate_pairs(uint16_t* data, size_t size)
+
+
+cdef extern from "fory/util/flat_int_map.h" namespace "fory::util" nogil:
+    cdef cppclass FlatIntMap[K, V]:
+        cppclass Entry:
+            K key
+            V value
+
+        FlatIntMap() except +
+        FlatIntMap(size_t initial_capacity) except +
+        V& operator[](K key)
+        Entry* find(K key)
+        size_t size() const
+        void clear()

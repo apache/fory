@@ -905,7 +905,10 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
       for (uint32_t i = 0; i < size; ++i) {
         result[i] = (src[i] != 0);
       }
-      buffer.increase_reader_index(size);
+      buffer.increase_reader_index(size, ctx.error());
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return std::vector<bool, Alloc>();
+      }
     } else {
       // Fallback: read byte-by-byte with bounds checking
       for (uint32_t i = 0; i < size; ++i) {

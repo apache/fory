@@ -467,7 +467,8 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             header |= TypeMetaConstants.TypeMetaCompressedFlag;
         }
 
-        header |= (ulong)Math.Min(body.Length, (int)TypeMetaConstants.TypeMetaSizeMask);
+        uint bodySize = (uint)Math.Min(body.Length, (int)TypeMetaConstants.TypeMetaSizeMask);
+        header |= bodySize;
         ByteWriter writer = new(body.Length + 16);
         writer.WriteUInt64(header);
         if (body.Length >= (int)TypeMetaConstants.TypeMetaSizeMask)

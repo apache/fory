@@ -174,6 +174,16 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "stream_test",
+    srcs = ["stream_test.cc"],
+    deps = [
+        ":fory_serialization",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_binary(
     name = "xlang_test_main",
     srcs = ["xlang_test_main.cc"],

@@ -63,9 +63,9 @@ public sealed class StringSerializer : Serializer<string>
         int byteLength = checked((int)(header >> 2));
         ReadOnlySpan<byte> bytes = context.Reader.ReadSpan(byteLength);
         return encoding switch
-            {
-                (ulong)ForyStringEncoding.Utf8 => Encoding.UTF8.GetString(bytes),
-                (ulong)ForyStringEncoding.Latin1 => DecodeLatin1(bytes),
+        {
+            (ulong)ForyStringEncoding.Utf8 => Encoding.UTF8.GetString(bytes),
+            (ulong)ForyStringEncoding.Latin1 => DecodeLatin1(bytes),
             (ulong)ForyStringEncoding.Utf16 => DecodeUtf16(bytes),
             _ => throw new EncodingException($"unsupported string encoding {encoding}"),
         };

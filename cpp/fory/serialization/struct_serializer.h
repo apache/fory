@@ -31,6 +31,7 @@
 #include "fory/util/string_util.h"
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string_view>
@@ -831,6 +832,12 @@ template <typename T> struct CompileTimeFieldHelpers {
 
       if constexpr (is_configurable_int_v<FieldType>) {
         return configurable_int_max_varint_bytes<FieldType, T, Index>();
+      } else if constexpr (std::is_same_v<FieldType, int32_t> ||
+                           std::is_same_v<FieldType, int>) {
+        return 5;
+      } else if constexpr (std::is_same_v<FieldType, int64_t> ||
+                           std::is_same_v<FieldType, long long>) {
+        return 10;
       }
       return 0;
     }
@@ -2753,11 +2760,8 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
 
     // Phase 1: Read leading fixed-size primitives if any
     if constexpr (fixed_count > 0 && fixed_bytes > 0) {
-      // Pre-check bounds for all fixed-size fields at once
-      if (FORY_PREDICT_FALSE(buffer.reader_index() + fixed_bytes >
-                             buffer.size())) {
-        ctx.set_error(Error::buffer_out_of_bound(buffer.reader_index(),
-                                                 fixed_bytes, buffer.size()));
+      if (FORY_PREDICT_FALSE(!buffer.ensure_readable(
+              static_cast<uint32_t>(fixed_bytes), ctx.error()))) {
         return;
       }
       // Fast read fixed-size primitives
@@ -2769,6 +2773,12 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
     // Note: varint bounds checking is done per-byte during reading since
     // varint lengths are variable (actual size << max possible size)
     if constexpr (varint_count > 0) {
+      if (FORY_PREDICT_FALSE(buffer.is_stream_backed())) {
+        // Stream-backed buffers may not have all varint bytes materialized yet.
+        // Fall back to per-field readers that propagate stream read errors.
+        read_remaining_fields<T, fixed_count, total_count>(obj, ctx);
+        return;
+      }
       // Track offset locally for batch varint reading
       uint32_t offset = buffer.reader_index();
       // Fast read varint primitives (bounds checking happens in
@@ -2807,11 +2817,8 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
 
   // Phase 1: Read leading fixed-size primitives if any
   if constexpr (fixed_count > 0 && fixed_bytes > 0) {
-    // Pre-check bounds for all fixed-size fields at once
-    if (FORY_PREDICT_FALSE(buffer.reader_index() + fixed_bytes >
-                           buffer.size())) {
-      ctx.set_error(Error::buffer_out_of_bound(buffer.reader_index(),
-                                               fixed_bytes, buffer.size()));
+    if (FORY_PREDICT_FALSE(!buffer.ensure_readable(
+            static_cast<uint32_t>(fixed_bytes), ctx.error()))) {
       return;
     }
     // Fast read fixed-size primitives
@@ -2821,6 +2828,12 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
 
   // Phase 2: Read consecutive varint primitives (int32, int64) if any
   if constexpr (varint_count > 0) {
+    if (FORY_PREDICT_FALSE(buffer.is_stream_backed())) {
+      // Stream-backed buffers may not have all varint bytes materialized yet.
+      // Fall back to per-field readers that propagate stream read errors.
+      read_remaining_fields<T, fixed_count, total_count>(obj, ctx);
+      return;
+    }
     // Track offset locally for batch varint reading
     uint32_t offset = buffer.reader_index();
     // Fast read varint primitives (bounds checking happens in

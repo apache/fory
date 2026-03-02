@@ -20,8 +20,6 @@ import inspect
 import sys
 from typing import Dict, Callable
 
-from pyfory.buffer import get_bit, set_bit, clear_bit, set_bit_to
-
 
 # This method is derived from https://github.com/mars-project/mars/blob/c36c53fa22e10ef9477d9c454401a2f281375f31/mars/utils.py.
 def lazy_import(
@@ -83,6 +81,30 @@ class ModulePlaceholder:
 
 
 is_little_endian = sys.byteorder == "little"
+
+
+def get_bit(buffer, base_offset, index):
+    from pyfory.serialization import get_bit as _get_bit
+
+    return _get_bit(buffer, base_offset, index)
+
+
+def set_bit(buffer, base_offset, index):
+    from pyfory.serialization import set_bit as _set_bit
+
+    return _set_bit(buffer, base_offset, index)
+
+
+def clear_bit(buffer, base_offset, index):
+    from pyfory.serialization import clear_bit as _clear_bit
+
+    return _clear_bit(buffer, base_offset, index)
+
+
+def set_bit_to(buffer, base_offset, index, bit_is_set):
+    from pyfory.serialization import set_bit_to as _set_bit_to
+
+    return _set_bit_to(buffer, base_offset, index, bit_is_set)
 
 
 __all__ = [
