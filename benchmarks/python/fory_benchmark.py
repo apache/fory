@@ -276,12 +276,29 @@ def msgpack_roundtrip(obj):
     msgpack.loads(binary, raw=False, strict_map_key=False)
 
 
+def msgpack_roundtrip_dataclass(obj):
+    payload = make_msgpack_compatible(obj)
+    binary = msgpack.dumps(payload, use_bin_type=True)
+    restored = msgpack.loads(binary, raw=False, strict_map_key=False)
+    _restore_dataclass_from_template(restored, obj)
+
+
 def msgpack_serialize(obj):
     msgpack.dumps(obj, use_bin_type=True)
 
 
+def msgpack_serialize_dataclass(obj):
+    payload = make_msgpack_compatible(obj)
+    msgpack.dumps(payload, use_bin_type=True)
+
+
 def msgpack_deserialize(binary):
     msgpack.loads(binary, raw=False, strict_map_key=False)
+
+
+def msgpack_deserialize_dataclass(binary, dataclass_template):
+    restored = msgpack.loads(binary, raw=False, strict_map_key=False)
+    _restore_dataclass_from_template(restored, dataclass_template)
 
 
 def make_msgpack_compatible(obj):
@@ -303,6 +320,25 @@ def make_msgpack_compatible(obj):
     return obj
 
 
+def _restore_dataclass_from_template(value, template):
+    if not is_dataclass(template):
+        return value
+    if not isinstance(value, dict):
+        return value
+
+    kwargs = {}
+    for field in template.__dataclass_fields__.values():
+        field_value = value.get(field.name)
+        template_value = getattr(template, field.name, None)
+        if is_dataclass(template_value):
+            kwargs[field.name] = _restore_dataclass_from_template(
+                field_value, template_value
+            )
+        else:
+            kwargs[field.name] = field_value
+    return type(template)(**kwargs)
+
+
 def build_fory_benchmark_case(operation: str, ref: bool, obj):
     if operation == "serialize":
         return fory_serialize, (ref, obj)
@@ -322,9 +358,20 @@ def build_pickle_benchmark_case(operation: str, obj):
 
 def build_msgpack_benchmark_case(operation: str, obj):
     if operation == "serialize":
+        if is_dataclass(obj):
+            return msgpack_serialize_dataclass, (obj,)
         return msgpack_serialize, (obj,)
     if operation == "deserialize":
-        return msgpack_deserialize, (msgpack.dumps(obj, use_bin_type=True),)
+        if is_dataclass(obj):
+            return msgpack_deserialize_dataclass, (
+                msgpack.dumps(make_msgpack_compatible(obj), use_bin_type=True),
+                obj,
+            )
+        return msgpack_deserialize, (
+            msgpack.dumps(obj, use_bin_type=True),
+        )
+    if is_dataclass(obj):
+        return msgpack_roundtrip_dataclass, (obj,)
     return msgpack_roundtrip, (obj,)
 
 
@@ -487,7 +534,9 @@ def micro_benchmark():
     msgpack_data = {}
     if "msgpack" in selected_serializers:
         msgpack_data = {
-            benchmark_name: make_msgpack_compatible(data)
+            benchmark_name: (
+                data if is_dataclass(data) else make_msgpack_compatible(data)
+            )
             for benchmark_name, data in benchmark_data.items()
         }
 
