@@ -39,7 +39,9 @@ from pyfory.includes.libserialization cimport \
      Fory_IsInternalTypeId,
      Fory_CanUsePrimitiveCollectionFastpath,
      Fory_PyPrimitiveCollectionWriteToBuffer,
-     Fory_PyPrimitiveCollectionReadFromBuffer)
+     Fory_PyPrimitiveCollectionReadFromBuffer,
+     Fory_PyWriteBasicFieldToBuffer,
+     Fory_PyReadBasicFieldFromBuffer)
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
@@ -56,7 +58,7 @@ from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
 from pyfory.includes.libabsl cimport flat_hash_map
-from pyfory.includes.libutil cimport CBuffer
+from pyfory.includes.libutil cimport CBuffer, FlatIntMap
 from pyfory.meta.metastring import MetaStringDecoder
 
 try:
@@ -1869,3 +1871,4 @@ cdef class SliceSerializer(Serializer):
 
 include "primitive.pxi"
 include "collection.pxi"
+include "struct.pxi"

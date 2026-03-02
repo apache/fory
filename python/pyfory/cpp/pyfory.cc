@@ -485,6 +485,24 @@ static bool py_long_to_integral_range(PyObject *value, const char *type_name,
   return true;
 }
 
+template <typename T>
+static bool py_long_to_unsigned_range(PyObject *value, const char *type_name,
+                                      T *out) {
+  const unsigned long long converted = PyLong_AsUnsignedLongLong(value);
+  if (converted == static_cast<unsigned long long>(-1) &&
+      PyErr_Occurred() != nullptr) {
+    return false;
+  }
+  constexpr unsigned long long k_max =
+      static_cast<unsigned long long>(std::numeric_limits<T>::max());
+  if (converted > k_max) {
+    PyErr_Format(PyExc_OverflowError, "integer out of range for %s", type_name);
+    return false;
+  }
+  *out = static_cast<T>(converted);
+  return true;
+}
+
 static int write_python_string(Buffer *buffer, PyObject *value) {
   if (FORY_PREDICT_FALSE(!PyUnicode_Check(value))) {
     PyErr_Format(PyExc_TypeError, "expected str, got %.200s",
@@ -608,26 +626,77 @@ static int write_primitive_item(Buffer *buffer, PyObject *value,
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::STRING:
     return write_python_string(buffer, value);
-  case TypeId::VARINT64: {
+  case TypeId::VARINT64:
+  case TypeId::INT64: {
     int64_t v = 0;
     if (FORY_PREDICT_FALSE(!py_long_to_int64(value, &v))) {
       return -1;
     }
-    buffer->write_var_int64(v);
+    if (static_cast<TypeId>(type_id) == TypeId::INT64) {
+      buffer->write_int64(v);
+    } else {
+      buffer->write_var_int64(v);
+    }
     return 0;
   }
-  case TypeId::VARINT32: {
+  case TypeId::VARINT32:
+  case TypeId::INT32: {
     int32_t v = 0;
     if (FORY_PREDICT_FALSE(
             !py_long_to_integral_range<int32_t>(value, "int32", &v))) {
       return -1;
     }
-    buffer->write_var_int32(v);
+    if (static_cast<TypeId>(type_id) == TypeId::INT32) {
+      buffer->write_int32(v);
+    } else {
+      buffer->write_var_int32(v);
+    }
+    return 0;
+  }
+  case TypeId::VAR_UINT64:
+  case TypeId::UINT64:
+  case TypeId::TAGGED_UINT64: {
+    uint64_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_unsigned_range<uint64_t>(value, "uint64", &v))) {
+      return -1;
+    }
+    if (static_cast<TypeId>(type_id) == TypeId::VAR_UINT64) {
+      buffer->write_var_uint64(v);
+    } else if (static_cast<TypeId>(type_id) == TypeId::TAGGED_UINT64) {
+      buffer->write_tagged_uint64(v);
+    } else {
+      buffer->write_int64(static_cast<int64_t>(v));
+    }
+    return 0;
+  }
+  case TypeId::VAR_UINT32:
+  case TypeId::UINT32: {
+    uint32_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_unsigned_range<uint32_t>(value, "uint32", &v))) {
+      return -1;
+    }
+    if (static_cast<TypeId>(type_id) == TypeId::VAR_UINT32) {
+      buffer->write_var_uint32(v);
+    } else {
+      buffer->write_uint32(v);
+    }
     return 0;
   }
   case TypeId::BOOL:
-    buffer->write_int8(value == Py_True ? 1 : 0);
+    if (FORY_PREDICT_FALSE(value != Py_True && value != Py_False)) {
+      if (FORY_PREDICT_FALSE(!PyBool_Check(value))) {
+        PyErr_Format(PyExc_TypeError, "expected bool, got %.200s",
+                     Py_TYPE(value)->tp_name);
+        return -1;
+      }
+      buffer->write_int8(PyObject_IsTrue(value) ? 1 : 0);
+    } else {
+      buffer->write_int8(value == Py_True ? 1 : 0);
+    }
     return 0;
+  case TypeId::FLOAT32:
   case TypeId::FLOAT64: {
     double v;
     if (PyFloat_CheckExact(value)) {
@@ -638,7 +707,20 @@ static int write_primitive_item(Buffer *buffer, PyObject *value,
         return -1;
       }
     }
-    buffer->write_double(v);
+    if (static_cast<TypeId>(type_id) == TypeId::FLOAT32) {
+      buffer->write_float(static_cast<float>(v));
+    } else {
+      buffer->write_double(v);
+    }
+    return 0;
+  }
+  case TypeId::UINT8: {
+    uint8_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_unsigned_range<uint8_t>(value, "uint8", &v))) {
+      return -1;
+    }
+    buffer->write_uint8(v);
     return 0;
   }
   case TypeId::INT8: {
@@ -650,6 +732,15 @@ static int write_primitive_item(Buffer *buffer, PyObject *value,
     buffer->write_int8(v);
     return 0;
   }
+  case TypeId::UINT16: {
+    uint16_t v = 0;
+    if (FORY_PREDICT_FALSE(
+            !py_long_to_unsigned_range<uint16_t>(value, "uint16", &v))) {
+      return -1;
+    }
+    buffer->write_uint16(v);
+    return 0;
+  }
   case TypeId::INT16: {
     int16_t v = 0;
     if (FORY_PREDICT_FALSE(
@@ -659,13 +750,13 @@ static int write_primitive_item(Buffer *buffer, PyObject *value,
     buffer->write_int16(v);
     return 0;
   }
-  case TypeId::INT32: {
-    int32_t v = 0;
+  case TypeId::TAGGED_INT64: {
+    int64_t v = 0;
     if (FORY_PREDICT_FALSE(
-            !py_long_to_integral_range<int32_t>(value, "int32", &v))) {
+            !py_long_to_integral_range<int64_t>(value, "int64", &v))) {
       return -1;
     }
-    buffer->write_int32(v);
+    buffer->write_tagged_int64(v);
     return 0;
   }
   default:
@@ -858,21 +949,55 @@ static PyObject *read_primitive_item(Buffer *buffer, uint8_t type_id) {
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::STRING:
     return read_python_string(buffer);
-  case TypeId::VARINT64: {
-    const int64_t v = buffer->read_var_int64(error);
+  case TypeId::VARINT64:
+  case TypeId::INT64: {
+    const int64_t v = static_cast<TypeId>(type_id) == TypeId::INT64
+                          ? buffer->read_int64(error)
+                          : buffer->read_var_int64(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       set_buffer_error(error);
       return nullptr;
     }
     return PyLong_FromLongLong(v);
   }
-  case TypeId::VARINT32: {
-    const int32_t v = buffer->read_var_int32(error);
+  case TypeId::VARINT32:
+  case TypeId::INT32: {
+    const int32_t v = static_cast<TypeId>(type_id) == TypeId::INT32
+                          ? buffer->read_int32(error)
+                          : buffer->read_var_int32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       set_buffer_error(error);
       return nullptr;
     }
     return PyLong_FromLong(v);
+  }
+  case TypeId::VAR_UINT64:
+  case TypeId::UINT64:
+  case TypeId::TAGGED_UINT64: {
+    uint64_t v = 0;
+    if (static_cast<TypeId>(type_id) == TypeId::VAR_UINT64) {
+      v = buffer->read_var_uint64(error);
+    } else if (static_cast<TypeId>(type_id) == TypeId::TAGGED_UINT64) {
+      v = buffer->read_tagged_uint64(error);
+    } else {
+      v = buffer->read_uint64(error);
+    }
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromUnsignedLongLong(v);
+  }
+  case TypeId::VAR_UINT32:
+  case TypeId::UINT32: {
+    const uint32_t v = static_cast<TypeId>(type_id) == TypeId::UINT32
+                           ? buffer->read_uint32(error)
+                           : buffer->read_var_uint32(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromUnsignedLong(v);
   }
   case TypeId::BOOL: {
     const uint8_t v = buffer->read_uint8(error);
@@ -882,6 +1007,14 @@ static PyObject *read_primitive_item(Buffer *buffer, uint8_t type_id) {
     }
     return PyBool_FromLong(v != 0);
   }
+  case TypeId::FLOAT32: {
+    const float v = buffer->read_float(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyFloat_FromDouble(static_cast<double>(v));
+  }
   case TypeId::FLOAT64: {
     const double v = buffer->read_double(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
@@ -889,6 +1022,14 @@ static PyObject *read_primitive_item(Buffer *buffer, uint8_t type_id) {
       return nullptr;
     }
     return PyFloat_FromDouble(v);
+  }
+  case TypeId::UINT8: {
+    const uint8_t v = buffer->read_uint8(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromUnsignedLong(v);
   }
   case TypeId::INT8: {
     const int8_t v = buffer->read_int8(error);
@@ -898,6 +1039,14 @@ static PyObject *read_primitive_item(Buffer *buffer, uint8_t type_id) {
     }
     return PyLong_FromLong(v);
   }
+  case TypeId::UINT16: {
+    const uint16_t v = buffer->read_uint16(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      set_buffer_error(error);
+      return nullptr;
+    }
+    return PyLong_FromUnsignedLong(v);
+  }
   case TypeId::INT16: {
     const int16_t v = buffer->read_int16(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
@@ -906,13 +1055,13 @@ static PyObject *read_primitive_item(Buffer *buffer, uint8_t type_id) {
     }
     return PyLong_FromLong(v);
   }
-  case TypeId::INT32: {
-    const int32_t v = buffer->read_int32(error);
+  case TypeId::TAGGED_INT64: {
+    const int64_t v = buffer->read_tagged_int64(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       set_buffer_error(error);
       return nullptr;
     }
-    return PyLong_FromLong(v);
+    return PyLong_FromLongLong(v);
   }
   default:
     PyErr_Format(PyExc_ValueError, "unsupported primitive fastpath type id: %u",
@@ -1233,6 +1382,15 @@ int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
     }
   }
   return 0;
+}
+
+int Fory_PyWriteBasicFieldToBuffer(PyObject *value, Buffer *buffer,
+                                   uint8_t type_id) {
+  return write_primitive_item(buffer, value, type_id);
+}
+
+PyObject *Fory_PyReadBasicFieldFromBuffer(Buffer *buffer, uint8_t type_id) {
+  return read_primitive_item(buffer, type_id);
 }
 
 int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,

@@ -31,7 +31,7 @@ Benchmark Options:
     --benchmarks BENCHMARK_LIST
         Comma-separated list of benchmarks to run. Default: all
         Available: dict, large_dict, dict_group, tuple, large_tuple,
-                   large_float_tuple, large_boolean_tuple, list, large_list, complex
+                   large_float_tuple, large_boolean_tuple, list, large_list, struct
 
     --serializers SERIALIZER_LIST
         Comma-separated list of serializers to benchmark. Default: all
@@ -67,7 +67,7 @@ Examples:
     python fory_benchmark.py --operation deserialize
 
     # Run specific benchmarks with both serializers
-    python fory_benchmark.py --benchmarks dict,large_dict,complex
+    python fory_benchmark.py --benchmarks dict,large_dict,struct
 
     # Compare only Fory performance
     python fory_benchmark.py --serializers fory
@@ -196,7 +196,7 @@ DICT_GROUP = [mutate_dict(DICT, random_source) for _ in range(3)]
 
 
 @dataclass
-class ComplexObject1:
+class Struct1:
     f1: Any = None
     f2: str = None
     f3: List[str] = None
@@ -212,13 +212,13 @@ class ComplexObject1:
 
 
 @dataclass
-class ComplexObject2:
+class Struct2:
     f1: Any
     f2: Dict[pyfory.int8, pyfory.int32]
 
 
-COMPLEX_OBJECT = ComplexObject1(
-    f1=ComplexObject2(f1=True, f2={-1: 2}),
+STRUCT_OBJECT = Struct1(
+    f1=Struct2(f1=True, f2={-1: 2}),
     f2="abc",
     f3=["abc", "abc"],
     f4={1: 2},
@@ -238,8 +238,8 @@ fory_without_ref = pyfory.Fory(ref=False)
 
 # Register all custom types on both instances
 for fory_instance in (fory_with_ref, fory_without_ref):
-    fory_instance.register_type(ComplexObject1)
-    fory_instance.register_type(ComplexObject2)
+    fory_instance.register_type(Struct1)
+    fory_instance.register_type(Struct2)
 
 
 def fory_roundtrip(ref, obj):
@@ -276,12 +276,29 @@ def msgpack_roundtrip(obj):
     msgpack.loads(binary, raw=False, strict_map_key=False)
 
 
+def msgpack_roundtrip_dataclass(obj):
+    payload = make_msgpack_compatible(obj)
+    binary = msgpack.dumps(payload, use_bin_type=True)
+    restored = msgpack.loads(binary, raw=False, strict_map_key=False)
+    _restore_dataclass_from_template(restored, obj)
+
+
 def msgpack_serialize(obj):
     msgpack.dumps(obj, use_bin_type=True)
 
 
+def msgpack_serialize_dataclass(obj):
+    payload = make_msgpack_compatible(obj)
+    msgpack.dumps(payload, use_bin_type=True)
+
+
 def msgpack_deserialize(binary):
     msgpack.loads(binary, raw=False, strict_map_key=False)
+
+
+def msgpack_deserialize_dataclass(binary, dataclass_template):
+    restored = msgpack.loads(binary, raw=False, strict_map_key=False)
+    _restore_dataclass_from_template(restored, dataclass_template)
 
 
 def make_msgpack_compatible(obj):
@@ -303,6 +320,25 @@ def make_msgpack_compatible(obj):
     return obj
 
 
+def _restore_dataclass_from_template(value, template):
+    if not is_dataclass(template):
+        return value
+    if not isinstance(value, dict):
+        return value
+
+    kwargs = {}
+    for field in template.__dataclass_fields__.values():
+        field_value = value.get(field.name)
+        template_value = getattr(template, field.name, None)
+        if is_dataclass(template_value):
+            kwargs[field.name] = _restore_dataclass_from_template(
+                field_value, template_value
+            )
+        else:
+            kwargs[field.name] = field_value
+    return type(template)(**kwargs)
+
+
 def build_fory_benchmark_case(operation: str, ref: bool, obj):
     if operation == "serialize":
         return fory_serialize, (ref, obj)
@@ -322,9 +358,18 @@ def build_pickle_benchmark_case(operation: str, obj):
 
 def build_msgpack_benchmark_case(operation: str, obj):
     if operation == "serialize":
+        if is_dataclass(obj):
+            return msgpack_serialize_dataclass, (obj,)
         return msgpack_serialize, (obj,)
     if operation == "deserialize":
+        if is_dataclass(obj):
+            return msgpack_deserialize_dataclass, (
+                msgpack.dumps(make_msgpack_compatible(obj), use_bin_type=True),
+                obj,
+            )
         return msgpack_deserialize, (msgpack.dumps(obj, use_bin_type=True),)
+    if is_dataclass(obj):
+        return msgpack_roundtrip_dataclass, (obj,)
     return msgpack_roundtrip, (obj,)
 
 
@@ -356,7 +401,7 @@ def benchmark_args():
         default="all",
         help="Comma-separated list of benchmarks to run. Available: dict, large_dict, "
         "dict_group, tuple, large_tuple, large_float_tuple, large_boolean_tuple, "
-        "list, large_list, complex. Default: all",
+        "list, large_list, struct. Default: all",
     )
     parser.add_argument(
         "--serializers",
@@ -450,7 +495,7 @@ def micro_benchmark():
         "large_boolean_tuple": LARGE_BOOLEAN_TUPLE,
         "list": LIST,
         "large_list": LARGE_LIST,
-        "complex": COMPLEX_OBJECT,
+        "struct": STRUCT_OBJECT,
     }
 
     # Determine which benchmarks to run
@@ -487,7 +532,9 @@ def micro_benchmark():
     msgpack_data = {}
     if "msgpack" in selected_serializers:
         msgpack_data = {
-            benchmark_name: make_msgpack_compatible(data)
+            benchmark_name: (
+                data if is_dataclass(data) else make_msgpack_compatible(data)
+            )
             for benchmark_name, data in benchmark_data.items()
         }
 
