@@ -299,14 +299,17 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const flags = this.scope.uniqueName("flags");
     const idx = this.scope.uniqueName("idx");
     const refFlag = this.scope.uniqueName("refFlag");
-    const foryName = this.builder.getForyName();
-    const maxLenVar = this.scope.uniqueName("maxCollectionLength");
+    const maxLenConfig = this.builder.fory.config.maxCollectionLength;
+    const limitCheck = typeof maxLenConfig === "number" && maxLenConfig > 0
+      ? `
+            if (${len} > ${maxLenConfig}) {
+                throw new Error(\`Collection length \${${len}} exceeds configured maxCollectionLength ${maxLenConfig}\`);
+            }
+      `
+      : "";
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
-            const ${maxLenVar} = ${foryName}.config.maxCollectionLength;
-            if (typeof ${maxLenVar} === "number" && ${maxLenVar} > 0 && ${len} > ${maxLenVar}) {
-                throw new Error(\`Collection length \${${len}} exceeds configured maxCollectionLength \${${maxLenVar}}\`);
-            }
+            ${limitCheck}
             const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
