@@ -505,7 +505,9 @@ def micro_benchmark():
     results = []
     for benchmark_name in selected_benchmarks:
         data = benchmark_data[benchmark_name]
-        benchmark_number = max(1, args.number // 10) if benchmark_name == "large_dict" else args.number
+        benchmark_number = (
+            max(1, args.number // 10) if benchmark_name == "large_dict" else args.number
+        )
 
         if "fory" in selected_serializers:
             print(
@@ -582,7 +584,9 @@ def micro_benchmark():
             print("\n" + "=" * 80)
             print(f"SPEEDUP (Fory vs {baseline.capitalize()})")
             print("=" * 80)
-            print(f"{'Benchmark':<25} {'Fory':<20} {baseline.capitalize():<20} {'Speedup':<20}")
+            print(
+                f"{'Benchmark':<25} {'Fory':<20} {baseline.capitalize():<20} {'Speedup':<20}"
+            )
             print("-" * 80)
 
             for benchmark_name in selected_benchmarks:

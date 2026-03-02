@@ -118,6 +118,7 @@ from pyfory.type_util import (  # noqa: F401 # pylint: disable=unused-import
     dataslots,
 )
 from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=unused-import
+
 __version__ = "0.16.0.dev0"
 
 __all__ = [

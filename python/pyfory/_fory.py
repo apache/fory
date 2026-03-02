@@ -729,6 +729,7 @@ class Fory:
             "please increase max read depth by Fory(..., max_depth=...)"
         )
 
+
 class ThreadSafeFory:
     """
     Thread-safe wrapper for Fory using instance pooling.
