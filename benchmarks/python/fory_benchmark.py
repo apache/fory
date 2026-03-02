@@ -367,9 +367,7 @@ def build_msgpack_benchmark_case(operation: str, obj):
                 msgpack.dumps(make_msgpack_compatible(obj), use_bin_type=True),
                 obj,
             )
-        return msgpack_deserialize, (
-            msgpack.dumps(obj, use_bin_type=True),
-        )
+        return msgpack_deserialize, (msgpack.dumps(obj, use_bin_type=True),)
     if is_dataclass(obj):
         return msgpack_roundtrip_dataclass, (obj,)
     return msgpack_roundtrip, (obj,)

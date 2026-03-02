@@ -83,6 +83,7 @@ from pyfory import (
 )
 
 logger = logging.getLogger(__name__)
+_NO_MISSING_FIELD_DEFAULT = object()
 
 
 @dataclasses.dataclass
@@ -369,11 +370,35 @@ class DataClassSerializer(Serializer):
         for dc_field in dataclasses.fields(self.type_):
             if dc_field.name not in missing_fields:
                 continue
-            if dc_field.default is not dataclasses.MISSING:
-                defaults.append((dc_field.name, dc_field.default, None))
-            elif dc_field.default_factory is not dataclasses.MISSING:
-                defaults.append((dc_field.name, None, dc_field.default_factory))
+            resolved_default = self._resolve_missing_field_default(dc_field)
+            if resolved_default is _NO_MISSING_FIELD_DEFAULT:
+                continue
+            default_value, default_factory = resolved_default
+            defaults.append((dc_field.name, default_value, default_factory))
         return defaults
+
+    def _resolve_missing_field_default(self, dc_field):
+        type_hint = self._type_hints.get(dc_field.name, typing.Any)
+        unwrapped_type, is_optional = unwrap_optional(type_hint)
+        meta = extract_field_meta(dc_field)
+        effective_nullable = (meta.nullable if meta is not None else self.fory.field_nullable) or is_optional
+
+        if dc_field.default is not dataclasses.MISSING:
+            default_value = dc_field.default
+            if default_value is None and not effective_nullable and is_subclass(unwrapped_type, enum.Enum):
+                members = tuple(unwrapped_type)
+                if members:
+                    default_value = members[0]
+            return default_value, None
+
+        if dc_field.default_factory is not dataclasses.MISSING:
+            return None, dc_field.default_factory
+
+        if not effective_nullable and is_subclass(unwrapped_type, enum.Enum):
+            members = tuple(unwrapped_type)
+            if members:
+                return members[0], None
+        return _NO_MISSING_FIELD_DEFAULT
 
     def _write_field_value(self, buffer, serializer, field_value, is_nullable, is_dynamic, is_basic):
         if is_nullable:

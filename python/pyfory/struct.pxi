@@ -16,12 +16,14 @@
 # under the License.
 
 import dataclasses
+import enum
 import typing
 
 from cpython.unicode cimport PyUnicode_InternFromString
 
 
 cdef uint8_t _BASIC_FIELD_UNSUPPORTED = 0xFF
+cdef object _NO_MISSING_FIELD_DEFAULT = object()
 
 
 @cython.final
@@ -261,6 +263,9 @@ cdef class DataClassSerializer(Serializer):
         cdef object missing_fields
         cdef list defaults
         cdef object dc_field
+        cdef object resolved_default
+        cdef object default_value
+        cdef object default_factory
 
         self._missing_field_defaults = ()
         if not self.fory.compatible:
@@ -278,12 +283,52 @@ cdef class DataClassSerializer(Serializer):
         for dc_field in dataclasses.fields(self.type_):
             if dc_field.name not in missing_fields:
                 continue
-            name_obj = self._intern_field_name(dc_field.name)
-            if dc_field.default is not dataclasses.MISSING:
-                defaults.append((name_obj, dc_field.default, None))
-            elif dc_field.default_factory is not dataclasses.MISSING:
-                defaults.append((name_obj, None, dc_field.default_factory))
+            resolved_default = self._resolve_missing_field_default(dc_field)
+            if resolved_default is _NO_MISSING_FIELD_DEFAULT:
+                continue
+            default_value, default_factory = resolved_default
+            defaults.append((self._intern_field_name(dc_field.name), default_value, default_factory))
         self._missing_field_defaults = tuple(defaults)
+
+    cdef inline object _resolve_missing_field_default(self, object dc_field):
+        cdef object type_hint
+        cdef object unwrapped_type
+        cdef bint is_optional
+        cdef object meta
+        cdef bint effective_nullable
+        cdef object default_value
+        cdef tuple members
+
+        from pyfory.field import extract_field_meta
+        from pyfory.type_util import unwrap_optional
+
+        type_hint = self._type_hints.get(dc_field.name, typing.Any)
+        unwrapped_type, is_optional = unwrap_optional(type_hint)
+        meta = extract_field_meta(dc_field)
+        effective_nullable = (meta.nullable if meta is not None else self.fory.field_nullable) or is_optional
+
+        if dc_field.default is not dataclasses.MISSING:
+            default_value = dc_field.default
+            if default_value is None and (not effective_nullable) and self._is_enum_type(unwrapped_type):
+                members = tuple(unwrapped_type)
+                if members:
+                    default_value = members[0]
+            return (default_value, None)
+
+        if dc_field.default_factory is not dataclasses.MISSING:
+            return (None, dc_field.default_factory)
+
+        if (not effective_nullable) and self._is_enum_type(unwrapped_type):
+            members = tuple(unwrapped_type)
+            if members:
+                return (members[0], None)
+        return _NO_MISSING_FIELD_DEFAULT
+
+    cdef inline bint _is_enum_type(self, object type_obj):
+        try:
+            return isinstance(type_obj, type) and issubclass(type_obj, enum.Enum)
+        except TypeError:
+            return False
 
     cpdef inline write(self, Buffer buffer, value):
         if not self.fory.compatible:

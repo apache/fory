@@ -824,9 +824,9 @@ def test_enum_schema_evolution_compatible_reverse():
     debug_print(f"Deserialized as TwoEnumFieldStruct: {obj}")
     assert isinstance(obj, TwoEnumFieldStruct), f"Expected TwoEnumFieldStruct, got {type(obj)}"
     assert obj.f1 == TestEnum.VALUE_C, f"Expected f1=VALUE_C, got f1={obj.f1}"
-    # f2 should be None (missing field due to schema evolution)
+    # f2 is missing from source schema; non-nullable enum should use zero value.
     f2_value = getattr(obj, "f2", None)
-    assert f2_value is None, f"Expected f2=None, got f2={f2_value}"
+    assert f2_value == TestEnum.VALUE_A, f"Expected f2=VALUE_A, got f2={f2_value}"
 
     new_bytes = fory.serialize(obj)
     with open(data_file, "wb") as f:
