@@ -61,6 +61,15 @@ public class MapSerializers {
     @Override
     public HashMap newMap(MemoryBuffer buffer) {
       int numElements = buffer.readVarUint32Small7();
+      int maxCollectionSize = fory.getConfig().maxCollectionSize();
+      if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
+      }
+
       setNumElements(numElements);
       HashMap hashMap = new HashMap(numElements);
       fory.getRefResolver().reference(hashMap);
@@ -81,6 +90,15 @@ public class MapSerializers {
     @Override
     public LinkedHashMap newMap(MemoryBuffer buffer) {
       int numElements = buffer.readVarUint32Small7();
+      int maxCollectionSize = fory.getConfig().maxCollectionSize();
+      if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
+      }
+
       setNumElements(numElements);
       LinkedHashMap hashMap = new LinkedHashMap(numElements);
       fory.getRefResolver().reference(hashMap);
@@ -101,6 +119,15 @@ public class MapSerializers {
     @Override
     public LazyMap newMap(MemoryBuffer buffer) {
       int numElements = buffer.readVarUint32Small7();
+      int maxCollectionSize = fory.getConfig().maxCollectionSize();
+      if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
+      }
+
       setNumElements(numElements);
       LazyMap map = new LazyMap(numElements);
       fory.getRefResolver().reference(map);
@@ -269,6 +296,15 @@ public class MapSerializers {
     @Override
     public ConcurrentHashMap newMap(MemoryBuffer buffer) {
       int numElements = buffer.readVarUint32Small7();
+      int maxCollectionSize = fory.getConfig().maxCollectionSize();
+      if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
+      }
+
       setNumElements(numElements);
       ConcurrentHashMap map = new ConcurrentHashMap(numElements);
       fory.getRefResolver().reference(map);
@@ -300,6 +336,15 @@ public class MapSerializers {
     @Override
     public ConcurrentSkipListMap newMap(MemoryBuffer buffer) {
       int numElements = buffer.readVarUint32Small7();
+      int maxCollectionSize = fory.getConfig().maxCollectionSize();
+      if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
+      }
+
       setNumElements(numElements);
       Comparator comparator = (Comparator) fory.readRef(buffer);
       ConcurrentSkipListMap map = new ConcurrentSkipListMap(comparator);
@@ -496,6 +541,15 @@ public class MapSerializers {
 
     public Map newMap(MemoryBuffer buffer) {
       int numElements = buffer.readVarUint32Small7();
+      int maxCollectionSize = fory.getConfig().maxCollectionSize();
+      if (maxCollectionSize > 0 && numElements > maxCollectionSize) {
+        throw new IllegalArgumentException(
+            "Map size "
+                + numElements
+                + " exceeds configured maxCollectionSize "
+                + maxCollectionSize);
+      }
+
       setNumElements(numElements);
       HashMap<Object, Object> map = new HashMap<>(numElements);
       fory.getRefResolver().reference(map);
