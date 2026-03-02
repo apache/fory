@@ -372,6 +372,27 @@ impl Fory {
         &self.config
     }
 
+    /// Checks whether the final type resolver has already been initialized.
+    ///
+    /// If it has, further type registrations would be silently ignored (the frozen
+    /// snapshot is what serialize/deserialize actually use),so we fail fast with
+    /// a clear error instead.
+    ///
+    /// # errors
+    ///
+    /// returns [`Error::NotAllowed`] when the resolver snapshot has already been
+    /// built (i.e after the first `serialize` / `deserialize` call).
+    fn check_registration_allowed(&self) -> Result<(), Error> {
+        if self.final_type_resolver.get().is_some() {
+            return Err(Error::not_allowed(
+                "Type registration is not allowed after the first serialize/deserialize call. \
+                 The type resolver snapshot has already been finalized. \
+                 Please complete all type registrations before performing any serialization or deserialization.",
+            ));
+        }
+        Ok(())
+    }
+
     /// Serializes a value of type `T` into a byte vector.
     ///
     /// # Type Parameters
@@ -655,6 +676,7 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver.register_by_id::<T>(id)
     }
 
@@ -665,6 +687,7 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver.register_union_by_id::<T>(id)
     }
 
@@ -703,6 +726,7 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver
             .register_by_namespace::<T>(namespace, type_name)
     }
@@ -715,6 +739,7 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver
             .register_union_by_namespace::<T>(namespace, type_name)
     }
@@ -749,6 +774,7 @@ impl Fory {
         &mut self,
         type_name: &str,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.register_by_namespace::<T>("", type_name)
     }
 
@@ -757,6 +783,7 @@ impl Fory {
         &mut self,
         type_name: &str,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.register_union_by_namespace::<T>("", type_name)
     }
 
@@ -791,6 +818,7 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver.register_serializer_by_id::<T>(id)
     }
 
@@ -815,6 +843,7 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver
             .register_serializer_by_namespace::<T>(namespace, type_name)
     }
@@ -836,6 +865,7 @@ impl Fory {
         &mut self,
         type_name: &str,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.register_serializer_by_namespace::<T>("", type_name)
     }
 
@@ -845,6 +875,7 @@ impl Fory {
     pub fn register_generic_trait<T: 'static + Serializer + ForyDefault>(
         &mut self,
     ) -> Result<(), Error> {
+        self.check_registration_allowed()?;
         self.type_resolver.register_generic_trait::<T>()
     }
 
