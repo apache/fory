@@ -168,7 +168,16 @@ jobs:
           X86_DIR=$(ls -d unpacked/x86_64/pyfory-*)
           UNIVERSAL_DIR="unpacked/pyfory-universal2"
           cp -R "$ARM_DIR" "$UNIVERSAL_DIR"
-          for so in pyfory/buffer.so pyfory/serialization.so pyfory/format/_format.so pyfory/lib/mmh3/mmh3.so; do
+          SO_FILES=$(cd "$ARM_DIR" && find pyfory -name '*.so' -type f | sort)
+          if [[ -z "$SO_FILES" ]]; then
+            echo "No shared libraries found in wheel payload"
+            exit 1
+          fi
+          for so in $SO_FILES; do
+            if [[ ! -f "$X86_DIR/$so" ]]; then
+              echo "Missing matching x86_64 library for $so"
+              exit 1
+            fi
             lipo -create "$ARM_DIR/$so" "$X86_DIR/$so" -output "$UNIVERSAL_DIR/$so"
           done
           WHEEL_FILE=$(ls "$UNIVERSAL_DIR"/pyfory-*.dist-info/WHEEL)
@@ -187,8 +196,18 @@ jobs:
           VERIFY_DIR=$(ls -d verify/pyfory-*)
           WHEEL_FILE=$(ls "$VERIFY_DIR"/pyfory-*.dist-info/WHEEL)
           grep -q "macosx_11_0_universal2" "$WHEEL_FILE"
-          for so in pyfory/buffer.so pyfory/serialization.so pyfory/format/_format.so pyfory/lib/mmh3/mmh3.so; do
-            echo "$so: $(lipo -archs "$VERIFY_DIR/$so")"
+          SO_FILES=$(cd "$VERIFY_DIR" && find pyfory -name '*.so' -type f | sort)
+          if [[ -z "$SO_FILES" ]]; then
+            echo "No shared libraries found in packed universal2 wheel"
+            exit 1
+          fi
+          for so in $SO_FILES; do
+            ARCHS=$(lipo -archs "$VERIFY_DIR/$so")
+            echo "$so: $ARCHS"
+            if [[ "$ARCHS" != *arm64* || "$ARCHS" != *x86_64* ]]; then
+              echo "Missing expected architectures for $so"
+              exit 1
+            fi
           done
       - name: Upload universal2 wheel
         uses: actions/upload-artifact@v4

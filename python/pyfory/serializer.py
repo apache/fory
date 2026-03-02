@@ -25,7 +25,7 @@ import os
 import pickle
 import types
 
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 
 try:

@@ -31,6 +31,8 @@ from pyfory.registry import TypeInfo
 if ENABLE_FORY_CYTHON_SERIALIZATION:
     from pyfory.serialization import Fory, TypeInfo  # noqa: F401,F811
 
+from pyfory.serialization import Buffer  # noqa: F401 # pylint: disable=unused-import
+
 from pyfory.serializer import (  # noqa: F401 # pylint: disable=unused-import
     Serializer,
     BooleanSerializer,
@@ -116,7 +118,6 @@ from pyfory.type_util import (  # noqa: F401 # pylint: disable=unused-import
     dataslots,
 )
 from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=unused-import
-from pyfory.buffer import Buffer  # noqa: F401 # pylint: disable=unused-import
 
 __version__ = "0.16.0.dev0"
 

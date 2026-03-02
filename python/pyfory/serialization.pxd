@@ -15,19 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
-load("//bazel:cython_library.bzl", "pyx_library")
+from libcpp.memory cimport shared_ptr
+from pyfory.includes.libutil cimport CBuffer
 
-cc_library(
-    name = "_pyfory",
-    srcs = ["pyfory.cc"],
-    hdrs = ["pyfory.h"],
-    alwayslink=True,
-    linkstatic=True,
-    strip_include_prefix = "/cpp",
-    deps = [
-        "//cpp/fory/util:fory_util",
-        "@rules_python//python/cc:current_py_cc_headers",
-    ],
-    visibility = ["//visibility:public"],
-)
+
+cdef object _wrap_buffer(shared_ptr[CBuffer] c_buffer)

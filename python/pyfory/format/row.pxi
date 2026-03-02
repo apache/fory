@@ -23,8 +23,8 @@ from pyfory.includes.libformat cimport (
     CGetter, CArrayData, CMapData, CRow, CTypeId,
     CSchema, CListType, CMapType, fory_schema
 )
-from pyfory.buffer cimport Buffer
 from pyfory.includes.libutil cimport CBuffer
+from pyfory.serialization cimport _wrap_buffer
 from libcpp.memory cimport shared_ptr
 from libcpp.vector cimport vector
 from datetime import datetime, date
@@ -135,8 +135,8 @@ cdef class ArrayData(Getter):
     def num_elements(self) -> int:
         return self.data.get().num_elements()
 
-    def buffer(self) -> Buffer:
-        return Buffer.wrap(self.data.get().buffer())
+    def buffer(self):
+        return _wrap_buffer(self.data.get().buffer())
 
     def base_offset(self) -> int:
         return self.data.get().base_offset()
@@ -228,8 +228,8 @@ cdef class MapData:
     def num_elements(self) -> int:
         return self.data.get().num_elements()
 
-    def buffer(self) -> Buffer:
-        return Buffer.wrap(self.data.get().buffer())
+    def buffer(self):
+        return _wrap_buffer(self.data.get().buffer())
 
     def base_offset(self) -> int:
         return self.data.get().base_offset()
@@ -270,22 +270,26 @@ cdef class RowData(Getter):
     cdef:
         shared_ptr[CRow] data
         Schema schema_
-        Buffer _buf  # hold buffer reference
+        object _buf  # hold input buffer reference
 
     def __init__(self, schema, buffer, offset=0, size_in_bytes=None):
+        cdef:
+            object view = memoryview(buffer)
+            const unsigned char[:] data_view = view
+            int32_t buffer_size = data_view.nbytes
+            uint8_t* buffer_ptr = NULL
+            shared_ptr[CRow] row = make_shared[CRow]((<Schema>schema).c_schema)
+            shared_ptr[CBuffer] shared_buf
         if size_in_bytes is None:
             size_in_bytes = len(buffer)
-        if type(buffer) is not Buffer:
-            buffer = Buffer(buffer, offset=offset, length=size_in_bytes)
-        self._buf = buffer
-        cdef:
-            Buffer buf = <Buffer>buffer
-            shared_ptr[CRow] row = make_shared[CRow]((<Schema>schema).c_schema)
-            shared_ptr[CBuffer] shared_buf = make_shared[CBuffer](
-                buf.c_buffer.data(),
-                buf.c_buffer.size(),
-                False,
+        if offset < 0 or size_in_bytes < 0 or offset + size_in_bytes > buffer_size:
+            raise ValueError(
+                f"Wrong offset {offset} or size {size_in_bytes} for buffer with size {buffer_size}"
             )
+        if buffer_size > 0:
+            buffer_ptr = <uint8_t*>&data_view[0]
+        shared_buf = make_shared[CBuffer](buffer_ptr, buffer_size, False)
+        self._buf = view
         deref(row).point_to(shared_buf, offset, size_in_bytes)
         self.data = row
         self.getter = row.get()
@@ -307,8 +311,8 @@ cdef class RowData(Getter):
     def num_fields(self) -> int:
         return self.data.get().num_fields()
 
-    def buffer(self) -> Buffer:
-        return Buffer.wrap(self.data.get().buffer())
+    def buffer(self):
+        return _wrap_buffer(self.data.get().buffer())
 
     cpdef base_offset(self):
         return self.data.get().base_offset()
