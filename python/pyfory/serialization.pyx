@@ -58,7 +58,7 @@ from libcpp cimport bool as c_bool
 from libcpp.utility cimport pair
 from cython.operator cimport dereference as deref
 from pyfory.includes.libabsl cimport flat_hash_map
-from pyfory.includes.libutil cimport CBuffer
+from pyfory.includes.libutil cimport CBuffer, FlatIntMap
 from pyfory.meta.metastring import MetaStringDecoder
 
 try:
