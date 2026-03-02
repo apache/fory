@@ -306,6 +306,7 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	refResolver.Reference(value)
 
 	size := int(buf.ReadVarUint32(ctxErr))
+	ctx.checkCollectionSize(size)
 	if size == 0 || ctx.HasError() {
 		return
 	}

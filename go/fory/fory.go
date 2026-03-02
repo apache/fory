@@ -50,18 +50,22 @@ const (
 
 // Config holds configuration options for Fory instances
 type Config struct {
-	TrackRef   bool
-	MaxDepth   int
-	IsXlang    bool
-	Compatible bool // Schema evolution compatibility mode
+	TrackRef          bool
+	MaxDepth          int
+	IsXlang           bool
+	Compatible        bool // Schema evolution compatibility mode
+	MaxBinarySize     int  // Maximum byte length for a single deserialized binary payload (0 = no limit)
+	MaxCollectionSize int  // Maximum element count for a single deserialized collection or map (0 = no limit)
 }
 
 // defaultConfig returns the default configuration
 func defaultConfig() Config {
 	return Config{
-		TrackRef: false, // Match Java's default: reference tracking disabled
-		MaxDepth: 20,
-		IsXlang:  false,
+		TrackRef:          false,
+		MaxDepth:          20,
+		IsXlang:           false,
+		MaxBinarySize:     64 * 1024 * 1024, // 64 MB
+		MaxCollectionSize: 1_000_000,
 	}
 }
 
@@ -98,6 +102,20 @@ func WithXlang(enabled bool) Option {
 func WithCompatible(enabled bool) Option {
 	return func(f *Fory) {
 		f.config.Compatible = enabled
+	}
+}
+
+// WithMaxBinarySize sets the maximum byte length for a single deserialized binary payload.
+func WithMaxBinarySize(n int) Option {
+	return func(f *Fory) {
+		f.config.MaxBinarySize = n
+	}
+}
+
+// WithMaxCollectionSize sets the maximum element count for a single deserialized collection or map.
+func WithMaxCollectionSize(n int) Option {
+	return func(f *Fory) {
+		f.config.MaxCollectionSize = n
 	}
 }
 
@@ -156,6 +174,7 @@ func New(opts ...Option) *Fory {
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
 	f.readCtx.xlang = f.config.IsXlang
+	f.readCtx.maxCollectionSize = f.config.MaxCollectionSize
 
 	return f
 }
