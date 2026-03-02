@@ -478,6 +478,7 @@ jobs:
         run: |
           cd javascript
           npm install
+          npm run build
       - name: Run JavaScript Xlang Test
         env:
           FORY_JAVASCRIPT_JAVA_CI: "1"
@@ -486,6 +487,8 @@ jobs:
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest -DforkCount=0
+      - name: Run JavaScript IDL Tests
+        run: ./integration_tests/idl_tests/run_javascript_tests.sh
 
   rust:
     name: Rust CI

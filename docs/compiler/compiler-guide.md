@@ -64,6 +64,7 @@ Compile options:
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
 | `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
+| `--javascript_out=DST_DIR`            | Generate JavaScript code in DST_DIR                   | (none)        |
 | `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                        | (none)        |
 | `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`  |
 | `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`            | `enum`        |
@@ -115,7 +116,7 @@ foryc schema.fdl
 **Compile for specific languages:**
 
 ```bash
-foryc schema.fdl --lang java,python,csharp,swift
+foryc schema.fdl --lang java,python,csharp,javascript,swift
 ```
 
 **Specify output directory:**
@@ -162,7 +163,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --swift_out=./swift/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --javascript_out=./javascript/src --swift_out=./swift/gen
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
@@ -231,15 +232,16 @@ Compiling src/main.fdl...
 
 ## Supported Languages
 
-| Language | Flag     | Output Extension | Description                  |
-| -------- | -------- | ---------------- | ---------------------------- |
-| Java     | `java`   | `.java`          | POJOs with Fory annotations  |
-| Python   | `python` | `.py`            | Dataclasses with type hints  |
-| Go       | `go`     | `.go`            | Structs with struct tags     |
-| Rust     | `rust`   | `.rs`            | Structs with derive macros   |
-| C++      | `cpp`    | `.h`             | Structs with FORY macros     |
-| C#       | `csharp` | `.cs`            | Classes with Fory attributes |
-| Swift    | `swift`  | `.swift`         | `@ForyObject` Swift models   |
+| Language   | Flag         | Output Extension | Description                           |
+| ---------- | ------------ | ---------------- | ------------------------------------- |
+| Java       | `java`       | `.java`          | POJOs with Fory annotations           |
+| Python     | `python`     | `.py`            | Dataclasses with type hints           |
+| Go         | `go`         | `.go`            | Structs with struct tags              |
+| Rust       | `rust`       | `.rs`            | Structs with derive macros            |
+| C++        | `cpp`        | `.h`             | Structs with FORY macros              |
+| C#         | `csharp`     | `.cs`            | Classes with Fory attributes          |
+| JavaScript | `javascript` | `.js`            | Interfaces with registration function |
+| Swift      | `swift`      | `.swift`         | `@ForyObject` Swift models            |
 
 ## Output Structure
 
@@ -308,6 +310,20 @@ generated/
 - Single header file
 - Namespace matches package (dots to `::`)
 - Header guards and forward declarations
+
+### JavaScript
+
+```
+generated/
+└── javascript/
+  └── example.ts
+```
+
+- Single `.ts` file per schema
+- `export interface` declarations for messages
+- `export enum` declarations for enums
+- Discriminated unions with case enums
+- Registration helper function included
 
 ### C\#
 
