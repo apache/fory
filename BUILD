@@ -20,23 +20,6 @@ load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile
 
 
 pyx_library(
-    name = "buffer",
-    srcs = glob([
-        "python/pyfory/includes/*.pxd",
-        "python/pyfory/buffer.pxd",
-        "python/pyfory/buffer.pyx",
-        "python/pyfory/__init__.py",
-    ]),
-    cc_kwargs = dict(
-        linkstatic = 1,
-    ),
-    deps = [
-        "//cpp/fory/python:_pyfory",
-        "//cpp/fory/util:fory_util",
-    ],
-)
-
-pyx_library(
     name = "mmh3",
     srcs = glob([
         "python/pyfory/lib/mmh3/*.pxd",
@@ -55,18 +38,19 @@ pyx_library(
     name = "serialization",
     srcs = glob([
         "python/pyfory/includes/*.pxd",
-        "python/pyfory/buffer.pxd",
         "python/pyfory/serialization.pyx",
         "python/pyfory/*.pxi",
         "python/pyfory/__init__.py",
-    ]),
+    ]) + [
+        "python/pyfory/serialization.pxd",
+    ],
     cc_kwargs = dict(
         linkstatic = 1,
     ),
     deps = [
         "//cpp/fory/util:fory_util",
         "//cpp/fory/type:fory_type",
-        "//cpp/fory/python:_pyfory",
+        "//python/pyfory/cpp:_pyfory",
         "@abseil-cpp//absl/container:flat_hash_map",
     ],
 )
@@ -77,26 +61,27 @@ pyx_library(
         [
             "python/pyfory/__init__.py",
             "python/pyfory/includes/*.pxd",
-            "python/pyfory/buffer.pxd",
             "python/pyfory/*.pxi",
             "python/pyfory/format/_format.pyx",
             "python/pyfory/format/__init__.py",
             "python/pyfory/format/*.pxi",
         ],
         allow_empty = True,
-    ),
+    ) + [
+        "python/pyfory/serialization.pxd",
+    ],
     cc_kwargs = dict(
         linkstatic = 1,
     ),
     deps = [
         "//cpp/fory:fory",
+        "//python/pyfory/cpp:_pyfory",
     ],
 )
 
 genrule(
     name = "cp_fory_so",
     srcs = [
-        ":python/pyfory/buffer.so",
         ":python/pyfory/lib/mmh3/mmh3.so",
         ":python/pyfory/format/_format.so",
         ":python/pyfory/serialization.so",
@@ -111,12 +96,10 @@ genrule(
         u_name=`uname -s`
         if [ "$${u_name: 0: 4}" == "MING" ] || [ "$${u_name: 0: 4}" == "MSYS" ]
         then
-            cp -f $(location python/pyfory/buffer.so) "$$WORK_DIR/python/pyfory/buffer.pyd"
             cp -f $(location python/pyfory/lib/mmh3/mmh3.so) "$$WORK_DIR/python/pyfory/lib/mmh3/mmh3.pyd"
             cp -f $(location python/pyfory/format/_format.so) "$$WORK_DIR/python/pyfory/format/_format.pyd"
             cp -f $(location python/pyfory/serialization.so) "$$WORK_DIR/python/pyfory/serialization.pyd"
         else
-            cp -f $(location python/pyfory/buffer.so) "$$WORK_DIR/python/pyfory"
             cp -f $(location python/pyfory/lib/mmh3/mmh3.so) "$$WORK_DIR/python/pyfory/lib/mmh3"
             cp -f $(location python/pyfory/format/_format.so) "$$WORK_DIR/python/pyfory/format"
             cp -f $(location python/pyfory/serialization.so) "$$WORK_DIR/python/pyfory"

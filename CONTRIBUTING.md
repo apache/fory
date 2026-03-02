@@ -10,7 +10,7 @@ Create an issue with [this form](https://github.com/apache/fory/issues/new/choos
 
 ## How to title your PR
 
-Generally we follows the [Conventional Commits](https://www.conventionalcommits.org/) for pull request titles,
+Generally we follow the [Conventional Commits](https://www.conventionalcommits.org/) for pull request titles,
 since we will squash and merge the PR and use the PR title as the first line of commit message.
 
 For example, here are good PR titles:

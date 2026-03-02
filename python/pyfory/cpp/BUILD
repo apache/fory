@@ -15,18 +15,20 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# distutils: language = c++
-# cython: embedsignature = True
-# cython: language_level = 3
-# cython: annotate = True
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
-from libc.stdint cimport *
-from libcpp.memory cimport *
-
-# Fory schema types
-include "schema.pxi"
-
-include "row.pxi"
-
-# Python encoder for row format
-include "encoder.pxi"
+cc_library(
+    name = "_pyfory",
+    srcs = ["pyfory.cc"],
+    hdrs = ["pyfory.h"],
+    alwayslink=True,
+    linkstatic=True,
+    strip_include_prefix = "/python/pyfory/cpp",
+    include_prefix = "fory/python",
+    deps = [
+        "//cpp/fory/type:fory_type",
+        "//cpp/fory/util:fory_util",
+        "@rules_python//python/cc:current_py_cc_headers",
+    ],
+    visibility = ["//visibility:public"],
+)
