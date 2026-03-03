@@ -160,12 +160,12 @@ func TestStreamReaderSequential(t *testing.T) {
 	fDec.RegisterStruct(&StreamTestStruct{}, 100)
 
 	// Create a StreamReader
-	sr := fDec.NewStreamReader(&buf)
+	sr := NewStreamReader(&buf)
 
 	// Deserialize sequentially
 	var out1, out2, out3 StreamTestStruct
 
-	err := sr.Deserialize(&out1)
+	err := fDec.DeserializeFromStream(sr, &out1)
 	if err != nil {
 		t.Fatalf("Deserialize 1 failed: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestStreamReaderSequential(t *testing.T) {
 		t.Errorf("Msg 1 mismatch. Got: %+v, Want: %+v", out1, msg1)
 	}
 
-	err = sr.Deserialize(&out2)
+	err = fDec.DeserializeFromStream(sr, &out2)
 	if err != nil {
 		t.Fatalf("Deserialize 2 failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestStreamReaderSequential(t *testing.T) {
 		t.Errorf("Msg 2 mismatch. Got: %+v, Want: %+v", out2, msg2)
 	}
 
-	err = sr.Deserialize(&out3)
+	err = fDec.DeserializeFromStream(sr, &out3)
 	if err != nil {
 		t.Fatalf("Deserialize 3 failed: %v", err)
 	}
