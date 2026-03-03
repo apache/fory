@@ -1,6 +1,6 @@
 ---
 title: Configuration
-sidebar_position: 1
+sidebar_position: 2
 id: configuration
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -73,7 +73,7 @@ auto fory = Fory::builder()
     .build();
 ```
 
-## Configuration Options
+## Configuration
 
 ### xlang(bool)
 
