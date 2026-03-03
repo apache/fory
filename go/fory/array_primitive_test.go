@@ -36,7 +36,7 @@ func TestPrimitiveArraySerializer(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result [3]uint16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, arr, result)
 	})
@@ -48,7 +48,7 @@ func TestPrimitiveArraySerializer(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result [3]uint32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, arr, result)
 	})
@@ -60,7 +60,7 @@ func TestPrimitiveArraySerializer(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result [3]uint64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, arr, result)
 	})
@@ -86,7 +86,7 @@ func TestPrimitiveArraySerializer(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result [3]bfloat16.BFloat16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, arr, result)
 	})
@@ -103,7 +103,7 @@ func TestArraySliceInteroperability(t *testing.T) {
 
 		// Deserialize into Slice []int32
 		var slice []int32
-		err = f.Deserialize(data, &slice)
+		err = testDeserialize(t, f, data, &slice)
 		assert.NoError(t, err)
 		assert.Equal(t, []int32{1, 2, 3}, slice)
 	})
@@ -116,7 +116,7 @@ func TestArraySliceInteroperability(t *testing.T) {
 
 		// Deserialize into Array [3]int32
 		var arr [3]int32
-		err = f.Deserialize(data, &arr)
+		err = testDeserialize(t, f, data, &arr)
 		assert.NoError(t, err)
 		assert.Equal(t, [3]int32{4, 5, 6}, arr)
 	})
@@ -128,7 +128,7 @@ func TestArraySliceInteroperability(t *testing.T) {
 		assert.NoError(t, err)
 
 		var slice []int64 // different type
-		err = f.Deserialize(data, &slice)
+		err = testDeserialize(t, f, data, &slice)
 		// Strict checking means this should error immediately upon reading wrong TypeID
 		assert.Error(t, err)
 	})
@@ -141,7 +141,7 @@ func TestArraySliceInteroperability(t *testing.T) {
 
 		// Deserialize into Array [3]int32 - should fail size check
 		var arr [3]int32
-		err = f.Deserialize(data, &arr)
+		err = testDeserialize(t, f, data, &arr)
 		// Serialized as list with len 2. Array expects 3.
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "array length")
@@ -161,7 +161,7 @@ func TestFloat16Array(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result [3]float16.Float16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, arr, result)
 	})

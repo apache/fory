@@ -34,7 +34,7 @@ func TestFloat16Primitive(t *testing.T) {
 	require.NoError(t, err)
 
 	var res float16.Float16
-	err = f.Deserialize(data, &res)
+	err = testDeserialize(t, f, data, &res)
 	require.NoError(t, err)
 
 	require.True(t, f16.Equal(res))
@@ -53,7 +53,7 @@ func TestFloat16PrimitiveSliceDirect(t *testing.T) {
 	require.NoError(t, err)
 
 	var resSlice []float16.Float16
-	err = f.Deserialize(data, &resSlice)
+	err = testDeserialize(t, f, data, &resSlice)
 	require.NoError(t, err)
 	require.Equal(t, slice, resSlice)
 }
@@ -67,7 +67,7 @@ func TestBFloat16Primitive(t *testing.T) {
 	require.NoError(t, err)
 
 	var res bfloat16.BFloat16
-	err = f.Deserialize(data, &res)
+	err = testDeserialize(t, f, data, &res)
 	require.NoError(t, err)
 
 	require.Equal(t, bf16.Bits(), res.Bits())
@@ -86,7 +86,7 @@ func TestBFloat16PrimitiveSliceDirect(t *testing.T) {
 	require.NoError(t, err)
 
 	var resSlice []bfloat16.BFloat16
-	err = f.Deserialize(data, &resSlice)
+	err = testDeserialize(t, f, data, &resSlice)
 	require.NoError(t, err)
 	require.Equal(t, slice, resSlice)
 }
