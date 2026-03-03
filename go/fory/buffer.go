@@ -1690,3 +1690,14 @@ func (b *ByteBuffer) Skip(length int, err *Error) {
 	}
 	b.readerIndex += length
 }
+
+// CheckReadable ensures that at least n bytes are available to read.
+// In stream mode, it will attempt to fill the buffer if necessary.
+//
+//go:inline
+func (b *ByteBuffer) CheckReadable(n int, err *Error) bool {
+	if b.readerIndex+n > len(b.data) {
+		return b.fill(n, err)
+	}
+	return true
+}
