@@ -18,7 +18,7 @@
 import pytest
 
 import pyfory
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 
 
 class OneByteStream:

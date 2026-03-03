@@ -389,6 +389,27 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
 }
 
 @Test
+func topLevelAnyHomogeneousListAndMapRoundTrip() throws {
+    let fory = Fory()
+
+    let listValue: Any = ["alpha", "beta"] as [String]
+    let listData = try fory.serialize(listValue)
+    let listDecoded: Any = try fory.deserialize(listData)
+    let list = listDecoded as? [Any]
+    #expect(list?.count == 2)
+    #expect(list?[0] as? String == "alpha")
+    #expect(list?[1] as? String == "beta")
+
+    let mapValue: Any = ["k1": "v1", "k2": "v2"] as [String: String]
+    let mapData = try fory.serialize(mapValue)
+    let mapDecoded: Any = try fory.deserialize(mapData)
+    let map = mapDecoded as? [String: Any]
+    #expect(map?.count == 2)
+    #expect(map?["k1"] as? String == "v1")
+    #expect(map?["k2"] as? String == "v2")
+}
+
+@Test
 func dynamicAnyMaxDepthRejectsDeepNesting() throws {
     let value = nestedDynamicAnyList(depth: 3)
     let writer = Fory(config: .init(maxDepth: 8))

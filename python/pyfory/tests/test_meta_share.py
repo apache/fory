@@ -199,7 +199,7 @@ class TestMetaShareMode:
         assert deserialized.name == obj.name
         assert deserialized.age == obj.age
         assert deserialized.active == obj.active
-        assert not hasattr(deserialized, "email")
+        assert deserialized.email == ""
 
     def test_schema_evolution_fewer_fields(self):
         # Serialize with original schema

@@ -17,7 +17,7 @@
 
 import pytest
 
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.tests.core import require_pyarrow
 from pyfory.tests.test_stream import OneByteStream
 from pyfory.utils import lazy_import

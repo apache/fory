@@ -23,6 +23,11 @@ final class ForyConfig {
   final bool basicTypesRefIgnored;
   final bool timeRefIgnored;
   final bool stringRefIgnored;
+  final int maxBinarySize;
+  final int maxCollectionSize;
+
+  static const int defaultMaxBinarySize = 64 * 1024 * 1024;
+  static const int defaultMaxCollectionSize = 1000000;
 
   const ForyConfig({
     this.compatible = false,
@@ -30,5 +35,7 @@ final class ForyConfig {
     this.basicTypesRefIgnored = true,
     this.timeRefIgnored = true,
     this.stringRefIgnored = false,
+    this.maxBinarySize = defaultMaxBinarySize,
+    this.maxCollectionSize = defaultMaxCollectionSize,
   });
 }

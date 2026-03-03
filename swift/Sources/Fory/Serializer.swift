@@ -304,7 +304,7 @@ public extension Serializer {
             return .structType
         case .namedExt:
             return .ext
-        case .namedUnion:
+        case .namedUnion, .union:
             return .typedUnion
         default:
             return kind
@@ -366,12 +366,18 @@ public extension Serializer {
             allowed.insert(.structType)
             allowed.insert(.namedStruct)
         }
+        if baseKind == .typedUnion {
+            allowed.insert(.union)
+            if registerByName {
+                allowed.insert(.namedUnion)
+            }
+        }
         return allowed
     }
 
     private static func wireTypeNeedsUserTypeID(_ typeID: TypeId) -> Bool {
         switch typeID {
-        case .enumType, .structType, .ext, .typedUnion:
+        case .enumType, .structType, .ext, .typedUnion, .union:
             return true
         default:
             return false

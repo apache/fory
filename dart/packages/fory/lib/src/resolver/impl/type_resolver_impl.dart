@@ -27,7 +27,7 @@ import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/collection/long_long_key.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
-import 'package:fory/src/exception/registration_exception.dart'
+import 'package:fory/src/fory_exception.dart'
     show
         RegistrationArgumentException,
         UnregisteredTagException,
@@ -56,7 +56,7 @@ import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/util/murmur3hash.dart';
 import 'package:fory/src/util/string_util.dart';
 
-import '../../exception/deserialization_exception.dart'
+import '../../fory_exception.dart'
     show UnsupportedTypeException;
 
 final class TypeResolverImpl extends TypeResolver {

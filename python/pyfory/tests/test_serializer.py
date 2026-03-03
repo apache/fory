@@ -33,7 +33,7 @@ from dataclasses import dataclass
 import pytest
 
 import pyfory
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory import Fory, serialization, EnumSerializer
 from pyfory.serializer import (
     TimestampSerializer,
@@ -106,7 +106,7 @@ def test_multi_chunk_simple_dict(track_ref):
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_multi_chunk_complex_dict(track_ref):
     fory = Fory(xlang=False, ref=track_ref)
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc)
     day = datetime.date(2021, 11, 23)
     dict0 = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}  # noqa: F601
     assert ser_de(fory, dict0) == dict0
@@ -115,7 +115,7 @@ def test_multi_chunk_complex_dict(track_ref):
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_big_chunk_dict(track_ref):
     fory = Fory(xlang=False, ref=track_ref)
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc)
     day = datetime.date(2021, 11, 23)
     dict0 = {}
     values = ["a", 1, -1.0, True, False, now, day]
@@ -150,7 +150,7 @@ def test_basic_serializer(xlang):
     assert ser_de(fory, -1.0) == -1.0
     assert ser_de(fory, "str") == "str"
     assert ser_de(fory, b"") == b""
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc)
     assert ser_de(fory, now) == now
     day = datetime.date(2021, 11, 23)
     assert ser_de(fory, day) == day
@@ -162,6 +162,27 @@ def test_basic_serializer(xlang):
     assert ser_de(fory, dict2_) == dict2_
     set_ = {"a", 1, -1.0, True, now, day}
     assert ser_de(fory, set_) == set_
+
+
+@pytest.mark.parametrize("xlang", [True, False])
+def test_timestamp_serializer(xlang):
+    """Test timestamp serialization. TimestampSerializer always returns UTC-aware datetimes."""
+    fory = Fory(xlang=xlang, ref=False)
+
+    # Naive datetime (no timezone) — interpreted as local time on write, always returned as UTC-aware on read.
+    naive = datetime.datetime(2026, 3, 1, 12, 30, 45, 123456)
+    result = ser_de(fory, naive)
+    assert result.tzinfo == datetime.timezone.utc
+    assert result == naive.astimezone()
+
+    aware_utc = datetime.datetime(2026, 3, 1, 12, 30, 45, 123456, tzinfo=datetime.timezone.utc)
+    assert ser_de(fory, aware_utc) == aware_utc
+
+    # Non-UTC timezone-aware datetime (UTC+9 JST) — returned as UTC-aware with same timestamp
+    aware_jst = datetime.datetime(2026, 3, 1, 21, 30, 45, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=9)))
+    result_jst = ser_de(fory, aware_jst)
+    assert result_jst.tzinfo == datetime.timezone.utc
+    assert result_jst.timestamp() == aware_jst.timestamp()
 
 
 @pytest.mark.parametrize("xlang", [True, False])
@@ -177,7 +198,7 @@ def test_ref_tracking(xlang):
         new_simple_list = ser_de(fory, simple_list)
         assert new_simple_list[0] is new_simple_list
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc)
     day = datetime.date(2021, 11, 23)
     list_ = ["a", 1, -1.0, True, now, day]
     dict1 = {f"k{i}": v for i, v in enumerate(list_)}

@@ -86,6 +86,7 @@ public enum TypeId: UInt32, CaseIterable {
              .namedCompatibleStruct,
              .ext,
              .namedExt,
+             .union,
              .typedUnion,
              .namedUnion:
             return true

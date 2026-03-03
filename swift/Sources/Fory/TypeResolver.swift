@@ -249,8 +249,9 @@ public final class TypeResolver {
                 typeName: typeName,
                 compatibleTypeMeta: nil
             )
-        case .structType, .enumType, .ext, .typedUnion:
-            switch try dynamicRegistrationMode(for: wireTypeID) {
+        case .structType, .enumType, .ext, .typedUnion, .union:
+            let registrationKind: TypeId = wireTypeID == .union ? .typedUnion : wireTypeID
+            switch try dynamicRegistrationMode(for: registrationKind) {
             case .idOnly:
                 return DynamicTypeInfo(
                     wireTypeID: wireTypeID,
@@ -382,7 +383,7 @@ public final class TypeResolver {
             value = try Set<AnyHashable>.foryRead(context, refMode: .none, readTypeInfo: false)
         case .map:
             value = try readDynamicAnyMapValue(context: context)
-        case .structType, .enumType, .ext, .typedUnion:
+        case .structType, .enumType, .ext, .typedUnion, .union:
             if let userTypeID = typeInfo.userTypeID {
                 value = try readByUserTypeID(userTypeID, context: context)
             } else if let namespace = typeInfo.namespace, let typeName = typeInfo.typeName {
