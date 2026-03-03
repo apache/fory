@@ -741,6 +741,11 @@ jobs:
       - name: Run Python CI
         shell: bash
         run: python ./ci/run_ci.py python
+      - name: Run Python CI (ENABLE_FORY_CYTHON_SERIALIZATION=1)
+        shell: bash
+        env:
+          ENABLE_FORY_CYTHON_SERIALIZATION: "1"
+        run: python ./ci/run_ci.py python
 
   python_xlang:
     name: Python Xlang Test

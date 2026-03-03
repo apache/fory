@@ -693,6 +693,7 @@ cdef int32_t NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF =KEY_HAS_NULL | VALUE_DECL_TY
 cdef int32_t NULL_VALUE_KEY_DECL_TYPE = VALUE_HAS_NULL | KEY_DECL_TYPE
 # Value is null, key type is declared type, and ref tracking for key is enabled.
 cdef int32_t NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF = VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF
+ctypedef PyObject* PyObjectPtr
 
 
 @cython.final
@@ -703,6 +704,8 @@ cdef class MapSerializer(Serializer):
     cdef Serializer value_serializer
     cdef int8_t key_tracking_ref
     cdef int8_t value_tracking_ref
+    cdef FlatIntMap[uint64_t, PyObjectPtr] _key_typeinfo_cache
+    cdef FlatIntMap[uint64_t, PyObjectPtr] _value_typeinfo_cache
 
     def __init__(
         self,
@@ -718,6 +721,8 @@ cdef class MapSerializer(Serializer):
         self.ref_resolver = fory.ref_resolver
         self.key_serializer = key_serializer
         self.value_serializer = value_serializer
+        self._key_typeinfo_cache = FlatIntMap[uint64_t, PyObjectPtr](4)
+        self._value_typeinfo_cache = FlatIntMap[uint64_t, PyObjectPtr](4)
         self.key_tracking_ref = 0
         self.value_tracking_ref = 0
         if key_serializer is not None:
@@ -743,6 +748,8 @@ cdef class MapSerializer(Serializer):
         cdef Serializer key_serializer = self.key_serializer
         cdef Serializer value_serializer = self.value_serializer
         cdef type key_cls, value_cls, key_serializer_type, value_serializer_type
+        cdef uint64_t key_cls_addr, value_cls_addr
+        cdef PyObjectPtr key_typeinfo_ptr, value_typeinfo_ptr
         cdef TypeInfo key_type_info, value_type_info
         cdef int32_t chunk_size_offset, chunk_header, chunk_size
         cdef c_bool key_write_ref, value_write_ref
@@ -799,13 +806,25 @@ cdef class MapSerializer(Serializer):
             if key_serializer is not None:
                 chunk_header |= KEY_DECL_TYPE
             else:
-                key_type_info = self.type_resolver.get_type_info(key_cls)
+                key_cls_addr = <uint64_t><uintptr_t><PyObject *> key_cls
+                key_typeinfo_ptr = self._key_typeinfo_cache[key_cls_addr]
+                if key_typeinfo_ptr == NULL:
+                    key_type_info = self.type_resolver.get_type_info(key_cls)
+                    self._key_typeinfo_cache[key_cls_addr] = <PyObject *> key_type_info
+                else:
+                    key_type_info = <TypeInfo> key_typeinfo_ptr
                 type_resolver.write_type_info(buffer, key_type_info)
                 key_serializer = key_type_info.serializer
             if value_serializer is not None:
                 chunk_header |= VALUE_DECL_TYPE
             else:
-                value_type_info = self.type_resolver.get_type_info(value_cls)
+                value_cls_addr = <uint64_t><uintptr_t><PyObject *> value_cls
+                value_typeinfo_ptr = self._value_typeinfo_cache[value_cls_addr]
+                if value_typeinfo_ptr == NULL:
+                    value_type_info = self.type_resolver.get_type_info(value_cls)
+                    self._value_typeinfo_cache[value_cls_addr] = <PyObject *> value_type_info
+                else:
+                    value_type_info = <TypeInfo> value_typeinfo_ptr
                 type_resolver.write_type_info(buffer, value_type_info)
                 value_serializer = value_type_info.serializer
             if self.key_serializer is not None:

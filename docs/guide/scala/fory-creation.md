@@ -114,9 +114,9 @@ object ForyHolder {
 }
 ```
 
-## Configuration Options
+## Configuration
 
-All configuration options from Fory Java are available. See [Java Configuration Options](../java/configuration.md) for the complete list.
+All configuration options from Fory Java are available. See [Java Configuration](../java/configuration.md) for the complete list.
 
 Common options for Scala:
 

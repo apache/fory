@@ -168,9 +168,11 @@ class TypeDef:
             nullable_fields[resolved_name] = field_info.field_type.is_nullable
 
         dynamic_fields = {}
+        ref_fields = {}
         for i, field_info in enumerate(self.fields):
             resolved_name = field_names[i]
             type_id = field_info.field_type.type_id
+            ref_fields[resolved_name] = field_info.field_type.is_tracking_ref
             if is_polymorphic_type(type_id):
                 dynamic_fields[resolved_name] = True
 
@@ -181,6 +183,7 @@ class TypeDef:
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
             dynamic_fields=dynamic_fields,
+            ref_fields=ref_fields,
         )
 
     def __repr__(self):

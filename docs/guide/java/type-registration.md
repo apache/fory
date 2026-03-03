@@ -110,6 +110,6 @@ Fory fory = Fory.builder()
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - ForyBuilder security options
+- [Configuration](configuration.md) - ForyBuilder security options
 - [Custom Serializers](custom-serializers.md) - Register custom serializers
 - [Troubleshooting](troubleshooting.md) - Common registration issues

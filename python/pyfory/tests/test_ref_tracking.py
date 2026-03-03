@@ -16,11 +16,7 @@
 # under the License.
 
 from dataclasses import dataclass
-import os
-import subprocess
-import sys
-import textwrap
-from typing import Any
+from typing import Any, List
 
 import pytest
 
@@ -52,6 +48,40 @@ class RefNode:
     items: Any = pyfory.field(default=None, ref=True, nullable=True)
     mapping: Any = pyfory.field(default=None, ref=True, nullable=True)
     self_ref: Any = pyfory.field(default=None, ref=True, nullable=True)
+
+
+@dataclass
+class RefOverrideDisabled:
+    left: Any = pyfory.field(default=None, ref=False, nullable=True)
+    right: Any = pyfory.field(default=None, ref=False, nullable=True)
+
+
+@dataclass
+class RefOverrideEnabled:
+    left: Any = pyfory.field(default=None, ref=True, nullable=True)
+    right: Any = pyfory.field(default=None, ref=True, nullable=True)
+
+
+@dataclass
+class FixedUint64Pair:
+    a: pyfory.fixed_uint64 = None
+    b: pyfory.fixed_uint64 = None
+
+
+@dataclass
+class Holder:
+    values: List[pyfory.int64]
+
+
+class EvilIndex:
+    def __init__(self):
+        self.owner = None
+
+    def __index__(self):
+        # Reallocate list storage and inject invalid element types.
+        self.owner.clear()
+        self.owner.extend([bytearray(16)] * 1024)
+        return 7
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -137,6 +167,29 @@ def test_struct_shared_fields_and_cross_container_alias_python_mode():
     assert restored.mapping["alias"] is restored.left
 
 
+@pytest.mark.parametrize("xlang", [False, True])
+def test_struct_field_ref_override_controls_alias_preservation(xlang):
+    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False)
+    if xlang:
+        fory.register_type(RefOverrideDisabled, typename="example.RefOverrideDisabled")
+        fory.register_type(RefOverrideEnabled, typename="example.RefOverrideEnabled")
+    else:
+        fory.register(RefOverrideDisabled)
+        fory.register(RefOverrideEnabled)
+
+    shared = {"v": [1, 2, 3]}
+
+    disabled = _roundtrip(fory, RefOverrideDisabled(shared, shared))
+    assert disabled.left == shared
+    assert disabled.right == shared
+    assert disabled.left is not disabled.right
+
+    enabled = _roundtrip(fory, RefOverrideEnabled(shared, shared))
+    assert enabled.left == shared
+    assert enabled.right == shared
+    assert enabled.left is enabled.right
+
+
 def test_struct_self_cycle_and_nested_alias_python_mode():
     fory = pyfory.Fory(xlang=False, ref=True, strict=False)
     fory.register(RefNode)
@@ -211,51 +264,28 @@ def test_invalid_collection_element_ref_id_raises_value_error():
         fory.deserialize(payload)
 
 
-def test_primitive_list_fastpath_mutation_no_crash_subprocess():
-    py_root = os.path.abspath(os.path.join(os.path.dirname(pyfory.__file__), ".."))
-    env = os.environ.copy()
-    env["ENABLE_FORY_CYTHON_SERIALIZATION"] = "1"
-    env["PYTHONPATH"] = py_root
-    code = textwrap.dedent(
-        """
-        from dataclasses import dataclass
-        from typing import List
-        import pyfory
+@pytest.mark.parametrize("xlang", [False, True])
+def test_optional_fixed_uint64_roundtrip(xlang):
+    value = 1234567890123456789
+    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False)
+    if xlang:
+        fory.register_type(FixedUint64Pair, typename="example.FixedUint64Pair")
+    else:
+        fory.register(FixedUint64Pair)
 
-        @dataclass
-        class Holder:
-            values: List[pyfory.int64]
+    serializer = fory.type_resolver.get_serializer(pyfory.fixed_uint64)
+    assert serializer.need_to_write_ref is False
+    restored = _roundtrip(fory, FixedUint64Pair(value, value))
+    assert restored.a == value
+    assert restored.b == value
 
-        class EvilIndex:
-            def __init__(self):
-                self.owner = None
-            def __index__(self):
-                # Reallocate list storage and inject invalid element types.
-                self.owner.clear()
-                self.owner.extend([bytearray(16)] * 1024)
-                return 7
 
-        fory = pyfory.Fory(xlang=False, ref=True, strict=False)
-        fory.register(Holder)
-        for _ in range(10):
-            lst = [EvilIndex() for _ in range(64)]
-            for e in lst:
-                e.owner = lst
-            try:
-                fory.serialize(Holder(values=lst))
-            except TypeError:
-                continue
-            print("UNEXPECTED:SUCCESS")
-            raise SystemExit(2)
-        print("OK:TYPEERROR")
-        """
-    )
-    proc = subprocess.run(
-        [sys.executable, "-c", code],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, f"subprocess failed rc={proc.returncode}, stderr={proc.stderr}"
-    assert "OK:TYPEERROR" in proc.stdout, proc.stdout
+def test_primitive_list_fastpath_mutation_typeerror():
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory.register(Holder)
+    for _ in range(10):
+        lst = [EvilIndex() for _ in range(64)]
+        for element in lst:
+            element.owner = lst
+        with pytest.raises(TypeError):
+            fory.serialize(Holder(values=lst))

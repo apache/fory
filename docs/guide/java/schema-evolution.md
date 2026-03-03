@@ -204,7 +204,7 @@ public class DeserializeIntoType {
 }
 ```
 
-## Configuration Options
+## Configuration
 
 | Option                    | Description                            | Default                   |
 | ------------------------- | -------------------------------------- | ------------------------- |
@@ -224,6 +224,6 @@ public class DeserializeIntoType {
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - All ForyBuilder options
+- [Configuration](configuration.md) - All ForyBuilder options
 - [Cross-Language Serialization](cross-language.md) - XLANG mode
 - [Troubleshooting](troubleshooting.md) - Common schema issues

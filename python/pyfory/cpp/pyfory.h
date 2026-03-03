@@ -65,6 +65,9 @@ int Fory_PyPrimitiveCollectionWriteToBuffer(PyObject *collection,
 int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
                                              Buffer *buffer, Py_ssize_t size,
                                              uint8_t type_id);
+int Fory_PyWriteBasicFieldToBuffer(PyObject *value, Buffer *buffer,
+                                   uint8_t type_id);
+PyObject *Fory_PyReadBasicFieldFromBuffer(Buffer *buffer, uint8_t type_id);
 int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
                                   Buffer **out, std::string *error_message);
 } // namespace fory

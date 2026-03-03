@@ -1,6 +1,6 @@
 ---
 title: Basic Serialization
-sidebar_position: 2
+sidebar_position: 1
 id: basic_serialization
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -132,6 +132,6 @@ Object obj = fory.deserializeJavaObjectAndClass(bytes);
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - All ForyBuilder options
+- [Configuration](configuration.md) - All ForyBuilder options
 - [Type Registration](type-registration.md) - Class registration
 - [Troubleshooting](troubleshooting.md) - Common API usage issues
