@@ -207,7 +207,7 @@ LoggerFactory.setLogLevel(LogLevel.DEBUG_LEVEL);
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - All ForyBuilder options
+- [Configuration](configuration.md) - All ForyBuilder options
 - [Schema Evolution](schema-evolution.md) - Compatible mode details
 - [Type Registration](type-registration.md) - Registration best practices
 - [Migration Guide](migration.md) - Upgrading Fory versions

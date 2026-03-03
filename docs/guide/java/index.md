@@ -188,7 +188,7 @@ ThreadSafeFory fory = Fory.builder()
 
 ## Next Steps
 
-- [Configuration Options](configuration.md) - Learn about ForyBuilder options
+- [Configuration](configuration.md) - Learn about ForyBuilder options
 - [Basic Serialization](basic-serialization.md) - Detailed serialization patterns
 - [Type Registration](type-registration.md) - Class registration and security
 - [Custom Serializers](custom-serializers.md) - Implement custom serializers

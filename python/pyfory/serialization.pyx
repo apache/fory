@@ -48,7 +48,7 @@ from libc.stdint cimport *
 from libcpp.vector cimport vector
 from libcpp.memory cimport shared_ptr
 from cpython cimport PyObject
-from cpython.object cimport PyTypeObject
+from cpython.object cimport PyTypeObject, PyObject_GetAttr, PyObject_SetAttr
 from cpython.dict cimport PyDict_Next
 from cpython.ref cimport *
 from cpython.list cimport PyList_New, PyList_SET_ITEM

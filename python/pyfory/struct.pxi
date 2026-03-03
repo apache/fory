@@ -296,18 +296,11 @@ cdef class DataClassSerializer(Serializer):
         cdef object field_name
         cdef FieldRuntimeInfo *field_info
 
-        if self.fory.compatible:
-            for i in range(field_count):
-                field_info = &self._field_runtime_infos[i]
-                field_name = <object> field_info.field_name
-                field_value = value_dict.get(field_name)
-                self._write_field_value(buffer, field_info, field_value)
-        else:
-            for i in range(field_count):
-                field_info = &self._field_runtime_infos[i]
-                field_name = <object> field_info.field_name
-                field_value = value_dict[field_name]
-                self._write_field_value(buffer, field_info, field_value)
+        for i in range(field_count):
+            field_info = &self._field_runtime_infos[i]
+            field_name = <object> field_info.field_name
+            field_value = value_dict[field_name]
+            self._write_field_value(buffer, field_info, field_value)
 
     cdef inline void _write_slots(self, Buffer buffer, object value):
         cdef Py_ssize_t i
@@ -320,13 +313,13 @@ cdef class DataClassSerializer(Serializer):
             for i in range(field_count):
                 field_info = &self._field_runtime_infos[i]
                 field_name = <object> field_info.field_name
-                field_value = getattr(value, field_name, None)
+                field_value = PyObject_GetAttr(value, field_name)
                 self._write_field_value(buffer, field_info, field_value)
         else:
             for i in range(field_count):
                 field_info = &self._field_runtime_infos[i]
                 field_name = <object> field_info.field_name
-                field_value = getattr(value, field_name)
+                field_value = PyObject_GetAttr(value, field_name)
                 self._write_field_value(buffer, field_info, field_value)
 
     cdef inline void _write_field_value(self, Buffer buffer, FieldRuntimeInfo *field_info, object field_value):
@@ -421,7 +414,7 @@ cdef class DataClassSerializer(Serializer):
             if field_info.field_exists == 0:
                 continue
             field_name = <object> field_info.field_name
-            setattr(obj, field_name, field_value)
+            PyObject_SetAttr(obj, field_name, field_value)
 
     cdef inline object _read_field_value(self, Buffer buffer, FieldRuntimeInfo *field_info):
         cdef uint8_t type_id = field_info.basic_type_id
@@ -460,4 +453,4 @@ cdef class DataClassSerializer(Serializer):
         cdef object default_factory
 
         for field_name, default_factory in self._missing_field_defaults:
-            setattr(obj, field_name, default_factory())
+            PyObject_SetAttr(obj, field_name, default_factory())
