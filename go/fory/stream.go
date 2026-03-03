@@ -27,32 +27,29 @@ import (
 // preventing data loss from prefetched buffers and preserving TypeResolver metadata
 // (Meta Sharing) across object boundaries.
 type StreamReader struct {
-	fory   *Fory
 	reader io.Reader
 	buffer *ByteBuffer
 }
 
 // NewStreamReader creates a new StreamReader that reads from the provided io.Reader.
 // The StreamReader owns the buffer and maintains state across sequential Deserialize calls.
-func (f *Fory) NewStreamReader(r io.Reader) *StreamReader {
-	return f.NewStreamReaderWithMinCap(r, 0)
+func NewStreamReader(r io.Reader) *StreamReader {
+	return NewStreamReaderWithMinCap(r, 0)
 }
 
 // NewStreamReaderWithMinCap creates a new StreamReader with a specified minimum buffer capacity.
-func (f *Fory) NewStreamReaderWithMinCap(r io.Reader, minCap int) *StreamReader {
+func NewStreamReaderWithMinCap(r io.Reader, minCap int) *StreamReader {
 	buf := NewByteBufferFromReader(r, minCap)
 	return &StreamReader{
-		fory:   f,
 		reader: r,
 		buffer: buf,
 	}
 }
 
-// Deserialize reads the next object from the stream into the provided value.
+// DeserializeFromStream reads the next object from the stream into the provided value.
 // It uses a shared ReadContext for the lifetime of the StreamReader, clearing
 // temporary state between calls but preserving the buffer and TypeResolver state.
-func (sr *StreamReader) Deserialize(v any) error {
-	f := sr.fory
+func (f *Fory) DeserializeFromStream(sr *StreamReader, v any) error {
 
 	// We only reset the temporary read state (like refTracker and outOfBand buffers),
 	// NOT the buffer or the type mapping, which must persist.
