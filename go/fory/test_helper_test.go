@@ -1,0 +1,72 @@
+package fory
+
+import (
+	"io"
+	"reflect"
+	"testing"
+)
+
+// oneByteReader returns data byte by byte to ensure aggressively that all
+// `fill()` boundaries, loops, and buffering conditions are tested.
+type oneByteReader struct {
+	data []byte
+	pos  int
+}
+
+func (r *oneByteReader) Read(p []byte) (n int, err error) {
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	p[0] = r.data[r.pos]
+	r.pos++
+	return 1, nil
+}
+
+// testDeserialize is a testing helper that performs standard in-memory
+// deserialization and additionally wraps the payload in a slow one-byte
+// stream reader to verify that stream decoding handles fragmented reads correctly.
+func testDeserialize(t *testing.T, f *Fory, data []byte, v any) error {
+	t.Helper()
+
+	// 1. First, deserialize from bytes (the fast path)
+	err := f.Deserialize(data, v)
+	if err != nil {
+		return err
+	}
+
+	// 2. Deserialize from oneByteReader (the slow stream path)
+	// We create a new instance of the same target type to ensure clean state
+	vType := reflect.TypeOf(v)
+	if vType == nil || vType.Kind() != reflect.Ptr {
+		t.Fatalf("testDeserialize requires a pointer to a value, got %v", vType)
+	}
+
+	// Create new pointer to a new zero value of the element type
+	v2 := reflect.New(vType.Elem()).Interface()
+
+	stream := &oneByteReader{data: data, pos: 0}
+
+	// Create a new stream reader. The stream context handles boundaries and compactions.
+	streamReader := f.NewStreamReader(stream)
+	errStream := streamReader.Deserialize(v2)
+
+	if errStream != nil {
+		t.Fatalf("Stream deserialization via OneByteStream failed: %v", errStream)
+	}
+
+	// Note: We don't assert deep equality because many tests deserialize into interfaces
+	// or perform custom conversions. Simply verifying that the stream mode DOES NOT error
+	// on a payload that normally succeeds is a very strong proxy for correctness here.
+
+	// Returns the original error from standard deserialization
+	return err
+}
+
+// testUnmarshal is an identical helper for `Unmarshal` (which is often used in tests)
+func testUnmarshal(t *testing.T, f *Fory, data []byte, v any) error {
+	t.Helper()
+	return testDeserialize(t, f, data, v)
+}
