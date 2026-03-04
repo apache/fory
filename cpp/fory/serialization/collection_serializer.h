@@ -630,7 +630,8 @@ struct Serializer<
     // 2. Convert bytes to element count and check max_collection_size
     size_t elem_count = total_bytes_u32 / sizeof(T);
     if (FORY_PREDICT_FALSE(elem_count > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::vector<T, Alloc>();
     }
 
@@ -698,7 +699,8 @@ struct Serializer<
     }
 
     if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::vector<T, Alloc>();
     }
 
@@ -998,7 +1000,8 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     }
 
     if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::list<T, Alloc>();
     }
 
@@ -1194,7 +1197,8 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     }
 
     if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::deque<T, Alloc>();
     }
 
@@ -1853,7 +1857,8 @@ struct Serializer<std::set<T, Args...>> {
     }
 
     if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::set<T, Args...>();
     }
 
@@ -1939,7 +1944,8 @@ struct Serializer<std::set<T, Args...>> {
     }
 
     if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::set<T, Args...>();
     }
 
@@ -2038,7 +2044,8 @@ struct Serializer<std::unordered_set<T, Args...>> {
     }
 
     if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::unordered_set<T, Args...>();
     }
 
@@ -2126,7 +2133,8 @@ struct Serializer<std::unordered_set<T, Args...>> {
     }
 
     if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(Error::invalid_data("Collection length exceeds max_collection_size"));
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::unordered_set<T, Args...>();
     }
 
