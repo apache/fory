@@ -620,6 +620,44 @@ TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
   EXPECT_TRUE(deserialized.strings.empty());
 }
 
+TEST(CollectionSerializerTest, MaxCollectionSizeGuardrail) {
+  // Set a very small limit for testing
+  auto fory = Fory::builder().xlang(true).max_collection_size(2).build();
+  fory.register_struct<VectorIntHolder>(201);
+
+  VectorIntHolder original;
+  original.numbers = {1, 2, 3, 4, 5}; // Exceeds limit of 2
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok());
+
+  // Deserialization should fail
+  auto deserialize_result = fory.deserialize<VectorIntHolder>(
+      bytes_result->data(), bytes_result->size());
+
+  ASSERT_FALSE(deserialize_result.ok());
+  EXPECT_TRUE(deserialize_result.error().message().find(
+                  "exceeds max_collection_size") != std::string::npos);
+}
+
+TEST(CollectionSerializerTest, MaxBinarySizeGuardrail) {
+  // Set a limit of 10 bytes
+  auto fory = Fory::builder().xlang(true).max_binary_size(10).build();
+
+  // Vector of int32_t (4 bytes each). 5 elements = 20 bytes total.
+  std::vector<int32_t> large_data = {1, 2, 3, 4, 5};
+
+  auto bytes_result = fory.serialize(large_data);
+  ASSERT_TRUE(bytes_result.ok());
+
+  auto deserialize_result = fory.deserialize<std::vector<int32_t>>(
+      bytes_result->data(), bytes_result->size());
+
+  ASSERT_FALSE(deserialize_result.ok());
+  EXPECT_TRUE(deserialize_result.error().message().find(
+                  "exceeds max_binary_size") != std::string::npos);
+}
+
 } // namespace
 } // namespace serialization
 } // namespace fory

@@ -780,6 +780,23 @@ TEST(MapSerializerTest, LargeMapWithPolymorphicValues) {
   EXPECT_EQ(deserialized[299]->name, "value_y_299");
 }
 
+TEST(MapSerializerTest, MaxMapSizeGuardrail) {
+  // Limit to 2 entries
+  auto fory = Fory::builder().xlang(true).max_collection_size(2).build();
+
+  std::map<std::string, int32_t> large_map = {{"a", 1}, {"b", 2}, {"c", 3}};
+
+  auto serialize_result = fory.serialize(large_map);
+  ASSERT_TRUE(serialize_result.ok());
+
+  auto deserialize_result = fory.deserialize<std::map<std::string, int32_t>>(
+      serialize_result->data(), serialize_result->size());
+
+  ASSERT_FALSE(deserialize_result.ok());
+  EXPECT_TRUE(deserialize_result.error().message().find(
+                  "exceeds max_collection_size") != std::string::npos);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
