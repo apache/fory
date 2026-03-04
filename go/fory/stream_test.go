@@ -135,7 +135,7 @@ func TestStreamDeserializationEOF(t *testing.T) {
 	}
 }
 
-func TestStreamReaderSequential(t *testing.T) {
+func TestInputStreamSequential(t *testing.T) {
 	f := New()
 	// Register type in compatible mode to test Meta Sharing across sequential reads
 	f.config.Compatible = true
@@ -159,8 +159,8 @@ func TestStreamReaderSequential(t *testing.T) {
 	fDec.config.Compatible = true
 	fDec.RegisterStruct(&StreamTestStruct{}, 100)
 
-	// Create a StreamReader
-	sr := NewStreamReader(&buf)
+	// Create a InputStream
+	sr := NewInputStream(&buf)
 
 	// Deserialize sequentially
 	var out1, out2, out3 StreamTestStruct

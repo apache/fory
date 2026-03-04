@@ -64,7 +64,7 @@ func testDeserialize(t *testing.T, f *Fory, data []byte, v any) error {
 	stream := &oneByteReader{data: data, pos: 0}
 
 	// Create a new stream reader. The stream context handles boundaries and compactions.
-	streamReader := NewStreamReader(stream)
+	streamReader := NewInputStream(stream)
 	err = f.DeserializeFromStream(streamReader, v)
 	if err != nil {
 		t.Fatalf("Stream deserialization via OneByteStream failed: %v", err)
