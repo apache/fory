@@ -47,7 +47,7 @@ func NewInputStreamWithMinCap(r io.Reader, minCap int) *InputStream {
 }
 
 // Shrink compacts the internal buffer, dropping already-read bytes to reclaim memory.
-// It applies a heuristic to avoid tiny frequent compactions and reallocates the backing 
+// It applies a heuristic to avoid tiny frequent compactions and reallocates the backing
 // slice if the capacity becomes excessively large compared to the remaining data.
 func (is *InputStream) Shrink() {
 	b := is.buffer
