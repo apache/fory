@@ -189,3 +189,50 @@ func TestInputStreamSequential(t *testing.T) {
 		t.Errorf("Msg 3 mismatch. Got: %+v, Want: %+v", out3, msg3)
 	}
 }
+
+func TestInputStreamShrink(t *testing.T) {
+	// Create a large payload that easily escapes the minCap (4096)
+	data := make([]byte, 10000)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	// Create a stream reader with a tiny minCap so we can trigger Shrink reliably
+	buf := bytes.NewReader(data)
+	sr := NewInputStreamWithMinCap(buf, 100)
+
+	// Force a read/fill to pull a chunk into memory
+	err := sr.buffer.fill(5000, nil)
+	if !err {
+		t.Fatalf("Failed to fill buffer")
+	}
+
+	// Fake an artificial read that consumed a massive portion of the buffer
+	originalCapacity := cap(sr.buffer.data)
+	sr.buffer.readerIndex = 4500
+
+	// Trigger Shrink
+	sr.Shrink()
+
+	// 1. Validate reader index was successfully reset
+	if sr.buffer.readerIndex != 0 {
+		t.Errorf("Expected readerIndex to reset to 0, got %d", sr.buffer.readerIndex)
+	}
+
+	// 2. Validate the capacity actually shrank (reclaimed memory)
+	newCapacity := cap(sr.buffer.data)
+	if newCapacity >= originalCapacity {
+		t.Errorf("Expected capacity to shrink (was %d, now %d)", originalCapacity, newCapacity)
+	}
+
+	// 3. Validate the remaining unread data remained intact
+	if sr.buffer.writerIndex != 500 {
+		t.Errorf("Expected writerIndex to be 500 remaining bytes, got %d", sr.buffer.writerIndex)
+	}
+	for i := 0; i < 500; i++ {
+		if sr.buffer.data[i] != byte((4500+i)%256) {
+			t.Errorf("Data corruption post-shrink at index %d", i)
+			break
+		}
+	}
+}
