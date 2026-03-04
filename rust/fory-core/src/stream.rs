@@ -34,6 +34,8 @@ pub struct ForyStreamBuf {
     valid_len: usize,
     /// Current read cursor — equivalent of `gptr() - eback()`
     read_pos: usize,
+    /// Initial capacity for shrink_buffer target — mirrors C++ `initial_buffer_size_`
+    initial_buffer_size: usize,
 }
 
 impl ForyStreamBuf {
@@ -51,6 +53,7 @@ impl ForyStreamBuf {
             buffer,
             valid_len: 0,
             read_pos: 0,
+            initial_buffer_size: cap,
         }
     }
 
@@ -197,6 +200,44 @@ impl ForyStreamBuf {
     #[inline(always)]
     pub fn is_stream_backed(&self) -> bool {
         true
+    }
+
+    /// Compact consumed bytes and optionally shrink capacity.
+    ///
+    /// Mirrors C++ `ForyInputStream::shrink_buffer()` exactly:
+    /// 1. Memmove remaining bytes to front of buffer
+    /// 2. Reset read_pos = 0, valid_len = remaining
+    /// 3. If capacity > initial_buffer_size and utilization is low,
+    ///    shrink back toward initial size
+    pub fn shrink_buffer(&mut self) {
+        let remaining = self.remaining();
+
+        // Phase 1: compact — memmove remaining data to front
+        if self.read_pos > 0 {
+            if remaining > 0 {
+                self.buffer.copy_within(self.read_pos..self.valid_len, 0);
+            }
+            self.read_pos = 0;
+            self.valid_len = remaining;
+        }
+
+        // Phase 2: optionally shrink capacity back toward initial_buffer_size
+        let current_capacity = self.buffer.len();
+        let mut target_capacity = current_capacity;
+
+        if current_capacity > self.initial_buffer_size {
+            if remaining == 0 {
+                target_capacity = self.initial_buffer_size;
+            } else if remaining <= current_capacity / 4 {
+                let doubled = remaining.saturating_mul(2).max(1);
+                target_capacity = self.initial_buffer_size.max(doubled);
+            }
+        }
+
+        if target_capacity < current_capacity {
+            self.buffer.truncate(target_capacity);
+            self.buffer.shrink_to_fit();
+        }
     }
 }
 

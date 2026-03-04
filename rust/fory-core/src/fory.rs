@@ -982,8 +982,17 @@ impl Fory {
                 // SAFETY: same invariant as Reader::from_stream and fill_to:
                 //   bf points into Box-owned stream buffer, owned by reader.stream,
                 //   which lives as long as reader.
-                if let Some(ref s) = reader.stream {
+                if let Some(ref mut s) = reader.stream {
+                    // Sync stream's read_pos with the reader cursor position
+                    // before shrinking — the detached reader may have advanced
+                    // cursor without updating stream.read_pos.
+                    let _ = s.set_reader_index(reader.cursor);
+                    // Mirror C++ StreamShrinkGuard: compact consumed bytes after
+                    // deserialization to prevent unbounded buffer growth on
+                    // long-lived streams.
+                    s.shrink_buffer();
                     reader.bf = unsafe { std::slice::from_raw_parts(s.data(), s.size()) };
+                    reader.cursor = s.reader_index();
                 }
                 result
             } else {
@@ -1027,7 +1036,11 @@ impl Fory {
             let reader = Reader::from_stream(stream);
             context.attach_reader(reader);
             let result = self.deserialize_with_context(context);
-            context.detach_reader();
+            // Mirror C++ StreamShrinkGuard: shrink_buffer on detach.
+            let mut returned = context.detach_reader();
+            if let Some(ref mut s) = returned.stream {
+                s.shrink_buffer();
+            }
             result
         })
     }

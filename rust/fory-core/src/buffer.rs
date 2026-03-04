@@ -1167,3 +1167,5 @@ impl<'a> Reader<'a> {
 
 #[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Send for Reader<'a> {}
+#[allow(clippy::needless_lifetimes)]
+unsafe impl<'a> Sync for Reader<'a> {}
