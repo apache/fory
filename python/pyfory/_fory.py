@@ -157,6 +157,7 @@ class Fory:
         "is_peer_out_of_band_enabled",
         "max_depth",
         "depth",
+        "_output_stream",
         "field_nullable",
         "policy",
     )
@@ -242,6 +243,7 @@ class Fory:
         self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
+        self._output_stream = None
 
     def register(
         self,
@@ -394,6 +396,37 @@ class Fory:
         """
         return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
 
+    def dump(self, obj, stream):
+        """
+        Serialize an object directly to a writable stream.
+
+        Args:
+            obj: The object to serialize
+            stream: Writable stream implementing write(...)
+
+        Notes:
+            The stream must be a non-retaining sink: ``write(data)`` must
+            synchronously consume ``data`` before returning. Fory may reuse or
+            modify the underlying buffer after ``write`` returns, so retaining
+            the passed object (or a view of it) is unsupported. If your sink
+            needs retention, copy bytes inside ``write``.
+        """
+        try:
+            self.buffer.set_writer_index(0)
+            self._output_stream = Buffer.wrap_output_stream(stream)
+            self.buffer.bind_output_stream(self._output_stream)
+            self._serialize(
+                obj,
+                self.buffer,
+                buffer_callback=None,
+                unsupported_callback=None,
+            )
+            self.force_flush()
+        finally:
+            self.buffer.bind_output_stream(None)
+            self._output_stream = None
+            self.reset_write()
+
     def loads(
         self,
         buffer: Union[Buffer, bytes],
@@ -435,12 +468,17 @@ class Fory:
             <class 'bytes'>
         """
         try:
-            return self._serialize(
+            write_buffer = self._serialize(
                 obj,
                 buffer,
                 buffer_callback=buffer_callback,
                 unsupported_callback=unsupported_callback,
             )
+            if write_buffer is not self.buffer:
+                return write_buffer
+            if write_buffer.get_output_stream() is not None:
+                return write_buffer
+            return write_buffer.to_bytes(0, write_buffer.get_writer_index())
         finally:
             self.reset_write()
 
@@ -450,7 +488,7 @@ class Fory:
         buffer: Buffer = None,
         buffer_callback=None,
         unsupported_callback=None,
-    ) -> Union[Buffer, bytes]:
+    ) -> Buffer:
         assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref."
         self.depth += 1
         self.buffer_callback = buffer_callback
@@ -462,6 +500,7 @@ class Fory:
         # 1byte used for bit mask
         buffer.grow(1)
         buffer.set_writer_index(mask_index + 1)
+        buffer.put_int8(mask_index, 0)
         if obj is None:
             set_bit(buffer, mask_index, 0)
         else:
@@ -476,10 +515,29 @@ class Fory:
         # Type definitions are now written inline (streaming) instead of deferred to end
 
         self.write_ref(buffer, obj)
-        if buffer is not self.buffer:
-            return buffer
-        else:
-            return buffer.to_bytes(0, buffer.get_writer_index())
+        return buffer
+
+    def enter_flush_barrier(self):
+        output_stream = self._output_stream
+        if output_stream is not None:
+            output_stream.enter_flush_barrier()
+
+    def exit_flush_barrier(self):
+        output_stream = self._output_stream
+        if output_stream is not None:
+            output_stream.exit_flush_barrier()
+
+    def try_flush(self):
+        if self._output_stream is None or self.buffer.get_writer_index() <= 4096:
+            return
+        output_stream = self._output_stream
+        output_stream.try_flush()
+
+    def force_flush(self):
+        output_stream = self._output_stream
+        if output_stream is None:
+            return
+        output_stream.force_flush()
 
     def write_ref(self, buffer, obj, typeinfo=None, serializer=None):
         if serializer is None and typeinfo is not None:
@@ -640,6 +698,8 @@ class Fory:
     def read_buffer_object(self, buffer) -> Buffer:
         if not self.is_peer_out_of_band_enabled:
             size = buffer.read_var_uint32()
+            if buffer.has_input_stream():
+                return buffer.read_bytes(size)
             reader_index = buffer.get_reader_index()
             buf = buffer.slice(reader_index, size)
             buffer.set_reader_index(reader_index + size)
@@ -649,6 +709,8 @@ class Fory:
             assert self._buffers is not None
             return next(self._buffers)
         size = buffer.read_var_uint32()
+        if buffer.has_input_stream():
+            return buffer.read_bytes(size)
         reader_index = buffer.get_reader_index()
         buf = buffer.slice(reader_index, size)
         buffer.set_reader_index(reader_index + size)
@@ -687,6 +749,7 @@ class Fory:
         self.metastring_resolver.reset_write()
         self.buffer_callback = None
         self._unsupported_callback = None
+        self._output_stream = None
 
     def reset_read(self):
         """
@@ -907,3 +970,20 @@ class ThreadSafeFory:
         unsupported_objects: Iterable = None,
     ):
         return self.deserialize(buffer, buffers, unsupported_objects)
+
+    def dump(self, obj, stream):
+        """
+        Serialize an object directly to a writable stream.
+
+        Notes:
+            The stream must be a non-retaining sink: ``write(data)`` must
+            synchronously consume ``data`` before returning. Fory may reuse or
+            modify the underlying buffer after ``write`` returns, so retaining
+            the passed object (or a view of it) is unsupported. If your sink
+            needs retention, copy bytes inside ``write``.
+        """
+        fory = self._get_fory()
+        try:
+            return fory.dump(obj, stream)
+        finally:
+            self._return_fory(fory)

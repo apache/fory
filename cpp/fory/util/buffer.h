@@ -35,8 +35,8 @@
 
 namespace fory {
 
-class ForyInputStream;
-class PythonStreamReader;
+class StdInputStream;
+class PyInputStream;
 
 // A buffer class for storing raw bytes with various methods for reading and
 // writing the bytes.
@@ -46,7 +46,7 @@ public:
 
   Buffer(uint8_t *data, uint32_t size, bool own_data = true)
       : data_(data), size_(size), own_data_(own_data), wrapped_vector_(nullptr),
-        stream_reader_(nullptr) {
+        input_stream_(nullptr), output_stream_(nullptr) {
     writer_index_ = 0;
     reader_index_ = 0;
   }
@@ -59,16 +59,17 @@ public:
   explicit Buffer(std::vector<uint8_t> &vec)
       : data_(vec.data()), size_(static_cast<uint32_t>(vec.size())),
         own_data_(false), writer_index_(static_cast<uint32_t>(vec.size())),
-        reader_index_(0), wrapped_vector_(&vec), stream_reader_(nullptr) {}
+        reader_index_(0), wrapped_vector_(&vec), input_stream_(nullptr),
+        output_stream_(nullptr) {}
 
-  explicit Buffer(StreamReader &stream_reader)
+  explicit Buffer(InputStream &input_stream)
       : data_(nullptr), size_(0), own_data_(false), writer_index_(0),
         reader_index_(0), wrapped_vector_(nullptr),
-        stream_reader_(&stream_reader) {
-    stream_reader_->bind_buffer(this);
-    stream_reader_owner_ = stream_reader_->weak_from_this().lock();
-    FORY_CHECK(&stream_reader_->get_buffer() == this)
-        << "StreamReader must hold and return the same Buffer instance";
+        input_stream_(&input_stream), output_stream_(nullptr) {
+    input_stream_->bind_buffer(this);
+    input_stream_owner_ = input_stream_->weak_from_this().lock();
+    FORY_CHECK(&input_stream_->get_buffer() == this)
+        << "InputStream must hold and return the same Buffer instance";
   }
 
   Buffer(Buffer &&buffer) noexcept;
@@ -81,6 +82,8 @@ public:
     if (this == &other) {
       return;
     }
+    FORY_CHECK(output_stream_ == nullptr && other.output_stream_ == nullptr)
+        << "Cannot swap stream-writer-owned Buffer";
     using std::swap;
     swap(data_, other.data_);
     swap(size_, other.size_);
@@ -88,10 +91,11 @@ public:
     swap(writer_index_, other.writer_index_);
     swap(reader_index_, other.reader_index_);
     swap(wrapped_vector_, other.wrapped_vector_);
-    swap(stream_reader_, other.stream_reader_);
-    swap(stream_reader_owner_, other.stream_reader_owner_);
-    rebind_stream_reader_to_this();
-    other.rebind_stream_reader_to_this();
+    swap(input_stream_, other.input_stream_);
+    swap(input_stream_owner_, other.input_stream_owner_);
+    swap(output_stream_, other.output_stream_);
+    rebind_input_stream_to_this();
+    other.rebind_input_stream_to_this();
   }
 
   /// \brief Return a pointer to the buffer's data
@@ -102,13 +106,42 @@ public:
 
   FORY_ALWAYS_INLINE bool own_data() const { return own_data_; }
 
-  FORY_ALWAYS_INLINE bool is_stream_backed() const {
-    return stream_reader_ != nullptr;
+  FORY_ALWAYS_INLINE bool has_input_stream() const {
+    return input_stream_ != nullptr;
   }
 
-  FORY_ALWAYS_INLINE void shrink_stream_buffer() {
-    if (stream_reader_ != nullptr) {
-      stream_reader_->shrink_buffer();
+  FORY_ALWAYS_INLINE bool has_output_stream() const {
+    return output_stream_ != nullptr;
+  }
+
+  FORY_ALWAYS_INLINE void bind_output_stream(OutputStream *output_stream) {
+    if (output_stream_ == output_stream) {
+      return;
+    }
+    if (output_stream_ != nullptr) {
+      output_stream_->unbind_buffer(this);
+    }
+    output_stream_ = output_stream;
+    if (output_stream_ != nullptr) {
+      output_stream_->bind_buffer(this);
+    }
+  }
+
+  FORY_ALWAYS_INLINE void clear_output_stream() {
+    if (output_stream_ == nullptr) {
+      return;
+    }
+    output_stream_->unbind_buffer(this);
+    output_stream_ = nullptr;
+  }
+
+  // Best-effort stream buffer compaction entry point.
+  // Stage 1 guard: avoid calling into stream shrinking for very small progress.
+  // Stage 2 guard lives in InputStream::shrink_buffer(), which can decide based
+  // on stream-specific configured buffer size.
+  FORY_ALWAYS_INLINE void shrink_input_buffer() {
+    if (FORY_PREDICT_FALSE(input_stream_ != nullptr && reader_index_ > 4096)) {
+      input_stream_->shrink_buffer();
     }
   }
 
@@ -152,7 +185,7 @@ public:
   }
 
   FORY_ALWAYS_INLINE bool reader_index(uint32_t reader_index, Error &error) {
-    if (FORY_PREDICT_FALSE(reader_index > size_ && stream_reader_ != nullptr)) {
+    if (FORY_PREDICT_FALSE(reader_index > size_ && input_stream_ != nullptr)) {
       if (FORY_PREDICT_FALSE(
               !fill_buffer(reader_index - reader_index_, error))) {
         return false;
@@ -806,6 +839,9 @@ public:
     grow(length);
     unsafe_put(writer_index_, data, length);
     increase_writer_index(length);
+    if (FORY_PREDICT_FALSE(output_stream_ != nullptr && writer_index_ > 4096)) {
+      output_stream_->try_flush();
+    }
   }
 
   // ===========================================================================
@@ -1223,24 +1259,25 @@ public:
   std::string hex() const;
 
 private:
-  friend class ForyInputStream;
-  friend class PythonStreamReader;
+  friend class StdInputStream;
+  friend class PyInputStream;
+  friend class OutputStream;
 
-  FORY_ALWAYS_INLINE void rebind_stream_reader_to_this() {
-    if (stream_reader_ == nullptr) {
+  FORY_ALWAYS_INLINE void rebind_input_stream_to_this() {
+    if (input_stream_ == nullptr) {
       return;
     }
-    stream_reader_->bind_buffer(this);
-    FORY_CHECK(&stream_reader_->get_buffer() == this)
-        << "StreamReader must hold and return the same Buffer instance";
+    input_stream_->bind_buffer(this);
+    FORY_CHECK(&input_stream_->get_buffer() == this)
+        << "InputStream must hold and return the same Buffer instance";
   }
 
-  FORY_ALWAYS_INLINE void detach_stream_reader_from_this() {
-    if (stream_reader_ == nullptr) {
+  FORY_ALWAYS_INLINE void detach_input_stream_from_this() {
+    if (input_stream_ == nullptr) {
       return;
     }
-    if (&stream_reader_->get_buffer() == this) {
-      stream_reader_->bind_buffer(nullptr);
+    if (&input_stream_->get_buffer() == this) {
+      input_stream_->bind_buffer(nullptr);
     }
   }
 
@@ -1248,11 +1285,11 @@ private:
     if (FORY_PREDICT_TRUE(min_fill_size <= size_ - reader_index_)) {
       return true;
     }
-    if (FORY_PREDICT_TRUE(stream_reader_ == nullptr)) {
+    if (FORY_PREDICT_TRUE(input_stream_ == nullptr)) {
       error.set_buffer_out_of_bound(reader_index_, min_fill_size, size_);
       return false;
     }
-    auto fill_result = stream_reader_->fill_buffer(min_fill_size);
+    auto fill_result = input_stream_->fill_buffer(min_fill_size);
     if (FORY_PREDICT_FALSE(!fill_result.ok())) {
       error = std::move(fill_result).error();
       return false;
@@ -1362,8 +1399,9 @@ private:
   uint32_t writer_index_;
   uint32_t reader_index_;
   std::vector<uint8_t> *wrapped_vector_ = nullptr;
-  StreamReader *stream_reader_ = nullptr;
-  std::shared_ptr<StreamReader> stream_reader_owner_;
+  InputStream *input_stream_ = nullptr;
+  std::shared_ptr<InputStream> input_stream_owner_;
+  OutputStream *output_stream_ = nullptr;
 };
 
 /// \brief Allocate a fixed-size mutable buffer from the default memory pool

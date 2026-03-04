@@ -119,6 +119,16 @@ Fory Go demonstrates excellent performance compared to other go serialization fr
 
 For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go).
 
+### C# Serialization Performance
+
+Fory C# demonstrates excellent performance compared to protobuf-net and MessagePack-CSharp:
+
+<p align="center">
+<img src="docs/benchmarks/csharp/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [C# Benchmarks](docs/benchmarks/csharp).
+
 ## Installation
 
 **Java**:

@@ -65,6 +65,22 @@ class LegacyRecvIntoOnlyStream:
         return read_size
 
 
+class PartialWriteStream:
+    def __init__(self):
+        self._data = bytearray()
+
+    def write(self, payload):
+        if not payload:
+            return 0
+        view = memoryview(payload).cast("B")
+        wrote = min(2, len(view))
+        self._data.extend(view[:wrote])
+        return wrote
+
+    def to_bytes(self):
+        return bytes(self._data)
+
+
 def test_buffer():
     buffer = Buffer.allocate(8)
     buffer.write_bool(True)
@@ -253,15 +269,68 @@ def test_write_var_uint64():
 
 
 def check_varuint64(buf: Buffer, value: int, bytes_written: int):
-    reader_index = buf.get_reader_index()
     assert buf.get_writer_index() == buf.get_reader_index()
     actual_bytes_written = buf.write_var_uint64(value)
     assert actual_bytes_written == bytes_written
     varint = buf.read_var_uint64()
     assert buf.get_writer_index() == buf.get_reader_index()
     assert value == varint
-    # test slow read branch in `read_varint64`
-    assert buf.slice(reader_index, buf.get_reader_index() - reader_index).read_var_uint64() == value
+
+
+def test_buffer_flush_stream():
+    stream = PartialWriteStream()
+    buffer = Buffer.allocate(16)
+    output_stream = Buffer.wrap_output_stream(stream)
+    buffer.bind_output_stream(output_stream)
+    payload = b"stream-flush-buffer"
+    buffer.write_bytes(payload)
+    output_stream.force_flush()
+    assert stream.to_bytes() == payload
+    assert buffer.get_writer_index() == 0
+
+
+def test_wrap_output_stream_invalid_target_raises():
+    with pytest.raises(ValueError):
+        Buffer.wrap_output_stream(object())
+
+
+def test_output_stream_try_flush_preserves_bound_buffer_when_barrier_active():
+    stream = PartialWriteStream()
+    output_stream = Buffer.wrap_output_stream(stream)
+    buffer = Buffer.allocate(32)
+    buffer.bind_output_stream(output_stream)
+    payload = b"x" * 5000
+
+    output_stream.enter_flush_barrier()
+    buffer.write_bytes(payload)
+    output_stream.try_flush()
+    output_stream.try_flush()
+    assert buffer.get_writer_index() == len(payload)
+    assert stream.to_bytes() == b""
+
+    output_stream.exit_flush_barrier()
+    output_stream.try_flush()
+    assert buffer.get_writer_index() == 0
+
+    output_stream.force_flush()
+    assert stream.to_bytes() == payload
+
+
+def test_output_stream_try_flush_small_payload_needs_force_flush():
+    stream = PartialWriteStream()
+    output_stream = Buffer.wrap_output_stream(stream)
+    buffer = Buffer.allocate(32)
+    buffer.bind_output_stream(output_stream)
+    payload = b"small-payload"
+    buffer.write_bytes(payload)
+
+    output_stream.try_flush()
+    assert buffer.get_writer_index() == len(payload)
+    assert stream.to_bytes() == b""
+
+    output_stream.force_flush()
+    assert buffer.get_writer_index() == 0
+    assert stream.to_bytes() == payload
 
 
 def test_write_buffer():

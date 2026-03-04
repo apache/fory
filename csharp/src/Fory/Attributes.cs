@@ -51,6 +51,12 @@ public enum FieldEncoding
 public sealed class FieldAttribute : Attribute
 {
     /// <summary>
+    /// Optional stable field tag id used for compatible metadata dispatch.
+    /// Use a non-negative value to emit numeric field ids instead of field names.
+    /// </summary>
+    public short Id { get; set; } = -1;
+
+    /// <summary>
     /// Gets or sets the field encoding strategy used by generated serializers.
     /// </summary>
     public FieldEncoding Encoding { get; set; } = FieldEncoding.Varint;
