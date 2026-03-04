@@ -22,34 +22,81 @@ import (
 	"reflect"
 )
 
-// StreamReader supports robust sequential deserialization from a stream.
+// InputStream supports robust sequential deserialization from a stream.
 // It maintains the ByteBuffer and ReadContext state across multiple Deserialize calls,
 // preventing data loss from prefetched buffers and preserving TypeResolver metadata
 // (Meta Sharing) across object boundaries.
-type StreamReader struct {
+type InputStream struct {
 	reader io.Reader
 	buffer *ByteBuffer
 }
 
-// NewStreamReader creates a new StreamReader that reads from the provided io.Reader.
-// The StreamReader owns the buffer and maintains state across sequential Deserialize calls.
-func NewStreamReader(r io.Reader) *StreamReader {
-	return NewStreamReaderWithMinCap(r, 0)
+// NewInputStream creates a new InputStream that reads from the provided io.Reader.
+// The InputStream owns the buffer and maintains state across sequential Deserialize calls.
+func NewInputStream(r io.Reader) *InputStream {
+	return NewInputStreamWithMinCap(r, 0)
 }
 
-// NewStreamReaderWithMinCap creates a new StreamReader with a specified minimum buffer capacity.
-func NewStreamReaderWithMinCap(r io.Reader, minCap int) *StreamReader {
+// NewInputStreamWithMinCap creates a new InputStream with a specified minimum buffer capacity.
+func NewInputStreamWithMinCap(r io.Reader, minCap int) *InputStream {
 	buf := NewByteBufferFromReader(r, minCap)
-	return &StreamReader{
+	return &InputStream{
 		reader: r,
 		buffer: buf,
 	}
 }
 
+// Shrink compacts the internal buffer, dropping already-read bytes to reclaim memory.
+// It applies a heuristic to avoid tiny frequent compactions and reallocates the backing 
+// slice if the capacity becomes excessively large compared to the remaining data.
+func (is *InputStream) Shrink() {
+	b := is.buffer
+	if b == nil {
+		return
+	}
+
+	readPos := b.readerIndex
+	// Best-effort policy: keep a 4096-byte floor to avoid tiny frequent compactions
+	if readPos <= 4096 || readPos < b.minCap {
+		return
+	}
+
+	remaining := b.writerIndex - readPos
+	currentCapacity := cap(b.data)
+	targetCapacity := currentCapacity
+
+	if currentCapacity > b.minCap {
+		if remaining == 0 {
+			targetCapacity = b.minCap
+		} else if remaining <= currentCapacity/4 {
+			doubled := remaining * 2
+			targetCapacity = doubled
+			if targetCapacity < b.minCap {
+				targetCapacity = b.minCap
+			}
+		}
+	}
+
+	if targetCapacity < currentCapacity {
+		// Actually reclaim memory by copying to a new, smaller slice
+		newData := make([]byte, remaining, targetCapacity)
+		copy(newData, b.data[readPos:b.writerIndex])
+		b.data = newData
+		b.writerIndex = remaining
+		b.readerIndex = 0
+	} else if readPos > 0 {
+		// Just compact without reallocating
+		copy(b.data, b.data[readPos:b.writerIndex])
+		b.writerIndex = remaining
+		b.readerIndex = 0
+		b.data = b.data[:remaining]
+	}
+}
+
 // DeserializeFromStream reads the next object from the stream into the provided value.
-// It uses a shared ReadContext for the lifetime of the StreamReader, clearing
+// It uses a shared ReadContext for the lifetime of the InputStream, clearing
 // temporary state between calls but preserving the buffer and TypeResolver state.
-func (f *Fory) DeserializeFromStream(sr *StreamReader, v any) error {
+func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 
 	// We only reset the temporary read state (like refTracker and outOfBand buffers),
 	// NOT the buffer or the type mapping, which must persist.
@@ -65,7 +112,7 @@ func (f *Fory) DeserializeFromStream(sr *StreamReader, v any) error {
 
 	// Temporarily swap buffer
 	origBuffer := f.readCtx.buffer
-	f.readCtx.buffer = sr.buffer
+	f.readCtx.buffer = is.buffer
 
 	isNull := readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -91,7 +138,7 @@ func (f *Fory) DeserializeFromStream(sr *StreamReader, v any) error {
 	return nil
 }
 
-// For Sequential Streaming use NewStreamReader instead of DeserializeFromReader.
+// For Sequential Streaming use NewInputStream instead of DeserializeFromReader.
 // DeserializeFromReader deserializes a single object from a stream but will discard prefetched data
 // and type metadata after the call.
 func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
