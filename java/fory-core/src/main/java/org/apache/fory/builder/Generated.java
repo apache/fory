@@ -73,7 +73,7 @@ public interface Generated {
                     @Override
                     public void onNotifyResult(Object result) {
                       Serializer<?> fieldSerializer =
-                          fory.getClassResolver().getSerializer(beanFieldType);
+                          fory.getTypeResolver().getSerializer(beanFieldType);
                       Preconditions.checkState(beanFieldType == fieldSerializer.getType());
                       Preconditions.checkState(result == fieldSerializer.getClass());
                       ReflectionUtils.setObjectFieldValue(
@@ -83,7 +83,7 @@ public interface Generated {
                     @Override
                     public void onNotifyMissed() {
                       Serializer<?> fieldSerializer =
-                          fory.getClassResolver().getSerializer(beanFieldType);
+                          fory.getTypeResolver().getSerializer(beanFieldType);
                       ReflectionUtils.setObjectFieldValue(
                           subclassSerializer, field, fieldSerializer);
                     }

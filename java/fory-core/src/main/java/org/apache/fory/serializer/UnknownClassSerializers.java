@@ -210,7 +210,7 @@ public final class UnknownClassSerializers {
             MetaSharedSerializer.consolidateFields(
                 resolver, UnknownClass.UnknownEmptyStruct.class, typeDef);
         DescriptorGrouper grouper =
-            fory.getClassResolver().createDescriptorGrouper(descriptors, false);
+            fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
         FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, grouper);
         int classVersionHash = 0;
         if (fory.checkClassVersion()) {

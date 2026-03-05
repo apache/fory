@@ -416,17 +416,17 @@ public class CollectionSerializersTest extends ForyTestBase {
     serDe(getJavaFory(), EnumSet.allOf(TestEnum.class));
     Assert.assertEquals(
         getJavaFory()
-            .getClassResolver()
+            .getTypeResolver()
             .getSerializerClass(EnumSet.allOf(TestEnum.class).getClass()),
         CollectionSerializers.EnumSetSerializer.class);
     serDe(getJavaFory(), EnumSet.of(TestEnum.A));
     Assert.assertEquals(
-        getJavaFory().getClassResolver().getSerializerClass(EnumSet.of(TestEnum.A).getClass()),
+        getJavaFory().getTypeResolver().getSerializerClass(EnumSet.of(TestEnum.A).getClass()),
         CollectionSerializers.EnumSetSerializer.class);
     serDe(getJavaFory(), EnumSet.of(TestEnum.A, TestEnum.B));
     Assert.assertEquals(
         getJavaFory()
-            .getClassResolver()
+            .getTypeResolver()
             .getSerializerClass(EnumSet.of(TestEnum.A, TestEnum.B).getClass()),
         CollectionSerializers.EnumSetSerializer.class);
     // TODO test enum which has enums exceed 128.
@@ -473,13 +473,13 @@ public class CollectionSerializersTest extends ForyTestBase {
     serDe(getJavaFory(), BitSet.valueOf(LongStream.range(0, 2).toArray()));
     Assert.assertEquals(
         getJavaFory()
-            .getClassResolver()
+            .getTypeResolver()
             .getSerializerClass(BitSet.valueOf(LongStream.range(0, 2).toArray()).getClass()),
         CollectionSerializers.BitSetSerializer.class);
     serDe(getJavaFory(), BitSet.valueOf(LongStream.range(0, 128).toArray()));
     Assert.assertEquals(
         getJavaFory()
-            .getClassResolver()
+            .getTypeResolver()
             .getSerializerClass(BitSet.valueOf(LongStream.range(0, 128).toArray()).getClass()),
         CollectionSerializers.BitSetSerializer.class);
   }
@@ -494,7 +494,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void tesPriorityQueueSerializer() {
     serDe(getJavaFory(), new PriorityQueue<>(Arrays.asList("a", "b", "c")));
     Assert.assertEquals(
-        getJavaFory().getClassResolver().getSerializerClass(PriorityQueue.class),
+        getJavaFory().getTypeResolver().getSerializerClass(PriorityQueue.class),
         CollectionSerializers.PriorityQueueSerializer.class);
   }
 
@@ -511,7 +511,7 @@ public class CollectionSerializersTest extends ForyTestBase {
         new CopyOnWriteArrayList<>(new String[] {"a", "b", "c"});
     Assert.assertEquals(list, serDe(getJavaFory(), list));
     Assert.assertEquals(
-        getJavaFory().getClassResolver().getSerializerClass(CopyOnWriteArrayList.class),
+        getJavaFory().getTypeResolver().getSerializerClass(CopyOnWriteArrayList.class),
         CollectionSerializers.CopyOnWriteArrayListSerializer.class);
   }
 
@@ -554,7 +554,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     set.add("c");
     serDeCheck(fory, set);
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(set.getClass()),
+        fory.getTypeResolver().getSerializerClass(set.getClass()),
         CollectionSerializers.SetFromMapSerializer.class);
     CollectionViewTestStruct struct1 = serDeCheck(fory, new CollectionViewTestStruct(set, set));
     if (fory.trackingRef()) {
@@ -587,7 +587,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     set.add("c");
     Assert.assertEquals(set, serDe(fory, set));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(set.getClass()),
+        fory.getTypeResolver().getSerializerClass(set.getClass()),
         CollectionSerializers.ConcurrentHashMapKeySetViewSerializer.class);
     CollectionViewTestStruct o = serDeCheck(fory, new CollectionViewTestStruct(set, set));
     if (fory.trackingRef()) {
@@ -686,7 +686,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     Assert.assertEquals(serDe(fory, obj).toString(), obj.toString());
     if (fory.getConfig().isCodeGenEnabled()) {
       Assert.assertTrue(
-          fory.getClassResolver()
+          fory.getTypeResolver()
               .getSerializerClass(SimpleBeanCollectionFields.class)
               .getName()
               .contains("Codec"));
@@ -847,7 +847,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     testCollectionFieldsObjectEqual(serDe(fory, obj), obj);
     if (fory.getConfig().isCodeGenEnabled()) {
       Assert.assertTrue(
-          fory.getClassResolver()
+          fory.getTypeResolver()
               .getSerializerClass(CollectionFieldsClass.class)
               .getName()
               .contains("Codec"));
@@ -941,7 +941,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     collection.add("b");
     serDeCheck(fory, collection);
     Assert.assertSame(
-        fory.getClassResolver().getSerializerClass(TestClassForDefaultCollectionSerializer.class),
+        fory.getTypeResolver().getSerializerClass(TestClassForDefaultCollectionSerializer.class),
         CollectionSerializers.DefaultJavaCollectionSerializer.class);
   }
 
@@ -973,7 +973,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     assertEquals(set, read);
 
     assertSame(
-        fory.getClassResolver().getSerializer(setClass).getClass(),
+        fory.getTypeResolver().getSerializer(setClass).getClass(),
         GuavaCollectionSerializers.ImmutableSortedSetSerializer.class);
     buffer.writerIndex(0);
     buffer.readerIndex(0);
@@ -1119,7 +1119,7 @@ public class CollectionSerializersTest extends ForyTestBase {
         new CopyOnWriteArraySet<>(Arrays.asList("Value1", "Value2"));
     Assert.assertEquals(set, serDe(getJavaFory(), set));
     Assert.assertEquals(
-        getJavaFory().getClassResolver().getSerializerClass(CopyOnWriteArraySet.class),
+        getJavaFory().getTypeResolver().getSerializerClass(CopyOnWriteArraySet.class),
         CollectionSerializers.CopyOnWriteArraySetSerializer.class);
   }
 

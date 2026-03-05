@@ -58,16 +58,16 @@ If there are no duplicate names for types, `namespace` can be left as empty to r
 
 ## Security Configuration
 
-### Class Checker
+### Type Checker
 
-If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can set `org.apache.fory.resolver.ClassChecker` by `ClassResolver#setClassChecker` to control which classes are allowed for serialization.
+If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can set `org.apache.fory.resolver.TypeChecker` by `TypeResolver#setTypeChecker` to control which classes are allowed for serialization.
 
 For example, you can allow classes started with `org.example.*`:
 
 ```java
 Fory fory = xxx;
-fory.getClassResolver().setClassChecker(
-  (classResolver, className) -> className.startsWith("org.example."));
+fory.getTypeResolver().setTypeChecker(
+  (typeResolver, className) -> className.startsWith("org.example."));
 ```
 
 ### AllowListChecker
@@ -78,8 +78,8 @@ Fory provides a `org.apache.fory.resolver.AllowListChecker` which is an allowed/
 AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
 ThreadSafeFory fory = new ThreadLocalFory(classLoader -> {
   Fory f = Fory.builder().requireClassRegistration(true).withClassLoader(classLoader).build();
-  f.getClassResolver().setClassChecker(checker);
-  checker.addListener(f.getClassResolver());
+  f.getTypeResolver().setTypeChecker(checker);
+  checker.addListener((ClassResolver) f.getTypeResolver());
   return f;
 });
 checker.allowClass("org.example.*");

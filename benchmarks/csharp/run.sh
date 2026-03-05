@@ -31,6 +31,7 @@ DATA=""
 SERIALIZER=""
 DURATION="3"
 WARMUP="1"
+OUTPUT_DIR=""
 
 usage() {
     cat <<USAGE
@@ -45,6 +46,7 @@ Options:
                                Filter benchmark by serializer
   --duration <seconds>         Measure duration per benchmark (default: 3)
   --warmup <seconds>           Warmup duration per benchmark (default: 1)
+  --output-dir <dir>           Base directory for benchmark outputs
   --help                       Show this help
 USAGE
     exit 0
@@ -68,6 +70,10 @@ while [[ $# -gt 0 ]]; do
             WARMUP="$2"
             shift 2
             ;;
+        --output-dir)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
         --help|-h)
             usage
             ;;
@@ -78,8 +84,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-mkdir -p build report
-RESULT_JSON="build/benchmark_results.json"
+if [[ -n "$OUTPUT_DIR" ]]; then
+    BUILD_DIR="$OUTPUT_DIR/build"
+    REPORT_DIR="$OUTPUT_DIR/report"
+else
+    BUILD_DIR="build"
+    REPORT_DIR="report"
+fi
+
+mkdir -p "$BUILD_DIR" "$REPORT_DIR"
+RESULT_JSON="$BUILD_DIR/benchmark_results.json"
 
 RUN_ARGS=(
     --output "$RESULT_JSON"
@@ -105,8 +119,22 @@ echo -e "${YELLOW}[2/3] Running benchmark...${NC}"
 dotnet run -c Release --project ./Fory.CSharpBenchmark.csproj -- "${RUN_ARGS[@]}"
 
 echo -e "${YELLOW}[3/3] Generating report...${NC}"
-python3 benchmark_report.py --json-file "$RESULT_JSON" --output-dir report
+# Check for Python dependencies needed for plotting.
+if ! python3 -c "import matplotlib" 2>/dev/null; then
+    echo -e "${YELLOW}Installing required Python packages...${NC}"
+    pip3 install matplotlib numpy psutil
+fi
+
+python3 benchmark_report.py --json-file "$RESULT_JSON" --output-dir "$REPORT_DIR"
 
 echo ""
 echo -e "${GREEN}=== All done! ===${NC}"
-echo "Report generated at: $SCRIPT_DIR/report/REPORT.md"
+if [[ "$REPORT_DIR" = /* ]]; then
+    REPORT_PATH="$REPORT_DIR/README.md"
+    REPORT_PLOTS_DIR="$REPORT_DIR"
+else
+    REPORT_PATH="$SCRIPT_DIR/$REPORT_DIR/README.md"
+    REPORT_PLOTS_DIR="$SCRIPT_DIR/$REPORT_DIR"
+fi
+echo "Report generated at: $REPORT_PATH"
+echo "Plots saved in: $REPORT_PLOTS_DIR/"

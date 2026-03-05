@@ -809,6 +809,7 @@ cdef class MapSerializer(Serializer):
                 break
             key_cls = type(key)
             value_cls = type(value)
+            fory.enter_flush_barrier()
             buffer.write_int16(-1)
             chunk_size_offset = buffer.get_writer_index() - 1
             chunk_header = 0
@@ -897,6 +898,8 @@ cdef class MapSerializer(Serializer):
             key_serializer = self.key_serializer
             value_serializer = self.value_serializer
             buffer.put_int8(chunk_size_offset, chunk_size)
+            fory.exit_flush_barrier()
+            fory.try_flush()
 
     cpdef inline read(self, Buffer buffer):
         cdef Fory fory = self.fory

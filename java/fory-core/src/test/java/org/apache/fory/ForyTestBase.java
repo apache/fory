@@ -297,7 +297,7 @@ public abstract class ForyTestBase {
 
   public static <T> T serDeCheckSerializer(Fory fory, Object obj, String classRegex) {
     byte[] bytes = fory.serialize(obj);
-    String serializerName = fory.getClassResolver().getSerializerClass(obj.getClass()).getName();
+    String serializerName = fory.getTypeResolver().getSerializerClass(obj.getClass()).getName();
     Matcher matcher = Pattern.compile(classRegex).matcher(serializerName);
     Assert.assertTrue(matcher.find());
     return (T) fory.deserialize(bytes);

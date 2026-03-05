@@ -41,7 +41,7 @@ public class TypeInfoTest {
   @Test
   public void testEncodePackageNameAndTypeName() {
     Fory fory1 = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    TypeInfo info1 = fory1.getClassResolver().getTypeInfo(org.apache.fory.test.bean.Foo.class);
+    TypeInfo info1 = fory1.getTypeResolver().getTypeInfo(org.apache.fory.test.bean.Foo.class);
     assertNotNull(info1.namespaceBytes);
     assertNotNull(info1.typeNameBytes);
   }

@@ -19,6 +19,8 @@
 
 #include <iostream>
 #include <limits>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -68,6 +70,33 @@ public:
 
 private:
   OneByteStreamBuf buf_;
+};
+
+class CountingOutputStream final : public OutputStream {
+public:
+  Result<void, Error> write_to_stream(const uint8_t *src,
+                                      uint32_t length) override {
+    write_calls_++;
+    if (length == 0) {
+      return Result<void, Error>();
+    }
+    data_.insert(data_.end(), src, src + length);
+    return Result<void, Error>();
+  }
+
+  Result<void, Error> flush_stream() override {
+    flush_calls_++;
+    return Result<void, Error>();
+  }
+
+  const std::vector<uint8_t> &data() const { return data_; }
+  uint32_t write_calls() const { return write_calls_; }
+  uint32_t flush_calls() const { return flush_calls_; }
+
+private:
+  std::vector<uint8_t> data_;
+  uint32_t write_calls_ = 0;
+  uint32_t flush_calls_ = 0;
 };
 
 TEST(Buffer, to_string) {
@@ -226,7 +255,7 @@ TEST(Buffer, StreamReadFromOneByteSource) {
 
   raw.resize(writer.writer_index());
   OneByteIStream one_byte_stream(raw);
-  ForyInputStream stream(one_byte_stream, 8);
+  StdInputStream stream(one_byte_stream, 8);
   Buffer reader(stream);
   Error error;
 
@@ -247,7 +276,7 @@ TEST(Buffer, StreamReadFromOneByteSource) {
 TEST(Buffer, StreamGetAndReaderIndexFromOneByteSource) {
   std::vector<uint8_t> raw{0x11, 0x22, 0x33, 0x44, 0x55};
   OneByteIStream one_byte_stream(raw);
-  ForyInputStream stream(one_byte_stream, 2);
+  StdInputStream stream(one_byte_stream, 2);
   Buffer reader(stream);
   Error error;
   ASSERT_TRUE(reader.ensure_readable(4, error)) << error.to_string();
@@ -261,7 +290,7 @@ TEST(Buffer, StreamGetAndReaderIndexFromOneByteSource) {
 TEST(Buffer, StreamReadBytesAndSkipAdvanceReaderIndex) {
   std::vector<uint8_t> raw{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   OneByteIStream one_byte_stream(raw);
-  ForyInputStream stream(one_byte_stream, 2);
+  StdInputStream stream(one_byte_stream, 2);
   Buffer reader(stream);
   Error error;
   uint8_t out[5] = {0};
@@ -282,7 +311,7 @@ TEST(Buffer, StreamReadBytesAndSkipAdvanceReaderIndex) {
 TEST(Buffer, StreamSkipAndUnread) {
   std::vector<uint8_t> raw{0x01, 0x02, 0x03, 0x04, 0x05};
   OneByteIStream one_byte_stream(raw);
-  ForyInputStream stream(one_byte_stream, 2);
+  StdInputStream stream(one_byte_stream, 2);
   auto fill_result = stream.fill_buffer(4);
   ASSERT_TRUE(fill_result.ok()) << fill_result.error().to_string();
 
@@ -303,15 +332,119 @@ TEST(Buffer, StreamSkipAndUnread) {
   EXPECT_EQ(view.reader_index(), 2U);
 }
 
+TEST(Buffer, StreamShrinkBufferBestEffortUsesConfiguredBufferSize) {
+  constexpr uint32_t kConfiguredBufferSize = 32768;
+  constexpr uint32_t kPayloadSize = kConfiguredBufferSize * 2;
+  std::string payload(kPayloadSize, '\x7');
+  std::istringstream source(payload);
+  StdInputStream stream(source, kConfiguredBufferSize);
+  Buffer reader(stream);
+  Error error;
+
+  reader.skip(5000, error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  EXPECT_EQ(reader.reader_index(), 5000U);
+
+  // Below configured input buffer size, shrink should be a no-op.
+  reader.shrink_input_buffer();
+  EXPECT_EQ(reader.reader_index(), 5000U);
+
+  reader.skip(kConfiguredBufferSize, error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+  ASSERT_GT(reader.reader_index(), kConfiguredBufferSize);
+
+  const uint32_t remaining_before = reader.remaining_size();
+  reader.shrink_input_buffer();
+  EXPECT_EQ(reader.reader_index(), 0U);
+  EXPECT_EQ(reader.size(), remaining_before);
+}
+
 TEST(Buffer, StreamReadErrorWhenInsufficientData) {
   std::vector<uint8_t> raw{0x01, 0x02, 0x03};
   OneByteIStream one_byte_stream(raw);
-  ForyInputStream stream(one_byte_stream, 2);
+  StdInputStream stream(one_byte_stream, 2);
   Buffer reader(stream);
   Error error;
   EXPECT_EQ(reader.read_uint32(error), 0U);
   EXPECT_FALSE(error.ok());
   EXPECT_EQ(error.code(), ErrorCode::BufferOutOfBound);
+}
+
+TEST(Buffer, OutputStreamThresholdFlushOnWriteBytes) {
+  CountingOutputStream writer;
+  Buffer *buffer = writer.get_buffer();
+  ASSERT_NE(buffer, nullptr);
+
+  std::vector<uint8_t> payload(5000, 7);
+  buffer->write_bytes(payload.data(), static_cast<uint32_t>(payload.size()));
+
+  EXPECT_EQ(buffer->writer_index(), 0U);
+  EXPECT_EQ(writer.data().size(), payload.size());
+  EXPECT_GE(writer.write_calls(), 1U);
+}
+
+TEST(Buffer, OutputStreamThresholdFlushCanBeTemporarilyDisabled) {
+  CountingOutputStream writer;
+  Buffer *buffer = writer.get_buffer();
+  ASSERT_NE(buffer, nullptr);
+  writer.enter_flush_barrier();
+
+  std::vector<uint8_t> payload(5000, 7);
+  buffer->write_bytes(payload.data(), static_cast<uint32_t>(payload.size()));
+
+  EXPECT_EQ(buffer->writer_index(), payload.size());
+  EXPECT_EQ(writer.data().size(), 0U);
+
+  writer.exit_flush_barrier();
+  writer.try_flush();
+  ASSERT_FALSE(writer.has_error()) << writer.error().to_string();
+  EXPECT_EQ(buffer->writer_index(), 0U);
+  EXPECT_EQ(writer.data().size(), payload.size());
+}
+
+TEST(Buffer, OutputStreamForceFlush) {
+  CountingOutputStream writer;
+  Buffer *buffer = writer.get_buffer();
+  ASSERT_NE(buffer, nullptr);
+
+  std::vector<uint8_t> payload{1, 2, 3, 4, 5};
+  buffer->write_bytes(payload.data(), static_cast<uint32_t>(payload.size()));
+  EXPECT_EQ(buffer->writer_index(), payload.size());
+
+  writer.force_flush();
+  ASSERT_FALSE(writer.has_error()) << writer.error().to_string();
+  EXPECT_EQ(buffer->writer_index(), 0U);
+  EXPECT_EQ(writer.data(), payload);
+  EXPECT_EQ(writer.flush_calls(), 1U);
+}
+
+TEST(Buffer, OutputStreamRebindDetachesPreviousBufferBacklink) {
+  CountingOutputStream writer;
+  std::shared_ptr<Buffer> first;
+  std::shared_ptr<Buffer> second;
+  allocate_buffer(16, &first);
+  allocate_buffer(16, &second);
+
+  first->bind_output_stream(&writer);
+  second->bind_output_stream(&writer);
+  EXPECT_FALSE(first->has_output_stream());
+  EXPECT_TRUE(second->has_output_stream());
+
+  writer.enter_flush_barrier();
+  std::vector<uint8_t> second_payload(5000, 7);
+  second->write_bytes(second_payload.data(),
+                      static_cast<uint32_t>(second_payload.size()));
+  EXPECT_EQ(second->writer_index(), second_payload.size());
+  writer.exit_flush_barrier();
+
+  std::vector<uint8_t> first_payload(5000, 3);
+  first->write_bytes(first_payload.data(),
+                     static_cast<uint32_t>(first_payload.size()));
+
+  // A stale backlink on `first` would call try_flush() and flush `second`
+  // because `second` is still the stream's active buffer.
+  EXPECT_EQ(second->writer_index(), second_payload.size());
+  EXPECT_EQ(writer.data().size(), 0U);
 }
 } // namespace fory
 

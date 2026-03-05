@@ -1079,6 +1079,7 @@ cdef class Fory:
     cdef int32_t max_depth
     cdef int32_t depth
     cdef public int32_t max_collection_size
+    cdef object _output_stream
 
     def __init__(
             self,
@@ -1165,6 +1166,7 @@ cdef class Fory:
         self.depth = 0
         self.max_depth = max_depth
         self.max_collection_size = max_collection_size
+        self._output_stream = None
 
     def register_serializer(self, cls: Union[type, TypeVar], Serializer serializer):
         """
@@ -1298,6 +1300,37 @@ cdef class Fory:
         """
         return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
 
+    def dump(self, obj, stream):
+        """
+        Serialize an object directly to a writable stream.
+
+        Args:
+            obj: The object to serialize
+            stream: Writable stream implementing write(...)
+
+        Notes:
+            The stream must be a non-retaining sink: ``write(data)`` must
+            synchronously consume ``data`` before returning. Fory may reuse or
+            modify the underlying buffer after ``write`` returns, so retaining
+            the passed object (or a view of it) is unsupported. If your sink
+            needs retention, copy bytes inside ``write``.
+        """
+        try:
+            self.buffer.set_writer_index(0)
+            self._output_stream = Buffer.wrap_output_stream(stream)
+            self.buffer.bind_output_stream(self._output_stream)
+            self._serialize(
+                obj,
+                self.buffer,
+                buffer_callback=None,
+                unsupported_callback=None,
+            )
+            self.force_flush()
+        finally:
+            self.buffer.bind_output_stream(None)
+            self._output_stream = None
+            self.reset_write()
+
     def loads(
         self,
         buffer: Union[Buffer, bytes],
@@ -1337,12 +1370,18 @@ cdef class Fory:
             >>> print(type(data))
             <class 'bytes'>
         """
+        cdef Buffer write_buffer
         try:
-            return self._serialize(
+            write_buffer = self._serialize(
                 obj,
                 buffer,
                 buffer_callback=buffer_callback,
                 unsupported_callback=unsupported_callback)
+            if write_buffer is not self.buffer:
+                return write_buffer
+            if write_buffer.get_output_stream() is not None:
+                return write_buffer
+            return write_buffer.to_bytes(0, write_buffer.get_writer_index())
         finally:
             self.reset_write()
 
@@ -1359,6 +1398,7 @@ cdef class Fory:
         # 1byte used for bit mask
         buffer.grow(1)
         buffer.set_writer_index(mask_index + 1)
+        buffer.put_int8(mask_index, 0)
         if obj is None:
             set_bit(buffer, mask_index, 0)
         else:
@@ -1371,11 +1411,35 @@ cdef class Fory:
         else:
             clear_bit(buffer, mask_index, 2)
         self.write_ref(buffer, obj)
+        return buffer
 
-        if buffer is not self.buffer:
-            return buffer
-        else:
-            return buffer.to_bytes(0, buffer.get_writer_index())
+    cpdef inline enter_flush_barrier(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.enter_flush_barrier()
+
+    cpdef inline exit_flush_barrier(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.exit_flush_barrier()
+
+    cpdef inline try_flush(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None or self.buffer.get_writer_index() <= 4096:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.try_flush()
+
+    cpdef inline force_flush(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.force_flush()
 
     cpdef inline write_ref(
             self, Buffer buffer, obj, TypeInfo typeinfo=None, Serializer serializer=None):
@@ -1575,6 +1639,8 @@ cdef class Fory:
         cdef Buffer buf
         if not self.is_peer_out_of_band_enabled:
             size = buffer.read_var_uint32()
+            if buffer.has_input_stream():
+                return buffer.read_bytes(size)
             reader_index = buffer.get_reader_index()
             buf = buffer.slice(reader_index, size)
             buffer.set_reader_index(reader_index + size)
@@ -1584,6 +1650,8 @@ cdef class Fory:
             assert self._buffers is not None
             return next(self._buffers)
         size = buffer.read_var_uint32()
+        if buffer.has_input_stream():
+            return buffer.read_bytes(size)
         reader_index = buffer.get_reader_index()
         buf = buffer.slice(reader_index, size)
         buffer.set_reader_index(reader_index + size)
@@ -1632,6 +1700,7 @@ cdef class Fory:
         self.metastring_resolver.reset_write()
         self.serialization_context.reset_write()
         self._unsupported_callback = None
+        self._output_stream = None
 
     cpdef inline reset_read(self):
         """

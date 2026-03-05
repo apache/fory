@@ -32,7 +32,7 @@ import kotlin.uuid.Uuid;
 import org.apache.fory.AbstractThreadSafeFory;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.util.DefaultValueUtils;
@@ -48,7 +48,7 @@ public class KotlinSerializers {
 
   public static void registerSerializers(Fory fory) {
     DefaultValueUtils.setKotlinDefaultValueSupport(new KotlinDefaultValueSupport());
-    ClassResolver resolver = fory.getClassResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     // UByte
     Class ubyteClass = KotlinToJavaClass.INSTANCE.getUByteClass();

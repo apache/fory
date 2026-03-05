@@ -124,6 +124,7 @@ def test_encode_decode_typedef():
         # Encode a TypeDef
         typedef = encode_typedef(resolver, type_)
         print(f"typedef: {typedef}")
+        assert typedef.is_compressed is False
 
         # Create a buffer from the encoded data
         buffer = Buffer(typedef.encoded)
@@ -134,6 +135,7 @@ def test_encode_decode_typedef():
 
         # Verify the decoded TypeDef has the expected properties
         assert decoded_typedef.type_id == typedef.type_id
+        assert decoded_typedef.is_compressed is False
         assert decoded_typedef.is_compressed == typedef.is_compressed
         assert len(decoded_typedef.fields) == len(typedef.fields)
 
