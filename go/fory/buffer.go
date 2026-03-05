@@ -344,7 +344,7 @@ func (b *ByteBuffer) ReadUint32(err *Error) uint32 {
 //go:inline
 func (b *ByteBuffer) ReadUint64(err *Error) uint64 {
 	if b.readerIndex+8 > len(b.data) {
-		if !b.fill(8, nil) {
+		if !b.fill(8, err) {
 			return 0
 		}
 	}
@@ -1002,7 +1002,7 @@ func (b *ByteBuffer) WriteVaruint36Small(value uint64) {
 //
 //go:inline
 func (b *ByteBuffer) ReadVaruint36Small(err *Error) uint64 {
-	if b.remaining() >= 8 || (b.reader != nil && b.fill(8, nil)) {
+	if b.remaining() >= 8 {
 		return b.readVaruint36SmallFast()
 	}
 	return b.readVaruint36SmallSlow(err)
@@ -1118,7 +1118,7 @@ func (b *ByteBuffer) ReadTaggedInt64(err *Error) int64 {
 		return int64(i >> 1) // arithmetic right shift
 	}
 	if b.readerIndex+9 > len(b.data) {
-		if !b.fill(9, nil) {
+		if !b.fill(9, err) {
 			return 0
 		}
 	}
@@ -1171,7 +1171,7 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 		return uint64(i >> 1)
 	}
 	if b.readerIndex+9 > len(b.data) {
-		if !b.fill(9, nil) {
+		if !b.fill(9, err) {
 			return 0
 		}
 	}
@@ -1189,7 +1189,7 @@ func (b *ByteBuffer) ReadTaggedUint64(err *Error) uint64 {
 //
 //go:inline
 func (b *ByteBuffer) ReadVarUint64(err *Error) uint64 {
-	if b.remaining() >= 9 || (b.reader != nil && b.fill(9, nil)) {
+	if b.remaining() >= 9 {
 		return b.readVarUint64Fast()
 	}
 	return b.readVarUint64Slow(err)
@@ -1363,7 +1363,7 @@ func (b *ByteBuffer) UnsafeReadVarUint64() uint64 {
 //
 //go:inline
 func (b *ByteBuffer) ReadVarUint32(err *Error) uint32 {
-	if b.remaining() >= 8 || (b.reader != nil && b.fill(8, nil)) { // Need 8 bytes for bulk uint64 read in fast path
+	if b.remaining() >= 8 { // Need 8 bytes for bulk uint64 read in fast path
 		return b.readVarUint32Fast()
 	}
 	return b.readVarUint32Slow(err)

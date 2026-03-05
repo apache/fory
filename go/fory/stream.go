@@ -27,7 +27,6 @@ import (
 // preventing data loss from prefetched buffers and preserving TypeResolver metadata
 // (Meta Sharing) across object boundaries.
 type InputStream struct {
-	reader io.Reader
 	buffer *ByteBuffer
 }
 
@@ -41,7 +40,6 @@ func NewInputStream(r io.Reader) *InputStream {
 func NewInputStreamWithMinCap(r io.Reader, minCap int) *InputStream {
 	buf := NewByteBufferFromReader(r, minCap)
 	return &InputStream{
-		reader: r,
 		buffer: buf,
 	}
 }
@@ -138,14 +136,14 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 	return nil
 }
 
-// For Sequential Streaming use NewInputStream instead of DeserializeFromReader.
-// DeserializeFromReader deserializes a single object from a stream but will discard prefetched data
-// and type metadata after the call.
+// DeserializeFromReader deserializes a single object from a stream.
+// It is strictly stateless: the buffer and all read state are always reset before
+// each call, discarding any prefetched data and type metadata.
+// For sequential multi-object reads on the same stream, use NewInputStream instead.
 func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	defer f.resetReadState()
-	if f.readCtx.buffer.reader != r {
-		f.readCtx.buffer.ResetWithReader(r, 0)
-	}
+	// Always reset to enforce stateless semantics.
+	f.readCtx.buffer.ResetWithReader(r, 0)
 
 	isNull := readHeader(f.readCtx)
 	if f.readCtx.HasError() {
