@@ -32,7 +32,7 @@ public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
 ) : Serializer<T>(fory, cls) {
 
   // Lazily initialize the delegatingSerializer here to avoid lookup cost.
-  private val delegatingSerializer by lazy { fory.classResolver.getSerializer(delegateClass) }
+  private val delegatingSerializer by lazy { fory.typeResolver.getSerializer(delegateClass) }
 
   protected abstract fun toDelegateClass(value: T): T_Delegate
 

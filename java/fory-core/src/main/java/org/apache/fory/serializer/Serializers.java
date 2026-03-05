@@ -49,6 +49,8 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.Float16;
 import org.apache.fory.util.ExceptionUtils;
@@ -82,13 +84,15 @@ public class Serializers {
    */
   public static <T> Serializer<T> newSerializer(
       Fory fory, Class type, Class<? extends Serializer> serializerClass) {
-    Serializer serializer = fory.getClassResolver().getSerializer(type, false);
+    TypeResolver typeResolver = fory.getTypeResolver();
+    TypeInfo typeInfo = typeResolver.getTypeInfo(type, false);
+    Serializer serializer = typeInfo == null ? null : typeInfo.getSerializer();
     try {
       if (serializerClass == ObjectSerializer.class) {
         return new ObjectSerializer(fory, type);
       }
       if (serializerClass == MetaSharedSerializer.class) {
-        TypeDef typeDef = fory.getClassResolver().getTypeDef(type, true);
+        TypeDef typeDef = typeResolver.getTypeDef(type, true);
         return new MetaSharedSerializer(fory, type, typeDef);
       }
       Tuple2<MethodType, MethodHandle> ctrInfo = CTR_MAP.getIfPresent(serializerClass);
@@ -113,7 +117,7 @@ public class Serializers {
         return createSerializer(fory, type, serializerClass);
       }
     } catch (InvocationTargetException e) {
-      fory.getClassResolver().resetSerializer(type, serializer);
+      typeResolver.resetSerializer(type, serializer);
       if (e.getCause() != null) {
         Platform.throwException(e.getCause());
       } else {
@@ -123,7 +127,7 @@ public class Serializers {
       // Some serializer may set itself in constructor as serializer, but the
       // constructor failed later. For example, some final type field doesn't
       // support serialization.
-      fory.getClassResolver().resetSerializer(type, serializer);
+      typeResolver.resetSerializer(type, serializer);
       Platform.throwException(t);
     }
     throw new IllegalStateException("unreachable");
@@ -521,12 +525,12 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, Class value) {
-      fory.getClassResolver().writeClassInternal(buffer, value);
+      ((ClassResolver) fory.getTypeResolver()).writeClassInternal(buffer, value);
     }
 
     @Override
     public Class read(MemoryBuffer buffer) {
-      return fory.getClassResolver().readClassInternal(buffer);
+      return ((ClassResolver) fory.getTypeResolver()).readClassInternal(buffer);
     }
   }
 

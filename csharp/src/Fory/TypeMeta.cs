@@ -251,6 +251,7 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
         FieldId = fieldId;
         FieldName = fieldName;
         FieldType = fieldType;
+        AssignedFieldId = -1;
     }
 
     public short? FieldId { get; }
@@ -258,6 +259,8 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
     public string FieldName { get; }
 
     public TypeMetaFieldType FieldType { get; }
+
+    public int AssignedFieldId { get; internal set; }
 
     internal void Write(ByteWriter writer)
     {
@@ -383,6 +386,8 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
 
 public sealed class TypeMeta : IEquatable<TypeMeta>
 {
+    private bool _hasAssignedFieldIds;
+
     public TypeMeta(
         uint? typeId,
         uint? userTypeId,
@@ -442,6 +447,17 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
     public bool Compressed { get; }
 
     public ulong HeaderHash { get; }
+
+    internal void EnsureAssignedFieldIds(IReadOnlyList<TypeMetaFieldInfo> localFieldInfos)
+    {
+        if (_hasAssignedFieldIds)
+        {
+            return;
+        }
+
+        AssignFieldIds(this, localFieldInfos);
+        _hasAssignedFieldIds = true;
+    }
 
     public byte[] Encode()
     {
@@ -551,6 +567,142 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             hasFieldsMeta,
             compressed,
             header >> (int)(64 - TypeMetaConstants.TypeMetaNumHashBits));
+    }
+
+    /// <summary>
+    /// Assigns local sorted field indexes for a remote compatible type meta.
+    /// The result is written to each remote field's <see cref="TypeMetaFieldInfo.AssignedFieldId"/>:
+    /// - local sorted field index when a compatible local field is found
+    /// - -1 when no compatible local field is found and the field should be skipped
+    /// </summary>
+    public static void AssignFieldIds(
+        TypeMeta remoteTypeMeta,
+        IReadOnlyList<TypeMetaFieldInfo> localFieldInfos)
+    {
+        ArgumentNullException.ThrowIfNull(remoteTypeMeta);
+        ArgumentNullException.ThrowIfNull(localFieldInfos);
+
+        Dictionary<string, (int Index, TypeMetaFieldInfo Field)> localByName = new(localFieldInfos.Count, StringComparer.Ordinal);
+        Dictionary<short, (int Index, TypeMetaFieldInfo Field)> localById = new(localFieldInfos.Count);
+        for (int i = 0; i < localFieldInfos.Count; i++)
+        {
+            TypeMetaFieldInfo localField = localFieldInfos[i];
+            if (!string.IsNullOrEmpty(localField.FieldName))
+            {
+                localByName.TryAdd(localField.FieldName, (i, localField));
+            }
+
+            if (localField.FieldId.HasValue && localField.FieldId.Value >= 0)
+            {
+                short fieldId = localField.FieldId.Value;
+                if (!localById.TryAdd(fieldId, (i, localField)))
+                {
+                    throw new InvalidDataException(
+                        $"duplicate local field id {fieldId} in compatible type metadata");
+                }
+            }
+        }
+
+        HashSet<short>? remoteFieldIds = null;
+        for (int i = 0; i < remoteTypeMeta.Fields.Count; i++)
+        {
+            TypeMetaFieldInfo remoteField = remoteTypeMeta.Fields[i];
+            if (remoteField.FieldId.HasValue && remoteField.FieldId.Value >= 0)
+            {
+                short fieldId = remoteField.FieldId.Value;
+                remoteFieldIds ??= [];
+                if (!remoteFieldIds.Add(fieldId))
+                {
+                    throw new InvalidDataException(
+                        $"duplicate remote field id {fieldId} in compatible type metadata");
+                }
+            }
+
+            int localIndex = -1;
+            TypeMetaFieldInfo? localMatch = null;
+
+            if (remoteField.FieldId.HasValue &&
+                localById.TryGetValue(remoteField.FieldId.Value, out (int Index, TypeMetaFieldInfo Field) byId))
+            {
+                localIndex = byId.Index;
+                localMatch = byId.Field;
+            }
+            else
+            {
+                if (localByName.TryGetValue(remoteField.FieldName, out (int Index, TypeMetaFieldInfo Field) byName))
+                {
+                    localIndex = byName.Index;
+                    localMatch = byName.Field;
+                }
+                else
+                {
+                    string normalizedName = TypeMetaUtils.LowerCamelToLowerUnderscore(remoteField.FieldName);
+                    if (!ReferenceEquals(normalizedName, remoteField.FieldName) &&
+                        localByName.TryGetValue(normalizedName, out byName))
+                    {
+                        localIndex = byName.Index;
+                        localMatch = byName.Field;
+                    }
+                }
+            }
+
+            if (localIndex >= 0 &&
+                localMatch is not null &&
+                IsCompatibleFieldType(remoteField.FieldType, localMatch.FieldType))
+            {
+                remoteField.AssignedFieldId = localIndex;
+            }
+            else
+            {
+                remoteField.AssignedFieldId = -1;
+            }
+        }
+    }
+
+    private static bool IsCompatibleFieldType(TypeMetaFieldType remote, TypeMetaFieldType local)
+    {
+        if (NormalizeTypeIdForMatch(remote.TypeId) != NormalizeTypeIdForMatch(local.TypeId))
+        {
+            return false;
+        }
+
+        if (remote.Generics.Count != local.Generics.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < remote.Generics.Count; i++)
+        {
+            if (!IsCompatibleFieldType(remote.Generics[i], local.Generics[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static uint NormalizeTypeIdForMatch(uint typeId)
+    {
+        return typeId switch
+        {
+            (uint)global::Apache.Fory.TypeId.Struct or
+            (uint)global::Apache.Fory.TypeId.CompatibleStruct or
+            (uint)global::Apache.Fory.TypeId.NamedStruct or
+            (uint)global::Apache.Fory.TypeId.NamedCompatibleStruct or
+            (uint)global::Apache.Fory.TypeId.Ext or
+            (uint)global::Apache.Fory.TypeId.NamedExt or
+            (uint)global::Apache.Fory.TypeId.Unknown => (uint)global::Apache.Fory.TypeId.Struct,
+            (uint)global::Apache.Fory.TypeId.Enum or
+            (uint)global::Apache.Fory.TypeId.NamedEnum => (uint)global::Apache.Fory.TypeId.Enum,
+            (uint)global::Apache.Fory.TypeId.Union or
+            (uint)global::Apache.Fory.TypeId.NamedUnion or
+            (uint)global::Apache.Fory.TypeId.TypedUnion => (uint)global::Apache.Fory.TypeId.Union,
+            (uint)global::Apache.Fory.TypeId.Binary or
+            (uint)global::Apache.Fory.TypeId.Int8Array or
+            (uint)global::Apache.Fory.TypeId.UInt8Array => (uint)global::Apache.Fory.TypeId.Binary,
+            _ => typeId,
+        };
     }
 
     private byte[] EncodeBody()

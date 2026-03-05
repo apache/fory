@@ -141,7 +141,7 @@ public class MapSerializersTest extends ForyTestBase {
     enumMap.put(TestEnum.B, "str");
     serDe(fory, enumMap);
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(enumMap.getClass()),
+        fory.getTypeResolver().getSerializerClass(enumMap.getClass()),
         MapSerializers.EnumMapSerializer.class);
 
     // testNoArgConstructor
@@ -477,7 +477,7 @@ public class MapSerializersTest extends ForyTestBase {
     enumMap.put(TestEnum.B, "str");
     serDe(getJavaFory(), enumMap);
     Assert.assertEquals(
-        getJavaFory().getClassResolver().getSerializerClass(enumMap.getClass()),
+        getJavaFory().getTypeResolver().getSerializerClass(enumMap.getClass()),
         MapSerializers.EnumMapSerializer.class);
   }
 
@@ -488,7 +488,7 @@ public class MapSerializersTest extends ForyTestBase {
     enumMap.put(TestEnum.B, "str");
     copyCheck(fory, enumMap);
     Assert.assertEquals(
-        getJavaFory().getClassResolver().getSerializerClass(enumMap.getClass()),
+        getJavaFory().getTypeResolver().getSerializerClass(enumMap.getClass()),
         MapSerializers.EnumMapSerializer.class);
   }
 
@@ -631,7 +631,7 @@ public class MapSerializersTest extends ForyTestBase {
     map.put("a", 1);
     map.put("b", 2);
     Assert.assertSame(
-        fory.getClassResolver().getSerializerClass(TestClass1ForDefaultMap.class),
+        fory.getTypeResolver().getSerializerClass(TestClass1ForDefaultMap.class),
         MapSerializers.DefaultJavaMapSerializer.class);
     serDeCheck(fory, map);
 
@@ -639,7 +639,7 @@ public class MapSerializersTest extends ForyTestBase {
     map.put("a", 1);
     map.put("b", 2);
     Assert.assertSame(
-        fory.getClassResolver().getSerializerClass(TestClass2ForDefaultMap.class),
+        fory.getTypeResolver().getSerializerClass(TestClass2ForDefaultMap.class),
         MapSerializers.DefaultJavaMapSerializer.class);
     serDeCheck(fory, map2);
   }
@@ -650,7 +650,7 @@ public class MapSerializersTest extends ForyTestBase {
     map.put("a", 1);
     map.put("b", 2);
     Assert.assertSame(
-        fory.getClassResolver().getSerializerClass(TestClass1ForDefaultMap.class),
+        fory.getTypeResolver().getSerializerClass(TestClass1ForDefaultMap.class),
         MapSerializers.DefaultJavaMapSerializer.class);
     copyCheck(fory, map);
 
@@ -658,7 +658,7 @@ public class MapSerializersTest extends ForyTestBase {
     map.put("a", 1);
     map.put("b", 2);
     Assert.assertSame(
-        fory.getClassResolver().getSerializerClass(TestClass2ForDefaultMap.class),
+        fory.getTypeResolver().getSerializerClass(TestClass2ForDefaultMap.class),
         MapSerializers.DefaultJavaMapSerializer.class);
     copyCheck(fory, map2);
   }

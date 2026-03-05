@@ -284,8 +284,7 @@ class TimestampSerializer(Serializer):
         seconds = buffer.read_int64()
         nanos = buffer.read_uint32()
         ts = seconds + nanos / 1_000_000_000
-        # TODO support timezone
-        return datetime.datetime.fromtimestamp(ts)
+        return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
 
 
 class EnumSerializer(Serializer):

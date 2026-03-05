@@ -656,4 +656,4 @@ When implementing custom map or collection serializers:
 
 - [Type Registration](type-registration.md) - Register serializers
 - [Schema Evolution](schema-evolution.md) - Compatible mode considerations
-- [Configuration Options](configuration.md) - Serialization options
+- [Configuration](configuration.md) - Serialization options

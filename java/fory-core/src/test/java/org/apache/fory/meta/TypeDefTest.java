@@ -103,7 +103,7 @@ public class TypeDefTest extends ForyTestBase {
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
-              fory.getClassResolver(),
+              (ClassResolver) fory.getTypeResolver(),
               TestFieldsOrderClass1.class,
               ImmutableList.of(TestFieldsOrderClass1.class.getDeclaredField("longField")));
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
@@ -115,7 +115,7 @@ public class TypeDefTest extends ForyTestBase {
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
-              fory.getClassResolver(),
+              (ClassResolver) fory.getTypeResolver(),
               TestFieldsOrderClass1.class,
               ReflectionUtils.getFields(TestFieldsOrderClass1.class, true));
       assertEquals(typeDef.getClassName(), TestFieldsOrderClass1.class.getName());
@@ -131,7 +131,7 @@ public class TypeDefTest extends ForyTestBase {
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
-              fory.getClassResolver(),
+              (ClassResolver) fory.getTypeResolver(),
               TestFieldsOrderClass2.class,
               ReflectionUtils.getFields(TestFieldsOrderClass2.class, true));
       assertEquals(typeDef.getClassName(), TestFieldsOrderClass2.class.getName());
@@ -152,7 +152,7 @@ public class TypeDefTest extends ForyTestBase {
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
-              fory.getClassResolver(),
+              (ClassResolver) fory.getTypeResolver(),
               DuplicateFieldClass.class,
               ReflectionUtils.getFields(DuplicateFieldClass.class, true));
       assertEquals(typeDef.getClassName(), DuplicateFieldClass.class.getName());
@@ -171,7 +171,8 @@ public class TypeDefTest extends ForyTestBase {
   public void testContainerClass() {
     Fory fory = Fory.builder().withMetaShare(true).build();
     List<Field> fields = ReflectionUtils.getFields(ContainerClass.class, true);
-    TypeDef typeDef = TypeDef.buildTypeDef(fory.getClassResolver(), ContainerClass.class, fields);
+    TypeDef typeDef =
+        TypeDef.buildTypeDef((ClassResolver) fory.getTypeResolver(), ContainerClass.class, fields);
     assertEquals(typeDef.getClassName(), ContainerClass.class.getName());
     assertEquals(typeDef.getFieldsInfo().size(), fields.size());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
@@ -192,7 +193,7 @@ public class TypeDefTest extends ForyTestBase {
   @Test
   public void testTypeExtInfo() {
     Fory fory = Fory.builder().withRefTracking(true).withMetaShare(true).build();
-    ClassResolver classResolver = fory.getClassResolver();
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     assertTrue(
         classResolver.needToWriteRef(
             TypeRef.of(Foo.class, new TypeExtMeta(Types.STRUCT, true, true))));
@@ -243,7 +244,8 @@ public class TypeDefTest extends ForyTestBase {
     Assert.assertThrows(
         IllegalArgumentException.class,
         () ->
-            TypeDef.buildTypeDef(fory.getClassResolver(), ClassWithDuplicateTagIds.class, fields));
+            TypeDef.buildTypeDef(
+                (ClassResolver) fory.getTypeResolver(), ClassWithDuplicateTagIds.class, fields));
   }
 
   @Test
@@ -255,7 +257,9 @@ public class TypeDefTest extends ForyTestBase {
         IllegalArgumentException.class,
         () ->
             TypeDef.buildTypeDef(
-                fory.getClassResolver(), ClassWithDuplicateTagIdsMultiple.class, fields));
+                (ClassResolver) fory.getTypeResolver(),
+                ClassWithDuplicateTagIdsMultiple.class,
+                fields));
   }
 
   @Test
@@ -265,7 +269,8 @@ public class TypeDefTest extends ForyTestBase {
 
     // Should not throw any exception
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), ClassWithValidTagIds.class, fields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), ClassWithValidTagIds.class, fields);
     assertEquals(typeDef.getClassName(), ClassWithValidTagIds.class.getName());
     assertEquals(typeDef.getFieldsInfo().size(), fields.size());
   }
@@ -309,13 +314,13 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with valid fields (no duplicates in TypeDef itself)
     List<Field> sourceFields = ReflectionUtils.getFields(ClassWithValidTagIds.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), ClassWithValidTagIds.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), ClassWithValidTagIds.class, sourceFields);
 
     // Try to get descriptors for a class that has duplicate tag IDs
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () ->
-            typeDef.getDescriptors(fory.getClassResolver(), TargetClassWithDuplicateTagIds.class));
+        () -> typeDef.getDescriptors(fory.getTypeResolver(), TargetClassWithDuplicateTagIds.class));
   }
 
   @Test
@@ -325,11 +330,12 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with tagged fields
     List<Field> sourceFields = ReflectionUtils.getFields(TargetClassWithValidTags.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), TargetClassWithValidTags.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), TargetClassWithValidTags.class, sourceFields);
 
     // Get descriptors should succeed
     List<Descriptor> descriptors =
-        typeDef.getDescriptors(fory.getClassResolver(), TargetClassWithValidTags.class);
+        typeDef.getDescriptors(fory.getTypeResolver(), TargetClassWithValidTags.class);
 
     assertEquals(descriptors.size(), 3);
   }
@@ -341,11 +347,12 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with mixed tagged and non-tagged fields
     List<Field> sourceFields = ReflectionUtils.getFields(TargetClassWithMixedTags.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), TargetClassWithMixedTags.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), TargetClassWithMixedTags.class, sourceFields);
 
     // Get descriptors should succeed
     List<Descriptor> descriptors =
-        typeDef.getDescriptors(fory.getClassResolver(), TargetClassWithMixedTags.class);
+        typeDef.getDescriptors(fory.getTypeResolver(), TargetClassWithMixedTags.class);
 
     assertEquals(descriptors.size(), 3);
 
@@ -392,11 +399,12 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef from source class with specific tag IDs
     List<Field> sourceFields = ReflectionUtils.getFields(SourceClassWithTags.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), SourceClassWithTags.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), SourceClassWithTags.class, sourceFields);
 
     // Get descriptors for target class with different field names but same tag IDs
     List<Descriptor> descriptors =
-        typeDef.getDescriptors(fory.getClassResolver(), TargetClassWithDifferentNames.class);
+        typeDef.getDescriptors(fory.getTypeResolver(), TargetClassWithDifferentNames.class);
 
     // Should match fields by tag ID, not by name
     assertEquals(descriptors.size(), 2);
@@ -426,12 +434,13 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with some fields
     List<Field> sourceFields = ReflectionUtils.getFields(ClassWithValidTagIds.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), ClassWithValidTagIds.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), ClassWithValidTagIds.class, sourceFields);
 
     // Try to get descriptors for a class that has duplicate tag ID 0
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> typeDef.getDescriptors(fory.getClassResolver(), TargetClassWithZeroTagId.class));
+        () -> typeDef.getDescriptors(fory.getTypeResolver(), TargetClassWithZeroTagId.class));
   }
 
   static class EmptyClass {
@@ -444,11 +453,12 @@ public class TypeDefTest extends ForyTestBase {
 
     // Build a TypeDef with no fields
     List<Field> sourceFields = ReflectionUtils.getFields(EmptyClass.class, true);
-    TypeDef typeDef = TypeDef.buildTypeDef(fory.getClassResolver(), EmptyClass.class, sourceFields);
+    TypeDef typeDef =
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), EmptyClass.class, sourceFields);
 
     // Get descriptors should succeed and return empty list
-    List<Descriptor> descriptors =
-        typeDef.getDescriptors(fory.getClassResolver(), EmptyClass.class);
+    List<Descriptor> descriptors = typeDef.getDescriptors(fory.getTypeResolver(), EmptyClass.class);
 
     assertEquals(descriptors.size(), 0);
   }
@@ -475,11 +485,12 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with inherited fields
     List<Field> sourceFields = ReflectionUtils.getFields(InheritedChildClass.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), InheritedChildClass.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), InheritedChildClass.class, sourceFields);
 
     // Get descriptors should succeed
     List<Descriptor> descriptors =
-        typeDef.getDescriptors(fory.getClassResolver(), InheritedChildClass.class);
+        typeDef.getDescriptors(fory.getTypeResolver(), InheritedChildClass.class);
 
     // Should have both base and child fields
     assertEquals(descriptors.size(), 2);
@@ -492,13 +503,13 @@ public class TypeDefTest extends ForyTestBase {
     // Build a TypeDef with some fields
     List<Field> sourceFields = ReflectionUtils.getFields(InheritedBaseClass.class, true);
     TypeDef typeDef =
-        TypeDef.buildTypeDef(fory.getClassResolver(), InheritedBaseClass.class, sourceFields);
+        TypeDef.buildTypeDef(
+            (ClassResolver) fory.getTypeResolver(), InheritedBaseClass.class, sourceFields);
 
     // Try to get descriptors for a class that has duplicate tag ID across inheritance
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () ->
-            typeDef.getDescriptors(fory.getClassResolver(), InheritedChildWithDuplicateTag.class));
+        () -> typeDef.getDescriptors(fory.getTypeResolver(), InheritedChildWithDuplicateTag.class));
   }
 
   @Test

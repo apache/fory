@@ -30,6 +30,7 @@ import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.SerializableFunction;
 import org.apache.fory.util.unsafe._JDKAccess;
@@ -151,11 +152,11 @@ public class LambdaSerializer extends Serializer {
                     () -> CodegenSerializer.loadCodegenSerializer(fory, SERIALIZED_LAMBDA),
                     c -> {
                       this.dataSerializer = Serializers.newSerializer(fory, SERIALIZED_LAMBDA, c);
-                      fory.getClassResolver().clearSerializer(SERIALIZED_LAMBDA);
+                      ((ClassResolver) fory.getTypeResolver()).clearSerializer(SERIALIZED_LAMBDA);
                     });
       }
       this.dataSerializer = dataSerializer = Serializers.newSerializer(fory, SERIALIZED_LAMBDA, sc);
-      fory.getClassResolver().clearSerializer(SERIALIZED_LAMBDA);
+      ((ClassResolver) fory.getTypeResolver()).clearSerializer(SERIALIZED_LAMBDA);
     }
     return dataSerializer;
   }

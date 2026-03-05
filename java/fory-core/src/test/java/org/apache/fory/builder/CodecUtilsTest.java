@@ -39,7 +39,7 @@ public class CodecUtilsTest {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
-    Class<?> seqCodecClass = fory.getClassResolver().getSerializerClass(BeanA.class);
+    Class<?> seqCodecClass = fory.getTypeResolver().getSerializerClass(BeanA.class);
     Generated.GeneratedSerializer serializer =
         seqCodecClass
             .asSubclass(Generated.GeneratedSerializer.class)

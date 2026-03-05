@@ -102,7 +102,7 @@ public class JITContextTest extends ForyTestBase {
   private Serializer getSerializer(Fory fory, Class<?> cls) {
     try {
       fory.getJITContext().lock();
-      Serializer<?> serializer = fory.getClassResolver().getSerializer(cls);
+      Serializer<?> serializer = fory.getTypeResolver().getSerializer(cls);
       return serializer;
     } finally {
       fory.getJITContext().unlock();
@@ -161,7 +161,7 @@ public class JITContextTest extends ForyTestBase {
     serDeCheck(fory, o);
     Class<?>[] classes = {PkgAccessLevel.class, PrivateAccessLevel.class};
     for (Class<?> cls : classes) {
-      while (!(fory.getClassResolver().getSerializer(cls) instanceof Generated)) {
+      while (!(fory.getTypeResolver().getSerializer(cls) instanceof Generated)) {
         Thread.sleep(1000);
         LOG.warn("Wait async compilation finish for {}", cls);
       }
@@ -173,7 +173,7 @@ public class JITContextTest extends ForyTestBase {
       Thread.sleep(10); // allow serializer be switched to generated version
     }
     Serializer<TestAccessLevel> serializer =
-        fory.getClassResolver().getSerializer(TestAccessLevel.class);
+        fory.getTypeResolver().getSerializer(TestAccessLevel.class);
     assertTrue(ReflectionUtils.getObjectFieldValue(serializer, "serializer") instanceof Generated);
     assertTrue(ReflectionUtils.getObjectFieldValue(serializer, "serializer1") instanceof Generated);
     serDeCheck(fory, o);

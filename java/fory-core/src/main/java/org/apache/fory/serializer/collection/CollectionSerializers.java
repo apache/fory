@@ -512,7 +512,7 @@ public class CollectionSerializers {
 
     @Override
     public Collection newCollection(MemoryBuffer buffer) {
-      final TypeInfo mapTypeInfo = fory.getClassResolver().readTypeInfo(buffer);
+      final TypeInfo mapTypeInfo = fory.getTypeResolver().readTypeInfo(buffer);
       final MapLikeSerializer mapSerializer = (MapLikeSerializer) mapTypeInfo.getSerializer();
       RefResolver refResolver = fory.getRefResolver();
       // It's possible that elements or nested fields has circular ref to set.
@@ -543,7 +543,7 @@ public class CollectionSerializers {
       Map<?, Boolean> map =
           (Map<?, Boolean>) Platform.getObject(originCollection, MAP_FIELD_OFFSET);
       MapLikeSerializer mapSerializer =
-          (MapLikeSerializer) fory.getClassResolver().getSerializer(map.getClass());
+          (MapLikeSerializer) fory.getTypeResolver().getSerializer(map.getClass());
       Map newMap = mapSerializer.newMap(map);
       return Collections.newSetFromMap(newMap);
     }
@@ -551,9 +551,9 @@ public class CollectionSerializers {
     @Override
     public Collection onCollectionWrite(MemoryBuffer buffer, Set<?> value) {
       final Map<?, Boolean> map = (Map<?, Boolean>) Platform.getObject(value, MAP_FIELD_OFFSET);
-      final TypeInfo typeInfo = fory.getClassResolver().getTypeInfo(map.getClass());
+      final TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(map.getClass());
       MapLikeSerializer mapSerializer = (MapLikeSerializer) typeInfo.getSerializer();
-      fory.getClassResolver().writeTypeInfo(buffer, typeInfo);
+      fory.getTypeResolver().writeTypeInfo(buffer, typeInfo);
       if (mapSerializer.supportCodegenHook) {
         buffer.writeBoolean(true);
         mapSerializer.onMapWrite(buffer, map);
@@ -574,8 +574,8 @@ public class CollectionSerializers {
     public ConcurrentHashMapKeySetViewSerializer(
         Fory fory, Class<ConcurrentHashMap.KeySetView> type) {
       super(fory, type, false);
-      mapTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
-      valueTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+      mapTypeInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
+      valueTypeInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
     }
 
     @Override
@@ -658,8 +658,8 @@ public class CollectionSerializers {
       if (!elemClass.isEnum()) {
         elemClass = elemClass.getEnclosingClass();
       }
-      fory.getClassResolver().writeClassAndUpdateCache(buffer, elemClass);
-      Serializer serializer = fory.getClassResolver().getSerializer(elemClass);
+      ((ClassResolver) fory.getTypeResolver()).writeClassAndUpdateCache(buffer, elemClass);
+      Serializer serializer = fory.getTypeResolver().getSerializer(elemClass);
       buffer.writeVarUint32Small7(object.size());
       for (Object element : object) {
         serializer.write(buffer, element);
@@ -668,9 +668,9 @@ public class CollectionSerializers {
 
     @Override
     public EnumSet read(MemoryBuffer buffer) {
-      Class elemClass = fory.getClassResolver().readTypeInfo(buffer).getCls();
+      Class elemClass = fory.getTypeResolver().readTypeInfo(buffer).getCls();
       EnumSet object = EnumSet.noneOf(elemClass);
-      Serializer elemSerializer = fory.getClassResolver().getSerializer(elemClass);
+      Serializer elemSerializer = fory.getTypeResolver().getSerializer(elemClass);
       int length = buffer.readVarUint32Small7();
       for (int i = 0; i < length; i++) {
         object.add(elemSerializer.read(buffer));
@@ -869,14 +869,14 @@ public class CollectionSerializers {
           !fory.isCrossLanguage(),
           "Fory cross-language default collection serializer should use "
               + CollectionSerializer.class);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
       Class<? extends Serializer> serializerClass =
-          fory.getClassResolver()
+          ((ClassResolver) fory.getTypeResolver())
               .getObjectSerializerClass(
                   cls, sc -> dataSerializer = Serializers.newSerializer(fory, cls, sc));
       dataSerializer = Serializers.newSerializer(fory, cls, serializerClass);
       // No need to set object serializer to this, it will be set in class resolver later.
-      // fory.getClassResolver().setSerializer(cls, this);
+      // fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override

@@ -118,6 +118,10 @@ public:
   /// get const reference to internal output buffer.
   inline const Buffer &buffer() const { return buffer_; }
 
+  inline void set_output_stream(OutputStream *output_stream) {
+    output_stream_ = output_stream;
+  }
+
   /// get reference writer for tracking shared references.
   inline RefWriter &ref_writer() { return ref_writer_; }
 
@@ -167,70 +171,107 @@ public:
     }
   }
 
+  inline uint32_t flush_barrier_depth() const {
+    return output_stream_ == nullptr ? 0
+                                     : output_stream_->flush_barrier_depth();
+  }
+
+  inline void enter_flush_barrier() {
+    if (output_stream_ != nullptr) {
+      output_stream_->enter_flush_barrier();
+    }
+  }
+
+  inline void exit_flush_barrier() {
+    if (output_stream_ != nullptr) {
+      output_stream_->exit_flush_barrier();
+    }
+  }
+
+  inline void try_flush() {
+    if (output_stream_ == nullptr || buffer_.writer_index() <= 4096) {
+      return;
+    }
+    output_stream_->try_flush();
+    if (FORY_PREDICT_FALSE(output_stream_->has_error())) {
+      set_error(output_stream_->error());
+    }
+  }
+
+  inline void force_flush() {
+    if (output_stream_ == nullptr) {
+      return;
+    }
+    output_stream_->force_flush();
+    if (FORY_PREDICT_FALSE(output_stream_->has_error())) {
+      set_error(output_stream_->error());
+    }
+  }
+
   /// write uint8_t value to buffer.
   FORY_ALWAYS_INLINE void write_uint8(uint8_t value) {
-    buffer().write_uint8(value);
+    buffer_.write_uint8(value);
   }
 
   /// write int8_t value to buffer.
   FORY_ALWAYS_INLINE void write_int8(int8_t value) {
-    buffer().write_int8(value);
+    buffer_.write_int8(value);
   }
 
   /// write uint16_t value to buffer.
   FORY_ALWAYS_INLINE void write_uint16(uint16_t value) {
-    buffer().write_uint16(value);
+    buffer_.write_uint16(value);
   }
 
   /// write uint32_t value to buffer.
   FORY_ALWAYS_INLINE void write_uint32(uint32_t value) {
-    buffer().write_uint32(value);
+    buffer_.write_uint32(value);
   }
 
   /// write int64_t value to buffer.
   FORY_ALWAYS_INLINE void write_int64(int64_t value) {
-    buffer().write_int64(value);
+    buffer_.write_int64(value);
   }
 
   /// write uint32_t value as varint to buffer.
   FORY_ALWAYS_INLINE void write_var_uint32(uint32_t value) {
-    buffer().write_var_uint32(value);
+    buffer_.write_var_uint32(value);
   }
 
   /// write int32_t value as zigzag varint to buffer.
   FORY_ALWAYS_INLINE void write_varint32(int32_t value) {
-    buffer().write_var_int32(value);
+    buffer_.write_var_int32(value);
   }
 
   /// write uint64_t value as varint to buffer.
   FORY_ALWAYS_INLINE void write_var_uint64(uint64_t value) {
-    buffer().write_var_uint64(value);
+    buffer_.write_var_uint64(value);
   }
 
   /// write int64_t value as zigzag varint to buffer.
   FORY_ALWAYS_INLINE void write_varint64(int64_t value) {
-    buffer().write_var_int64(value);
+    buffer_.write_var_int64(value);
   }
 
   /// write uint64_t value using tagged encoding to buffer.
   FORY_ALWAYS_INLINE void write_tagged_uint64(uint64_t value) {
-    buffer().write_tagged_uint64(value);
+    buffer_.write_tagged_uint64(value);
   }
 
   /// write int64_t value using tagged encoding to buffer.
   FORY_ALWAYS_INLINE void write_tagged_int64(int64_t value) {
-    buffer().write_tagged_int64(value);
+    buffer_.write_tagged_int64(value);
   }
 
   /// write uint64_t value as varuint36small to buffer.
   /// This is the special variable-length encoding used for string headers.
   FORY_ALWAYS_INLINE void write_var_uint36_small(uint64_t value) {
-    buffer().write_var_uint36_small(value);
+    buffer_.write_var_uint36_small(value);
   }
 
   /// write raw bytes to buffer.
   FORY_ALWAYS_INLINE void write_bytes(const void *data, uint32_t length) {
-    buffer().write_bytes(data, length);
+    buffer_.write_bytes(data, length);
   }
 
   /// write TypeMeta inline using streaming protocol.
@@ -329,6 +370,7 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefWriter ref_writer_;
   uint32_t current_dyn_depth_;
+  OutputStream *output_stream_ = nullptr;
 
   // Meta sharing state (for streaming inline TypeMeta)
   // Maps TypeInfo* to index for reference tracking - uses map size as counter

@@ -33,6 +33,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.MapRefResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
@@ -150,7 +151,8 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     if (serializer == null) {
       // xlang mode will register class and create serializer in advance, it won't go to here.
       serializer =
-          this.classResolver.createSerializerSafe(type, () -> new ObjectSerializer<>(fory, type));
+          ((ClassResolver) typeResolver)
+              .createSerializerSafe(type, () -> new ObjectSerializer<>(fory, type));
     }
     serializer.write(buffer, value);
   }

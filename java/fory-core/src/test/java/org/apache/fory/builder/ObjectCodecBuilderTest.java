@@ -194,7 +194,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
     fory.serialize(new MethodSpiltObject());
     Assert.assertTrue(
-        fory.getClassResolver().getSerializer(MethodSpiltObject.class)
+        fory.getTypeResolver().getSerializer(MethodSpiltObject.class)
             instanceof Generated.GeneratedSerializer);
   }
 }

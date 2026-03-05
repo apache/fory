@@ -21,6 +21,7 @@ package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
 import org.apache.fory.config.Language
+import org.apache.fory.resolver.ClassResolver
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
@@ -36,7 +37,7 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
       .build()
     ScalaSerializers.registerSerializers(fory1)
     if (setFactory) {
-      fory1.getClassResolver.setSerializerFactory(new ScalaDispatcher())
+      fory1.getTypeResolver.asInstanceOf[ClassResolver].setSerializerFactory(new ScalaDispatcher())
     }
     s"fory scala collection support: setOpt $setOpt, setFactory $setFactory" should {
       "serialize/deserialize Seq" in {

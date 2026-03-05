@@ -21,7 +21,7 @@ library;
 
 import 'dart:typed_data';
 import 'package:fory/fory.dart';
-import 'package:fory/src/exception/fory_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:test/test.dart';
 
 void main() {

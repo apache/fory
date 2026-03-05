@@ -119,13 +119,13 @@ public class StreamTest extends ForyTestBase {
     // assertEquals(fory.deserialize(bytes), new byte[1000 * 1000]);
     assertEquals(fory.deserialize(of(new ByteArrayInputStream(bytes))), new byte[1000 * 1000]);
 
-    bytes = fory.serializeJavaObject(new byte[1000 * 1000]);
+    bytes = fory.serialize(new byte[1000 * 1000]);
     checkBuffer(fory);
-    assertEquals(fory.deserializeJavaObject(bytes, byte[].class), new byte[1000 * 1000]);
+    assertEquals(fory.deserialize(bytes, byte[].class), new byte[1000 * 1000]);
 
-    bytes = fory.serializeJavaObjectAndClass(new byte[1000 * 1000]);
+    bytes = fory.serialize(new byte[1000 * 1000]);
     checkBuffer(fory);
-    assertEquals(fory.deserializeJavaObjectAndClass(bytes), new byte[1000 * 1000]);
+    assertEquals(fory.deserialize(bytes), new byte[1000 * 1000]);
 
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     fory.serialize(bas, new byte[1000 * 1000]);
@@ -135,15 +135,15 @@ public class StreamTest extends ForyTestBase {
     assertEquals(fory.deserialize(bas.toByteArray()), new byte[1000 * 1000]);
 
     bas.reset();
-    fory.serializeJavaObject(bas, new byte[1000 * 1000]);
+    fory.serialize(bas, new byte[1000 * 1000]);
     checkBuffer(fory);
-    o = fory.deserializeJavaObject(of(new ByteArrayInputStream(bas.toByteArray())), byte[].class);
+    o = fory.deserialize(of(new ByteArrayInputStream(bas.toByteArray())), byte[].class);
     assertEquals(o, new byte[1000 * 1000]);
 
     bas.reset();
-    fory.serializeJavaObjectAndClass(bas, new byte[1000 * 1000]);
+    fory.serialize(bas, new byte[1000 * 1000]);
     checkBuffer(fory);
-    o = fory.deserializeJavaObjectAndClass(of(new ByteArrayInputStream(bas.toByteArray())));
+    o = fory.deserialize(of(new ByteArrayInputStream(bas.toByteArray())));
     assertEquals(o, new byte[1000 * 1000]);
   }
 
@@ -228,57 +228,24 @@ public class StreamTest extends ForyTestBase {
   }
 
   @Test
-  public void testJavaOutputStream() throws IOException {
+  public void testOutputStreamWithType() throws IOException {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
     BeanA beanA = BeanA.createBeanA(2);
-    {
-      ByteArrayOutputStream bas = new ByteArrayOutputStream();
-      fory.serializeJavaObject(bas, beanA);
-      fory.serializeJavaObject(bas, beanA);
-      bas.flush();
-      ByteArrayInputStream bis = new ByteArrayInputStream(bas.toByteArray());
-      ForyInputStream stream = of(bis);
-      MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
-      Object newObj = fory.deserializeJavaObject(stream, BeanA.class);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObject(buf, BeanA.class);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObject(stream, BeanA.class);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObject(buf, BeanA.class);
-      assertEquals(newObj, beanA);
-    }
-    {
-      ByteArrayOutputStream bas = new ByteArrayOutputStream();
-      fory.serializeJavaObjectAndClass(bas, beanA);
-      fory.serializeJavaObjectAndClass(bas, beanA);
-      bas.flush();
-      ByteArrayInputStream bis = new ByteArrayInputStream(bas.toByteArray());
-      ForyInputStream stream = of(bis);
-      MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
-      Object newObj = fory.deserializeJavaObjectAndClass(stream);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObjectAndClass(buf);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObjectAndClass(stream);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObjectAndClass(buf);
-      assertEquals(newObj, beanA);
-
-      fory = Fory.builder().requireClassRegistration(false).build();
-      // test reader buffer grow
-      bis = new ByteArrayInputStream(bas.toByteArray());
-      stream = of(bis);
-      buf = MemoryBuffer.fromByteArray(bas.toByteArray());
-      newObj = fory.deserializeJavaObjectAndClass(stream);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObjectAndClass(buf);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObjectAndClass(stream);
-      assertEquals(newObj, beanA);
-      newObj = fory.deserializeJavaObjectAndClass(buf);
-      assertEquals(newObj, beanA);
-    }
+    ByteArrayOutputStream bas = new ByteArrayOutputStream();
+    fory.serialize(bas, beanA);
+    fory.serialize(bas, beanA);
+    bas.flush();
+    ByteArrayInputStream bis = new ByteArrayInputStream(bas.toByteArray());
+    ForyInputStream stream = of(bis);
+    MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+    Object newObj = fory.deserialize(stream, BeanA.class);
+    assertEquals(newObj, beanA);
+    newObj = fory.deserialize(buf, BeanA.class);
+    assertEquals(newObj, beanA);
+    newObj = fory.deserialize(stream, BeanA.class);
+    assertEquals(newObj, beanA);
+    newObj = fory.deserialize(buf, BeanA.class);
+    assertEquals(newObj, beanA);
   }
 
   @Test
@@ -301,27 +268,13 @@ public class StreamTest extends ForyTestBase {
     }
     {
       ByteArrayOutputStream bas = new ByteArrayOutputStream();
-      fory.serializeJavaObject(bas, beanA);
+      fory.serialize(bas, beanA);
 
       Path tempFile = Files.createTempFile("readable_channel_test", "data_2");
       Files.write(tempFile, bas.toByteArray());
 
       try (ForyReadableChannel channel = of(Files.newByteChannel(tempFile))) {
-        Object newObj = fory.deserializeJavaObject(channel, BeanA.class);
-        assertEquals(newObj, beanA);
-      } finally {
-        Files.delete(tempFile);
-      }
-    }
-    {
-      ByteArrayOutputStream bas = new ByteArrayOutputStream();
-      fory.serializeJavaObjectAndClass(bas, beanA);
-
-      Path tempFile = Files.createTempFile("readable_channel_test", "data_3");
-      Files.write(tempFile, bas.toByteArray());
-
-      try (ForyReadableChannel channel = of(Files.newByteChannel(tempFile))) {
-        Object newObj = fory.deserializeJavaObjectAndClass(channel);
+        Object newObj = fory.deserialize(channel, BeanA.class);
         assertEquals(newObj, beanA);
       } finally {
         Files.delete(tempFile);

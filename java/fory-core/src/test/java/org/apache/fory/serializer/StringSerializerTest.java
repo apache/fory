@@ -334,7 +334,7 @@ public class StringSerializerTest extends ForyTestBase {
     }
     Fory fory = Fory.builder().withStringCompressed(true).requireClassRegistration(false).build();
     StringSerializer stringSerializer =
-        (StringSerializer) fory.getClassResolver().getSerializer(String.class);
+        (StringSerializer) fory.getTypeResolver().getSerializer(String.class);
 
     String utf16Str = "你好, Fory" + StringUtils.random(64);
     char[] utf16StrChars = utf16Str.toCharArray();

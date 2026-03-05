@@ -146,6 +146,21 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   }
 
   @Override
+  public <T> T deserialize(MemoryBuffer buffer, Class<T> type) {
+    return bindingThreadLocal.get().get().deserialize(buffer, type);
+  }
+
+  @Override
+  public <T> T deserialize(ForyInputStream inputStream, Class<T> type) {
+    return bindingThreadLocal.get().get().deserialize(inputStream, type);
+  }
+
+  @Override
+  public <T> T deserialize(ForyReadableChannel channel, Class<T> type) {
+    return bindingThreadLocal.get().get().deserialize(channel, type);
+  }
+
+  @Override
   public Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers) {
     return bindingThreadLocal.get().get().deserialize(bytes, outOfBandBuffers);
   }
@@ -188,76 +203,6 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   @Override
   public Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers) {
     return bindingThreadLocal.get().get().deserialize(channel, outOfBandBuffers);
-  }
-
-  @Override
-  public byte[] serializeJavaObject(Object obj) {
-    return bindingThreadLocal.get().get().serializeJavaObject(obj);
-  }
-
-  @Override
-  public void serializeJavaObject(MemoryBuffer buffer, Object obj) {
-    bindingThreadLocal.get().get().serializeJavaObject(buffer, obj);
-  }
-
-  @Override
-  public void serializeJavaObject(OutputStream outputStream, Object obj) {
-    bindingThreadLocal.get().get().serializeJavaObject(outputStream, obj);
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(byte[] data, Class<T> cls) {
-    return bindingThreadLocal.get().get().deserializeJavaObject(data, cls);
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(MemoryBuffer buffer, Class<T> cls) {
-    return bindingThreadLocal.get().get().deserializeJavaObject(buffer, cls);
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(ForyInputStream inputStream, Class<T> cls) {
-    return bindingThreadLocal.get().get().deserializeJavaObject(inputStream, cls);
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(ForyReadableChannel channel, Class<T> cls) {
-    return bindingThreadLocal.get().get().deserializeJavaObject(channel, cls);
-  }
-
-  @Override
-  public byte[] serializeJavaObjectAndClass(Object obj) {
-    return bindingThreadLocal.get().get().serializeJavaObjectAndClass(obj);
-  }
-
-  @Override
-  public void serializeJavaObjectAndClass(MemoryBuffer buffer, Object obj) {
-    bindingThreadLocal.get().get().serializeJavaObjectAndClass(buffer, obj);
-  }
-
-  @Override
-  public void serializeJavaObjectAndClass(OutputStream outputStream, Object obj) {
-    bindingThreadLocal.get().get().serializeJavaObjectAndClass(outputStream, obj);
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(byte[] data) {
-    return bindingThreadLocal.get().get().deserializeJavaObjectAndClass(data);
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(MemoryBuffer buffer) {
-    return bindingThreadLocal.get().get().deserializeJavaObjectAndClass(buffer);
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(ForyInputStream inputStream) {
-    return bindingThreadLocal.get().get().deserializeJavaObjectAndClass(inputStream);
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(ForyReadableChannel channel) {
-    return bindingThreadLocal.get().get().deserializeJavaObjectAndClass(channel);
   }
 
   @Override

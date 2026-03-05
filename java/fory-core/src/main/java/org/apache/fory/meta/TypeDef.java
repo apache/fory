@@ -43,6 +43,7 @@ import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.MetaSharedSerializer;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.Types;
@@ -347,17 +348,20 @@ public class TypeDef implements Serializable {
   /** Read class definition from buffer. */
   public static TypeDef readTypeDef(Fory fory, MemoryBuffer buffer) {
     if (fory.isCrossLanguage()) {
-      return TypeDefDecoder.decodeTypeDef(fory.getXtypeResolver(), buffer, buffer.readInt64());
+      return TypeDefDecoder.decodeTypeDef(
+          (XtypeResolver) fory.getTypeResolver(), buffer, buffer.readInt64());
     }
-    return NativeTypeDefDecoder.decodeTypeDef(fory.getClassResolver(), buffer, buffer.readInt64());
+    return NativeTypeDefDecoder.decodeTypeDef(
+        (ClassResolver) fory.getTypeResolver(), buffer, buffer.readInt64());
   }
 
   /** Read class definition from buffer. */
   public static TypeDef readTypeDef(Fory fory, MemoryBuffer buffer, long header) {
     if (fory.isCrossLanguage()) {
-      return TypeDefDecoder.decodeTypeDef(fory.getXtypeResolver(), buffer, header);
+      return TypeDefDecoder.decodeTypeDef((XtypeResolver) fory.getTypeResolver(), buffer, header);
     }
-    return NativeTypeDefDecoder.decodeTypeDef(fory.getClassResolver(), buffer, header);
+    return NativeTypeDefDecoder.decodeTypeDef(
+        (ClassResolver) fory.getTypeResolver(), buffer, header);
   }
 
   /**
@@ -432,7 +436,7 @@ public class TypeDef implements Serializable {
       return TypeDefEncoder.buildTypeDef(fory, cls);
     }
     return NativeTypeDefEncoder.buildTypeDef(
-        fory.getClassResolver(), cls, buildFields(fory, cls, resolveParent), true);
+        (ClassResolver) fory.getTypeResolver(), cls, buildFields(fory, cls, resolveParent), true);
   }
 
   /** Build class definition from fields of class. */
@@ -460,7 +464,7 @@ public class TypeDef implements Serializable {
             .collect(Collectors.toList());
     if (resolver.getFory().isCrossLanguage()) {
       return TypeDefEncoder.buildTypeDefWithFieldInfos(
-          (org.apache.fory.resolver.XtypeResolver) resolver, targetCls, fieldInfos);
+          (XtypeResolver) resolver, targetCls, fieldInfos);
     }
     return NativeTypeDefEncoder.buildTypeDefWithFieldInfos(
         (ClassResolver) resolver, targetCls, fieldInfos, hasFieldsMeta);

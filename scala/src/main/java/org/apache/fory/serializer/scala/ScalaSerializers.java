@@ -22,7 +22,7 @@ package org.apache.fory.serializer.scala;
 import org.apache.fory.AbstractThreadSafeFory;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 import scala.collection.immutable.NumericRange;
@@ -39,7 +39,7 @@ public class ScalaSerializers {
   }
 
   public static void registerSerializers(Fory fory) {
-    ClassResolver resolver = setSerializerFactory(fory);
+    TypeResolver resolver = setSerializerFactory(fory);
 
     resolver.registerSerializer(IterableToFactoryClass, new ToFactorySerializers.IterableToFactorySerializer(fory));
     resolver.registerSerializer(MapToFactoryClass, new ToFactorySerializers.MapToFactorySerializer(fory));
@@ -167,8 +167,8 @@ public class ScalaSerializers {
     resolver.register(scala.collection.mutable.BitSet$.class);
   }
 
-  private static ClassResolver setSerializerFactory(Fory fory) {
-    ClassResolver resolver = fory.getClassResolver();
+  private static TypeResolver setSerializerFactory(Fory fory) {
+    TypeResolver resolver = fory.getTypeResolver();
     ScalaDispatcher dispatcher = new ScalaDispatcher();
     SerializerFactory factory = resolver.getSerializerFactory();
     if (factory != null) {

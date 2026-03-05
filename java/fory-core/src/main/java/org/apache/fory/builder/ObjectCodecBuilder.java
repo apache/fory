@@ -97,7 +97,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
       descriptors =
           fory(
               f ->
-                  f.getClassResolver()
+                  f.getTypeResolver()
                       .getTypeDef(beanClass, true)
                       .getDescriptors(SerializationUtils.getTypeResolver(fory), beanClass));
     } else {

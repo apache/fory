@@ -1299,6 +1299,8 @@ func encodingTypeDef(typeResolver *TypeResolver, typeDef *TypeDef) ([]byte, erro
 		return nil, fmt.Errorf("failed to write fields def: %w", err)
 	}
 
+	// Temporary xlang behavior: keep TypeMeta uncompressed.
+	// Some runtimes still do not support TypeMeta decompression.
 	result, err := prependGlobalHeader(buffer, false, len(typeDef.fieldDefs) > 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write global binary header: %w", err)

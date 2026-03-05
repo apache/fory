@@ -16,6 +16,7 @@ While working on Fory, please remember:
 - **GraalVM support using fory codegen**: For GraalVM, use `fory codegen` to generate the serializer when building a native image. Do not use GraalVM reflect-related configuration unless for JDK `proxy`.
 - **Xlang Type System**: Java `native mode(xlang=false)` shares same type systems between type id from `Types.BOOL~Types.STRING` with `xlang mode(xlang=true)`, but for other types, java `native mode` has different type ids.
 - **Remote git repository**: `git@github.com:apache/fory.git` is remote repository, do not use other remote repository when you want to check code under `main` branch, **`apache/main`** is the only target main branch instead of `origin/main`
+- **Refresh remote main before compare**: before any diff/review/compare against `apache/main`, always run `git fetch apache main` first so comparisons use the latest remote main.
 - **Contributor git repository**: A contributor should fork the `git@github.com:apache/fory.git` repo, and git push the code changes into their forked repo, then create a pull request from the branch in their forked repo into `git@github.com:apache/fory.git`.
 - **Debug Test Errors**: always set environment variable `ENABLE_FORY_DEBUG_OUTPUT` to `1` to see debug output.
 
@@ -24,6 +25,7 @@ While working on Fory, please remember:
 - **Primary references**: `README.md`, `CONTRIBUTING.md`, `docs/guide/DEVELOPMENT.md`, and language guides under `docs/guide/`.
 - **Protocol changes**: Read and update the relevant specs in `docs/specification/**` and align cross-language tests.
 - **Docs publishing**: Updates under `docs/guide/` and `docs/benchmarks/` are synced to https://github.com/apache/fory-site; other website content should be changed in that repo.
+- **Benchmark docs refresh is mandatory**: When any benchmark logic/script/config or compared serializer set changes, rerun the relevant benchmarks and refresh corresponding artifacts under `docs/benchmarks/**` (report + plots) before finalizing.
 - **Debugging docs**: C++ debugging guidance lives in `docs/cpp_debug.md`.
 - **Conflicts**: If instructions conflict, follow the most specific module docs and call out the conflict in your response.
 
@@ -557,7 +559,7 @@ Fory python has two implementations for the protocol:
 - **Python mode**: Pure python implementation based on `xlang serialization format`, used for debugging and testing only. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=0` environment variable.
 - **Cython mode**: Cython based implementation based on `xlang serialization format`, which is used by default and has better performance than pure python. This mode can be enabled by setting `ENABLE_FORY_CYTHON_SERIALIZATION=1` environment variable.
 - **Python mode** and **Cython mode** reused some code from each other to reduce code duplication.
-- **Debug Struct Serialization**: set `ENABLE_FORY_PYTHON_JIT=0` when debug struct fields serialization error, this mode is more easy to debug and add logs. Even struct serialization itself has no bug, by enable this mode and adding debug logs, we can narrow the bug scope more easily.
+- **Debug Struct Serialization**: set `ENABLE_FORY_DEBUG_OUTPUT=1` to enable detailed struct serialization/deserialization logs while debugging protocol behavior.
 
 Code structure:
 
@@ -620,6 +622,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 ### Performance Guidelines
 
 - **Performance First**: Never introduce code that reduces performance without explicit justification
+- **Benchmark Required After Perf Optimizations**: For every code change expected to improve performance, run the relevant benchmark immediately after applying the change and report the measured results (command + before/after numbers) in your response/PR.
 - **Zero-Copy**: Leverage zero-copy techniques when possible
 - **JIT Compilation**: Consider JIT compilation opportunities
 - **Memory Layout**: Optimize for cache-friendly memory access patterns

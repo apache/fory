@@ -118,6 +118,7 @@ import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.unsigned.Uint16;
 import org.apache.fory.type.unsigned.Uint32;
+import org.apache.fory.type.unsigned.Uint64;
 import org.apache.fory.type.unsigned.Uint8;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
@@ -159,6 +160,9 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public void initialize() {
     registerDefaultTypes();
+    // Keep xlang default internal serializers aligned with previous bootstrap behavior.
+    // Before resolver unification, these were registered through ClassResolver initialization.
+    Serializers.registerDefaultSerializers(fory);
     if (shareMeta) {
       Serializer serializer = new UnknownStructSerializer(fory, null);
       register(UnknownStruct.class, serializer, "", "unknown_struct", Types.COMPATIBLE_STRUCT, -1);
@@ -445,15 +449,10 @@ public class XtypeResolver extends TypeResolver {
     int oldTypeId = typeInfo.typeId;
     int foryId = oldTypeId;
 
-    if (foryId != Types.EXT && foryId != Types.NAMED_EXT) {
-      if (foryId == Types.STRUCT || foryId == Types.COMPATIBLE_STRUCT) {
-        foryId = Types.EXT;
-      } else if (foryId == Types.NAMED_STRUCT || foryId == Types.NAMED_COMPATIBLE_STRUCT) {
-        foryId = Types.NAMED_EXT;
-      } else {
-        throw new IllegalArgumentException(
-            String.format("Can't register serializer for type %s with id %s", type, oldTypeId));
-      }
+    if (foryId == Types.STRUCT || foryId == Types.COMPATIBLE_STRUCT) {
+      foryId = Types.EXT;
+    } else if (foryId == Types.NAMED_STRUCT || foryId == Types.NAMED_COMPATIBLE_STRUCT) {
+      foryId = Types.NAMED_EXT;
     }
     typeInfo = typeInfo.copy(foryId);
     typeInfo.serializer = serializer;
@@ -827,6 +826,7 @@ public class XtypeResolver extends TypeResolver {
     registerType(
         Types.VARINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(fory));
     registerType(Types.UINT32, Uint32.class, new UnsignedSerializers.Uint32Serializer(fory));
+    registerType(Types.UINT64, Uint64.class, new UnsignedSerializers.Uint64Serializer(fory));
 
     // Long types
     registerType(

@@ -415,12 +415,14 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             context.Compatible &&
             keyDeclared &&
             !keyDynamicType &&
-            keyTypeInfo.NeedsTypeInfoForField();
+            keyTypeInfo.NeedsTypeInfoForField() &&
+            !keyTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
         bool writeDeclaredCompatibleValueTypeInfo =
             context.Compatible &&
             valueDeclared &&
             !valueDynamicType &&
-            valueTypeInfo.NeedsTypeInfoForField();
+            valueTypeInfo.NeedsTypeInfoForField() &&
+            !valueTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
         KeyValuePair<TKey, TValue>[] pairs = [.. map];
         if (keyDynamicType || valueDynamicType)
         {
@@ -571,12 +573,14 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
                 context.Compatible &&
                 keyDeclared &&
                 !keyDynamicType &&
-                keyTypeInfo.NeedsTypeInfoForField();
+                keyTypeInfo.NeedsTypeInfoForField() &&
+                !keyTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
             bool readDeclaredCompatibleValueTypeInfo =
                 context.Compatible &&
                 valueDeclared &&
                 !valueDynamicType &&
-                valueTypeInfo.NeedsTypeInfoForField();
+                valueTypeInfo.NeedsTypeInfoForField() &&
+                !valueTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
 
             if (keyNull && valueNull)
             {

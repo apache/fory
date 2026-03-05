@@ -35,7 +35,6 @@ import org.apache.fory.reflect.ObjectCreator;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
@@ -57,7 +56,6 @@ import org.apache.fory.util.record.RecordUtils;
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractObjectSerializer.class);
   protected final RefResolver refResolver;
-  protected final ClassResolver classResolver;
   protected final TypeResolver typeResolver;
   protected final boolean isRecord;
   protected final ObjectCreator<T> objectCreator;
@@ -71,7 +69,6 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   public AbstractObjectSerializer(Fory fory, Class<T> type, ObjectCreator<T> objectCreator) {
     super(fory, type);
     this.refResolver = fory.getRefResolver();
-    this.classResolver = fory.getClassResolver();
     this.typeResolver = fory.getTypeResolver();
     this.isRecord = RecordUtils.isRecord(type);
     this.objectCreator = objectCreator;
@@ -1192,7 +1189,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       }
     }
     DescriptorGrouper descriptorGrouper =
-        fory.getClassResolver().createDescriptorGrouper(descriptors, false);
+        fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
     FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
     fieldInfos = fieldGroups.allFields;
     if (isRecord) {
