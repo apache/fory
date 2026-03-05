@@ -51,7 +51,10 @@ public class ArraySerializers {
 
     public ObjectArraySerializer(Fory fory, Class<T[]> cls) {
       super(fory, cls);
-      fory.getClassResolver().setSerializer(cls, this);
+      TypeResolver resolver = fory.getTypeResolver();
+      if (resolver instanceof ClassResolver) {
+        ((ClassResolver) resolver).setSerializer(cls, this);
+      }
       Preconditions.checkArgument(cls.isArray());
       Class<?> t = cls;
       Class<?> innerType = cls;
@@ -65,19 +68,19 @@ public class ArraySerializers {
       }
       this.innerType = (Class<T>) innerType;
       Class<?> componentType = cls.getComponentType();
-      componentGenericType = fory.getClassResolver().buildGenericType(componentType);
-      if (fory.getClassResolver().isMonomorphic(componentType)) {
+      componentGenericType = fory.getTypeResolver().buildGenericType(componentType);
+      if (fory.getTypeResolver().isMonomorphic(componentType)) {
         if (fory.isCrossLanguage()) {
           this.componentTypeSerializer = null;
         } else {
-          this.componentTypeSerializer = fory.getClassResolver().getSerializer(componentType);
+          this.componentTypeSerializer = fory.getTypeResolver().getSerializer(componentType);
         }
       } else {
         // TODO add TypeInfo cache for non-final component type.
         this.componentTypeSerializer = null;
       }
       this.stubDims = new int[dimension];
-      classInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+      classInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
     }
 
     @Override
@@ -105,7 +108,7 @@ public class ArraySerializers {
         }
       } else {
         Fory fory = this.fory;
-        ClassResolver classResolver = fory.getClassResolver();
+        ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
         TypeInfo typeInfo = null;
         Class<?> elemClass = null;
         for (T t : arr) {

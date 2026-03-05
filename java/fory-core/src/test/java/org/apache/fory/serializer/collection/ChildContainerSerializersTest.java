@@ -104,7 +104,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
       Assert.assertEquals(newList, list);
       Assert.assertEquals(newList.state, 3);
       Assert.assertEquals(
-          fory.getClassResolver().getSerializer(newList.getClass()).getClass(),
+          fory.getTypeResolver().getSerializer(newList.getClass()).getClass(),
           ChildContainerSerializers.ChildArrayListSerializer.class);
       ArrayList<Integer> innerList =
           new ArrayList<Integer>() {
@@ -115,7 +115,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
       // innerList captures outer this.
       serDeCheck(fory, innerList);
       Assert.assertEquals(
-          fory.getClassResolver().getSerializer(innerList.getClass()).getClass(),
+          fory.getTypeResolver().getSerializer(innerList.getClass()).getClass(),
           CollectionSerializers.JDKCompatibleCollectionSerializer.class);
     }
     {
@@ -151,7 +151,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
       Assert.assertEquals(newList, list);
       Assert.assertEquals(newList.state, 3);
       Assert.assertEquals(
-          fory.getClassResolver().getSerializer(newList.getClass()).getClass(),
+          fory.getTypeResolver().getSerializer(newList.getClass()).getClass(),
           ChildContainerSerializers.ChildArrayListSerializer.class);
       ArrayList<Object> innerList =
           new ArrayList<Object>() {
@@ -161,7 +161,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
           };
       copyCheck(fory, innerList);
       Assert.assertEquals(
-          fory.getClassResolver().getSerializer(innerList.getClass()).getClass(),
+          fory.getTypeResolver().getSerializer(innerList.getClass()).getClass(),
           CollectionSerializers.JDKCompatibleCollectionSerializer.class);
     }
     {
@@ -205,7 +205,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
       Assert.assertEquals(newMap, map);
       Assert.assertEquals(newMap.state, 3);
       Assert.assertEquals(
-          fory.getClassResolver().getSerializer(newMap.getClass()).getClass(),
+          fory.getTypeResolver().getSerializer(newMap.getClass()).getClass(),
           ChildContainerSerializers.ChildMapSerializer.class);
     }
     {

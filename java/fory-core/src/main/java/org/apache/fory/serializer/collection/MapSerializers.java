@@ -336,14 +336,14 @@ public class MapSerializers {
     public Map onMapWrite(MemoryBuffer buffer, EnumMap value) {
       buffer.writeVarUint32Small7(value.size());
       Class keyType = (Class) Platform.getObject(value, keyTypeFieldOffset);
-      fory.getClassResolver().writeClassAndUpdateCache(buffer, keyType);
+      ((ClassResolver) fory.getTypeResolver()).writeClassAndUpdateCache(buffer, keyType);
       return value;
     }
 
     @Override
     public EnumMap newMap(MemoryBuffer buffer) {
       setNumElements(buffer.readVarUint32Small7());
-      Class<?> keyType = fory.getClassResolver().readTypeInfo(buffer).getCls();
+      Class<?> keyType = fory.getTypeResolver().readTypeInfo(buffer).getCls();
       return new EnumMap(keyType);
     }
 
@@ -361,7 +361,7 @@ public class MapSerializers {
 
     @Override
     protected <K, V> void copyEntry(Map<K, V> originMap, Map<K, V> newMap) {
-      ClassResolver classResolver = fory.getClassResolver();
+      ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
       for (Entry<K, V> entry : originMap.entrySet()) {
         V value = entry.getValue();
         if (value != null) {
@@ -388,14 +388,14 @@ public class MapSerializers {
       Preconditions.checkArgument(
           !fory.isCrossLanguage(),
           "Fory cross-language default map serializer should use " + MapSerializer.class);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
       Class<? extends Serializer> serializerClass =
-          fory.getClassResolver()
+          ((ClassResolver) fory.getTypeResolver())
               .getObjectSerializerClass(
                   cls, sc -> dataSerializer = Serializers.newSerializer(fory, cls, sc));
       dataSerializer = Serializers.newSerializer(fory, cls, serializerClass);
       // No need to set object serializer to this, it will be set in class resolver later.
-      // fory.getClassResolver().setSerializer(cls, this);
+      // fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override

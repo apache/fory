@@ -45,38 +45,28 @@ Fory fory = Fory.builder()
 
 ## Using Wrong API for Deserialization
 
-Make sure you use the matching API pairs:
+Use `serialize` with one of the `deserialize` overloads:
 
-| Serialization API                  | Deserialization API                  |
-| ---------------------------------- | ------------------------------------ |
-| `Fory#serialize`                   | `Fory#deserialize`                   |
-| `Fory#serializeJavaObject`         | `Fory#deserializeJavaObject`         |
-| `Fory#serializeJavaObjectAndClass` | `Fory#deserializeJavaObjectAndClass` |
+| Serialization API | Deserialization API |
+| ----------------- | ------------------- |
+| `Fory#serialize`  | `Fory#deserialize`  |
 
-**Wrong usage examples:**
+**Wrong usage example:**
 
 ```java
-// ❌ Wrong: serialize with serialize, deserialize with deserializeJavaObject
-byte[] bytes = fory.serialize(object);
-Object result = fory.deserializeJavaObject(bytes, MyClass.class);  // Wrong!
-
-// ❌ Wrong: serialize with serializeJavaObject, deserialize with deserialize
-byte[] bytes = fory.serializeJavaObject(object);
-Object result = fory.deserialize(bytes);  // Wrong!
+// ❌ Wrong: deserialize with an incompatible target class
+byte[] bytes = fory.serialize(struct1);
+Struct2 result = fory.deserialize(bytes, Struct2.class);  // May throw ClassCastException
 ```
 
 **Correct usage:**
 
 ```java
-// ✅ Correct: matching API pairs
 byte[] bytes = fory.serialize(object);
 Object result = fory.deserialize(bytes);
 
-byte[] bytes = fory.serializeJavaObject(object);
-MyClass result = fory.deserializeJavaObject(bytes, MyClass.class);
-
-byte[] bytes = fory.serializeJavaObjectAndClass(object);
-Object result = fory.deserializeJavaObjectAndClass(bytes);
+byte[] typedBytes = fory.serialize(object);
+MyClass typedResult = fory.deserialize(typedBytes, MyClass.class);
 ```
 
 ## Deserialize POJO into Another Type
@@ -106,8 +96,8 @@ public class DeserializeIntoType {
 
   public static void main(String[] args) {
     Struct1 struct1 = new Struct1(10, "abc");
-    byte[] data = fory.serializeJavaObject(struct1);
-    Struct2 struct2 = (Struct2) fory.deserializeJavaObject(data, Struct2.class);
+    byte[] data = fory.serialize(struct1);
+    Struct2 struct2 = fory.deserialize(data, Struct2.class);
   }
 }
 ```

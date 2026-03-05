@@ -75,7 +75,7 @@ public class FieldGroups {
       }
     }
     DescriptorGrouper descriptorGrouper =
-        fory.getClassResolver().createDescriptorGrouper(descriptors, false);
+        fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
     return buildFieldInfos(fory, descriptorGrouper);
   }
 

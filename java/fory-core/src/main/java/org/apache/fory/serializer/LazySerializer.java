@@ -37,9 +37,9 @@ public class LazySerializer extends Serializer {
   public void write(MemoryBuffer buffer, Object value) {
     if (serializer == null) {
       serializer = serializerSupplier.get();
-      fory.getClassResolver().setSerializer(value.getClass(), serializer);
+      fory.getTypeResolver().setSerializer(value.getClass(), serializer);
       if (!isJava) {
-        fory.getXtypeResolver().getTypeInfo(value.getClass()).setSerializer(serializer);
+        fory.getTypeResolver().getTypeInfo(value.getClass()).setSerializer(serializer);
       }
     }
     serializer.write(buffer, value);
@@ -53,9 +53,9 @@ public class LazySerializer extends Serializer {
     }
     Object value = serializer.read(buffer);
     if (unInit) {
-      fory.getClassResolver().setSerializer(value.getClass(), serializer);
+      fory.getTypeResolver().setSerializer(value.getClass(), serializer);
       if (!isJava) {
-        fory.getXtypeResolver().getTypeInfo(value.getClass()).setSerializer(serializer);
+        fory.getTypeResolver().getTypeInfo(value.getClass()).setSerializer(serializer);
       }
     }
     return value;
@@ -65,7 +65,7 @@ public class LazySerializer extends Serializer {
   public Object copy(Object value) {
     if (serializer == null) {
       serializer = serializerSupplier.get();
-      fory.getClassResolver().setSerializer(value.getClass(), serializer);
+      fory.getTypeResolver().setSerializer(value.getClass(), serializer);
     }
     return serializer.copy(value);
   }

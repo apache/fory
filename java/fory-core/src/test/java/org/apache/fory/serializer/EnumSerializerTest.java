@@ -141,10 +141,10 @@ public class EnumSerializerTest extends ForyTestBase {
 
     // serialize enum "B"
     forySerialization.register(cls1);
-    byte[] bytes = forySerialization.serializeJavaObject(cls1.getEnumConstants()[1]);
+    byte[] bytes = forySerialization.serialize(cls1.getEnumConstants()[1]);
 
     foryDeserialize.register(cls2);
-    Object data = foryDeserialize.deserializeJavaObject(bytes, cls2);
+    Object data = foryDeserialize.deserialize(bytes, cls2);
     assertEquals(cls2.getEnumConstants()[0], data);
   }
 
@@ -178,10 +178,10 @@ public class EnumSerializerTest extends ForyTestBase {
 
     // serialize enum "B"
     forySerialization.register(cls1);
-    byte[] bytes = forySerialization.serializeJavaObject(cls1.getEnumConstants()[1]);
+    byte[] bytes = forySerialization.serialize(cls1.getEnumConstants()[1]);
 
     foryDeserialize.register(cls2);
-    Object data = foryDeserialize.deserializeJavaObject(bytes, cls2);
+    Object data = foryDeserialize.deserialize(bytes, cls2);
     assertEquals(cls2.getEnumConstants()[0], data);
   }
 
@@ -214,11 +214,11 @@ public class EnumSerializerTest extends ForyTestBase {
             .build();
 
     forySerialization.register(cls1);
-    byte[] bytes = forySerialization.serializeJavaObject(cls1.getEnumConstants()[0]);
+    byte[] bytes = forySerialization.serialize(cls1.getEnumConstants()[0]);
 
     try {
       foryDeserialize.register(cls2);
-      foryDeserialize.deserializeJavaObject(bytes, cls2);
+      foryDeserialize.deserialize(bytes, cls2);
       fail("expected to throw exception");
     } catch (Exception e) {
       assertTrue(e instanceof DeserializationException);
@@ -254,9 +254,9 @@ public class EnumSerializerTest extends ForyTestBase {
             .withAsyncCompilation(false)
             .build();
 
-    byte[] bytes = forySerialization.serializeJavaObject(null);
+    byte[] bytes = forySerialization.serialize(null);
 
-    Object data = foryDeserialize.deserializeJavaObject(bytes, cls2);
+    Object data = foryDeserialize.deserialize(bytes, cls2);
     assertNull(data);
   }
 

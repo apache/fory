@@ -90,7 +90,7 @@ public class FeatureTestExample {
     PrivateConstructorClass deserialized =
         (PrivateConstructorClass) fory.deserialize(fory.serialize(original));
     Preconditions.checkArgument(
-        fory.getClassResolver().getSerializer(PrivateConstructorClass.class) instanceof Generated);
+        fory.getTypeResolver().getSerializer(PrivateConstructorClass.class) instanceof Generated);
     Preconditions.checkArgument("test-value".equals(deserialized.getValue()));
     System.out.println("Private constructor class test passed");
 

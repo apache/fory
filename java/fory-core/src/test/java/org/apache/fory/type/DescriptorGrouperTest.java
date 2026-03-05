@@ -77,7 +77,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
   public void testComparatorByTypeAndName() {
     Fory fory = Fory.builder().build();
     List<Descriptor> descriptors = createDescriptors();
-    descriptors.sort(fory.getClassResolver().createTypeAndNameComparator());
+    descriptors.sort(((ClassResolver) fory.getTypeResolver()).createTypeAndNameComparator());
     List<? extends Class<?>> classes =
         descriptors.stream().map(Descriptor::getRawType).collect(Collectors.toList());
     List<Class<?>> expected =
@@ -114,7 +114,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
       descriptors.add(createDescriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass", false));
     }
     Collections.shuffle(descriptors, new Random(7));
-    descriptors.sort(fory.getClassResolver().getPrimitiveComparator());
+    descriptors.sort(fory.getTypeResolver().getPrimitiveComparator());
     List<? extends Class<?>> classes =
         descriptors.stream().map(Descriptor::getRawType).collect(Collectors.toList());
     // With compression enabled (default): int/long are compressed and go to the end
@@ -143,7 +143,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
     }
     Collections.shuffle(descriptors, new Random(7));
     Fory fory = Fory.builder().build();
-    descriptors.sort(fory.getClassResolver().getPrimitiveComparator());
+    descriptors.sort(fory.getTypeResolver().getPrimitiveComparator());
     List<? extends Class<?>> classes =
         descriptors.stream().map(Descriptor::getRawType).collect(Collectors.toList());
     // With compression enabled (default): int/long are compressed and go to the end
@@ -192,8 +192,8 @@ public class DescriptorGrouperTest extends ForyTestBase {
                 descriptors,
                 false,
                 null,
-                fory.getClassResolver().getPrimitiveComparator(),
-                fory.getClassResolver().createTypeAndNameComparator())
+                fory.getTypeResolver().getPrimitiveComparator(),
+                ((ClassResolver) fory.getTypeResolver()).createTypeAndNameComparator())
             .sort();
     {
       List<? extends Class<?>> classes =
@@ -278,8 +278,8 @@ public class DescriptorGrouperTest extends ForyTestBase {
                 createDescriptors(),
                 false,
                 null,
-                fory.getClassResolver().getPrimitiveComparator(),
-                fory.getClassResolver().createTypeAndNameComparator())
+                fory.getTypeResolver().getPrimitiveComparator(),
+                ((ClassResolver) fory.getTypeResolver()).createTypeAndNameComparator())
             .sort();
     {
       List<? extends Class<?>> classes =
@@ -331,7 +331,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
   @Test
   public void testNormalizedTypeNameComparator() {
     Fory fory = builder().build();
-    ClassResolver classResolver = fory.getClassResolver();
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     Comparator<Descriptor> comparator = classResolver.createTypeAndNameComparator();
 
     // Create descriptors with different Collection/Map subtypes
@@ -400,7 +400,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
             new TypeRef<ArrayList<String>>() {}, "arrayListField", -1, "TestClass", false));
     Fory fory = Fory.builder().build();
     // Sort with the static comparator
-    descriptors.sort(fory.getClassResolver().createTypeAndNameComparator());
+    descriptors.sort(((ClassResolver) fory.getTypeResolver()).createTypeAndNameComparator());
 
     // Get type names after sorting
     List<String> typeNames =

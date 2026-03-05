@@ -30,6 +30,7 @@ import org.apache.fory.annotation.ForyField;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.MapFields;
 import org.apache.fory.test.bean.Struct;
@@ -42,10 +43,10 @@ public class NativeTypeDefEncoderTest {
   public void testBasicTypeDef() {
     Fory fory = Fory.builder().withMetaShare(true).build();
     Class<TypeDefTest.TestFieldsOrderClass1> type = TypeDefTest.TestFieldsOrderClass1.class;
-    List<FieldInfo> fieldsInfo = buildFieldsInfo(fory.getClassResolver(), type);
+    List<FieldInfo> fieldsInfo = buildFieldsInfo((ClassResolver) fory.getTypeResolver(), type);
     MemoryBuffer buffer =
         NativeTypeDefEncoder.encodeTypeDef(
-            fory.getClassResolver(), type, getClassFields(type, fieldsInfo), true);
+            (ClassResolver) fory.getTypeResolver(), type, getClassFields(type, fieldsInfo), true);
     TypeDef typeDef = TypeDef.readTypeDef(fory, buffer);
     Assert.assertEquals(typeDef.getClassName(), type.getName());
     Assert.assertEquals(typeDef.getFieldsInfo().size(), type.getDeclaredFields().length);
@@ -212,7 +213,9 @@ public class NativeTypeDefEncoderTest {
 
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> buildFieldsInfo(fory.getClassResolver(), ClassWithDuplicateTagIds.class));
+        () ->
+            buildFieldsInfo(
+                (ClassResolver) fory.getTypeResolver(), ClassWithDuplicateTagIds.class));
   }
 
   @Test
@@ -221,7 +224,7 @@ public class NativeTypeDefEncoderTest {
 
     // Should not throw any exception
     List<FieldInfo> fieldsInfo =
-        buildFieldsInfo(fory.getClassResolver(), ClassWithValidTagIds.class);
+        buildFieldsInfo((ClassResolver) fory.getTypeResolver(), ClassWithValidTagIds.class);
 
     Assert.assertEquals(fieldsInfo.size(), 3);
     // Verify all fields have the correct tag IDs
@@ -236,6 +239,6 @@ public class NativeTypeDefEncoderTest {
 
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> buildFieldsInfo(fory.getClassResolver(), ClassWithMixedFields.class));
+        () -> buildFieldsInfo((ClassResolver) fory.getTypeResolver(), ClassWithMixedFields.class));
   }
 }

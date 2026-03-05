@@ -1044,6 +1044,8 @@ impl TypeMeta {
         if write_meta_fields_flag {
             header |= HAS_FIELDS_META_FLAG;
         }
+        // Temporary xlang behavior: keep TypeMeta uncompressed.
+        // Some runtimes still do not support TypeMeta decompression.
         let is_compressed = false;
         if is_compressed {
             header |= COMPRESS_META_FLAG;

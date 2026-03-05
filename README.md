@@ -609,7 +609,7 @@ Dynamic serialization can deserialize arbitrary types, which may introduce risks
 Fory enables class registration **by default** for dynamic protocols, allowing only trusted registered types.
 **Do not disable class registration unless you can ensure your environment is secure**.
 
-If this option is disabled, you are responsible for serialization security. You should implement and configure a customized `ClassChecker` or `DeserializationPolicy` for fine-grained security control
+If this option is disabled, you are responsible for serialization security. You should implement and configure a customized `TypeChecker` or `DeserializationPolicy` for fine-grained security control.
 
 To report security vulnerabilities in Apache Fory™, please follow the [ASF vulnerability reporting process](https://apache.org/security/#reporting-a-vulnerability).
 

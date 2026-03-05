@@ -106,21 +106,11 @@ Object obj = fory.deserialize(bytes);
 ### Serialize/Deserialize with Type
 
 ```java
-// Serialize with explicit type
-byte[] bytes = fory.serializeJavaObject(object);
+// Serialize object
+byte[] bytes = fory.serialize(object);
 
 // Deserialize with expected type
-MyClass obj = fory.deserializeJavaObject(bytes, MyClass.class);
-```
-
-### Serialize/Deserialize with Type Info
-
-```java
-// Serialize with type information
-byte[] bytes = fory.serializeJavaObjectAndClass(object);
-
-// Deserialize with embedded type info
-Object obj = fory.deserializeJavaObjectAndClass(bytes);
+MyClass obj = fory.deserialize(bytes, MyClass.class);
 ```
 
 ## Best Practices
