@@ -623,9 +623,9 @@ TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
 // Test max_collection_size using objects (e.g., strings)
 TEST(CollectionSerializerTest, MaxCollectionSizeGuardrail) {
   auto fory = Fory::builder()
-      .xlang(true)
-      .max_collection_size(2) // Limit to 2 elements
-      .build();
+                  .xlang(true)
+                  .max_collection_size(2) // Limit to 2 elements
+                  .build();
   fory.register_struct<VectorStringHolder>(200);
 
   VectorStringHolder original;
@@ -638,15 +638,13 @@ TEST(CollectionSerializerTest, MaxCollectionSizeGuardrail) {
       bytes_result->data(), bytes_result->size());
 
   ASSERT_FALSE(deserialize_result.ok());
-  EXPECT_TRUE(deserialize_result.error().message().find("exceeds max_collection_size") != std::string::npos);
+  EXPECT_TRUE(deserialize_result.error().message().find(
+                  "exceeds max_collection_size") != std::string::npos);
 }
 
 // Test max_binary_size using primitive numbers
 TEST(CollectionSerializerTest, MaxBinarySizeGuardrail) {
-  auto fory = Fory::builder()
-      .xlang(true)
-      .max_binary_size(10)
-      .build();
+  auto fory = Fory::builder().xlang(true).max_binary_size(10).build();
   fory.register_struct<VectorIntHolder>(201);
 
   VectorIntHolder original;
@@ -659,7 +657,8 @@ TEST(CollectionSerializerTest, MaxBinarySizeGuardrail) {
       bytes_result->data(), bytes_result->size());
 
   ASSERT_FALSE(deserialize_result.ok());
-  EXPECT_TRUE(deserialize_result.error().message().find("exceeds max_binary_size") != std::string::npos);
+  EXPECT_TRUE(deserialize_result.error().message().find(
+                  "exceeds max_binary_size") != std::string::npos);
 }
 
 } // namespace
