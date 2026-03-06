@@ -124,9 +124,11 @@ cdef class Buffer:
         object output_stream
         Py_ssize_t shape[1]
         Py_ssize_t stride[1]
+        int32_t max_binary_size
 
-    def __init__(self,  data not None, int32_t offset=0, length=None):
+    def __init__(self,  data not None, int32_t offset=0, length=None, int32_t max_binary_size= 64 * 1024 * 1024):
         self.data = data
+        self.max_binary_size = max_binary_size
         cdef int32_t buffer_len = len(data)
         cdef int length_
         if length is None:
@@ -156,6 +158,7 @@ cdef class Buffer:
         if stream_buffer == NULL:
             raise ValueError("failed to create stream buffer")
         cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.max_binary_size = 64 * 1024 * 1024
         buffer.c_buffer = move(deref(stream_buffer))
         del stream_buffer
         buffer.data = stream
@@ -167,6 +170,7 @@ cdef class Buffer:
     @staticmethod
     cdef Buffer wrap(shared_ptr[CBuffer] c_buffer):
         cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.max_binary_size = 64 * 1024 * 1024
         cdef CBuffer* ptr = c_buffer.get()
         buffer.c_buffer = CBuffer(ptr.data(), ptr.size(), False)
         cdef _SharedBufferOwner owner = _SharedBufferOwner.__new__(_SharedBufferOwner)
@@ -183,6 +187,7 @@ cdef class Buffer:
         if buf == NULL:
             raise MemoryError("out of memory")
         cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.max_binary_size = 64 * 1024 * 1024
         buffer.c_buffer = move(deref(buf))
         del buf
         buffer.data = None
@@ -407,6 +412,10 @@ cdef class Buffer:
     cpdef inline bytes read_bytes(self, int32_t length):
         if length == 0:
             return b""
+
+        if length > self.max_binary_size:
+            raise ValueError(f"Binary size {length} exceeds the configured limit of {self.max_binary_size}")
+
         cdef bytes py_bytes = PyBytes_FromStringAndSize(NULL, length)
         if py_bytes is None:
             raise MemoryError("out of memory")
