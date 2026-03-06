@@ -621,15 +621,12 @@ TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
 }
 
 // Test max_collection_size using objects (e.g., strings)
-TEST(CollectionSerializerTest, MaxCollectionSizeGuardrail) {
-  auto fory = Fory::builder()
-                  .xlang(true)
-                  .max_collection_size(2) // Limit to 2 elements
-                  .build();
+TEST(CollectionSerializerTest, MaxCollectionSizeNativeGuardrail) {
+  auto fory = Fory::builder().xlang(false).max_collection_size(2).build();
   fory.register_struct<VectorStringHolder>(200);
 
   VectorStringHolder original;
-  original.strings = {"one", "two", "three"}; // 3 elements > limit of 2
+  original.strings = {"A", "B", "C"};
 
   auto bytes_result = fory.serialize(original);
   ASSERT_TRUE(bytes_result.ok());
@@ -643,17 +640,15 @@ TEST(CollectionSerializerTest, MaxCollectionSizeGuardrail) {
 }
 
 // Test max_binary_size using primitive numbers
-TEST(CollectionSerializerTest, MaxBinarySizeGuardrail) {
-  auto fory = Fory::builder().xlang(true).max_binary_size(10).build();
-  fory.register_struct<VectorIntHolder>(201);
+TEST(CollectionSerializerTest, MaxBinarySizeNativeGuardrail) {
+  auto fory = Fory::builder().xlang(false).max_binary_size(10).build();
 
-  VectorIntHolder original;
-  original.numbers = {1, 2, 3, 4, 5};
+  std::vector<int32_t> large_data = {1, 2, 3, 4, 5};
 
-  auto bytes_result = fory.serialize(original);
+  auto bytes_result = fory.serialize(large_data);
   ASSERT_TRUE(bytes_result.ok());
 
-  auto deserialize_result = fory.deserialize<VectorIntHolder>(
+  auto deserialize_result = fory.deserialize<std::vector<int32_t>>(
       bytes_result->data(), bytes_result->size());
 
   ASSERT_FALSE(deserialize_result.ok());

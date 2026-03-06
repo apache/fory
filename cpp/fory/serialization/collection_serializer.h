@@ -829,6 +829,13 @@ struct Serializer<
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<T, Alloc>();
     }
+
+    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
+      return std::vector<T, Alloc>();
+    }
+
     std::vector<T, Alloc> result;
     result.reserve(size);
     for (uint32_t i = 0; i < size; ++i) {
@@ -1129,6 +1136,13 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::list<T, Alloc>();
     }
+
+    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
+      return std::list<T, Alloc>();
+    }
+
     std::list<T, Alloc> result;
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1326,6 +1340,13 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::deque<T, Alloc>();
     }
+
+    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
+      return std::deque<T, Alloc>();
+    }
+
     std::deque<T, Alloc> result;
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1387,6 +1408,13 @@ struct Serializer<std::forward_list<T, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::forward_list<T, Alloc>();
     }
+
+    if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
+      return std::forward_list<T, Alloc>();
+    }
+
     // Per xlang spec: header and type_info are omitted when length is 0
     if (length == 0) {
       return std::forward_list<T, Alloc>();
@@ -1751,6 +1779,13 @@ struct Serializer<std::forward_list<T, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::forward_list<T, Alloc>();
     }
+
+    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
+      ctx.set_error(
+          Error::invalid_data("Collection length exceeds max_collection_size"));
+      return std::forward_list<T, Alloc>();
+    }
+
     std::vector<T> temp;
     temp.reserve(size);
     for (uint32_t i = 0; i < size; ++i) {
