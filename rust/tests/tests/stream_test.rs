@@ -166,16 +166,18 @@ mod stream_tests {
 
         // bool
         let bytes = fory.serialize(&true).unwrap();
-        assert_eq!(deserialize_helper::<bool>(&fory, &bytes), true);
+        assert!(deserialize_helper::<bool>(&fory, &bytes));
 
         // i32
         let bytes = fory.serialize(&-42i32).unwrap();
         assert_eq!(deserialize_helper::<i32>(&fory, &bytes), -42i32);
 
         // f64
-        let bytes = fory.serialize(&3.14159f64).unwrap();
-        assert_eq!(deserialize_helper::<f64>(&fory, &bytes), 3.14159f64);
-
+        let bytes = fory.serialize(&std::f64::consts::PI).unwrap();
+        assert_eq!(
+            deserialize_helper::<f64>(&fory, &bytes),
+            std::f64::consts::PI
+        );
         // Vec<i32>
         let vec = vec![1i32, 2, 3, 5, 8];
         let bytes = fory.serialize(&vec).unwrap();
