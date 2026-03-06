@@ -148,7 +148,7 @@ cdef class Buffer:
         self.output_stream = None
 
     @classmethod
-    def from_stream(cls, stream not None, uint32_t buffer_size=4096):
+    def from_stream(cls, stream not None, uint32_t buffer_size=4096, int32_t max_binary_size=64 * 1024 * 1024):
         cdef CBuffer* stream_buffer
         cdef c_string stream_error
         if Fory_PyCreateBufferFromStream(
@@ -158,7 +158,7 @@ cdef class Buffer:
         if stream_buffer == NULL:
             raise ValueError("failed to create stream buffer")
         cdef Buffer buffer = Buffer.__new__(Buffer)
-        buffer.max_binary_size = 64 * 1024 * 1024
+        buffer.max_binary_size = max_binary_size
         buffer.c_buffer = move(deref(stream_buffer))
         del stream_buffer
         buffer.data = stream
@@ -182,12 +182,12 @@ cdef class Buffer:
         return buffer
 
     @classmethod
-    def allocate(cls, int32_t size):
+    def allocate(cls, int32_t size, int32_t max_binary_size=64 * 1024 * 1024):
         cdef CBuffer* buf = allocate_buffer(size)
         if buf == NULL:
             raise MemoryError("out of memory")
         cdef Buffer buffer = Buffer.__new__(Buffer)
-        buffer.max_binary_size = 64 * 1024 * 1024
+        buffer.max_binary_size = max_binary_size
         buffer.c_buffer = move(deref(buf))
         del buf
         buffer.data = None

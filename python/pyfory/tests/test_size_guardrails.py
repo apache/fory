@@ -16,10 +16,11 @@
 # under the License.
 
 """
-Test max_collection_size guardrail to prevent OOM attacks from malicious payloads.
+Test max_collection_size and max_binary_size guardrails to prevent OOM attacks
+from malicious payloads.
 
 Collections preallocate memory based on declared size, so they need guardrails.
-Binary/strings do NOT need limits - buffer checks availability before allocation.
+Binary reads are guarded by max_binary_size on the Buffer.
 """
 
 from dataclasses import dataclass
@@ -29,12 +30,20 @@ import pytest
 
 import pyfory
 from pyfory import Fory
+from pyfory.serialization import Buffer
 
 
 def roundtrip(data, limit, xlang=False, ref=False):
     """Serialize and deserialize with given collection size limit."""
     writer = Fory(xlang=xlang, ref=ref)
     reader = Fory(xlang=xlang, ref=ref, max_collection_size=limit)
+    return reader.deserialize(writer.serialize(data))
+
+
+def roundtrip_binary(data, max_binary_size, xlang=False, ref=False):
+    """Serialize and deserialize with given binary size limit."""
+    writer = Fory(xlang=xlang, ref=ref)
+    reader = Fory(xlang=xlang, ref=ref, max_binary_size=max_binary_size)
     return reader.deserialize(writer.serialize(data))
 
 
@@ -103,9 +112,25 @@ class TestCollectionSizeLimit:
             reader.deserialize(writer.serialize(Container(items=list(range(10)))))
 
 
-class TestBinaryAndStringNoLimit:
-    """Binary/strings don't need limits - buffer validates before allocation."""
+class TestBinarySizeLimit:
+    """Binary reads are guarded by max_binary_size on the Buffer."""
 
-    @pytest.mark.parametrize("data", [b"x" * 10000, "x" * 10000])
-    def test_large_data_works_with_small_collection_limit(self, data):
-        assert roundtrip(data, limit=5) == data
+    def test_default_limit_is_64mib(self):
+        assert Fory().max_binary_size == 64 * 1024 * 1024
+
+    @pytest.mark.parametrize("xlang", [False, True])
+    def test_within_limit_succeeds(self, xlang):
+        assert roundtrip_binary(b"x" * 100, max_binary_size=1024, xlang=xlang) == b"x" * 100
+
+    @pytest.mark.parametrize("xlang", [False, True])
+    def test_exceeds_limit_fails(self, xlang):
+        with pytest.raises(ValueError, match="exceeds the configured limit"):
+            roundtrip_binary(b"x" * 200, max_binary_size=100, xlang=xlang)
+
+    def test_from_stream_respects_limit(self):
+        import io
+
+        payload = Fory().serialize(b"x" * 200)
+        buf = Buffer.from_stream(io.BytesIO(payload), max_binary_size=100)
+        with pytest.raises(ValueError, match="exceeds the configured limit"):
+            Fory(max_binary_size=100).deserialize(buf)
