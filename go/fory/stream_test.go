@@ -90,12 +90,12 @@ func TestStreamDeserializationSlow(t *testing.T) {
 		t.Fatalf("Serialize failed: %v", err)
 	}
 
-	// Test with slow reader and small minCap to force compaction/growth
+	// Test with slow reader and small bufferSize to force compaction/growth
 	reader := &slowReader{data: data}
 	var decoded StreamTestStruct
 
-	// Create an InputStream with a small minCap (16) to force frequent fills and compactions
-	stream := NewInputStreamWithMinCap(reader, 16)
+	// Create an InputStream with a small bufferSize (16) to force frequent fills and compactions
+	stream := NewInputStreamWithBufferSize(reader, 16)
 	err = f.DeserializeFromStream(stream, &decoded)
 	if err != nil {
 		t.Fatalf("DeserializeFromReader (slow) failed: %v", err)
@@ -191,15 +191,15 @@ func TestInputStreamSequential(t *testing.T) {
 }
 
 func TestInputStreamShrink(t *testing.T) {
-	// Create a large payload that easily escapes the minCap (4096)
+	// Create a large payload that easily escapes the bufferSize (4096)
 	data := make([]byte, 10000)
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
 
-	// Create a stream reader with a tiny minCap so we can trigger Shrink reliably
+	// Create a stream reader with a tiny bufferSize so we can trigger Shrink reliably
 	buf := bytes.NewReader(data)
-	sr := NewInputStreamWithMinCap(buf, 100)
+	sr := NewInputStreamWithBufferSize(buf, 100)
 
 	// Force a read/fill to pull a chunk into memory
 	err := sr.buffer.fill(5000, nil)

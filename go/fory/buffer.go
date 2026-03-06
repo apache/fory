@@ -30,21 +30,21 @@ type ByteBuffer struct {
 	writerIndex int
 	readerIndex int
 	reader      io.Reader
-	minCap      int
+	bufferSize  int
 }
 
 func NewByteBuffer(data []byte) *ByteBuffer {
 	return &ByteBuffer{data: data}
 }
 
-func NewByteBufferFromReader(r io.Reader, minCap int) *ByteBuffer {
-	if minCap <= 0 {
-		minCap = 4096
+func NewByteBufferFromReader(r io.Reader, bufferSize int) *ByteBuffer {
+	if bufferSize <= 0 {
+		bufferSize = 4096
 	}
 	return &ByteBuffer{
-		data:   make([]byte, 0, minCap),
-		reader: r,
-		minCap: minCap,
+		data:       make([]byte, 0, bufferSize),
+		reader:     r,
+		bufferSize: bufferSize,
 	}
 }
 
@@ -74,8 +74,8 @@ func (b *ByteBuffer) fill(n int, errOut *Error) bool {
 		if newCap < n {
 			newCap = n
 		}
-		if newCap < b.minCap {
-			newCap = b.minCap
+		if newCap < b.bufferSize {
+			newCap = b.bufferSize
 		}
 		newData := make([]byte, len(b.data), newCap)
 		copy(newData, b.data)
@@ -479,16 +479,16 @@ func (b *ByteBuffer) Reset() {
 	}
 }
 
-func (b *ByteBuffer) ResetWithReader(r io.Reader, minCap int) {
+func (b *ByteBuffer) ResetWithReader(r io.Reader, bufferSize int) {
 	b.readerIndex = 0
 	b.writerIndex = 0
 	b.reader = r
-	if minCap <= 0 {
-		minCap = 4096
+	if bufferSize <= 0 {
+		bufferSize = 4096
 	}
-	b.minCap = minCap
-	if cap(b.data) < minCap {
-		b.data = make([]byte, 0, minCap)
+	b.bufferSize = bufferSize
+	if cap(b.data) < bufferSize {
+		b.data = make([]byte, 0, bufferSize)
 	} else {
 		b.data = b.data[:0]
 	}

@@ -33,12 +33,12 @@ type InputStream struct {
 // NewInputStream creates a new InputStream that reads from the provided io.Reader.
 // The InputStream owns the buffer and maintains state across sequential Deserialize calls.
 func NewInputStream(r io.Reader) *InputStream {
-	return NewInputStreamWithMinCap(r, 0)
+	return NewInputStreamWithBufferSize(r, 0)
 }
 
-// NewInputStreamWithMinCap creates a new InputStream with a specified minimum buffer capacity.
-func NewInputStreamWithMinCap(r io.Reader, minCap int) *InputStream {
-	buf := NewByteBufferFromReader(r, minCap)
+// NewInputStreamWithBufferSize creates a new InputStream with a specified minimum buffer size.
+func NewInputStreamWithBufferSize(r io.Reader, bufferSize int) *InputStream {
+	buf := NewByteBufferFromReader(r, bufferSize)
 	return &InputStream{
 		buffer: buf,
 	}
@@ -55,7 +55,7 @@ func (is *InputStream) Shrink() {
 
 	readPos := b.readerIndex
 	// Best-effort policy: keep a 4096-byte floor to avoid tiny frequent compactions
-	if readPos <= 4096 || readPos < b.minCap {
+	if readPos <= 4096 || readPos < b.bufferSize {
 		return
 	}
 
@@ -63,14 +63,14 @@ func (is *InputStream) Shrink() {
 	currentCapacity := cap(b.data)
 	targetCapacity := currentCapacity
 
-	if currentCapacity > b.minCap {
+	if currentCapacity > b.bufferSize {
 		if remaining == 0 {
-			targetCapacity = b.minCap
+			targetCapacity = b.bufferSize
 		} else if remaining <= currentCapacity/4 {
 			doubled := remaining * 2
 			targetCapacity = doubled
-			if targetCapacity < b.minCap {
-				targetCapacity = b.minCap
+			if targetCapacity < b.bufferSize {
+				targetCapacity = b.bufferSize
 			}
 		}
 	}
