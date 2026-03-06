@@ -781,8 +781,10 @@ TEST(MapSerializerTest, LargeMapWithPolymorphicValues) {
 }
 
 TEST(MapSerializerTest, MaxMapSizeGuardrail) {
-  // Limit to 2 entries
-  auto fory = Fory::builder().xlang(true).max_collection_size(2).build();
+  auto fory = Fory::builder()
+      .xlang(true)
+      .max_collection_size(2)
+      .build();
 
   std::map<std::string, int32_t> large_map = {{"a", 1}, {"b", 2}, {"c", 3}};
 
@@ -793,8 +795,7 @@ TEST(MapSerializerTest, MaxMapSizeGuardrail) {
       serialize_result->data(), serialize_result->size());
 
   ASSERT_FALSE(deserialize_result.ok());
-  EXPECT_TRUE(deserialize_result.error().message().find(
-                  "exceeds max_collection_size") != std::string::npos);
+  EXPECT_TRUE(deserialize_result.error().message().find("exceeds max_collection_size") != std::string::npos);
 }
 
 int main(int argc, char **argv) {

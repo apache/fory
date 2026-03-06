@@ -618,7 +618,7 @@ struct Serializer<
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<T, Alloc>();
     }
-    // 1. Guardrail: Enforce max_binary_size for binary byte-length reads
+    // Guardrail: Enforce max_binary_size for binary byte-length reads
     if (FORY_PREDICT_FALSE(total_bytes_u32 > ctx.config().max_binary_size)) {
       ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
       return std::vector<T, Alloc>();
@@ -627,13 +627,7 @@ struct Serializer<
       return std::vector<T, Alloc>();
     }
 
-    // 2. Convert bytes to element count and check max_collection_size
     size_t elem_count = total_bytes_u32 / sizeof(T);
-    if (FORY_PREDICT_FALSE(elem_count > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::vector<T, Alloc>();
-    }
 
     if (total_bytes_u32 % sizeof(T) != 0) {
       ctx.set_error(Error::invalid_data(
