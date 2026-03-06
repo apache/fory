@@ -1078,6 +1078,8 @@ cdef class Fory:
     cdef public bint is_peer_out_of_band_enabled
     cdef int32_t max_depth
     cdef int32_t depth
+    cdef public int32_t max_collection_size
+    cdef public int32_t max_binary_size
     cdef object _output_stream
 
     def __init__(
@@ -1090,6 +1092,8 @@ cdef class Fory:
             max_depth: int = 50,
             field_nullable: bool = False,
             meta_compressor=None,
+            max_collection_size: int = 1_000_000,
+            max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -1128,6 +1132,17 @@ cdef class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
+            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
+                and maps (dicts) during deserialization. This limit is used to prevent
+                out-of-memory attacks from malicious payloads that claim extremely large
+                collection sizes, as collections preallocate memory based on the declared
+                size. Raises an exception if exceeded. Default is 1,000,000.
+
+            max_binary_size: Maximum allowed size in bytes for binary data reads during
+                deserialization (default: 64 MB). Raises an exception if a single binary
+                read exceeds this limit, preventing out-of-memory attacks from malicious
+                payloads that claim extremely large binary sizes.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -1149,7 +1164,8 @@ cdef class Fory:
         self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
-        self.buffer = Buffer.allocate(32)
+        self.max_binary_size = max_binary_size
+        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
         self.buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
@@ -1157,6 +1173,7 @@ cdef class Fory:
         self.is_peer_out_of_band_enabled = False
         self.depth = 0
         self.max_depth = max_depth
+        self.max_collection_size = max_collection_size
         self._output_stream = None
 
     def register_serializer(self, cls: Union[type, TypeVar], Serializer serializer):
@@ -1508,7 +1525,7 @@ cdef class Fory:
         """
         try:
             if type(buffer) == bytes:
-                buffer = Buffer(buffer)
+                buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
             return self._deserialize(buffer, buffers, unsupported_objects)
         finally:
             self.reset_read()
