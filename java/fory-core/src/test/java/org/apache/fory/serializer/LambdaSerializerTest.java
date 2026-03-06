@@ -53,7 +53,7 @@ public class LambdaSerializerTest extends ForyTestBase {
       assertEquals(list.get(0).apply(20), Integer.valueOf(40));
     }
     assertSame(
-        fory.getClassResolver().getSerializerClass(Class.class), Serializers.ClassSerializer.class);
+        fory.getTypeResolver().getSerializerClass(Class.class), Serializers.ClassSerializer.class);
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -73,7 +73,7 @@ public class LambdaSerializerTest extends ForyTestBase {
       assertEquals(list.get(0).apply(20), Integer.valueOf(40));
     }
     assertSame(
-        fory.getClassResolver().getSerializerClass(Class.class), Serializers.ClassSerializer.class);
+        fory.getTypeResolver().getSerializerClass(Class.class), Serializers.ClassSerializer.class);
   }
 
   @Test

@@ -93,7 +93,7 @@ public class SerializerFactoryTest {
             return null;
           }
         });
-    Assert.assertEquals(fory.getClassResolver().getSerializerClass(A.class), KryoSerializer.class);
+    Assert.assertEquals(fory.getTypeResolver().getSerializerClass(A.class), KryoSerializer.class);
     A a = new A();
     a.f1 = "f1";
 

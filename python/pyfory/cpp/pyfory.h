@@ -24,6 +24,7 @@
 #include "Python.h"
 #include "fory/type/type.h"
 #include "fory/util/buffer.h"
+#include "fory/util/stream.h"
 
 namespace fory {
 inline constexpr bool Fory_IsInternalTypeId(uint8_t type_id) {
@@ -70,4 +71,9 @@ int Fory_PyWriteBasicFieldToBuffer(PyObject *value, Buffer *buffer,
 PyObject *Fory_PyReadBasicFieldFromBuffer(Buffer *buffer, uint8_t type_id);
 int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
                                   Buffer **out, std::string *error_message);
+int Fory_PyCreateOutputStream(PyObject *stream, OutputStream **out,
+                              std::string *error_message);
+int Fory_PyBindBufferToOutputStream(Buffer *buffer, OutputStream *output_stream,
+                                    std::string *error_message);
+int Fory_PyClearBufferOutputStream(Buffer *buffer, std::string *error_message);
 } // namespace fory

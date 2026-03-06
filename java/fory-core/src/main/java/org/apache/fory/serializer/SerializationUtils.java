@@ -31,7 +31,7 @@ import org.apache.fory.serializer.collection.MapSerializer;
 @Internal
 public class SerializationUtils {
   public static TypeResolver getTypeResolver(Fory fory) {
-    return fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
+    return fory.isCrossLanguage() ? fory.getTypeResolver() : fory.getTypeResolver();
   }
 
   public static TypeInfo getTypeInfo(Fory fory, Class<?> cls) {

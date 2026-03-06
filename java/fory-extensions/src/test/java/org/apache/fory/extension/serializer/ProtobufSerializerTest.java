@@ -31,7 +31,7 @@ public class ProtobufSerializerTest {
     Assert.assertEquals(fory.deserialize(fory.serialize(ByteString.empty())), ByteString.empty());
     ByteString bytes = ByteString.copyFrom(new byte[] {1, 2, 3});
     Assert.assertEquals(fory.deserialize(fory.serialize(bytes)), bytes);
-    Class<?> serializerClass = fory.getClassResolver().getSerializerClass(bytes.getClass());
+    Class<?> serializerClass = fory.getTypeResolver().getSerializerClass(bytes.getClass());
     Assert.assertEquals(serializerClass, ByteStringSerializer.class);
   }
 }

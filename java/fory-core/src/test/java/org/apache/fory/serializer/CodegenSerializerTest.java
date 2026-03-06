@@ -101,7 +101,7 @@ public class CodegenSerializerTest extends ForyTestBase {
     fory.serialize(buffer, cyclic);
     fory.deserialize(buffer);
 
-    Serializer<Cyclic> beanSerializer = fory.getClassResolver().getSerializer(Cyclic.class);
+    Serializer<Cyclic> beanSerializer = fory.getTypeResolver().getSerializer(Cyclic.class);
     fory.getRefResolver().writeRefOrNull(buffer, cyclic);
     beanSerializer.write(buffer, cyclic);
     fory.getRefResolver().readRefOrNull(buffer);
@@ -249,8 +249,8 @@ public class CodegenSerializerTest extends ForyTestBase {
               .build();
       serDeCheck(fory1, pojo);
       Assert.assertNotSame(
-          fory1.getClassResolver().getSerializerClass(CompressTestClass.class),
-          fory.getClassResolver().getSerializerClass(CompressTestClass.class));
+          fory1.getTypeResolver().getSerializerClass(CompressTestClass.class),
+          fory.getTypeResolver().getSerializerClass(CompressTestClass.class));
       Assert.assertTrue(fory1.serialize(pojo).length > bytes.length);
       Assert.assertTrue(fory1.serialize(pojo).length < length);
     }
@@ -342,7 +342,7 @@ public class CodegenSerializerTest extends ForyTestBase {
     A o = serDe(fory, a);
     assertEquals(o.f1, a.f1);
     // local class never static
-    assertSame(fory.getClassResolver().getSerializer(A.class).getClass(), ObjectSerializer.class);
+    assertSame(fory.getTypeResolver().getSerializer(A.class).getClass(), ObjectSerializer.class);
     // TODO how to create a class with `Class#getCanonicalName` returns null and static still.
     // for scala 3:
     // `enum ColorEnum { case Red, Green, Blue }`

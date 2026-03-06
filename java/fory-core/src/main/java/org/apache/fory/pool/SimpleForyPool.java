@@ -157,6 +157,21 @@ public class SimpleForyPool extends AbstractThreadSafeFory {
   }
 
   @Override
+  public <T> T deserialize(MemoryBuffer buffer, Class<T> type) {
+    return execute(fory -> fory.deserialize(buffer, type));
+  }
+
+  @Override
+  public <T> T deserialize(ForyInputStream inputStream, Class<T> type) {
+    return execute(fory -> fory.deserialize(inputStream, type));
+  }
+
+  @Override
+  public <T> T deserialize(ForyReadableChannel channel, Class<T> type) {
+    return execute(fory -> fory.deserialize(channel, type));
+  }
+
+  @Override
   public Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers) {
     return execute(fory -> fory.deserialize(bytes, outOfBandBuffers));
   }
@@ -194,92 +209,6 @@ public class SimpleForyPool extends AbstractThreadSafeFory {
   @Override
   public Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers) {
     return execute(fory -> fory.deserialize(channel, outOfBandBuffers));
-  }
-
-  @Override
-  public byte[] serializeJavaObject(Object obj) {
-    return execute(fory -> fory.serializeJavaObject(obj));
-  }
-
-  @Override
-  public void serializeJavaObject(MemoryBuffer buffer, Object obj) {
-    execute(
-        fory -> {
-          fory.serializeJavaObject(buffer, obj);
-          return null;
-        });
-  }
-
-  @Override
-  public void serializeJavaObject(OutputStream outputStream, Object obj) {
-    execute(
-        fory -> {
-          fory.serializeJavaObject(outputStream, obj);
-          return null;
-        });
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(byte[] data, Class<T> cls) {
-    return execute(fory -> fory.deserializeJavaObject(data, cls));
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(MemoryBuffer buffer, Class<T> cls) {
-    return execute(fory -> fory.deserializeJavaObject(buffer, cls));
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(ForyInputStream inputStream, Class<T> cls) {
-    return execute(fory -> fory.deserializeJavaObject(inputStream, cls));
-  }
-
-  @Override
-  public <T> T deserializeJavaObject(ForyReadableChannel channel, Class<T> cls) {
-    return execute(fory -> fory.deserializeJavaObject(channel, cls));
-  }
-
-  @Override
-  public byte[] serializeJavaObjectAndClass(Object obj) {
-    return execute(fory -> fory.serializeJavaObjectAndClass(obj));
-  }
-
-  @Override
-  public void serializeJavaObjectAndClass(MemoryBuffer buffer, Object obj) {
-    execute(
-        fory -> {
-          fory.serializeJavaObjectAndClass(buffer, obj);
-          return null;
-        });
-  }
-
-  @Override
-  public void serializeJavaObjectAndClass(OutputStream outputStream, Object obj) {
-    execute(
-        fory -> {
-          fory.serializeJavaObjectAndClass(outputStream, obj);
-          return null;
-        });
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(byte[] data) {
-    return execute(fory -> fory.deserializeJavaObjectAndClass(data));
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(MemoryBuffer buffer) {
-    return execute(fory -> fory.deserializeJavaObjectAndClass(buffer));
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(ForyInputStream inputStream) {
-    return execute(fory -> fory.deserializeJavaObjectAndClass(inputStream));
-  }
-
-  @Override
-  public Object deserializeJavaObjectAndClass(ForyReadableChannel channel) {
-    return execute(fory -> fory.deserializeJavaObjectAndClass(channel));
   }
 
   @Override

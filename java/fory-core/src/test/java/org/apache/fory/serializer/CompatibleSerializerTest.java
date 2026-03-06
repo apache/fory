@@ -331,7 +331,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testSerializeJavaObject() {
+  public void testSerializeDeserializeApis() {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
@@ -340,20 +340,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
             .build();
     BeanA beanA = BeanA.createBeanA(2);
     Assert.assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
-    byte[] serialized = fory.serializeJavaObject(beanA);
-    Assert.assertEquals(fory.deserializeJavaObject(serialized, BeanA.class), beanA);
-  }
-
-  @Test
-  public void testSerializeJavaObjectWithTypeInfo() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .requireClassRegistration(false)
-            .build();
-    BeanA beanA = BeanA.createBeanA(2);
-    byte[] serialized = fory.serializeJavaObjectAndClass(beanA);
-    Assert.assertEquals(fory.deserializeJavaObjectAndClass(serialized), beanA);
+    byte[] serialized = fory.serialize(beanA);
+    Assert.assertEquals(fory.deserialize(serialized, BeanA.class), beanA);
   }
 }

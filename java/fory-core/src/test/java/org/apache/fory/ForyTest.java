@@ -306,9 +306,8 @@ public class ForyTest extends ForyTestBase {
     Outer outer = new Outer();
     outer.inner = new Outer.Inner();
     fory.deserialize(fory.serialize(outer));
-    assertTrue(fory.getClassResolver().getSerializer(Outer.class) instanceof ObjectSerializer);
-    assertTrue(
-        fory.getClassResolver().getSerializer(Outer.Inner.class) instanceof ObjectSerializer);
+    assertTrue(fory.getTypeResolver().getSerializer(Outer.class) instanceof ObjectSerializer);
+    assertTrue(fory.getTypeResolver().getSerializer(Outer.Inner.class) instanceof ObjectSerializer);
   }
 
   @Test
@@ -322,8 +321,8 @@ public class ForyTest extends ForyTestBase {
     Outer outer = new Outer();
     outer.inner = new Outer.Inner();
     fory.deserialize(fory.serialize(outer));
-    assertTrue(fory.getClassResolver().getSerializer(Outer.class) instanceof Generated);
-    assertTrue(fory.getClassResolver().getSerializer(Outer.Inner.class) instanceof Generated);
+    assertTrue(fory.getTypeResolver().getSerializer(Outer.class) instanceof Generated);
+    assertTrue(fory.getTypeResolver().getSerializer(Outer.Inner.class) instanceof Generated);
   }
 
   @Data
@@ -507,7 +506,7 @@ public class ForyTest extends ForyTestBase {
     Object struct1 = Struct.createPOJO(structClass1);
     serDe(fory, struct1);
     Class<? extends Serializer> serializerClass =
-        fory.getClassResolver().getSerializerClass(structClass1);
+        fory.getTypeResolver().getSerializerClass(structClass1);
     assertTrue(serializerClass.getName().contains("Codec"));
     map.put(fory, true);
     System.out.println(fory.hashCode());
@@ -517,16 +516,13 @@ public class ForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testSerializeJavaObject() {
+  public void testSerializeDeserializeApis() {
     Fory fory = Fory.builder().requireClassRegistration(false).withLanguage(Language.JAVA).build();
     BeanA beanA = BeanA.createBeanA(2);
-    assertEquals(fory.deserializeJavaObject(fory.serializeJavaObject(beanA), BeanA.class), beanA);
+    assertEquals(fory.deserialize(fory.serialize(beanA), BeanA.class), beanA);
+    assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
     assertEquals(
-        fory.deserializeJavaObjectAndClass(fory.serializeJavaObjectAndClass(beanA)), beanA);
-    assertEquals(
-        fory.deserializeJavaObjectAndClass(
-            MemoryBuffer.fromByteArray(fory.serializeJavaObjectAndClass(beanA))),
-        beanA);
+        fory.deserialize(MemoryBuffer.fromByteArray(fory.serialize(beanA)), BeanA.class), beanA);
   }
 
   @Data
@@ -551,6 +547,53 @@ public class ForyTest extends ForyTestBase {
     }
   }
 
+  @Data
+  @AllArgsConstructor
+  static class NestedWriteBean {
+    int value;
+  }
+
+  static class NestedWriteBeanSerializer extends Serializer<NestedWriteBean> {
+    NestedWriteBeanSerializer(Fory fory) {
+      super(fory, NestedWriteBean.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, NestedWriteBean value) {
+      // Trigger nested serialization to validate the API hint message.
+      fory.serialize(value);
+    }
+
+    @Override
+    public NestedWriteBean read(MemoryBuffer buffer) {
+      return new NestedWriteBean(buffer.readInt32());
+    }
+  }
+
+  @Data
+  @AllArgsConstructor
+  static class NestedReadBean {
+    int value;
+  }
+
+  static class NestedReadBeanSerializer extends Serializer<NestedReadBean> {
+    NestedReadBeanSerializer(Fory fory) {
+      super(fory, NestedReadBean.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, NestedReadBean value) {
+      buffer.writeInt32(value.value);
+    }
+
+    @Override
+    public NestedReadBean read(MemoryBuffer buffer) {
+      // Trigger nested deserialization to validate the API hint message.
+      fory.deserialize(new byte[] {1});
+      return new NestedReadBean(buffer.readInt32());
+    }
+  }
+
   @Test
   public void testRegisterPrivateSerializer() {
     Fory fory = Fory.builder().withRefTracking(true).requireClassRegistration(false).build();
@@ -558,6 +601,29 @@ public class ForyTest extends ForyTestBase {
     DomainObject obj = new DomainObject();
     obj.id = UUID.randomUUID();
     serDeCheckSerializer(fory, obj, "Codec");
+  }
+
+  @Test
+  public void testNestedSerializeHintUsesWriteApi() {
+    Fory fory = Fory.builder().withRefTracking(true).requireClassRegistration(false).build();
+    fory.registerSerializer(NestedWriteBean.class, new NestedWriteBeanSerializer(fory));
+    SerializationException ex =
+        Assert.expectThrows(
+            SerializationException.class, () -> fory.serialize(new NestedWriteBean(1)));
+    assertTrue(ex.getMessage().contains("Fory#writeXXX"));
+    assertTrue(!ex.getMessage().contains("Fory#xwriteXXX"));
+  }
+
+  @Test
+  public void testNestedDeserializeHintUsesReadApi() {
+    Fory fory = Fory.builder().withRefTracking(true).requireClassRegistration(false).build();
+    fory.registerSerializer(NestedReadBean.class, new NestedReadBeanSerializer(fory));
+    byte[] bytes = fory.serialize(new NestedReadBean(1));
+    DeserializationException ex =
+        Assert.expectThrows(DeserializationException.class, () -> fory.deserialize(bytes));
+    String message = ex.getMessage();
+    assertTrue(message != null);
+    assertTrue(!message.contains("Fory#xreadXXX"));
   }
 
   @Test
@@ -621,9 +687,9 @@ public class ForyTest extends ForyTestBase {
             .build();
     MetaContext metaContext = new MetaContext();
     fory.getSerializationContext().setMetaContext(metaContext);
-    byte[] bytes = fory.serializeJavaObjectAndClass(null);
+    byte[] bytes = fory.serialize(null);
     fory.getSerializationContext().setMetaContext(metaContext);
-    Object obj = fory.deserializeJavaObjectAndClass(bytes);
+    Object obj = fory.deserialize(bytes);
     assertNull(obj);
   }
 
@@ -680,18 +746,6 @@ public class ForyTest extends ForyTestBase {
     struct1 = (Struct1) fory1.deserialize(fory2.serialize(struct2));
     Assert.assertEquals(struct1.f1, struct2.f1);
     Assert.assertEquals(struct1.f2, struct2.f2);
-  }
-
-  @Test
-  public void testDeserializeJavaObjectWrongType() {
-    Fory fory = Fory.builder().requireClassRegistration(false).build();
-    Struct1 struct1 = new Struct1(10, "abc");
-    byte[] bytes = fory.serializeJavaObject(struct1);
-    // first deserialize as Struct1 (correct type)
-    Assert.assertEquals(fory.deserializeJavaObject(bytes, Struct1.class), struct1);
-    // then deserialize as Struct2 (wrong type)
-    Assert.assertThrows(
-        DeserializationException.class, () -> fory.deserializeJavaObject(bytes, Struct2.class));
   }
 
   private Object maxDepthData() {

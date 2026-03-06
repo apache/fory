@@ -198,8 +198,8 @@ public class DeserializeIntoType {
 
   public static void main(String[] args) {
     Struct1 struct1 = new Struct1(10, "abc");
-    byte[] data = fory.serializeJavaObject(struct1);
-    Struct2 struct2 = (Struct2) fory.deserializeJavaObject(bytes, Struct2.class);
+    byte[] data = fory.serialize(struct1);
+    Struct2 struct2 = fory.deserialize(data, Struct2.class);
   }
 }
 ```

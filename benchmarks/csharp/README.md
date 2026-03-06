@@ -4,7 +4,7 @@ This benchmark compares Apache Fory C#, protobuf-net, and MessagePack-CSharp.
 
 Serializer setup used in this benchmark:
 
-- `fory`: `Fory.Builder().Build()`
+- `fory`: `Fory.Builder().Compatible(true).Build()`
 - `protobuf`: `protobuf-net` runtime serializer
 - `msgpack`: `MessagePackSerializer.Typeless` with `TypelessContractlessStandardResolver`
 
@@ -23,7 +23,8 @@ cd benchmarks/csharp
 This runs all benchmark cases and generates:
 
 - `build/benchmark_results.json`
-- `report/REPORT.md`
+- `report/README.md`
+- `report/throughput.png` and per-datatype throughput plots (for example `report/struct.png`)
 
 ## Run Options
 
@@ -77,4 +78,5 @@ Latest run (`Darwin arm64`, `.NET 8.0.24`, `--duration 2 --warmup 0.5`):
 Per-case winners vary by payload and operation. The full breakdown is generated at:
 
 - `benchmarks/csharp/build/benchmark_results.json`
-- `benchmarks/csharp/report/REPORT.md`
+- `benchmarks/csharp/report/README.md`
+- `benchmarks/csharp/report/*.png`

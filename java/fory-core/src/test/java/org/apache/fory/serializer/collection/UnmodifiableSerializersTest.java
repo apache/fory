@@ -98,7 +98,7 @@ public class UnmodifiableSerializersTest extends ForyTestBase {
       newValue = Platform.getObject(newObj, sourceCollectionFieldOffset);
       assertEquals(innerValue, newValue);
       assertTrue(
-          fory.getClassResolver()
+          fory.getTypeResolver()
               .getSerializerClass(value.getClass())
               .getName()
               .contains("Unmodifiable"));

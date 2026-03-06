@@ -40,7 +40,7 @@ public class Object2ObjectOpenHashMapTest extends TestBase {
         builder().withCompatibleMode(CompatibleMode.COMPATIBLE).withCodegen(enableCodegen).build();
 
     TestObject2ObjectOpenHashMap o = new TestObject2ObjectOpenHashMap();
-    byte[] bytes = fory.serializeJavaObject(o);
-    Assert.assertEquals(fory.deserializeJavaObject(bytes, TestObject2ObjectOpenHashMap.class), o);
+    byte[] bytes = fory.serialize(o);
+    Assert.assertEquals(fory.deserialize(bytes, TestObject2ObjectOpenHashMap.class), o);
   }
 }

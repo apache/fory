@@ -148,7 +148,7 @@ public class SubListSerializers {
 
     public SubListSerializer(Fory fory, Class<List> type) {
       super(fory, type, true);
-      fory.getClassResolver().setSerializer(type, this);
+      fory.getTypeResolver().setSerializer(type, this);
     }
 
     @Override

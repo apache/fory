@@ -77,13 +77,13 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
 
   public ObjectSerializer(Fory fory, Class<T> cls, boolean resolveParent) {
     super(fory, cls);
+    typeResolver = fory.getTypeResolver();
     // avoid recursive building serializers.
     // Use `setSerializerIfAbsent` to avoid overwriting existing serializer for class when used
     // as data serializer.
     if (resolveParent) {
-      classResolver.setSerializerIfAbsent(cls, this);
+      typeResolver.setSerializerIfAbsent(cls, this);
     }
-    typeResolver = fory.getTypeResolver();
     Collection<Descriptor> descriptors;
     boolean shareMeta = fory.getConfig().isMetaShareEnabled();
     if (shareMeta) {

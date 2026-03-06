@@ -287,6 +287,7 @@ cdef class DataClassSerializer(Serializer):
             self._write_slots(buffer, value)
         else:
             self._write_dict(buffer, value)
+        self.fory.try_flush()
 
     cdef inline void _write_dict(self, Buffer buffer, object value):
         cdef dict value_dict = value.__dict__
@@ -383,6 +384,7 @@ cdef class DataClassSerializer(Serializer):
                 self._apply_missing_defaults_slots(obj)
             else:
                 self._apply_missing_defaults_dict(obj.__dict__)
+        buffer.shrink_input_buffer()
         return obj
 
     cdef inline void _read_dict(self, Buffer buffer, object obj):

@@ -16,6 +16,7 @@
 # under the License.
 
 from libc.stdint cimport *
+from libc.stddef cimport size_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
@@ -204,6 +205,10 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
         void skip(uint32_t length, CError& error)
 
+        c_bool has_input_stream() const
+
+        void shrink_input_buffer()
+
         void copy(uint32_t start, uint32_t nbytes,
                   uint8_t* out, uint32_t offset) const
 
@@ -211,6 +216,18 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
     CBuffer* allocate_buffer(uint32_t size)
     c_bool allocate_buffer(uint32_t size, shared_ptr[CBuffer]* out)
+
+cdef extern from "fory/util/stream.h" namespace "fory" nogil:
+    cdef cppclass COutputStream "fory::OutputStream":
+        CBuffer* get_buffer()
+        void enter_flush_barrier()
+        void exit_flush_barrier()
+        c_bool try_flush()
+        void force_flush()
+        size_t flushed_bytes() const
+        void reset()
+        c_bool has_error() const
+        const CError& error() const
 
 
 cdef extern from "fory/util/bit_util.h" namespace "fory::util" nogil:

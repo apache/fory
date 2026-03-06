@@ -14,17 +14,22 @@ from cpython.unicode cimport (
     PyUnicode_DecodeUTF8,
 )
 from cpython.bytes cimport PyBytes_AsString, PyBytes_FromStringAndSize, PyBytes_AS_STRING
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.utility cimport move
 from cython.operator cimport dereference as deref
 from libcpp.string cimport string as c_string
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport(
-    CBuffer, allocate_buffer, get_bit as c_get_bit, set_bit as c_set_bit, clear_bit as c_clear_bit,
+    CBuffer, COutputStream, allocate_buffer, get_bit as c_get_bit, set_bit as c_set_bit, clear_bit as c_clear_bit,
     set_bit_to as c_set_bit_to, CError, CErrorCode, CResultVoidError, utf16_has_surrogate_pairs
 )
-from pyfory.includes.libpyfory cimport Fory_PyCreateBufferFromStream
+from pyfory.includes.libpyfory cimport (
+    Fory_PyCreateBufferFromStream,
+    Fory_PyCreateOutputStream,
+    Fory_PyBindBufferToOutputStream,
+    Fory_PyClearBufferOutputStream
+)
 import os
 from pyfory.error import raise_fory_error
 
@@ -39,6 +44,76 @@ cdef class _SharedBufferOwner:
     cdef shared_ptr[CBuffer] buffer
 
 
+cdef class Buffer
+
+
+@cython.final
+cdef class PyOutputStream:
+    cdef object stream
+    cdef unique_ptr[COutputStream] c_output_stream
+
+    @staticmethod
+    cdef inline PyOutputStream from_stream(object stream):
+        cdef c_string stream_error
+        cdef COutputStream* raw_writer = NULL
+        if stream is None:
+            raise ValueError("stream must not be None")
+        if Fory_PyCreateOutputStream(
+            <PyObject*>stream, &raw_writer, &stream_error
+        ) != 0:
+            raise ValueError(stream_error.decode("UTF-8"))
+        cdef PyOutputStream writer = PyOutputStream.__new__(PyOutputStream)
+        writer.stream = stream
+        writer.c_output_stream.reset(raw_writer)
+        if raw_writer != NULL:
+            raw_writer.reset()
+        return writer
+
+    cdef inline COutputStream* get_c_output_stream(self):
+        return self.c_output_stream.get()
+
+    cpdef inline object get_output_stream(self):
+        return self.stream
+
+    cpdef inline void reset(self):
+        cdef COutputStream* output_stream = self.c_output_stream.get()
+        if output_stream == NULL:
+            raise ValueError("OutputStream is null")
+        output_stream.reset()
+
+    cpdef inline void enter_flush_barrier(self):
+        cdef COutputStream* output_stream = self.c_output_stream.get()
+        if output_stream == NULL:
+            raise ValueError("OutputStream is null")
+        output_stream.enter_flush_barrier()
+
+    cpdef inline void exit_flush_barrier(self):
+        cdef COutputStream* output_stream = self.c_output_stream.get()
+        if output_stream == NULL:
+            raise ValueError("OutputStream is null")
+        output_stream.exit_flush_barrier()
+
+    cpdef inline void try_flush(self):
+        cdef COutputStream* output_stream = self.c_output_stream.get()
+        if output_stream == NULL:
+            raise ValueError("OutputStream is null")
+        output_stream.try_flush()
+        if output_stream.has_error():
+            raise ValueError(output_stream.error().to_string().decode("UTF-8"))
+
+    cpdef inline void force_flush(self):
+        cdef COutputStream* output_stream = self.c_output_stream.get()
+        if output_stream == NULL:
+            raise ValueError("OutputStream is null")
+        output_stream.force_flush()
+        if output_stream.has_error():
+            raise ValueError(output_stream.error().to_string().decode("UTF-8"))
+
+
+cpdef inline PyOutputStream _wrap_output_stream(object stream):
+    return PyOutputStream.from_stream(stream)
+
+
 @cython.final
 cdef class Buffer:
     cdef:
@@ -46,11 +121,14 @@ cdef class Buffer:
         CError _error
         # hold python buffer reference count
         object data
+        object output_stream
         Py_ssize_t shape[1]
         Py_ssize_t stride[1]
+        int32_t max_binary_size
 
-    def __init__(self,  data not None, int32_t offset=0, length=None):
+    def __init__(self,  data not None, int32_t offset=0, length=None, int32_t max_binary_size= 64 * 1024 * 1024):
         self.data = data
+        self.max_binary_size = max_binary_size
         cdef int32_t buffer_len = len(data)
         cdef int length_
         if length is None:
@@ -67,9 +145,10 @@ cdef class Buffer:
         self.c_buffer = CBuffer(address, length_, False)
         self.c_buffer.reader_index(0)
         self.c_buffer.writer_index(0)
+        self.output_stream = None
 
     @classmethod
-    def from_stream(cls, stream not None, uint32_t buffer_size=4096):
+    def from_stream(cls, stream not None, uint32_t buffer_size=4096, int32_t max_binary_size=64 * 1024 * 1024):
         cdef CBuffer* stream_buffer
         cdef c_string stream_error
         if Fory_PyCreateBufferFromStream(
@@ -79,9 +158,11 @@ cdef class Buffer:
         if stream_buffer == NULL:
             raise ValueError("failed to create stream buffer")
         cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.max_binary_size = max_binary_size
         buffer.c_buffer = move(deref(stream_buffer))
         del stream_buffer
         buffer.data = stream
+        buffer.output_stream = None
         buffer.c_buffer.reader_index(0)
         buffer.c_buffer.writer_index(0)
         return buffer
@@ -89,27 +170,57 @@ cdef class Buffer:
     @staticmethod
     cdef Buffer wrap(shared_ptr[CBuffer] c_buffer):
         cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.max_binary_size = 64 * 1024 * 1024
         cdef CBuffer* ptr = c_buffer.get()
         buffer.c_buffer = CBuffer(ptr.data(), ptr.size(), False)
         cdef _SharedBufferOwner owner = _SharedBufferOwner.__new__(_SharedBufferOwner)
         owner.buffer = c_buffer
         buffer.data = owner
+        buffer.output_stream = None
         buffer.c_buffer.reader_index(0)
         buffer.c_buffer.writer_index(0)
         return buffer
 
     @classmethod
-    def allocate(cls, int32_t size):
+    def allocate(cls, int32_t size, int32_t max_binary_size=64 * 1024 * 1024):
         cdef CBuffer* buf = allocate_buffer(size)
         if buf == NULL:
             raise MemoryError("out of memory")
         cdef Buffer buffer = Buffer.__new__(Buffer)
+        buffer.max_binary_size = max_binary_size
         buffer.c_buffer = move(deref(buf))
         del buf
         buffer.data = None
+        buffer.output_stream = None
         buffer.c_buffer.reader_index(0)
         buffer.c_buffer.writer_index(0)
         return buffer
+
+    @staticmethod
+    def wrap_output_stream(stream):
+        return _wrap_output_stream(stream)
+
+    cpdef inline void bind_output_stream(self, object output):
+        cdef c_string stream_error
+        cdef PyOutputStream output_stream
+        if Fory_PyClearBufferOutputStream(&self.c_buffer, &stream_error) != 0:
+            raise ValueError(stream_error.decode("UTF-8"))
+        if output is None:
+            self.output_stream = None
+            return
+        if isinstance(output, PyOutputStream):
+            output_stream = <PyOutputStream>output
+        else:
+            output_stream = _wrap_output_stream(output)
+        output_stream.reset()
+        if Fory_PyBindBufferToOutputStream(
+            &self.c_buffer, output_stream.get_c_output_stream(), &stream_error
+        ) != 0:
+            raise ValueError(stream_error.decode("UTF-8"))
+        self.output_stream = output_stream
+
+    cpdef inline object get_output_stream(self):
+        return self.output_stream
 
     cdef inline void _raise_if_error(self):
         cdef CErrorCode code
@@ -137,6 +248,12 @@ cdef class Buffer:
         if value < 0:
             raise ValueError("writer_index must be >= 0")
         self.c_buffer.writer_index(<uint32_t>value)
+
+    cpdef inline void shrink_input_buffer(self):
+        self.c_buffer.shrink_input_buffer()
+
+    cpdef inline c_bool has_input_stream(self):
+        return self.c_buffer.has_input_stream()
 
     cpdef c_bool own_data(self):
         return self.c_buffer.own_data()
@@ -295,6 +412,10 @@ cdef class Buffer:
     cpdef inline bytes read_bytes(self, int32_t length):
         if length == 0:
             return b""
+
+        if length > self.max_binary_size:
+            raise ValueError(f"Binary size {length} exceeds the configured limit of {self.max_binary_size}")
+
         cdef bytes py_bytes = PyBytes_FromStringAndSize(NULL, length)
         if py_bytes is None:
             raise MemoryError("out of memory")

@@ -62,7 +62,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   public CollectionLikeSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook) {
     super(fory, cls);
     this.supportCodegenHook = supportCodegenHook;
-    elementTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+    elementTypeInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
     this.typeResolver = fory.getTypeResolver();
   }
 
@@ -70,7 +70,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       Fory fory, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(fory, cls, immutable);
     this.supportCodegenHook = supportCodegenHook;
-    elementTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+    elementTypeInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
     this.typeResolver = fory.getTypeResolver();
   }
 

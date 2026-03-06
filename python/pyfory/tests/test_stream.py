@@ -15,6 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from dataclasses import dataclass
+import io
+import pickle
+
 import pytest
 
 import pyfory
@@ -66,6 +70,53 @@ class OneByteStream:
 
     def recvinto(self, buffer, size=-1):
         return self.recv_into(buffer, size)
+
+
+class OneByteWriteStream:
+    def __init__(self):
+        self._data = bytearray()
+
+    def write(self, payload):
+        if not payload:
+            return 0
+        view = memoryview(payload).cast("B")
+        self._data.append(view[0])
+        return 1
+
+    def to_bytes(self):
+        return bytes(self._data)
+
+
+class CountingWriteStream:
+    def __init__(self):
+        self._data = bytearray()
+        self.write_calls = 0
+        self.flush_calls = 0
+
+    def write(self, payload):
+        view = memoryview(payload).cast("B")
+        self.write_calls += 1
+        self._data.extend(view)
+        return len(view)
+
+    def flush(self):
+        self.flush_calls += 1
+
+    def to_bytes(self):
+        return bytes(self._data)
+
+
+@dataclass
+class StreamStructValue:
+    idx: int
+    name: str
+    values: list
+
+
+@dataclass
+class StreamPickleBufferValue:
+    idx: int
+    payload: pickle.PickleBuffer
 
 
 @pytest.mark.parametrize("xlang", [False, True])
@@ -141,6 +192,52 @@ def test_stream_deserialize_multiple_objects_from_single_stream(xlang):
 
 
 @pytest.mark.parametrize("xlang", [False, True])
+def test_stream_backed_buffer_struct_deserialize_shrinks_each_struct(xlang):
+    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory.register(StreamStructValue)
+    first = StreamStructValue(101, "first", list(range(6000)))
+    second = StreamStructValue(202, "second", list(range(6000, 0, -1)))
+
+    payload = fory.dumps(first) + fory.dumps(second)
+    reader = Buffer.from_stream(io.BytesIO(payload), 4096)
+
+    first_result = fory.deserialize(reader)
+    assert first_result == first
+    assert reader.get_reader_index() == 0
+
+    second_result = fory.deserialize(reader)
+    assert second_result == second
+    assert reader.get_reader_index() == 0
+
+
+def test_stream_backed_buffer_pickle_buffer_not_corrupted_after_next_struct():
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory.register(StreamPickleBufferValue)
+    first_payload = b"a" * 7000
+    second_payload = b"b" * 7000
+    first = StreamPickleBufferValue(101, pickle.PickleBuffer(first_payload))
+    second = StreamPickleBufferValue(202, pickle.PickleBuffer(second_payload))
+
+    writer = Buffer.allocate(32768)
+    fory.serialize(first, writer)
+    fory.serialize(second, writer)
+    stream_data = writer.get_bytes(0, writer.get_writer_index())
+    reader = Buffer.from_stream(io.BytesIO(stream_data), 4096)
+
+    first_result = fory.deserialize(reader)
+    assert first_result.idx == first.idx
+    assert bytes(first_result.payload.raw()) == first_payload
+
+    second_result = fory.deserialize(reader)
+    assert second_result.idx == second.idx
+    assert bytes(second_result.payload.raw()) == second_payload
+
+    # Ensure previously returned zero-copy-like payloads remain stable even
+    # after later stream reads trigger shrink logic.
+    assert bytes(first_result.payload.raw()) == first_payload
+
+
+@pytest.mark.parametrize("xlang", [False, True])
 def test_stream_deserialize_truncated_error(xlang):
     fory = pyfory.Fory(xlang=xlang, ref=True)
     data = fory.serialize({"k": "value", "numbers": [1, 2, 3, 4]})
@@ -148,3 +245,62 @@ def test_stream_deserialize_truncated_error(xlang):
 
     with pytest.raises(Exception):
         fory.deserialize(Buffer.from_stream(OneByteStream(truncated)))
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_dump_matches_dumps_bytes(xlang):
+    fory = pyfory.Fory(xlang=xlang, ref=True)
+    value = {
+        "k": [1, 2, 3, 4],
+        "nested": {"x": True, "y": "hello"},
+        "f": 3.14,
+    }
+
+    sink = OneByteWriteStream()
+    fory.dump(value, sink)
+    expected = fory.dumps(value)
+    assert sink.to_bytes() == expected
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_dump_map_chunk_path_matches_dumps(xlang):
+    fory = pyfory.Fory(xlang=xlang, ref=True)
+    value = {f"k{i}": i for i in range(300)}
+
+    sink = OneByteWriteStream()
+    fory.dump(value, sink)
+    expected = fory.dumps(value)
+    assert sink.to_bytes() == expected
+
+    restored = fory.deserialize(Buffer.from_stream(OneByteStream(sink.to_bytes())))
+    assert restored == value
+
+
+def test_dump_large_list_of_structs_multiple_flushes_matches_dumps():
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory.register(StreamStructValue)
+    value = [StreamStructValue(i, f"item-{i}-{'x' * 56}", [i, i + 1, i + 2, i + 3, i + 4]) for i in range(1800)]
+
+    sink = CountingWriteStream()
+    fory.dump(value, sink)
+    expected = fory.dumps(value)
+    assert sink.to_bytes() == expected
+    assert len(expected) > 4096 * 4
+    assert sink.write_calls >= 4
+
+    restored = fory.deserialize(Buffer.from_stream(OneByteStream(sink.to_bytes())))
+    assert restored == value
+
+
+def test_dump_large_map_with_struct_values_matches_dumps():
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory.register(StreamStructValue)
+    value = {f"k{i}": StreamStructValue(i, "y" * 96, [i, i + 1, i + 2, i + 3]) for i in range(900)}
+
+    sink = OneByteWriteStream()
+    fory.dump(value, sink)
+    expected = fory.dumps(value)
+    assert sink.to_bytes() == expected
+
+    restored = fory.deserialize(Buffer.from_stream(OneByteStream(sink.to_bytes())))
+    assert restored == value

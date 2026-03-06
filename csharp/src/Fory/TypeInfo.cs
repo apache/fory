@@ -31,6 +31,8 @@ internal enum UserTypeKind
 
 public sealed class TypeInfo
 {
+    internal readonly record struct CompatibleTypeMetaCacheEntry(TypeMeta TypeMeta, byte[] EncodedBytes, ulong HeaderHash);
+
     private readonly object _serializer;
     private readonly Action<WriteContext, object?, bool> _writeDataObject;
     private readonly Func<ReadContext, object?> _readDataObject;
@@ -47,7 +49,13 @@ public sealed class TypeInfo
         bool isDynamicType,
         bool isNullableType,
         bool isReferenceTrackableType,
+        bool supportsCompatibleReadWithoutTypeMeta,
         object? defaultObject,
+        bool isRegistered,
+        uint? userTypeId,
+        bool registerByName,
+        MetaString? namespaceName,
+        MetaString? typeName,
         Action<WriteContext, object?, bool> writeDataObject,
         Func<ReadContext, object?> readDataObject,
         Action<WriteContext, object?, RefMode, bool, bool> writeObject,
@@ -61,7 +69,13 @@ public sealed class TypeInfo
         IsDynamicType = isDynamicType;
         IsNullableType = isNullableType;
         IsReferenceTrackableType = isReferenceTrackableType;
+        SupportsCompatibleReadWithoutTypeMeta = supportsCompatibleReadWithoutTypeMeta;
         DefaultObject = defaultObject;
+        IsRegistered = isRegistered;
+        UserTypeId = userTypeId;
+        RegisterByName = registerByName;
+        NamespaceName = namespaceName;
+        TypeName = typeName;
         _writeDataObject = writeDataObject;
         _readDataObject = readDataObject;
         _writeObject = writeObject;
@@ -78,6 +92,7 @@ public sealed class TypeInfo
             hasCompatibleTypeMetaFieldsProvider);
         bool isNullableType = !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
         bool isReferenceTrackableType = type != typeof(string) && !type.IsValueType;
+        bool supportsCompatibleReadWithoutTypeMeta = ResolveSupportsCompatibleReadWithoutTypeMeta(serializer);
         return new TypeInfo(
             type,
             serializer,
@@ -86,7 +101,13 @@ public sealed class TypeInfo
             isDynamicType,
             isNullableType,
             isReferenceTrackableType,
+            supportsCompatibleReadWithoutTypeMeta,
             serializer.DefaultObject,
+            isRegistered: false,
+            userTypeId: null,
+            registerByName: false,
+            namespaceName: null,
+            typeName: null,
             (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
             context => serializer.ReadData(context),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
@@ -127,6 +148,29 @@ public sealed class TypeInfo
     private static IReadOnlyList<TypeMetaFieldInfo> EmptyCompatibleTypeMetaFields(bool _)
     {
         return EmptyTypeMetaFields;
+    }
+
+    private static bool ResolveSupportsCompatibleReadWithoutTypeMeta(object serializer)
+    {
+        MethodInfo? method = serializer.GetType().GetMethod(
+            "SupportsCompatibleReadWithoutTypeMeta",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            Type.EmptyTypes,
+            null);
+        if (method is null || method.ReturnType != typeof(bool))
+        {
+            return false;
+        }
+
+        try
+        {
+            return (bool)method.Invoke(serializer, null)!;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void WriteDataObject<T>(Serializer<T> serializer, WriteContext context, object? value, bool hasGenerics)
@@ -423,7 +467,11 @@ public sealed class TypeInfo
 
     public bool IsReferenceTrackableType { get; }
 
+    public bool SupportsCompatibleReadWithoutTypeMeta { get; }
+
     public object? DefaultObject { get; }
+
+    internal Type SerializerType => _serializer.GetType();
 
     public bool NeedsTypeInfoForField()
     {
@@ -475,40 +523,86 @@ public sealed class TypeInfo
         return _compatibleTypeMetaFields(trackRef);
     }
 
-    internal bool IsRegistered { get; private set; }
+    internal bool IsRegistered { get; }
 
-    internal uint? UserTypeId { get; private set; }
+    internal uint? UserTypeId { get; }
 
-    internal bool RegisterByName { get; private set; }
+    internal bool RegisterByName { get; }
 
-    internal MetaString? NamespaceName { get; private set; }
+    internal MetaString? NamespaceName { get; }
 
-    internal MetaString? TypeName { get; private set; }
+    internal MetaString? TypeName { get; }
 
-    internal void RegisterByTypeId(uint userTypeId)
+    internal TypeInfo WithTypeIdRegistration(uint userTypeId)
     {
-        IsRegistered = true;
-        UserTypeId = userTypeId;
-        RegisterByName = false;
-        NamespaceName = null;
-        TypeName = null;
+        return new TypeInfo(
+            Type,
+            _serializer,
+            BuiltInTypeId,
+            UserTypeKind,
+            IsDynamicType,
+            IsNullableType,
+            IsReferenceTrackableType,
+            SupportsCompatibleReadWithoutTypeMeta,
+            DefaultObject,
+            isRegistered: true,
+            userTypeId: userTypeId,
+            registerByName: false,
+            namespaceName: null,
+            typeName: null,
+            _writeDataObject,
+            _readDataObject,
+            _writeObject,
+            _readObject,
+            _compatibleTypeMetaFields);
     }
 
-    internal void RegisterByTypeName(MetaString namespaceName, MetaString typeName)
+    internal TypeInfo WithTypeNameRegistration(MetaString namespaceName, MetaString typeName)
     {
-        IsRegistered = true;
-        UserTypeId = null;
-        RegisterByName = true;
-        NamespaceName = namespaceName;
-        TypeName = typeName;
+        return new TypeInfo(
+            Type,
+            _serializer,
+            BuiltInTypeId,
+            UserTypeKind,
+            IsDynamicType,
+            IsNullableType,
+            IsReferenceTrackableType,
+            SupportsCompatibleReadWithoutTypeMeta,
+            DefaultObject,
+            isRegistered: true,
+            userTypeId: null,
+            registerByName: true,
+            namespaceName: namespaceName,
+            typeName: typeName,
+            _writeDataObject,
+            _readDataObject,
+            _writeObject,
+            _readObject,
+            _compatibleTypeMetaFields);
     }
 
-    internal void CopyRegistrationFrom(TypeInfo source)
+    internal TypeInfo WithRegistrationFrom(TypeInfo source)
     {
-        IsRegistered = source.IsRegistered;
-        UserTypeId = source.UserTypeId;
-        RegisterByName = source.RegisterByName;
-        NamespaceName = source.NamespaceName;
-        TypeName = source.TypeName;
+        if (!source.IsRegistered)
+        {
+            return this;
+        }
+
+        if (source.RegisterByName)
+        {
+            if (!source.NamespaceName.HasValue || !source.TypeName.HasValue)
+            {
+                throw new InvalidDataException("missing type name metadata for name-registered type");
+            }
+
+            return WithTypeNameRegistration(source.NamespaceName.Value, source.TypeName.Value);
+        }
+
+        if (!source.UserTypeId.HasValue)
+        {
+            throw new InvalidDataException("missing user type id metadata for id-registered type");
+        }
+
+        return WithTypeIdRegistration(source.UserTypeId.Value);
     }
 }

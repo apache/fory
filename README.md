@@ -119,6 +119,16 @@ Fory Go demonstrates excellent performance compared to other go serialization fr
 
 For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go).
 
+### C# Serialization Performance
+
+Fory C# demonstrates excellent performance compared to protobuf-net and MessagePack-CSharp:
+
+<p align="center">
+<img src="docs/benchmarks/csharp/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [C# Benchmarks](docs/benchmarks/csharp).
+
 ## Installation
 
 **Java**:
@@ -599,7 +609,7 @@ Dynamic serialization can deserialize arbitrary types, which may introduce risks
 Fory enables class registration **by default** for dynamic protocols, allowing only trusted registered types.
 **Do not disable class registration unless you can ensure your environment is secure**.
 
-If this option is disabled, you are responsible for serialization security. You should implement and configure a customized `ClassChecker` or `DeserializationPolicy` for fine-grained security control
+If this option is disabled, you are responsible for serialization security. You should implement and configure a customized `TypeChecker` or `DeserializationPolicy` for fine-grained security control.
 
 To report security vulnerabilities in Apache Fory™, please follow the [ASF vulnerability reporting process](https://apache.org/security/#reporting-a-vulnerability).
 
