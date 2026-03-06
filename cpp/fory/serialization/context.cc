@@ -406,6 +406,8 @@ void WriteContext::reset() {
   has_first_type_info_ = false;
   type_info_index_map_active_ = false;
   current_dyn_depth_ = 0;
+  buffer_.clear_output_stream();
+  output_stream_ = nullptr;
   // reset buffer indices for reuse - no memory operations needed
   buffer_.writer_index(0);
   buffer_.reader_index(0);

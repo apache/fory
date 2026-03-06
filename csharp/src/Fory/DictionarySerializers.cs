@@ -70,12 +70,14 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             context.Compatible &&
             keyDeclared &&
             !keyDynamicType &&
-            keyTypeInfo.NeedsTypeInfoForField();
+            keyTypeInfo.NeedsTypeInfoForField() &&
+            !keyTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
         bool writeDeclaredCompatibleValueTypeInfo =
             context.Compatible &&
             valueDeclared &&
             !valueDynamicType &&
-            valueTypeInfo.NeedsTypeInfoForField();
+            valueTypeInfo.NeedsTypeInfoForField() &&
+            !valueTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
 
         KeyValuePair<TKey, TValue>[] pairs = SnapshotPairs(map);
         if (keyDynamicType || valueDynamicType)
@@ -248,12 +250,14 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 context.Compatible &&
                 keyDeclared &&
                 !keyDynamicType &&
-                keyTypeInfo.NeedsTypeInfoForField();
+                keyTypeInfo.NeedsTypeInfoForField() &&
+                !keyTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
             bool readDeclaredCompatibleValueTypeInfo =
                 context.Compatible &&
                 valueDeclared &&
                 !valueDynamicType &&
-                valueTypeInfo.NeedsTypeInfoForField();
+                valueTypeInfo.NeedsTypeInfoForField() &&
+                !valueTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
 
             if (keyNull && valueNull)
             {

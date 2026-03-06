@@ -167,6 +167,9 @@ class CollectionSerializer(Serializer):
 
     def read(self, buffer):
         len_ = buffer.read_var_uint32()
+        # Check size limit before collection preallocation to prevent OOM attacks
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"Collection size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         collection_ = self.new_instance(self.type_)
         if len_ == 0:
             return collection_
@@ -420,6 +423,7 @@ class MapSerializer(Serializer):
 
             key_cls = type(key)
             value_cls = type(value)
+            fory.enter_flush_barrier()
             buffer.write_int16(-1)
             chunk_size_offset = buffer.get_writer_index() - 1
             chunk_header = 0
@@ -472,12 +476,17 @@ class MapSerializer(Serializer):
             key_serializer = self.key_serializer
             value_serializer = self.value_serializer
             buffer.put_uint8(chunk_size_offset, chunk_size)
+            fory.exit_flush_barrier()
+            fory.try_flush()
 
     def read(self, buffer):
         fory = self.fory
         ref_resolver = self.ref_resolver
         type_resolver = self.type_resolver
         size = buffer.read_var_uint32()
+        # Check size limit to prevent OOM attacks from malicious payloads
+        if size > fory.max_collection_size:
+            raise ValueError(f"Map size {size} exceeds the configured limit of {fory.max_collection_size}")
         map_ = {}
         ref_resolver.reference(map_)
         chunk_header = 0

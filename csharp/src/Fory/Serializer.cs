@@ -17,6 +17,11 @@
 
 namespace Apache.Fory;
 
+public interface ICompatibleNoTypeMetaReader<T>
+{
+    T ReadDataCompatibleNoTypeMeta(ReadContext context);
+}
+
 /// <summary>
 /// Base class for custom serializers.
 /// </summary>
@@ -121,6 +126,7 @@ public abstract class Serializer<T>
                         }
 
                         T value = ReadData(context);
+
                         context.RefReader.FinishPendingReferenceIfNeeded(value);
                         context.RefReader.PopPendingReference();
                         return value;

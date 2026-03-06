@@ -35,7 +35,7 @@ internal interface IBenchmarkSerializer<T>
 
 internal sealed class ForySerializer<T> : IBenchmarkSerializer<T>
 {
-    private readonly ForyRuntime _fory = ForyRuntime.Builder().Build();
+    private readonly ForyRuntime _fory = ForyRuntime.Builder().Compatible(true).Build();
 
     public ForySerializer()
     {
@@ -59,16 +59,17 @@ internal static class BenchmarkTypeRegistry
 {
     public static void RegisterAll(ForyRuntime fory)
     {
-        fory.Register<NumericStruct>(1000);
-        fory.Register<StructList>(1001);
-        fory.Register<Sample>(1002);
-        fory.Register<SampleList>(1003);
-        fory.Register<Media>(1004);
-        fory.Register<Image>(1005);
-        fory.Register<MediaContent>(1006);
-        fory.Register<MediaContentList>(1007);
-        fory.Register<Player>(1008);
-        fory.Register<MediaSize>(1009);
+        // Keep user type IDs aligned with C++ benchmark registration.
+        fory.Register<NumericStruct>(1);
+        fory.Register<Sample>(2);
+        fory.Register<Media>(3);
+        fory.Register<Image>(4);
+        fory.Register<MediaContent>(5);
+        fory.Register<StructList>(6);
+        fory.Register<SampleList>(7);
+        fory.Register<MediaContentList>(8);
+        fory.Register<Player>(9);
+        fory.Register<MediaSize>(10);
     }
 }
 
@@ -95,18 +96,17 @@ internal sealed class ProtobufSerializer<T> : IBenchmarkSerializer<T>
 
 internal sealed class MessagePackRuntimeSerializer<T> : IBenchmarkSerializer<T>
 {
-    private readonly MessagePackSerializerOptions _options = TypelessContractlessStandardResolver.Options;
+    private readonly MessagePackSerializerOptions _options = StandardResolver.Options;
 
     public string Name => "msgpack";
 
     public byte[] Serialize(T value)
     {
-        return MessagePackSerializer.Typeless.Serialize(value, _options);
+        return MessagePackSerializer.Serialize(value, _options);
     }
 
     public T Deserialize(byte[] payload)
     {
-        object? value = MessagePackSerializer.Typeless.Deserialize(payload, _options);
-        return (T)value!;
+        return MessagePackSerializer.Deserialize<T>(payload, _options);
     }
 }

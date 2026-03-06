@@ -23,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.resolver.ClassChecker;
 import org.apache.fory.resolver.TypeChecker;
 import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.util.LoaderBinding;
@@ -69,17 +68,9 @@ public interface ThreadSafeFory extends BaseFory {
   ClassLoader getClassLoader();
 
   /**
-   * Set ClassChecker of serializer for current thread only.
-   *
-   * @param classChecker {@link ClassChecker} for classChecker
-   */
-  @Deprecated
-  void setClassChecker(ClassChecker classChecker);
-
-  /**
    * Set TypeChecker of serializer for current thread only.
    *
-   * @param typeChecker {@link TypeChecker} for classChecker
+   * @param typeChecker {@link TypeChecker} for type checking
    */
   void setTypeChecker(TypeChecker typeChecker);
 

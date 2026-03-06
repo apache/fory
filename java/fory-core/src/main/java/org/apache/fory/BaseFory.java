@@ -24,6 +24,7 @@ import java.util.function.Function;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
@@ -176,6 +177,8 @@ public interface BaseFory {
 
   void setSerializerFactory(SerializerFactory serializerFactory);
 
+  TypeResolver getTypeResolver();
+
   /**
    * Ensure all compilation for serializers and accessors even for lazy initialized serializers.
    * This method will block until all compilation is done.
@@ -215,6 +218,12 @@ public interface BaseFory {
 
   <T> T deserialize(byte[] bytes, Class<T> type);
 
+  <T> T deserialize(MemoryBuffer buffer, Class<T> type);
+
+  <T> T deserialize(ForyInputStream inputStream, Class<T> type);
+
+  <T> T deserialize(ForyReadableChannel channel, Class<T> type);
+
   Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers);
 
   /**
@@ -235,64 +244,6 @@ public interface BaseFory {
   Object deserialize(ForyReadableChannel channel);
 
   Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers);
-
-  /**
-   * Serialize java object without class info, deserialization should use {@link
-   * #deserializeJavaObject}.
-   */
-  byte[] serializeJavaObject(Object obj);
-
-  /**
-   * Serialize java object without class info, deserialization should use {@link
-   * #deserializeJavaObject}.
-   */
-  void serializeJavaObject(MemoryBuffer buffer, Object obj);
-
-  void serializeJavaObject(OutputStream outputStream, Object obj);
-
-  /**
-   * Deserialize java object from binary without class info, serialization should use {@link
-   * #serializeJavaObject}.
-   */
-  <T> T deserializeJavaObject(byte[] data, Class<T> cls);
-
-  /**
-   * Deserialize java object from binary by passing class info, serialization should use {@link
-   * #serializeJavaObject}.
-   */
-  <T> T deserializeJavaObject(MemoryBuffer buffer, Class<T> cls);
-
-  <T> T deserializeJavaObject(ForyInputStream inputStream, Class<T> cls);
-
-  <T> T deserializeJavaObject(ForyReadableChannel channel, Class<T> cls);
-
-  /** This method is deprecated, please use {@link #serialize} instead. */
-  @Deprecated
-  byte[] serializeJavaObjectAndClass(Object obj);
-
-  /** This method is deprecated, please use {@link #serialize} instead. */
-  @Deprecated
-  void serializeJavaObjectAndClass(MemoryBuffer buffer, Object obj);
-
-  /** This method is deprecated, please use {@link #serialize} instead. */
-  @Deprecated
-  void serializeJavaObjectAndClass(OutputStream outputStream, Object obj);
-
-  /** This method is deprecated, please use {@link #deserialize} instead. */
-  @Deprecated
-  Object deserializeJavaObjectAndClass(byte[] data);
-
-  /** This method is deprecated, please use {@link #deserialize} instead. */
-  @Deprecated
-  Object deserializeJavaObjectAndClass(MemoryBuffer buffer);
-
-  /** This method is deprecated, please use {@link #deserialize} instead. */
-  @Deprecated
-  Object deserializeJavaObjectAndClass(ForyInputStream inputStream);
-
-  /** This method is deprecated, please use {@link #deserialize} instead. */
-  @Deprecated
-  Object deserializeJavaObjectAndClass(ForyReadableChannel channel);
 
   /** Deep copy the <code>obj</code>. */
   <T> T copy(T obj);

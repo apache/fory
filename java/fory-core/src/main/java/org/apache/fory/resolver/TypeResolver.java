@@ -29,6 +29,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -1004,6 +1005,20 @@ public abstract class TypeResolver {
 
   public abstract <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer);
 
+  /**
+   * Reset serializer if {@code serializer} is not null, otherwise clear serializer for {@code cls}.
+   */
+  public <T> void resetSerializer(Class<T> cls, Serializer<T> serializer) {
+    if (serializer == null) {
+      TypeInfo typeInfo = getTypeInfo(cls, false);
+      if (typeInfo != null) {
+        typeInfo.setSerializer(this, null);
+      }
+    } else {
+      setSerializer(cls, serializer);
+    }
+  }
+
   public final TypeInfo getTypeInfoByTypeId(int typeId) {
     if (Types.isUserDefinedType((byte) typeId)) {
       throw new IllegalArgumentException(
@@ -1427,6 +1442,30 @@ public abstract class TypeResolver {
   public void setTypeChecker(TypeChecker typeChecker) {
     extRegistry.typeChecker = typeChecker;
   }
+
+  public void setSerializerFactory(SerializerFactory serializerFactory) {
+    extRegistry.serializerFactory = serializerFactory;
+  }
+
+  public CodeGenerator getCodeGenerator(ClassLoader... loaders) {
+    return extRegistry.codeGeneratorMap.get(Arrays.asList(loaders));
+  }
+
+  public void setCodeGenerator(ClassLoader loader, CodeGenerator codeGenerator) {
+    setCodeGenerator(new ClassLoader[] {loader}, codeGenerator);
+  }
+
+  public void setCodeGenerator(ClassLoader[] loaders, CodeGenerator codeGenerator) {
+    extRegistry.codeGeneratorMap.put(Arrays.asList(loaders), codeGenerator);
+  }
+
+  public SerializerFactory getSerializerFactory() {
+    return extRegistry.serializerFactory;
+  }
+
+  public void resetRead() {}
+
+  public void resetWrite() {}
 
   // CHECKSTYLE.OFF:MethodName
   public static void _addGraalvmClassRegistry(int foryConfigHash, ClassResolver classResolver) {

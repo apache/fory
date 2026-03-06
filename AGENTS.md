@@ -25,6 +25,7 @@ While working on Fory, please remember:
 - **Primary references**: `README.md`, `CONTRIBUTING.md`, `docs/guide/DEVELOPMENT.md`, and language guides under `docs/guide/`.
 - **Protocol changes**: Read and update the relevant specs in `docs/specification/**` and align cross-language tests.
 - **Docs publishing**: Updates under `docs/guide/` and `docs/benchmarks/` are synced to https://github.com/apache/fory-site; other website content should be changed in that repo.
+- **Benchmark docs refresh is mandatory**: When any benchmark logic/script/config or compared serializer set changes, rerun the relevant benchmarks and refresh corresponding artifacts under `docs/benchmarks/**` (report + plots) before finalizing.
 - **Debugging docs**: C++ debugging guidance lives in `docs/cpp_debug.md`.
 - **Conflicts**: If instructions conflict, follow the most specific module docs and call out the conflict in your response.
 

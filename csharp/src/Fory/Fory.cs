@@ -146,8 +146,7 @@ public sealed class Fory
         ByteWriter writer = _writeContext.Writer;
         writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
-        TypeInfo typeInfo = _typeResolver.GetTypeInfo<T>();
-        bool isNone = typeInfo.IsNullableType && value is null;
+        bool isNone = value is null;
         WriteHead(writer, isNone);
         if (!isNone)
         {

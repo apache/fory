@@ -97,11 +97,10 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
     # Get the encoded binary (only the written portion, not the full buffer)
     binary = buffer.to_bytes(0, buffer.get_writer_index())
 
-    # Compress if beneficial
-    compressed_binary = type_resolver.get_meta_compressor().compress(binary)
-    is_compressed = len(compressed_binary) < len(binary)
-    if is_compressed:
-        binary = compressed_binary
+    # Temporary xlang behavior: always write TypeDef metadata uncompressed.
+    # Some runtimes still do not support TypeMeta decompression, so keep the
+    # xlang wire payload uncompressed until all xlang implementations support it.
+    is_compressed = False
     # Prepend header
     binary = prepend_header(binary, is_compressed, len(field_infos) > 0)
     # Extract namespace and typename

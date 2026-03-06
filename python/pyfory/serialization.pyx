@@ -48,7 +48,7 @@ from libc.stdint cimport *
 from libcpp.vector cimport vector
 from libcpp.memory cimport shared_ptr
 from cpython cimport PyObject
-from cpython.object cimport PyTypeObject
+from cpython.object cimport PyTypeObject, PyObject_GetAttr, PyObject_SetAttr
 from cpython.dict cimport PyDict_Next
 from cpython.ref cimport *
 from cpython.list cimport PyList_New, PyList_SET_ITEM
@@ -1078,6 +1078,9 @@ cdef class Fory:
     cdef public bint is_peer_out_of_band_enabled
     cdef int32_t max_depth
     cdef int32_t depth
+    cdef public int32_t max_collection_size
+    cdef public int32_t max_binary_size
+    cdef object _output_stream
 
     def __init__(
             self,
@@ -1089,6 +1092,8 @@ cdef class Fory:
             max_depth: int = 50,
             field_nullable: bool = False,
             meta_compressor=None,
+            max_collection_size: int = 1_000_000,
+            max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -1127,6 +1132,17 @@ cdef class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
+            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
+                and maps (dicts) during deserialization. This limit is used to prevent
+                out-of-memory attacks from malicious payloads that claim extremely large
+                collection sizes, as collections preallocate memory based on the declared
+                size. Raises an exception if exceeded. Default is 1,000,000.
+
+            max_binary_size: Maximum allowed size in bytes for binary data reads during
+                deserialization (default: 64 MB). Raises an exception if a single binary
+                read exceeds this limit, preventing out-of-memory attacks from malicious
+                payloads that claim extremely large binary sizes.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -1148,7 +1164,8 @@ cdef class Fory:
         self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
-        self.buffer = Buffer.allocate(32)
+        self.max_binary_size = max_binary_size
+        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
         self.buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
@@ -1156,6 +1173,8 @@ cdef class Fory:
         self.is_peer_out_of_band_enabled = False
         self.depth = 0
         self.max_depth = max_depth
+        self.max_collection_size = max_collection_size
+        self._output_stream = None
 
     def register_serializer(self, cls: Union[type, TypeVar], Serializer serializer):
         """
@@ -1289,6 +1308,37 @@ cdef class Fory:
         """
         return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
 
+    def dump(self, obj, stream):
+        """
+        Serialize an object directly to a writable stream.
+
+        Args:
+            obj: The object to serialize
+            stream: Writable stream implementing write(...)
+
+        Notes:
+            The stream must be a non-retaining sink: ``write(data)`` must
+            synchronously consume ``data`` before returning. Fory may reuse or
+            modify the underlying buffer after ``write`` returns, so retaining
+            the passed object (or a view of it) is unsupported. If your sink
+            needs retention, copy bytes inside ``write``.
+        """
+        try:
+            self.buffer.set_writer_index(0)
+            self._output_stream = Buffer.wrap_output_stream(stream)
+            self.buffer.bind_output_stream(self._output_stream)
+            self._serialize(
+                obj,
+                self.buffer,
+                buffer_callback=None,
+                unsupported_callback=None,
+            )
+            self.force_flush()
+        finally:
+            self.buffer.bind_output_stream(None)
+            self._output_stream = None
+            self.reset_write()
+
     def loads(
         self,
         buffer: Union[Buffer, bytes],
@@ -1328,12 +1378,18 @@ cdef class Fory:
             >>> print(type(data))
             <class 'bytes'>
         """
+        cdef Buffer write_buffer
         try:
-            return self._serialize(
+            write_buffer = self._serialize(
                 obj,
                 buffer,
                 buffer_callback=buffer_callback,
                 unsupported_callback=unsupported_callback)
+            if write_buffer is not self.buffer:
+                return write_buffer
+            if write_buffer.get_output_stream() is not None:
+                return write_buffer
+            return write_buffer.to_bytes(0, write_buffer.get_writer_index())
         finally:
             self.reset_write()
 
@@ -1350,6 +1406,7 @@ cdef class Fory:
         # 1byte used for bit mask
         buffer.grow(1)
         buffer.set_writer_index(mask_index + 1)
+        buffer.put_int8(mask_index, 0)
         if obj is None:
             set_bit(buffer, mask_index, 0)
         else:
@@ -1362,11 +1419,35 @@ cdef class Fory:
         else:
             clear_bit(buffer, mask_index, 2)
         self.write_ref(buffer, obj)
+        return buffer
 
-        if buffer is not self.buffer:
-            return buffer
-        else:
-            return buffer.to_bytes(0, buffer.get_writer_index())
+    cpdef inline enter_flush_barrier(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.enter_flush_barrier()
+
+    cpdef inline exit_flush_barrier(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.exit_flush_barrier()
+
+    cpdef inline try_flush(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None or self.buffer.get_writer_index() <= 4096:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.try_flush()
+
+    cpdef inline force_flush(self):
+        cdef PyOutputStream output_stream
+        if self._output_stream is None:
+            return
+        output_stream = <PyOutputStream>self._output_stream
+        output_stream.force_flush()
 
     cpdef inline write_ref(
             self, Buffer buffer, obj, TypeInfo typeinfo=None, Serializer serializer=None):
@@ -1444,7 +1525,7 @@ cdef class Fory:
         """
         try:
             if type(buffer) == bytes:
-                buffer = Buffer(buffer)
+                buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
             return self._deserialize(buffer, buffers, unsupported_objects)
         finally:
             self.reset_read()
@@ -1566,6 +1647,8 @@ cdef class Fory:
         cdef Buffer buf
         if not self.is_peer_out_of_band_enabled:
             size = buffer.read_var_uint32()
+            if buffer.has_input_stream():
+                return buffer.read_bytes(size)
             reader_index = buffer.get_reader_index()
             buf = buffer.slice(reader_index, size)
             buffer.set_reader_index(reader_index + size)
@@ -1575,6 +1658,8 @@ cdef class Fory:
             assert self._buffers is not None
             return next(self._buffers)
         size = buffer.read_var_uint32()
+        if buffer.has_input_stream():
+            return buffer.read_bytes(size)
         reader_index = buffer.get_reader_index()
         buf = buffer.slice(reader_index, size)
         buffer.set_reader_index(reader_index + size)
@@ -1623,6 +1708,7 @@ cdef class Fory:
         self.metastring_resolver.reset_write()
         self.serialization_context.reset_write()
         self._unsupported_callback = None
+        self._output_stream = None
 
     cpdef inline reset_read(self):
         """

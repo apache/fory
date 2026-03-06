@@ -28,7 +28,7 @@ import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.collection.Tuple3;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.ClassLoaderUtils;
 import org.apache.fory.util.GraalvmSupport;
@@ -107,8 +107,8 @@ public class CodecUtils {
     if (beanClassClassLoader == null) {
       beanClassClassLoader = fory.getClass().getClassLoader();
     }
-    ClassResolver classResolver = fory.getClassResolver();
-    codeGenerator = getCodeGenerator(fory, beanClassClassLoader, classResolver);
+    TypeResolver typeResolver = fory.getTypeResolver();
+    codeGenerator = getCodeGenerator(fory, beanClassClassLoader, typeResolver);
     ClassLoader classLoader =
         codeGenerator.compile(
             Collections.singletonList(compileUnit), compileState -> compileState.lock.lock());
@@ -121,23 +121,23 @@ public class CodecUtils {
   }
 
   private static CodeGenerator getCodeGenerator(
-      Fory fory, ClassLoader beanClassClassLoader, ClassResolver classResolver) {
+      Fory fory, ClassLoader beanClassClassLoader, TypeResolver typeResolver) {
     CodeGenerator codeGenerator;
     try {
       // generated code imported fory classes.
       if (beanClassClassLoader.loadClass(Fory.class.getName()) != Fory.class) {
         throw new ClassNotFoundException();
       }
-      codeGenerator = classResolver.getCodeGenerator(beanClassClassLoader);
+      codeGenerator = typeResolver.getCodeGenerator(beanClassClassLoader);
       if (codeGenerator == null) {
         codeGenerator = CodeGenerator.getSharedCodeGenerator(beanClassClassLoader);
         // Hold strong reference of {@link CodeGenerator}, so the referent of `DelayedRef`
         // won't be null.
-        classResolver.setCodeGenerator(beanClassClassLoader, codeGenerator);
+        typeResolver.setCodeGenerator(beanClassClassLoader, codeGenerator);
       }
     } catch (ClassNotFoundException e) {
       codeGenerator =
-          classResolver.getCodeGenerator(beanClassClassLoader, fory.getClass().getClassLoader());
+          typeResolver.getCodeGenerator(beanClassClassLoader, fory.getClass().getClassLoader());
       ClassLoader[] loaders = {beanClassClassLoader, fory.getClass().getClassLoader()};
       if (codeGenerator == null) {
         codeGenerator =
@@ -145,7 +145,7 @@ public class CodecUtils {
                 ClassLoaderUtils.ForyJarClassLoader.getInstance(), beanClassClassLoader);
         // Hold strong reference of {@link CodeGenerator}, so the referent of `DelayedRef`
         // won't be null.
-        classResolver.setCodeGenerator(loaders, codeGenerator);
+        typeResolver.setCodeGenerator(loaders, codeGenerator);
       }
     }
     return codeGenerator;

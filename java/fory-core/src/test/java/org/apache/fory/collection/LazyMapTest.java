@@ -59,7 +59,7 @@ public class LazyMapTest extends ForyTestBase {
     LazyMap<String, Integer> map1 = new LazyMap<>(new ArrayList<>(map.entrySet()));
     serDe(fory, map1);
     assertTrue(
-        fory.getClassResolver().getSerializer(LazyMap.class)
+        fory.getTypeResolver().getSerializer(LazyMap.class)
             instanceof MapSerializers.LazyMapSerializer);
   }
 }

@@ -34,11 +34,11 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
-      fory.getClassResolver().setTypeChecker(checker);
+      fory.getTypeResolver().setTypeChecker(checker);
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
       checker.allowClass(AllowListCheckerTest.class.getName());
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
-      checker.addListener(fory.getClassResolver());
+      checker.addListener((ClassResolver) fory.getTypeResolver());
       checker.disallowClass(AllowListCheckerTest.class.getName());
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
       assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
@@ -46,8 +46,8 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      fory.getClassResolver().setTypeChecker(checker);
-      checker.addListener(fory.getClassResolver());
+      fory.getTypeResolver().setTypeChecker(checker);
+      checker.addListener((ClassResolver) fory.getTypeResolver());
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
       checker.disallowClass(AllowListCheckerTest.class.getName());
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
@@ -60,8 +60,8 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
-      fory.getClassResolver().setTypeChecker(checker);
-      checker.addListener(fory.getClassResolver());
+      fory.getTypeResolver().setTypeChecker(checker);
+      checker.addListener((ClassResolver) fory.getTypeResolver());
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
       checker.allowClass("org.apache.fory.*");
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
@@ -72,8 +72,8 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      fory.getClassResolver().setTypeChecker(checker);
-      checker.addListener(fory.getClassResolver());
+      fory.getTypeResolver().setTypeChecker(checker);
+      checker.addListener((ClassResolver) fory.getTypeResolver());
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
       checker.disallowClass("org.apache.fory.*");
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
@@ -92,8 +92,8 @@ public class AllowListCheckerTest {
                       .requireClassRegistration(false)
                       .withClassLoader(classLoader)
                       .build();
-              f.getClassResolver().setTypeChecker(checker);
-              checker.addListener(f.getClassResolver());
+              f.getTypeResolver().setTypeChecker(checker);
+              checker.addListener((ClassResolver) f.getTypeResolver());
               return f;
             });
     checker.allowClass("org.apache.fory.*");

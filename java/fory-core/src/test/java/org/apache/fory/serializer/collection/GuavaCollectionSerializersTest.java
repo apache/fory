@@ -40,11 +40,11 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableListSerializer(Fory fory) {
     serDe(fory, ImmutableList.of(1));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableList.of(1).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableList.of(1).getClass()),
         GuavaCollectionSerializers.ImmutableListSerializer.class);
     serDe(fory, ImmutableList.of(1, 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableList.of(1, 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableList.of(1, 2).getClass()),
         GuavaCollectionSerializers.RegularImmutableListSerializer.class);
   }
 
@@ -58,11 +58,11 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableSetSerializer(Fory fory) {
     serDe(fory, ImmutableSet.of(1));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableSet.of(1).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableSet.of(1).getClass()),
         GuavaCollectionSerializers.ImmutableSetSerializer.class);
     serDe(fory, ImmutableSet.of(1, 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableSet.of(1, 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableSet.of(1, 2).getClass()),
         GuavaCollectionSerializers.ImmutableSetSerializer.class);
   }
 
@@ -70,11 +70,11 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableSetSerializerCopy(Fory fory) {
     copyCheck(fory, ImmutableSet.of(1));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableSet.of(1).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableSet.of(1).getClass()),
         GuavaCollectionSerializers.ImmutableSetSerializer.class);
     copyCheck(fory, ImmutableSet.of(1, 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableSet.of(1, 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableSet.of(1, 2).getClass()),
         GuavaCollectionSerializers.ImmutableSetSerializer.class);
   }
 
@@ -82,7 +82,7 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableSortedSetSerializer(Fory fory) {
     serDe(fory, ImmutableSortedSet.of(1, 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableSortedSet.of(1, 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableSortedSet.of(1, 2).getClass()),
         GuavaCollectionSerializers.ImmutableSortedSetSerializer.class);
   }
 
@@ -90,7 +90,7 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableSortedSetSerializerCopy(Fory fory) {
     copyCheck(fory, ImmutableSortedSet.of(1, 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableSortedSet.of(1, 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableSortedSet.of(1, 2).getClass()),
         GuavaCollectionSerializers.ImmutableSortedSetSerializer.class);
   }
 
@@ -98,7 +98,7 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableMapSerializer(Fory fory) {
     serDe(fory, ImmutableMap.of("k1", 1, "k2", 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableMap.of("k1", 1, "k2", 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableMap.of("k1", 1, "k2", 2).getClass()),
         GuavaCollectionSerializers.ImmutableMapSerializer.class);
   }
 
@@ -106,7 +106,7 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableMapSerializerCopy(Fory fory) {
     copyCheck(fory, ImmutableMap.of("k1", 1, "k2", 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableMap.of("k1", 1, "k2", 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableMap.of("k1", 1, "k2", 2).getClass()),
         GuavaCollectionSerializers.ImmutableMapSerializer.class);
   }
 
@@ -114,11 +114,11 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableBiMapSerializer(Fory fory) {
     serDe(fory, ImmutableBiMap.of("k1", 1));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableBiMap.of("k1", 1).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableBiMap.of("k1", 1).getClass()),
         GuavaCollectionSerializers.ImmutableBiMapSerializer.class);
     serDe(fory, ImmutableBiMap.of("k1", 1, "k2", 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableBiMap.of("k1", 1, "k2", 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableBiMap.of("k1", 1, "k2", 2).getClass()),
         GuavaCollectionSerializers.ImmutableBiMapSerializer.class);
   }
 
@@ -126,11 +126,11 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableBiMapSerializerCopy(Fory fory) {
     copyCheck(fory, ImmutableBiMap.of("k1", 1));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableBiMap.of("k1", 1).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableBiMap.of("k1", 1).getClass()),
         GuavaCollectionSerializers.ImmutableBiMapSerializer.class);
     copyCheck(fory, ImmutableBiMap.of("k1", 1, "k2", 2));
     Assert.assertEquals(
-        fory.getClassResolver().getSerializerClass(ImmutableBiMap.of("k1", 1, "k2", 2).getClass()),
+        fory.getTypeResolver().getSerializerClass(ImmutableBiMap.of("k1", 1, "k2", 2).getClass()),
         GuavaCollectionSerializers.ImmutableBiMapSerializer.class);
   }
 
@@ -138,7 +138,7 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableSortedMapSerializer(Fory fory) {
     serDe(fory, ImmutableSortedMap.of("k1", 1, "k2", 2));
     Assert.assertEquals(
-        fory.getClassResolver()
+        fory.getTypeResolver()
             .getSerializerClass(ImmutableSortedMap.of("k1", 1, "k2", 2).getClass()),
         GuavaCollectionSerializers.ImmutableSortedMapSerializer.class);
   }
@@ -147,7 +147,7 @@ public class GuavaCollectionSerializersTest extends ForyTestBase {
   public void testImmutableSortedMapSerializerCopy(Fory fory) {
     copyCheck(fory, ImmutableSortedMap.of("k1", 1, "k2", 2));
     Assert.assertEquals(
-        fory.getClassResolver()
+        fory.getTypeResolver()
             .getSerializerClass(ImmutableSortedMap.of("k1", 1, "k2", 2).getClass()),
         GuavaCollectionSerializers.ImmutableSortedMapSerializer.class);
   }

@@ -19,8 +19,13 @@ from cpython.object cimport PyObject
 from libc.stdint cimport uint32_t
 from libcpp.string cimport string as c_string
 
-from pyfory.includes.libutil cimport CBuffer
+from pyfory.includes.libutil cimport CBuffer, COutputStream
 
 cdef extern from "fory/python/pyfory.h" namespace "fory":
     int Fory_PyCreateBufferFromStream(PyObject* stream, uint32_t buffer_size,
                                       CBuffer** out, c_string* error_message)
+    int Fory_PyCreateOutputStream(PyObject* stream, COutputStream** out,
+                                  c_string* error_message)
+    int Fory_PyBindBufferToOutputStream(CBuffer* buffer, COutputStream* output_stream,
+                                        c_string* error_message)
+    int Fory_PyClearBufferOutputStream(CBuffer* buffer, c_string* error_message)

@@ -1,6 +1,6 @@
 ---
 title: Basic Serialization
-sidebar_position: 2
+sidebar_position: 1
 id: basic_serialization
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -106,21 +106,11 @@ Object obj = fory.deserialize(bytes);
 ### Serialize/Deserialize with Type
 
 ```java
-// Serialize with explicit type
-byte[] bytes = fory.serializeJavaObject(object);
+// Serialize object
+byte[] bytes = fory.serialize(object);
 
 // Deserialize with expected type
-MyClass obj = fory.deserializeJavaObject(bytes, MyClass.class);
-```
-
-### Serialize/Deserialize with Type Info
-
-```java
-// Serialize with type information
-byte[] bytes = fory.serializeJavaObjectAndClass(object);
-
-// Deserialize with embedded type info
-Object obj = fory.deserializeJavaObjectAndClass(bytes);
+MyClass obj = fory.deserialize(bytes, MyClass.class);
 ```
 
 ## Best Practices
@@ -132,6 +122,6 @@ Object obj = fory.deserializeJavaObjectAndClass(bytes);
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - All ForyBuilder options
+- [Configuration](configuration.md) - All ForyBuilder options
 - [Type Registration](type-registration.md) - Class registration
 - [Troubleshooting](troubleshooting.md) - Common API usage issues

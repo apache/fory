@@ -21,6 +21,7 @@ namespace Apache.Fory;
 
 public sealed class StringSerializer : Serializer<string>
 {
+    private const int MaxVarUInt36SmallBytes = 6;
 
 
     public override string DefaultValue => null!;
@@ -88,75 +89,84 @@ public sealed class StringSerializer : Serializer<string>
 
     private static ForyStringEncoding SelectEncoding(string value)
     {
-        int numChars = value.Length;
-        int sampleNum = Math.Min(64, numChars);
         int asciiCount = 0;
-        int latin1Count = 0;
-        for (int i = 0; i < sampleNum; i++)
+        bool allLatin1 = true;
+        for (int i = 0; i < value.Length; i++)
         {
             char c = value[i];
             if (c < 0x80)
             {
                 asciiCount++;
-                latin1Count++;
             }
-            else if (c <= 0xFF)
+            else if (c > 0xFF)
             {
-                latin1Count++;
+                allLatin1 = false;
             }
         }
 
-        if (latin1Count == numChars || (latin1Count == sampleNum && IsLatin(value, sampleNum)))
+        if (allLatin1)
         {
             return ForyStringEncoding.Latin1;
         }
 
-        return asciiCount * 2 >= sampleNum ? ForyStringEncoding.Utf8 : ForyStringEncoding.Utf16;
-    }
-
-    private static bool IsLatin(string value, int start)
-    {
-        for (int i = start; i < value.Length; i++)
-        {
-            if (value[i] > 0xFF)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return asciiCount * 2 >= value.Length ? ForyStringEncoding.Utf8 : ForyStringEncoding.Utf16;
     }
 
     private static void WriteLatin1(WriteContext context, string value)
     {
         int byteLength = value.Length;
         ulong header = ((ulong)byteLength << 2) | (ulong)ForyStringEncoding.Latin1;
-        context.Writer.WriteVarUInt36Small(header);
-        Span<byte> latin1 = context.Writer.GetSpan(byteLength);
-        for (int i = 0; i < value.Length; i++)
-        {
-            latin1[i] = unchecked((byte)value[i]);
-        }
-        context.Writer.Advance(byteLength);
+        Span<byte> headerBuf = stackalloc byte[MaxVarUInt36SmallBytes];
+        int headerBytes = EncodeVarUInt36Small(headerBuf, header);
+        Span<byte> destination = context.Writer.GetSpan(headerBytes + byteLength);
+        headerBuf.Slice(0, headerBytes).CopyTo(destination);
+        int written = Encoding.Latin1.GetBytes(value.AsSpan(), destination.Slice(headerBytes));
+        context.Writer.Advance(headerBytes + written);
     }
 
     private static void WriteUtf8(WriteContext context, string value)
     {
-        int byteLength = Encoding.UTF8.GetByteCount(value);
-        ulong header = ((ulong)byteLength << 2) | (ulong)ForyStringEncoding.Utf8;
-        context.Writer.WriteVarUInt36Small(header);
-        Span<byte> utf8 = context.Writer.GetSpan(byteLength);
-        int written = Encoding.UTF8.GetBytes(value, utf8);
-        context.Writer.Advance(written);
+        int maxByteLength = Encoding.UTF8.GetMaxByteCount(value.Length);
+        Span<byte> destination = context.Writer.GetSpan(MaxVarUInt36SmallBytes + maxByteLength);
+        Span<byte> payload = destination.Slice(MaxVarUInt36SmallBytes);
+        int written = Encoding.UTF8.GetBytes(value.AsSpan(), payload);
+
+        ulong header = ((ulong)written << 2) | (ulong)ForyStringEncoding.Utf8;
+        Span<byte> headerBuf = stackalloc byte[MaxVarUInt36SmallBytes];
+        int headerBytes = EncodeVarUInt36Small(headerBuf, header);
+        if (headerBytes != MaxVarUInt36SmallBytes)
+        {
+            payload.Slice(0, written).CopyTo(destination.Slice(headerBytes));
+        }
+
+        headerBuf.Slice(0, headerBytes).CopyTo(destination);
+        context.Writer.Advance(headerBytes + written);
     }
 
     private static void WriteUtf16(WriteContext context, string value)
     {
-        int byteLength = Encoding.Unicode.GetByteCount(value);
+        int byteLength = checked(value.Length * 2);
         ulong header = ((ulong)byteLength << 2) | (ulong)ForyStringEncoding.Utf16;
-        context.Writer.WriteVarUInt36Small(header);
-        Span<byte> utf16 = context.Writer.GetSpan(byteLength);
-        int written = Encoding.Unicode.GetBytes(value, utf16);
-        context.Writer.Advance(written);
+        Span<byte> headerBuf = stackalloc byte[MaxVarUInt36SmallBytes];
+        int headerBytes = EncodeVarUInt36Small(headerBuf, header);
+        Span<byte> destination = context.Writer.GetSpan(headerBytes + byteLength);
+        headerBuf.Slice(0, headerBytes).CopyTo(destination);
+        int written = Encoding.Unicode.GetBytes(value.AsSpan(), destination.Slice(headerBytes));
+        context.Writer.Advance(headerBytes + written);
+    }
+
+    private static int EncodeVarUInt36Small(Span<byte> destination, ulong value)
+    {
+        int index = 0;
+        ulong remaining = value;
+        while (remaining >= 0x80)
+        {
+            destination[index] = unchecked((byte)((remaining & 0x7FuL) | 0x80uL));
+            index += 1;
+            remaining >>= 7;
+        }
+
+        destination[index] = unchecked((byte)remaining);
+        return index + 1;
     }
 }

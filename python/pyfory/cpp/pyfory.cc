@@ -135,10 +135,145 @@ static bool resolve_python_stream_read_method(PyObject *stream,
   return false;
 }
 
-class PythonStreamReader final : public StreamReader {
+static bool resolve_python_stream_write_method(PyObject *stream,
+                                               std::string *error_message) {
+  const int has_write = PyObject_HasAttrString(stream, "write");
+  if (has_write < 0) {
+    *error_message = fetch_python_error_message();
+    return false;
+  }
+  if (has_write == 0) {
+    *error_message = "stream object must provide write(data) method";
+    return false;
+  }
+  PyObject *method_obj = PyObject_GetAttrString(stream, "write");
+  if (method_obj == nullptr) {
+    *error_message = fetch_python_error_message();
+    return false;
+  }
+  const bool is_callable = PyCallable_Check(method_obj) != 0;
+  Py_DECREF(method_obj);
+  if (!is_callable) {
+    *error_message = "stream.write must be callable";
+    return false;
+  }
+  return true;
+}
+
+class PyOutputStream final : public OutputStream {
 public:
-  explicit PythonStreamReader(PyObject *stream, uint32_t buffer_size,
-                              PythonStreamReadMethod read_method)
+  explicit PyOutputStream(PyObject *stream, uint32_t buffer_size = 4096)
+      : OutputStream(buffer_size), stream_(stream) {
+    FORY_CHECK(stream_ != nullptr) << "stream must not be null";
+    Py_INCREF(stream_);
+  }
+
+  ~PyOutputStream() override {
+    if (stream_ != nullptr) {
+      PyGILState_STATE gil_state = PyGILState_Ensure();
+      Py_DECREF(stream_);
+      PyGILState_Release(gil_state);
+      stream_ = nullptr;
+    }
+  }
+
+protected:
+  Result<void, Error> write_to_stream(const uint8_t *src,
+                                      uint32_t length) override {
+    if (length == 0) {
+      return Result<void, Error>();
+    }
+    if (src == nullptr) {
+      return Unexpected(Error::invalid("output source pointer is null"));
+    }
+    if (stream_ == nullptr) {
+      return Unexpected(Error::io_error("output stream is null"));
+    }
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    uint32_t total_written = 0;
+    while (total_written < length) {
+      const uint32_t remaining = length - total_written;
+      // Contract: stream.write must consume bytes synchronously before return.
+      // The memoryview below is a transient view over serializer-managed
+      // storage and is not safe to retain after write(...) returns.
+      PyObject *chunk = PyMemoryView_FromMemory(
+          reinterpret_cast<char *>(
+              const_cast<uint8_t *>(src + static_cast<size_t>(total_written))),
+          static_cast<Py_ssize_t>(remaining), PyBUF_READ);
+      if (chunk == nullptr) {
+        const std::string message = fetch_python_error_message();
+        PyGILState_Release(gil_state);
+        return Unexpected(Error::io_error(message));
+      }
+      PyObject *written_obj = PyObject_CallMethod(stream_, "write", "O", chunk);
+      Py_DECREF(chunk);
+      if (written_obj == nullptr) {
+        const std::string message = fetch_python_error_message();
+        PyGILState_Release(gil_state);
+        return Unexpected(Error::io_error(message));
+      }
+      if (written_obj == Py_None) {
+        Py_DECREF(written_obj);
+        total_written = length;
+        break;
+      }
+      const long long wrote_value = PyLong_AsLongLong(written_obj);
+      Py_DECREF(written_obj);
+      if (wrote_value == -1 && PyErr_Occurred() != nullptr) {
+        const std::string message = fetch_python_error_message();
+        PyGILState_Release(gil_state);
+        return Unexpected(Error::io_error(message));
+      }
+      if (wrote_value <= 0) {
+        PyGILState_Release(gil_state);
+        return Unexpected(
+            Error::io_error("stream write returned non-positive bytes"));
+      }
+      const uint64_t wrote_u64 = static_cast<uint64_t>(wrote_value);
+      if (wrote_u64 >= remaining) {
+        total_written = length;
+      } else {
+        total_written += static_cast<uint32_t>(wrote_u64);
+      }
+    }
+    PyGILState_Release(gil_state);
+    return Result<void, Error>();
+  }
+
+  Result<void, Error> flush_stream() override {
+    if (stream_ == nullptr) {
+      return Unexpected(Error::io_error("output stream is null"));
+    }
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    const int has_flush = PyObject_HasAttrString(stream_, "flush");
+    if (has_flush < 0) {
+      const std::string message = fetch_python_error_message();
+      PyGILState_Release(gil_state);
+      return Unexpected(Error::io_error(message));
+    }
+    if (has_flush == 0) {
+      PyGILState_Release(gil_state);
+      return Result<void, Error>();
+    }
+    PyObject *result = PyObject_CallMethod(stream_, "flush", nullptr);
+    if (result == nullptr) {
+      const std::string message = fetch_python_error_message();
+      PyGILState_Release(gil_state);
+      return Unexpected(Error::io_error(message));
+    }
+    Py_DECREF(result);
+    PyGILState_Release(gil_state);
+    return Result<void, Error>();
+  }
+
+private:
+  PyObject *stream_ = nullptr;
+};
+
+class PyInputStream final : public InputStream {
+public:
+  explicit PyInputStream(PyObject *stream, uint32_t buffer_size,
+                         PythonStreamReadMethod read_method)
       : stream_(stream), read_method_(read_method),
         read_method_name_(python_stream_read_method_name(read_method)),
         data_(std::max<uint32_t>(buffer_size, static_cast<uint32_t>(1))),
@@ -150,7 +285,7 @@ public:
     bind_buffer(owned_buffer_.get());
   }
 
-  ~PythonStreamReader() override {
+  ~PyInputStream() override {
     if (stream_ != nullptr) {
       PyGILState_STATE gil_state = PyGILState_Ensure();
       Py_DECREF(stream_);
@@ -231,6 +366,14 @@ public:
     }
 
     const uint32_t read_pos = buffer_->reader_index_;
+    // Keep Python-backed InputStream shrink behavior aligned with C++:
+    // best-effort compaction only after both the global floor (4096) and the
+    // configured stream buffer size threshold are crossed.
+    if (FORY_PREDICT_TRUE(read_pos <= 4096 ||
+                          read_pos < initial_buffer_size_)) {
+      return;
+    }
+
     const uint32_t remaining = remaining_size();
     if (read_pos > 0) {
       if (remaining > 0) {
@@ -279,7 +422,7 @@ public:
     Buffer *target = buffer == nullptr ? owned_buffer_.get() : buffer;
     if (target == nullptr) {
       if (buffer_ != nullptr) {
-        buffer_->stream_reader_ = nullptr;
+        buffer_->input_stream_ = nullptr;
       }
       buffer_ = nullptr;
       return;
@@ -289,7 +432,7 @@ public:
       buffer_->data_ = data_.data();
       buffer_->own_data_ = false;
       buffer_->wrapped_vector_ = nullptr;
-      buffer_->stream_reader_ = this;
+      buffer_->input_stream_ = this;
       return;
     }
 
@@ -298,7 +441,7 @@ public:
       target->size_ = source->size_;
       target->writer_index_ = source->writer_index_;
       target->reader_index_ = source->reader_index_;
-      source->stream_reader_ = nullptr;
+      source->input_stream_ = nullptr;
     } else {
       target->size_ = 0;
       target->writer_index_ = 0;
@@ -309,7 +452,7 @@ public:
     buffer_->data_ = data_.data();
     buffer_->own_data_ = false;
     buffer_->wrapped_vector_ = nullptr;
-    buffer_->stream_reader_ = this;
+    buffer_->input_stream_ = this;
   }
 
 private:
@@ -1356,13 +1499,13 @@ int Fory_PyPrimitiveCollectionReadFromBuffer(PyObject *collection,
         "tuple collection size is smaller than requested read size");
     return -1;
   }
-  if (!buffer->is_stream_backed() && kind == PythonCollectionKind::List) {
+  if (!buffer->has_input_stream() && kind == PythonCollectionKind::List) {
     return read_primitive_sequence_indexed(
         buffer, size, type_id, [collection](Py_ssize_t i, PyObject *item) {
           PyList_SET_ITEM(collection, i, item);
         });
   }
-  if (!buffer->is_stream_backed() && kind == PythonCollectionKind::Tuple) {
+  if (!buffer->has_input_stream() && kind == PythonCollectionKind::Tuple) {
     return read_primitive_sequence_indexed(
         buffer, size, type_id, [collection](Py_ssize_t i, PyObject *item) {
           PyTuple_SET_ITEM(collection, i, item);
@@ -1409,13 +1552,56 @@ int Fory_PyCreateBufferFromStream(PyObject *stream, uint32_t buffer_size,
     return -1;
   }
   try {
-    auto stream_reader =
-        std::make_shared<PythonStreamReader>(stream, buffer_size, read_method);
-    *out = new Buffer(*stream_reader);
+    auto input_stream =
+        std::make_shared<PyInputStream>(stream, buffer_size, read_method);
+    *out = new Buffer(*input_stream);
     return 0;
   } catch (const std::exception &e) {
     *error_message = e.what();
     return -1;
   }
+}
+
+int Fory_PyCreateOutputStream(PyObject *stream, OutputStream **out,
+                              std::string *error_message) {
+  if (stream == nullptr) {
+    *error_message = "stream must not be null";
+    return -1;
+  }
+  // See PyOutputStream::write_to_stream contract: the provided sink must not
+  // retain passed write buffers after write(...) returns.
+  if (!resolve_python_stream_write_method(stream, error_message)) {
+    return -1;
+  }
+  try {
+    *out = new PyOutputStream(stream, 4096);
+    return 0;
+  } catch (const std::exception &e) {
+    *error_message = e.what();
+    return -1;
+  }
+}
+
+int Fory_PyBindBufferToOutputStream(Buffer *buffer, OutputStream *output_stream,
+                                    std::string *error_message) {
+  if (buffer == nullptr) {
+    *error_message = "buffer must not be null";
+    return -1;
+  }
+  if (output_stream == nullptr) {
+    *error_message = "output stream must not be null";
+    return -1;
+  }
+  buffer->bind_output_stream(output_stream);
+  return 0;
+}
+
+int Fory_PyClearBufferOutputStream(Buffer *buffer, std::string *error_message) {
+  if (buffer == nullptr) {
+    *error_message = "buffer must not be null";
+    return -1;
+  }
+  buffer->clear_output_stream();
+  return 0;
 }
 } // namespace fory
