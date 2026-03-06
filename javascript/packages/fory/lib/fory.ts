@@ -60,8 +60,8 @@ export default class {
       useSliceString: Boolean(config?.useSliceString),
       hooks: config?.hooks || {},
       compatible: Boolean(config?.compatible),
-      maxStringBytes: config?.maxStringBytes,
-      maxCollectionLength: config?.maxCollectionLength,
+      maxBinarySize: config?.maxBinarySize,
+      maxCollectionSize: config?.maxCollectionSize,
       maxMapEntries: config?.maxMapEntries,
     };
   }

@@ -268,8 +268,8 @@ export interface Config {
     afterCodeGenerated?: (code: string) => string;
   };
   compatible?: boolean;
-  maxStringBytes?: number;
-  maxCollectionLength?: number;
+  maxBinarySize?: number;
+  maxCollectionSize?: number;
   maxMapEntries?: number;
 }
 
