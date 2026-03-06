@@ -1032,15 +1032,20 @@ impl Fory {
         source: impl Read + Send + 'static,
     ) -> Result<T, Error> {
         self.with_read_context(|context| {
+            // Wrap source in stream buffer and attach as the active reader
             let stream = crate::stream::ForyStreamBuf::new(source);
             let reader = Reader::from_stream(stream);
             context.attach_reader(reader);
+
+            // Perform deserialization using the stream-backed reader
             let result = self.deserialize_with_context(context);
-            // Mirror C++ StreamShrinkGuard: shrink_buffer on detach.
+
+            // Detach the reader once, recover the owned stream, and shrink buffer
             let mut returned = context.detach_reader();
             if let Some(ref mut s) = returned.stream {
                 s.shrink_buffer();
             }
+
             result
         })
     }
