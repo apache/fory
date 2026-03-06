@@ -93,10 +93,10 @@ func TestStreamDeserializationSlow(t *testing.T) {
 	// Test with slow reader and small minCap to force compaction/growth
 	reader := &slowReader{data: data}
 	var decoded StreamTestStruct
-	// Use small minCap (16) to force frequent fills and compactions
-	f.readCtx.buffer.ResetWithReader(reader, 16)
 
-	err = f.DeserializeFromReader(reader, &decoded)
+	// Create an InputStream with a small minCap (16) to force frequent fills and compactions
+	stream := NewInputStreamWithMinCap(reader, 16)
+	err = f.DeserializeFromStream(stream, &decoded)
 	if err != nil {
 		t.Fatalf("DeserializeFromReader (slow) failed: %v", err)
 	}

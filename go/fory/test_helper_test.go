@@ -61,18 +61,21 @@ func testDeserialize(t *testing.T, f *Fory, data []byte, v any) error {
 		t.Fatalf("testDeserialize requires a pointer to a value, got %v", vType)
 	}
 
+	freshV := reflect.New(vType.Elem()).Interface()
+
 	stream := &oneByteReader{data: data, pos: 0}
 
 	// Create a new stream reader. The stream context handles boundaries and compactions.
 	streamReader := NewInputStream(stream)
-	err = f.DeserializeFromStream(streamReader, v)
+	err = f.DeserializeFromStream(streamReader, freshV)
 	if err != nil {
 		t.Fatalf("Stream deserialization via OneByteStream failed: %v", err)
 	}
 
-	// Note: We don't assert deep equality because many tests deserialize into interfaces
-	// or perform custom conversions. Simply verifying that the stream mode DOES NOT error
-	// on a payload that normally succeeds is a very strong proxy for correctness here.
+	// 3. Compare the two results
+	if !reflect.DeepEqual(v, freshV) {
+		t.Fatalf("Stream deserialization mismatched byte deserialization.\nExpected: %+v\nGot:      %+v", v, freshV)
+	}
 
 	// Returns the original error from standard deserialization
 	return err
