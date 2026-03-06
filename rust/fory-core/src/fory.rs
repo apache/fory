@@ -25,6 +25,7 @@ use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_NULL_FLAG};
 use crate::types::{RefMode, SIZE_OF_REF_AND_TYPE};
+use crate::stream::ForyStreamBuf;
 use std::cell::UnsafeCell;
 use std::io::Read;
 use std::mem;
@@ -992,46 +993,34 @@ impl Fory {
     ) -> Result<T, Error> {
         self.with_read_context(|context| {
             if reader.is_stream_backed() {
-                // Stream-backed path: move the owned stream out of the caller's reader,
-                // construct a fresh stream-backed reader at the current cursor, hand it
-                // to the context, then restore all state from the returned reader.
-                // This is the sequential-read case: caller creates Reader::from_stream(...)
-                // once and calls deserialize_from repeatedly.
+                // STREAM PATH — single attach
                 let stream = mem::take(&mut reader.stream)
                     .expect("is_stream_backed was true but stream is None");
                 let cursor = reader.cursor;
                 let mut stream_reader = Reader::from_stream(*stream);
-                // Sync cursor: the stream already consumed [0..cursor], re-position.
                 stream_reader.set_cursor(cursor);
                 context.attach_reader(stream_reader);
+
                 let result = self.deserialize_with_context(context);
                 let returned = context.detach_reader();
-                // Restore state back to caller's reader.
+
                 reader.cursor = returned.cursor;
                 reader.stream = returned.stream;
-                // Re-pin bf from the (possibly grown after fill_to) stream buffer.
-                // SAFETY: same invariant as Reader::from_stream and fill_to:
-                //   bf points into Box-owned stream buffer, owned by reader.stream,
-                //   which lives as long as reader.
+
                 if let Some(ref mut s) = reader.stream {
-                    // Sync stream's read_pos with the reader cursor position
-                    // before shrinking — the detached reader may have advanced
-                    // cursor without updating stream.read_pos.
                     let _ = s.set_reader_index(reader.cursor);
-                    // Mirror C++ StreamShrinkGuard: compact consumed bytes after
-                    // deserialization to prevent unbounded buffer growth on
-                    // long-lived streams.
                     s.shrink_buffer();
                     reader.bf = unsafe { std::slice::from_raw_parts(s.data(), s.size()) };
                     reader.cursor = s.reader_index();
                 }
                 result
             } else {
-                // In-memory path: unchanged from original.
+                // IN-MEMORY PATH — unchanged fast path
                 let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
                 let mut new_reader = Reader::new(outlive_buffer);
                 new_reader.set_cursor(reader.cursor);
                 context.attach_reader(new_reader);
+
                 let result = self.deserialize_with_context(context);
                 let end = context.detach_reader().get_cursor();
                 reader.set_cursor(end);
@@ -1063,20 +1052,11 @@ impl Fory {
         source: impl Read + Send + 'static,
     ) -> Result<T, Error> {
         self.with_read_context(|context| {
-            // Wrap source in stream buffer and attach as the active reader
-            let stream = crate::stream::ForyStreamBuf::new(source);
-            let reader = Reader::from_stream(stream);
-            context.attach_reader(reader);
-
-            // Perform deserialization using the stream-backed reader
+            context.attach_reader(Reader::from_stream(ForyStreamBuf::new(source)));
             let result = self.deserialize_with_context(context);
-
-            // Detach the reader once, recover the owned stream, and shrink buffer
-            let mut returned = context.detach_reader();
-            if let Some(ref mut s) = returned.stream {
+            if let Some(ref mut s) = context.detach_reader().stream {
                 s.shrink_buffer();
             }
-
             result
         })
     }

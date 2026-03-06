@@ -183,4 +183,24 @@ mod stream_tests {
         let bytes = fory.serialize(&vec).unwrap();
         assert_eq!(deserialize_helper::<Vec<i32>>(&fory, &bytes), vec);
     }
+
+    #[derive(Debug, PartialEq, fory_derive::ForyObject)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+    #[test]
+    fn test_struct_round_trip() {
+        let mut fory = Fory::default();
+
+        fory.register::<Point>(1).unwrap();
+
+        let point = Point { x: 42, y: -7 };
+
+        let bytes = fory.serialize(&point).unwrap();
+
+        let result = deserialize_helper::<Point>(&fory, &bytes);
+
+        assert_eq!(result, point);
+    }
 }
