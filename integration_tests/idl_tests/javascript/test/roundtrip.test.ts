@@ -36,6 +36,7 @@ import {
   Cat,
   PhoneNumber,
   PhoneType,
+  registerAddressbookTypes,
 } from '../generated/addressbook';
 import { TreeNode } from '../generated/tree';
 import {
@@ -44,7 +45,8 @@ import {
   Status,
   DetailCase,
   WrapperCase,
-} from '../generated/autoId';
+  registerAutoIdTypes,
+} from '../generated/auto_id';
 
 // ---------------------------------------------------------------------------
 // Helper: build test objects that conform to generated interfaces
@@ -195,59 +197,56 @@ describe('Generated types compile and construct correctly', () => {
 describe('Serialization roundtrip', () => {
   test('Dog struct roundtrip', () => {
     const fory = new Fory();
-    const dogType = Type.struct(104, {
-      name: Type.string(),
-      barkVolume: Type.int32(),
-    });
-    const { serialize, deserialize } = fory.registerSerializer(dogType);
+    registerAddressbookTypes(fory, Type);
+    const serializer = fory.typeResolver.getSerializerByTypeInfo(
+      Type.struct(104),
+    );
 
     const dog: Dog = buildDog();
-    const bytes = serialize(dog);
-    const result = deserialize(bytes) as Dog;
+    const bytes = fory.serialize(dog, serializer);
+    const result = fory.deserialize(bytes, serializer) as Dog;
 
     expect(result).toEqual(dog);
   });
 
   test('Cat struct roundtrip', () => {
     const fory = new Fory();
-    const catType = Type.struct(105, {
-      name: Type.string(),
-      lives: Type.int32(),
-    });
-    const { serialize, deserialize } = fory.registerSerializer(catType);
+    registerAddressbookTypes(fory, Type);
+    const serializer = fory.typeResolver.getSerializerByTypeInfo(
+      Type.struct(105),
+    );
 
     const cat: Cat = buildCat();
-    const bytes = serialize(cat);
-    const result = deserialize(bytes) as Cat;
+    const bytes = fory.serialize(cat, serializer);
+    const result = fory.deserialize(bytes, serializer) as Cat;
 
     expect(result).toEqual(cat);
   });
 
   test('PhoneNumber struct roundtrip', () => {
     const fory = new Fory();
-    const phoneType = Type.struct(102, {
-      number_: Type.string(),
-      phoneType: Type.int32(),
-    });
-    const { serialize, deserialize } = fory.registerSerializer(phoneType);
+    registerAddressbookTypes(fory, Type);
+    const serializer = fory.typeResolver.getSerializerByTypeInfo(
+      Type.struct(102),
+    );
 
     const phone: PhoneNumber = buildPhoneNumber('555-0100', PhoneType.MOBILE);
-    const bytes = serialize(phone);
-    const result = deserialize(bytes) as PhoneNumber;
+    const bytes = fory.serialize(phone, serializer);
+    const result = fory.deserialize(bytes, serializer) as PhoneNumber;
 
     expect(result).toEqual(phone);
   });
 
   test('Payload (autoId) struct roundtrip', () => {
     const fory = new Fory();
-    const payloadType = Type.struct(2862577837, {
-      value: Type.int32(),
-    });
-    const { serialize, deserialize } = fory.registerSerializer(payloadType);
+    registerAutoIdTypes(fory, Type);
+    const serializer = fory.typeResolver.getSerializerByTypeInfo(
+      Type.struct(2862577837),
+    );
 
     const payload: Payload = { value: 42 };
-    const bytes = serialize(payload);
-    const result = deserialize(bytes) as Payload;
+    const bytes = fory.serialize(payload, serializer);
+    const result = fory.deserialize(bytes, serializer) as Payload;
 
     expect(result).toEqual(payload);
   });

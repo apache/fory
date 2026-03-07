@@ -151,6 +151,36 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.ANY: "any",
     }
 
+    # Mapping from FDL primitive types to Fory JS runtime Type.xxx() calls
+    PRIMITIVE_RUNTIME_MAP = {
+        PrimitiveKind.BOOL: "Type.bool()",
+        PrimitiveKind.INT8: "Type.int8()",
+        PrimitiveKind.INT16: "Type.int16()",
+        PrimitiveKind.INT32: "Type.int32()",
+        PrimitiveKind.VARINT32: "Type.varInt32()",
+        PrimitiveKind.INT64: "Type.int64()",
+        PrimitiveKind.VARINT64: "Type.varInt64()",
+        PrimitiveKind.TAGGED_INT64: "Type.sliInt64()",
+        PrimitiveKind.UINT8: "Type.uint8()",
+        PrimitiveKind.UINT16: "Type.uint16()",
+        PrimitiveKind.UINT32: "Type.uint32()",
+        PrimitiveKind.VAR_UINT32: "Type.varUInt32()",
+        PrimitiveKind.UINT64: "Type.uint64()",
+        PrimitiveKind.VAR_UINT64: "Type.varUInt64()",
+        PrimitiveKind.TAGGED_UINT64: "Type.taggedUInt64()",
+        PrimitiveKind.FLOAT16: "Type.float16()",
+        PrimitiveKind.BFLOAT16: "Type.bfloat16()",
+        PrimitiveKind.FLOAT32: "Type.float32()",
+        PrimitiveKind.FLOAT64: "Type.float64()",
+        PrimitiveKind.STRING: "Type.string()",
+        PrimitiveKind.BYTES: "Type.binary()",
+        PrimitiveKind.DATE: "Type.date()",
+        PrimitiveKind.TIMESTAMP: "Type.timestamp()",
+        PrimitiveKind.DURATION: "Type.duration()",
+        PrimitiveKind.DECIMAL: "Type.float64()",
+        PrimitiveKind.ANY: "Type.any()",
+    }
+
     def __init__(self, schema: Schema, options):
         super().__init__(schema, options)
         self.indent_str = "  "  # TypeScript uses 2 spaces
@@ -253,19 +283,12 @@ class JavaScriptGenerator(BaseGenerator):
         return imported, local  # Return (imported, local) tuple
 
     def get_module_name(self) -> str:
-        """Get the TypeScript module name from package."""
-        if self.package:
-            parts = self.package.split(".")
-            return self.to_camel_case(parts[-1])
-        return "generated"
-
-    def _module_file_name(self) -> str:
-        """Determine the output file name."""
+        """Get the TypeScript module name from source file or package."""
         if self.schema.source_file and not self.schema.source_file.startswith("<"):
-            return f"{Path(self.schema.source_file).stem}.ts"
-        if self.schema.package:
-            return f"{self.schema.package.replace('.', '_')}.ts"
-        return "generated.ts"
+            return Path(self.schema.source_file).stem
+        if self.package:
+            return self.package.replace(".", "_")
+        return "generated"
 
     def get_registration_function_name(self) -> str:
         """Get the name of the registration function."""
@@ -296,9 +319,10 @@ class JavaScriptGenerator(BaseGenerator):
 
     def _module_name_for_schema(self, schema: Schema) -> str:
         """Derive a module name from another schema."""
+        if schema.source_file and not schema.source_file.startswith("<"):
+            return Path(schema.source_file).stem
         if schema.package:
-            parts = schema.package.split(".")
-            return self.to_camel_case(parts[-1])
+            return schema.package.replace(".", "_")
         return "generated"
 
     def _registration_fn_for_schema(self, schema: Schema) -> str:
@@ -399,10 +423,13 @@ class JavaScriptGenerator(BaseGenerator):
                         type_str = ts_type
                         break
                 if not type_str:
-                    # If not a primitive, treat as a message/enum type
-                    type_str = self.safe_type_identifier(
-                        self.to_pascal_case(field_type.name)
-                    )
+                    resolved = self._resolve_named_type(field_type.name, parent_stack)
+                    if resolved is not None:
+                        type_str = self.safe_type_identifier(resolved.name)
+                    else:
+                        type_str = self.safe_type_identifier(
+                            self.to_pascal_case(field_type.name)
+                        )
         elif isinstance(field_type, ListType):
             element_type = self.generate_type(
                 field_type.element_type,
@@ -421,7 +448,10 @@ class JavaScriptGenerator(BaseGenerator):
                 nullable=False,
                 parent_stack=parent_stack,
             )
-            type_str = f"Record<{key_type}, {value_type}>"
+            if key_type in ("string", "number"):
+                type_str = f"Record<{key_type}, {value_type}>"
+            else:
+                type_str = f"Map<{key_type}, {value_type}>"
         else:
             type_str = "any"
 
@@ -429,67 +459,6 @@ class JavaScriptGenerator(BaseGenerator):
             type_str += " | undefined"
 
         return type_str
-
-    def _default_initializer(
-        self, field: Field, parent_stack: List[Message]
-    ) -> Optional[str]:
-        """Return a TS default initializer expression, or None."""
-        if field.optional:
-            return None
-
-        field_type = field.field_type
-        if isinstance(field_type, ListType):
-            return "[]"
-        if isinstance(field_type, MapType):
-            return "{}"
-        if isinstance(field_type, PrimitiveType):
-            kind = field_type.kind
-            if kind == PrimitiveKind.BOOL:
-                return "false"
-            if kind == PrimitiveKind.STRING:
-                return '""'
-            if kind == PrimitiveKind.BYTES:
-                return "new Uint8Array(0)"
-            if kind == PrimitiveKind.ANY:
-                return "undefined"
-            if kind in {PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP}:
-                return "new Date(0)"
-            return "0"
-        if isinstance(field_type, NamedType):
-            resolved = self._resolve_named_type(field_type.name, parent_stack)
-            if isinstance(resolved, Enum):
-                return "0"
-            return "undefined"
-        return None
-
-    def _collect_local_types(
-        self,
-    ) -> List[TypingUnion[Message, Enum, Union]]:
-        """Collect all non-imported types (including nested) for registration."""
-        local_types: List[TypingUnion[Message, Enum, Union]] = []
-
-        for enum in self.schema.enums:
-            if not self.is_imported_type(enum):
-                local_types.append(enum)
-        for union in self.schema.unions:
-            if not self.is_imported_type(union):
-                local_types.append(union)
-
-        def visit_message(message: Message) -> None:
-            local_types.append(message)
-            for nested_enum in message.nested_enums:
-                local_types.append(nested_enum)
-            for nested_union in message.nested_unions:
-                local_types.append(nested_union)
-            for nested_msg in message.nested_messages:
-                visit_message(nested_msg)
-
-        for message in self.schema.messages:
-            if self.is_imported_type(message):
-                continue
-            visit_message(message)
-
-        return local_types
 
     def generate_imports(self) -> List[str]:
         """Generate import statements for imported types and registration functions."""
@@ -724,49 +693,174 @@ class JavaScriptGenerator(BaseGenerator):
 
         return lines
 
+    def _field_type_expr(
+        self,
+        field_type: FieldType,
+        parent_stack: Optional[List[Message]] = None,
+    ) -> str:
+        """Return the Fory JS runtime ``Type.xxx()`` expression for a field type."""
+        parent_stack = parent_stack or []
+        if isinstance(field_type, PrimitiveType):
+            expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
+            if expr is None:
+                return "Type.any()"
+            return expr
+        elif isinstance(field_type, NamedType):
+            # Check for primitive-like shorthand names (e.g. "float", "double")
+            lower = field_type.name.lower()
+            shorthand_map = {
+                "float": PrimitiveKind.FLOAT32,
+                "double": PrimitiveKind.FLOAT64,
+            }
+            if lower in shorthand_map:
+                return self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
+            for pk in PrimitiveKind:
+                if pk.value == lower:
+                    return self.PRIMITIVE_RUNTIME_MAP.get(pk, "Type.any()")
+
+            # Named type — could be a Message, Enum, or Union
+            resolved = self._resolve_named_type(field_type.name, parent_stack)
+            if isinstance(resolved, Enum):
+                return "Type.int32()"
+            if isinstance(resolved, Union):
+                return "Type.any()"
+            if isinstance(resolved, Message):
+                if self.should_register_by_id(resolved):
+                    return f"Type.struct({resolved.type_id})"
+                ns = self.schema.package or "default"
+                qname = self._qualified_type_names.get(id(resolved), resolved.name)
+                return f'Type.struct("{ns}.{qname}")'
+            # Unresolved — fall back to any
+            return "Type.any()"
+        elif isinstance(field_type, ListType):
+            inner = self._field_type_expr(field_type.element_type, parent_stack)
+            return f"Type.array({inner})"
+        elif isinstance(field_type, MapType):
+            key = self._field_type_expr(field_type.key_type, parent_stack)
+            value = self._field_type_expr(field_type.value_type, parent_stack)
+            return f"Type.map({key}, {value})"
+        return "Type.any()"
+
     def _register_type_line(
         self,
         type_def: TypingUnion[Message, Enum, Union],
         target_var: str = "fory",
+        parent_stack: Optional[List[Message]] = None,
     ) -> str:
-        """Return a single registration statement for *type_def*."""
-        type_name = self.safe_type_identifier(type_def.name)
-        is_union = isinstance(type_def, Union)
-        method = "registerUnion" if is_union else "register"
+        """Return a single ``fory.registerSerializer(Type.struct(...))`` statement."""
+        if isinstance(type_def, Union):
+            return ""
+        if not isinstance(type_def, Message):
+            return ""
 
-        # In TypeScript, interfaces and types don't exist at runtime.
-        # We need to pass a string name or a dummy object for registration.
-        # For now, we'll pass the string name of the type.
+        field_parent_stack = (parent_stack or []) + [type_def]
+        props_parts: List[str] = []
+        for field in type_def.fields:
+            member = self.safe_member_name(field.name)
+            expr = self._field_type_expr(field.field_type, field_parent_stack)
+            if field.optional:
+                expr += ".setNullable(true)"
+            props_parts.append(f"{member}: {expr}")
+
+        props_str = ", ".join(props_parts)
+        props_arg = f", {{ {props_str} }}" if props_parts else ""
+
         if self.should_register_by_id(type_def):
-            return f"{target_var}.{method}('{type_name}', {type_def.type_id});"
+            name_info = str(type_def.type_id)
+        else:
+            ns = self.schema.package or "default"
+            qname = self._qualified_type_names.get(id(type_def), type_def.name)
+            name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
 
-        namespace_name = self.schema.package or "default"
-        qualified_name = self._qualified_type_names.get(id(type_def), type_def.name)
-        return f'{target_var}.{method}("{type_name}", "{namespace_name}", "{qualified_name}");'
+        return f"{target_var}.registerSerializer(Type.struct({name_info}{props_arg}));"
+
+    def _resolve_field_deps(
+        self,
+        message: Message,
+        parent_stack: List[Message],
+    ) -> List[Message]:
+        """Return the local Message objects that *message* directly references
+        in its fields (excluding self-references and imported types)."""
+        lineage = parent_stack + [message]
+        deps: List[Message] = []
+        seen: Set[int] = set()
+
+        def visit(ft: FieldType) -> None:
+            if isinstance(ft, NamedType):
+                resolved = self._resolve_named_type(ft.name, lineage)
+                if (
+                    isinstance(resolved, Message)
+                    and not self.is_imported_type(resolved)
+                    and id(resolved) != id(message)
+                    and id(resolved) not in seen
+                ):
+                    seen.add(id(resolved))
+                    deps.append(resolved)
+            elif isinstance(ft, ListType):
+                visit(ft.element_type)
+            elif isinstance(ft, MapType):
+                visit(ft.key_type)
+                visit(ft.value_type)
+
+        for field in message.fields:
+            visit(field.field_type)
+        return deps
 
     def generate_registration(self) -> List[str]:
         """Generate a registration function that registers all local and
-        imported types with a Fory instance."""
+        imported types with a Fory instance.
+
+        Types are emitted in dependency order (leaf types first) via a
+        simple DFS so that the Fory JS runtime does not prematurely
+        register bare ``Type.struct(id)`` references with empty fields."""
         lines: List[str] = []
         fn_name = self.get_registration_function_name()
         imported_regs = self._collect_imported_registrations()
-        local_types = self._collect_local_types()
 
         lines.append("// Registration helper")
-        lines.append(f"export function {fn_name}(fory: any): void {{")
+        lines.append(f"export function {fn_name}(fory: any, Type: any): void {{")
 
         # Delegate to imported registration functions first
         for _module_path, reg_fn in imported_regs:
             if reg_fn == fn_name:
                 continue
-            lines.append(f"  {reg_fn}(fory);")
+            lines.append(f"  {reg_fn}(fory, Type);")
 
-        # Register every local type
-        for type_def in local_types:
-            # Skip enums for registration in TypeScript since they are just numbers
-            if isinstance(type_def, Enum):
+        # DFS emit: visit dependencies before the type itself.
+        # The visited set also breaks cycles (e.g. self-referential trees).
+        emitted: Set[int] = set()
+        # Pre-build a mapping from message id -> parent_stack so that
+        # dependencies emitted out of tree order still get the right context.
+        parent_map: Dict[int, List[Message]] = {}
+
+        def build_parent_map(msg: Message, parents: List[Message]) -> None:
+            parent_map[id(msg)] = parents
+            for nested_msg in msg.nested_messages:
+                build_parent_map(nested_msg, parents + [msg])
+
+        for message in self.schema.messages:
+            if not self.is_imported_type(message):
+                build_parent_map(message, [])
+
+        def emit_message(msg: Message) -> None:
+            if id(msg) in emitted or self.is_imported_type(msg):
+                return
+            # Mark visited early to break cycles (e.g. Node <-> Edge)
+            emitted.add(id(msg))
+            parents = parent_map.get(id(msg), [])
+            # Emit field-level struct dependencies first
+            for dep in self._resolve_field_deps(msg, parents):
+                emit_message(dep)
+            reg_line = self._register_type_line(msg, "fory", parents)
+            if reg_line:
+                lines.append(f"  {reg_line}")
+            for nested_msg in msg.nested_messages:
+                emit_message(nested_msg)
+
+        for message in self.schema.messages:
+            if self.is_imported_type(message):
                 continue
-            lines.append(f"  {self._register_type_line(type_def, 'fory')}")
+            emit_message(message)
 
         lines.append("}")
 

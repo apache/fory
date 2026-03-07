@@ -240,7 +240,7 @@ Compiling src/main.fdl...
 | Rust       | `rust`       | `.rs`            | Structs with derive macros            |
 | C++        | `cpp`        | `.h`             | Structs with FORY macros              |
 | C#         | `csharp`     | `.cs`            | Classes with Fory attributes          |
-| JavaScript | `javascript` | `.js`            | Interfaces with registration function |
+| JavaScript | `javascript` | `.ts`            | Interfaces with registration function |
 | Swift      | `swift`      | `.swift`         | `@ForyObject` Swift models            |
 
 ## Output Structure

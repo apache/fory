@@ -158,9 +158,8 @@ def test_javascript_nested_enum_registration_uses_simple_name():
     # Enums are skipped during registration in JavaScript (they are numeric
     # values at runtime and don't need separate Fory registration).
     assert "fory.register('PhoneType'" not in output
-    # Messages are still registered (using string name since interfaces
-    # don't exist at runtime).
-    assert "fory.register('Person', 100)" in output
+    # Messages are registered via fory.registerSerializer(Type.struct(...)).
+    assert "fory.registerSerializer(Type.struct(100" in output
     # Ensure qualified names are NOT used
     assert "Person.PhoneType" not in output
 
@@ -216,6 +215,31 @@ def test_javascript_collection_types():
     # Check collection types
     assert "items: string[];" in output
     assert "config: Record<string, number>;" in output
+
+
+def test_javascript_map_key_fallback_to_map():
+    """Test that map keys not valid for Record use Map<K, V> instead."""
+    source = dedent(
+        """
+        package example;
+
+        message Data [id=100] {
+            map<string, int32> str_key = 1;
+            map<int32, string> num_key = 2;
+            map<uint64, string> bigint_key = 3;
+            map<int64, bool> bigint_key2 = 4;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    # string and number keys -> Record
+    assert "strKey: Record<string, number>;" in output
+    assert "numKey: Record<number, string>;" in output
+
+    # bigint | number keys -> Map (bigint is not a valid Record key)
+    assert "bigintKey: Map<bigint | number, string>;" in output
+    assert "bigintKey2: Map<bigint | number, boolean>;" in output
 
 
 def test_javascript_primitive_types():
@@ -287,8 +311,8 @@ def test_javascript_file_structure():
     assert "// Unions" in output
     assert "// Registration helper" in output
 
-    # Check registration function (uses last segment of package name)
-    assert "export function registerV1Types" in output
+    # Check registration function (uses full package path to avoid collisions)
+    assert "export function registerExampleV1Types" in output
 
 
 def test_javascript_field_naming():
@@ -378,3 +402,33 @@ def test_javascript_enum_value_stripping():
     assert "MOBILE = 0" in output
     assert "HOME = 1" in output
     assert "WORK = 2" in output
+
+
+def test_javascript_qualified_nested_type_resolved():
+    """Test that qualified nested type refs (Outer.Inner) emit the simple name."""
+    source = dedent(
+        """
+        package example;
+
+        message Outer [id=100] {
+            string label = 1;
+
+            message Inner [id=101] {
+                int32 value = 1;
+            }
+
+            Inner nested = 2;
+        }
+
+        message Consumer [id=102] {
+            Outer.Inner item = 1;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    # Nested type is flattened to a top-level export
+    assert "export interface Inner" in output
+
+    assert "item: Inner;" in output
+    assert "Outer.Inner" not in output
