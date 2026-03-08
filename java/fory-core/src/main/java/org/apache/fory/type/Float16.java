@@ -73,8 +73,16 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
     return new Float16(floatToFloat16Bits(value));
   }
 
+  public static short toBits(float value) {
+    return floatToFloat16Bits(value);
+  }
+
   public short toBits() {
     return bits;
+  }
+
+  public static float toFloat(short bits) {
+    return float16BitsToFloat(bits);
   }
 
   public float toFloat() {

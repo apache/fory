@@ -27,6 +27,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Float16List;
 import org.apache.fory.config.Language;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.type.Float16;
 import org.testng.annotations.Test;
 
@@ -105,15 +106,8 @@ public class Float16SerializerTest extends ForyTestBase {
 
     Float16[] array =
         new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
-    byte[] bytes = fory.serialize(array);
-    Float16[] result = (Float16[]) fory.deserialize(bytes);
-
-    assertEquals(result.length, array.length);
-    assertEquals(result[0].toBits(), Float16.ONE.toBits());
-    assertNull(result[1]);
-    assertEquals(result[2].toBits(), Float16.valueOf(-2.5f).toBits());
-    assertNull(result[3]);
-    assertEquals(result[4].toBits(), Float16.MIN_VALUE.toBits());
+    SerializationException ex = expectThrows(SerializationException.class, () -> fory.serialize(array));
+    assertTrue(ex.getMessage().contains("Float16[] doesn't support null elements"));
   }
 
   @Test

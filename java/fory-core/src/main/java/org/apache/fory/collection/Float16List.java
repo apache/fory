@@ -75,7 +75,7 @@ public final class Float16List extends AbstractList<Float16> implements RandomAc
 
   public void set(int index, float value) {
     checkIndex(index);
-    array[index] = Float16.valueOf(value).toBits();
+    array[index] = Float16.toBits(value);
   }
 
   @Override
@@ -106,14 +106,14 @@ public final class Float16List extends AbstractList<Float16> implements RandomAc
 
   public boolean add(float value) {
     ensureCapacity(size + 1);
-    array[size++] = Float16.valueOf(value).toBits();
+    array[size++] = Float16.toBits(value);
     modCount++;
     return true;
   }
 
   public float getFloat(int index) {
     checkIndex(index);
-    return Float16.fromBits(array[index]).toFloat();
+    return Float16.toFloat(array[index]);
   }
 
   public short getShort(int index) {

@@ -21,6 +21,7 @@ package org.apache.fory.collection;
 
 import static org.testng.Assert.*;
 
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.unsigned.Uint16;
 import org.apache.fory.type.unsigned.Uint32;
 import org.apache.fory.type.unsigned.Uint64;
@@ -240,6 +241,37 @@ public class PrimitiveListsTest {
 
     expectThrows(NullPointerException.class, () -> list.add((Double) null));
     expectThrows(NullPointerException.class, () -> list.set(0, (Double) null));
+  }
+
+  @Test
+  public void float16ListSupportsPrimitiveOps() {
+    Float16List list = new Float16List();
+    assertEquals(list.size(), 0);
+    short[] initial = list.getArray();
+
+    for (int i = 0; i < 12; i++) {
+      list.add((float) i + 0.5f);
+    }
+    assertEquals(list.size(), 12);
+    assertNotSame(initial, list.getArray());
+
+    list.add(3, Float16.valueOf(42.25f));
+    assertEquals(list.getFloat(3), 42.25f, 0.0f);
+    assertEquals(list.getFloat(4), 3.5f, 0.0f);
+
+    Float16 prev = list.set(0, Float16.valueOf(-5.25f));
+    assertEquals(prev.toBits(), Float16.toBits(0.5f));
+    list.set(0, 11.75f);
+    assertEquals(list.getFloat(0), 11.75f, 0.0f);
+    assertEquals(list.getShort(0), Float16.toBits(11.75f));
+
+    short[] copy = list.copyArray();
+    assertEquals(copy.length, list.size());
+    assertEquals(copy[3], list.getShort(3));
+    assertNotSame(copy, list.getArray());
+
+    expectThrows(NullPointerException.class, () -> list.add((Float16) null));
+    expectThrows(NullPointerException.class, () -> list.set(0, (Float16) null));
   }
 
   @Test
