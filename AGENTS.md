@@ -107,6 +107,7 @@ FORY_CSHARP_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 test -Dtest=org.apache
 - All commands must be executed within the `cpp` directory.
 - Fory c++ use c++ 17, you must not use features from higher version of C++.
 - Bazel uses bzlmod (`MODULE.bazel`); prefer Bazel 8+.
+- For Bazel C++ tests, detect machine architecture and **only** add `--config=x86_64` on `x86_64`/`amd64`; on `arm64`/`aarch64`, do not enable this config.
 - When you updated the code, use `clang-format` to update the code
 - When invoking a method that returns `Result`, always use `FORY_TRY` unless in a control flow context.
 - Wrap error checks with `FORY_PREDICT_FALSE` for branch prediction optimization.

@@ -609,6 +609,69 @@ jobs:
             bazel-out/*/testlogs/**/*.xml
           if-no-files-found: ignore
 
+  cpp_sanitizers:
+    name: C++ Sanitizer (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sanitizer: [asan, ubsan]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: 'pip'
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+          restore-keys: |
+            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Bazel repository cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel/_bazel_*/*/external
+          key: bazel-repo-sanitizer-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          restore-keys: |
+            bazel-repo-sanitizer-${{ runner.os }}-${{ runner.arch }}-py311-
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: bazel-build-cpp-sanitizer-${{ runner.os }}-${{ runner.arch }}-${{ matrix.sanitizer }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE', '.bazelrc') }}
+      - name: Install Bazel and C++ deps
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Run C++ ${{ matrix.sanitizer }} tests
+        run: |
+          ARCH="$(uname -m)"
+          BAZEL_CONFIGS="--config=${{ matrix.sanitizer }}"
+          if [[ -x ~/bin/bazel ]]; then
+            BAZEL_BIN=~/bin/bazel
+          elif [[ -x ~/.local/bin/bazel ]]; then
+            BAZEL_BIN=~/.local/bin/bazel
+          else
+            echo "bazel not found in ~/bin or ~/.local/bin"
+            exit 1
+          fi
+          if [[ "${ARCH}" == "x86_64" || "${ARCH}" == "amd64" ]]; then
+            BAZEL_CONFIGS="--config=x86_64 ${BAZEL_CONFIGS}"
+          fi
+          ${BAZEL_BIN} test --cache_test_results=no ${BAZEL_CONFIGS} $(${BAZEL_BIN} query //cpp/...)
+      - name: Upload Bazel Test Logs (${{ matrix.sanitizer }})
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bazel-test-logs-${{ matrix.sanitizer }}
+          path: |
+            bazel-out/*/testlogs/**/*.log
+            bazel-out/*/testlogs/**/*.xml
+          if-no-files-found: ignore
+
   cpp_xlang:
     name: C++ Xlang Test
     runs-on: ubuntu-latest
