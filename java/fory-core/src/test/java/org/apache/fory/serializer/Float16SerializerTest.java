@@ -106,7 +106,8 @@ public class Float16SerializerTest extends ForyTestBase {
 
     Float16[] array =
         new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
-    SerializationException ex = expectThrows(SerializationException.class, () -> fory.serialize(array));
+    SerializationException ex =
+        expectThrows(SerializationException.class, () -> fory.serialize(array));
     assertTrue(ex.getMessage().contains("Float16[] doesn't support null elements"));
   }
 
