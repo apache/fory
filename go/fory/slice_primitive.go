@@ -682,8 +682,6 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 // ============================================================================
 
 // WriteByteSlice writes []byte to buffer using ARRAY protocol
-//
-//go:inline
 func WriteByteSlice(buf *ByteBuffer, value []byte) {
 	buf.WriteLength(len(value))
 	if len(value) > 0 {
@@ -692,8 +690,6 @@ func WriteByteSlice(buf *ByteBuffer, value []byte) {
 }
 
 // ReadByteSlice reads []byte from buffer using ARRAY protocol
-//
-//go:inline
 func ReadByteSlice(buf *ByteBuffer, err *Error) []byte {
 	size := buf.ReadLength(err)
 	if size == 0 {
@@ -706,8 +702,6 @@ func ReadByteSlice(buf *ByteBuffer, err *Error) []byte {
 }
 
 // WriteBoolSlice writes []bool to buffer using ARRAY protocol
-//
-//go:inline
 func WriteBoolSlice(buf *ByteBuffer, value []bool) {
 	size := len(value)
 	buf.WriteLength(size)
@@ -717,8 +711,6 @@ func WriteBoolSlice(buf *ByteBuffer, value []bool) {
 }
 
 // ReadBoolSlice reads []bool from buffer using ARRAY protocol
-//
-//go:inline
 func ReadBoolSlice(buf *ByteBuffer, err *Error) []bool {
 	size := buf.ReadLength(err)
 	if size == 0 {
@@ -731,8 +723,6 @@ func ReadBoolSlice(buf *ByteBuffer, err *Error) []bool {
 }
 
 // WriteInt8Slice writes []int8 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteInt8Slice(buf *ByteBuffer, value []int8) {
 	size := len(value)
 	buf.WriteLength(size)
@@ -742,8 +732,6 @@ func WriteInt8Slice(buf *ByteBuffer, value []int8) {
 }
 
 // ReadInt8Slice reads []int8 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadInt8Slice(buf *ByteBuffer, err *Error) []int8 {
 	size := buf.ReadLength(err)
 	if size == 0 {
@@ -756,8 +744,6 @@ func ReadInt8Slice(buf *ByteBuffer, err *Error) []int8 {
 }
 
 // WriteInt16Slice writes []int16 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteInt16Slice(buf *ByteBuffer, value []int16) {
 	size := len(value) * 2
 	buf.WriteLength(size)
@@ -773,8 +759,6 @@ func WriteInt16Slice(buf *ByteBuffer, value []int16) {
 }
 
 // ReadInt16Slice reads []int16 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadInt16Slice(buf *ByteBuffer, err *Error) []int16 {
 	size := buf.ReadLength(err)
 	length := size / 2
@@ -794,8 +778,6 @@ func ReadInt16Slice(buf *ByteBuffer, err *Error) []int16 {
 }
 
 // WriteInt32Slice writes []int32 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteInt32Slice(buf *ByteBuffer, value []int32) {
 	size := len(value) * 4
 	buf.WriteLength(size)
@@ -811,8 +793,6 @@ func WriteInt32Slice(buf *ByteBuffer, value []int32) {
 }
 
 // ReadInt32Slice reads []int32 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadInt32Slice(buf *ByteBuffer, err *Error) []int32 {
 	size := buf.ReadLength(err)
 	length := size / 4
@@ -832,8 +812,6 @@ func ReadInt32Slice(buf *ByteBuffer, err *Error) []int32 {
 }
 
 // WriteInt64Slice writes []int64 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteInt64Slice(buf *ByteBuffer, value []int64) {
 	size := len(value) * 8
 	buf.WriteLength(size)
@@ -849,8 +827,6 @@ func WriteInt64Slice(buf *ByteBuffer, value []int64) {
 }
 
 // ReadInt64Slice reads []int64 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadInt64Slice(buf *ByteBuffer, err *Error) []int64 {
 	size := buf.ReadLength(err)
 	length := size / 8
@@ -870,8 +846,6 @@ func ReadInt64Slice(buf *ByteBuffer, err *Error) []int64 {
 }
 
 // WriteUint16Slice writes []uint16 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteUint16Slice(buf *ByteBuffer, value []uint16) {
 	size := len(value) * 2
 	buf.WriteLength(size)
@@ -887,8 +861,6 @@ func WriteUint16Slice(buf *ByteBuffer, value []uint16) {
 }
 
 // ReadUint16Slice reads []uint16 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadUint16Slice(buf *ByteBuffer, err *Error) []uint16 {
 	size := buf.ReadLength(err)
 	length := size / 2
@@ -908,8 +880,6 @@ func ReadUint16Slice(buf *ByteBuffer, err *Error) []uint16 {
 }
 
 // WriteUint32Slice writes []uint32 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteUint32Slice(buf *ByteBuffer, value []uint32) {
 	size := len(value) * 4
 	buf.WriteLength(size)
@@ -925,8 +895,6 @@ func WriteUint32Slice(buf *ByteBuffer, value []uint32) {
 }
 
 // ReadUint32Slice reads []uint32 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadUint32Slice(buf *ByteBuffer, err *Error) []uint32 {
 	size := buf.ReadLength(err)
 	length := size / 4
@@ -946,8 +914,6 @@ func ReadUint32Slice(buf *ByteBuffer, err *Error) []uint32 {
 }
 
 // WriteUint64Slice writes []uint64 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteUint64Slice(buf *ByteBuffer, value []uint64) {
 	size := len(value) * 8
 	buf.WriteLength(size)
@@ -963,8 +929,6 @@ func WriteUint64Slice(buf *ByteBuffer, value []uint64) {
 }
 
 // ReadUint64Slice reads []uint64 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadUint64Slice(buf *ByteBuffer, err *Error) []uint64 {
 	size := buf.ReadLength(err)
 	length := size / 8
@@ -984,8 +948,6 @@ func ReadUint64Slice(buf *ByteBuffer, err *Error) []uint64 {
 }
 
 // WriteFloat32Slice writes []float32 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteFloat32Slice(buf *ByteBuffer, value []float32) {
 	size := len(value) * 4
 	buf.WriteLength(size)
@@ -1001,8 +963,6 @@ func WriteFloat32Slice(buf *ByteBuffer, value []float32) {
 }
 
 // ReadFloat32Slice reads []float32 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadFloat32Slice(buf *ByteBuffer, err *Error) []float32 {
 	size := buf.ReadLength(err)
 	length := size / 4
@@ -1022,8 +982,6 @@ func ReadFloat32Slice(buf *ByteBuffer, err *Error) []float32 {
 }
 
 // WriteFloat64Slice writes []float64 to buffer using ARRAY protocol
-//
-//go:inline
 func WriteFloat64Slice(buf *ByteBuffer, value []float64) {
 	size := len(value) * 8
 	buf.WriteLength(size)
@@ -1039,8 +997,6 @@ func WriteFloat64Slice(buf *ByteBuffer, value []float64) {
 }
 
 // ReadFloat64Slice reads []float64 from buffer using ARRAY protocol
-//
-//go:inline
 func ReadFloat64Slice(buf *ByteBuffer, err *Error) []float64 {
 	size := buf.ReadLength(err)
 	length := size / 8
@@ -1145,8 +1101,6 @@ func (s float16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 }
 
 // WriteIntSlice writes []int to buffer using ARRAY protocol
-//
-//go:inline
 func WriteIntSlice(buf *ByteBuffer, value []int) {
 	if strconv.IntSize == 64 {
 		size := len(value) * 8
@@ -1176,8 +1130,6 @@ func WriteIntSlice(buf *ByteBuffer, value []int) {
 }
 
 // ReadIntSlice reads []int from buffer using ARRAY protocol
-//
-//go:inline
 func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
 	size := buf.ReadLength(err)
 	if strconv.IntSize == 64 {
@@ -1214,8 +1166,6 @@ func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
 }
 
 // WriteUintSlice writes []uint to buffer using ARRAY protocol
-//
-//go:inline
 func WriteUintSlice(buf *ByteBuffer, value []uint) {
 	if strconv.IntSize == 64 {
 		size := len(value) * 8
@@ -1245,8 +1195,6 @@ func WriteUintSlice(buf *ByteBuffer, value []uint) {
 }
 
 // ReadUintSlice reads []uint from buffer using ARRAY protocol
-//
-//go:inline
 func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
 	size := buf.ReadLength(err)
 	if strconv.IntSize == 64 {
@@ -1285,8 +1233,6 @@ func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
 // WriteStringSlice writes []string to buffer using LIST protocol.
 // When hasGenerics is true (element type known from TypeDef/generics), uses IS_DECL_ELEMENT_TYPE
 // and doesn't write element type ID. When false, writes element type ID.
-//
-//go:inline
 func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 	length := len(value)
 	buf.WriteVarUint32(uint32(length))
@@ -1306,8 +1252,6 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 }
 
 // ReadStringSlice reads []string from buffer using LIST protocol
-//
-//go:inline
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 	length := int(buf.ReadVarUint32(err))
 	if length == 0 {
