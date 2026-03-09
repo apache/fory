@@ -925,6 +925,12 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<bool, Alloc>();
     }
+
+    if (FORY_PREDICT_FALSE(size > ctx.config().max_binary_size)) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return std::vector<bool, Alloc>();
+    }
+
     std::vector<bool, Alloc> result(size);
     // Fast path: bulk read all bytes at once if we have enough buffer
     Buffer &buffer = ctx.buffer();
