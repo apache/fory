@@ -831,7 +831,18 @@ private func handleCollectionElementRefOverride(_ bytes: [UInt8]) throws -> [UIn
     let fory = Fory(config: .init(xlang: true, trackRef: true, compatible: false))
     fory.register(RefOverrideElement.self, id: 701)
     fory.register(RefOverrideContainer.self, id: 702)
-    return try roundTripSingle(bytes, fory: fory, as: RefOverrideContainer.self)
+    let container: RefOverrideContainer = try fory.deserialize(Data(bytes))
+    guard let shared = container.listField.first else {
+        throw PeerError.invalidFieldValue("listField should not be empty")
+    }
+
+    let output = RefOverrideContainer()
+    output.listField = [shared, shared]
+    output.mapField = [
+        "k1": shared,
+        "k2": shared,
+    ]
+    return [UInt8](try fory.serialize(output))
 }
 
 private func handleCircularRefSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {

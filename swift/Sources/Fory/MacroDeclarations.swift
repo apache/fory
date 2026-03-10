@@ -18,18 +18,21 @@
 @attached(
     member,
     names: named(staticTypeId),
-    named(isReferenceTrackableType),
+    named(isRefType),
     named(__forySchemaHash),
     named(__forySchemaHashTrackRefDisabled),
     named(__forySchemaHashTrackRefEnabled),
-    named(foryCompatibleTypeMetaFields),
-    named(__foryCompatibleTypeMetaFieldsTrackRefDisabled),
-    named(__foryCompatibleTypeMetaFieldsTrackRefEnabled),
+    named(foryFieldsInfo),
+    named(__foryFieldsInfoTrackRefDisabled),
+    named(__foryFieldsInfoTrackRefEnabled),
     named(foryDefault),
     named(foryWrite),
     named(foryRead),
     named(foryWriteData),
-    named(foryReadData)
+    named(foryReadData),
+    named(foryReadCompatibleData),
+    named(__foryReadDataImpl),
+    named(__foryReadCompatibleDataImpl)
 )
 @attached(extension, conformances: Serializer)
 public macro ForyObject() = #externalMacro(module: "ForyMacro", type: "ForyObjectMacro")

@@ -236,7 +236,7 @@ private func writePrimitiveArray<Element: Serializer>(_ value: [Element], contex
 
 private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
     let payloadSize = Int(try context.buffer.readVarUInt32())
-    try context.ensureRemainingBytes(payloadSize, label: "\(Element.self)_array_payload")
+    try context.ensureRemainingBytes(payloadSize, label: "primitive_array_payload")
 
     if Element.self == UInt8.self {
         try context.ensureCollectionLength(payloadSize, label: "uint8_array")
@@ -448,7 +448,7 @@ extension Array: Serializer where Element: Serializer {
         primitiveArrayTypeID(for: Element.self) ?? .list
     }
 
-    public static func foryWriteTypeInfo(_ context: WriteContext) throws {
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
         if Element.self == UInt8.self, context.compatible {
             context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.binary.rawValue))
             return
@@ -456,7 +456,7 @@ extension Array: Serializer where Element: Serializer {
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws {
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         let rawTypeID = try context.buffer.readVarUInt32()
         guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")
@@ -464,7 +464,7 @@ extension Array: Serializer where Element: Serializer {
 
         if Element.self == UInt8.self {
             if actualTypeID == .uint8Array || actualTypeID == .binary {
-                return
+                return nil
             }
             throw ForyError.typeMismatch(expected: TypeId.uint8Array.rawValue, actual: rawTypeID)
         }
@@ -473,6 +473,7 @@ extension Array: Serializer where Element: Serializer {
         if actualTypeID != expectedTypeID {
             throw ForyError.typeMismatch(expected: expectedTypeID.rawValue, actual: rawTypeID)
         }
+        return nil
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -488,7 +489,7 @@ extension Array: Serializer where Element: Serializer {
         }
 
         let hasNull = Element.isNullableType && self.contains(where: { $0.foryIsNone })
-        let trackRef = context.trackRef && Element.isReferenceTrackableType
+        let trackRef = context.trackRef && Element.isRefType
         let declaredElementType = hasGenerics && !TypeId.needsTypeInfoForField(Element.staticTypeId)
         let dynamicElementType = Element.staticTypeId == .unknown
 
@@ -505,7 +506,7 @@ extension Array: Serializer where Element: Serializer {
 
         buffer.writeUInt8(header)
         if !dynamicElementType && !declaredElementType {
-            try Element.foryWriteTypeInfo(context)
+            try Element.foryWriteStaticTypeInfo(context)
         }
 
         if dynamicElementType {
@@ -560,8 +561,6 @@ extension Array: Serializer where Element: Serializer {
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
-        let canonicalizeElements = context.trackRef && !trackRef && Element.isReferenceTrackableType
-
         if !sameType {
             if trackRef {
                 return try readArrayUninitialized(count: length) { destination in
@@ -580,18 +579,9 @@ extension Array: Serializer where Element: Serializer {
                         if refFlag == RefFlag.null.rawValue {
                             destination.advanced(by: index).initialize(to: Element.foryDefault())
                         } else if refFlag == RefFlag.notNullValue.rawValue {
-                            if canonicalizeElements {
-                                let start = buffer.getCursor()
-                                let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                                let end = buffer.getCursor()
-                                destination.advanced(by: index).initialize(
-                                    to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
-                                )
-                            } else {
-                                destination.advanced(by: index).initialize(
-                                    to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                                )
-                            }
+                            destination.advanced(by: index).initialize(
+                                to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                            )
                         } else {
                             throw ForyError.refError("invalid nullability flag \(refFlag)")
                         }
@@ -601,84 +591,50 @@ extension Array: Serializer where Element: Serializer {
 
             return try readArrayUninitialized(count: length) { destination in
                 for index in 0..<length {
-                    if canonicalizeElements {
-                        let start = buffer.getCursor()
-                        let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                        let end = buffer.getCursor()
+                    destination.advanced(by: index).initialize(
+                        to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                    )
+                }
+            }
+        }
+
+        let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
+        return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
+            if trackRef {
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
                         destination.advanced(by: index).initialize(
-                            to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
-                        )
-                    } else {
-                        destination.advanced(by: index).initialize(
-                            to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                            to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: false)
                         )
                     }
                 }
             }
-        }
 
-        if !declared {
-            try Element.foryReadTypeInfo(context)
-        }
-
-        if trackRef {
-            let values = try readArrayUninitialized(count: length) { destination in
-                for index in 0..<length {
-                    destination.advanced(by: index).initialize(
-                        to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: false)
-                    )
-                }
-            }
-            if !declared {
-                context.clearDynamicTypeInfo(for: Element.self)
-            }
-            return values
-        }
-
-        if hasNull {
-            let values = try readArrayUninitialized(count: length) { destination in
-                for index in 0..<length {
-                    let refFlag = try buffer.readInt8()
-                    if refFlag == RefFlag.null.rawValue {
-                        destination.advanced(by: index).initialize(to: Element.foryDefault())
-                    } else {
-                        if canonicalizeElements {
-                            let start = buffer.getCursor()
-                            let value = try Element.foryReadData(context)
-                            let end = buffer.getCursor()
+            if hasNull {
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        let refFlag = try buffer.readInt8()
+                        if refFlag == RefFlag.null.rawValue {
+                            destination.advanced(by: index).initialize(to: Element.foryDefault())
+                        } else if refFlag == RefFlag.notNullValue.rawValue {
                             destination.advanced(by: index).initialize(
-                                to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                                to: try Element.foryRead(context, refMode: .none, readTypeInfo: false)
                             )
                         } else {
-                            destination.advanced(by: index).initialize(to: try Element.foryReadData(context))
+                            throw ForyError.refError("invalid nullability flag \(refFlag)")
                         }
                     }
                 }
             }
-            if !declared {
-                context.clearDynamicTypeInfo(for: Element.self)
-            }
-            return values
-        }
 
-        let values = try readArrayUninitialized(count: length) { destination in
-            for index in 0..<length {
-                if canonicalizeElements {
-                    let start = buffer.getCursor()
-                    let value = try Element.foryReadData(context)
-                    let end = buffer.getCursor()
+            return try readArrayUninitialized(count: length) { destination in
+                for index in 0..<length {
                     destination.advanced(by: index).initialize(
-                        to: context.canonicalizeNonTrackingReference(value, start: start, end: end)
+                        to: try Element.foryRead(context, refMode: .none, readTypeInfo: false)
                     )
-                } else {
-                    destination.advanced(by: index).initialize(to: try Element.foryReadData(context))
                 }
             }
         }
-        if !declared {
-            context.clearDynamicTypeInfo(for: Element.self)
-        }
-        return values
     }
 }
 
@@ -686,6 +642,14 @@ extension Set: Serializer where Element: Serializer & Hashable {
     public static func foryDefault() -> Set<Element> { [] }
 
     public static var staticTypeId: TypeId { .set }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        writeBuiltinTypeInfo(context, staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try readBuiltinTypeInfo(context, staticTypeId)
+    }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         try Array(self).foryWriteData(context, hasGenerics: hasGenerics)
@@ -701,14 +665,22 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
 
     public static var staticTypeId: TypeId { .map }
 
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        writeBuiltinTypeInfo(context, staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try readBuiltinTypeInfo(context, staticTypeId)
+    }
+
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         context.buffer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
             return
         }
 
-        let trackKeyRef = context.trackRef && Key.isReferenceTrackableType
-        let trackValueRef = context.trackRef && Value.isReferenceTrackableType
+        let trackKeyRef = context.trackRef && Key.isRefType
+        let trackValueRef = context.trackRef && Value.isRefType
         let keyDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Key.staticTypeId)
         let valueDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Value.staticTypeId)
         let keyDynamicType = Key.staticTypeId == .unknown
@@ -745,7 +717,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         if valueDynamicType {
                             try pair.value.foryWriteTypeInfo(context)
                         } else {
-                            try Value.foryWriteTypeInfo(context)
+                            try Value.foryWriteStaticTypeInfo(context)
                         }
                     }
                     if trackValueRef {
@@ -766,7 +738,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         if keyDynamicType {
                             try pair.key.foryWriteTypeInfo(context)
                         } else {
-                            try Key.foryWriteTypeInfo(context)
+                            try Key.foryWriteStaticTypeInfo(context)
                         }
                     }
                     if trackKeyRef {
@@ -788,14 +760,14 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     if keyDynamicType {
                         try pair.key.foryWriteTypeInfo(context)
                     } else {
-                        try Key.foryWriteTypeInfo(context)
+                        try Key.foryWriteStaticTypeInfo(context)
                     }
                 }
                 if !valueDeclared {
                     if valueDynamicType {
                         try pair.value.foryWriteTypeInfo(context)
                     } else {
-                        try Value.foryWriteTypeInfo(context)
+                        try Value.foryWriteStaticTypeInfo(context)
                     }
                 }
 
@@ -846,7 +818,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 context.buffer.writeUInt8(header)
                 if !keyIsNil {
                     if !keyDeclared {
-                        try Key.foryWriteTypeInfo(context)
+                        try Key.foryWriteStaticTypeInfo(context)
                     }
                     if trackKeyRef {
                         try pair.key.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
@@ -856,7 +828,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 }
                 if !valueIsNil {
                     if !valueDeclared {
-                        try Value.foryWriteTypeInfo(context)
+                        try Value.foryWriteStaticTypeInfo(context)
                     }
                     if trackValueRef {
                         try pair.value.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
@@ -879,10 +851,10 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             context.buffer.writeUInt8(0)
 
             if !keyDeclared {
-                try Key.foryWriteTypeInfo(context)
+                try Key.foryWriteStaticTypeInfo(context)
             }
             if !valueDeclared {
-                try Value.foryWriteTypeInfo(context)
+                try Value.foryWriteStaticTypeInfo(context)
             }
 
             var chunkSize: UInt8 = 0
@@ -918,8 +890,6 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         map.reserveCapacity(Swift.min(totalLength, context.buffer.remaining))
         let keyDynamicType = Key.staticTypeId == .unknown
         let valueDynamicType = Value.staticTypeId == .unknown
-        let canonicalizeValues = context.trackRef && Value.isReferenceTrackableType
-
         if keyDynamicType || valueDynamicType {
             var dynamicReadCount = 0
             while dynamicReadCount < totalLength {
@@ -939,27 +909,12 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 }
 
                 if keyNull {
-                    if trackValueRef || !canonicalizeValues {
-                        let value = try Value.foryRead(
-                            context,
-                            refMode: trackValueRef ? .tracking : .none,
-                            readTypeInfo: valueDynamicType || !valueDeclared
-                        )
-                        map[Key.foryDefault()] = value
-                    } else {
-                        let start = context.buffer.getCursor()
-                        let value = try Value.foryRead(
-                            context,
-                            refMode: .none,
-                            readTypeInfo: valueDynamicType || !valueDeclared
-                        )
-                        let end = context.buffer.getCursor()
-                        map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
-                            value,
-                            start: start,
-                            end: end
-                        )
-                    }
+                    let value = try Value.foryRead(
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        readTypeInfo: valueDynamicType || !valueDeclared
+                    )
+                    map[Key.foryDefault()] = value
                     dynamicReadCount += 1
                     continue
                 }
@@ -979,41 +934,24 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 if chunkSize > (totalLength - dynamicReadCount) {
                     throw ForyError.invalidData("map dynamic chunk size exceeds remaining entries")
                 }
-                if !keyDeclared {
-                    try Key.foryReadTypeInfo(context)
-                }
-                if !valueDeclared {
-                    try Value.foryReadTypeInfo(context)
-                }
+                let keyTypeInfo = keyDeclared ? nil : try Key.foryReadTypeInfo(context)
+                let valueTypeInfo = valueDeclared ? nil : try Value.foryReadTypeInfo(context)
                 for _ in 0..<chunkSize {
-                    let key = try Key.foryRead(
-                        context,
-                        refMode: trackKeyRef ? .tracking : .none,
-                        readTypeInfo: false
-                    )
-                    if trackValueRef || !canonicalizeValues {
-                        let value = try Value.foryRead(
+                    let key = try context.withTypeInfo(keyTypeInfo, for: Key.self) {
+                        try Key.foryRead(
+                            context,
+                            refMode: trackKeyRef ? .tracking : .none,
+                            readTypeInfo: false
+                        )
+                    }
+                    let value = try context.withTypeInfo(valueTypeInfo, for: Value.self) {
+                        try Value.foryRead(
                             context,
                             refMode: trackValueRef ? .tracking : .none,
                             readTypeInfo: false
                         )
-                        map[key] = value
-                    } else {
-                        let start = context.buffer.getCursor()
-                        let value = try Value.foryRead(
-                            context,
-                            refMode: .none,
-                            readTypeInfo: false
-                        )
-                        let end = context.buffer.getCursor()
-                        map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
                     }
-                }
-                if !keyDeclared {
-                    context.clearDynamicTypeInfo(for: Key.self)
-                }
-                if !valueDeclared {
-                    context.clearDynamicTypeInfo(for: Value.self)
+                    map[key] = value
                 }
                 dynamicReadCount += chunkSize
             }
@@ -1038,27 +976,12 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             }
 
             if keyNull {
-                if trackValueRef || !canonicalizeValues {
-                    let value = try Value.foryRead(
-                        context,
-                        refMode: trackValueRef ? .tracking : .none,
-                        readTypeInfo: !valueDeclared
-                    )
-                    map[Key.foryDefault()] = value
-                } else {
-                    let start = context.buffer.getCursor()
-                    let value = try Value.foryRead(
-                        context,
-                        refMode: .none,
-                        readTypeInfo: !valueDeclared
-                    )
-                    let end = context.buffer.getCursor()
-                    map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
-                        value,
-                        start: start,
-                        end: end
-                    )
-                }
+                let value = try Value.foryRead(
+                    context,
+                    refMode: trackValueRef ? .tracking : .none,
+                    readTypeInfo: !valueDeclared
+                )
+                map[Key.foryDefault()] = value
                 readCount += 1
                 continue
             }
@@ -1078,36 +1001,24 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             if chunkSize > (totalLength - readCount) {
                 throw ForyError.invalidData("map chunk size exceeds remaining entries")
             }
-            if !keyDeclared {
-                try Key.foryReadTypeInfo(context)
-            }
-            if !valueDeclared {
-                try Value.foryReadTypeInfo(context)
-            }
-
+            let keyTypeInfo = keyDeclared ? nil : try Key.foryReadTypeInfo(context)
+            let valueTypeInfo = valueDeclared ? nil : try Value.foryReadTypeInfo(context)
             for _ in 0..<chunkSize {
-                let key = try Key.foryRead(
-                    context,
-                    refMode: trackKeyRef ? .tracking : .none,
-                    readTypeInfo: false
-                )
-                if trackValueRef || !canonicalizeValues {
-                    let value = try Value.foryRead(
+                let key = try context.withTypeInfo(keyTypeInfo, for: Key.self) {
+                    try Key.foryRead(
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        readTypeInfo: false
+                    )
+                }
+                let value = try context.withTypeInfo(valueTypeInfo, for: Value.self) {
+                    try Value.foryRead(
                         context,
                         refMode: trackValueRef ? .tracking : .none,
                         readTypeInfo: false
                     )
-                    map[key] = value
-                } else {
-                    let start = context.buffer.getCursor()
-                    let value = try Value.foryRead(
-                        context,
-                        refMode: .none,
-                        readTypeInfo: false
-                    )
-                    let end = context.buffer.getCursor()
-                    map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
                 }
+                map[key] = value
             }
             readCount += chunkSize
         }

@@ -27,7 +27,7 @@ public enum MetaStringEncoding: UInt8, CaseIterable, Sendable {
     case allToLowerSpecial = 4
 }
 
-public struct MetaString: Equatable, Hashable, Sendable {
+public final class MetaString: Equatable, Hashable, @unchecked Sendable {
     public let value: String
     public let encoding: MetaStringEncoding
     public let specialChar1: Character
@@ -67,6 +67,24 @@ public struct MetaString: Equatable, Hashable, Sendable {
             preconditionFailure("failed to create empty MetaString")
         }
         return emptyMetaString
+    }
+
+    public static func == (lhs: MetaString, rhs: MetaString) -> Bool {
+        lhs.value == rhs.value &&
+            lhs.encoding == rhs.encoding &&
+            lhs.specialChar1 == rhs.specialChar1 &&
+            lhs.specialChar2 == rhs.specialChar2 &&
+            lhs.bytes == rhs.bytes &&
+            lhs.stripLastChar == rhs.stripLastChar
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(value)
+        hasher.combine(encoding)
+        hasher.combine(specialChar1)
+        hasher.combine(specialChar2)
+        hasher.combine(bytes)
+        hasher.combine(stripLastChar)
     }
 }
 
@@ -446,4 +464,122 @@ public struct MetaStringDecoder: Sendable {
         }
         return out
     }
+}
+
+@inline(__always)
+func writeMetaString(
+    context: WriteContext,
+    value: MetaString,
+    encodings: [MetaStringEncoding],
+    encoder: MetaStringEncoder
+) throws {
+    let normalized: MetaString
+    if encodings.contains(value.encoding) {
+        normalized = value
+    } else {
+        normalized = try encoder.encode(value.value, allowedEncodings: encodings)
+    }
+
+    guard encodings.contains(normalized.encoding) else {
+        throw ForyError.encodingError("failed to normalize meta string encoding")
+    }
+
+    context.markMetaStringWriteStateUsed()
+    let bytes = normalized.bytes
+    let assignment = context.metaStringWriteState.assignIndexIfAbsent(for: normalized)
+    if assignment.isNew {
+        context.buffer.writeVarUInt32(UInt32(bytes.count) << 1)
+        if bytes.count > 16 {
+            context.buffer.writeInt64(Int64(bitPattern: metaStringHash(normalized)))
+        } else if !bytes.isEmpty {
+            context.buffer.writeUInt8(normalized.encoding.rawValue)
+        }
+        context.buffer.writeBytes(bytes)
+    } else {
+        context.buffer.writeVarUInt32(((assignment.index + 1) << 1) | 1)
+    }
+}
+
+@inline(__always)
+func readMetaString(
+    context: ReadContext,
+    decoder: MetaStringDecoder,
+    encodings: [MetaStringEncoding]
+) throws -> MetaString {
+    let header = try context.buffer.readVarUInt32()
+    let length = Int(header >> 1)
+    let isRef = (header & 1) == 1
+    if isRef {
+        let index = length - 1
+        guard let cached = context.getReadMetaString(at: index) else {
+            throw ForyError.invalidData("unknown meta string ref index \(index)")
+        }
+        return cached
+    }
+
+    let value: MetaString
+    if length == 0 {
+        value = MetaString.empty(
+            specialChar1: decoder.specialChar1,
+            specialChar2: decoder.specialChar2
+        )
+    } else {
+        let encoding: MetaStringEncoding
+        if length > 16 {
+            let hash = try context.buffer.readInt64()
+            let rawEncoding = UInt8(truncatingIfNeeded: hash & 0xFF)
+            guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
+                throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
+            }
+            encoding = resolved
+        } else {
+            let rawEncoding = try context.buffer.readUInt8()
+            guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
+                throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
+            }
+            encoding = resolved
+        }
+        guard encodings.contains(encoding) else {
+            throw ForyError.invalidData("meta string encoding \(encoding) not allowed in this context")
+        }
+        let bytes = try context.buffer.readBytes(count: length)
+        value = try decoder.decode(bytes: bytes, encoding: encoding)
+    }
+    context.appendReadMetaString(value)
+    return value
+}
+
+@inline(__always)
+func readMetaString(
+    buffer: ByteBuffer,
+    decoder: MetaStringDecoder,
+    encodings: [MetaStringEncoding]
+) throws -> MetaString {
+    let header = try buffer.readUInt8()
+    let encodingIndex = Int(header & 0b11)
+    guard encodingIndex < encodings.count else {
+        throw ForyError.invalidData("invalid meta string encoding index")
+    }
+
+    var length = Int(header >> 2)
+    if length >= 0b11_1111 {
+        length = 0b11_1111 + Int(try buffer.readVarUInt32())
+    }
+    let bytes = try buffer.readBytes(count: length)
+    return try decoder.decode(bytes: bytes, encoding: encodings[encodingIndex])
+}
+
+@inline(__always)
+func metaStringHash(_ metaString: MetaString) -> UInt64 {
+    var hash = Int64(bitPattern: MurmurHash3.x64_128(metaString.bytes, seed: 47).0)
+    if hash != Int64.min {
+        hash = Swift.abs(hash)
+    }
+    var result = UInt64(bitPattern: hash)
+    if result == 0 {
+        result &+= 256
+    }
+    result &= 0xffffffffffffff00
+    result |= UInt64(metaString.encoding.rawValue & 0xFF)
+    return result
 }

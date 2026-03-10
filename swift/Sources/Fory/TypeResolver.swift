@@ -17,25 +17,326 @@
 
 import Foundation
 
-public struct RegisteredTypeInfo: Equatable {
-    public let userTypeID: UInt32?
-    public let kind: TypeId
-    public let registerByName: Bool
-    public let namespace: MetaString?
-    public let typeName: MetaString
+@inline(__always)
+func normalizeRegisteredTypeID(_ typeID: TypeId) -> TypeId {
+    switch typeID {
+    case .namedEnum:
+        return .enumType
+    case .compatibleStruct, .namedCompatibleStruct, .namedStruct:
+        return .structType
+    case .namedExt:
+        return .ext
+    case .namedUnion, .union:
+        return .typedUnion
+    default:
+        return typeID
+    }
+}
 
-    public init(
+@inline(__always)
+func namedRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool) -> TypeId {
+    switch baseTypeID {
+    case .structType:
+        return compatible ? .namedCompatibleStruct : .namedStruct
+    case .enumType:
+        return .namedEnum
+    case .ext:
+        return .namedExt
+    case .typedUnion:
+        return .namedUnion
+    default:
+        return baseTypeID
+    }
+}
+
+@inline(__always)
+func idRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool) -> TypeId {
+    switch baseTypeID {
+    case .structType:
+        return compatible ? .compatibleStruct : .structType
+    default:
+        return baseTypeID
+    }
+}
+
+@inline(__always)
+func resolveRegisteredWireTypeID(
+    declaredTypeID: TypeId,
+    registerByName: Bool,
+    compatible: Bool
+) -> TypeId {
+    let baseTypeID = normalizeRegisteredTypeID(declaredTypeID)
+    if registerByName {
+        return namedRegisteredTypeID(for: baseTypeID, compatible: compatible)
+    }
+    return idRegisteredTypeID(for: baseTypeID, compatible: compatible)
+}
+
+@inline(__always)
+func isAllowedRegisteredWireTypeID(
+    _ wireTypeID: TypeId,
+    declaredTypeID: TypeId,
+    registerByName: Bool,
+    compatible: Bool
+) -> Bool {
+    let baseTypeID = normalizeRegisteredTypeID(declaredTypeID)
+    let expected = resolveRegisteredWireTypeID(
+        declaredTypeID: declaredTypeID,
+        registerByName: registerByName,
+        compatible: compatible
+    )
+    if wireTypeID == expected {
+        return true
+    }
+    if baseTypeID == .structType, compatible {
+        return wireTypeID == .compatibleStruct ||
+            wireTypeID == .namedCompatibleStruct ||
+            wireTypeID == .structType ||
+            wireTypeID == .namedStruct
+    }
+    if baseTypeID == .typedUnion {
+        return wireTypeID == .union || (registerByName && wireTypeID == .namedUnion)
+    }
+    return false
+}
+
+@inline(__always)
+func registeredWireTypeNeedsUserTypeID(_ wireTypeID: TypeId) -> Bool {
+    switch wireTypeID {
+    case .enumType, .structType, .ext, .typedUnion, .union:
+        return true
+    default:
+        return false
+    }
+}
+
+@inline(__always)
+private func encodedTypeDefHeader(_ bytes: [UInt8]) throws -> UInt64 {
+    guard bytes.count >= 8 else {
+        throw ForyError.invalidData("encoded compatible type metadata must include an 8-byte header")
+    }
+    let buffer = ByteBuffer(bytes: bytes)
+    return try buffer.readUInt64()
+}
+
+@inline(__always)
+private func encodedTypeDefHeaderHash(_ bytes: [UInt8]) throws -> UInt64 {
+    guard bytes.count >= 8 else {
+        throw ForyError.invalidData("encoded compatible type metadata must include an 8-byte header")
+    }
+    let buffer = ByteBuffer(bytes: bytes)
+    let header = try buffer.readUInt64()
+    return header >> 14
+}
+
+private func fieldNeedsTypeInfo(_ fieldType: TypeMeta.FieldType) -> Bool {
+    if let typeID = TypeId(rawValue: fieldType.typeID),
+       TypeId.needsTypeInfoForField(typeID) {
+        return true
+    }
+    return fieldType.generics.contains { fieldNeedsTypeInfo($0) }
+}
+
+private func encodedTypeDefHasUserTypeFields(_ fields: [TypeMeta.FieldInfo]) -> Bool {
+    fields.contains { fieldNeedsTypeInfo($0.fieldType) }
+}
+
+public final class TypeInfo: @unchecked Sendable {
+    static let uncached = TypeInfo(typeID: .unknown)
+
+    let swiftTypeID: ObjectIdentifier
+    let typeID: TypeId
+    let userTypeID: UInt32?
+    let registerByName: Bool
+    let namespace: MetaString
+    let typeName: MetaString
+    let typeMeta: TypeMeta?
+    public let compatibleTypeMeta: TypeMeta?
+    let typeDefBytes: [UInt8]?
+    let firstTypeDefBytes: [UInt8]?
+    let typeDefHeader: UInt64?
+    public let typeDefHeaderHash: UInt64?
+    public let typeDefHasUserTypeFields: Bool
+
+    private let reader: (ReadContext) throws -> Any
+    private let compatibleReader: (ReadContext, TypeInfo) throws -> Any
+    private let nativeWireTypeID: TypeId
+    private let compatibleWireTypeID: TypeId
+
+    init(
+        swiftTypeID: ObjectIdentifier,
+        typeID: TypeId,
         userTypeID: UInt32?,
-        kind: TypeId,
         registerByName: Bool,
-        namespace: MetaString?,
-        typeName: MetaString
+        namespace: MetaString,
+        typeName: MetaString,
+        typeMeta: TypeMeta? = nil,
+        compatibleTypeMeta: TypeMeta? = nil,
+        typeDefBytes: [UInt8]? = nil,
+        firstTypeDefBytes: [UInt8]? = nil,
+        typeDefHeader: UInt64? = nil,
+        typeDefHeaderHash: UInt64? = nil,
+        typeDefHasUserTypeFields: Bool = true,
+        reader: @escaping (ReadContext) throws -> Any,
+        compatibleReader: @escaping (ReadContext, TypeInfo) throws -> Any
     ) {
+        self.swiftTypeID = swiftTypeID
+        self.typeID = typeID
         self.userTypeID = userTypeID
-        self.kind = kind
         self.registerByName = registerByName
         self.namespace = namespace
         self.typeName = typeName
+        self.typeMeta = typeMeta
+        self.compatibleTypeMeta = compatibleTypeMeta ?? typeMeta
+        self.typeDefBytes = typeDefBytes
+        self.firstTypeDefBytes = firstTypeDefBytes
+        self.typeDefHeader = typeDefHeader
+        self.typeDefHeaderHash = typeDefHeaderHash
+        self.typeDefHasUserTypeFields = typeDefHasUserTypeFields
+        self.reader = reader
+        self.compatibleReader = compatibleReader
+        nativeWireTypeID = resolveRegisteredWireTypeID(
+            declaredTypeID: typeID,
+            registerByName: registerByName,
+            compatible: false
+        )
+        compatibleWireTypeID = resolveRegisteredWireTypeID(
+            declaredTypeID: typeID,
+            registerByName: registerByName,
+            compatible: true
+        )
+    }
+
+    convenience init(
+        swiftTypeID: ObjectIdentifier,
+        typeID: TypeId,
+        userTypeID: UInt32?,
+        registerByName: Bool,
+        namespace: MetaString,
+        typeName: MetaString,
+        fields: [TypeMeta.FieldInfo],
+        reader: @escaping (ReadContext) throws -> Any,
+        compatibleReader: @escaping (ReadContext, TypeInfo) throws -> Any
+    ) throws {
+        let compatibleWireTypeID = resolveRegisteredWireTypeID(
+            declaredTypeID: typeID,
+            registerByName: registerByName,
+            compatible: true
+        )
+        let typeMeta = try TypeMeta(
+            typeID: registerByName ? nil : compatibleWireTypeID.rawValue,
+            userTypeID: registerByName ? nil : userTypeID,
+            namespace: namespace,
+            typeName: typeName,
+            registerByName: registerByName,
+            fields: fields,
+            hasFieldsMeta: !fields.isEmpty
+        )
+        let typeDefBytes = try typeMeta.encode()
+        var firstTypeDefBytes = [UInt8]()
+        firstTypeDefBytes.reserveCapacity(typeDefBytes.count + 1)
+        firstTypeDefBytes.append(0)
+        firstTypeDefBytes.append(contentsOf: typeDefBytes)
+        let typeDefHeader = try encodedTypeDefHeader(typeDefBytes)
+        let typeDefHeaderHash = try encodedTypeDefHeaderHash(typeDefBytes)
+        let canonicalTypeMeta = try TypeMeta(
+            typeID: registerByName ? nil : compatibleWireTypeID.rawValue,
+            userTypeID: registerByName ? nil : userTypeID,
+            namespace: namespace,
+            typeName: typeName,
+            registerByName: registerByName,
+            fields: fields,
+            hasFieldsMeta: !fields.isEmpty,
+            headerHash: typeDefHeaderHash
+        )
+        self.init(
+            swiftTypeID: swiftTypeID,
+            typeID: typeID,
+            userTypeID: userTypeID,
+            registerByName: registerByName,
+            namespace: namespace,
+            typeName: typeName,
+            typeMeta: canonicalTypeMeta,
+            compatibleTypeMeta: canonicalTypeMeta,
+            typeDefBytes: typeDefBytes,
+            firstTypeDefBytes: firstTypeDefBytes,
+            typeDefHeader: typeDefHeader,
+            typeDefHeaderHash: typeDefHeaderHash,
+            typeDefHasUserTypeFields: encodedTypeDefHasUserTypeFields(fields),
+            reader: reader,
+            compatibleReader: compatibleReader
+        )
+    }
+
+    convenience init(typeID: TypeId) {
+        self.init(
+            swiftTypeID: ObjectIdentifier(TypeInfo.self),
+            typeID: typeID,
+            userTypeID: nil,
+            registerByName: false,
+            namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
+            typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
+            reader: { _ in
+                throw ForyError.invalidData("dynamic type \(typeID) uses runtime-only decode path")
+            },
+            compatibleReader: { _, _ in
+                throw ForyError.invalidData("dynamic compatible type \(typeID) uses runtime-only decode path")
+            }
+        )
+    }
+
+    convenience init(dynamic typeInfo: TypeInfo, compatibleTypeMeta: TypeMeta) {
+        self.init(
+            swiftTypeID: typeInfo.swiftTypeID,
+            typeID: typeInfo.typeID,
+            userTypeID: typeInfo.userTypeID,
+            registerByName: typeInfo.registerByName,
+            namespace: typeInfo.namespace,
+            typeName: typeInfo.typeName,
+            typeMeta: typeInfo.typeMeta,
+            compatibleTypeMeta: compatibleTypeMeta,
+            typeDefBytes: typeInfo.typeDefBytes,
+            firstTypeDefBytes: typeInfo.firstTypeDefBytes,
+            typeDefHeader: typeInfo.typeDefHeader,
+            typeDefHeaderHash: typeInfo.typeDefHeaderHash,
+            typeDefHasUserTypeFields: typeInfo.typeDefHasUserTypeFields,
+            reader: typeInfo.reader,
+            compatibleReader: typeInfo.compatibleReader
+        )
+    }
+
+    @inline(__always)
+    func matches(
+        typeID: TypeId,
+        userTypeID: UInt32?,
+        registerByName: Bool,
+        namespace: String,
+        typeName: String
+    ) -> Bool {
+        self.typeID == typeID &&
+            self.userTypeID == userTypeID &&
+            self.registerByName == registerByName &&
+            self.namespace.value == namespace &&
+            self.typeName.value == typeName
+    }
+
+    @inline(__always)
+    func wireTypeID(compatible: Bool) -> TypeId {
+        compatible ? compatibleWireTypeID : nativeWireTypeID
+    }
+
+    @inline(__always)
+    func read(_ context: ReadContext, typeInfo: TypeInfo? = nil) throws -> Any {
+        if let typeInfo {
+            return try compatibleReader(context, typeInfo)
+        }
+        if context.compatible {
+            return try compatibleReader(context, self)
+        }
+        if compatibleTypeMeta !== typeMeta {
+            return try compatibleReader(context, self)
+        }
+        return try reader(context)
     }
 }
 
@@ -44,28 +345,20 @@ private struct TypeNameKey: Hashable {
     let typeName: String
 }
 
-private enum DynamicRegistrationMode {
-    case idOnly
-    case nameOnly
-    case mixed
-}
+final class TypeResolver {
+    private let trackRef: Bool
 
-private struct TypeReader {
-    let swiftType: ObjectIdentifier
-    let kind: TypeId
-    let reader: (ReadContext) throws -> Any
-    let compatibleReader: (ReadContext, TypeMeta) throws -> Any
-}
+    private var bySwiftType = UInt64Map<TypeInfo>(initialCapacity: 64)
+    private var byUserTypeID = UInt64Map<TypeInfo>(initialCapacity: 64)
+    private var byTypeName: [TypeNameKey: TypeInfo] = [:]
+    private var builtinTypeInfoByID: [TypeInfo?] = []
+    private var typeInfoByHeader = UInt64Map<TypeInfo>(initialCapacity: 64)
 
-public final class TypeResolver {
-    private var bySwiftType: [ObjectIdentifier: RegisteredTypeInfo] = [:]
-    private var byUserTypeID: [UInt32: TypeReader] = [:]
-    private var byTypeName: [TypeNameKey: TypeReader] = [:]
-    private var registrationModeByKind: [TypeId: DynamicRegistrationMode] = [:]
+    init(trackRef: Bool = false) {
+        self.trackRef = trackRef
+    }
 
-    public init() {}
-
-    public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
+    func register<T: Serializer>(_ type: T.Type, id: UInt32) {
         do {
             try registerByID(type, id: id)
         } catch {
@@ -74,34 +367,40 @@ public final class TypeResolver {
     }
 
     private func registerByID<T: Serializer>(_ type: T.Type, id: UInt32) throws {
-        let key = ObjectIdentifier(type)
-        try validateIDRegistration(key: key, type: type, id: id)
-        let info = RegisteredTypeInfo(
+        let swiftTypeID = ObjectIdentifier(type)
+        try validateIDRegistration(key: swiftTypeID, type: type, id: id)
+
+        let typeInfo = try TypeInfo(
+            swiftTypeID: swiftTypeID,
+            typeID: T.staticTypeId,
             userTypeID: id,
-            kind: T.staticTypeId,
             registerByName: false,
-            namespace: nil,
-            typeName: MetaString.empty(specialChar1: "$", specialChar2: "_")
-        )
-        if bySwiftType[key] == info {
-            return
-        }
-        bySwiftType[key] = info
-        markRegistrationMode(kind: info.kind, registerByName: false)
-        byUserTypeID[id] = TypeReader(
-            swiftType: key,
-            kind: T.staticTypeId,
+            namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
+            typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
+            fields: T.foryFieldsInfo(trackRef: trackRef),
             reader: { context in
                 try T.foryRead(context, refMode: .none, readTypeInfo: false)
             },
-            compatibleReader: { context, typeMeta in
-                context.pushCompatibleTypeMeta(for: T.self, typeMeta)
-                return try T.foryRead(context, refMode: .none, readTypeInfo: false)
+            compatibleReader: { context, remoteTypeInfo in
+                try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
             }
         )
+
+        if let existing = bySwiftType.value(for: UInt64(UInt(bitPattern: swiftTypeID))),
+           existing.matches(
+               typeID: T.staticTypeId,
+               userTypeID: id,
+               registerByName: false,
+               namespace: "",
+               typeName: ""
+           ) {
+            return
+        }
+
+        try store(typeInfo, for: swiftTypeID, userTypeID: id)
     }
 
-    public func register<T: Serializer>(_ type: T.Type, namespace: String, typeName: String) throws {
+    func register<T: Serializer>(_ type: T.Type, namespace: String, typeName: String) throws {
         let namespaceMeta = try MetaStringEncoder.namespace.encode(
             namespace,
             allowedEncodings: namespaceMetaStringEncodings
@@ -110,39 +409,45 @@ public final class TypeResolver {
             typeName,
             allowedEncodings: typeNameMetaStringEncodings
         )
-        let key = ObjectIdentifier(type)
+        let swiftTypeID = ObjectIdentifier(type)
         try validateNameRegistration(
-            key: key,
+            key: swiftTypeID,
             type: type,
             namespace: namespace,
             typeName: typeName
         )
-        let info = RegisteredTypeInfo(
+
+        let typeInfo = try TypeInfo(
+            swiftTypeID: swiftTypeID,
+            typeID: T.staticTypeId,
             userTypeID: nil,
-            kind: T.staticTypeId,
             registerByName: true,
             namespace: namespaceMeta,
-            typeName: typeNameMeta
-        )
-        if bySwiftType[key] == info {
-            return
-        }
-        bySwiftType[key] = info
-        markRegistrationMode(kind: info.kind, registerByName: true)
-        byTypeName[TypeNameKey(namespace: namespace, typeName: typeName)] = TypeReader(
-            swiftType: key,
-            kind: T.staticTypeId,
+            typeName: typeNameMeta,
+            fields: T.foryFieldsInfo(trackRef: trackRef),
             reader: { context in
                 try T.foryRead(context, refMode: .none, readTypeInfo: false)
             },
-            compatibleReader: { context, typeMeta in
-                context.pushCompatibleTypeMeta(for: T.self, typeMeta)
-                return try T.foryRead(context, refMode: .none, readTypeInfo: false)
+            compatibleReader: { context, remoteTypeInfo in
+                try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
             }
         )
+
+        if let existing = bySwiftType.value(for: UInt64(UInt(bitPattern: swiftTypeID))),
+           existing.matches(
+               typeID: T.staticTypeId,
+               userTypeID: nil,
+               registerByName: true,
+               namespace: namespace,
+               typeName: typeName
+           ) {
+            return
+        }
+
+        try store(typeInfo, for: swiftTypeID, typeNameKey: TypeNameKey(namespace: namespace, typeName: typeName))
     }
 
-    public func register<T: Serializer>(_ type: T.Type, name: String) throws {
+    func register<T: Serializer>(_ type: T.Type, name: String) throws {
         let parts = name.components(separatedBy: ".")
         if parts.count <= 1 {
             try register(type, namespace: "", typeName: name)
@@ -154,301 +459,93 @@ public final class TypeResolver {
         try register(type, namespace: resolvedNamespace, typeName: resolvedTypeName)
     }
 
-    public func registeredTypeInfo<T: Serializer>(for type: T.Type) -> RegisteredTypeInfo? {
-        bySwiftType[ObjectIdentifier(type)]
-    }
-
-    public func registeredTypeInfo(for type: any Serializer.Type) -> RegisteredTypeInfo? {
-        bySwiftType[ObjectIdentifier(type)]
-    }
-
-    public func requireRegisteredTypeInfo<T: Serializer>(for type: T.Type) throws -> RegisteredTypeInfo {
-        if let info = bySwiftType[ObjectIdentifier(type)] {
+    func requireTypeInfo<T: Serializer>(for type: T.Type) throws -> TypeInfo {
+        if let info = bySwiftType.value(for: UInt64(UInt(bitPattern: ObjectIdentifier(type)))) {
             return info
         }
         throw ForyError.typeNotRegistered("\(type) is not registered")
     }
 
-    public func readByUserTypeID(_ userTypeID: UInt32, context: ReadContext) throws -> Any {
-        try readByUserTypeID(userTypeID, context: context, compatibleTypeMeta: nil)
+    @inline(__always)
+    func getTypeInfo(forHeader header: UInt64) -> TypeInfo? {
+        typeInfoByHeader.value(for: header)
     }
 
-    public func readByUserTypeID(
-        _ userTypeID: UInt32,
-        context: ReadContext,
-        compatibleTypeMeta: TypeMeta?
-    ) throws -> Any {
-        guard let entry = byUserTypeID[userTypeID] else {
+    @inline(__always)
+    func cacheTypeInfo(_ typeMeta: TypeMeta, forHeader header: UInt64) throws -> TypeInfo {
+        if let cached = typeInfoByHeader.value(for: header) {
+            return cached
+        }
+        let localTypeInfo = try requireTypeInfo(for: typeMeta)
+        if header == localTypeInfo.typeDefHeader {
+            typeInfoByHeader.set(localTypeInfo, for: header)
+            return localTypeInfo
+        }
+        let canonicalTypeMeta: TypeMeta
+        if let localTypeMeta = localTypeInfo.typeMeta,
+           let remapped = try? typeMeta.assigningFieldIDs(from: localTypeMeta) {
+            canonicalTypeMeta = remapped
+        } else {
+            canonicalTypeMeta = typeMeta
+        }
+        let typeInfo = TypeInfo(dynamic: localTypeInfo, compatibleTypeMeta: canonicalTypeMeta)
+        typeInfoByHeader.set(typeInfo, for: header)
+        return typeInfo
+    }
+
+    private func store(
+        _ typeInfo: TypeInfo,
+        for swiftTypeID: ObjectIdentifier,
+        userTypeID: UInt32? = nil,
+        typeNameKey: TypeNameKey? = nil
+    ) throws {
+        bySwiftType.set(typeInfo, for: UInt64(UInt(bitPattern: swiftTypeID)))
+        if let userTypeID {
+            byUserTypeID.set(typeInfo, for: UInt64(userTypeID))
+        }
+        if let typeNameKey {
+            byTypeName[typeNameKey] = typeInfo
+        }
+        if let typeMeta = typeInfo.typeMeta,
+           let typeDefHeader = typeInfo.typeDefHeader {
+            typeInfoByHeader.set(
+                TypeInfo(
+                    dynamic: typeInfo,
+                    compatibleTypeMeta: typeMeta
+                ),
+                for: typeDefHeader
+            )
+        }
+    }
+
+    @inline(__always)
+    func builtinTypeInfo(for typeID: TypeId) -> TypeInfo {
+        let index = Int(typeID.rawValue)
+        if index < builtinTypeInfoByID.count, let cached = builtinTypeInfoByID[index] {
+            return cached
+        }
+        let info = TypeInfo(typeID: typeID)
+        if index >= builtinTypeInfoByID.count {
+            builtinTypeInfoByID.append(contentsOf: repeatElement(nil, count: index - builtinTypeInfoByID.count + 1))
+        }
+        builtinTypeInfoByID[index] = info
+        return info
+    }
+
+    @inline(__always)
+    func requireTypeInfo(userTypeID: UInt32) throws -> TypeInfo {
+        guard let typeInfo = byUserTypeID.value(for: UInt64(userTypeID)) else {
             throw ForyError.typeNotRegistered("user_type_id=\(userTypeID)")
         }
-        if let compatibleTypeMeta {
-            return try entry.compatibleReader(context, compatibleTypeMeta)
-        }
-        return try entry.reader(context)
+        return typeInfo
     }
 
-    public func readByTypeName(namespace: String, typeName: String, context: ReadContext) throws -> Any {
-        try readByTypeName(namespace: namespace, typeName: typeName, context: context, compatibleTypeMeta: nil)
-    }
-
-    public func readByTypeName(
-        namespace: String,
-        typeName: String,
-        context: ReadContext,
-        compatibleTypeMeta: TypeMeta?
-    ) throws -> Any {
-        guard let entry = byTypeName[TypeNameKey(namespace: namespace, typeName: typeName)] else {
+    @inline(__always)
+    func requireTypeInfo(namespace: String, typeName: String) throws -> TypeInfo {
+        guard let typeInfo = byTypeName[TypeNameKey(namespace: namespace, typeName: typeName)] else {
             throw ForyError.typeNotRegistered("namespace=\(namespace), type=\(typeName)")
         }
-        if let compatibleTypeMeta {
-            return try entry.compatibleReader(context, compatibleTypeMeta)
-        }
-        return try entry.reader(context)
-    }
-
-    public func readDynamicTypeInfo(context: ReadContext) throws -> DynamicTypeInfo {
-        let rawTypeID = try context.buffer.readVarUInt32()
-        guard let wireTypeID = TypeId(rawValue: rawTypeID) else {
-            throw ForyError.invalidData("unknown dynamic type id \(rawTypeID)")
-        }
-
-        switch wireTypeID {
-        case .compatibleStruct, .namedCompatibleStruct:
-            let typeMeta = try context.readCompatibleTypeMeta()
-            if typeMeta.registerByName {
-                return DynamicTypeInfo(
-                    wireTypeID: wireTypeID,
-                    userTypeID: nil,
-                    namespace: typeMeta.namespace,
-                    typeName: typeMeta.typeName,
-                    compatibleTypeMeta: typeMeta
-                )
-            }
-            return DynamicTypeInfo(
-                wireTypeID: wireTypeID,
-                userTypeID: typeMeta.userTypeID,
-                namespace: nil,
-                typeName: nil,
-                compatibleTypeMeta: typeMeta
-            )
-        case .namedStruct, .namedEnum, .namedExt, .namedUnion:
-            let namespace = try Self.readMetaString(
-                buffer: context.buffer,
-                decoder: .namespace,
-                encodings: namespaceMetaStringEncodings
-            )
-            let typeName = try Self.readMetaString(
-                buffer: context.buffer,
-                decoder: .typeName,
-                encodings: typeNameMetaStringEncodings
-            )
-            return DynamicTypeInfo(
-                wireTypeID: wireTypeID,
-                userTypeID: nil,
-                namespace: namespace,
-                typeName: typeName,
-                compatibleTypeMeta: nil
-            )
-        case .structType, .enumType, .ext, .typedUnion, .union:
-            let registrationKind: TypeId = wireTypeID == .union ? .typedUnion : wireTypeID
-            switch try dynamicRegistrationMode(for: registrationKind) {
-            case .idOnly:
-                return DynamicTypeInfo(
-                    wireTypeID: wireTypeID,
-                    userTypeID: try context.buffer.readVarUInt32(),
-                    namespace: nil,
-                    typeName: nil,
-                    compatibleTypeMeta: nil
-                )
-            case .nameOnly:
-                let namespace = try Self.readMetaString(
-                    buffer: context.buffer,
-                    decoder: .namespace,
-                    encodings: namespaceMetaStringEncodings
-                )
-                let typeName = try Self.readMetaString(
-                    buffer: context.buffer,
-                    decoder: .typeName,
-                    encodings: typeNameMetaStringEncodings
-                )
-                return DynamicTypeInfo(
-                    wireTypeID: wireTypeID,
-                    userTypeID: nil,
-                    namespace: namespace,
-                    typeName: typeName,
-                    compatibleTypeMeta: nil
-                )
-            case .mixed:
-                // Wire ids for user kinds are explicit: plain ids always carry user_type_id.
-                return DynamicTypeInfo(
-                    wireTypeID: wireTypeID,
-                    userTypeID: try context.buffer.readVarUInt32(),
-                    namespace: nil,
-                    typeName: nil,
-                    compatibleTypeMeta: nil
-                )
-            }
-        default:
-            return DynamicTypeInfo(
-                wireTypeID: wireTypeID,
-                userTypeID: nil,
-                namespace: nil,
-                typeName: nil,
-                compatibleTypeMeta: nil
-            )
-        }
-    }
-
-    public func readDynamicValue(typeInfo: DynamicTypeInfo, context: ReadContext) throws -> Any {
-        try context.enterDynamicAnyDepth()
-        defer { context.leaveDynamicAnyDepth() }
-
-        let value: Any
-        switch typeInfo.wireTypeID {
-        case .bool:
-            value = try Bool.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int8:
-            value = try Int8.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int16:
-            value = try Int16.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int32:
-            value = try ForyInt32Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .varint32:
-            value = try Int32.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int64:
-            value = try ForyInt64Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .varint64:
-            value = try Int64.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .taggedInt64:
-            value = try ForyInt64Tagged.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint8:
-            value = try UInt8.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint16:
-            value = try UInt16.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint32:
-            value = try ForyUInt32Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .varUInt32:
-            value = try UInt32.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint64:
-            value = try ForyUInt64Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .varUInt64:
-            value = try UInt64.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .taggedUInt64:
-            value = try ForyUInt64Tagged.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .float16:
-            value = try Float16.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .bfloat16:
-            value = try BFloat16.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .float32:
-            value = try Float.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .float64:
-            value = try Double.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .string:
-            value = try String.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .duration:
-            value = try Duration.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .timestamp:
-            value = try Date.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .date:
-            value = try ForyDate.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .binary, .uint8Array:
-            value = try Data.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .boolArray:
-            value = try [Bool].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int8Array:
-            value = try [Int8].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int16Array:
-            value = try [Int16].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int32Array:
-            value = try [Int32].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .int64Array:
-            value = try [Int64].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint16Array:
-            value = try [UInt16].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint32Array:
-            value = try [UInt32].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .uint64Array:
-            value = try [UInt64].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .float16Array:
-            value = try [Float16].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .bfloat16Array:
-            value = try [BFloat16].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .float32Array:
-            value = try [Float].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .float64Array:
-            value = try [Double].foryRead(context, refMode: .none, readTypeInfo: false)
-        case .array, .list:
-            value = try context.readAnyList(refMode: .none) ?? []
-        case .set:
-            value = try Set<AnyHashable>.foryRead(context, refMode: .none, readTypeInfo: false)
-        case .map:
-            value = try readDynamicAnyMapValue(context: context)
-        case .structType, .enumType, .ext, .typedUnion, .union:
-            if let userTypeID = typeInfo.userTypeID {
-                value = try readByUserTypeID(userTypeID, context: context)
-            } else if let namespace = typeInfo.namespace, let typeName = typeInfo.typeName {
-                value = try readByTypeName(
-                    namespace: namespace.value,
-                    typeName: typeName.value,
-                    context: context
-                )
-            } else {
-                throw ForyError.invalidData("missing dynamic registration info for \(typeInfo.wireTypeID)")
-            }
-        case .namedStruct, .namedEnum, .namedExt, .namedUnion:
-            guard let namespace = typeInfo.namespace, let typeName = typeInfo.typeName else {
-                throw ForyError.invalidData("missing dynamic type name for \(typeInfo.wireTypeID)")
-            }
-            value = try readByTypeName(
-                namespace: namespace.value,
-                typeName: typeName.value,
-                context: context
-            )
-        case .compatibleStruct, .namedCompatibleStruct:
-            guard let compatibleTypeMeta = typeInfo.compatibleTypeMeta else {
-                throw ForyError.invalidData("missing compatible type meta for \(typeInfo.wireTypeID)")
-            }
-            if compatibleTypeMeta.registerByName {
-                value = try readByTypeName(
-                    namespace: compatibleTypeMeta.namespace.value,
-                    typeName: compatibleTypeMeta.typeName.value,
-                    context: context,
-                    compatibleTypeMeta: compatibleTypeMeta
-                )
-            } else {
-                guard let userTypeID = compatibleTypeMeta.userTypeID else {
-                    throw ForyError.invalidData("missing user type id in compatible dynamic type meta")
-                }
-                value = try readByUserTypeID(
-                    userTypeID,
-                    context: context,
-                    compatibleTypeMeta: compatibleTypeMeta
-                )
-            }
-        case .none:
-            value = ForyAnyNullValue()
-        default:
-            throw ForyError.invalidData("unsupported dynamic type id \(typeInfo.wireTypeID)")
-        }
-        return value
-    }
-
-    private func markRegistrationMode(kind: TypeId, registerByName: Bool) {
-        let mode: DynamicRegistrationMode = registerByName ? .nameOnly : .idOnly
-        guard let existing = registrationModeByKind[kind] else {
-            registrationModeByKind[kind] = mode
-            return
-        }
-        if existing != mode {
-            registrationModeByKind[kind] = .mixed
-        }
-    }
-
-    private func dynamicRegistrationMode(for kind: TypeId) throws -> DynamicRegistrationMode {
-        guard let mode = registrationModeByKind[kind] else {
-            throw ForyError.typeNotRegistered("no dynamic registration mode for kind \(kind)")
-        }
-        return mode
+        return typeInfo
     }
 
     private func validateIDRegistration<T: Serializer>(
@@ -456,13 +553,14 @@ public final class TypeResolver {
         type: T.Type,
         id: UInt32
     ) throws {
-        if let existing = bySwiftType[key] {
+        let swiftKey = UInt64(UInt(bitPattern: key))
+        if let existing = bySwiftType.value(for: swiftKey) {
             if existing.registerByName {
                 throw ForyError.invalidData(
                     "\(type) was already registered by name, cannot re-register by id"
                 )
             }
-            if existing.kind != T.staticTypeId || existing.userTypeID != id {
+            if existing.typeID != T.staticTypeId || existing.userTypeID != id {
                 let existingID = existing.userTypeID.map { String($0) } ?? "nil"
                 throw ForyError.invalidData(
                     "\(type) registration conflict: existing id=\(existingID), new id=\(id)"
@@ -470,7 +568,7 @@ public final class TypeResolver {
             }
         }
 
-        if let existing = byUserTypeID[id], existing.swiftType != key {
+        if let existing = byUserTypeID.value(for: UInt64(id)), existing.swiftTypeID != key {
             throw ForyError.invalidData("user type id \(id) is already registered by another type")
         }
     }
@@ -481,18 +579,18 @@ public final class TypeResolver {
         namespace: String,
         typeName: String
     ) throws {
-        if let existing = bySwiftType[key] {
+        if let existing = bySwiftType.value(for: UInt64(UInt(bitPattern: key))) {
             if !existing.registerByName {
                 throw ForyError.invalidData(
                     "\(type) was already registered by id, cannot re-register by name"
                 )
             }
-            if existing.kind != T.staticTypeId ||
-                existing.namespace?.value != namespace ||
+            if existing.typeID != T.staticTypeId ||
+                existing.namespace.value != namespace ||
                 existing.typeName.value != typeName {
                 throw ForyError.invalidData(
                     """
-                    \(type) registration conflict: existing name=\(existing.namespace?.value ?? "")::\(existing.typeName.value), \
+                    \(type) registration conflict: existing name=\(existing.namespace.value)::\(existing.typeName.value), \
                     new name=\(namespace)::\(typeName)
                     """
                 )
@@ -500,27 +598,28 @@ public final class TypeResolver {
         }
 
         let nameKey = TypeNameKey(namespace: namespace, typeName: typeName)
-        if let existing = byTypeName[nameKey], existing.swiftType != key {
+        if let existing = byTypeName[nameKey], existing.swiftTypeID != key {
             throw ForyError.invalidData("type name \(namespace)::\(typeName) is already registered by another type")
         }
     }
 
-    private static func readMetaString(
-        buffer: ByteBuffer,
-        decoder: MetaStringDecoder,
-        encodings: [MetaStringEncoding]
-    ) throws -> MetaString {
-        let header = try buffer.readUInt8()
-        let encodingIndex = Int(header & 0b11)
-        guard encodingIndex < encodings.count else {
-            throw ForyError.invalidData("invalid meta string encoding index")
+    @inline(__always)
+    private func requireTypeInfo(for typeMeta: TypeMeta) throws -> TypeInfo {
+        if typeMeta.registerByName {
+            guard let typeInfo = byTypeName[TypeNameKey(namespace: typeMeta.namespace.value, typeName: typeMeta.typeName.value)] else {
+                throw ForyError.typeNotRegistered(
+                    "namespace=\(typeMeta.namespace.value), type=\(typeMeta.typeName.value)"
+                )
+            }
+            return typeInfo
         }
-
-        var length = Int(header >> 2)
-        if length >= 0b11_1111 {
-            length = 0b11_1111 + Int(try buffer.readVarUInt32())
+        if let userTypeID = typeMeta.userTypeID {
+            guard let typeInfo = byUserTypeID.value(for: UInt64(userTypeID)) else {
+                throw ForyError.typeNotRegistered("user_type_id=\(userTypeID)")
+            }
+            return typeInfo
         }
-        let bytes = try buffer.readBytes(count: length)
-        return try decoder.decode(bytes: bytes, encoding: encodings[encodingIndex])
+        throw ForyError.invalidData("missing user type id in compatible dynamic type meta")
     }
+
 }

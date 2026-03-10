@@ -99,6 +99,27 @@ enum FieldIdUnionTarget: Equatable {
 }
 
 @ForyObject
+struct CompatibleNestedItem: Equatable {
+    var id: Int32
+    var name: String
+}
+
+@ForyObject
+struct CompatibleNestedArrayHolder: Equatable {
+    var items: [CompatibleNestedItem]
+}
+
+@ForyObject
+struct CompatibleNestedOptionalArrayHolder: Equatable {
+    var items: [CompatibleNestedItem?]
+}
+
+@ForyObject
+struct CompatibleNestedMapHolder: Equatable {
+    var items: [Int32: CompatibleNestedItem]
+}
+
+@ForyObject
 final class Node {
     var value: Int32 = 0
     var next: Node?
@@ -368,7 +389,7 @@ func macroStructRoundTrip() throws {
 }
 
 @Test
-func macroClassReferenceTracking() throws {
+func macroClassRefTracking() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 200)
 
@@ -383,7 +404,7 @@ func macroClassReferenceTracking() throws {
 }
 
 @Test
-func macroClassWeakReferenceTracking() throws {
+func macroClassWeakRefTracking() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(WeakNode.self, id: 201)
 
@@ -419,7 +440,7 @@ func topLevelAnyRoundTrip() throws {
 }
 
 @Test
-func mixedDynamicRegistrationModesCanDecodeByID() throws {
+func dynamicUserTypesDecodeByID() throws {
     let fory = Fory()
     fory.register(Address.self, id: 600)
     try fory.register(Person.self, name: "demo.person")
@@ -432,7 +453,7 @@ func mixedDynamicRegistrationModesCanDecodeByID() throws {
 
 @Test
 func duplicateNameRegistrationIsRejected() throws {
-    let resolver = TypeResolver()
+    let resolver = TypeResolver(trackRef: false)
     try resolver.register(Address.self, namespace: "demo", typeName: "entity")
 
     do {
@@ -563,7 +584,7 @@ func macroAnyFieldsRoundTrip() throws {
 }
 
 @Test
-func collectionAndMapReferenceTracking() throws {
+func collectionAndMapRefTracking() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 200)
 
@@ -655,7 +676,7 @@ func macroFieldEncodingOverridesForUnsignedTypes() throws {
 
 @Test
 func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
-    let fields = EncodedNumberFields.foryCompatibleTypeMetaFields(trackRef: false)
+    let fields = EncodedNumberFields.foryFieldsInfo(trackRef: false)
     #expect(fields.count == 2)
     #expect(fields[0].fieldName == "u32Fixed")
     #expect(fields[0].fieldType.typeID == TypeId.uint32.rawValue)
@@ -665,10 +686,10 @@ func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
 
 @Test
 func macroFieldIDsPopulateCompatibleTypeMeta() {
-    let fields = FieldIdConfigured.foryCompatibleTypeMetaFields(trackRef: false)
+    let fields = FieldIdConfigured.foryFieldsInfo(trackRef: false)
     #expect(fields.count == 2)
 
-    var byID: [Int16: TypeMetaFieldInfo] = [:]
+    var byID: [Int16: TypeMeta.FieldInfo] = [:]
     for field in fields {
         if let id = field.fieldID {
             byID[id] = field
@@ -722,6 +743,70 @@ func macroFieldIDsDriveTaggedUnionDecodeAcrossRenames() throws {
 }
 
 @Test
+func compatibleNestedStructArrayRoundTrip() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(CompatibleNestedItem.self, id: 9103)
+    writer.register(CompatibleNestedArrayHolder.self, id: 9104)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(CompatibleNestedItem.self, id: 9103)
+    reader.register(CompatibleNestedArrayHolder.self, id: 9104)
+
+    let value = CompatibleNestedArrayHolder(
+        items: [
+            CompatibleNestedItem(id: 1, name: "alpha"),
+            CompatibleNestedItem(id: 2, name: "beta")
+        ]
+    )
+    let bytes = try writer.serialize(value)
+    let decoded: CompatibleNestedArrayHolder = try reader.deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
+func compatibleNestedStructOptionalArrayRoundTrip() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(CompatibleNestedItem.self, id: 9103)
+    writer.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(CompatibleNestedItem.self, id: 9103)
+    reader.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
+
+    let value = CompatibleNestedOptionalArrayHolder(
+        items: [
+            CompatibleNestedItem(id: 1, name: "alpha"),
+            nil,
+            CompatibleNestedItem(id: 2, name: "beta")
+        ]
+    )
+    let bytes = try writer.serialize(value)
+    let decoded: CompatibleNestedOptionalArrayHolder = try reader.deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
+func compatibleNestedStructMapRoundTrip() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(CompatibleNestedItem.self, id: 9103)
+    writer.register(CompatibleNestedMapHolder.self, id: 9106)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(CompatibleNestedItem.self, id: 9103)
+    reader.register(CompatibleNestedMapHolder.self, id: 9106)
+
+    let value = CompatibleNestedMapHolder(
+        items: [
+            1: CompatibleNestedItem(id: 10, name: "first"),
+            2: CompatibleNestedItem(id: 20, name: "second")
+        ]
+    )
+    let bytes = try writer.serialize(value)
+    let decoded: CompatibleNestedMapHolder = try reader.deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
 func pvlVarInt64AndVarUInt64Extremes() throws {
     let uintValues: [UInt64] = [
         0,
@@ -772,10 +857,10 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
     }
     let minBuffer = ByteBuffer()
     minBuffer.writeVarInt64(Int64.min)
-    #expect(minBuffer.storage.count == 9)
-    #expect(minBuffer.storage.allSatisfy { $0 == 0xFF })
+    #expect(minBuffer.count == 9)
+    #expect(minBuffer.storage.prefix(minBuffer.count).allSatisfy { $0 == 0xFF })
 
-    let encoded = writeBuffer.storage
+    let encoded = Array(writeBuffer.storage.prefix(writeBuffer.count))
 
     let readBuffer = ByteBuffer(bytes: encoded)
     for value in uintValues {
@@ -818,7 +903,7 @@ func typeMetaRoundTripByName() throws {
     let namespace = try MetaStringEncoder.namespace.encode("com.example")
     let typeName = try MetaStringEncoder.typeName.encode("UserProfile")
 
-    let fields: [TypeMetaFieldInfo] = [
+    let fields: [TypeMeta.FieldInfo] = [
         .init(
             fieldID: nil,
             fieldName: "createdAt",
