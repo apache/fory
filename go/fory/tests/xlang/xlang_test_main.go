@@ -256,6 +256,18 @@ type SimpleStruct struct {
 	Last int32
 }
 
+type EvolvingOverrideStruct struct {
+	F1 string
+}
+
+type FixedOverrideStruct struct {
+	F1 string
+}
+
+func (FixedOverrideStruct) ForyEvolving() bool {
+	return false
+}
+
 type StructWithList struct {
 	Items []string
 }
@@ -700,6 +712,45 @@ func testNamedSimpleStruct() {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
 	writeFile(dataFile, serialized)
+}
+
+func testStructEvolvingOverride() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(true))
+	f.RegisterNamedStruct(EvolvingOverrideStruct{}, "test.evolving_yes")
+	f.RegisterNamedStruct(FixedOverrideStruct{}, "test.evolving_off")
+
+	buffer := fory.NewByteBuffer(data)
+	var evolving EvolvingOverrideStruct
+	if err := f.DeserializeWithCallbackBuffers(buffer, &evolving, nil); err != nil {
+		panic(fmt.Sprintf("Failed to deserialize evolving override struct: %v", err))
+	}
+	if evolving.F1 != "payload" {
+		panic(fmt.Sprintf("Unexpected evolving override payload: %+v", evolving))
+	}
+
+	var fixed FixedOverrideStruct
+	if err := f.DeserializeWithCallbackBuffers(buffer, &fixed, nil); err != nil {
+		panic(fmt.Sprintf("Failed to deserialize fixed override struct: %v", err))
+	}
+	if fixed.F1 != "payload" {
+		panic(fmt.Sprintf("Unexpected fixed override payload: %+v", fixed))
+	}
+
+	var outData []byte
+	serializedEvolving, err := f.Serialize(&evolving)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize evolving override struct: %v", err))
+	}
+	outData = append(outData, serializedEvolving...)
+	serializedFixed, err := f.Serialize(&fixed)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize fixed override struct: %v", err))
+	}
+	outData = append(outData, serializedFixed...)
+	writeFile(dataFile, outData)
 }
 
 func testList() {
@@ -2452,6 +2503,8 @@ func main() {
 		testSimpleStruct()
 	case "test_named_simple_struct":
 		testNamedSimpleStruct()
+	case "test_struct_evolving_override":
+		testStructEvolvingOverride()
 	case "test_list":
 		testList()
 	case "test_map":

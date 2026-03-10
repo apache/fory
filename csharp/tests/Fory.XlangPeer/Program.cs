@@ -176,6 +176,7 @@ internal static class Program
             "test_cross_language_serializer" => CaseCrossLanguageSerializer(input),
             "test_simple_struct" => CaseSimpleStruct(input),
             "test_named_simple_struct" => CaseNamedSimpleStruct(input),
+            "test_struct_evolving_override" => CaseStructEvolvingOverride(input),
             "test_list" => CaseList(input),
             "test_map" => CaseMap(input),
             "test_integer" => CaseInteger(input),
@@ -431,6 +432,25 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true);
         RegisterSimpleByName(fory);
         return RoundTripSingle<SimpleStruct>(input, fory);
+    }
+
+    private static byte[] CaseStructEvolvingOverride(byte[] input)
+    {
+        ForyRuntime fory = BuildFory(compatible: true);
+        fory.Register<EvolvingOverrideStruct>("test", "evolving_yes");
+        fory.Register<FixedOverrideStruct>("test", "evolving_off");
+
+        ReadOnlySequence<byte> sequence = new(input);
+        EvolvingOverrideStruct evolving = fory.Deserialize<EvolvingOverrideStruct>(ref sequence);
+        FixedOverrideStruct fixedValue = fory.Deserialize<FixedOverrideStruct>(ref sequence);
+        EnsureConsumed(sequence, nameof(CaseStructEvolvingOverride));
+        Ensure(evolving.F1 == "payload", "evolving override struct mismatch");
+        Ensure(fixedValue.F1 == "payload", "fixed override struct mismatch");
+
+        List<byte> output = [];
+        Append(output, fory.Serialize<object?>(evolving));
+        Append(output, fory.Serialize<object?>(fixedValue));
+        return output.ToArray();
     }
 
     private static byte[] CaseList(byte[] input)
@@ -982,6 +1002,18 @@ public sealed class SimpleStruct
     public int F7 { get; set; }
     public int F8 { get; set; }
     public int Last { get; set; }
+}
+
+[ForyObject]
+public sealed class EvolvingOverrideStruct
+{
+    public string F1 { get; set; } = string.Empty;
+}
+
+[ForyObject(Evolving = false)]
+public sealed class FixedOverrideStruct
+{
+    public string F1 { get; set; } = string.Empty;
 }
 
 [ForyObject]

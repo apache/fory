@@ -148,7 +148,7 @@ public final class ReadContext {
         switch wireTypeID {
         case .compatibleStruct, .namedCompatibleStruct:
             return try readCompatibleTypeInfo()
-        case .namedStruct, .namedEnum, .namedExt, .namedUnion:
+        case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if compatible {
                 return try readCompatibleTypeInfo()
             }
@@ -190,7 +190,8 @@ public final class ReadContext {
             typeID,
             declaredTypeID: localTypeInfo.typeID,
             registerByName: localTypeInfo.registerByName,
-            compatible: compatible
+            compatible: compatible,
+            evolving: localTypeInfo.evolving
         ) {
             throw ForyError.typeMismatch(expected: expectedWireTypeID.rawValue, actual: rawTypeID)
         }
@@ -203,13 +204,10 @@ public final class ReadContext {
             )
         case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if compatible {
-                let remoteTypeInfo = try readCompatibleTypeInfoIfNeeded(
+                _ = try readCompatibleTypeInfoIfNeeded(
                     for: localTypeInfo,
                     wireTypeID: typeID
                 )
-                if typeID == .namedStruct, let remoteTypeInfo {
-                    return remoteTypeInfo
-                }
             } else {
                 let namespace = try readMetaString(
                     context: self,
@@ -388,7 +386,8 @@ public final class ReadContext {
                remoteWireTypeID,
                declaredTypeID: localTypeInfo.typeID,
                registerByName: localTypeInfo.registerByName,
-               compatible: compatible
+               compatible: compatible,
+               evolving: localTypeInfo.evolving
            ) {
             throw ForyError.typeMismatch(expected: wireTypeID.rawValue, actual: remoteTypeID)
         }

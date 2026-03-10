@@ -15,39 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-namespace Apache.Fory;
+using System.Runtime.CompilerServices;
 
-public enum RefFlag : sbyte
-{
-    Null = -3,
-    Ref = -2,
-    NotNullValue = -1,
-    RefValue = 0,
-}
-
-public enum RefMode : byte
-{
-    None = 0,
-    NullOnly = 1,
-    Tracking = 2,
-}
-
-internal static class RefModeExtensions
-{
-    public static RefMode From(bool nullable, bool trackRef)
-    {
-        if (trackRef)
-        {
-            return RefMode.Tracking;
-        }
-
-        return nullable ? RefMode.NullOnly : RefMode.None;
-    }
-}
-
-internal static class ForyHeaderFlag
-{
-    public const byte IsNull = 0x01;
-    public const byte IsXlang = 0x02;
-    public const byte IsOutOfBand = 0x04;
-}
+[assembly: InternalsVisibleTo("Fory.Tests")]
+[assembly: InternalsVisibleTo("Fory.XlangPeer")]

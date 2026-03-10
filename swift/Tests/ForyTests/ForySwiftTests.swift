@@ -81,6 +81,16 @@ struct FieldIdTarget: Equatable {
 }
 
 @ForyObject
+struct EvolvingOverrideValue: Equatable {
+    var f1: String = ""
+}
+
+@ForyObject(evolving: false)
+struct FixedOverrideValue: Equatable {
+    var f1: String = ""
+}
+
+@ForyObject
 enum FieldIdUnionSource: Equatable {
     @ForyField(id: 3)
     case number(Int32)
@@ -254,6 +264,25 @@ func namedInitializerBuildsConfig() {
     #expect(configInit.config.trackRef == false)
     #expect(configInit.config.compatible == true)
     #expect(configInit.config.maxDepth == 9)
+}
+
+@Test
+func structEvolvingOverrideUsesSmallerCompatiblePayload() throws {
+    let fory = Fory(compatible: true)
+    fory.register(EvolvingOverrideValue.self, id: 1001)
+    fory.register(FixedOverrideValue.self, id: 1002)
+
+    let evolving = EvolvingOverrideValue(f1: "payload")
+    let fixed = FixedOverrideValue(f1: "payload")
+
+    let evolvingData = try fory.serialize(evolving)
+    let fixedData = try fory.serialize(fixed)
+
+    #expect(fixedData.count < evolvingData.count)
+    let decodedEvolving: EvolvingOverrideValue = try fory.deserialize(evolvingData)
+    let decodedFixed: FixedOverrideValue = try fory.deserialize(fixedData)
+    #expect(decodedEvolving == evolving)
+    #expect(decodedFixed == fixed)
 }
 
 @Test

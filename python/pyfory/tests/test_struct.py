@@ -306,6 +306,15 @@ def test_struct_evolving_override():
     assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
     assert fixed_info.type_id == TypeId.NAMED_STRUCT
 
+    evolving = EvolvingStruct(f1=123)
+    fixed = FixedStruct(f1=123)
+    evolving_bytes = fory.serialize(evolving)
+    fixed_bytes = fory.serialize(fixed)
+
+    assert len(fixed_bytes) < len(evolving_bytes)
+    assert fory.deserialize(evolving_bytes) == evolving
+    assert fory.deserialize(fixed_bytes) == fixed
+
 
 def test_data_class_serializer_xlang_serializer():
     """Test DataClassSerializer round-trip behavior in xlang mode."""

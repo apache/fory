@@ -75,6 +75,16 @@ class SimpleStruct:
     last: pyfory.int32 = 0
 
 
+@pyfory.dataclass
+class EvolvingOverrideStruct:
+    f1: str = ""
+
+
+@pyfory.dataclass(evolving=False)
+class FixedOverrideStruct:
+    f1: str = ""
+
+
 @dataclass
 class VersionCheckStruct:
     f1: pyfory.int32 = 0
@@ -430,6 +440,29 @@ def test_named_simple_struct():
 
     with open(data_file, "wb") as f:
         f.write(new_bytes)
+
+
+def test_struct_evolving_override():
+    """Test per-struct evolution override in compatible named mode."""
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    fory = pyfory.Fory(xlang=True, compatible=True)
+    fory.register_type(EvolvingOverrideStruct, namespace="test", typename="evolving_yes")
+    fory.register_type(FixedOverrideStruct, namespace="test", typename="evolving_off")
+
+    buffer = pyfory.Buffer(data_bytes)
+    evolving = fory.deserialize(buffer)
+    fixed = fory.deserialize(buffer)
+    assert evolving == EvolvingOverrideStruct(f1="payload")
+    assert fixed == FixedOverrideStruct(f1="payload")
+
+    new_buffer = pyfory.Buffer.allocate(128)
+    fory.serialize(evolving, buffer=new_buffer)
+    fory.serialize(fixed, buffer=new_buffer)
+    with open(data_file, "wb") as f:
+        f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
 def _test_skip_custom(fory1, fory2):

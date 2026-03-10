@@ -33,11 +33,11 @@ public struct ForyDate: Serializer, Equatable, Hashable {
     }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        writeBuiltinTypeInfo(context, staticTypeId)
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
     public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try readBuiltinTypeInfo(context, staticTypeId)
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -69,11 +69,11 @@ public struct ForyTimestamp: Serializer, Equatable, Hashable {
     }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        writeBuiltinTypeInfo(context, staticTypeId)
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
     public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try readBuiltinTypeInfo(context, staticTypeId)
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -120,11 +120,11 @@ extension Duration: Serializer {
     }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        writeBuiltinTypeInfo(context, staticTypeId)
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
     public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try readBuiltinTypeInfo(context, staticTypeId)
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -156,11 +156,11 @@ extension Date: Serializer {
     }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        writeBuiltinTypeInfo(context, staticTypeId)
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
     public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try readBuiltinTypeInfo(context, staticTypeId)
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {

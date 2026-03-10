@@ -17,16 +17,6 @@
 
 import Foundation
 
-@inline(__always)
-func writeBuiltinTypeInfo(_ context: WriteContext, _ typeID: TypeId) {
-    context.writeStaticTypeInfo(typeID)
-}
-
-@inline(__always)
-func readBuiltinTypeInfo(_ context: ReadContext, _ typeID: TypeId) throws -> TypeInfo? {
-    try context.readStaticTypeInfo(typeID)
-}
-
 public protocol Serializer {
     static func foryDefault() -> Self
     static var staticTypeId: TypeId { get }
@@ -59,6 +49,10 @@ public protocol Serializer {
     func foryWriteTypeInfo(_ context: WriteContext) throws
 }
 
+public protocol StructSerializer: Serializer {
+    static var foryEvolving: Bool { get }
+}
+
 public extension Serializer {
     @inlinable
     static var isNullableType: Bool { false }
@@ -83,6 +77,11 @@ public extension Serializer {
     static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo _: TypeInfo) throws -> Self {
         try foryReadData(context)
     }
+}
+
+public extension StructSerializer {
+    @inlinable
+    static var foryEvolving: Bool { true }
 }
 
 public extension Serializer {

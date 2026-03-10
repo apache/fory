@@ -54,6 +54,16 @@ private struct SimpleStruct {
 }
 
 @ForyObject
+private struct EvolvingOverrideStruct {
+    var f1: String = ""
+}
+
+@ForyObject(evolving: false)
+private struct FixedOverrideStruct {
+    var f1: String = ""
+}
+
+@ForyObject
 private struct Item1 {
     var f1: Int32 = 0
     var f2: Int32 = 0
@@ -558,6 +568,18 @@ private func handleNamedSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
     return try roundTripSingle(bytes, fory: fory, as: SimpleStruct.self)
 }
 
+private func handleStructEvolvingOverride(_ bytes: [UInt8]) throws -> [UInt8] {
+    let fory = Fory(compatible: true)
+    try fory.register(EvolvingOverrideStruct.self, namespace: "test", name: "evolving_yes")
+    try fory.register(FixedOverrideStruct.self, namespace: "test", name: "evolving_off")
+    return try roundTripStream(bytes) { buffer, out in
+        let evolving: EvolvingOverrideStruct = try fory.deserialize(from: buffer)
+        let fixed: FixedOverrideStruct = try fory.deserialize(from: buffer)
+        try fory.serialize(evolving, to: &out)
+        try fory.serialize(fixed, to: &out)
+    }
+}
+
 private func handleList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(Item.self, id: 102)
@@ -889,6 +911,8 @@ private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] 
         return try handleSimpleStruct(bytes)
     case "test_named_simple_struct":
         return try handleNamedSimpleStruct(bytes)
+    case "test_struct_evolving_override":
+        return try handleStructEvolvingOverride(bytes)
     case "test_list":
         return try handleList(bytes)
     case "test_map":

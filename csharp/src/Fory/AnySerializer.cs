@@ -33,13 +33,13 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
     public override object? ReadData(ReadContext context)
     {
-        DynamicTypeInfo? dynamicTypeInfo = context.DynamicTypeInfo(typeof(object));
-        if (dynamicTypeInfo is null)
+        TypeInfo? typeInfo = context.GetReadTypeInfo(typeof(object));
+        if (typeInfo is null)
         {
             throw new InvalidDataException("dynamic Any value requires type info");
         }
 
-        return context.TypeResolver.ReadDynamicValue(dynamicTypeInfo, context);
+        return context.TypeResolver.ReadAnyValue(typeInfo, context);
     }
 
     public override void Write(WriteContext context, in object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
@@ -53,9 +53,9 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
             }
 
             bool wroteTrackingRefFlag = false;
-            if (refMode == RefMode.Tracking && AnyValueIsReferenceTrackable(value!, context.TypeResolver))
+            if (refMode == RefMode.Tracking && AnyValueIsRefType(value!, context.TypeResolver))
             {
-                if (context.RefWriter.TryWriteReference(context.Writer, value!))
+                if (context.RefWriter.TryWriteRef(context.Writer, value!))
                 {
                     return;
                 }
@@ -81,57 +81,56 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
     {
         if (refMode != RefMode.None)
         {
-            sbyte rawFlag = context.Reader.ReadInt8();
-            RefFlag flag = (RefFlag)rawFlag;
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
             switch (flag)
             {
                 case RefFlag.Null:
                     return null;
                 case RefFlag.Ref:
                     {
-                        uint refId = context.Reader.ReadVarUInt32();
-                        return context.RefReader.ReadRefValue(refId);
+                        uint refId = context.RefReader.ReadRefId(context.Reader);
+                        return context.RefReader.GetRefValue(refId);
                     }
                 case RefFlag.RefValue:
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
-                        context.RefReader.PushPendingReference(reservedRefId);
+                        context.SetReservedRefId(reservedRefId);
                         try
                         {
                             object? value = ReadNonNullDynamicAny(context, readTypeInfo);
-                            context.RefReader.FinishPendingReferenceIfNeeded(value);
+                            context.StoreRef(value);
                             return value;
                         }
                         finally
                         {
-                            context.RefReader.PopPendingReference();
+                            context.ClearReservedRefId();
                         }
                     }
                 case RefFlag.NotNullValue:
                     break;
                 default:
-                    throw new RefException($"invalid ref flag {rawFlag}");
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
             }
         }
 
         return ReadNonNullDynamicAny(context, readTypeInfo);
     }
 
-    private static bool AnyValueIsReferenceTrackable(object value, TypeResolver typeResolver)
+    private static bool AnyValueIsRefType(object value, TypeResolver typeResolver)
     {
         TypeInfo typeInfo = typeResolver.GetTypeInfo(value.GetType());
-        return typeInfo.IsReferenceTrackableType;
+        return typeInfo.IsRefType;
     }
 
     private static void ReadAnyTypeInfo(ReadContext context)
     {
-        DynamicTypeInfo typeInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
-        context.SetDynamicTypeInfo(typeof(object), typeInfo);
+        TypeInfo typeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+        context.SetReadTypeInfo(typeof(object), typeInfo);
     }
 
     private object? ReadNonNullDynamicAny(ReadContext context, bool readTypeInfo)
     {
-        context.IncreaseDynamicReadDepth();
+        context.IncreaseReadDepth();
         bool loadedDynamicTypeInfo = false;
         try
         {
@@ -147,10 +146,10 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         {
             if (loadedDynamicTypeInfo)
             {
-                context.ClearDynamicTypeInfo(typeof(object));
+                context.ClearReadTypeInfo(typeof(object));
             }
 
-            context.DecreaseDynamicReadDepth();
+            context.DecreaseReadDepth();
         }
     }
 }
@@ -209,7 +208,7 @@ public static class DynamicAnyCodec
         return context.TypeResolver.GetSerializer<object?>().Read(context, refMode, readTypeInfo);
     }
 
-    public static void WriteAnyPayload(object value, WriteContext context, bool hasGenerics)
+    internal static void WriteAnyPayload(object value, WriteContext context, bool hasGenerics)
     {
         if (DynamicContainerCodec.TryWritePayload(value, context, hasGenerics))
         {

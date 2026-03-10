@@ -272,7 +272,7 @@ final class TypeResolverImpl extends TypeResolver {
 
   void _regWithNamespace(CustomTypeSpec spec, String tag, String tn,
       [String ns = '']) {
-    ObjType resolvedObjType = _resolveObjTypeForTagRegistration(spec.objType);
+    ObjType resolvedObjType = _resolveObjTypeForTagRegistration(spec);
     MetaStringBytes tnMsb = _msResolver.getOrCreateMetaStringBytes(
       _tstrEncoder.encodeTypeName(tn),
     );
@@ -293,8 +293,7 @@ final class TypeResolverImpl extends TypeResolver {
 
   void _regWithTypeId(CustomTypeSpec spec, int userTypeId) {
     final int normalizedTypeId = userTypeId & 0xFFFFFFFF;
-    ObjType resolvedObjType =
-        _resolveObjTypeForTypeIdRegistration(spec.objType);
+    ObjType resolvedObjType = _resolveObjTypeForTypeIdRegistration(spec);
     TypeInfo typeInfo = TypeInfo(
       spec.dartType,
       resolvedObjType,
@@ -316,7 +315,9 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
-  ObjType _resolveObjTypeForTagRegistration(ObjType specObjType) {
+  ObjType _resolveObjTypeForTagRegistration(CustomTypeSpec spec) {
+    final ObjType specObjType = spec.objType;
+    final bool evolving = spec is TypeSpec ? spec.evolving : true;
     switch (specObjType) {
       case ObjType.NAMED_ENUM:
       case ObjType.ENUM:
@@ -325,7 +326,7 @@ final class TypeResolverImpl extends TypeResolver {
       case ObjType.STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:
       case ObjType.COMPATIBLE_STRUCT:
-        return _ctx.conf.compatible
+        return _ctx.conf.compatible && evolving
             ? ObjType.NAMED_COMPATIBLE_STRUCT
             : ObjType.NAMED_STRUCT;
       case ObjType.NAMED_EXT:
@@ -336,7 +337,9 @@ final class TypeResolverImpl extends TypeResolver {
     }
   }
 
-  ObjType _resolveObjTypeForTypeIdRegistration(ObjType specObjType) {
+  ObjType _resolveObjTypeForTypeIdRegistration(CustomTypeSpec spec) {
+    final ObjType specObjType = spec.objType;
+    final bool evolving = spec is TypeSpec ? spec.evolving : true;
     switch (specObjType) {
       case ObjType.NAMED_ENUM:
       case ObjType.ENUM:
@@ -345,7 +348,7 @@ final class TypeResolverImpl extends TypeResolver {
       case ObjType.STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:
       case ObjType.COMPATIBLE_STRUCT:
-        return _ctx.conf.compatible
+        return _ctx.conf.compatible && evolving
             ? ObjType.COMPATIBLE_STRUCT
             : ObjType.STRUCT;
       case ObjType.NAMED_EXT:
@@ -452,10 +455,7 @@ final class TypeResolverImpl extends TypeResolver {
       case ObjType.COMPATIBLE_STRUCT:
       case ObjType.NAMED_COMPATIBLE_STRUCT:
         return _readSharedTypeMeta(br);
-      case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
-      case ObjType.NAMED_EXT:
-      case ObjType.NAMED_UNION:
         if (_ctx.conf.compatible) {
           return _readSharedTypeMeta(br);
         }
@@ -473,6 +473,23 @@ final class TypeResolverImpl extends TypeResolver {
         typeInfo = _getAndCacheSpecByBytes(key, pkgBytes, simpleClassNameBytes);
         // _tagHash2Info[key] = typeInfo;
         return typeInfo;
+      case ObjType.NAMED_ENUM:
+      case ObjType.NAMED_EXT:
+      case ObjType.NAMED_UNION:
+        if (_ctx.conf.compatible) {
+          return _readSharedTypeMeta(br);
+        }
+        MetaStringBytes enumPkgBytes = _msResolver.readMetaStringBytes(br);
+        MetaStringBytes enumSimpleClassNameBytes =
+            _msResolver.readMetaStringBytes(br);
+        LongLongKey enumKey = LongLongKey(
+            enumPkgBytes.hashCode, enumSimpleClassNameBytes.hashCode);
+        TypeInfo? enumTypeInfo = _tagHash2Info[enumKey];
+        if (enumTypeInfo != null) {
+          return enumTypeInfo;
+        }
+        return _getAndCacheSpecByBytes(
+            enumKey, enumPkgBytes, enumSimpleClassNameBytes);
       default:
         // Indicates built-in type
         TypeInfo? typeInfo = _ctx.objTypeId2TypeInfo[xtypeId];
@@ -520,8 +537,16 @@ final class TypeResolverImpl extends TypeResolver {
       case ObjType.NAMED_COMPATIBLE_STRUCT:
         _writeSharedTypeMeta(bw, typeInfo);
         break;
-      case ObjType.NAMED_ENUM:
       case ObjType.NAMED_STRUCT:
+        if (_ctx.conf.compatible) {
+          _writeSharedTypeMeta(bw, typeInfo);
+        } else {
+          pack.msWritingResolver.writeMetaStringBytes(bw, typeInfo.nsBytes!);
+          pack.msWritingResolver
+              .writeMetaStringBytes(bw, typeInfo.typeNameBytes!);
+        }
+        break;
+      case ObjType.NAMED_ENUM:
       case ObjType.NAMED_EXT:
       case ObjType.NAMED_UNION:
         if (_ctx.conf.compatible) {
@@ -830,7 +855,11 @@ final class TypeResolverImpl extends TypeResolver {
         if (typeInfo != null && typeInfo.objType.isStructType()) {
           return typeInfo.objType.id;
         }
-        if (_ctx.conf.compatible) {
+        final CustomTypeSpec? customTypeSpec =
+            _type2Spec[typeSpec.type] ?? SpecLookup.resolve(typeSpec.type);
+        final bool evolving =
+            customTypeSpec is TypeSpec ? customTypeSpec.evolving : true;
+        if (_ctx.conf.compatible && evolving) {
           return typeSpec.objType == ObjType.NAMED_STRUCT ||
                   typeSpec.objType == ObjType.NAMED_COMPATIBLE_STRUCT
               ? ObjType.NAMED_COMPATIBLE_STRUCT.id

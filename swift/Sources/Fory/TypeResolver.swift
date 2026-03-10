@@ -34,10 +34,10 @@ func normalizeRegisteredTypeID(_ typeID: TypeId) -> TypeId {
 }
 
 @inline(__always)
-func namedRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool) -> TypeId {
+func namedRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool, evolving: Bool) -> TypeId {
     switch baseTypeID {
     case .structType:
-        return compatible ? .namedCompatibleStruct : .namedStruct
+        return compatible && evolving ? .namedCompatibleStruct : .namedStruct
     case .enumType:
         return .namedEnum
     case .ext:
@@ -50,10 +50,10 @@ func namedRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool) -> TypeId {
 }
 
 @inline(__always)
-func idRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool) -> TypeId {
+func idRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool, evolving: Bool) -> TypeId {
     switch baseTypeID {
     case .structType:
-        return compatible ? .compatibleStruct : .structType
+        return compatible && evolving ? .compatibleStruct : .structType
     default:
         return baseTypeID
     }
@@ -63,13 +63,14 @@ func idRegisteredTypeID(for baseTypeID: TypeId, compatible: Bool) -> TypeId {
 func resolveRegisteredWireTypeID(
     declaredTypeID: TypeId,
     registerByName: Bool,
-    compatible: Bool
+    compatible: Bool,
+    evolving: Bool = true
 ) -> TypeId {
     let baseTypeID = normalizeRegisteredTypeID(declaredTypeID)
     if registerByName {
-        return namedRegisteredTypeID(for: baseTypeID, compatible: compatible)
+        return namedRegisteredTypeID(for: baseTypeID, compatible: compatible, evolving: evolving)
     }
-    return idRegisteredTypeID(for: baseTypeID, compatible: compatible)
+    return idRegisteredTypeID(for: baseTypeID, compatible: compatible, evolving: evolving)
 }
 
 @inline(__always)
@@ -77,13 +78,15 @@ func isAllowedRegisteredWireTypeID(
     _ wireTypeID: TypeId,
     declaredTypeID: TypeId,
     registerByName: Bool,
-    compatible: Bool
+    compatible: Bool,
+    evolving: Bool = true
 ) -> Bool {
     let baseTypeID = normalizeRegisteredTypeID(declaredTypeID)
     let expected = resolveRegisteredWireTypeID(
         declaredTypeID: declaredTypeID,
         registerByName: registerByName,
-        compatible: compatible
+        compatible: compatible,
+        evolving: evolving
     )
     if wireTypeID == expected {
         return true
@@ -148,6 +151,7 @@ public final class TypeInfo: @unchecked Sendable {
     let typeID: TypeId
     let userTypeID: UInt32?
     let registerByName: Bool
+    let evolving: Bool
     let namespace: MetaString
     let typeName: MetaString
     let typeMeta: TypeMeta?
@@ -168,6 +172,7 @@ public final class TypeInfo: @unchecked Sendable {
         typeID: TypeId,
         userTypeID: UInt32?,
         registerByName: Bool,
+        evolving: Bool,
         namespace: MetaString,
         typeName: MetaString,
         typeMeta: TypeMeta? = nil,
@@ -184,6 +189,7 @@ public final class TypeInfo: @unchecked Sendable {
         self.typeID = typeID
         self.userTypeID = userTypeID
         self.registerByName = registerByName
+        self.evolving = evolving
         self.namespace = namespace
         self.typeName = typeName
         self.typeMeta = typeMeta
@@ -198,12 +204,14 @@ public final class TypeInfo: @unchecked Sendable {
         nativeWireTypeID = resolveRegisteredWireTypeID(
             declaredTypeID: typeID,
             registerByName: registerByName,
-            compatible: false
+            compatible: false,
+            evolving: evolving
         )
         compatibleWireTypeID = resolveRegisteredWireTypeID(
             declaredTypeID: typeID,
             registerByName: registerByName,
-            compatible: true
+            compatible: true,
+            evolving: evolving
         )
     }
 
@@ -212,6 +220,7 @@ public final class TypeInfo: @unchecked Sendable {
         typeID: TypeId,
         userTypeID: UInt32?,
         registerByName: Bool,
+        evolving: Bool,
         namespace: MetaString,
         typeName: MetaString,
         fields: [TypeMeta.FieldInfo],
@@ -221,7 +230,8 @@ public final class TypeInfo: @unchecked Sendable {
         let compatibleWireTypeID = resolveRegisteredWireTypeID(
             declaredTypeID: typeID,
             registerByName: registerByName,
-            compatible: true
+            compatible: true,
+            evolving: evolving
         )
         let typeMeta = try TypeMeta(
             typeID: registerByName ? nil : compatibleWireTypeID.rawValue,
@@ -254,6 +264,7 @@ public final class TypeInfo: @unchecked Sendable {
             typeID: typeID,
             userTypeID: userTypeID,
             registerByName: registerByName,
+            evolving: evolving,
             namespace: namespace,
             typeName: typeName,
             typeMeta: canonicalTypeMeta,
@@ -274,6 +285,7 @@ public final class TypeInfo: @unchecked Sendable {
             typeID: typeID,
             userTypeID: nil,
             registerByName: false,
+            evolving: true,
             namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
             typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
             reader: { _ in
@@ -291,6 +303,7 @@ public final class TypeInfo: @unchecked Sendable {
             typeID: typeInfo.typeID,
             userTypeID: typeInfo.userTypeID,
             registerByName: typeInfo.registerByName,
+            evolving: typeInfo.evolving,
             namespace: typeInfo.namespace,
             typeName: typeInfo.typeName,
             typeMeta: typeInfo.typeMeta,
@@ -310,12 +323,14 @@ public final class TypeInfo: @unchecked Sendable {
         typeID: TypeId,
         userTypeID: UInt32?,
         registerByName: Bool,
+        evolving: Bool,
         namespace: String,
         typeName: String
     ) -> Bool {
         self.typeID == typeID &&
             self.userTypeID == userTypeID &&
             self.registerByName == registerByName &&
+            self.evolving == evolving &&
             self.namespace.value == namespace &&
             self.typeName.value == typeName
     }
@@ -330,7 +345,8 @@ public final class TypeInfo: @unchecked Sendable {
         if let typeInfo {
             return try compatibleReader(context, typeInfo)
         }
-        if context.compatible {
+        if context.compatible &&
+            (compatibleWireTypeID == .compatibleStruct || compatibleWireTypeID == .namedCompatibleStruct) {
             return try compatibleReader(context, self)
         }
         if compatibleTypeMeta !== typeMeta {
@@ -366,15 +382,25 @@ final class TypeResolver {
         }
     }
 
+    @inline(__always)
+    private func evolving<T: Serializer>(for type: T.Type) -> Bool {
+        guard let type = type as? any StructSerializer.Type else {
+            return true
+        }
+        return type.foryEvolving
+    }
+
     private func registerByID<T: Serializer>(_ type: T.Type, id: UInt32) throws {
         let swiftTypeID = ObjectIdentifier(type)
         try validateIDRegistration(key: swiftTypeID, type: type, id: id)
+        let evolving = evolving(for: type)
 
         let typeInfo = try TypeInfo(
             swiftTypeID: swiftTypeID,
             typeID: T.staticTypeId,
             userTypeID: id,
             registerByName: false,
+            evolving: evolving,
             namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
             typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
             fields: T.foryFieldsInfo(trackRef: trackRef),
@@ -391,6 +417,7 @@ final class TypeResolver {
                typeID: T.staticTypeId,
                userTypeID: id,
                registerByName: false,
+               evolving: evolving,
                namespace: "",
                typeName: ""
            ) {
@@ -416,12 +443,14 @@ final class TypeResolver {
             namespace: namespace,
             typeName: typeName
         )
+        let evolving = evolving(for: type)
 
         let typeInfo = try TypeInfo(
             swiftTypeID: swiftTypeID,
             typeID: T.staticTypeId,
             userTypeID: nil,
             registerByName: true,
+            evolving: evolving,
             namespace: namespaceMeta,
             typeName: typeNameMeta,
             fields: T.foryFieldsInfo(trackRef: trackRef),
@@ -438,6 +467,7 @@ final class TypeResolver {
                typeID: T.staticTypeId,
                userTypeID: nil,
                registerByName: true,
+               evolving: evolving,
                namespace: namespace,
                typeName: typeName
            ) {

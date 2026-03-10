@@ -644,11 +644,11 @@ extension Set: Serializer where Element: Serializer & Hashable {
     public static var staticTypeId: TypeId { .set }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        writeBuiltinTypeInfo(context, staticTypeId)
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
     public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try readBuiltinTypeInfo(context, staticTypeId)
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -666,11 +666,11 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
     public static var staticTypeId: TypeId { .map }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        writeBuiltinTypeInfo(context, staticTypeId)
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
     public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        try readBuiltinTypeInfo(context, staticTypeId)
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {

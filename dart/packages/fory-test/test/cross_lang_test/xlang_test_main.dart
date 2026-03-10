@@ -116,6 +116,13 @@ void _registerSimpleByName(Fory fory) {
       namespace: 'demo', typename: 'simple_struct');
 }
 
+void _registerStructEvolvingOverrideByName(Fory fory) {
+  registerXlangStruct(fory, EvolvingOverrideStruct,
+      namespace: 'test', typename: 'evolving_yes');
+  registerXlangStruct(fory, FixedOverrideStruct,
+      namespace: 'test', typename: 'evolving_off');
+}
+
 void _runRoundTripCase(String caseName) {
   switch (caseName) {
     case 'test_buffer':
@@ -149,6 +156,11 @@ void _runRoundTripCase(String caseName) {
     case 'test_named_simple_struct':
       final Fory fory = Fory(compatible: true);
       _registerSimpleByName(fory);
+      _roundTripFory(fory);
+      return;
+    case 'test_struct_evolving_override':
+      final Fory fory = Fory(compatible: true);
+      _registerStructEvolvingOverrideByName(fory);
       _roundTripFory(fory);
       return;
     case 'test_list':

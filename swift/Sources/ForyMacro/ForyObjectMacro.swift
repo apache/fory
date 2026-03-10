@@ -28,12 +28,13 @@ struct ForySwiftPlugin: CompilerPlugin {
 
 public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
     public static func expansion(
-        of _: AttributeSyntax,
+        of attribute: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
         conformingTo _: [TypeSyntax],
         in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
         let accessPrefix = serializerMemberAccessPrefix(declaration)
+        let objectConfig = try parseForyObjectConfiguration(attribute)
 
         if let enumDecl = declaration.as(EnumDeclSyntax.self) {
             let parsedEnum = try parseEnumDecl(enumDecl)
@@ -45,6 +46,9 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
 
         let staticTypeIDDecl: DeclSyntax = """
         \(raw: accessPrefix)static var staticTypeId: TypeId { .structType }
+        """
+        let evolvingDecl: DeclSyntax = """
+        \(raw: accessPrefix)static var foryEvolving: Bool { \(raw: objectConfig.evolving ? "true" : "false") }
         """
 
         let referenceTrackDecl: DeclSyntax? = parsed.isClass ? """
@@ -83,6 +87,7 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
         )
         return [
             staticTypeIDDecl,
+            evolvingDecl,
             referenceTrackDecl,
             schemaHashDecl,
             compatibleTypeMetaDecl,
@@ -109,7 +114,9 @@ public struct ForyObjectMacro: MemberMacro, ExtensionMacro {
         }
 
         let extensionDecl: ExtensionDeclSyntax = try ExtensionDeclSyntax(
-            "extension \(raw: typeName): Serializer {}"
+            declaration.is(EnumDeclSyntax.self)
+                ? "extension \(raw: typeName): Serializer {}"
+                : "extension \(raw: typeName): Serializer, StructSerializer {}"
         )
         return [extensionDecl]
     }
@@ -204,6 +211,10 @@ private struct FieldTypeResolution {
 private struct ParsedForyFieldConfiguration {
     let encoding: FieldEncoding?
     let id: Int?
+}
+
+private struct ParsedForyObjectConfiguration {
+    let evolving: Bool
 }
 
 private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl {
@@ -626,6 +637,44 @@ private func parseForyFieldConfiguration(
     }
 
     return ParsedForyFieldConfiguration(encoding: parsedEncoding, id: parsedID)
+}
+
+private func parseForyObjectConfiguration(_ attribute: AttributeSyntax) throws -> ParsedForyObjectConfiguration {
+    guard let args = attribute.arguments else {
+        return .init(evolving: true)
+    }
+    guard case .argumentList(let argList) = args else {
+        throw MacroExpansionErrorMessage("@ForyObject arguments are invalid")
+    }
+    guard !argList.isEmpty else {
+        return .init(evolving: true)
+    }
+
+    var evolving = true
+    for arg in argList {
+        let label = arg.label?.text
+        if label == nil || label == "evolving" {
+            evolving = try parseBoolLiteralExpression(
+                arg.expression,
+                message: "@ForyObject evolving must be a boolean literal"
+            )
+            continue
+        }
+        throw MacroExpansionErrorMessage("@ForyObject supports only the 'evolving' argument")
+    }
+    return .init(evolving: evolving)
+}
+
+private func parseBoolLiteralExpression(_ expr: ExprSyntax, message: String) throws -> Bool {
+    let raw = trimType(expr.trimmedDescription)
+    switch raw {
+    case "true":
+        return true
+    case "false":
+        return false
+    default:
+        throw MacroExpansionErrorMessage(message)
+    }
 }
 
 private func parseFieldEncodingExpression(_ expr: ExprSyntax) throws -> FieldEncoding {

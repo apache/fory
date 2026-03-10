@@ -331,17 +331,19 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         }
         break;
       case TypeId.NAMED_STRUCT:
-        if (!this.builder.fory.isCompatible()) {
-          const typeInfo = this.typeInfo;
-          const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
-          const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
-          typeMeta = `
-            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
-            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
-          `;
-        } else {
-          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+        {
+          if (!this.builder.fory.isCompatible()) {
+            const typeInfo = this.typeInfo;
+            const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
+            const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
+            typeMeta = `
+              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
+              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
+            `;
+          } else {
+            const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
+            typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+          }
         }
         break;
       default:
