@@ -648,6 +648,9 @@ public:
   /// reset context for reuse.
   void reset();
 
+  /// get associated configuration.
+  inline const Config &config() const { return *config_; }
+
 private:
   // Error state - accumulated during deserialization, checked at the end
   Error error_;
