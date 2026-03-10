@@ -1,6 +1,6 @@
 {
   "name": "@apache-fory/fory",
-  "version": "0.16.0-alpha.0",
+  "version": "0.16.0",
   "description": "Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy",
   "main": "dist/index.js",
   "scripts": {
