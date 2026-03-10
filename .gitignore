@@ -119,5 +119,6 @@ csharp/tests/Fory.Tests/bin/
 csharp/tests/Fory.Tests/obj/
 csharp/tests/Fory.XlangPeer/bin/
 csharp/tests/Fory.XlangPeer/obj/
+csharp/artifacts/
 
 tasks/
