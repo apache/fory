@@ -30,7 +30,7 @@ import { PlatformBuffer } from "./platformBuffer";
 import { TypeMetaResolver } from "./typeMetaResolver";
 import { MetaStringResolver } from "./metaStringResolver";
 
-const DEFAULT_MAX_DEPTH = 50 as const;
+const DEFAULT_DEPTH_LIMIT = 50 as const;
 const MIN_DEPTH_LIMIT = 2 as const;
 
 export default class {
@@ -48,7 +48,7 @@ export default class {
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
-    const maxDepth = config?.maxDepth ?? DEFAULT_MAX_DEPTH;
+    const maxDepth = config?.maxDepth ?? DEFAULT_DEPTH_LIMIT;
     if (!Number.isInteger(maxDepth) || maxDepth < MIN_DEPTH_LIMIT) {
       throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
