@@ -31,7 +31,7 @@ import { TypeMetaResolver } from "./typeMetaResolver";
 import { MetaStringResolver } from "./metaStringResolver";
 
 const DEFAULT_MAX_DEPTH = 50 as const;
-const MIN_MAX_DEPTH = 2 as const;
+const MIN_DEPTH_LIMIT = 2 as const;
 
 export default class {
   binaryReader: BinaryReader;
@@ -49,8 +49,8 @@ export default class {
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
     const maxDepth = config?.maxDepth ?? DEFAULT_MAX_DEPTH;
-    if (!Number.isInteger(maxDepth) || maxDepth < MIN_MAX_DEPTH) {
-      throw new Error(`maxDepth must be an integer >= ${MIN_MAX_DEPTH} but got ${maxDepth}`);
+    if (!Number.isInteger(maxDepth) || maxDepth < MIN_DEPTH_LIMIT) {
+      throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
     this.maxDepth = maxDepth;
     this.binaryReader = new BinaryReader(this.config);
