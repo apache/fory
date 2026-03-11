@@ -637,6 +637,8 @@ class TypeResolver:
         return self.get_type_info(cls).serializer
 
     def get_type_info(self, cls, create=True):
+        if cls is tuple and self.fory.xlang:
+            return self.get_type_info(list, create=create)
         type_info = self._types_info.get(cls)
         if type_info is not None:
             if type_info.serializer is None:

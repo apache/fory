@@ -57,6 +57,7 @@ from pyfory.types import (
 from pyfory.type_util import (
     TypeVisitor,
     infer_field,
+    get_homogeneous_tuple_elem_type,
     is_subclass,
     get_type_hints,
     unwrap_optional,
@@ -664,6 +665,17 @@ class StructFieldSerializerVisitor(TypeVisitor):
         elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
         return SetSerializer(self.fory, set, elem_serializer, elem_ref_override)
 
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        from pyfory.serializer import TupleSerializer  # Local import
+        from pyfory.type_util import unwrap_ref
+
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is not None:
+            elem_type, elem_ref_override = unwrap_ref(elem_type)
+            elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
+            return TupleSerializer(self.fory, tuple, elem_serializer, elem_ref_override)
+        return TupleSerializer(self.fory, tuple)
+
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         from pyfory.serializer import MapSerializer  # Local import
         from pyfory.type_util import unwrap_ref
@@ -751,7 +763,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
             container = nullable_boxed_types if is_nullable else boxed_types
         elif type_id == TypeId.SET:
             container = set_types
-        elif is_list_type(serializer.type_):
+        elif type_id == TypeId.LIST or is_list_type(serializer.type_):
             container = collection_types
         elif is_map_type(serializer.type_):
             container = map_types
@@ -938,6 +950,13 @@ class StructTypeIdVisitor(TypeVisitor):
         elem_ids = infer_field("item", elem_type, self, types_path=types_path)
         return TypeId.SET, elem_ids
 
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is None:
+            return TypeId.LIST, [TypeId.UNKNOWN]
+        elem_ids = infer_field("item", elem_type, self, types_path=types_path)
+        return TypeId.LIST, elem_ids
+
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
         key_ids = infer_field("key", key_type, self, types_path=types_path)
@@ -972,6 +991,13 @@ class StructTypeVisitor(TypeVisitor):
         # Infer type recursively for type such as Set[Dict[str, str]]
         elem_types = infer_field("item", elem_type, self, types_path=types_path)
         return typing.Set, elem_types
+
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is None:
+            return tuple, None
+        elem_types_ = infer_field("item", elem_type, self, types_path=types_path)
+        return tuple, elem_types_
 
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
