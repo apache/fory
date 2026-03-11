@@ -47,6 +47,7 @@ export interface SerializerGenerator {
   readRef(assignStmt: (v: string) => string): string;
   readRefWithoutTypeInfo(assignStmt: (v: string) => string): string;
   readNoRef(assignStmt: (v: string) => string, refState: string): string;
+  readWithDepth(assignStmt: (v: string) => string, refState: string): string;
   readTypeInfo(): string;
   read(assignStmt: (v: string) => string, refState: string): string;
   readEmbed(): any;
@@ -186,6 +187,17 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   abstract read(assignStmt: (v: string) => string, refState: string): string;
 
+  readWithDepth(assignStmt: (v: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
+    return `
+      fory.incReadDepth();
+      let ${result};
+      ${this.read(v => `${result} = ${v}`, refState)};
+      fory.decReadDepth();
+      ${assignStmt(result)};
+    `;
+  }
+
   readTypeInfo(): string {
     const typeId = this.getTypeId();
     const readUserTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
@@ -198,14 +210,9 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   }
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
-    const result = this.scope.uniqueName("result");
     return `
-      fory.incReadDepth();
       ${this.readTypeInfo()}
-      let ${result};
-      ${this.read(v => `${result} = ${v}`, refState)};
-      fory.decReadDepth();
-      ${assignStmt(result)};
+      ${this.readWithDepth(assignStmt, refState)}
     `;
   }
 
@@ -218,9 +225,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                fory.incReadDepth();
-                ${this.read(v => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
-                fory.decReadDepth();
+                ${this.readWithDepth(v => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
                 ${result} = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())};

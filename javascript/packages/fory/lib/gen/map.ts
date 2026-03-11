@@ -215,21 +215,21 @@ class MapAnySerializer {
     }
     if (!trackingRef) {
       serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
-      return serializer!.read(false);
+      return this.fory.readSerializerWithDepth(serializer!, false);
     }
 
     const flag = this.fory.binaryReader.readInt8();
     switch (flag) {
       case RefFlags.RefValueFlag:
         serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
-        return serializer!.read(true);
+        return this.fory.readSerializerWithDepth(serializer!, true);
       case RefFlags.RefFlag:
         return this.fory.referenceResolver.getReadObject(this.fory.binaryReader.readVarUInt32());
       case RefFlags.NullFlag:
         return null;
       case RefFlags.NotNullValueFlag:
         serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
-        return serializer!.read(false);
+        return this.fory.readSerializerWithDepth(serializer!, false);
     }
   }
 
@@ -427,7 +427,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
-                ${this.keyGenerator.read(x => `key = ${x}`, "true")}
+                ${this.keyGenerator.readWithDepth(x => `key = ${x}`, "true")}
                 break;
               case ${RefFlags.RefFlag}:
                 key = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())}
@@ -436,11 +436,11 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 key = null;
                 break;
               case ${RefFlags.NotNullValueFlag}:
-                ${this.keyGenerator.read(x => `key = ${x}`, "false")}
+                ${this.keyGenerator.readWithDepth(x => `key = ${x}`, "false")}
                 break;
             }
           } else {
-              ${this.keyGenerator.read(x => `key = ${x}`, "false")}
+              ${this.keyGenerator.readWithDepth(x => `key = ${x}`, "false")}
           }
           
           if (valueIncludeNone) {
@@ -449,7 +449,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
-                ${this.valueGenerator.read(x => `value = ${x}`, "true")}
+                ${this.valueGenerator.readWithDepth(x => `value = ${x}`, "true")}
                 break;
               case ${RefFlags.RefFlag}:
                 value = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())}
@@ -458,11 +458,11 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 value = null;
                 break;
               case ${RefFlags.NotNullValueFlag}:
-                ${this.valueGenerator.read(x => `value = ${x}`, "false")}
+                ${this.valueGenerator.readWithDepth(x => `value = ${x}`, "false")}
                 break;
             }
           } else {
-            ${this.valueGenerator.read(x => `value = ${x}`, "false")}
+            ${this.valueGenerator.readWithDepth(x => `value = ${x}`, "false")}
           }
           
           ${result}.set(

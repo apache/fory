@@ -39,19 +39,31 @@ describe('depth-limit', () => {
 
     test('should reject maxDepth < 2', () => {
       expect(() => new Fory({ maxDepth: 1 })).toThrow(
-        'maxDepth must be >= 2 but got 1'
+        'maxDepth must be an integer >= 2 but got 1'
       );
     });
 
     test('should reject maxDepth = 0', () => {
       expect(() => new Fory({ maxDepth: 0 })).toThrow(
-        'maxDepth must be >= 2'
+        'maxDepth must be an integer >= 2'
       );
     });
 
     test('should reject negative maxDepth', () => {
       expect(() => new Fory({ maxDepth: -5 })).toThrow(
-        'maxDepth must be >= 2'
+        'maxDepth must be an integer >= 2'
+      );
+    });
+
+    test('should reject NaN maxDepth', () => {
+      expect(() => new Fory({ maxDepth: Number.NaN })).toThrow(
+        'maxDepth must be an integer >= 2'
+      );
+    });
+
+    test('should reject non-integer maxDepth', () => {
+      expect(() => new Fory({ maxDepth: 2.5 })).toThrow(
+        'maxDepth must be an integer >= 2'
       );
     });
   });
@@ -176,6 +188,43 @@ describe('depth-limit', () => {
 
       expect(deserialized).toEqual(data);
       expect(fory.depth).toBe(0); // Should be 0 after deserialization
+    });
+
+    test('should throw when nested arrays exceed maxDepth', () => {
+      const fory = new Fory({ maxDepth: 2 });
+      const nestedArrayType = Type.array(Type.array(Type.array(Type.int32())));
+      const { serialize, deserialize } = fory.registerSerializer(nestedArrayType);
+      const serialized = serialize([[[1]]]);
+
+      expect(() => deserialize(serialized)).toThrow(
+        'Deserialization depth limit exceeded'
+      );
+    });
+
+    test('should throw when nested monomorphic struct fields exceed maxDepth', () => {
+      const fory = new Fory({ maxDepth: 2 });
+      const leaf = Type.struct({
+        typeName: 'depth.leaf',
+      }, {
+        value: Type.int32(),
+      });
+      const mid = Type.struct({
+        typeName: 'depth.mid',
+      }, {
+        leaf,
+      });
+      const root = Type.struct({
+        typeName: 'depth.root',
+      }, {
+        mid,
+      });
+
+      const { serialize, deserialize } = fory.registerSerializer(root);
+      const serialized = serialize({ mid: { leaf: { value: 7 } } });
+
+      expect(() => deserialize(serialized)).toThrow(
+        'Deserialization depth limit exceeded'
+      );
     });
 
     test('should reset depth at start of each deserialization', () => {

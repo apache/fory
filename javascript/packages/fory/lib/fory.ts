@@ -30,6 +30,9 @@ import { PlatformBuffer } from "./platformBuffer";
 import { TypeMetaResolver } from "./typeMetaResolver";
 import { MetaStringResolver } from "./metaStringResolver";
 
+const DEFAULT_MAX_DEPTH = 50 as const;
+const MIN_MAX_DEPTH = 2 as const;
+
 export default class {
   binaryReader: BinaryReader;
   binaryWriter: BinaryWriter;
@@ -45,10 +48,11 @@ export default class {
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
-    this.maxDepth = config?.maxDepth ?? 50;
-    if (this.maxDepth < 2) {
-      throw new Error(`maxDepth must be >= 2 but got ${this.maxDepth}`);
+    const maxDepth = config?.maxDepth ?? DEFAULT_MAX_DEPTH;
+    if (!Number.isInteger(maxDepth) || maxDepth < MIN_MAX_DEPTH) {
+      throw new Error(`maxDepth must be an integer >= ${MIN_MAX_DEPTH} but got ${maxDepth}`);
     }
+    this.maxDepth = maxDepth;
     this.binaryReader = new BinaryReader(this.config);
     this.binaryWriter = new BinaryWriter(this.config);
     this.referenceResolver = new ReferenceResolver(this.binaryReader);
@@ -85,6 +89,13 @@ export default class {
 
   decReadDepth(): void {
     this.depth--;
+  }
+
+  readSerializerWithDepth<T = any>(serializer: Serializer<T>, fromRef: boolean): T {
+    this.incReadDepth();
+    const result = serializer.read(fromRef);
+    this.decReadDepth();
+    return result;
   }
 
   private resetRead(): void {
