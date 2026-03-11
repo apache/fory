@@ -27,13 +27,13 @@ For more details, please check [pr-lint.yml](./.github/workflows/pr-lint.yml).
 
 ## AI-assisted contributions
 
-For full requirements, see [AI Contribution Policy](./AI_CONTRIBUTION_POLICY.md).
+For full requirements, see [AI Contribution Policy](./AI_POLICY.md).
 
 Key points:
 
 - AI tools are allowed as assistants, but contributors remain fully responsible for all submitted changes.
 - AI-assisted code must be reviewed carefully line by line before submission, and contributors must be able to explain and defend it during review.
-- For substantial AI assistance, provide privacy-safe disclosure in the PR using the standard template in `.github/pull_request_template.md`. Minor/narrow AI assistance does not require full disclosure.
+- For substantial AI assistance, provide privacy-safe disclosure in the PR using the [AI Contribution Checklist](./AI_POLICY.md#9-contributor-checklist-for-ai-assisted-prs) template. Minor/narrow AI assistance does not require full disclosure.
 - Include adequate human verification evidence (for example exact build/lint/test commands and pass/fail outcomes), and add/update tests and specs where required.
 - For protocol/type-mapping/wire-format or performance-sensitive changes, provide the required compatibility/performance validation evidence.
 - Ensure licensing and provenance compliance with [ASF Generative Tooling Guidance](https://www.apache.org/legal/generative-tooling.html) and do not submit content with uncertain provenance.

@@ -18,6 +18,7 @@ The key words MUST, MUST NOT, REQUIRED, SHOULD, and MAY are interpreted as descr
 
 For substantial AI assistance, PR descriptions MUST include a short `AI Usage Disclosure` section.
 For minor or narrow AI assistance, full disclosure is not required.
+The PR template keeps this section intentionally short and links to Section 9 for the complete checklist.
 
 Definition of substantial AI assistance:
 
@@ -144,13 +145,28 @@ Any long-term contribution restrictions MUST follow Apache project governance an
 
 ## 9. Contributor Checklist (for AI-Assisted PRs)
 
-- [ ] I can explain and defend all important changes.
-- [ ] I reviewed AI-assisted code line by line before submission.
-- [ ] I provided `AI Usage Disclosure` without exposing private/internal details.
-- [ ] I ran relevant local build/lint/test checks and reported outcomes.
-- [ ] I added/updated tests and specs where required.
-- [ ] I validated protocol/performance impacts with evidence when applicable.
-- [ ] I verified licensing and provenance compliance.
+This is the canonical checklist for the PR template AI section.
+
+- [ ] Substantial AI assistance was used in this PR: `yes` / `no`
+- [ ] If `yes`, I included the standardized `AI Usage Disclosure` block below.
+- [ ] If `yes`, I can explain and defend all important changes without AI help.
+- [ ] If `yes`, I reviewed AI-assisted code changes line by line before submission.
+- [ ] If `yes`, I ran adequate human verification and recorded evidence (checks run locally or in CI, pass/fail summary, and confirmation I reviewed results).
+- [ ] If `yes`, I added/updated tests and specs where required.
+- [ ] If `yes`, I validated protocol/performance impacts with evidence when applicable.
+- [ ] If `yes`, I verified licensing and provenance compliance.
+
+AI Usage Disclosure (only when substantial AI assistance = `yes`):
+
+```text
+AI Usage Disclosure
+- substantial_ai_assistance: yes
+- scope: <design drafting | code drafting | refactor suggestions | tests | docs | other>
+- affected_files_or_subsystems: <high-level paths/modules>
+- human_verification: <checks run locally or in CI + pass/fail summary + contributor reviewed results>
+- performance_verification: <N/A or benchmark/regression evidence summary>
+- provenance_license_confirmation: <Apache-2.0-compatible provenance confirmed; no incompatible third-party code introduced>
+```
 
 ## 10. Governance Note
 
