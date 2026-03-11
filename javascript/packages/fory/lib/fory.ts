@@ -30,6 +30,9 @@ import { PlatformBuffer } from "./platformBuffer";
 import { TypeMetaResolver } from "./typeMetaResolver";
 import { MetaStringResolver } from "./metaStringResolver";
 
+const DEFAULT_DEPTH_LIMIT = 50 as const;
+const MIN_DEPTH_LIMIT = 2 as const;
+
 export default class {
   binaryReader: BinaryReader;
   binaryWriter: BinaryWriter;
@@ -40,9 +43,16 @@ export default class {
   anySerializer: Serializer;
   typeMeta = TypeMeta;
   config: Config;
+  depth = 0;
+  maxDepth: number;
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
+    const maxDepth = config?.maxDepth ?? DEFAULT_DEPTH_LIMIT;
+    if (!Number.isInteger(maxDepth) || maxDepth < MIN_DEPTH_LIMIT) {
+      throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
+    }
+    this.maxDepth = maxDepth;
     this.binaryReader = new BinaryReader(this.config);
     this.binaryWriter = new BinaryWriter(this.config);
     this.referenceResolver = new ReferenceResolver(this.binaryReader);
@@ -57,6 +67,7 @@ export default class {
     return {
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
+      maxDepth: config?.maxDepth,
       hooks: config?.hooks || {},
       compatible: Boolean(config?.compatible),
     };
@@ -64,6 +75,34 @@ export default class {
 
   isCompatible() {
     return this.config.compatible === true;
+  }
+
+  incReadDepth(): void {
+    this.depth++;
+    if (this.depth > this.maxDepth) {
+      throw new Error(
+        `Deserialization depth limit exceeded: ${this.depth} > ${this.maxDepth}. `
+        + "The data may be malicious, or increase maxDepth if needed."
+      );
+    }
+  }
+
+  decReadDepth(): void {
+    this.depth--;
+  }
+
+  private resetRead(): void {
+    this.referenceResolver.resetRead();
+    this.typeMetaResolver.resetRead();
+    this.metaStringResolver.resetRead();
+    this.depth = 0;
+  }
+
+  private resetWrite(): void {
+    this.binaryWriter.reset();
+    this.referenceResolver.resetWrite();
+    this.metaStringResolver.resetWrite();
+    this.typeMetaResolver.resetWrite();
   }
 
   registerSerializer<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
@@ -141,10 +180,8 @@ export default class {
   }
 
   deserialize<T = any>(bytes: Uint8Array, serializer: Serializer = this.anySerializer): T | null {
-    this.referenceResolver.reset();
+    this.resetRead();
     this.binaryReader.reset(bytes);
-    this.typeMetaResolver.reset();
-    this.metaStringResolver.reset();
     const bitmap = this.binaryReader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
@@ -162,16 +199,13 @@ export default class {
 
   private serializeInternal<T = any>(data: T, serializer: Serializer) {
     try {
-      this.binaryWriter.reset();
+      this.resetWrite();
     } catch (e) {
       if (e instanceof OwnershipError) {
         throw new Error("Permission denied. To release the serialization ownership, you must call the dispose function returned by serializeVolatile.");
       }
       throw e;
     }
-    this.referenceResolver.reset();
-    this.metaStringResolver.reset();
-    this.typeMetaResolver.reset();
     let bitmap = 0;
     if (data === null) {
       bitmap |= ConfigFlags.isNullFlag;

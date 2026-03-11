@@ -83,7 +83,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           ${embedGenerator.readRefWithoutTypeInfo(assignStmt)}
         `;
       } else {
-        stmt = embedGenerator.read(assignStmt, "false");
+        stmt = embedGenerator.readWithDepth(assignStmt, "false");
       }
     } else {
       if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
@@ -207,13 +207,18 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
     return `
       ${this.readTypeInfo()}
+      fory.incReadDepth();
+      let ${result};
       if (${this.metaChangedSerializer} !== null) {
-        ${assignStmt(`${this.metaChangedSerializer}.read(${refState})`)}
+        ${result} = ${this.metaChangedSerializer}.read(${refState});
       } else {
-        ${this.read(assignStmt, refState)};
+        ${this.read(v => `${result} = ${v}`, refState)};
       }
+      fory.decReadDepth();
+      ${assignStmt(result)};
     `;
   }
 
