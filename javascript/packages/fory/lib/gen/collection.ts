@@ -45,6 +45,13 @@ class CollectionAnySerializer {
 
   }
 
+  private readSerializerWithDepth(serializer: Serializer, fromRef: boolean) {
+    this.fory.incReadDepth();
+    const result = serializer.read(fromRef);
+    this.fory.decReadDepth();
+    return result;
+  }
+
   protected writeElementsHeader(arr: any) {
     let flag = 0;
     let isSame = true;
@@ -161,7 +168,7 @@ class CollectionAnySerializer {
             const refId = this.fory.binaryReader.readVarUInt32();
             accessor(result, i, this.fory.referenceResolver.getReadObject(refId));
           } else if (refFlag === RefFlags.RefValueFlag) {
-            accessor(result, i, this.fory.readSerializerWithDepth(serializer!, true));
+            accessor(result, i, this.readSerializerWithDepth(serializer!, true));
           } else {
             accessor(result, i, null);
           }
@@ -172,12 +179,12 @@ class CollectionAnySerializer {
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
-            accessor(result, i, this.fory.readSerializerWithDepth(serializer!, false));
+            accessor(result, i, this.readSerializerWithDepth(serializer!, false));
           }
         }
       } else {
         for (let i = 0; i < len; i++) {
-          accessor(result, i, this.fory.readSerializerWithDepth(serializer!, false));
+          accessor(result, i, this.readSerializerWithDepth(serializer!, false));
         }
       }
     } else {
@@ -193,13 +200,13 @@ class CollectionAnySerializer {
             accessor(result, i, null);
           } else {
             const itemSerializer = AnyHelper.detectSerializer(this.fory);
-            accessor(result, i, this.fory.readSerializerWithDepth(itemSerializer!, false));
+            accessor(result, i, this.readSerializerWithDepth(itemSerializer!, false));
           }
         }
       } else {
         for (let i = 0; i < len; i++) {
           const itemSerializer = AnyHelper.detectSerializer(this.fory);
-          accessor(result, i, this.fory.readSerializerWithDepth(itemSerializer!, false));
+          accessor(result, i, this.readSerializerWithDepth(itemSerializer!, false));
         }
       }
     }

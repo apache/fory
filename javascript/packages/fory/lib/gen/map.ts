@@ -145,6 +145,13 @@ class MapAnySerializer {
 
   }
 
+  private readSerializerWithDepth(serializer: Serializer, fromRef: boolean) {
+    this.fory.incReadDepth();
+    const result = serializer.read(fromRef);
+    this.fory.decReadDepth();
+    return result;
+  }
+
   private writeFlag(header: number, v: any) {
     if (header & MapFlags.HAS_NULL) {
       return true;
@@ -215,21 +222,21 @@ class MapAnySerializer {
     }
     if (!trackingRef) {
       serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
-      return this.fory.readSerializerWithDepth(serializer!, false);
+      return this.readSerializerWithDepth(serializer!, false);
     }
 
     const flag = this.fory.binaryReader.readInt8();
     switch (flag) {
       case RefFlags.RefValueFlag:
         serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
-        return this.fory.readSerializerWithDepth(serializer!, true);
+        return this.readSerializerWithDepth(serializer!, true);
       case RefFlags.RefFlag:
         return this.fory.referenceResolver.getReadObject(this.fory.binaryReader.readVarUInt32());
       case RefFlags.NullFlag:
         return null;
       case RefFlags.NotNullValueFlag:
         serializer = serializer == null ? AnyHelper.detectSerializer(this.fory) : serializer;
-        return this.fory.readSerializerWithDepth(serializer!, false);
+        return this.readSerializerWithDepth(serializer!, false);
     }
   }
 

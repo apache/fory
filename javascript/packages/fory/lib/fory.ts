@@ -91,13 +91,6 @@ export default class {
     this.depth--;
   }
 
-  readSerializerWithDepth<T = any>(serializer: Serializer<T>, fromRef: boolean): T {
-    this.incReadDepth();
-    const result = serializer.read(fromRef);
-    this.decReadDepth();
-    return result;
-  }
-
   private resetRead(): void {
     this.referenceResolver.resetRead();
     this.typeMetaResolver.resetRead();
