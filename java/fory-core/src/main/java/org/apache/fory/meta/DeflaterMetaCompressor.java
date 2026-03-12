@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
+import org.apache.fory.exception.InvalidDataException;
 
 /** A meta compressor based on {@link Deflater} compression algorithm. */
 public class DeflaterMetaCompressor implements MetaCompressor {
@@ -49,10 +50,22 @@ public class DeflaterMetaCompressor implements MetaCompressor {
     try {
       while (!inflater.finished()) {
         int decompressedSize = inflater.inflate(buffer);
-        outputStream.write(buffer, 0, decompressedSize);
+        if (decompressedSize > 0) {
+          outputStream.write(buffer, 0, decompressedSize);
+          continue;
+        }
+        if (inflater.needsDictionary()) {
+          throw new InvalidDataException("Invalid compressed metadata, dictionary is required.");
+        }
+        if (inflater.needsInput()) {
+          throw new InvalidDataException("Invalid compressed metadata, stream is truncated.");
+        }
+        throw new InvalidDataException("Invalid compressed metadata, inflater made no progress.");
       }
     } catch (DataFormatException e) {
-      throw new RuntimeException(e);
+      throw new InvalidDataException("Invalid compressed metadata format.", e);
+    } finally {
+      inflater.end();
     }
     return outputStream.toByteArray();
   }
