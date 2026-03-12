@@ -31,6 +31,7 @@ import 'fory_object.dart';
 ///   // enums
 /// }
 /// ```
+@Target({TargetKind.enumType})
 class ForyEnum extends ForyObject {
   static const String name = 'ForyEnum';
   static const List<TargetKind> targets = [TargetKind.enumType];
