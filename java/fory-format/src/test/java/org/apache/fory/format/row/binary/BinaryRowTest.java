@@ -32,6 +32,7 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class BinaryRowTest {
@@ -215,6 +216,36 @@ public class BinaryRowTest {
     BinaryRow row = writer.getRow();
     row.toMap();
     // System.out.println(row);
+  }
+
+  // Generates the canonical golden hex string for the Go row format MVP.
+
+  @Test
+  public void testGoldenFile() {
+    Schema schema =
+        new Schema(
+            Arrays.asList(
+                DataTypes.field("id", DataTypes.int64(), false),
+                DataTypes.field("name", DataTypes.utf8())));
+
+    BinaryRowWriter w = new BinaryRowWriter(schema);
+    w.reset();
+    w.write(0, 42L);
+    w.write(1, "Alice");
+    BinaryRow row = w.getRow();
+
+    byte[] bytes = row.toBytes();
+    StringBuilder sb = new StringBuilder();
+    for (byte b : bytes) {
+      sb.append(String.format("%02x", b));
+    }
+    String hex = sb.toString();
+    System.out.println("Golden hex: " + hex);
+
+    Assert.assertEquals(
+        hex,
+        "00000000000000002a000000000000000500000018000000416c696365000000",
+        "Java golden bytes changed — update javaGoldenHex in go/fory/row/row_test.go");
   }
 
   @Test
