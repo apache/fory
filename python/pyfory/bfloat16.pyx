@@ -24,9 +24,15 @@ from libc.string cimport memcpy
 
 cdef inline uint16_t float32_to_bfloat16_bits(float value) nogil:
     cdef uint32_t f32_bits
+    cdef uint16_t bf16_bits
+    cdef uint16_t truncated
     memcpy(&f32_bits, &value, 4)
-    cdef uint16_t bf16_bits = <uint16_t>(f32_bits >> 16)
-    cdef uint16_t truncated = <uint16_t>(f32_bits & 0xFFFF)
+    # Preserve NaN payloads and force the quiet-NaN bit so signaling NaNs do
+    # not collapse into infinity when the lower 16 payload bits are truncated.
+    if (f32_bits & 0x7FFFFFFF) > 0x7F800000:
+        return (<uint16_t>(f32_bits >> 16)) | 0x0040
+    bf16_bits = <uint16_t>(f32_bits >> 16)
+    truncated = <uint16_t>(f32_bits & 0xFFFF)
     if truncated > 0x8000:
         bf16_bits += 1
         if (bf16_bits & 0x7F80) == 0x7F80:
@@ -86,6 +92,8 @@ cdef class bfloat16:
         return False
     
     def __hash__(self):
+        if self.is_zero():
+            return hash(0)
         return hash(self._bits)
     
     def is_nan(self):

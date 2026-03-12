@@ -18,14 +18,22 @@
 import array
 
 from pyfory.bfloat16 import bfloat16
+from pyfory.utils import is_little_endian
 
 
 class BFloat16Array:
     def __init__(self, values=None):
         if values is None:
             self._data = array.array("H")
+        elif isinstance(values, BFloat16Array):
+            self._data = array.array("H", values._data)
+        elif isinstance(values, array.array) and values.typecode == "H":
+            self._data = array.array("H", values)
         else:
-            self._data = array.array("H", [bfloat16(v).to_bits() if not isinstance(v, bfloat16) else v.to_bits() for v in values])
+            self._data = array.array(
+                "H",
+                (v.to_bits() if isinstance(v, bfloat16) else bfloat16(v).to_bits() for v in values),
+            )
 
     def __len__(self):
         return len(self._data)
@@ -58,6 +66,9 @@ class BFloat16Array:
             self._data.append(bfloat16(value).to_bits())
 
     def extend(self, values):
+        if isinstance(values, BFloat16Array):
+            self._data.extend(values._data)
+            return
         for value in values:
             self.append(value)
 
@@ -66,11 +77,28 @@ class BFloat16Array:
         return 2
 
     def tobytes(self):
-        return self._data.tobytes()
+        if is_little_endian:
+            return self._data.tobytes()
+        data = array.array("H", self._data)
+        data.byteswap()
+        return data.tobytes()
+
+    def to_bits_array(self):
+        return array.array("H", self._data)
+
+    @classmethod
+    def from_bits_array(cls, values):
+        arr = cls()
+        arr._data = array.array("H", values)
+        return arr
 
     @classmethod
     def frombytes(cls, data):
+        if len(data) % 2 != 0:
+            raise ValueError("bfloat16 byte payload length must be a multiple of 2")
         arr = cls()
         arr._data = array.array("H")
         arr._data.frombytes(data)
+        if not is_little_endian:
+            arr._data.byteswap()
         return arr
