@@ -42,3 +42,24 @@ class ForyEnum extends ForyObject {
 
 /// A constant instance of [ForyEnum].
 const ForyEnum foryEnum = ForyEnum();
+
+/// A class representing an enumeration id in the Fory framework.
+///
+/// This class extends [ForyObject] and is used to annotate enum ids
+/// within the Fory framework.
+/// Example:
+/// ```
+/// @foryEnum                  
+/// enum Color {
+///   @ForyEnumId(5)          
+///   blue,
+///   @ForyEnumId(10)
+///   white,
+// }
+/// ```
+@Target({TargetKind.enumValue})
+class ForyEnumId extends ForyObject {
+  final int id;
+
+  const ForyEnumId(this.id);
+}
