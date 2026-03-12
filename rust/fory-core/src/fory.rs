@@ -998,7 +998,7 @@ impl Fory {
                     .expect("is_stream_backed was true but stream is None");
                 let cursor = reader.cursor;
                 let mut stream_reader = Reader::from_stream(*stream);
-                stream_reader.set_cursor(cursor);
+                let _ = stream_reader.set_cursor(cursor);
                 context.attach_reader(stream_reader);
 
                 let result = self.deserialize_with_context(context);
@@ -1018,12 +1018,12 @@ impl Fory {
                 // IN-MEMORY PATH — unchanged fast path
                 let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
                 let mut new_reader = Reader::new(outlive_buffer);
-                new_reader.set_cursor(reader.cursor);
+                let _ = new_reader.set_cursor(reader.cursor);
                 context.attach_reader(new_reader);
 
                 let result = self.deserialize_with_context(context);
                 let end = context.detach_reader().get_cursor();
-                reader.set_cursor(end);
+                let _ = reader.set_cursor(end);
                 result
             }
         })

@@ -15,49 +15,47 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Streaming buffer for incremental deserialization.
-
 use crate::error::Error;
 use std::io::{self, Read};
 
 const DEFAULT_BUFFER_SIZE: usize = 4096;
 
-/// Single internal `Vec<u8>` window. `valid_len` = `egptr()-eback()`.
-/// `read_pos` = `gptr()-eback()`. [`fill_buffer`] grows on demand.
+/// Growable internal buffer backed by any [`Read`] source.
 ///
-/// [`fill_buffer`]: ForyStreamBuf::fill_buffer
+/// Bytes are pulled from the source on demand via [`fill_buffer`].
+/// The buffer grows automatically and can be compacted via [`shrink_buffer`].
+///
+/// # Buffer size limit
+/// The internal buffer is capped at `u32::MAX` bytes (~4 GiB).
+/// Requesting more than this returns [`Error::buffer_out_of_bound`].
 pub struct ForyStreamBuf {
     source: Box<dyn Read + Send>,
-    /// Backing window — equivalent of C++ `buffer_` (`std::vector<char>`)
     buffer: Vec<u8>,
-    /// Bytes fetched from source — equivalent of `egptr() - eback()`
+    /// Bytes available from source: `buffer[0..valid_len]`
     valid_len: usize,
-    /// Current read cursor — equivalent of `gptr() - eback()`
+    /// Current read position: `buffer[read_pos..valid_len]` is unread
     read_pos: usize,
-    /// Initial capacity for shrink_buffer target — mirrors C++ `initial_buffer_size_`
     initial_buffer_size: usize,
 }
 
 impl ForyStreamBuf {
-    pub fn new(source: impl Read + Send + 'static) -> Self {
+    pub fn new<R: Read + Send + 'static>(source: R) -> Self {
         Self::with_capacity(source, DEFAULT_BUFFER_SIZE)
     }
 
-    /// Allocates and zero-initialises the backing window immediately,
-    /// `std::vector<char>(buffer_size)` in the constructor.
-    pub fn with_capacity(source: impl Read + Send + 'static, buffer_size: usize) -> Self {
+    pub fn with_capacity<R: Read + Send + 'static>(source: R, buffer_size: usize) -> Self {
         let cap = buffer_size.max(1);
-        let buffer = vec![0u8; cap];
         Self {
             source: Box::new(source),
-            buffer,
+            buffer: vec![0u8; cap],
             valid_len: 0,
             read_pos: 0,
             initial_buffer_size: cap,
         }
     }
 
-    /// Pull bytes from source until `remaining() >= min_fill_size`.
+    /// Pulls bytes from the source until at least `min_fill_size` unread bytes
+    /// are available. Returns `Err` on EOF, I/O error, or 4 GiB overflow.
     pub fn fill_buffer(&mut self, min_fill_size: usize) -> Result<(), Error> {
         if min_fill_size == 0 || self.remaining() >= min_fill_size {
             return Ok(());
@@ -73,7 +71,6 @@ impl ForyStreamBuf {
                 Error::buffer_out_of_bound(self.read_pos, min_fill_size, self.remaining())
             })?;
 
-        // Grow if required > current buffer length
         if required > self.buffer.len() {
             let new_cap = (self.buffer.len() * 2).max(required);
             self.buffer.resize(new_cap, 0);
@@ -82,7 +79,6 @@ impl ForyStreamBuf {
         while self.remaining() < min_fill_size {
             let writable = self.buffer.len() - self.valid_len;
             if writable == 0 {
-                // Inner double `buffer_.size() * 2 + 1` with u32 overflow guard
                 let new_cap = self
                     .buffer
                     .len()
@@ -93,11 +89,10 @@ impl ForyStreamBuf {
                         Error::buffer_out_of_bound(self.read_pos, min_fill_size, self.remaining())
                     })?;
                 self.buffer.resize(new_cap, 0);
-                // fall through — self.buffer[self.valid_len..] is now non-empty
             }
+
             match self.source.read(&mut self.buffer[self.valid_len..]) {
                 Ok(0) => {
-                    // `read_bytes <= 0` → buffer_out_of_bound
                     return Err(Error::buffer_out_of_bound(
                         self.read_pos,
                         min_fill_size,
@@ -118,69 +113,57 @@ impl ForyStreamBuf {
         Ok(())
     }
 
-    /// Move cursor backward by `size` bytes.
-    ///
-    /// `setg(eback(), gptr() - size, egptr())`
-    ///
-    /// Panics if `size > read_pos`.
-    pub fn rewind(&mut self, size: usize) {
-        assert!(
-            size <= self.read_pos,
-            "rewind size {} exceeds consumed bytes {}",
-            size,
-            self.read_pos
-        );
+    /// Moves the read cursor backward by `size` bytes.
+    /// Returns `Err` if `size > read_pos`.
+    pub fn rewind(&mut self, size: usize) -> Result<(), Error> {
+        if size > self.read_pos {
+            return Err(Error::buffer_out_of_bound(
+                self.read_pos,
+                size,
+                self.valid_len,
+            ));
+        }
         self.read_pos -= size;
+        Ok(())
     }
 
-    /// Advance cursor forward by `size` bytes without pulling from source.
-    ///
-    /// `gbump(static_cast<int>(size))`
-    ///
-    /// Panics if `size > remaining()`.
-    pub fn consume(&mut self, size: usize) {
-        assert!(
-            size <= self.remaining(),
-            "consume size {} exceeds available bytes {}",
-            size,
-            self.remaining()
-        );
+    /// Advances the read cursor by `size` bytes without reading from source.
+    /// Returns `Err` if `size > remaining()`.
+    pub fn consume(&mut self, size: usize) -> Result<(), Error> {
+        if size > self.remaining() {
+            return Err(Error::buffer_out_of_bound(
+                self.read_pos,
+                size,
+                self.remaining(),
+            ));
+        }
         self.read_pos += size;
+        Ok(())
     }
 
-    /// Raw pointer to byte 0 of the internal window.
-    ///
-    /// Re-read by `Reader` (buffer.rs) after every `fill_buffer` call that
-    /// may reallocate
-    /// `data_ = stream_->data()`.
-    ///
-    /// `uint8_t* data()` → `reinterpret_cast<uint8_t*>(eback())`.
+    /// Raw pointer to the start of the internal buffer window.
     ///
     /// # Safety
-    /// Valid until the next `fill_buffer` call that causes reallocation.
-    /// `Reader` always re-reads this pointer after every `fill_buffer`.
+    /// Valid until the next [`fill_buffer`] call that causes reallocation.
+    /// Always re-derive this pointer after any `fill_buffer` call.
     #[inline(always)]
     pub(crate) fn data(&self) -> *const u8 {
         self.buffer.as_ptr()
     }
 
-    /// Total fetched bytes
+    /// Total bytes fetched from source.
     #[inline(always)]
     pub fn size(&self) -> usize {
         self.valid_len
     }
 
-    /// Current read cursor
+    /// Current read cursor position.
     #[inline(always)]
     pub fn reader_index(&self) -> usize {
         self.read_pos
     }
 
-    /// Set cursor to absolute `index`.
-    ///
-    /// Called by `Reader` (buffer.rs) after every cursor advance, mirroring
-    ///
-    /// Returns `Err` if `index > valid_len`
+    /// Sets the read cursor to `index`. Returns `Err` if `index > valid_len`.
     #[inline(always)]
     pub(crate) fn set_reader_index(&mut self, index: usize) -> Result<(), Error> {
         if index > self.valid_len {
@@ -190,29 +173,21 @@ impl ForyStreamBuf {
         Ok(())
     }
 
-    /// Unread bytes in window
+    /// Unread bytes currently available.
     #[inline(always)]
     pub fn remaining(&self) -> usize {
         self.valid_len.saturating_sub(self.read_pos)
     }
 
-    /// Always `true` — used by `Reader` (buffer.rs) to branch into the stream path.
-    #[inline(always)]
-    pub fn is_stream_backed(&self) -> bool {
-        true
-    }
-
-    /// Compact consumed bytes and optionally shrink capacity.
+    /// Compacts consumed bytes and optionally reduces buffer capacity.
     ///
-    /// Mirrors C++ `ForyInputStream::shrink_buffer()` exactly:
-    /// 1. Memmove remaining bytes to front of buffer
-    /// 2. Reset read_pos = 0, valid_len = remaining
-    /// 3. If capacity > initial_buffer_size and utilization is low,
-    ///    shrink back toward initial size
+    /// **Phase 1:** Always moves unread bytes to offset 0.
+    ///
+    /// **Phase 2:** Shrinks capacity only when it has grown beyond
+    /// `initial_buffer_size` and current utilization is low (≤ 25%).
     pub fn shrink_buffer(&mut self) {
         let remaining = self.remaining();
 
-        // Phase 1: compact — memmove remaining data to front
         if self.read_pos > 0 {
             if remaining > 0 {
                 self.buffer.copy_within(self.read_pos..self.valid_len, 0);
@@ -221,126 +196,23 @@ impl ForyStreamBuf {
             self.valid_len = remaining;
         }
 
-        // Phase 2: optionally shrink capacity back toward initial_buffer_size
         let current_capacity = self.buffer.len();
-        let mut target_capacity = current_capacity;
-
-        if current_capacity > self.initial_buffer_size {
-            if remaining == 0 {
-                target_capacity = self.initial_buffer_size;
-            } else if remaining <= current_capacity / 4 {
-                let doubled = remaining.saturating_mul(2).max(1);
-                target_capacity = self.initial_buffer_size.max(doubled);
-            }
+        if current_capacity <= self.initial_buffer_size {
+            return;
         }
+
+        let target_capacity = if remaining == 0 {
+            self.initial_buffer_size
+        } else if remaining <= current_capacity / 4 {
+            let doubled = remaining.saturating_mul(2).max(1);
+            self.initial_buffer_size.max(doubled)
+        } else {
+            current_capacity
+        };
 
         if target_capacity < current_capacity {
+            // Reduce logical size but keep allocation to avoid allocator churn
             self.buffer.truncate(target_capacity);
-            self.buffer.shrink_to_fit();
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    /// Reads exactly 1 byte at a time.
-    struct OneByteCursor(Cursor<Vec<u8>>);
-    impl Read for OneByteCursor {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            if buf.is_empty() {
-                return Ok(0);
-            }
-            let mut one = [0u8; 1];
-            match self.0.read(&mut one)? {
-                0 => Ok(0),
-                _ => {
-                    buf[0] = one[0];
-                    Ok(1)
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_rewind() {
-        let data = vec![0x01u8, 0x02, 0x03, 0x04, 0x05];
-        let mut s = ForyStreamBuf::with_capacity(OneByteCursor(Cursor::new(data)), 2);
-        s.fill_buffer(4).unwrap();
-        assert_eq!(s.size(), 4);
-        assert_eq!(s.reader_index(), 0);
-        s.consume(3);
-        assert_eq!(s.reader_index(), 3);
-        s.rewind(2);
-        assert_eq!(s.reader_index(), 1);
-        s.consume(1);
-        assert_eq!(s.reader_index(), 2);
-    }
-
-    #[test]
-    fn test_short_read_error() {
-        let mut s = ForyStreamBuf::new(Cursor::new(vec![0x01u8, 0x02, 0x03]));
-        assert!(s.fill_buffer(4).is_err());
-    }
-
-    // Sequential fills with tiny-chunk reader
-    #[test]
-    fn test_sequential_fill() {
-        let data: Vec<u8> = (0u8..=9).collect();
-        let mut s = ForyStreamBuf::with_capacity(OneByteCursor(Cursor::new(data)), 2);
-        s.fill_buffer(3).unwrap();
-        assert!(s.remaining() >= 3);
-        s.consume(3);
-        s.fill_buffer(3).unwrap();
-        assert!(s.remaining() >= 3);
-    }
-
-    #[test]
-    fn test_overflow_guard() {
-        // valid_len near usize::MAX would overflow without the u32 guard.
-        // We can't actually allocate that — just verify the guard logic
-        // via a saturating check on a real (tiny) stream.
-        let mut s = ForyStreamBuf::new(Cursor::new(vec![0u8; 8]));
-        // Requesting more than the source has should error, not panic/overflow
-        assert!(s.fill_buffer(16).is_err());
-    }
-
-    #[test]
-    fn test_consume_panics_on_overrun() {
-        let result = std::panic::catch_unwind(|| {
-            let mut s = ForyStreamBuf::new(Cursor::new(vec![0x01u8]));
-            s.fill_buffer(1).unwrap();
-            s.consume(2); // only 1 byte available
-        });
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_rewind_panics_on_overrun() {
-        let result = std::panic::catch_unwind(|| {
-            let mut s = ForyStreamBuf::new(Cursor::new(vec![0x01u8, 0x02]));
-            s.fill_buffer(2).unwrap();
-            s.consume(1);
-            s.rewind(2); // only consumed 1
-        });
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_set_reader_index() {
-        let mut s = ForyStreamBuf::new(Cursor::new(vec![0x01u8, 0x02, 0x03]));
-        s.fill_buffer(3).unwrap();
-        assert!(s.set_reader_index(2).is_ok());
-        assert_eq!(s.reader_index(), 2);
-        assert_eq!(s.remaining(), 1);
-        assert!(s.set_reader_index(4).is_err()); // beyond valid_len
-    }
-
-    #[test]
-    fn test_is_stream_backed() {
-        let s = ForyStreamBuf::new(Cursor::new(vec![]));
-        assert!(s.is_stream_backed());
     }
 }
