@@ -598,7 +598,9 @@ impl<'a> Reader<'a> {
             None => return false,
         };
         // intentional: fill_buffer validates; set_reader_index only syncs read_pos
-        let _ = stream.set_reader_index(self.cursor);
+        if stream.set_reader_index(self.cursor).is_err() {
+            return false;
+        }
 
         let n = target_size.saturating_sub(self.cursor);
         if n == 0 {
@@ -619,7 +621,10 @@ impl<'a> Reader<'a> {
     ///   stream path: call fill_to(target), check again.
     #[inline(always)]
     fn ensure_readable(&mut self, n: usize) -> Result<(), Error> {
-        let target = self.cursor + n;
+        let target = self
+            .cursor
+            .checked_add(n)
+            .ok_or_else(|| Error::buffer_out_of_bound(self.cursor, n, self.bf.len()))?;
 
         if target > self.bf.len() && !self.fill_to(target) {
             return Err(Error::buffer_out_of_bound(self.cursor, n, self.bf.len()));

@@ -1054,9 +1054,7 @@ impl Fory {
         self.with_read_context(|context| {
             context.attach_reader(Reader::from_stream(ForyStreamBuf::new(source)));
             let result = self.deserialize_with_context(context);
-            if let Some(ref mut s) = context.detach_reader().stream {
-                s.shrink_buffer();
-            }
+            context.detach_reader();
             result
         })
     }
