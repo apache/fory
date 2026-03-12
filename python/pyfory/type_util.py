@@ -181,6 +181,9 @@ class TypeVisitor(ABC):
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         pass
 
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        raise TypeError(f"Tuple type with elements {elem_types} is not supported")
+
     @abstractmethod
     def visit_customized(self, field_name, type_, types_path=None):
         pass
@@ -220,6 +223,24 @@ def unwrap_optional(type_, field_nullable=False):
     return typing.Union[tuple(non_none_types)], True
 
 
+def get_homogeneous_tuple_elem_type(type_or_args):
+    if isinstance(type_or_args, tuple):
+        args = type_or_args
+    else:
+        origin = typing.get_origin(type_or_args) if hasattr(typing, "get_origin") else getattr(type_or_args, "__origin__", None)
+        if origin not in (tuple, typing.Tuple):
+            return None
+        args = typing.get_args(type_or_args) if hasattr(typing, "get_args") else getattr(type_or_args, "__args__", ())
+    if not args or args == ((),):
+        return None
+    if len(args) == 2 and args[1] is Ellipsis:
+        return args[0]
+    first = args[0]
+    if all(arg == first for arg in args[1:]):
+        return first
+    return None
+
+
 def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
     types_path = list(types_path or [])
     type_, _ = unwrap_ref(type_)
@@ -234,6 +255,8 @@ def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
         elif origin is set or origin == typing.Set:
             elem_type = args[0]
             return visitor.visit_set(field_name, elem_type, types_path=types_path)
+        elif origin is tuple or origin == typing.Tuple:
+            return visitor.visit_tuple(field_name, args, types_path=types_path)
         elif origin is dict or origin == typing.Dict:
             key_type, value_type = args
             return visitor.visit_dict(field_name, key_type, value_type, types_path=types_path)

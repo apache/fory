@@ -83,6 +83,7 @@ func (c *ReadContext) SetData(data []byte) {
 		c.buffer.data = data
 		c.buffer.readerIndex = 0
 		c.buffer.writerIndex = len(data)
+		c.buffer.reader = nil
 	}
 }
 

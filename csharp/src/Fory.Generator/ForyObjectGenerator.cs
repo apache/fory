@@ -136,22 +136,22 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     private static void EmitObjectSerializer(StringBuilder sb, TypeModel model)
     {
         sb.AppendLine(
-            $"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>, global::Apache.Fory.ICompatibleNoTypeMetaReader<{model.TypeName}>");
+            $"file sealed class {model.SerializerName} : global::Apache.Fory.Serializer<{model.TypeName}>");
         sb.AppendLine("{");
-        sb.AppendLine("    private static readonly object __ForyCompatibleSchemaCacheLock = new();");
-        sb.AppendLine("    private static ulong __ForyCompatibleSchemaResolverVersion;");
-        sb.AppendLine("    private static ulong __ForyCompatibleSchemaHashNoTrackRef;");
-        sb.AppendLine("    private static ulong __ForyCompatibleSchemaHashTrackRef;");
-        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyLastCompatibleSchemaTypeMetaNoTrackRef;");
-        sb.AppendLine("    private static bool __ForyLastCompatibleSchemaMatchedNoTrackRef;");
-        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyLastCompatibleSchemaTypeMetaTrackRef;");
-        sb.AppendLine("    private static bool __ForyLastCompatibleSchemaMatchedTrackRef;");
+        sb.AppendLine("    private static readonly object __ForyTypeMetaCacheLock = new();");
+        sb.AppendLine("    private static ulong __ForyTypeMetaResolverVersion;");
+        sb.AppendLine("    private static ulong __ForyTypeMetaHeaderHashNoTrackRef;");
+        sb.AppendLine("    private static ulong __ForyTypeMetaHeaderHashTrackRef;");
+        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyLastTypeMetaNoTrackRef;");
+        sb.AppendLine("    private static bool __ForyLastTypeMetaMatchedNoTrackRef;");
+        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyLastTypeMetaTrackRef;");
+        sb.AppendLine("    private static bool __ForyLastTypeMetaMatchedTrackRef;");
         sb.AppendLine(
             $"    private const bool __ForyAllFieldsBuiltIn = {BoolLiteral(model.SortedMembers.All(m => m.DynamicAnyKind == DynamicAnyKind.None && m.Classification.IsBuiltIn))};");
         sb.AppendLine(
-            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyCompatibleFieldsNoTrackRef;");
+            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyTypeMetaFieldsNoTrackRef;");
         sb.AppendLine(
-            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyCompatibleFieldsTrackRef;");
+            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyTypeMetaFieldsTrackRef;");
 
         if (model.SortedMembers.Length > 0)
         {
@@ -281,7 +281,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> __ForyBuildCompatibleTypeMetaFields(bool trackRef)");
+            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> __ForyBuildTypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
         if (model.SortedMembers.Length == 0)
         {
@@ -294,7 +294,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             foreach (MemberModel member in model.SortedMembers)
             {
                 sb.AppendLine(
-                    $"            new global::Apache.Fory.TypeMetaFieldInfo({BuildTypeMetaFieldIdExpression(member.FieldId)}, \"{EscapeString(member.FieldIdentifier)}\", {BuildCompatibleTypeMetaExpression(member.TypeMeta, "trackRef")}),");
+                    $"            new global::Apache.Fory.TypeMetaFieldInfo({BuildTypeMetaFieldIdExpression(member.FieldId)}, \"{EscapeString(member.FieldIdentifier)}\", {BuildTypeMetaExpression(member.TypeMeta, "trackRef")}),");
             }
 
             sb.AppendLine("        };");
@@ -303,10 +303,10 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private bool __ForyVerifyExactCompatibleSchema(global::Apache.Fory.TypeMeta typeMeta, bool trackRef)");
+            "    private bool __ForyMatchesTypeMeta(global::Apache.Fory.TypeMeta typeMeta, bool trackRef)");
         sb.AppendLine("    {");
         sb.AppendLine(
-            "        global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> expectedFields = CompatibleTypeMetaFields(trackRef);");
+            "        global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> expectedFields = TypeMetaFields(trackRef);");
         sb.AppendLine("        if (typeMeta.Fields.Count != expectedFields.Count)");
         sb.AppendLine("        {");
         sb.AppendLine("            return false;");
@@ -339,73 +339,75 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private static void __ForyEnsureCompatibleSchemaCache(global::Apache.Fory.TypeResolver typeResolver)");
+            "    private static void __ForyEnsureTypeMetaCache(global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.AppendLine("        ulong resolverVersion = typeResolver.VersionHash();");
-        sb.AppendLine("        if (__ForyCompatibleSchemaResolverVersion == resolverVersion)");
+        sb.AppendLine("        if (__ForyTypeMetaResolverVersion == resolverVersion)");
         sb.AppendLine("        {");
         sb.AppendLine("            return;");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        lock (__ForyCompatibleSchemaCacheLock)");
+        sb.AppendLine("        lock (__ForyTypeMetaCacheLock)");
         sb.AppendLine("        {");
-        sb.AppendLine("            if (__ForyCompatibleSchemaResolverVersion == resolverVersion)");
+        sb.AppendLine("            if (__ForyTypeMetaResolverVersion == resolverVersion)");
         sb.AppendLine("            {");
         sb.AppendLine("                return;");
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine(
-            $"            __ForyCompatibleSchemaHashNoTrackRef = typeResolver.GetCompatibleTypeMetaHeaderHash(typeof({model.TypeName}), false);");
+            $"            global::Apache.Fory.TypeInfo typeInfo = typeResolver.GetTypeInfo<{model.TypeName}>();");
         sb.AppendLine(
-            $"            __ForyCompatibleSchemaHashTrackRef = typeResolver.GetCompatibleTypeMetaHeaderHash(typeof({model.TypeName}), true);");
-        sb.AppendLine("            __ForyLastCompatibleSchemaTypeMetaNoTrackRef = null;");
-        sb.AppendLine("            __ForyLastCompatibleSchemaMatchedNoTrackRef = false;");
-        sb.AppendLine("            __ForyLastCompatibleSchemaTypeMetaTrackRef = null;");
-        sb.AppendLine("            __ForyLastCompatibleSchemaMatchedTrackRef = false;");
-        sb.AppendLine("            __ForyCompatibleSchemaResolverVersion = resolverVersion;");
+            "            __ForyTypeMetaHeaderHashNoTrackRef = typeInfo.GetTypeMetaHeaderHash(false);");
+        sb.AppendLine(
+            "            __ForyTypeMetaHeaderHashTrackRef = typeInfo.GetTypeMetaHeaderHash(true);");
+        sb.AppendLine("            __ForyLastTypeMetaNoTrackRef = null;");
+        sb.AppendLine("            __ForyLastTypeMetaMatchedNoTrackRef = false;");
+        sb.AppendLine("            __ForyLastTypeMetaTrackRef = null;");
+        sb.AppendLine("            __ForyLastTypeMetaMatchedTrackRef = false;");
+        sb.AppendLine("            __ForyTypeMetaResolverVersion = resolverVersion;");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
-            "    private bool __ForyCachedExactCompatibleSchema(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
+            "    private bool __ForyMatchesCachedTypeMeta(global::Apache.Fory.TypeMeta typeMeta, bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (trackRef)");
         sb.AppendLine("        {");
         sb.AppendLine(
-            "            if (global::System.Object.ReferenceEquals(__ForyLastCompatibleSchemaTypeMetaTrackRef, typeMeta))");
+            "            if (global::System.Object.ReferenceEquals(__ForyLastTypeMetaTrackRef, typeMeta))");
         sb.AppendLine("            {");
-        sb.AppendLine("                return __ForyLastCompatibleSchemaMatchedTrackRef;");
+        sb.AppendLine("                return __ForyLastTypeMetaMatchedTrackRef;");
         sb.AppendLine("            }");
         sb.AppendLine();
-        sb.AppendLine("            __ForyEnsureCompatibleSchemaCache(typeResolver);");
+        sb.AppendLine("            __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
         sb.AppendLine("            bool matched = false;");
-        sb.AppendLine("            if (typeMeta.HeaderHash == __ForyCompatibleSchemaHashTrackRef)");
+        sb.AppendLine("            if (typeMeta.HeaderHash == __ForyTypeMetaHeaderHashTrackRef)");
         sb.AppendLine("            {");
-        sb.AppendLine("                matched = __ForyVerifyExactCompatibleSchema(typeMeta, true);");
+        sb.AppendLine("                matched = __ForyMatchesTypeMeta(typeMeta, true);");
         sb.AppendLine("            }");
         sb.AppendLine();
-        sb.AppendLine("            __ForyLastCompatibleSchemaTypeMetaTrackRef = typeMeta;");
-        sb.AppendLine("            __ForyLastCompatibleSchemaMatchedTrackRef = matched;");
+        sb.AppendLine("            __ForyLastTypeMetaTrackRef = typeMeta;");
+        sb.AppendLine("            __ForyLastTypeMetaMatchedTrackRef = matched;");
         sb.AppendLine("            return matched;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine(
-            "        if (global::System.Object.ReferenceEquals(__ForyLastCompatibleSchemaTypeMetaNoTrackRef, typeMeta))");
+            "        if (global::System.Object.ReferenceEquals(__ForyLastTypeMetaNoTrackRef, typeMeta))");
         sb.AppendLine("        {");
-        sb.AppendLine("            return __ForyLastCompatibleSchemaMatchedNoTrackRef;");
+        sb.AppendLine("            return __ForyLastTypeMetaMatchedNoTrackRef;");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        __ForyEnsureCompatibleSchemaCache(typeResolver);");
+        sb.AppendLine("        __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
         sb.AppendLine("        bool noTrackMatched = false;");
-        sb.AppendLine("        if (typeMeta.HeaderHash == __ForyCompatibleSchemaHashNoTrackRef)");
+        sb.AppendLine("        if (typeMeta.HeaderHash == __ForyTypeMetaHeaderHashNoTrackRef)");
         sb.AppendLine("        {");
-        sb.AppendLine("            noTrackMatched = __ForyVerifyExactCompatibleSchema(typeMeta, false);");
+        sb.AppendLine("            noTrackMatched = __ForyMatchesTypeMeta(typeMeta, false);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        __ForyLastCompatibleSchemaTypeMetaNoTrackRef = typeMeta;");
-        sb.AppendLine("        __ForyLastCompatibleSchemaMatchedNoTrackRef = noTrackMatched;");
+        sb.AppendLine("        __ForyLastTypeMetaNoTrackRef = typeMeta;");
+        sb.AppendLine("        __ForyLastTypeMetaMatchedNoTrackRef = noTrackMatched;");
         sb.AppendLine("        return noTrackMatched;");
         sb.AppendLine("    }");
         sb.AppendLine();
@@ -439,21 +441,16 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine();
-        sb.AppendLine("    public global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)");
+        sb.AppendLine("    private global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> TypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (trackRef)");
         sb.AppendLine("        {");
         sb.AppendLine(
-            "            return __ForyCompatibleFieldsTrackRef ??= __ForyBuildCompatibleTypeMetaFields(true);");
+            "            return __ForyTypeMetaFieldsTrackRef ??= __ForyBuildTypeMetaFields(true);");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine(
-            "        return __ForyCompatibleFieldsNoTrackRef ??= __ForyBuildCompatibleTypeMetaFields(false);");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine("    public bool SupportsCompatibleReadWithoutTypeMeta()");
-        sb.AppendLine("    {");
-        sb.AppendLine("        return false;");
+            "        return __ForyTypeMetaFieldsNoTrackRef ??= __ForyBuildTypeMetaFields(false);");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(
@@ -487,12 +484,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    public {model.TypeName} ReadDataCompatibleNoTypeMeta(global::Apache.Fory.ReadContext context)");
+        sb.AppendLine($"    private {model.TypeName} ReadDataWithoutTypeMeta(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("        context.RefReader.BindPendingReference(valueNoTypeMeta);");
+            sb.AppendLine("        context.StoreRef(valueNoTypeMeta);");
         }
 
         foreach (MemberModel member in model.SortedMembers)
@@ -501,7 +498,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 sb,
                 member,
                 BuildWriteRefModeExpression(member),
-                BuildCompatibleReadTypeInfoExpression(member),
+                BuildFieldTypeInfoLiteral(member),
                 "valueNoTypeMeta",
                 "CompatNoTypeMeta",
                 4,
@@ -516,20 +513,21 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");
         sb.AppendLine(
-            $"            if (!context.TryConsumeCompatibleTypeMeta(typeof({model.TypeName}), out global::Apache.Fory.TypeMeta? maybeTypeMeta) || maybeTypeMeta is null)");
+            $"            global::Apache.Fory.TypeMeta? maybeTypeMeta = context.GetTypeMeta<{model.TypeName}>();");
+        sb.AppendLine("            if (maybeTypeMeta is null)");
         sb.AppendLine("            {");
-        sb.AppendLine("                return ReadDataCompatibleNoTypeMeta(context);");
+        sb.AppendLine("                return ReadDataWithoutTypeMeta(context);");
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            global::Apache.Fory.TypeMeta typeMeta = maybeTypeMeta;");
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("            context.RefReader.BindPendingReference(value);");
+            sb.AppendLine("            context.StoreRef(value);");
         }
 
-        sb.AppendLine("            bool __ForyExactCompatibleSchema = __ForyCachedExactCompatibleSchema(typeMeta, context.TrackRef, context.TypeResolver);");
-        sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactCompatibleSchema)");
+        sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
+        sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
         sb.AppendLine("            {");
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -547,7 +545,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("                return value;");
         sb.AppendLine("            }");
         sb.AppendLine();
-        sb.AppendLine("            if (__ForyExactCompatibleSchema)");
+        sb.AppendLine("            if (__ForyExactTypeMeta)");
         sb.AppendLine("            {");
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -555,7 +553,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 sb,
                 member,
                 BuildWriteRefModeExpression(member),
-                BuildCompatibleReadTypeInfoExpression(member),
+                BuildFieldTypeInfoLiteral(member),
                 "value",
                 "CompatExactTyped",
                 6,
@@ -580,7 +578,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 sb,
                 member,
                 "remoteRefMode",
-                BuildCompatibleReadTypeInfoExpression(member),
+                BuildFieldTypeInfoLiteral(member),
                 "value",
                 "Compat",
                 7,
@@ -610,7 +608,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("        context.RefReader.BindPendingReference(valueSchema);");
+            sb.AppendLine("        context.StoreRef(valueSchema);");
         }
 
         foreach (MemberModel member in model.SortedMembers)
@@ -629,7 +627,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string memberAccess = $"value.{member.Name}";
         string hasGenerics = member.IsCollection ? "true" : "false";
         string writeTypeInfo = compatibleMode
-            ? BuildCompatibleTypeInfoExpression(member)
+            ? BuildFieldTypeInfoLiteral(member)
             : "false";
 
         switch (member.DynamicAnyKind)
@@ -1006,7 +1004,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return false;
         }
 
-        return member.Classification.IsBuiltIn || !member.IsReferenceTrackableType;
+        return member.Classification.IsBuiltIn || !member.IsRefType;
     }
 
     private static bool CanUseTrackRefBranchWriteDataInvocation(MemberModel member)
@@ -1016,7 +1014,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return false;
         }
 
-        return !member.Classification.IsBuiltIn && member.IsReferenceTrackableType;
+        return !member.Classification.IsBuiltIn && member.IsRefType;
     }
 
     private static string BuildSchemaFingerprintExpression(ImmutableArray<MemberModel> members)
@@ -1040,7 +1038,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             string trackRefExpr = member.DynamicAnyKind switch
             {
                 DynamicAnyKind.AnyValue => "(trackRef ? 1 : 0)",
-                _ => member.Classification.IsBuiltIn || !member.IsReferenceTrackableType
+                _ => member.Classification.IsBuiltIn || !member.IsRefType
                     ? "0"
                     : "(trackRef ? 1 : 0)",
             };
@@ -1058,14 +1056,14 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string BuildCompatibleTypeMetaExpression(TypeMetaFieldTypeModel model, string trackRefExpr)
+    private static string BuildTypeMetaExpression(TypeMetaFieldTypeModel model, string trackRefExpr)
     {
         string localTrackRefExpr = model.TrackRefByContext ? trackRefExpr : "false";
         if (model.Generics.Length > 0)
         {
             string generics = string.Join(
                 ", ",
-                model.Generics.Select(g => BuildCompatibleTypeMetaExpression(g, "false")));
+                model.Generics.Select(g => BuildTypeMetaExpression(g, "false")));
             return
                 $"new global::Apache.Fory.TypeMetaFieldType({model.TypeIdExpr}, {BoolLiteral(model.Nullable)}, {localTrackRefExpr}, new global::Apache.Fory.TypeMetaFieldType[] {{ {generics} }})";
         }
@@ -1083,20 +1081,15 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         return member.DynamicAnyKind switch
         {
             DynamicAnyKind.AnyValue => $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef)",
-            _ => member.Classification.IsBuiltIn || !member.IsReferenceTrackableType
+            _ => member.Classification.IsBuiltIn || !member.IsRefType
                 ? $"__ForyRefMode({BoolLiteral(member.IsNullable)}, false)"
                 : $"__ForyRefMode({BoolLiteral(member.IsNullable)}, context.TrackRef)",
         };
     }
 
-    private static string BuildCompatibleReadTypeInfoExpression(MemberModel member)
+    private static string BuildFieldTypeInfoLiteral(MemberModel member)
     {
-        return $"context.TypeResolver.GetTypeInfo<{member.TypeName}>().NeedsTypeInfoForField()";
-    }
-
-    private static string BuildCompatibleTypeInfoExpression(MemberModel member)
-    {
-        return $"context.TypeResolver.GetTypeInfo<{member.TypeName}>().NeedsTypeInfoForField()";
+        return BoolLiteral(member.NeedsFieldTypeInfo);
     }
 
     private static TypeModel? BuildTypeModel(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
@@ -1291,6 +1284,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             classification.IsCollection || classification.IsMap,
             classification.IsMap && !IsTypeSealed(unwrappedType),
             !unwrappedType.IsValueType && classification.TypeId != 21,
+            FieldNeedsTypeInfo(classification, dynamicAnyKind, unwrappedType),
             dynamicAnyKind == DynamicAnyKind.None ? DynamicAnyKind.None : dynamicAnyKind,
             typeMeta);
     }
@@ -1511,6 +1505,24 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         TypeClassification c = ClassifyType(unwrapped);
         return !c.IsPrimitive;
+    }
+
+    private static bool FieldNeedsTypeInfo(
+        TypeClassification classification,
+        DynamicAnyKind dynamicAnyKind,
+        ITypeSymbol unwrappedType)
+    {
+        if (dynamicAnyKind == DynamicAnyKind.AnyValue)
+        {
+            return true;
+        }
+
+        if (classification.IsBuiltIn || IsUnionType(unwrappedType) || unwrappedType.TypeKind == TypeKind.Enum)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool IsReadableWritableAccessibility(Accessibility accessibility)
@@ -2041,7 +2053,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             int group,
             bool isCollection,
             bool useDictionaryTypeInfoCache,
-            bool isReferenceTrackableType,
+            bool isRefType,
+            bool needsFieldTypeInfo,
             DynamicAnyKind dynamicAnyKind,
             TypeMetaFieldTypeModel typeMeta)
         {
@@ -2057,7 +2070,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             Group = group;
             IsCollection = isCollection;
             UseDictionaryTypeInfoCache = useDictionaryTypeInfoCache;
-            IsReferenceTrackableType = isReferenceTrackableType;
+            IsRefType = isRefType;
+            NeedsFieldTypeInfo = needsFieldTypeInfo;
             DynamicAnyKind = dynamicAnyKind;
             TypeMeta = typeMeta;
         }
@@ -2074,7 +2088,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         public int Group { get; }
         public bool IsCollection { get; }
         public bool UseDictionaryTypeInfoCache { get; }
-        public bool IsReferenceTrackableType { get; }
+        public bool IsRefType { get; }
+        public bool NeedsFieldTypeInfo { get; }
         public DynamicAnyKind DynamicAnyKind { get; }
         public TypeMetaFieldTypeModel TypeMeta { get; }
     }

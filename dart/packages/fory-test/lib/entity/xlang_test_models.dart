@@ -35,6 +35,8 @@ void _ensureXlangSpecLookupReady() {
   SpecLookup.register($Color);
   SpecLookup.register($Item);
   SpecLookup.register($SimpleStruct);
+  SpecLookup.register($EvolvingOverrideStruct);
+  SpecLookup.register($FixedOverrideStruct);
   SpecLookup.register($Item1);
   SpecLookup.register($StructWithList);
   SpecLookup.register($StructWithMap);
@@ -178,6 +180,16 @@ class SimpleStruct {
   Int32 f7 = Int32(0);
   Int32 f8 = Int32(0);
   Int32 last = Int32(0);
+}
+
+@foryClass
+class EvolvingOverrideStruct {
+  String f1 = '';
+}
+
+@ForyClass(evolving: false)
+class FixedOverrideStruct {
+  String f1 = '';
 }
 
 @foryClass

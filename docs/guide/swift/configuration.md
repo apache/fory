@@ -39,6 +39,11 @@ Default configuration:
 let fory = Fory() // xlang=true, trackRef=false, compatible=false
 ```
 
+## Threading
+
+`Fory` is single-threaded and optimized to reuse one read/write context pair on the calling thread.
+Reuse one instance per thread and do not use the same instance concurrently.
+
 ## Options
 
 ### `xlang`

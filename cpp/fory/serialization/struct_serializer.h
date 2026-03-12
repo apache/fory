@@ -3087,7 +3087,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
               remote_type_id ==
                   static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
               remote_type_id ==
-                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
+                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT) ||
+              remote_type_id == static_cast<uint8_t>(TypeId::NAMED_STRUCT);
           (void)remote_user_type_id;
           if (remote_has_meta) {
             // Read TypeMeta inline using streaming protocol

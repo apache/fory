@@ -104,7 +104,7 @@ public readonly struct MetaString : IEquatable<MetaString>
     }
 }
 
-public sealed class MetaStringEncoder
+internal sealed class MetaStringEncoder
 {
     private const int MaxMetaStringLength = 32_767;
 
@@ -408,7 +408,7 @@ public sealed class MetaStringEncoder
     }
 }
 
-public sealed class MetaStringDecoder
+internal sealed class MetaStringDecoder
 {
     public MetaStringDecoder(char specialChar1, char specialChar2)
     {
@@ -530,4 +530,3 @@ public sealed class MetaStringDecoder
         return sb.ToString();
     }
 }
-

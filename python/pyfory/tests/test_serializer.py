@@ -722,6 +722,23 @@ def test_py_serialize_object(track_ref):
     assert ser_de(fory, obj2) == obj2
 
 
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_py_serialize_empty_object(track_ref):
+    fory = Fory(xlang=False, ref=track_ref, strict=False)
+    obj = object()
+    result = ser_de(fory, obj)
+    assert type(result) is object
+
+    repeated = [obj, obj]
+    repeated_result = ser_de(fory, repeated)
+    assert type(repeated_result[0]) is object
+    assert type(repeated_result[1]) is object
+    if track_ref:
+        assert repeated_result[0] is repeated_result[1]
+    else:
+        assert repeated_result[0] is not repeated_result[1]
+
+
 def test_dumps_loads():
     fory = Fory(xlang=False, ref=True)
     obj = {"a": 1, "b": 2}

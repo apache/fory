@@ -60,24 +60,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             return;
         }
 
-        bool trackKeyRef = context.TrackRef && keyTypeInfo.IsReferenceTrackableType;
-        bool trackValueRef = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
-        bool keyDeclared = hasGenerics && !keyTypeInfo.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueTypeInfo.NeedsTypeInfoForField();
+        bool trackKeyRef = context.TrackRef && keyTypeInfo.IsRefType;
+        bool trackValueRef = context.TrackRef && valueTypeInfo.IsRefType;
+        bool keyDeclared = hasGenerics && !TypeResolver.NeedToWriteTypeInfoForField(keyTypeInfo);
+        bool valueDeclared = hasGenerics && !TypeResolver.NeedToWriteTypeInfoForField(valueTypeInfo);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
-        bool writeDeclaredCompatibleKeyTypeInfo =
-            context.Compatible &&
-            keyDeclared &&
-            !keyDynamicType &&
-            keyTypeInfo.NeedsTypeInfoForField() &&
-            !keyTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
-        bool writeDeclaredCompatibleValueTypeInfo =
-            context.Compatible &&
-            valueDeclared &&
-            !valueDynamicType &&
-            valueTypeInfo.NeedsTypeInfoForField() &&
-            !valueTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
 
         KeyValuePair<TKey, TValue>[] pairs = SnapshotPairs(map);
         if (keyDynamicType || valueDynamicType)
@@ -92,8 +80,6 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 valueDeclared,
                 keyDynamicType,
                 valueDynamicType,
-                writeDeclaredCompatibleKeyTypeInfo,
-                writeDeclaredCompatibleValueTypeInfo,
                 keyTypeInfo,
                 valueTypeInfo,
                 keySerializer,
@@ -143,7 +129,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 context.Writer.WriteUInt8(header);
                 if (!keyIsNull)
                 {
-                    if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
+                    if (!keyDeclared)
                     {
                         context.TypeResolver.WriteTypeInfo(keySerializer, context);
                     }
@@ -153,7 +139,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
                 if (!valueIsNull)
                 {
-                    if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
+                    if (!valueDeclared)
                     {
                         context.TypeResolver.WriteTypeInfo(valueSerializer, context);
                     }
@@ -189,12 +175,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             context.Writer.WriteUInt8(blockHeader);
             int chunkSizeOffset = context.Writer.Count;
             context.Writer.WriteUInt8(0);
-            if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
+            if (!keyDeclared)
             {
                 context.TypeResolver.WriteTypeInfo(keySerializer, context);
             }
 
-            if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
+            if (!valueDeclared)
             {
                 context.TypeResolver.WriteTypeInfo(valueSerializer, context);
             }
@@ -234,7 +220,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         TDictionary map = CreateMap(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
-        bool canonicalizeValues = context.TrackRef && valueTypeInfo.IsReferenceTrackableType;
+        bool canonicalizeValues = context.TrackRef && valueTypeInfo.IsRefType;
 
         int readCount = 0;
         while (readCount < totalLength)
@@ -246,18 +232,6 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
             bool valueNull = (header & DictionaryBits.ValueNull) != 0;
             bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
-            bool readDeclaredCompatibleKeyTypeInfo =
-                context.Compatible &&
-                keyDeclared &&
-                !keyDynamicType &&
-                keyTypeInfo.NeedsTypeInfoForField() &&
-                !keyTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
-            bool readDeclaredCompatibleValueTypeInfo =
-                context.Compatible &&
-                valueDeclared &&
-                !valueDynamicType &&
-                valueTypeInfo.NeedsTypeInfoForField() &&
-                !valueTypeInfo.SupportsCompatibleReadWithoutTypeMeta;
 
             if (keyNull && valueNull)
             {
@@ -272,7 +246,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 _ = ReadValueElement(
                     context,
                     trackValueRef,
-                    !valueDeclared || readDeclaredCompatibleValueTypeInfo,
+                    !valueDeclared,
                     canonicalizeValues,
                     valueSerializer);
 
@@ -286,7 +260,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 TKey key = keySerializer.Read(
                     context,
                     trackKeyRef ? RefMode.Tracking : RefMode.None,
-                    !keyDeclared || readDeclaredCompatibleKeyTypeInfo);
+                    !keyDeclared);
 
                 SetValue(map, key, (TValue)valueSerializer.DefaultObject!);
                 readCount += 1;
@@ -298,14 +272,14 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             {
                 for (int i = 0; i < chunkSize; i++)
                 {
-                    DynamicTypeInfo? keyDynamicInfo = null;
-                    DynamicTypeInfo? valueDynamicInfo = null;
+                    TypeInfo? keyTypeInfoForRead = null;
+                    TypeInfo? valueTypeInfoForRead = null;
 
-                    if (!keyDeclared || readDeclaredCompatibleKeyTypeInfo)
+                    if (!keyDeclared)
                     {
                         if (keyDynamicType)
                         {
-                            keyDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
+                            keyTypeInfoForRead = context.TypeResolver.ReadAnyTypeInfo(context);
                         }
                         else
                         {
@@ -313,11 +287,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                         }
                     }
 
-                    if (!valueDeclared || readDeclaredCompatibleValueTypeInfo)
+                    if (!valueDeclared)
                     {
                         if (valueDynamicType)
                         {
-                            valueDynamicInfo = context.TypeResolver.ReadDynamicTypeInfo(context);
+                            valueTypeInfoForRead = context.TypeResolver.ReadAnyTypeInfo(context);
                         }
                         else
                         {
@@ -325,20 +299,20 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                         }
                     }
 
-                    if (keyDynamicInfo is not null)
+                    if (keyTypeInfoForRead is not null)
                     {
-                        context.SetDynamicTypeInfo(typeof(TKey), keyDynamicInfo);
+                        context.SetReadTypeInfo(typeof(TKey), keyTypeInfoForRead);
                     }
 
                     TKey key = keySerializer.Read(context, trackKeyRef ? RefMode.Tracking : RefMode.None, false);
-                    if (keyDynamicInfo is not null)
+                    if (keyTypeInfoForRead is not null)
                     {
-                        context.ClearDynamicTypeInfo(typeof(TKey));
+                        context.ClearReadTypeInfo(typeof(TKey));
                     }
 
-                    if (valueDynamicInfo is not null)
+                    if (valueTypeInfoForRead is not null)
                     {
-                        context.SetDynamicTypeInfo(typeof(TValue), valueDynamicInfo);
+                        context.SetReadTypeInfo(typeof(TValue), valueTypeInfoForRead);
                     }
 
                     TValue value = ReadValueElement(
@@ -347,9 +321,9 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                         false,
                         canonicalizeValues,
                         valueSerializer);
-                    if (valueDynamicInfo is not null)
+                    if (valueTypeInfoForRead is not null)
                     {
-                        context.ClearDynamicTypeInfo(typeof(TValue));
+                        context.ClearReadTypeInfo(typeof(TValue));
                     }
 
                     SetValue(map, key, value);
@@ -359,12 +333,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 continue;
             }
 
-            if (!keyDeclared || readDeclaredCompatibleKeyTypeInfo)
+            if (!keyDeclared)
             {
                 context.TypeResolver.ReadTypeInfo(keySerializer, context);
             }
 
-            if (!valueDeclared || readDeclaredCompatibleValueTypeInfo)
+            if (!valueDeclared)
             {
                 context.TypeResolver.ReadTypeInfo(valueSerializer, context);
             }
@@ -378,12 +352,12 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
             if (!keyDeclared)
             {
-                context.ClearDynamicTypeInfo(typeof(TKey));
+                context.ClearReadTypeInfo(typeof(TKey));
             }
 
             if (!valueDeclared)
             {
-                context.ClearDynamicTypeInfo(typeof(TValue));
+                context.ClearReadTypeInfo(typeof(TValue));
             }
 
             readCount += chunkSize;
@@ -402,8 +376,6 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         bool valueDeclared,
         bool keyDynamicType,
         bool valueDynamicType,
-        bool writeDeclaredCompatibleKeyTypeInfo,
-        bool writeDeclaredCompatibleValueTypeInfo,
         TypeInfo keyTypeInfo,
         TypeInfo valueTypeInfo,
         Serializer<TKey> keySerializer,
@@ -471,7 +443,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             }
 
             context.Writer.WriteUInt8(1);
-            if (!keyDeclared || writeDeclaredCompatibleKeyTypeInfo)
+            if (!keyDeclared)
             {
                 if (keyDynamicType)
                 {
@@ -483,7 +455,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
                 }
             }
 
-            if (!valueDeclared || writeDeclaredCompatibleValueTypeInfo)
+            if (!valueDeclared)
             {
                 if (valueDynamicType)
                 {
@@ -515,7 +487,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         int start = context.Reader.Cursor;
         TValue value = valueSerializer.Read(context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
-        return context.CanonicalizeNonTrackingReference(value, start, end);
+        return context.CanonicalizeNonTrackingRef(value, start, end);
     }
 }
 

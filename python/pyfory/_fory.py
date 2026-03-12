@@ -160,6 +160,8 @@ class Fory:
         "_output_stream",
         "field_nullable",
         "policy",
+        "max_collection_size",
+        "max_binary_size",
     )
 
     def __init__(
@@ -172,6 +174,8 @@ class Fory:
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
+        max_collection_size: int = 1_000_000,
+        max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -210,6 +214,17 @@ class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
+            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
+                and maps (dicts) during deserialization. This limit is used to prevent
+                out-of-memory attacks from malicious payloads that claim extremely large
+                collection sizes, as collections preallocate memory based on the declared
+                size. Raises an exception if exceeded. Default is 1,000,000.
+
+            max_binary_size: Maximum allowed size in bytes for binary data reads during
+                deserialization (default: 64 MB). Raises an exception if a single binary
+                read exceeds this limit, preventing out-of-memory attacks from malicious
+                payloads that claim extremely large binary sizes.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -235,7 +250,8 @@ class Fory:
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
 
-        self.buffer = Buffer.allocate(32)
+        self.max_binary_size = max_binary_size
+        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
         self.buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
@@ -243,6 +259,7 @@ class Fory:
         self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
+        self.max_collection_size = max_collection_size
         self._output_stream = None
 
     def register(
@@ -621,7 +638,7 @@ class Fory:
         assert self.depth == 0, "Nested deserialization should use read_ref/read_no_ref."
         self.depth += 1
         if isinstance(buffer, bytes):
-            buffer = Buffer(buffer)
+            buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
         reader_index = buffer.get_reader_index()
@@ -666,6 +683,7 @@ class Fory:
         """Internal method to read without modifying read_ref_ids."""
         if serializer is None:
             serializer = self.type_resolver.read_type_info(buffer).serializer
+
         self.inc_depth()
         o = serializer.read(buffer)
         self.dec_depth()
@@ -812,6 +830,10 @@ class ThreadSafeFory:
         strict (bool): Whether to require type registration. Defaults to True.
         compatible (bool): Whether to enable compatible mode. Defaults to False.
         max_depth (int): Maximum depth for deserialization. Defaults to 50.
+        max_collection_size (int): Maximum allowed size for collections and maps during
+            deserialization. Defaults to 1,000,000.
+        max_binary_size (int): Maximum allowed size in bytes for binary data reads during
+            deserialization. Defaults to 64 MB.
 
     Example:
         >>> import pyfury
