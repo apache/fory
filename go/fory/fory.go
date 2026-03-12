@@ -180,6 +180,7 @@ func NewFory(opts ...Option) *Fory {
 	return New(opts...)
 }
 
+//go:noinline
 func validateUserTypeID(typeID uint32) error {
 	if typeID > maxUserTypeID {
 		return fmt.Errorf("typeID must be in range [0, 0xfffffffe], got %d", typeID)
@@ -192,6 +193,8 @@ func validateUserTypeID(typeID uint32) error {
 // type_ can be either a reflect.Type or an instance of the type
 // typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
 // Note: For enum types, use RegisterEnum instead.
+//
+//go:noinline
 func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -223,6 +226,8 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 // type_ can be either a reflect.Type or an instance of the union type.
 // typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
 // serializer must implement union payload encoding/decoding.
+//
+//go:noinline
 func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) error {
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
@@ -248,6 +253,8 @@ func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) er
 // RegisterNamedUnion registers a union type with a namespace + type name for cross-language serialization.
 // type_ can be either a reflect.Type or an instance of the union type.
 // serializer must implement union payload encoding/decoding.
+//
+//go:noinline
 func (f *Fory) RegisterNamedUnion(type_ any, typeName string, serializer Serializer) error {
 	if serializer == nil {
 		return fmt.Errorf("RegisterNamedUnion requires a non-nil serializer")
@@ -277,6 +284,8 @@ func (f *Fory) RegisterNamedUnion(type_ any, typeName string, serializer Seriali
 // type_ can be either a reflect.Type or an instance of the type
 // typeName can include a namespace prefix separated by "." (e.g., "example.Foo")
 // Note: For enum types, use RegisterNamedEnum instead.
+//
+//go:noinline
 func (f *Fory) RegisterNamedStruct(type_ any, typeName string) error {
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
@@ -305,6 +314,8 @@ func (f *Fory) RegisterNamedStruct(type_ any, typeName string) error {
 // This method creates an enum serializer that writes/reads the enum value as VarUint32Small7.
 // type_ can be either a reflect.Type or an instance of the enum type
 // typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
+//
+//go:noinline
 func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -335,6 +346,8 @@ func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
 // In Go, enums are typically defined as int-based types (e.g., type Color int32).
 // type_ can be either a reflect.Type or an instance of the enum type
 // typeName can include a namespace prefix separated by "." (e.g., "example.Color")
+//
+//go:noinline
 func (f *Fory) RegisterNamedEnum(type_ any, typeName string) error {
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
@@ -368,6 +381,8 @@ func (f *Fory) RegisterNamedEnum(type_ any, typeName string) error {
 // RegisterExtension registers a type as an extension type with a numeric ID.
 // Extension types use a custom serializer provided by the user.
 // typeID should be the user type ID in the range 0-0xfffffffe (0xffffffff is reserved for "unset").
+//
+//go:noinline
 func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionSerializer) error {
 	if err := validateUserTypeID(typeID); err != nil {
 		return err
@@ -405,6 +420,8 @@ func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionS
 //
 //	// Register with custom serializer
 //	f.RegisterNamedExtension(MyExt{}, "my_ext", &MyExtSerializer{})
+//
+//go:noinline
 func (f *Fory) RegisterNamedExtension(type_ any, typeName string, serializer ExtensionSerializer) error {
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
@@ -724,6 +741,8 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 // serializeReflectValue serializes a reflect.Value directly, avoiding boxing overhead.
 // This is used by Serialize[T] fallback path to avoid struct copy.
 // For structs, the value must be a pointer to struct, not struct value.
+//
+//go:noinline
 func (f *Fory) serializeReflectValue(value reflect.Value) ([]byte, error) {
 	// Check that structs are passed as pointers
 	if value.Kind() == reflect.Struct {
@@ -757,6 +776,8 @@ func writeHeader(ctx *WriteContext, config Config) {
 
 // isNilValue checks if a value is nil, including nil pointers wrapped in any
 // In Go, `*int32(nil)` wrapped in `any` is NOT equal to `nil`, but we need to treat it as null.
+//
+//go:noinline
 func isNilValue(value any) bool {
 	if value == nil {
 		return true
@@ -771,6 +792,8 @@ func isNilValue(value any) bool {
 
 // writeNullHeader writes a null object header (1 byte: bitmap with isNilFlag)
 // This is compatible with Java's null serialization format
+//
+//go:noinline
 func writeNullHeader(ctx *WriteContext) {
 	ctx.buffer.WriteByte_(IsNilFlag) // bitmap with only isNilFlag set
 }

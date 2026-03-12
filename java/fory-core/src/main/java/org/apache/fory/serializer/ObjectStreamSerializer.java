@@ -59,6 +59,7 @@ import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ObjectCreator;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.type.Descriptor;
@@ -176,7 +177,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
           Externalizable.class.getName());
     }
     // stream serializer may be data serializer of ReplaceResolver serializer.
-    fory.getClassResolver().setSerializerIfAbsent(type, this);
+    fory.getTypeResolver().setSerializerIfAbsent(type, this);
     List<SlotInfo> slotsInfoList = new ArrayList<>();
     Class<?> end = type;
     // locate closest non-serializable superclass
@@ -209,6 +210,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   public void write(MemoryBuffer buffer, Object value) {
     buffer.writeInt16((short) slotsInfos.length);
     try {
+      ClassResolver classResolver = (ClassResolver) typeResolver;
       for (SlotInfo slotsInfo : slotsInfos) {
         // create a classinfo to avoid null class bytes when class id is a
         // replacement id.
@@ -260,6 +262,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     int slotIndex = 0;
 
     try {
+      ClassResolver classResolver = (ClassResolver) typeResolver;
       TreeMap<Integer, ObjectInputValidation> callbacks = new TreeMap<>(Collections.reverseOrder());
       for (int i = 0; i < numClasses; i++) {
         Class<?> currentClass = classResolver.readClassInternal(buffer);
@@ -425,8 +428,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       typeInfo.setSerializer(newSerializer);
       skipSerializer = newSerializer;
     }
-    SerializationBinding binding = SerializationBinding.createBinding(fory);
-    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(buffer, binding);
+    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(buffer);
   }
 
   private static void throwUnsupportedEncodingException(Class<?> cls)
@@ -459,13 +461,13 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    */
   private static void ensureFieldSerializersGenerated(
       Fory fory, TypeDef layerTypeDef, Class<?> type) {
-    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(fory.getClassResolver(), type);
+    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(fory.getTypeResolver(), type);
     for (Descriptor descriptor : descriptors) {
       Class<?> fieldType = descriptor.getRawType();
       if (fieldType != null && !fieldType.isPrimitive()) {
         try {
           // Trigger serializer generation for this field type
-          fory.getClassResolver().getSerializerClass(fieldType);
+          fory.getTypeResolver().getSerializerClass(fieldType);
         } catch (Exception e) {
           // Ignore errors - some types may not need serializers or may be handled specially
           ExceptionUtils.ignore(e);
@@ -521,9 +523,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     }
 
     // For registered types
-    if (fory.getClassResolver().isRegisteredById(fieldType)) {
-      int typeId = fory.getClassResolver().getTypeIdForTypeDef(fieldType);
-      int userTypeId = fory.getClassResolver().getUserTypeIdForTypeDef(fieldType);
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+    if (classResolver.isRegisteredById(fieldType)) {
+      int typeId = classResolver.getTypeIdForTypeDef(fieldType);
+      int userTypeId = classResolver.getUserTypeIdForTypeDef(fieldType);
       return new FieldTypes.RegisteredFieldType(true, true, typeId, userTypeId);
     }
 
@@ -633,10 +636,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
             buildFieldInfoFromObjectStreamClass(fory, objectStreamClass, type);
         layerTypeDef =
             NativeTypeDefEncoder.buildTypeDefWithFieldInfos(
-                fory.getClassResolver(), type, fieldInfos, true);
+                (ClassResolver) fory.getTypeResolver(), type, fieldInfos, true);
       } else {
         // Fallback when ObjectStreamClass is not available (e.g., GraalVM native image)
-        layerTypeDef = fory.getClassResolver().getTypeDef(type, false);
+        layerTypeDef = fory.getTypeResolver().getTypeDef(type, false);
       }
       // Generate marker class for this layer. Use 0 as layer index since each class
       // has its own SlotsInfo, and the (class, 0) pair is unique for each class.
@@ -1110,13 +1113,13 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     @Override
     public void writeChars(String s) throws IOException {
       Preconditions.checkNotNull(s);
-      fory.writeJavaString(buffer, s);
+      fory.writeString(buffer, s);
     }
 
     @Override
     public void writeUTF(String s) throws IOException {
       Preconditions.checkNotNull(s);
-      fory.writeJavaString(buffer, s);
+      fory.writeString(buffer, s);
     }
 
     @Override
@@ -1465,7 +1468,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     @Override
     public String readUTF() throws IOException {
-      return fory.readJavaString(buffer);
+      return fory.readString(buffer);
     }
 
     @Override

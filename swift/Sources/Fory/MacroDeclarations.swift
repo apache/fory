@@ -18,15 +18,25 @@
 @attached(
     member,
     names: named(staticTypeId),
-    named(isReferenceTrackableType),
+    named(foryEvolving),
+    named(isRefType),
     named(__forySchemaHash),
-    named(foryCompatibleTypeMetaFields),
+    named(__forySchemaHashTrackRefDisabled),
+    named(__forySchemaHashTrackRefEnabled),
+    named(foryFieldsInfo),
+    named(__foryFieldsInfoTrackRefDisabled),
+    named(__foryFieldsInfoTrackRefEnabled),
     named(foryDefault),
+    named(foryWrite),
+    named(foryRead),
     named(foryWriteData),
-    named(foryReadData)
+    named(foryReadData),
+    named(foryReadCompatibleData),
+    named(__foryReadDataImpl),
+    named(__foryReadCompatibleDataImpl)
 )
-@attached(extension, conformances: Serializer)
-public macro ForyObject() = #externalMacro(module: "ForyMacro", type: "ForyObjectMacro")
+@attached(extension, conformances: Serializer, StructSerializer)
+public macro ForyObject(evolving: Bool = true) = #externalMacro(module: "ForyMacro", type: "ForyObjectMacro")
 
 public enum ForyFieldEncoding: String {
     case varint
@@ -36,5 +46,6 @@ public enum ForyFieldEncoding: String {
 
 @attached(peer)
 public macro ForyField(
-    encoding: ForyFieldEncoding
+    id: Int? = nil,
+    encoding: ForyFieldEncoding? = nil
 ) = #externalMacro(module: "ForyMacro", type: "ForyFieldMacro")

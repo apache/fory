@@ -41,17 +41,15 @@ public class ExternalizableSerializer<T extends Externalizable>
 
   @Override
   public void write(MemoryBuffer buffer, T value) {
+    if (!isJava) {
+      throw new UnsupportedOperationException("Externalizable can only be used in java");
+    }
     objectOutput.setBuffer(buffer);
     try {
       value.writeExternal(objectOutput);
     } catch (IOException e) {
       Platform.throwException(e);
     }
-  }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, T value) {
-    throw new UnsupportedOperationException("Externalizable can only be used in java");
   }
 
   @Override

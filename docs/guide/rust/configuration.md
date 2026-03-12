@@ -1,6 +1,6 @@
 ---
 title: Configuration
-sidebar_position: 1
+sidebar_position: 2
 id: configuration
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -41,7 +41,7 @@ Allows independent schema evolution:
 let fory = Fory::default().compatible(true);
 ```
 
-## Configuration Options
+## Configuration
 
 ### Maximum Dynamic Object Nesting Depth
 

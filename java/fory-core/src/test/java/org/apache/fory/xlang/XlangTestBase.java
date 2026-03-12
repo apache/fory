@@ -36,6 +36,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.ForyObject;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.annotation.Uint16Type;
 import org.apache.fory.annotation.Uint32Type;
@@ -47,8 +48,10 @@ import org.apache.fory.config.LongEncoding;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.MetaCompressor;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.TestUtils;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -165,6 +168,21 @@ public abstract class XlangTestBase extends ForyTestBase {
     ensurePeerReady();
   }
 
+  protected static final String EVOLVING_OVERRIDE_NAMESPACE = "test";
+  protected static final String EVOLVING_OVERRIDE_STRUCT_TYPE_NAME = "evolving_yes";
+  protected static final String FIXED_OVERRIDE_STRUCT_TYPE_NAME = "evolving_off";
+
+  @Data
+  protected static class EvolvingOverrideStruct {
+    String f1;
+  }
+
+  @Data
+  @ForyObject(evolving = false)
+  protected static class FixedOverrideStruct {
+    String f1;
+  }
+
   protected abstract void ensurePeerReady();
 
   protected abstract CommandContext buildCommandContext(String caseName, Path dataFile)
@@ -231,6 +249,43 @@ public abstract class XlangTestBase extends ForyTestBase {
             ctx.commandContext().environment(),
             ctx.commandContext().workDir()),
         "Failed to execute peer test " + ctx.caseName());
+  }
+
+  protected static EvolvingOverrideStruct newEvolvingOverrideStruct() {
+    EvolvingOverrideStruct value = new EvolvingOverrideStruct();
+    value.setF1("payload");
+    return value;
+  }
+
+  protected static FixedOverrideStruct newFixedOverrideStruct() {
+    FixedOverrideStruct value = new FixedOverrideStruct();
+    value.setF1("payload");
+    return value;
+  }
+
+  protected static void registerStructEvolvingOverrideTypes(Fory fory) {
+    fory.register(
+        EvolvingOverrideStruct.class,
+        EVOLVING_OVERRIDE_NAMESPACE,
+        EVOLVING_OVERRIDE_STRUCT_TYPE_NAME);
+    fory.register(
+        FixedOverrideStruct.class, EVOLVING_OVERRIDE_NAMESPACE, FIXED_OVERRIDE_STRUCT_TYPE_NAME);
+  }
+
+  protected static void assertStructEvolvingOverride(Fory fory) {
+    TypeInfo evolvingInfo = fory.getTypeResolver().getTypeInfo(EvolvingOverrideStruct.class, false);
+    TypeInfo fixedInfo = fory.getTypeResolver().getTypeInfo(FixedOverrideStruct.class, false);
+    Assert.assertNotNull(evolvingInfo);
+    Assert.assertNotNull(fixedInfo);
+    Assert.assertEquals(evolvingInfo.getTypeId(), Types.NAMED_COMPATIBLE_STRUCT);
+    Assert.assertEquals(fixedInfo.getTypeId(), Types.NAMED_STRUCT);
+
+    EvolvingOverrideStruct evolving = newEvolvingOverrideStruct();
+    FixedOverrideStruct fixed = newFixedOverrideStruct();
+    byte[] evolvingBytes = fory.serialize(evolving);
+    byte[] fixedBytes = fory.serialize(fixed);
+    Assert.assertEquals(fory.deserialize(evolvingBytes), evolving);
+    Assert.assertEquals(fory.deserialize(fixedBytes), fixed);
   }
 
   @Test(groups = "xlang")
@@ -639,6 +694,32 @@ public abstract class XlangTestBase extends ForyTestBase {
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testStructEvolvingOverride(boolean enableCodegen) throws java.io.IOException {
+    String caseName = "test_struct_evolving_override";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
+            .build();
+    registerStructEvolvingOverrideTypes(fory);
+    assertStructEvolvingOverride(fory);
+
+    EvolvingOverrideStruct evolving = newEvolvingOverrideStruct();
+    FixedOverrideStruct fixed = newFixedOverrideStruct();
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    fory.serialize(buffer, evolving);
+    fory.serialize(buffer, fixed);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    Assert.assertEquals(fory.deserialize(buffer2), evolving);
+    Assert.assertEquals(fory.deserialize(buffer2), fixed);
+    Assert.assertEquals(buffer2.remaining(), 0);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_list";
     Fory fory =
@@ -1005,16 +1086,6 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @Override
     public void write(MemoryBuffer buffer, MyExt value) {
-      xwrite(buffer, value);
-    }
-
-    @Override
-    public MyExt read(MemoryBuffer buffer) {
-      return xread(buffer);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, MyExt value) {
       System.out.println("Writer Index Before write myext: " + buffer.writerIndex());
       buffer.writeVarInt32(value.id);
       System.out.println("Write id " + value.id);
@@ -1022,7 +1093,7 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @SuppressWarnings("unchecked")
     @Override
-    public MyExt xread(MemoryBuffer buffer) {
+    public MyExt read(MemoryBuffer buffer) {
       MyExt obj = new MyExt();
       obj.id = buffer.readVarInt32();
       return obj;

@@ -1399,6 +1399,34 @@ class TestGoNestedTypeStyle:
         with pytest.raises(ValueError, match="Go type name collision"):
             generator.generate()
 
+    def test_cli_override_takes_precedence_over_schema_option(self):
+        source = """
+        package demo;
+        option go_nested_type_style = "camelcase";
+        message Outer {
+            message Inner {
+                string name = 1;
+            }
+            repeated Inner items = 1;
+        }
+        """
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        generator = GoGenerator(
+            schema,
+            GeneratorOptions(
+                output_dir=Path("/tmp"),
+                go_nested_type_style="underscore",
+            ),
+        )
+        files = generator.generate()
+        go_file = files[0]
+
+        assert "type Outer_Inner struct" in go_file.content
+        assert "Items []Outer_Inner" in go_file.content
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

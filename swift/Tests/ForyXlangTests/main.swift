@@ -54,6 +54,16 @@ private struct SimpleStruct {
 }
 
 @ForyObject
+private struct EvolvingOverrideStruct {
+    var f1: String = ""
+}
+
+@ForyObject(evolving: false)
+private struct FixedOverrideStruct {
+    var f1: String = ""
+}
+
+@ForyObject
 private struct Item1 {
     var f1: Int32 = 0
     var f2: Int32 = 0
@@ -76,7 +86,7 @@ private struct StructWithMap {
 @ForyObject
 private struct VersionCheckStruct {
     var f1: Int32 = 0
-    var f2: String? = nil
+    var f2: String?
     var f3: Double = 0
 }
 
@@ -85,7 +95,7 @@ private struct EmptyStructEvolution {}
 
 @ForyObject
 private struct OneStringFieldStruct {
-    var f1: String? = nil
+    var f1: String?
 }
 
 @ForyObject
@@ -120,16 +130,16 @@ private struct NullableComprehensiveSchemaConsistent {
     var setField: Set<String> = []
     var mapField: [String: String] = [:]
 
-    var nullableInt: Int32? = nil
-    var nullableLong: Int64? = nil
-    var nullableFloat: Float? = nil
+    var nullableInt: Int32?
+    var nullableLong: Int64?
+    var nullableFloat: Float?
 
-    var nullableDouble: Double? = nil
-    var nullableBool: Bool? = nil
-    var nullableString: String? = nil
-    var nullableList: [String]? = nil
-    var nullableSet: Set<String>? = nil
-    var nullableMap: [String: String]? = nil
+    var nullableDouble: Double?
+    var nullableBool: Bool?
+    var nullableString: String?
+    var nullableList: [String]?
+    var nullableSet: Set<String>?
+    var nullableMap: [String: String]?
 }
 
 @ForyObject
@@ -175,8 +185,8 @@ private final class RefInnerSchemaConsistent {
 
 @ForyObject
 private final class RefOuterSchemaConsistent {
-    var inner1: RefInnerSchemaConsistent? = nil
-    var inner2: RefInnerSchemaConsistent? = nil
+    var inner1: RefInnerSchemaConsistent?
+    var inner2: RefInnerSchemaConsistent?
 
     required init() {}
 }
@@ -191,8 +201,8 @@ private final class RefInnerCompatible {
 
 @ForyObject
 private final class RefOuterCompatible {
-    var inner1: RefInnerCompatible? = nil
-    var inner2: RefInnerCompatible? = nil
+    var inner1: RefInnerCompatible?
+    var inner2: RefInnerCompatible?
 
     required init() {}
 }
@@ -216,7 +226,7 @@ private final class RefOverrideContainer {
 @ForyObject
 private final class CircularRefStruct {
     var name: String = ""
-    weak var selfRef: CircularRefStruct? = nil
+    weak var selfRef: CircularRefStruct?
 
     required init() {}
 }
@@ -233,7 +243,7 @@ private struct MyExt: Serializer, Equatable {
         MyExt()
     }
 
-    static var staticTypeId: ForyTypeId {
+    static var staticTypeId: TypeId {
         .ext
     }
 
@@ -260,7 +270,7 @@ private struct EmptyWrapper {}
 @ForyObject
 private struct Dog {
     var age: Int32 = 0
-    var name: String? = nil
+    var name: String?
 }
 
 @ForyObject
@@ -295,7 +305,7 @@ private struct UnsignedSchemaConsistentSimple {
     @ForyField(encoding: .tagged)
     var u64Tagged: UInt64 = 0
     @ForyField(encoding: .tagged)
-    var u64TaggedNullable: UInt64? = nil
+    var u64TaggedNullable: UInt64?
 }
 
 @ForyObject
@@ -311,30 +321,30 @@ private struct UnsignedSchemaConsistent {
     @ForyField(encoding: .tagged)
     var u64TaggedField: UInt64 = 0
 
-    var u8NullableField: UInt8? = nil
-    var u16NullableField: UInt16? = nil
-    var u32VarNullableField: UInt32? = nil
+    var u8NullableField: UInt8?
+    var u16NullableField: UInt16?
+    var u32VarNullableField: UInt32?
     @ForyField(encoding: .fixed)
-    var u32FixedNullableField: UInt32? = nil
-    var u64VarNullableField: UInt64? = nil
+    var u32FixedNullableField: UInt32?
+    var u64VarNullableField: UInt64?
     @ForyField(encoding: .fixed)
-    var u64FixedNullableField: UInt64? = nil
+    var u64FixedNullableField: UInt64?
     @ForyField(encoding: .tagged)
-    var u64TaggedNullableField: UInt64? = nil
+    var u64TaggedNullableField: UInt64?
 }
 
 @ForyObject
 private struct UnsignedSchemaCompatible {
-    var u8Field1: UInt8? = nil
-    var u16Field1: UInt16? = nil
-    var u32VarField1: UInt32? = nil
+    var u8Field1: UInt8?
+    var u16Field1: UInt16?
+    var u32VarField1: UInt32?
     @ForyField(encoding: .fixed)
-    var u32FixedField1: UInt32? = nil
-    var u64VarField1: UInt64? = nil
+    var u32FixedField1: UInt32?
+    var u64VarField1: UInt64?
     @ForyField(encoding: .fixed)
-    var u64FixedField1: UInt64? = nil
+    var u64FixedField1: UInt64?
     @ForyField(encoding: .tagged)
-    var u64TaggedField1: UInt64? = nil
+    var u64TaggedField1: UInt64?
 
     var u8Field2: UInt8 = 0
     var u16Field2: UInt16 = 0
@@ -556,6 +566,18 @@ private func handleNamedSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
     try fory.register(Item.self, namespace: "demo", name: "item")
     try fory.register(SimpleStruct.self, namespace: "demo", name: "simple_struct")
     return try roundTripSingle(bytes, fory: fory, as: SimpleStruct.self)
+}
+
+private func handleStructEvolvingOverride(_ bytes: [UInt8]) throws -> [UInt8] {
+    let fory = Fory(compatible: true)
+    try fory.register(EvolvingOverrideStruct.self, namespace: "test", name: "evolving_yes")
+    try fory.register(FixedOverrideStruct.self, namespace: "test", name: "evolving_off")
+    return try roundTripStream(bytes) { buffer, out in
+        let evolving: EvolvingOverrideStruct = try fory.deserialize(from: buffer)
+        let fixed: FixedOverrideStruct = try fory.deserialize(from: buffer)
+        try fory.serialize(evolving, to: &out)
+        try fory.serialize(fixed, to: &out)
+    }
 }
 
 private func handleList(_ bytes: [UInt8]) throws -> [UInt8] {
@@ -831,7 +853,18 @@ private func handleCollectionElementRefOverride(_ bytes: [UInt8]) throws -> [UIn
     let fory = Fory(config: .init(xlang: true, trackRef: true, compatible: false))
     fory.register(RefOverrideElement.self, id: 701)
     fory.register(RefOverrideContainer.self, id: 702)
-    return try roundTripSingle(bytes, fory: fory, as: RefOverrideContainer.self)
+    let container: RefOverrideContainer = try fory.deserialize(Data(bytes))
+    guard let shared = container.listField.first else {
+        throw PeerError.invalidFieldValue("listField should not be empty")
+    }
+
+    let output = RefOverrideContainer()
+    output.listField = [shared, shared]
+    output.mapField = [
+        "k1": shared,
+        "k2": shared,
+    ]
+    return [UInt8](try fory.serialize(output))
 }
 
 private func handleCircularRefSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
@@ -878,6 +911,8 @@ private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] 
         return try handleSimpleStruct(bytes)
     case "test_named_simple_struct":
         return try handleNamedSimpleStruct(bytes)
+    case "test_struct_evolving_override":
+        return try handleStructEvolvingOverride(bytes)
     case "test_list":
         return try handleList(bytes)
     case "test_map":

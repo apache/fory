@@ -38,10 +38,10 @@ struct Person: Equatable {
 
 @ForyObject
 struct FieldOrder: Equatable {
-    var z: String
-    var a: Int64
-    var b: Int16
-    var c: Int32
+    var textTail: String
+    var longValue: Int64
+    var shortValue: Int16
+    var intValue: Int32
 }
 
 @ForyObject
@@ -51,6 +51,82 @@ struct EncodedNumberFields: Equatable {
 
     @ForyField(encoding: .tagged)
     var u64Tagged: UInt64
+}
+
+@ForyObject
+struct FieldIdConfigured: Equatable {
+    @ForyField(id: 2)
+    var stableID: Int32
+
+    @ForyField(id: 5, encoding: .fixed)
+    var fixedValue: Int32
+}
+
+@ForyObject
+struct FieldIdSource: Equatable {
+    @ForyField(id: 1)
+    var value: Int32
+
+    @ForyField(id: 4)
+    var label: String
+}
+
+@ForyObject
+struct FieldIdTarget: Equatable {
+    @ForyField(id: 1)
+    var renamedValue: Int32
+
+    @ForyField(id: 4)
+    var renamedLabel: String
+}
+
+@ForyObject
+struct EvolvingOverrideValue: Equatable {
+    var f1: String = ""
+}
+
+@ForyObject(evolving: false)
+struct FixedOverrideValue: Equatable {
+    var f1: String = ""
+}
+
+@ForyObject
+enum FieldIdUnionSource: Equatable {
+    @ForyField(id: 3)
+    case number(Int32)
+
+    @ForyField(id: 9)
+    case text(String)
+}
+
+@ForyObject
+enum FieldIdUnionTarget: Equatable {
+    @ForyField(id: 3)
+    case renamedNumber(Int32)
+
+    @ForyField(id: 9)
+    case renamedText(String)
+}
+
+@ForyObject
+struct CompatibleNestedItem: Equatable {
+    var id: Int32
+    var name: String
+}
+
+@ForyObject
+struct CompatibleNestedArrayHolder: Equatable {
+    var items: [CompatibleNestedItem]
+}
+
+@ForyObject
+struct CompatibleNestedOptionalArrayHolder: Equatable {
+    var items: [CompatibleNestedItem?]
+}
+
+@ForyObject
+struct CompatibleNestedMapHolder: Equatable {
+    var items: [Int32: CompatibleNestedItem]
 }
 
 @ForyObject
@@ -145,21 +221,114 @@ func primitiveRoundTrip() throws {
 }
 
 @Test
+func extendedWireTypesRoundTrip() throws {
+    let fory = Fory()
+
+    let float16Value = Float16(3.5)
+    let float16Data = try fory.serialize(float16Value)
+    let float16Decoded: Float16 = try fory.deserialize(float16Data)
+    #expect(float16Decoded.bitPattern == float16Value.bitPattern)
+
+    let bfloatValue = BFloat16(rawValue: 0x3F80)
+    let bfloatData = try fory.serialize(bfloatValue)
+    let bfloatDecoded: BFloat16 = try fory.deserialize(bfloatData)
+    #expect(bfloatDecoded == bfloatValue)
+
+    let durationValue = Duration.seconds(-2) + Duration.nanoseconds(123_456_789)
+    let durationData = try fory.serialize(durationValue)
+    let durationDecoded: Duration = try fory.deserialize(durationData)
+    #expect(durationDecoded == durationValue)
+
+    let float16Array: [Float16] = [Float16(1), Float16(-2), Float16(4.5)]
+    let float16ArrayData = try fory.serialize(float16Array)
+    let float16ArrayDecoded: [Float16] = try fory.deserialize(float16ArrayData)
+    #expect(float16ArrayDecoded.map(\.bitPattern) == float16Array.map(\.bitPattern))
+}
+
+@Test
 func namedInitializerBuildsConfig() {
     let defaultConfig = Fory()
     #expect(defaultConfig.config.xlang == true)
     #expect(defaultConfig.config.trackRef == false)
     #expect(defaultConfig.config.compatible == false)
+    #expect(defaultConfig.config.maxDepth == 5)
 
-    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true)
+    let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true, maxDepth: 7)
     #expect(explicitConfig.config.xlang == false)
     #expect(explicitConfig.config.trackRef == true)
     #expect(explicitConfig.config.compatible == true)
+    #expect(explicitConfig.config.maxDepth == 7)
 
-    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true))
+    let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true, maxDepth: 9))
     #expect(configInit.config.xlang == false)
     #expect(configInit.config.trackRef == false)
     #expect(configInit.config.compatible == true)
+    #expect(configInit.config.maxDepth == 9)
+}
+
+@Test
+func structEvolvingOverrideUsesSmallerCompatiblePayload() throws {
+    let fory = Fory(compatible: true)
+    fory.register(EvolvingOverrideValue.self, id: 1001)
+    fory.register(FixedOverrideValue.self, id: 1002)
+
+    let evolving = EvolvingOverrideValue(f1: "payload")
+    let fixed = FixedOverrideValue(f1: "payload")
+
+    let evolvingData = try fory.serialize(evolving)
+    let fixedData = try fory.serialize(fixed)
+
+    #expect(fixedData.count < evolvingData.count)
+    let decodedEvolving: EvolvingOverrideValue = try fory.deserialize(evolvingData)
+    let decodedFixed: FixedOverrideValue = try fory.deserialize(fixedData)
+    #expect(decodedEvolving == evolving)
+    #expect(decodedFixed == fixed)
+}
+
+@Test
+func decodeLimitsRejectOversizedPayloads() throws {
+    let writer = Fory()
+
+    let oversizedCollection = try writer.serialize(["a", "b", "c"])
+    let collectionLimited = Fory(config: .init(maxCollectionSize: 2))
+    do {
+        let _: [String] = try collectionLimited.deserialize(oversizedCollection)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedMap = try writer.serialize([Int32(1): Int32(1), 2: 2, 3: 3])
+    do {
+        let _: [Int32: Int32] = try collectionLimited.deserialize(oversizedMap)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedBinary = try writer.serialize(Data([0x01, 0x02, 0x03, 0x04]))
+    let binaryLimited = Fory(config: .init(maxBinarySize: 3))
+    do {
+        let _: Data = try binaryLimited.deserialize(oversizedBinary)
+        #expect(Bool(false))
+    } catch {}
+
+    let oversizedArrayPayload = try writer.serialize([UInt16(1), 2])
+    let payloadLimited = Fory(config: .init(maxCollectionSize: 1))
+    do {
+        let _: [UInt16] = try payloadLimited.deserialize(oversizedArrayPayload)
+        #expect(Bool(false))
+    } catch {}
+}
+
+@Test
+func deserializeRejectsTrailingBytes() throws {
+    let fory = Fory()
+    let payload = try fory.serialize(Int32(7))
+    var bytes = [UInt8](payload)
+    bytes.append(0xFF)
+    let withTrailing = Data(bytes)
+
+    do {
+        let _: Int32 = try fory.deserialize(withTrailing)
+        #expect(Bool(false))
+    } catch {}
 }
 
 @Test
@@ -220,11 +389,11 @@ func primitiveArrayTypeIDs() throws {
     let int32Bytes = [UInt8](int32Data)
     #expect(int32Bytes[0] == ForyHeaderFlag.isXlang)
     #expect(Int8(bitPattern: int32Bytes[1]) == RefFlag.notNullValue.rawValue)
-    #expect(UInt32(int32Bytes[2]) == ForyTypeId.int32Array.rawValue)
+    #expect(UInt32(int32Bytes[2]) == TypeId.int32Array.rawValue)
 
     let uint8Data = try fory.serialize([UInt8(1), 2, 3])
     let uint8Bytes = [UInt8](uint8Data)
-    #expect(UInt32(uint8Bytes[2]) == ForyTypeId.binary.rawValue)
+    #expect(UInt32(uint8Bytes[2]) == TypeId.uint8Array.rawValue)
 }
 
 @Test
@@ -249,7 +418,7 @@ func macroStructRoundTrip() throws {
 }
 
 @Test
-func macroClassReferenceTracking() throws {
+func macroClassRefTracking() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 200)
 
@@ -264,7 +433,7 @@ func macroClassReferenceTracking() throws {
 }
 
 @Test
-func macroClassWeakReferenceTracking() throws {
+func macroClassWeakRefTracking() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(WeakNode.self, id: 201)
 
@@ -297,6 +466,29 @@ func topLevelAnyRoundTrip() throws {
     let nullData = try fory.serialize(nullAny)
     let nullDecoded: Any = try fory.deserialize(nullData)
     #expect(nullDecoded is ForyAnyNullValue)
+}
+
+@Test
+func dynamicUserTypesDecodeByID() throws {
+    let fory = Fory()
+    fory.register(Address.self, id: 600)
+    try fory.register(Person.self, name: "demo.person")
+
+    let value: Any = Address(street: "mixed", zip: 7788)
+    let data = try fory.serialize(value)
+    let decoded: Any = try fory.deserialize(data)
+    #expect(decoded as? Address == Address(street: "mixed", zip: 7788))
+}
+
+@Test
+func duplicateNameRegistrationIsRejected() throws {
+    let resolver = TypeResolver(trackRef: false)
+    try resolver.register(Address.self, namespace: "demo", typeName: "entity")
+
+    do {
+        try resolver.register(Person.self, namespace: "demo", typeName: "entity")
+        #expect(Bool(false))
+    } catch {}
 }
 
 @Test
@@ -363,7 +555,7 @@ func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
         items: [Int32(11), Address(street: "Nested", zip: 10002)],
         map: [
             "age": Int64(19),
-            "address": Address(street: "Mapped", zip: 10003),
+            "address": Address(street: "Mapped", zip: 10003)
         ]
     )
     let serializerData = try fory.serialize(serializerHolder)
@@ -391,13 +583,13 @@ func macroAnyFieldsRoundTrip() throws {
             "count": Int64(3),
             "name": "map",
             "address": Address(street: "AnyMap", zip: 11003),
-            "empty": NSNull(),
+            "empty": NSNull()
         ],
         int32Map: [
             1: Int32(-9),
             2: "v2",
             3: Address(street: "AnyIntMap", zip: 11004),
-            4: NSNull(),
+            4: NSNull()
         ]
     )
     let data = try fory.serialize(value)
@@ -421,7 +613,7 @@ func macroAnyFieldsRoundTrip() throws {
 }
 
 @Test
-func collectionAndMapReferenceTracking() throws {
+func collectionAndMapRefTracking() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 200)
 
@@ -464,7 +656,7 @@ func macroFieldOrderFollowsForyRules() throws {
     let fory = Fory()
     fory.register(FieldOrder.self, id: 300)
 
-    let value = FieldOrder(z: "tail", a: 123456789, b: 17, c: 99)
+    let value = FieldOrder(textTail: "tail", longValue: 123456789, shortValue: 17, intValue: 99)
     let data = try fory.serialize(value)
 
     let buffer = ByteBuffer(data: data)
@@ -481,10 +673,10 @@ func macroFieldOrderFollowsForyRules() throws {
     let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
     let fourth = try String.foryReadData(tailContext)
 
-    #expect(first == value.b)
-    #expect(second == value.a)
-    #expect(third == value.c)
-    #expect(fourth == value.z)
+    #expect(first == value.shortValue)
+    #expect(second == value.longValue)
+    #expect(third == value.intValue)
+    #expect(fourth == value.textTail)
 }
 
 @Test
@@ -513,12 +705,134 @@ func macroFieldEncodingOverridesForUnsignedTypes() throws {
 
 @Test
 func macroFieldEncodingOverridesCompatibleTypeMeta() throws {
-    let fields = EncodedNumberFields.foryCompatibleTypeMetaFields(trackRef: false)
+    let fields = EncodedNumberFields.foryFieldsInfo(trackRef: false)
     #expect(fields.count == 2)
     #expect(fields[0].fieldName == "u32Fixed")
-    #expect(fields[0].fieldType.typeID == ForyTypeId.uint32.rawValue)
+    #expect(fields[0].fieldType.typeID == TypeId.uint32.rawValue)
     #expect(fields[1].fieldName == "u64Tagged")
-    #expect(fields[1].fieldType.typeID == ForyTypeId.taggedUInt64.rawValue)
+    #expect(fields[1].fieldType.typeID == TypeId.taggedUInt64.rawValue)
+}
+
+@Test
+func macroFieldIDsPopulateCompatibleTypeMeta() {
+    let fields = FieldIdConfigured.foryFieldsInfo(trackRef: false)
+    #expect(fields.count == 2)
+
+    var byID: [Int16: TypeMeta.FieldInfo] = [:]
+    for field in fields {
+        if let id = field.fieldID {
+            byID[id] = field
+        }
+    }
+
+    #expect(byID[2]?.fieldName == "stableID")
+    #expect(byID[2]?.fieldType.typeID == TypeId.varint32.rawValue)
+    #expect(byID[5]?.fieldName == "fixedValue")
+    #expect(byID[5]?.fieldType.typeID == TypeId.int32.rawValue)
+}
+
+@Test
+func macroFieldIDsDriveCompatibleStructDecodeAcrossRenames() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(FieldIdSource.self, id: 9101)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(FieldIdTarget.self, id: 9101)
+
+    let source = FieldIdSource(value: 42, label: "alpha")
+    let bytes = try writer.serialize(source)
+    let decoded: FieldIdTarget = try reader.deserialize(bytes)
+
+    #expect(decoded.renamedValue == source.value)
+    #expect(decoded.renamedLabel == source.label)
+
+    let roundTrip = try reader.serialize(decoded)
+    let back: FieldIdSource = try writer.deserialize(roundTrip)
+    #expect(back == source)
+}
+
+@Test
+func macroFieldIDsDriveTaggedUnionDecodeAcrossRenames() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(FieldIdUnionSource.self, id: 9102)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(FieldIdUnionTarget.self, id: 9102)
+
+    let source = FieldIdUnionSource.number(123)
+    let bytes = try writer.serialize(source)
+    let decoded: FieldIdUnionTarget = try reader.deserialize(bytes)
+
+    switch decoded {
+    case .renamedNumber(let value):
+        #expect(value == 123)
+    default:
+        #expect(Bool(false))
+    }
+}
+
+@Test
+func compatibleNestedStructArrayRoundTrip() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(CompatibleNestedItem.self, id: 9103)
+    writer.register(CompatibleNestedArrayHolder.self, id: 9104)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(CompatibleNestedItem.self, id: 9103)
+    reader.register(CompatibleNestedArrayHolder.self, id: 9104)
+
+    let value = CompatibleNestedArrayHolder(
+        items: [
+            CompatibleNestedItem(id: 1, name: "alpha"),
+            CompatibleNestedItem(id: 2, name: "beta")
+        ]
+    )
+    let bytes = try writer.serialize(value)
+    let decoded: CompatibleNestedArrayHolder = try reader.deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
+func compatibleNestedStructOptionalArrayRoundTrip() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(CompatibleNestedItem.self, id: 9103)
+    writer.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(CompatibleNestedItem.self, id: 9103)
+    reader.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
+
+    let value = CompatibleNestedOptionalArrayHolder(
+        items: [
+            CompatibleNestedItem(id: 1, name: "alpha"),
+            nil,
+            CompatibleNestedItem(id: 2, name: "beta")
+        ]
+    )
+    let bytes = try writer.serialize(value)
+    let decoded: CompatibleNestedOptionalArrayHolder = try reader.deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
+func compatibleNestedStructMapRoundTrip() throws {
+    let writer = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    writer.register(CompatibleNestedItem.self, id: 9103)
+    writer.register(CompatibleNestedMapHolder.self, id: 9106)
+
+    let reader = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    reader.register(CompatibleNestedItem.self, id: 9103)
+    reader.register(CompatibleNestedMapHolder.self, id: 9106)
+
+    let value = CompatibleNestedMapHolder(
+        items: [
+            1: CompatibleNestedItem(id: 10, name: "first"),
+            2: CompatibleNestedItem(id: 20, name: "second")
+        ]
+    )
+    let bytes = try writer.serialize(value)
+    let decoded: CompatibleNestedMapHolder = try reader.deserialize(bytes)
+    #expect(decoded == value)
 }
 
 @Test
@@ -543,7 +857,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         72_057_594_037_927_935,
         72_057_594_037_927_936,
         UInt64(Int64.max),
-        UInt64.max,
+        UInt64.max
     ]
     let intValues: [Int64] = [
         Int64.min,
@@ -560,7 +874,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
         1_000_000,
         1_000_000_000_000,
         Int64.max - 1,
-        Int64.max,
+        Int64.max
     ]
 
     let writeBuffer = ByteBuffer()
@@ -572,10 +886,10 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
     }
     let minBuffer = ByteBuffer()
     minBuffer.writeVarInt64(Int64.min)
-    #expect(minBuffer.storage.count == 9)
-    #expect(minBuffer.storage.allSatisfy { $0 == 0xFF })
+    #expect(minBuffer.count == 9)
+    #expect(minBuffer.storage.prefix(minBuffer.count).allSatisfy { $0 == 0xFF })
 
-    let encoded = writeBuffer.storage
+    let encoded = Array(writeBuffer.storage.prefix(writeBuffer.count))
 
     let readBuffer = ByteBuffer(bytes: encoded)
     for value in uintValues {
@@ -618,38 +932,38 @@ func typeMetaRoundTripByName() throws {
     let namespace = try MetaStringEncoder.namespace.encode("com.example")
     let typeName = try MetaStringEncoder.typeName.encode("UserProfile")
 
-    let fields: [TypeMetaFieldInfo] = [
+    let fields: [TypeMeta.FieldInfo] = [
         .init(
             fieldID: nil,
             fieldName: "createdAt",
-            fieldType: .init(typeID: ForyTypeId.varint64.rawValue, nullable: false)
+            fieldType: .init(typeID: TypeId.varint64.rawValue, nullable: false)
         ),
         .init(
             fieldID: nil,
             fieldName: "tags",
             fieldType: .init(
-                typeID: ForyTypeId.list.rawValue,
+                typeID: TypeId.list.rawValue,
                 nullable: false,
-                generics: [.init(typeID: ForyTypeId.string.rawValue, nullable: true)]
+                generics: [.init(typeID: TypeId.string.rawValue, nullable: true)]
             )
         ),
         .init(
             fieldID: nil,
             fieldName: "attributes",
             fieldType: .init(
-                typeID: ForyTypeId.map.rawValue,
+                typeID: TypeId.map.rawValue,
                 nullable: true,
                 generics: [
-                    .init(typeID: ForyTypeId.string.rawValue, nullable: false),
-                    .init(typeID: ForyTypeId.varint32.rawValue, nullable: true),
+                    .init(typeID: TypeId.string.rawValue, nullable: false),
+                    .init(typeID: TypeId.varint32.rawValue, nullable: true)
                 ]
             )
         ),
         .init(
             fieldID: 7,
             fieldName: "ignored_for_tag_mode",
-            fieldType: .init(typeID: ForyTypeId.varint32.rawValue, nullable: false)
-        ),
+            fieldType: .init(typeID: TypeId.varint32.rawValue, nullable: false)
+        )
     ]
 
     let meta = try TypeMeta(
@@ -680,7 +994,7 @@ func typeMetaRoundTripByID() throws {
     let emptyTypeName = MetaString.empty(specialChar1: "$", specialChar2: "_")
 
     let meta = try TypeMeta(
-        typeID: ForyTypeId.structType.rawValue,
+        typeID: TypeId.structType.rawValue,
         userTypeID: 101,
         namespace: emptyNamespace,
         typeName: emptyTypeName,
@@ -692,7 +1006,7 @@ func typeMetaRoundTripByID() throws {
     let decoded = try TypeMeta.decode(encoded)
 
     #expect(decoded.registerByName == false)
-    #expect(decoded.typeID == ForyTypeId.structType.rawValue)
+    #expect(decoded.typeID == TypeId.structType.rawValue)
     #expect(decoded.userTypeID == 101)
     #expect(decoded.fields.isEmpty)
 }

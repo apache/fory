@@ -21,9 +21,9 @@ import dataclasses
 import datetime
 import enum
 import inspect
-import itertools
 import logging
 import os
+import sys
 import typing
 from typing import List, Dict
 
@@ -57,16 +57,12 @@ from pyfory.types import (
 from pyfory.type_util import (
     TypeVisitor,
     infer_field,
+    get_homogeneous_tuple_elem_type,
     is_subclass,
     get_type_hints,
     unwrap_optional,
 )
-from pyfory.buffer import Buffer
-from pyfory.codegen import (
-    gen_write_nullable_basic_stmts,
-    gen_read_nullable_basic_stmts,
-    compile_function,
-)
+from pyfory.serialization import Buffer
 from pyfory.error import TypeNotCompatibleError
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 from pyfory.field import (
@@ -88,6 +84,30 @@ from pyfory import (
 )
 
 logger = logging.getLogger(__name__)
+
+_MISSING_DEFAULT_INT_TYPES = {
+    int,
+    int8,
+    int16,
+    int32,
+    fixed_int32,
+    int64,
+    fixed_int64,
+    tagged_int64,
+    uint8,
+    uint16,
+    uint32,
+    fixed_uint32,
+    uint64,
+    fixed_uint64,
+    tagged_uint64,
+}
+
+_MISSING_DEFAULT_FLOAT_TYPES = {
+    float,
+    float32,
+    float64,
+}
 
 
 @dataclasses.dataclass
@@ -264,20 +284,74 @@ def _extract_field_infos(
     return field_infos, field_metas
 
 
-_jit_context = locals()
+def resolve_missing_field_default(
+    dc_field: dataclasses.Field,
+    fory,
+    type_hints: dict[str, typing.Any],
+) -> typing.Callable[[], typing.Any]:
+    type_hint = type_hints.get(dc_field.name, typing.Any)
+    unwrapped_type, is_optional = unwrap_optional(type_hint)
+    meta = extract_field_meta(dc_field)
+    effective_nullable = (meta.nullable if meta is not None else fory.field_nullable) or is_optional
+
+    if dc_field.default is not dataclasses.MISSING:
+        default_value = dc_field.default
+        if default_value is None and not effective_nullable and is_subclass(unwrapped_type, enum.Enum):
+            members = tuple(unwrapped_type)
+            if members:
+                default_value = members[0]
+        return lambda value=default_value: value
+
+    if dc_field.default_factory is not dataclasses.MISSING:
+        return dc_field.default_factory
+
+    if not effective_nullable:
+        origin = typing.get_origin(unwrapped_type) if hasattr(typing, "get_origin") else getattr(unwrapped_type, "__origin__", None)
+        origin = origin or unwrapped_type
+        if is_subclass(unwrapped_type, enum.Enum):
+            members = tuple(unwrapped_type)
+            if members:
+                default_value = members[0]
+                return lambda value=default_value: value
+        if origin is list or origin == typing.List:
+            return lambda: []
+        if origin is set or origin == typing.Set:
+            return lambda: set()
+        if origin is dict or origin == typing.Dict:
+            return lambda: {}
+        if unwrapped_type is bool:
+            return lambda: False
+        if unwrapped_type in _MISSING_DEFAULT_INT_TYPES:
+            return lambda: 0
+        if unwrapped_type in _MISSING_DEFAULT_FLOAT_TYPES:
+            return lambda: 0.0
+        if unwrapped_type is str:
+            return lambda: ""
+        if unwrapped_type is bytes:
+            return lambda: b""
+    return lambda: None
 
 
-_ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower() in (
-    "true",
-    "1",
-)
-_ENABLE_FORY_DEBUG_OUTPUT = os.environ.get("ENABLE_FORY_DEBUG_OUTPUT", "False").lower() in (
-    "true",
-    "1",
-)
+def _resolve_missing_field_default(dc_field, fory, type_hints):
+    return resolve_missing_field_default(dc_field, fory, type_hints)
+
+
+def build_default_values_factory(fory, type_hints, dc_fields=()):
+    return {dc_field.name: _resolve_missing_field_default(dc_field, fory, type_hints) for dc_field in dc_fields}
 
 
 class DataClassSerializer(Serializer):
+    _BASIC_SERIALIZERS = (
+        BooleanSerializer,
+        ByteSerializer,
+        Int16Serializer,
+        Int32Serializer,
+        Int64Serializer,
+        Float32Serializer,
+        Float64Serializer,
+        StringSerializer,
+    )
+
     def __init__(
         self,
         fory,
@@ -286,697 +360,188 @@ class DataClassSerializer(Serializer):
         serializers: List[Serializer] = None,
         nullable_fields: Dict[str, bool] = None,
         dynamic_fields: Dict[str, bool] = None,
-        xlang=None,
+        ref_fields: Dict[str, bool] = None,
     ):
         super().__init__(fory, clz)
 
         self._type_hints = get_type_hints(clz)
         self._has_slots = hasattr(clz, "__slots__")
 
-        # When field_names is explicitly passed (from TypeDef.create_serializer during schema evolution),
-        # use those fields instead of extracting from the class. This is critical for schema evolution
-        # where the sender's schema (in TypeDef) differs from the receiver's registered class.
-        # Track whether field order comes from wire (TypeDef) - don't re-sort these
         self._fields_from_typedef = field_names is not None and serializers is not None
         if self._fields_from_typedef:
-            # Use the passed-in field_names and serializers from TypeDef
-            self._field_names = field_names
-            self._serializers = serializers
+            self._field_names = list(field_names)
+            self._serializers = list(serializers)
             self._nullable_fields = nullable_fields or {}
-            self._ref_fields = {}
+            self._ref_fields = ref_fields or {}
             self._dynamic_fields = dynamic_fields or {}
             self._field_infos = []
             self._field_metas = {}
         else:
-            # Extract field infos using new pyfory.field() metadata
             self._field_infos, self._field_metas = _extract_field_infos(fory, clz, self._type_hints)
-
             if self._field_infos:
-                # Use new field info based approach
                 self._field_names = [fi.name for fi in self._field_infos]
                 self._serializers = [fi.serializer for fi in self._field_infos]
                 self._nullable_fields = {fi.name: fi.nullable for fi in self._field_infos}
                 self._ref_fields = {fi.name: fi.runtime_ref_tracking for fi in self._field_infos}
                 self._dynamic_fields = {fi.name: fi.dynamic for fi in self._field_infos}
             else:
-                # Fallback for non-dataclass types
                 self._field_names = field_names or self._get_field_names(clz)
                 self._nullable_fields = nullable_fields or {}
                 self._ref_fields = {}
-                self._dynamic_fields = {}  # Empty dict, will use mode defaults
-
+                self._dynamic_fields = {}
                 if self._field_names and not self._nullable_fields:
                     for field_name in self._field_names:
                         if field_name in self._type_hints:
                             unwrapped_type, is_optional = unwrap_optional(self._type_hints[field_name])
-                            is_nullable = is_optional or not is_primitive_type(unwrapped_type)
-                            self._nullable_fields[field_name] = is_nullable
-
+                            self._nullable_fields[field_name] = is_optional or not is_primitive_type(unwrapped_type)
                 self._serializers = serializers or [None] * len(self._field_names)
                 if serializers is None:
                     visitor = StructFieldSerializerVisitor(fory)
                     for index, key in enumerate(self._field_names):
                         unwrapped_type, _ = unwrap_optional(self._type_hints.get(key, typing.Any))
-                        serializer = infer_field(key, unwrapped_type, visitor, types_path=[])
-                        self._serializers[index] = serializer
+                        self._serializers[index] = infer_field(key, unwrapped_type, visitor, types_path=[])
 
-        # Cache unwrapped type hints
         self._unwrapped_hints = self._compute_unwrapped_hints()
-
-        # Compute struct hash and field order.
-        # If fields come from TypeDef (wire schema), preserve field order and only compute hash.
         if self._fields_from_typedef:
             hash_str = compute_struct_fingerprint(fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos)
             hash_bytes = hash_str.encode("utf-8")
             if len(hash_bytes) == 0:
                 self._hash = 47
             else:
-                from pyfory.lib.mmh3 import hash_buffer
-
                 full_hash = hash_buffer(hash_bytes, seed=47)[0]
                 type_hash_32 = full_hash & 0xFFFFFFFF
                 if full_hash & 0x80000000:
-                    type_hash_32 = type_hash_32 - 0x100000000
+                    type_hash_32 -= 0x100000000
                 self._hash = type_hash_32
         else:
             self._hash, self._field_names, self._serializers = compute_struct_meta(
                 fory.type_resolver, self._field_names, self._serializers, self._nullable_fields, self._field_infos
             )
 
-        self._generated_write_method = self._gen_generated_write_method()
-        self._generated_read_method = self._gen_generated_read_method()
-        if _ENABLE_FORY_PYTHON_JIT:
-            self.write = self._generated_write_method
-            self.read = self._generated_read_method
+        self._field_name_interned = {name: sys.intern(name) for name in self._field_names}
+        self._current_class_field_names = set(self._get_field_names(self.type_))
+        self._default_values_factory = (
+            build_default_values_factory(self.fory, self._type_hints, dataclasses.fields(self.type_)) if dataclasses.is_dataclass(self.type_) else {}
+        )
+        self._missing_field_defaults = self._build_missing_field_defaults()
+        self._basic_field_flags = [
+            (not self._dynamic_fields.get(field_name, False)) and isinstance(self._serializers[index], self._BASIC_SERIALIZERS)
+            for index, field_name in enumerate(self._field_names)
+        ]
 
     def _get_field_names(self, clz):
         if hasattr(clz, "__dict__"):
-            # Regular object with __dict__
-            # For dataclasses, preserve field definition order
-            # In compatible mode, stable field ordering is critical for schema evolution
             if dataclasses.is_dataclass(clz):
-                # Use dataclasses.fields() to get fields in definition order
                 return [field.name for field in dataclasses.fields(clz)]
-            # For non-dataclass objects, sort by key names for consistency
             return sorted(self._type_hints.keys())
-        elif hasattr(clz, "__slots__"):
-            # Object with __slots__
-            return sorted(clz.__slots__)
+        if hasattr(clz, "__slots__"):
+            slots = clz.__slots__
+            if isinstance(slots, str):
+                return [slots]
+            return sorted(slots)
         return []
 
     def _compute_unwrapped_hints(self):
-        """Compute unwrapped type hints once and cache."""
-        from pyfory.type_util import unwrap_optional
-
         return {field_name: unwrap_optional(hint)[0] for field_name, hint in self._type_hints.items()}
 
-    def _write_header(self, buffer):
-        """Write serialization header (hash or field count based on compatible mode)."""
-        if not self.fory.compatible:
-            buffer.write_int32(self._hash)
-        else:
-            buffer.write_var_uint32(len(self._field_names))
+    def _build_missing_field_defaults(self):
+        if not self.fory.compatible or not self._default_values_factory:
+            return []
+        missing_fields = self._current_class_field_names - set(self._field_names)
+        if not missing_fields:
+            return []
+        return [(field_name, default_factory) for field_name, default_factory in self._default_values_factory.items() if field_name in missing_fields]
 
-    def _read_header(self, buffer):
-        """Read serialization header and return number of fields written.
-
-        Returns:
-            int: Number of fields that were written
-
-        Raises:
-            TypeNotCompatibleError: If hash doesn't match in non-compatible mode
-        """
-        if not self.fory.compatible:
-            hash_ = buffer.read_int32()
-            expected_hash = self._hash
-            if hash_ != expected_hash:
-                raise TypeNotCompatibleError(f"Hash {hash_} is not consistent with {expected_hash} for type {self.type_}")
-            return len(self._field_names)
-        else:
-            return buffer.read_var_uint32()
-
-    def _get_write_stmt_for_codegen(self, serializer, buffer, field_value):
-        """Generate write statement for code generation based on serializer type."""
-        if isinstance(serializer, BooleanSerializer):
-            return f"{buffer}.write_bool({field_value})"
-        elif isinstance(serializer, ByteSerializer):
-            return f"{buffer}.write_int8({field_value})"
-        elif isinstance(serializer, Int16Serializer):
-            return f"{buffer}.write_int16({field_value})"
-        elif isinstance(serializer, Int32Serializer):
-            return f"{buffer}.write_varint32({field_value})"
-        elif isinstance(serializer, Int64Serializer):
-            return f"{buffer}.write_varint64({field_value})"
-        elif isinstance(serializer, Float32Serializer):
-            return f"{buffer}.write_float32({field_value})"
-        elif isinstance(serializer, Float64Serializer):
-            return f"{buffer}.write_float64({field_value})"
-        elif isinstance(serializer, StringSerializer):
-            return f"{buffer}.write_string({field_value})"
-        else:
-            return None  # Complex type, needs ref handling
-
-    def _get_read_stmt_for_codegen(self, serializer, buffer, field_value):
-        """Generate read statement for code generation based on serializer type."""
-        if isinstance(serializer, BooleanSerializer):
-            return f"{field_value} = {buffer}.read_bool()"
-        elif isinstance(serializer, ByteSerializer):
-            return f"{field_value} = {buffer}.read_int8()"
-        elif isinstance(serializer, Int16Serializer):
-            return f"{field_value} = {buffer}.read_int16()"
-        elif isinstance(serializer, Int32Serializer):
-            return f"{field_value} = {buffer}.read_varint32()"
-        elif isinstance(serializer, Int64Serializer):
-            return f"{field_value} = {buffer}.read_varint64()"
-        elif isinstance(serializer, Float32Serializer):
-            return f"{field_value} = {buffer}.read_float32()"
-        elif isinstance(serializer, Float64Serializer):
-            return f"{field_value} = {buffer}.read_float64()"
-        elif isinstance(serializer, StringSerializer):
-            return f"{field_value} = {buffer}.read_string()"
-        else:
-            return None  # Complex type, needs ref handling
-
-    def _write_non_nullable_field(self, buffer, field_value, serializer, typeinfo=None):
-        """Write a non-nullable field value at runtime."""
-        if isinstance(serializer, BooleanSerializer):
-            buffer.write_bool(field_value)
-        elif isinstance(serializer, ByteSerializer):
-            buffer.write_int8(field_value)
-        elif isinstance(serializer, Int16Serializer):
-            buffer.write_int16(field_value)
-        elif isinstance(serializer, Int32Serializer):
-            buffer.write_varint32(field_value)
-        elif isinstance(serializer, Int64Serializer):
-            buffer.write_varint64(field_value)
-        elif isinstance(serializer, Float32Serializer):
-            buffer.write_float32(field_value)
-        elif isinstance(serializer, Float64Serializer):
-            buffer.write_float64(field_value)
-        elif isinstance(serializer, StringSerializer):
-            buffer.write_string(field_value)
-        else:
-            self.fory.write_ref_pyobject(buffer, field_value, typeinfo=typeinfo)
-
-    def _read_non_nullable_field(self, buffer, serializer):
-        """Read a non-nullable field value at runtime."""
-        if isinstance(serializer, BooleanSerializer):
-            return buffer.read_bool()
-        elif isinstance(serializer, ByteSerializer):
-            return buffer.read_int8()
-        elif isinstance(serializer, Int16Serializer):
-            return buffer.read_int16()
-        elif isinstance(serializer, Int32Serializer):
-            return buffer.read_varint32()
-        elif isinstance(serializer, Int64Serializer):
-            return buffer.read_varint64()
-        elif isinstance(serializer, Float32Serializer):
-            return buffer.read_float32()
-        elif isinstance(serializer, Float64Serializer):
-            return buffer.read_float64()
-        elif isinstance(serializer, StringSerializer):
-            return buffer.read_string()
-        else:
-            return self.fory.read_ref_pyobject(buffer)
-
-    def _write_nullable_field(self, buffer, field_value, serializer, typeinfo=None):
-        """Write a nullable field value at runtime."""
-        if field_value is None:
-            buffer.write_int8(NULL_FLAG)
-        else:
-            buffer.write_int8(NOT_NULL_VALUE_FLAG)
-            if isinstance(serializer, StringSerializer):
-                buffer.write_string(field_value)
-            else:
-                self.fory.write_ref_pyobject(buffer, field_value, typeinfo=typeinfo)
-
-    def _read_nullable_field(self, buffer, serializer):
-        """Read a nullable field value at runtime."""
-        flag = buffer.read_int8()
-        if flag == NULL_FLAG:
-            return None
-        else:
-            if isinstance(serializer, StringSerializer):
-                return buffer.read_string()
-            else:
-                return self.fory.read_ref_pyobject(buffer)
-
-    def _gen_write_method(self):
-        context = {}
-        counter = itertools.count(0)
-        buffer, fory, value, value_dict = "buffer", "fory", "value", "value_dict"
-        context[fory] = self.fory
-        context["_serializers"] = self._serializers
-
-        stmts = [
-            f'"""write method for {self.type_}"""',
-        ]
-
-        # Write hash only in non-compatible mode; in compatible mode, write field count
-        if not self.fory.compatible:
-            stmts.append(f"{buffer}.write_int32({self._hash})")
-        else:
-            stmts.append(f"{buffer}.write_var_uint32({len(self._field_names)})")
-
-        if not self._has_slots:
-            stmts.append(f"{value_dict} = {value}.__dict__")
-
-        # Write field values in order
-        for index, field_name in enumerate(self._field_names):
-            field_value = f"field_value{next(counter)}"
-            serializer_var = f"serializer{index}"
-            serializer = self._serializers[index]
-            context[serializer_var] = serializer
-
-            if not self._has_slots:
-                stmts.append(f"{field_value} = {value_dict}['{field_name}']")
-            else:
-                stmts.append(f"{field_value} = {value}.{field_name}")
-
-            is_nullable = self._nullable_fields.get(field_name, False)
-            is_dynamic = self._dynamic_fields.get(field_name, False)
-            # For dynamic=False, get typeinfo for declared type to use its serializer
-            typeinfo_var = f"typeinfo{index}"
-            if not is_dynamic and serializer is not None:
-                context[typeinfo_var] = self.fory.type_resolver.get_type_info(serializer.type_)
-            if is_nullable:
-                # Use gen_write_nullable_basic_stmts for nullable basic types
-                if isinstance(serializer, BooleanSerializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, bool))
-                elif isinstance(serializer, ByteSerializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, "int8"))
-                elif isinstance(serializer, Int16Serializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, "int16"))
-                elif isinstance(serializer, Int32Serializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, "int32"))
-                elif isinstance(serializer, Int64Serializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, "int64"))
-                elif isinstance(serializer, Float32Serializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, "float32"))
-                elif isinstance(serializer, Float64Serializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, "float64"))
-                elif isinstance(serializer, StringSerializer):
-                    stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, str))
-                else:
-                    # For complex types, use write_ref_pyobject
-                    # dynamic=True or serializer is None: pass None to use actual type
-                    # dynamic=False: pass typeinfo to use declared type
-                    typeinfo_arg = "None" if is_dynamic or serializer is None else typeinfo_var
-                    stmts.append(f"{fory}.write_ref_pyobject({buffer}, {field_value}, typeinfo={typeinfo_arg})")
-            else:
-                stmt = self._get_write_stmt_for_codegen(serializer, buffer, field_value)
-                if stmt is None:
-                    # dynamic=True or serializer is None: pass None to use actual type
-                    # dynamic=False: pass typeinfo to use declared type
-                    typeinfo_arg = "None" if is_dynamic or serializer is None else typeinfo_var
-                    stmt = f"{fory}.write_ref_pyobject({buffer}, {field_value}, typeinfo={typeinfo_arg})"
-                stmts.append(stmt)
-
-        self._write_method_code, func = compile_function(
-            f"write_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
-            [buffer, value],
-            stmts,
-            context,
-        )
-        return func
-
-    def _gen_read_method(self):
-        context = dict(_jit_context)
-        buffer, fory, obj_class, obj, obj_dict = (
-            "buffer",
-            "fory",
-            "obj_class",
-            "obj",
-            "obj_dict",
-        )
-        ref_resolver = "ref_resolver"
-        context[fory] = self.fory
-        context[obj_class] = self.type_
-        context[ref_resolver] = self.fory.ref_resolver
-        context["_serializers"] = self._serializers
-        current_class_field_names = set(self._get_field_names(self.type_))
-
-        stmts = [
-            f'"""read method for {self.type_}"""',
-        ]
-        if not self.fory.strict:
-            context["checker"] = self.fory.policy
-            stmts.append(f"checker.authorize_instantiation({obj_class})")
-
-        # Read hash only in non-compatible mode; in compatible mode, read field count
-        if not self.fory.compatible:
-            stmts.extend(
-                [
-                    f"read_hash = {buffer}.read_int32()",
-                    f"if read_hash != {self._hash}:",
-                    f"""   raise TypeNotCompatibleError(
-            f"Hash {{read_hash}} is not consistent with {self._hash} for type {self.type_}")""",
-                ]
-            )
-        else:
-            stmts.append(f"num_fields_written = {buffer}.read_var_uint32()")
-
-        stmts.extend(
-            [
-                f"{obj} = {obj_class}.__new__({obj_class})",
-                f"{ref_resolver}.reference({obj})",
-            ]
-        )
-
-        if not self._has_slots:
-            stmts.append(f"{obj_dict} = {obj}.__dict__")
-
-        # Read field values in order
-        for index, field_name in enumerate(self._field_names):
-            serializer_var = f"serializer{index}"
-            serializer = self._serializers[index]
-            context[serializer_var] = serializer
-            field_value = f"field_value{index}"
-            is_nullable = self._nullable_fields.get(field_name, False)
-
-            # Build field reading statements
-            field_stmts = []
-
-            if is_nullable:
-                # Use gen_read_nullable_basic_stmts for nullable basic types
-                if isinstance(serializer, BooleanSerializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, bool, lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, ByteSerializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, "int8", lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, Int16Serializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, "int16", lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, Int32Serializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, "int32", lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, Int64Serializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, "int64", lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, Float32Serializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, "float32", lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, Float64Serializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, "float64", lambda v: f"{field_value} = {v}"))
-                elif isinstance(serializer, StringSerializer):
-                    field_stmts.extend(gen_read_nullable_basic_stmts(buffer, str, lambda v: f"{field_value} = {v}"))
-                else:
-                    # For complex types, use read_ref_pyobject
-                    field_stmts.append(f"{field_value} = {fory}.read_ref_pyobject({buffer})")
-            else:
-                stmt = self._get_read_stmt_for_codegen(serializer, buffer, field_value)
-                if stmt is None:
-                    stmt = f"{field_value} = {fory}.read_ref_pyobject({buffer})"
-                field_stmts.append(stmt)
-
-            # Set field value if it exists in current class
-            if field_name not in current_class_field_names:
-                field_stmts.append(f"# {field_name} is not in {self.type_}")
-            else:
-                if not self._has_slots:
-                    field_stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
-                else:
-                    field_stmts.append(f"{obj}.{field_name} = {field_value}")
-
-            # In compatible mode, wrap field reading in a check
-            if self.fory.compatible:
-                stmts.append(f"if {index} < num_fields_written:")
-                # Indent all field statements
-                from pyfory.codegen import ident_lines
-
-                field_stmts = ident_lines(field_stmts)
-                stmts.extend(field_stmts)
-            else:
-                stmts.extend(field_stmts)
-
-        stmts.append(f"return {obj}")
-        self._read_method_code, func = compile_function(
-            f"read_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
-            [buffer],
-            stmts,
-            context,
-        )
-        return func
-
-    def _gen_generated_write_method(self):
-        """Generate JIT-compiled write method.
-
-        Per xlang spec, struct format is:
-        - Schema consistent mode: |4-byte hash|field values|
-        - Schema evolution mode (compatible): |field values| (no field count prefix!)
-        The field count is in TypeDef meta written at the end, not in object data.
-        """
-        context = {}
-        counter = itertools.count(0)
-        buffer, fory, value, value_dict = "buffer", "fory", "value", "value_dict"
-        context[fory] = self.fory
-        context["_serializers"] = self._serializers
-        stmts = [
-            f'"""write method for {self.type_}"""',
-        ]
-        if not self.fory.compatible:
-            stmts.append(f"{buffer}.write_int32({self._hash})")
-        if not self._has_slots:
-            stmts.append(f"{value_dict} = {value}.__dict__")
-        for index, field_name in enumerate(self._field_names):
-            field_value = f"field_value{next(counter)}"
-            serializer_var = f"serializer{index}"
-            serializer = self._serializers[index]
-            context[serializer_var] = serializer
-            is_nullable = self._nullable_fields.get(field_name, False)
-            # For schema evolution: use safe access with None default to handle
-            # cases where the field might not exist on the object (missing from remote schema)
-            # In compatible mode, always use safe access even for non-nullable fields
-            if not self._has_slots:
-                if is_nullable or self.fory.compatible:
-                    stmts.append(f"{field_value} = {value_dict}.get('{field_name}')")
-                else:
-                    stmts.append(f"{field_value} = {value_dict}['{field_name}']")
-            else:
-                if is_nullable or self.fory.compatible:
-                    stmts.append(f"{field_value} = getattr({value}, '{field_name}', None)")
-                else:
-                    stmts.append(f"{field_value} = {value}.{field_name}")
-            is_dynamic = self._dynamic_fields.get(field_name, False)
-            if is_nullable:
-                if isinstance(serializer, StringSerializer):
-                    stmts.extend(
-                        [
-                            f"if {field_value} is None:",
-                            f"    {buffer}.write_int8({NULL_FLAG})",
-                            "else:",
-                            f"     {buffer}.write_int8({NOT_NULL_VALUE_FLAG})",
-                            f"     {buffer}.write_string({field_value})",
-                        ]
-                    )
-                else:
-                    # dynamic=True: don't pass serializer, write actual type info
-                    # dynamic=False: pass serializer, use declared type
-                    serializer_arg = "None" if is_dynamic else serializer_var
-                    if self.fory.xlang:
-                        stmts.append(f"{fory}.xwrite_ref({buffer}, {field_value}, {serializer_arg})")
-                    else:
-                        # Python-native write_ref doesn't take serializer kwarg.
-                        stmts.append(f"{fory}.write_ref({buffer}, {field_value})")
-            else:
-                stmt = self._get_write_stmt_for_codegen(serializer, buffer, field_value)
-                if stmt is None:
-                    # For non-nullable complex types, use write_no_ref
-                    # dynamic=True: don't pass serializer, write actual type info
-                    if is_dynamic:
-                        stmt = f"{fory}.write_no_ref({buffer}, {field_value})"
-                    else:
-                        stmt = f"{fory}.write_no_ref({buffer}, {field_value}, {serializer_var})"
-                # In compatible mode, handle None for non-nullable fields (schema evolution)
-                # Write zero/default value when field is None due to missing from remote schema
-                if self.fory.compatible:
-                    from pyfory.serializer import EnumSerializer
-
-                    if isinstance(serializer, EnumSerializer):
-                        # For enums, write ordinal 0 when None
-                        stmts.extend(
-                            [
-                                f"if {field_value} is None:",
-                                f"    {buffer}.write_var_uint32(0)",
-                                "else:",
-                                f"    {stmt}",
-                            ]
-                        )
-                    else:
-                        stmts.append(stmt)
-                else:
-                    stmts.append(stmt)
-        self._generated_write_method_code, func = compile_function(
-            f"write_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
-            [buffer, value],
-            stmts,
-            context,
-        )
-        return func
-
-    def _gen_generated_read_method(self):
-        """Generate JIT-compiled read method.
-
-        Per xlang spec, struct format is:
-        - Schema consistent mode: |4-byte hash|field values|
-        - Schema evolution mode (compatible): |field values| (no field count prefix!)
-        The field count is in TypeDef meta written at the end, not in object data.
-        """
-        context = dict(_jit_context)
-        buffer, fory, obj_class, obj, obj_dict = (
-            "buffer",
-            "fory",
-            "obj_class",
-            "obj",
-            "obj_dict",
-        )
-        ref_resolver = "ref_resolver"
-        context[fory] = self.fory
-        context[obj_class] = self.type_
-        context[ref_resolver] = self.fory.ref_resolver
-        context["_serializers"] = self._serializers
-        current_class_field_names = set(self._get_field_names(self.type_))
-        stmts = [
-            f'"""read method for {self.type_}"""',
-        ]
-        if not self.fory.strict:
-            context["checker"] = self.fory.policy
-            stmts.append(f"checker.authorize_instantiation({obj_class})")
-        if not self.fory.compatible:
-            stmts.extend(
-                [
-                    f"read_hash = {buffer}.read_int32()",
-                    f"if read_hash != {self._hash}:",
-                    f"""   raise TypeNotCompatibleError(
-                f"Hash {{read_hash}} is not consistent with {self._hash} for type {self.type_}")""",
-                ]
-            )
-        stmts.extend(
-            [
-                f"{obj} = {obj_class}.__new__({obj_class})",
-                f"{ref_resolver}.reference({obj})",
-            ]
-        )
-
-        if not self._has_slots:
-            stmts.append(f"{obj_dict} = {obj}.__dict__")
-
-        for index, field_name in enumerate(self._field_names):
-            serializer_var = f"serializer{index}"
-            serializer = self._serializers[index]
-            context[serializer_var] = serializer
-            field_value = f"field_value{index}"
-            is_nullable = self._nullable_fields.get(field_name, False)
-
-            is_dynamic = self._dynamic_fields.get(field_name, False)
-            if is_nullable:
-                if isinstance(serializer, StringSerializer):
-                    stmts.extend(
-                        [
-                            f"if {buffer}.read_int8() >= {NOT_NULL_VALUE_FLAG}:",
-                            f"    {field_value} = {buffer}.read_string()",
-                            "else:",
-                            f"    {field_value} = None",
-                        ]
-                    )
-                else:
-                    # dynamic=True: don't pass serializer, read type info from buffer
-                    # dynamic=False: pass serializer, use declared type
-                    serializer_arg = "None" if is_dynamic else serializer_var
-                    if self.fory.xlang:
-                        stmts.append(f"{field_value} = {fory}.xread_ref({buffer}, {serializer_arg})")
-                    else:
-                        # Python-native read_ref doesn't take serializer kwarg.
-                        stmts.append(f"{field_value} = {fory}.read_ref({buffer})")
-            else:
-                stmt = self._get_read_stmt_for_codegen(serializer, buffer, field_value)
-                if stmt is None:
-                    # For non-nullable complex types, use read_no_ref
-                    # dynamic=True: don't pass serializer, read type info from buffer
-                    if is_dynamic:
-                        stmt = f"{field_value} = {fory}.read_no_ref({buffer})"
-                    else:
-                        stmt = f"{field_value} = {fory}.read_no_ref({buffer}, {serializer_var})"
-                stmts.append(stmt)
-
-            if field_name not in current_class_field_names:
-                stmts.append(f"# {field_name} is not in {self.type_}")
-            elif not self._has_slots:
-                stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
-            else:
-                stmts.append(f"{obj}.{field_name} = {field_value}")
-
-        # For schema evolution: initialize missing fields with default values
-        # This handles cases where the sender's schema has fewer fields than the receiver's
-        if self.fory.compatible:
-            read_field_names = set(self._field_names)
-            missing_fields = current_class_field_names - read_field_names
-            if missing_fields and dataclasses.is_dataclass(self.type_):
-                for dc_field in dataclasses.fields(self.type_):
-                    if dc_field.name in missing_fields:
-                        if dc_field.default is not dataclasses.MISSING:
-                            default_val = repr(dc_field.default)
-                            if not self._has_slots:
-                                stmts.append(f"{obj_dict}['{dc_field.name}'] = {default_val}")
-                            else:
-                                stmts.append(f"{obj}.{dc_field.name} = {default_val}")
-                        elif dc_field.default_factory is not dataclasses.MISSING:
-                            factory_var = f"_default_factory_{dc_field.name}"
-                            context[factory_var] = dc_field.default_factory
-                            if not self._has_slots:
-                                stmts.append(f"{obj_dict}['{dc_field.name}'] = {factory_var}()")
-                            else:
-                                stmts.append(f"{obj}.{dc_field.name} = {factory_var}()")
-                        # else: field has no default, leave it unset
-
-        stmts.append(f"return {obj}")
-        self._generated_read_method_code, func = compile_function(
-            f"read_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
-            [buffer],
-            stmts,
-            context,
-        )
-        return func
-
-    def write(self, buffer: Buffer, value):
-        """Write dataclass instance to buffer.
-
-        Struct format:
-        - Schema consistent mode: |4-byte hash|field values|
-        - Schema evolution mode (compatible): |field values| (no field count prefix!)
-        The field count is in TypeDef meta written at the end, not in object data.
-        """
-        if not self.fory.compatible:
-            buffer.write_int32(self._hash)
-        for index, field_name in enumerate(self._field_names):
-            field_value = getattr(value, field_name)
-            serializer = self._serializers[index]
-            is_nullable = self._nullable_fields.get(field_name, False)
-            is_dynamic = self._dynamic_fields.get(field_name, False)
-            if _ENABLE_FORY_DEBUG_OUTPUT:
-                print(
-                    f"write field '{field_name}': {field_value!r}, writer_index={buffer.get_writer_index()}, "
-                    f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
-                )
+    def _write_field_value(self, buffer, serializer, field_value, is_nullable, is_dynamic, is_basic, is_tracking_ref):
+        if is_basic:
             if is_nullable:
                 if field_value is None:
-                    buffer.write_int8(-3)
+                    buffer.write_int8(NULL_FLAG)
                 else:
-                    # dynamic=True: don't pass serializer, write actual type info
-                    # dynamic=False: pass serializer, use declared type
-                    if self.fory.xlang:
-                        self.fory.xwrite_ref(buffer, field_value, None if is_dynamic else serializer)
-                    else:
-                        self.fory.write_ref(buffer, field_value)
+                    buffer.write_int8(NOT_NULL_VALUE_FLAG)
+                    serializer.write(buffer, field_value)
             else:
-                if is_dynamic:
-                    self.fory.write_no_ref(buffer, field_value)
-                else:
-                    self.fory.write_no_ref(buffer, field_value, serializer)
+                serializer.write(buffer, field_value)
+            return
+        if is_tracking_ref:
+            self.fory.write_ref(buffer, field_value, None if is_dynamic else serializer)
+            return
+        if is_nullable:
+            if field_value is None:
+                buffer.write_int8(NULL_FLAG)
+                return
+            buffer.write_int8(NOT_NULL_VALUE_FLAG)
+        if is_dynamic:
+            self.fory.write_no_ref(buffer, field_value)
+        else:
+            self.fory.write_no_ref(buffer, field_value, serializer)
+
+    def _read_field_value(self, buffer, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref):
+        if is_nullable and is_basic:
+            if buffer.read_int8() == NULL_FLAG:
+                return None
+            return serializer.read(buffer)
+        if is_basic:
+            return serializer.read(buffer)
+        if is_tracking_ref:
+            return self.fory.read_ref(buffer, None if is_dynamic else serializer)
+        if is_nullable and buffer.read_int8() == NULL_FLAG:
+            return None
+        if is_dynamic:
+            return self.fory.read_no_ref(buffer)
+        return self.fory.read_no_ref(buffer, serializer)
+
+    def write(self, buffer: Buffer, value):
+        if not self.fory.compatible:
+            buffer.write_int32(self._hash)
+        value_dict = value.__dict__ if not self._has_slots else None
+        if value_dict is not None:
+            if self.fory.compatible:
+                for index, field_name in enumerate(self._field_names):
+                    interned_name = self._field_name_interned[field_name]
+                    field_value = value_dict.get(interned_name)
+                    serializer = self._serializers[index]
+                    is_nullable = self._nullable_fields.get(field_name, False)
+                    is_dynamic = self._dynamic_fields.get(field_name, False)
+                    is_tracking_ref = self._ref_fields.get(field_name, False)
+                    is_basic = self._basic_field_flags[index]
+                    self._write_field_value(buffer, serializer, field_value, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+            else:
+                for index, field_name in enumerate(self._field_names):
+                    interned_name = self._field_name_interned[field_name]
+                    field_value = value_dict[interned_name]
+                    serializer = self._serializers[index]
+                    is_nullable = self._nullable_fields.get(field_name, False)
+                    is_dynamic = self._dynamic_fields.get(field_name, False)
+                    is_tracking_ref = self._ref_fields.get(field_name, False)
+                    is_basic = self._basic_field_flags[index]
+                    self._write_field_value(buffer, serializer, field_value, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+        else:
+            if self.fory.compatible:
+                for index, field_name in enumerate(self._field_names):
+                    interned_name = self._field_name_interned[field_name]
+                    field_value = getattr(value, interned_name, None)
+                    serializer = self._serializers[index]
+                    is_nullable = self._nullable_fields.get(field_name, False)
+                    is_dynamic = self._dynamic_fields.get(field_name, False)
+                    is_tracking_ref = self._ref_fields.get(field_name, False)
+                    is_basic = self._basic_field_flags[index]
+                    self._write_field_value(buffer, serializer, field_value, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+            else:
+                for index, field_name in enumerate(self._field_names):
+                    interned_name = self._field_name_interned[field_name]
+                    field_value = getattr(value, interned_name)
+                    serializer = self._serializers[index]
+                    is_nullable = self._nullable_fields.get(field_name, False)
+                    is_dynamic = self._dynamic_fields.get(field_name, False)
+                    is_tracking_ref = self._ref_fields.get(field_name, False)
+                    is_basic = self._basic_field_flags[index]
+                    self._write_field_value(buffer, serializer, field_value, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+        self.fory.try_flush()
 
     def read(self, buffer):
-        """Read dataclass instance from buffer.
-
-        Struct format:
-        - Schema consistent mode: |4-byte hash|field values|
-        - Schema evolution mode (compatible): |field values| (no field count prefix!)
-        The field count is in TypeDef meta written at the end, not in object data.
-        """
+        if not self.fory.strict:
+            self.fory.policy.authorize_instantiation(self.type_)
         if not self.fory.compatible:
             hash_ = buffer.read_int32()
             if hash_ != self._hash:
@@ -985,54 +550,35 @@ class DataClassSerializer(Serializer):
                 )
         obj = self.type_.__new__(self.type_)
         self.fory.ref_resolver.reference(obj)
-        current_class_field_names = set(self._get_field_names(self.type_))
-        read_field_names = set()
+        obj_dict = obj.__dict__ if not self._has_slots else None
         for index, field_name in enumerate(self._field_names):
             serializer = self._serializers[index]
             is_nullable = self._nullable_fields.get(field_name, False)
             is_dynamic = self._dynamic_fields.get(field_name, False)
-            if _ENABLE_FORY_DEBUG_OUTPUT:
-                print(
-                    f"read field '{field_name}': reader_index={buffer.get_reader_index()}, "
-                    f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
-                )
-            if is_nullable:
-                ref_id = buffer.read_int8()
-                if ref_id == -3:
-                    field_value = None
-                else:
-                    buffer.set_reader_index(buffer.get_reader_index() - 1)
-                    # dynamic=True: don't pass serializer, read type info from buffer
-                    # dynamic=False: pass serializer, use declared type
-                    if self.fory.xlang:
-                        field_value = self.fory.xread_ref(buffer, None if is_dynamic else serializer)
-                    else:
-                        field_value = self.fory.read_ref(buffer)
+            is_tracking_ref = self._ref_fields.get(field_name, False)
+            is_basic = self._basic_field_flags[index]
+            field_value = self._read_field_value(buffer, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+            if field_name not in self._current_class_field_names:
+                continue
+            interned_name = self._field_name_interned[field_name]
+            if obj_dict is not None:
+                obj_dict[interned_name] = field_value
             else:
-                if is_dynamic:
-                    field_value = self.fory.read_no_ref(buffer)
+                setattr(obj, interned_name, field_value)
+
+        if self._missing_field_defaults:
+            for field_name, default_factory in self._missing_field_defaults:
+                value = default_factory()
+                if obj_dict is not None:
+                    obj_dict[field_name] = value
                 else:
-                    field_value = self.fory.read_no_ref(buffer, serializer)
-            if field_name in current_class_field_names:
-                setattr(obj, field_name, field_value)
-                read_field_names.add(field_name)
-        # For schema evolution: initialize missing fields with default values
-        # This handles cases where the sender's schema has fewer fields than the receiver's
-        if self.fory.compatible:
-            missing_fields = current_class_field_names - read_field_names
-            if missing_fields and dataclasses.is_dataclass(self.type_):
-                for dc_field in dataclasses.fields(self.type_):
-                    if dc_field.name in missing_fields:
-                        if dc_field.default is not dataclasses.MISSING:
-                            setattr(obj, dc_field.name, dc_field.default)
-                        elif dc_field.default_factory is not dataclasses.MISSING:
-                            setattr(obj, dc_field.name, dc_field.default_factory())
-                        # else: field has no default, leave it unset (will be None for nullable)
+                    setattr(obj, field_name, value)
+        buffer.shrink_input_buffer()
         return obj
 
 
 class DataClassStubSerializer(DataClassSerializer):
-    def __init__(self, fory, clz: type, xlang=None):
+    def __init__(self, fory, clz: type):
         Serializer.__init__(self, fory, clz)
 
     def write(self, buffer, value):
@@ -1045,6 +591,21 @@ class DataClassStubSerializer(DataClassSerializer):
         typeinfo = self.fory.type_resolver.get_type_info(self.type_)
         typeinfo.serializer = DataClassSerializer(self.fory, self.type_)
         return typeinfo.serializer
+
+
+PythonDataClassSerializer = DataClassSerializer
+try:
+    from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
+except ImportError:
+    ENABLE_FORY_CYTHON_SERIALIZATION = False
+
+if ENABLE_FORY_CYTHON_SERIALIZATION:
+    try:
+        from pyfory.serialization import DataClassSerializer as _CythonDataClassSerializer
+
+        DataClassSerializer = _CythonDataClassSerializer
+    except ImportError:
+        DataClassSerializer = PythonDataClassSerializer
 
 
 basic_types = {
@@ -1103,6 +664,17 @@ class StructFieldSerializerVisitor(TypeVisitor):
         elem_type, elem_ref_override = unwrap_ref(elem_type)
         elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
         return SetSerializer(self.fory, set, elem_serializer, elem_ref_override)
+
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        from pyfory.serializer import TupleSerializer  # Local import
+        from pyfory.type_util import unwrap_ref
+
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is not None:
+            elem_type, elem_ref_override = unwrap_ref(elem_type)
+            elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
+            return TupleSerializer(self.fory, tuple, elem_serializer, elem_ref_override)
+        return TupleSerializer(self.fory, tuple)
 
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         from pyfory.serializer import MapSerializer  # Local import
@@ -1191,7 +763,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
             container = nullable_boxed_types if is_nullable else boxed_types
         elif type_id == TypeId.SET:
             container = set_types
-        elif is_list_type(serializer.type_):
+        elif type_id == TypeId.LIST or is_list_type(serializer.type_):
             container = collection_types
         elif is_map_type(serializer.type_):
             container = map_types
@@ -1378,6 +950,13 @@ class StructTypeIdVisitor(TypeVisitor):
         elem_ids = infer_field("item", elem_type, self, types_path=types_path)
         return TypeId.SET, elem_ids
 
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is None:
+            return TypeId.LIST, [TypeId.UNKNOWN]
+        elem_ids = infer_field("item", elem_type, self, types_path=types_path)
+        return TypeId.LIST, elem_ids
+
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
         key_ids = infer_field("key", key_type, self, types_path=types_path)
@@ -1412,6 +991,13 @@ class StructTypeVisitor(TypeVisitor):
         # Infer type recursively for type such as Set[Dict[str, str]]
         elem_types = infer_field("item", elem_type, self, types_path=types_path)
         return typing.Set, elem_types
+
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is None:
+            return tuple, None
+        elem_types_ = infer_field("item", elem_type, self, types_path=types_path)
+        return tuple, elem_types_
 
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         # Infer type recursively for type such as Dict[str, Dict[str, str]]

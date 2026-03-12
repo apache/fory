@@ -18,11 +18,11 @@
 import Foundation
 
 extension Optional: Serializer where Wrapped: Serializer {
-    public static func foryDefault() -> Optional<Wrapped> {
+    public static func foryDefault() -> Wrapped? {
         nil
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         Wrapped.staticTypeId
     }
 
@@ -30,8 +30,8 @@ extension Optional: Serializer where Wrapped: Serializer {
         true
     }
 
-    public static var isReferenceTrackableType: Bool {
-        Wrapped.isReferenceTrackableType
+    public static var isRefType: Bool {
+        Wrapped.isRefType
     }
 
     public var foryIsNone: Bool {
@@ -45,15 +45,15 @@ extension Optional: Serializer where Wrapped: Serializer {
         try wrapped.foryWriteData(context, hasGenerics: hasGenerics)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Optional<Wrapped> {
+    public static func foryReadData(_ context: ReadContext) throws -> Wrapped? {
         .some(try Wrapped.foryReadData(context))
     }
 
-    public static func foryWriteTypeInfo(_ context: WriteContext) throws {
-        try Wrapped.foryWriteTypeInfo(context)
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        try Wrapped.foryWriteStaticTypeInfo(context)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws {
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try Wrapped.foryReadTypeInfo(context)
     }
 
@@ -89,23 +89,36 @@ extension Optional: Serializer where Wrapped: Serializer {
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
-    ) throws -> Optional<Wrapped> {
+    ) throws -> Wrapped? {
+        let typeInfo = readTypeInfo ? nil : context.getTypeInfo(for: Self.self)
         switch refMode {
         case .none:
-            return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))
+            return .some(
+                try context.withTypeInfo(typeInfo, for: Wrapped.self) {
+                    try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo)
+                }
+            )
         case .nullOnly:
             let refFlag = try context.buffer.readInt8()
             if refFlag == RefFlag.null.rawValue {
                 return nil
             }
-            return .some(try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo))
+            return .some(
+                try context.withTypeInfo(typeInfo, for: Wrapped.self) {
+                    try Wrapped.foryRead(context, refMode: .none, readTypeInfo: readTypeInfo)
+                }
+            )
         case .tracking:
             let refFlag = try context.buffer.readInt8()
             if refFlag == RefFlag.null.rawValue {
                 return nil
             }
             context.buffer.moveBack(1)
-            return .some(try Wrapped.foryRead(context, refMode: .tracking, readTypeInfo: readTypeInfo))
+            return .some(
+                try context.withTypeInfo(typeInfo, for: Wrapped.self) {
+                    try Wrapped.foryRead(context, refMode: .tracking, readTypeInfo: readTypeInfo)
+                }
+            )
         }
     }
 }

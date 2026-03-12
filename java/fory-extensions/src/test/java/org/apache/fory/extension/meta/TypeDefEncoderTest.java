@@ -28,6 +28,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.FieldInfo;
 import org.apache.fory.meta.NativeTypeDefEncoder;
 import org.apache.fory.meta.TypeDef;
+import org.apache.fory.resolver.ClassResolver;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -45,10 +46,11 @@ public class TypeDefEncoderTest {
     Fory fory =
         Fory.builder().withMetaShare(true).withMetaCompressor(new ZstdMetaCompressor()).build();
     Class<TestFieldsOrderClass1> type = TestFieldsOrderClass1.class;
-    List<FieldInfo> fieldsInfo = buildFieldsInfo(fory.getClassResolver(), type);
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+    List<FieldInfo> fieldsInfo = buildFieldsInfo(classResolver, type);
     MemoryBuffer buffer =
         NativeTypeDefEncoder.encodeTypeDef(
-            fory.getClassResolver(), type, getClassFields(type, fieldsInfo), true);
+            classResolver, type, getClassFields(type, fieldsInfo), true);
     TypeDef typeDef = TypeDef.readTypeDef(fory, buffer);
     Assert.assertEquals(typeDef.getClassName(), type.getName());
     Assert.assertEquals(typeDef.getFieldsInfo().size(), type.getDeclaredFields().length);

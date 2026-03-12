@@ -16,6 +16,7 @@
 # under the License.
 
 from libc.stdint cimport *
+from libc.stddef cimport size_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
@@ -71,13 +72,17 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
         inline uint32_t reader_index()
 
+        inline c_bool ensure_readable(uint32_t length, CError& error)
+
         inline void writer_index(uint32_t writer_index)
 
         inline void increase_writer_index(uint32_t diff)
 
         inline void reader_index(uint32_t reader_index)
 
-        inline void increase_reader_index(uint32_t diff)
+        inline c_bool reader_index(uint32_t reader_index, CError& error)
+
+        inline void increase_reader_index(uint32_t diff, CError& error)
 
         void grow(uint32_t min_capacity)
 
@@ -200,6 +205,10 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
         void skip(uint32_t length, CError& error)
 
+        c_bool has_input_stream() const
+
+        void shrink_input_buffer()
+
         void copy(uint32_t start, uint32_t nbytes,
                   uint8_t* out, uint32_t offset) const
 
@@ -207,6 +216,18 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
     CBuffer* allocate_buffer(uint32_t size)
     c_bool allocate_buffer(uint32_t size, shared_ptr[CBuffer]* out)
+
+cdef extern from "fory/util/stream.h" namespace "fory" nogil:
+    cdef cppclass COutputStream "fory::OutputStream":
+        CBuffer* get_buffer()
+        void enter_flush_barrier()
+        void exit_flush_barrier()
+        c_bool try_flush()
+        void force_flush()
+        size_t flushed_bytes() const
+        void reset()
+        c_bool has_error() const
+        const CError& error() const
 
 
 cdef extern from "fory/util/bit_util.h" namespace "fory::util" nogil:
@@ -223,3 +244,17 @@ cdef extern from "fory/util/bit_util.h" namespace "fory::util" nogil:
 
 cdef extern from "fory/util/string_util.h" namespace "fory" nogil:
     c_bool utf16_has_surrogate_pairs(uint16_t* data, size_t size)
+
+
+cdef extern from "fory/util/flat_int_map.h" namespace "fory::util" nogil:
+    cdef cppclass FlatIntMap[K, V]:
+        cppclass Entry:
+            K key
+            V value
+
+        FlatIntMap() except +
+        FlatIntMap(size_t initial_capacity) except +
+        V& operator[](K key)
+        Entry* find(K key)
+        size_t size() const
+        void clear()

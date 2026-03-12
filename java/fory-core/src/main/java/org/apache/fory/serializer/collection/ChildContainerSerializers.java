@@ -238,7 +238,7 @@ public class ChildContainerSerializers {
     while (!superClasses.contains(cls)) {
       Serializer slotsSerializer;
       if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
-        TypeDef layerTypeDef = fory.getClassResolver().getTypeDef(cls, false);
+        TypeDef layerTypeDef = fory.getTypeResolver().getTypeDef(cls, false);
         // Use layer index within class hierarchy (not global counter)
         // This ensures unique marker classes for each layer
         Class<?> layerMarkerClass = LayerMarkerClassGenerator.getOrCreate(fory, cls, layerIndex);

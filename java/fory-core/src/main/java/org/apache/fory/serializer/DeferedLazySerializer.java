@@ -45,16 +45,6 @@ public class DeferedLazySerializer extends Serializer {
     return getSerializer().read(buffer);
   }
 
-  @Override
-  public void xwrite(MemoryBuffer buffer, Object value) {
-    getSerializer().xwrite(buffer, value);
-  }
-
-  @Override
-  public Object xread(MemoryBuffer buffer) {
-    return getSerializer().xread(buffer);
-  }
-
   private Serializer getSerializer() {
     if (serializer == null) {
       Tuple2<Boolean, Serializer> tuple2 = serializerSupplier.get();

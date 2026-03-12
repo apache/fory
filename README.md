@@ -97,7 +97,7 @@ Fory Rust demonstrates competitive performance compared to other Rust serializat
 <img src="docs/benchmarks/rust/system_data.png" width="90%">
 </p>
 
-For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust_benchmark).
+For more detailed benchmarks and methodology, see [Rust Benchmarks](benchmarks/rust).
 
 ### C++ Serialization Performance
 
@@ -107,7 +107,7 @@ Fory C++ demonstrates competitive performance compared to protobuf c++ serializa
 <img src="docs/benchmarks/cpp/throughput.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp_benchmark).
+For more detailed benchmarks and methodology, see [C++ Benchmarks](benchmarks/cpp).
 
 ### Go Serialization Performance
 
@@ -117,7 +117,25 @@ Fory Go demonstrates excellent performance compared to other go serialization fr
 <img src="docs/benchmarks/go/benchmark_combined.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go_benchmark).
+For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go).
+
+### C# Serialization Performance
+
+Fory C# demonstrates excellent performance compared to protobuf-net and MessagePack-CSharp:
+
+<p align="center">
+<img src="docs/benchmarks/csharp/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [C# Benchmarks](docs/benchmarks/csharp).
+
+### Swift Serialization Performance
+
+<p align="center">
+<img src="docs/benchmarks/swift/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [SwiftBenchmarks](docs/benchmarks/swift).
 
 ## Installation
 
@@ -599,7 +617,7 @@ Dynamic serialization can deserialize arbitrary types, which may introduce risks
 Fory enables class registration **by default** for dynamic protocols, allowing only trusted registered types.
 **Do not disable class registration unless you can ensure your environment is secure**.
 
-If this option is disabled, you are responsible for serialization security. You should implement and configure a customized `ClassChecker` or `DeserializationPolicy` for fine-grained security control
+If this option is disabled, you are responsible for serialization security. You should implement and configure a customized `TypeChecker` or `DeserializationPolicy` for fine-grained security control.
 
 To report security vulnerabilities in Apache Fory™, please follow the [ASF vulnerability reporting process](https://apache.org/security/#reporting-a-vulnerability).
 

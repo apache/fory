@@ -25,7 +25,7 @@ import os
 import pickle
 import types
 
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 
 try:
@@ -1345,7 +1345,8 @@ class ObjectSerializer(Serializer):
         if self._slot_field_names is not None:
             sorted_field_names = self._slot_field_names
         else:
-            sorted_field_names = sorted(value.__dict__.keys())
+            value_dict = getattr(value, "__dict__", None)
+            sorted_field_names = [] if value_dict is None else sorted(value_dict.keys())
 
         buffer.write_var_uint32(len(sorted_field_names))
         for field_name in sorted_field_names:

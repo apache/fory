@@ -20,7 +20,11 @@ import os
 from abc import ABC, abstractmethod
 from typing import Union, Iterable, TypeVar
 
-from pyfory.buffer import Buffer
+_ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
+    "1",
+    "true",
+}
+
 from pyfory.resolver import (
     MapRefResolver,
     NoRefResolver,
@@ -58,6 +62,8 @@ NOT_NULL_FLOAT64_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (FLOAT64_TYPE_ID << 8
 NOT_NULL_BOOL_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (BOOL_TYPE_ID << 8)
 NOT_NULL_STRING_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (STRING_TYPE_ID << 8)
 SMALL_STRING_THRESHOLD = 16
+
+from pyfory.serialization import Buffer
 
 
 class BufferObject(ABC):
@@ -151,8 +157,11 @@ class Fory:
         "is_peer_out_of_band_enabled",
         "max_depth",
         "depth",
+        "_output_stream",
         "field_nullable",
         "policy",
+        "max_collection_size",
+        "max_binary_size",
     )
 
     def __init__(
@@ -165,6 +174,8 @@ class Fory:
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
+        max_collection_size: int = 1_000_000,
+        max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -203,6 +214,17 @@ class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
+            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
+                and maps (dicts) during deserialization. This limit is used to prevent
+                out-of-memory attacks from malicious payloads that claim extremely large
+                collection sizes, as collections preallocate memory based on the declared
+                size. Raises an exception if exceeded. Default is 1,000,000.
+
+            max_binary_size: Maximum allowed size in bytes for binary data reads during
+                deserialization (default: 64 MB). Raises an exception if a single binary
+                read exceeds this limit, preventing out-of-memory attacks from malicious
+                payloads that claim extremely large binary sizes.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -228,7 +250,8 @@ class Fory:
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
 
-        self.buffer = Buffer.allocate(32)
+        self.max_binary_size = max_binary_size
+        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
         self.buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
@@ -236,6 +259,8 @@ class Fory:
         self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
+        self.max_collection_size = max_collection_size
+        self._output_stream = None
 
     def register(
         self,
@@ -388,6 +413,37 @@ class Fory:
         """
         return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
 
+    def dump(self, obj, stream):
+        """
+        Serialize an object directly to a writable stream.
+
+        Args:
+            obj: The object to serialize
+            stream: Writable stream implementing write(...)
+
+        Notes:
+            The stream must be a non-retaining sink: ``write(data)`` must
+            synchronously consume ``data`` before returning. Fory may reuse or
+            modify the underlying buffer after ``write`` returns, so retaining
+            the passed object (or a view of it) is unsupported. If your sink
+            needs retention, copy bytes inside ``write``.
+        """
+        try:
+            self.buffer.set_writer_index(0)
+            self._output_stream = Buffer.wrap_output_stream(stream)
+            self.buffer.bind_output_stream(self._output_stream)
+            self._serialize(
+                obj,
+                self.buffer,
+                buffer_callback=None,
+                unsupported_callback=None,
+            )
+            self.force_flush()
+        finally:
+            self.buffer.bind_output_stream(None)
+            self._output_stream = None
+            self.reset_write()
+
     def loads(
         self,
         buffer: Union[Buffer, bytes],
@@ -429,12 +485,17 @@ class Fory:
             <class 'bytes'>
         """
         try:
-            return self._serialize(
+            write_buffer = self._serialize(
                 obj,
                 buffer,
                 buffer_callback=buffer_callback,
                 unsupported_callback=unsupported_callback,
             )
+            if write_buffer is not self.buffer:
+                return write_buffer
+            if write_buffer.get_output_stream() is not None:
+                return write_buffer
+            return write_buffer.to_bytes(0, write_buffer.get_writer_index())
         finally:
             self.reset_write()
 
@@ -444,7 +505,7 @@ class Fory:
         buffer: Buffer = None,
         buffer_callback=None,
         unsupported_callback=None,
-    ) -> Union[Buffer, bytes]:
+    ) -> Buffer:
         assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref."
         self.depth += 1
         self.buffer_callback = buffer_callback
@@ -456,6 +517,7 @@ class Fory:
         # 1byte used for bit mask
         buffer.grow(1)
         buffer.set_writer_index(mask_index + 1)
+        buffer.put_int8(mask_index, 0)
         if obj is None:
             set_bit(buffer, mask_index, 0)
         else:
@@ -470,10 +532,29 @@ class Fory:
         # Type definitions are now written inline (streaming) instead of deferred to end
 
         self.write_ref(buffer, obj)
-        if buffer is not self.buffer:
-            return buffer
-        else:
-            return buffer.to_bytes(0, buffer.get_writer_index())
+        return buffer
+
+    def enter_flush_barrier(self):
+        output_stream = self._output_stream
+        if output_stream is not None:
+            output_stream.enter_flush_barrier()
+
+    def exit_flush_barrier(self):
+        output_stream = self._output_stream
+        if output_stream is not None:
+            output_stream.exit_flush_barrier()
+
+    def try_flush(self):
+        if self._output_stream is None or self.buffer.get_writer_index() <= 4096:
+            return
+        output_stream = self._output_stream
+        output_stream.try_flush()
+
+    def force_flush(self):
+        output_stream = self._output_stream
+        if output_stream is None:
+            return
+        output_stream.force_flush()
 
     def write_ref(self, buffer, obj, typeinfo=None, serializer=None):
         if serializer is None and typeinfo is not None:
@@ -557,7 +638,7 @@ class Fory:
         assert self.depth == 0, "Nested deserialization should use read_ref/read_no_ref."
         self.depth += 1
         if isinstance(buffer, bytes):
-            buffer = Buffer(buffer)
+            buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
         reader_index = buffer.get_reader_index()
@@ -602,6 +683,7 @@ class Fory:
         """Internal method to read without modifying read_ref_ids."""
         if serializer is None:
             serializer = self.type_resolver.read_type_info(buffer).serializer
+
         self.inc_depth()
         o = serializer.read(buffer)
         self.dec_depth()
@@ -634,6 +716,8 @@ class Fory:
     def read_buffer_object(self, buffer) -> Buffer:
         if not self.is_peer_out_of_band_enabled:
             size = buffer.read_var_uint32()
+            if buffer.has_input_stream():
+                return buffer.read_bytes(size)
             reader_index = buffer.get_reader_index()
             buf = buffer.slice(reader_index, size)
             buffer.set_reader_index(reader_index + size)
@@ -643,6 +727,8 @@ class Fory:
             assert self._buffers is not None
             return next(self._buffers)
         size = buffer.read_var_uint32()
+        if buffer.has_input_stream():
+            return buffer.read_bytes(size)
         reader_index = buffer.get_reader_index()
         buf = buffer.slice(reader_index, size)
         buffer.set_reader_index(reader_index + size)
@@ -681,6 +767,7 @@ class Fory:
         self.metastring_resolver.reset_write()
         self.buffer_callback = None
         self._unsupported_callback = None
+        self._output_stream = None
 
     def reset_read(self):
         """
@@ -724,12 +811,6 @@ class Fory:
         )
 
 
-_ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
-    "1",
-    "true",
-}
-
-
 class ThreadSafeFory:
     """
     Thread-safe wrapper for Fory using instance pooling.
@@ -749,6 +830,10 @@ class ThreadSafeFory:
         strict (bool): Whether to require type registration. Defaults to True.
         compatible (bool): Whether to enable compatible mode. Defaults to False.
         max_depth (int): Maximum depth for deserialization. Defaults to 50.
+        max_collection_size (int): Maximum allowed size for collections and maps during
+            deserialization. Defaults to 1,000,000.
+        max_binary_size (int): Maximum allowed size in bytes for binary data reads during
+            deserialization. Defaults to 64 MB.
 
     Example:
         >>> import pyfury
@@ -907,3 +992,20 @@ class ThreadSafeFory:
         unsupported_objects: Iterable = None,
     ):
         return self.deserialize(buffer, buffers, unsupported_objects)
+
+    def dump(self, obj, stream):
+        """
+        Serialize an object directly to a writable stream.
+
+        Notes:
+            The stream must be a non-retaining sink: ``write(data)`` must
+            synchronously consume ``data`` before returning. Fory may reuse or
+            modify the underlying buffer after ``write`` returns, so retaining
+            the passed object (or a view of it) is unsupported. If your sink
+            needs retention, copy bytes inside ``write``.
+        """
+        fory = self._get_fory()
+        try:
+            return fory.dump(obj, stream)
+        finally:
+            self._return_fory(fory)

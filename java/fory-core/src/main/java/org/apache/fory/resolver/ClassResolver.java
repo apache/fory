@@ -44,10 +44,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumSet;
@@ -79,7 +77,6 @@ import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.JITContext;
-import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Float32List;
 import org.apache.fory.collection.Float64List;
@@ -1083,22 +1080,6 @@ public class ClassResolver extends TypeResolver {
   }
 
   /**
-   * Reset serializer if <code>serializer</code> is not null, otherwise clear serializer for <code>
-   * cls</code>.
-   *
-   * @see #setSerializer
-   * @see #clearSerializer
-   * @see #createSerializerSafe
-   */
-  public <T> void resetSerializer(Class<T> cls, Serializer<T> serializer) {
-    if (serializer == null) {
-      clearSerializer(cls);
-    } else {
-      setSerializer(cls, serializer);
-    }
-  }
-
-  /**
    * Set serializer to avoid circular error when there is a serializer query for fields by {@link
    * #readSharedClassMeta} and {@link #getSerializer(Class)} which access current creating
    * serializer. This method is used to avoid overwriting existing serializer for class when
@@ -1193,7 +1174,7 @@ public class ClassResolver extends TypeResolver {
   @Override
   public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
     boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+        fory.getConfig().isCodeGenEnabled() && supportCodegenForJavaSerialization(cls);
     return getSerializerClass(cls, codegen);
   }
 
@@ -1341,7 +1322,7 @@ public class ClassResolver extends TypeResolver {
   public Class<? extends Serializer> getObjectSerializerClass(
       Class<?> cls, JITContext.SerializerJITCallback<Class<? extends Serializer>> callback) {
     boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+        fory.getConfig().isCodeGenEnabled() && supportCodegenForJavaSerialization(cls);
     return getObjectSerializerClass(cls, false, codegen, callback);
   }
 
@@ -1404,20 +1385,6 @@ public class ClassResolver extends TypeResolver {
         return ReplaceResolveSerializer.class;
       }
       return fory.getDefaultJDKStreamSerializerType();
-    }
-  }
-
-  @Deprecated
-  public void setClassChecker(ClassChecker classChecker) {
-    extRegistry.typeChecker =
-        (resolver, className) -> {
-          if (resolver instanceof ClassResolver) {
-            return classChecker.checkClass((ClassResolver) resolver, className);
-          }
-          return false;
-        };
-    if (classChecker instanceof AllowListChecker) {
-      ((AllowListChecker) classChecker).addListener(this);
     }
   }
 
@@ -1508,7 +1475,7 @@ public class ClassResolver extends TypeResolver {
   }
 
   public <T> Serializer<T> createSerializerSafe(Class<T> cls, Supplier<Serializer<T>> func) {
-    Serializer serializer = fory.getClassResolver().getSerializer(cls, false);
+    Serializer serializer = getSerializer(cls, false);
     try {
       return func.get();
     } catch (Throwable t) {
@@ -1905,20 +1872,6 @@ public class ClassResolver extends TypeResolver {
 
   public boolean isPrimitive(int classId) {
     return classId >= PRIMITIVE_VOID_ID && classId <= PRIMITIVE_FLOAT64_ID;
-  }
-
-  public CodeGenerator getCodeGenerator(ClassLoader... loaders) {
-    List<ClassLoader> loaderList = new ArrayList<>(loaders.length);
-    Collections.addAll(loaderList, loaders);
-    return extRegistry.codeGeneratorMap.get(loaderList);
-  }
-
-  public void setCodeGenerator(ClassLoader loader, CodeGenerator codeGenerator) {
-    setCodeGenerator(new ClassLoader[] {loader}, codeGenerator);
-  }
-
-  public void setCodeGenerator(ClassLoader[] loaders, CodeGenerator codeGenerator) {
-    extRegistry.codeGeneratorMap.put(Arrays.asList(loaders), codeGenerator);
   }
 
   /**

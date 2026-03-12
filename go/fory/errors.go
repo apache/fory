@@ -87,6 +87,7 @@ func parsePanicOnError() bool {
 	}
 }
 
+//go:noinline
 func panicIfEnabled(err Error) Error {
 	if panicOnError && err.kind != ErrKindOK {
 		panic(err.Error())
@@ -150,6 +151,8 @@ func (e Error) Error() string {
 }
 
 // BufferOutOfBoundError creates a buffer out of bound error
+//
+//go:noinline
 func BufferOutOfBoundError(offset, need, size int) Error {
 	return panicIfEnabled(Error{
 		kind:   ErrKindBufferOutOfBound,
@@ -160,6 +163,8 @@ func BufferOutOfBoundError(offset, need, size int) Error {
 }
 
 // TypeMismatchError creates a type mismatch error
+//
+//go:noinline
 func TypeMismatchError(actual, expected TypeId) Error {
 	return panicIfEnabled(Error{
 		kind:         ErrKindTypeMismatch,
@@ -169,6 +174,8 @@ func TypeMismatchError(actual, expected TypeId) Error {
 }
 
 // UnknownTypeError creates an unknown type error
+//
+//go:noinline
 func UnknownTypeError(typeId TypeId) Error {
 	return panicIfEnabled(Error{
 		kind:       ErrKindUnknownType,
@@ -178,6 +185,8 @@ func UnknownTypeError(typeId TypeId) Error {
 }
 
 // HashMismatchError creates a struct hash mismatch error
+//
+//go:noinline
 func HashMismatchError(actual, expected int32, typeName string) Error {
 	return panicIfEnabled(Error{
 		kind:         ErrKindHashMismatch,
@@ -188,6 +197,8 @@ func HashMismatchError(actual, expected int32, typeName string) Error {
 }
 
 // SerializationError creates a general serialization error
+//
+//go:noinline
 func SerializationError(msg string) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindSerializationFailed,
@@ -196,6 +207,8 @@ func SerializationError(msg string) Error {
 }
 
 // SerializationErrorf creates a formatted serialization error
+//
+//go:noinline
 func SerializationErrorf(format string, args ...any) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindSerializationFailed,
@@ -204,6 +217,8 @@ func SerializationErrorf(format string, args ...any) Error {
 }
 
 // DeserializationError creates a general deserialization error
+//
+//go:noinline
 func DeserializationError(msg string) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindDeserializationFailed,
@@ -212,6 +227,8 @@ func DeserializationError(msg string) Error {
 }
 
 // DeserializationErrorf creates a formatted deserialization error
+//
+//go:noinline
 func DeserializationErrorf(format string, args ...any) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindDeserializationFailed,
@@ -220,6 +237,8 @@ func DeserializationErrorf(format string, args ...any) Error {
 }
 
 // MaxDepthExceededError creates a max depth exceeded error
+//
+//go:noinline
 func MaxDepthExceededError(depth int) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindMaxDepthExceeded,
@@ -228,6 +247,8 @@ func MaxDepthExceededError(depth int) Error {
 }
 
 // NilPointerError creates a nil pointer error
+//
+//go:noinline
 func NilPointerError(msg string) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindNilPointer,
@@ -236,6 +257,8 @@ func NilPointerError(msg string) Error {
 }
 
 // InvalidRefIdError creates an invalid reference ID error
+//
+//go:noinline
 func InvalidRefIdError(refId int32) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidRefId,
@@ -244,6 +267,8 @@ func InvalidRefIdError(refId int32) Error {
 }
 
 // InvalidTagError creates an invalid fory struct tag error
+//
+//go:noinline
 func InvalidTagError(msg string) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidTag,
@@ -252,6 +277,8 @@ func InvalidTagError(msg string) Error {
 }
 
 // InvalidTagErrorf creates a formatted invalid fory struct tag error
+//
+//go:noinline
 func InvalidTagErrorf(format string, args ...any) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidTag,
@@ -260,6 +287,8 @@ func InvalidTagErrorf(format string, args ...any) Error {
 }
 
 // InvalidUTF16StringError creates an invalid UTF-16 string error
+//
+//go:noinline
 func InvalidUTF16StringError(byteCount int) Error {
 	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidUTF16String,
@@ -268,6 +297,8 @@ func InvalidUTF16StringError(byteCount int) Error {
 }
 
 // WrapError wraps a standard error into a fory Error
+//
+//go:noinline
 func WrapError(err error, kind ErrorKind) Error {
 	if err == nil {
 		return Error{kind: ErrKindOK}
@@ -281,6 +312,8 @@ func WrapError(err error, kind ErrorKind) Error {
 // FromError converts a standard error to a fory Error
 // If err is already a fory Error, it returns it as-is
 // Otherwise wraps it as a deserialization error
+//
+//go:noinline
 func FromError(err error) Error {
 	if err == nil {
 		return Error{kind: ErrKindOK}

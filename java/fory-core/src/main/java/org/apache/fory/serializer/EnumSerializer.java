@@ -74,7 +74,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
 
   @Override
   public void write(MemoryBuffer buffer, Enum value) {
-    if (fory.getConfig().serializeEnumByName()) {
+    if (isJava && fory.getConfig().serializeEnumByName()) {
       MetaStringBytes metaStringBytes = metaStringBytesArrByEnumOrdinal[value.ordinal()];
       metaStringResolver.writeMetaStringBytes(buffer, metaStringBytes);
     } else {
@@ -84,7 +84,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
 
   @Override
   public Enum read(MemoryBuffer buffer) {
-    if (fory.getConfig().serializeEnumByName()) {
+    if (isJava && fory.getConfig().serializeEnumByName()) {
       MetaStringBytes metaStringBytes = metaStringResolver.readMetaStringBytes(buffer);
       Enum e = metaStringtoEnumRepresentation.get(metaStringBytes);
       if (e != null) {
@@ -98,20 +98,6 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
       }
       return enumConstants[value];
     }
-  }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, Enum value) {
-    buffer.writeVarUint32Small7(value.ordinal());
-  }
-
-  @Override
-  public Enum xread(MemoryBuffer buffer) {
-    int value = buffer.readVarUint32Small7();
-    if (value >= enumConstants.length) {
-      return handleUnknownEnumValue(value);
-    }
-    return enumConstants[value];
   }
 
   private Enum handleUnknownEnumValue(int value) {

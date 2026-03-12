@@ -138,6 +138,7 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
     // If nullability is needed, use the slow path
 
     if (need_write_header) {
+      ctx.enter_flush_barrier();
       // reserve space for header (1 byte) + chunk size (1 byte)
       header_offset = ctx.buffer().writer_index();
       ctx.write_uint16(0); // Placeholder for header and chunk size
@@ -174,6 +175,8 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
     pair_counter++;
     if (pair_counter == MAX_CHUNK_SIZE) {
       write_chunk_size(ctx, header_offset, pair_counter);
+      ctx.exit_flush_barrier();
+      ctx.try_flush();
       pair_counter = 0;
       need_write_header = true;
     }
@@ -182,6 +185,8 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
   // write final chunk size
   if (pair_counter > 0) {
     write_chunk_size(ctx, header_offset, pair_counter);
+    ctx.exit_flush_barrier();
+    ctx.try_flush();
   }
 }
 
@@ -238,6 +243,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       // Finish current chunk if any
       if (pair_counter > 0) {
         write_chunk_size(ctx, header_offset, pair_counter);
+        ctx.exit_flush_barrier();
         pair_counter = 0;
         need_write_header = true;
       }
@@ -394,9 +400,12 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       // Finish previous chunk if types changed
       if (types_changed && pair_counter > 0) {
         write_chunk_size(ctx, header_offset, pair_counter);
+        ctx.exit_flush_barrier();
+        ctx.try_flush();
         pair_counter = 0;
       }
 
+      ctx.enter_flush_barrier();
       // write new chunk header
       header_offset = ctx.buffer().writer_index();
       ctx.write_uint16(0); // Placeholder for header and chunk size
@@ -513,6 +522,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
     pair_counter++;
     if (pair_counter == MAX_CHUNK_SIZE) {
       write_chunk_size(ctx, header_offset, pair_counter);
+      ctx.exit_flush_barrier();
+      ctx.try_flush();
       pair_counter = 0;
       need_write_header = true;
       current_key_type_info = nullptr;
@@ -523,6 +534,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
   // write final chunk size
   if (pair_counter > 0) {
     write_chunk_size(ctx, header_offset, pair_counter);
+    ctx.exit_flush_barrier();
+    ctx.try_flush();
   }
 }
 
@@ -537,6 +550,13 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
                 "Fast path is for non-polymorphic types only");
   static_assert(!is_shared_ref_v<K> && !is_shared_ref_v<V>,
                 "Fast path is for non-shared-ref types only");
+
+  // Guardrail: Enforce max_collection_size for map reads (entry count)
+  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
+    ctx.set_error(
+        Error::invalid_data("Map entry count exceeds max_collection_size"));
+    return MapType{};
+  }
 
   MapType result;
   MapReserver<MapType>::reserve(result, length);
@@ -669,6 +689,13 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 /// Read map data for polymorphic or shared-ref maps
 template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
+  // Guardrail: Enforce max_collection_size for map reads (entry count)
+  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
+    ctx.set_error(
+        Error::invalid_data("Map entry count exceeds max_collection_size"));
+    return MapType{};
+  }
+
   MapType result;
   MapReserver<MapType>::reserve(result, length);
 

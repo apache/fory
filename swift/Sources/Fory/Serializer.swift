@@ -19,10 +19,10 @@ import Foundation
 
 public protocol Serializer {
     static func foryDefault() -> Self
-    static var staticTypeId: ForyTypeId { get }
+    static var staticTypeId: TypeId { get }
 
     static var isNullableType: Bool { get }
-    static var isReferenceTrackableType: Bool { get }
+    static var isRefType: Bool { get }
 
     var foryIsNone: Bool { get }
 
@@ -42,27 +42,80 @@ public protocol Serializer {
         readTypeInfo: Bool
     ) throws -> Self
 
-    static func foryWriteTypeInfo(_ context: WriteContext) throws
-    static func foryReadTypeInfo(_ context: ReadContext) throws
-    static func foryCompatibleTypeMetaFields(trackRef: Bool) -> [TypeMetaFieldInfo]
+    static func foryWriteStaticTypeInfo(_ context: WriteContext) throws
+    static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo?
+    static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> Self
+    static func foryFieldsInfo(trackRef: Bool) -> [TypeMeta.FieldInfo]
     func foryWriteTypeInfo(_ context: WriteContext) throws
 }
 
+public protocol StructSerializer: Serializer {
+    static var foryEvolving: Bool { get }
+}
+
 public extension Serializer {
+    @inlinable
     static var isNullableType: Bool { false }
 
-    static var isReferenceTrackableType: Bool { false }
+    @inlinable
+    static var isRefType: Bool { false }
 
+    @inlinable
     var foryIsNone: Bool { false }
 
-    static func foryCompatibleTypeMetaFields(trackRef _: Bool) -> [TypeMetaFieldInfo] {
+    @inlinable
+    func foryWriteTypeInfo(_ context: WriteContext) throws {
+        try Self.foryWriteStaticTypeInfo(context)
+    }
+
+    @inlinable
+    static func foryFieldsInfo(trackRef _: Bool) -> [TypeMeta.FieldInfo] {
         []
     }
 
-    func foryWriteTypeInfo(_ context: WriteContext) throws {
-        try Self.foryWriteTypeInfo(context)
+    @inlinable
+    static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo _: TypeInfo) throws -> Self {
+        try foryReadData(context)
+    }
+}
+
+public extension StructSerializer {
+    @inlinable
+    static var foryEvolving: Bool { true }
+}
+
+public extension Serializer {
+    static func foryReadPayload(
+        _ context: ReadContext,
+        readTypeInfo: Bool
+    ) throws -> Self {
+        try Self.foryReadPayload(
+            context,
+            readTypeInfo: readTypeInfo,
+            readData: { try Self.foryReadData(context) },
+            readCompatibleData: { remoteTypeInfo in
+                try Self.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+            }
+        )
     }
 
+    static func foryReadPayload(
+        _ context: ReadContext,
+        readTypeInfo: Bool,
+        readData: () throws -> Self,
+        readCompatibleData: (TypeInfo) throws -> Self
+    ) throws -> Self {
+        if readTypeInfo {
+            if let remoteTypeInfo = try Self.foryReadTypeInfo(context) {
+                return try readCompatibleData(remoteTypeInfo)
+            }
+        } else if let remoteTypeInfo = context.getTypeInfo(for: Self.self) {
+            return try readCompatibleData(remoteTypeInfo)
+        }
+        return try readData()
+    }
+
+    @inlinable
     func foryWrite(
         _ context: WriteContext,
         refMode: RefMode,
@@ -70,8 +123,8 @@ public extension Serializer {
         hasGenerics: Bool
     ) throws {
         if refMode != .none {
-            if refMode == .tracking, Self.isReferenceTrackableType, let object = self as AnyObject? {
-                if context.refWriter.tryWriteReference(buffer: context.buffer, object: object) {
+            if refMode == .tracking, Self.isRefType, let object = self as AnyObject? {
+                if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
                     return
                 }
             } else {
@@ -80,23 +133,49 @@ public extension Serializer {
         }
 
         if writeTypeInfo {
-            try Self.foryWriteTypeInfo(context)
+            try Self.foryWriteStaticTypeInfo(context)
         }
 
         try foryWriteData(context, hasGenerics: hasGenerics)
     }
 
+    @inlinable
     static func foryRead(
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Self {
-        if refMode != .none {
+        switch refMode {
+        case .none:
+            return try Self.foryReadPayload(context, readTypeInfo: readTypeInfo)
+        case .nullOnly:
+            let rawFlag = try context.buffer.readInt8()
+            switch rawFlag {
+            case RefFlag.null.rawValue:
+                return Self.foryDefault()
+            case RefFlag.notNullValue.rawValue:
+                return try Self.foryReadPayload(context, readTypeInfo: readTypeInfo)
+            case RefFlag.refValue.rawValue:
+                if context.trackRef {
+                    let reservedRefID = context.refReader.reserveRefID()
+                    let value = try Self.foryReadPayload(context, readTypeInfo: readTypeInfo)
+                    if let object = value as AnyObject? {
+                        context.refReader.storeRef(object, at: reservedRefID)
+                    }
+                    return value
+                }
+                return try Self.foryReadPayload(context, readTypeInfo: readTypeInfo)
+            case RefFlag.ref.rawValue:
+                let refID = try context.buffer.readVarUInt32()
+                return try context.refReader.readRef(refID, as: Self.self)
+            default:
+                throw ForyError.refError("invalid ref flag \(rawFlag)")
+            }
+        case .tracking:
             let rawFlag = try context.buffer.readInt8()
             guard let flag = RefFlag(rawValue: rawFlag) else {
                 throw ForyError.refError("invalid ref flag \(rawFlag)")
             }
-
             switch flag {
             case .null:
                 return Self.foryDefault()
@@ -104,75 +183,56 @@ public extension Serializer {
                 let refID = try context.buffer.readVarUInt32()
                 return try context.refReader.readRef(refID, as: Self.self)
             case .refValue:
-                let reservedRefID = context.refReader.reserveRefID()
-                context.pushPendingReference(reservedRefID)
-                if readTypeInfo {
-                    try Self.foryReadTypeInfo(context)
+                let reservedRefID = context.trackRef ? context.refReader.reserveRefID() : nil
+                let value = try Self.foryReadPayload(context, readTypeInfo: readTypeInfo)
+                if let reservedRefID, let object = value as AnyObject? {
+                    context.refReader.storeRef(object, at: reservedRefID)
                 }
-                let value = try Self.foryReadData(context)
-                context.finishPendingReferenceIfNeeded(value)
-                context.popPendingReference()
                 return value
             case .notNullValue:
-                break
+                return try Self.foryReadPayload(context, readTypeInfo: readTypeInfo)
             }
         }
-
-        if readTypeInfo {
-            try Self.foryReadTypeInfo(context)
-        }
-        return try Self.foryReadData(context)
     }
 
-    static func foryWriteTypeInfo(_ context: WriteContext) throws {
+    static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
         guard staticTypeId.isUserTypeKind else {
             context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
             return
         }
 
-        let info = try context.typeResolver.requireRegisteredTypeInfo(for: Self.self)
-        let wireTypeID = resolveWireTypeID(
-            declaredKind: info.kind,
-            registerByName: info.registerByName,
-            compatible: context.compatible
-        )
+        let typeInfo = try context.typeInfo(for: Self.self)
+        let wireTypeID = typeInfo.wireTypeID(compatible: context.compatible)
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: wireTypeID.rawValue))
         switch wireTypeID {
         case .compatibleStruct, .namedCompatibleStruct:
-            let typeMeta = try buildCompatibleTypeMeta(
-                info: info,
-                wireTypeID: wireTypeID,
-                trackRef: context.trackRef
-            )
-            try context.writeCompatibleTypeMeta(for: Self.self, typeMeta: typeMeta)
+            guard typeInfo.typeDefBytes != nil else {
+                throw ForyError.invalidData("missing compatible type definition for \(typeInfo.typeID)")
+            }
+            context.writeTypeMeta(typeInfo)
         case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if context.compatible {
-                let typeMeta = try buildCompatibleTypeMeta(
-                    info: info,
-                    wireTypeID: wireTypeID,
-                    trackRef: context.trackRef
-                )
-                try context.writeCompatibleTypeMeta(for: Self.self, typeMeta: typeMeta)
-            } else {
-                guard let namespace = info.namespace else {
-                    throw ForyError.invalidData("missing namespace metadata for name-registered type")
+                guard typeInfo.typeDefBytes != nil else {
+                    throw ForyError.invalidData("missing compatible type definition for \(typeInfo.typeID)")
                 }
+                context.writeTypeMeta(typeInfo)
+            } else {
                 try writeMetaString(
                     context: context,
-                    value: namespace,
+                    value: typeInfo.namespace,
                     encodings: namespaceMetaStringEncodings,
                     encoder: .namespace
                 )
                 try writeMetaString(
                     context: context,
-                    value: info.typeName,
+                    value: typeInfo.typeName,
                     encodings: typeNameMetaStringEncodings,
                     encoder: .typeName
                 )
             }
         default:
-            if !info.registerByName && wireTypeNeedsUserTypeID(wireTypeID) {
-                guard let userTypeID = info.userTypeID else {
+            if !typeInfo.registerByName && registeredWireTypeNeedsUserTypeID(wireTypeID) {
+                guard let userTypeID = typeInfo.userTypeID else {
                     throw ForyError.invalidData("missing user type id for id-registered type")
                 }
                 context.buffer.writeVarUInt32(userTypeID)
@@ -180,344 +240,8 @@ public extension Serializer {
         }
     }
 
-    static func foryReadTypeInfo(_ context: ReadContext) throws {
-        let rawTypeID = try context.buffer.readVarUInt32()
-        guard let typeID = ForyTypeId(rawValue: rawTypeID) else {
-            throw ForyError.invalidData("unknown type id \(rawTypeID)")
-        }
-
-        guard staticTypeId.isUserTypeKind else {
-            if typeID != staticTypeId {
-                throw ForyError.typeMismatch(expected: staticTypeId.rawValue, actual: rawTypeID)
-            }
-            return
-        }
-
-        let info = try context.typeResolver.requireRegisteredTypeInfo(for: Self.self)
-        let allowed = allowedWireTypeIDs(
-            declaredKind: info.kind,
-            registerByName: info.registerByName,
-            compatible: context.compatible
-        )
-        if !allowed.contains(typeID) {
-            if let expected = allowed.first {
-                throw ForyError.typeMismatch(expected: expected.rawValue, actual: rawTypeID)
-            }
-            throw ForyError.invalidData("no expected wire type ids for \(info.kind)")
-        }
-
-        switch typeID {
-        case .compatibleStruct, .namedCompatibleStruct:
-            let remoteTypeMeta = try context.readCompatibleTypeMeta()
-            try validateCompatibleTypeMeta(
-                remoteTypeMeta,
-                localInfo: info,
-                expectedWireTypes: allowed,
-                actualWireTypeID: typeID
-            )
-            context.pushCompatibleTypeMeta(for: Self.self, remoteTypeMeta)
-        case .namedEnum, .namedStruct, .namedExt, .namedUnion:
-            if context.compatible {
-                let remoteTypeMeta = try context.readCompatibleTypeMeta()
-                try validateCompatibleTypeMeta(
-                    remoteTypeMeta,
-                    localInfo: info,
-                    expectedWireTypes: allowed,
-                    actualWireTypeID: typeID
-                )
-                if typeID == .namedStruct {
-                    context.pushCompatibleTypeMeta(for: Self.self, remoteTypeMeta)
-                }
-            } else {
-                let namespace = try readMetaString(
-                    context: context,
-                    decoder: .namespace,
-                    encodings: namespaceMetaStringEncodings
-                )
-                let typeName = try readMetaString(
-                    context: context,
-                    decoder: .typeName,
-                    encodings: typeNameMetaStringEncodings
-                )
-                guard info.registerByName else {
-                    throw ForyError.invalidData("received name-registered type info for id-registered local type")
-                }
-                guard let localNamespace = info.namespace else {
-                    throw ForyError.invalidData("missing local namespace metadata for name-registered type")
-                }
-                if namespace.value != localNamespace.value || typeName.value != info.typeName.value {
-                    throw ForyError.invalidData(
-                        "type name mismatch: expected \(localNamespace.value)::\(info.typeName.value), got \(namespace.value)::\(typeName.value)"
-                    )
-                }
-            }
-        default:
-            if !info.registerByName && wireTypeNeedsUserTypeID(typeID) {
-                guard let localUserTypeID = info.userTypeID else {
-                    throw ForyError.invalidData("missing user type id for id-registered type")
-                }
-                let remoteUserTypeID = try context.buffer.readVarUInt32()
-                if remoteUserTypeID != localUserTypeID {
-                    throw ForyError.typeMismatch(expected: localUserTypeID, actual: remoteUserTypeID)
-                }
-            }
-        }
+    static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readTypeInfo(for: Self.self)
     }
 
-    private static func normalizeBaseKind(_ kind: ForyTypeId) -> ForyTypeId {
-        switch kind {
-        case .namedEnum:
-            return .enumType
-        case .compatibleStruct, .namedCompatibleStruct, .namedStruct:
-            return .structType
-        case .namedExt:
-            return .ext
-        case .namedUnion:
-            return .typedUnion
-        default:
-            return kind
-        }
-    }
-
-    private static func namedKind(for baseKind: ForyTypeId, compatible: Bool) -> ForyTypeId {
-        switch baseKind {
-        case .structType:
-            return compatible ? .namedCompatibleStruct : .namedStruct
-        case .enumType:
-            return .namedEnum
-        case .ext:
-            return .namedExt
-        case .typedUnion:
-            return .namedUnion
-        default:
-            return baseKind
-        }
-    }
-
-    private static func idKind(for baseKind: ForyTypeId, compatible: Bool) -> ForyTypeId {
-        switch baseKind {
-        case .structType:
-            return compatible ? .compatibleStruct : .structType
-        default:
-            return baseKind
-        }
-    }
-
-    private static func resolveWireTypeID(
-        declaredKind: ForyTypeId,
-        registerByName: Bool,
-        compatible: Bool
-    ) -> ForyTypeId {
-        let baseKind = normalizeBaseKind(declaredKind)
-        if registerByName {
-            return namedKind(for: baseKind, compatible: compatible)
-        }
-        return idKind(for: baseKind, compatible: compatible)
-    }
-
-    private static func allowedWireTypeIDs(
-        declaredKind: ForyTypeId,
-        registerByName: Bool,
-        compatible: Bool
-    ) -> Set<ForyTypeId> {
-        let baseKind = normalizeBaseKind(declaredKind)
-        let expected = resolveWireTypeID(
-            declaredKind: declaredKind,
-            registerByName: registerByName,
-            compatible: compatible
-        )
-        var allowed: Set<ForyTypeId> = [expected]
-        if baseKind == .structType, compatible {
-            // Be permissive across peers while struct compatibility converges.
-            allowed.insert(.compatibleStruct)
-            allowed.insert(.namedCompatibleStruct)
-            allowed.insert(.structType)
-            allowed.insert(.namedStruct)
-        }
-        return allowed
-    }
-
-    private static func wireTypeNeedsUserTypeID(_ typeID: ForyTypeId) -> Bool {
-        switch typeID {
-        case .enumType, .structType, .ext, .typedUnion:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func buildCompatibleTypeMeta(
-        info: RegisteredTypeInfo,
-        wireTypeID: ForyTypeId,
-        trackRef: Bool
-    ) throws -> TypeMeta {
-        let fields = foryCompatibleTypeMetaFields(trackRef: trackRef)
-        let hasFieldsMeta = !fields.isEmpty
-        if info.registerByName {
-            guard let namespace = info.namespace else {
-                throw ForyError.invalidData("missing namespace metadata for name-registered type")
-            }
-            return try TypeMeta(
-                typeID: wireTypeID.rawValue,
-                userTypeID: nil,
-                namespace: namespace,
-                typeName: info.typeName,
-                registerByName: true,
-                fields: fields,
-                hasFieldsMeta: hasFieldsMeta
-            )
-        }
-
-        guard let userTypeID = info.userTypeID else {
-            throw ForyError.invalidData("missing user type id metadata for id-registered type")
-        }
-        return try TypeMeta(
-            typeID: wireTypeID.rawValue,
-            userTypeID: userTypeID,
-            namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
-            typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
-            registerByName: false,
-            fields: fields,
-            hasFieldsMeta: hasFieldsMeta
-        )
-    }
-
-    private static func validateCompatibleTypeMeta(
-        _ remoteTypeMeta: TypeMeta,
-        localInfo: RegisteredTypeInfo,
-        expectedWireTypes: Set<ForyTypeId>,
-        actualWireTypeID: ForyTypeId
-    ) throws {
-        if remoteTypeMeta.registerByName {
-            guard localInfo.registerByName else {
-                throw ForyError.invalidData("received name-registered compatible metadata for id-registered local type")
-            }
-            guard let localNamespace = localInfo.namespace else {
-                throw ForyError.invalidData("missing local namespace metadata for name-registered type")
-            }
-            if remoteTypeMeta.namespace.value != localNamespace.value {
-                throw ForyError.invalidData(
-                    "namespace mismatch: expected \(localNamespace.value), got \(remoteTypeMeta.namespace.value)"
-                )
-            }
-            if remoteTypeMeta.typeName.value != localInfo.typeName.value {
-                throw ForyError.invalidData(
-                    "type name mismatch: expected \(localInfo.typeName.value), got \(remoteTypeMeta.typeName.value)"
-                )
-            }
-        } else {
-            guard !localInfo.registerByName else {
-                throw ForyError.invalidData("received id-registered compatible metadata for name-registered local type")
-            }
-            guard let remoteUserTypeID = remoteTypeMeta.userTypeID else {
-                throw ForyError.invalidData("missing user type id in compatible type metadata")
-            }
-            guard let localUserTypeID = localInfo.userTypeID else {
-                throw ForyError.invalidData("missing local user type id metadata for id-registered type")
-            }
-            if remoteUserTypeID != localUserTypeID {
-                throw ForyError.typeMismatch(expected: localUserTypeID, actual: remoteUserTypeID)
-            }
-        }
-
-        if let remoteTypeID = remoteTypeMeta.typeID,
-           let remoteWireTypeID = ForyTypeId(rawValue: remoteTypeID),
-           !expectedWireTypes.contains(remoteWireTypeID) {
-            throw ForyError.typeMismatch(expected: actualWireTypeID.rawValue, actual: remoteTypeID)
-        }
-    }
-
-    private static func writeMetaString(
-        context: WriteContext,
-        value: MetaString,
-        encodings: [MetaStringEncoding],
-        encoder: MetaStringEncoder
-    ) throws {
-        let normalized: MetaString
-        if encodings.contains(value.encoding) {
-            normalized = value
-        } else {
-            normalized = try encoder.encode(value.value, allowedEncodings: encodings)
-        }
-
-        guard encodings.contains(normalized.encoding) else {
-            throw ForyError.encodingError("failed to normalize meta string encoding")
-        }
-
-        let bytes = normalized.bytes
-        let assignment = context.metaStringWriteState.assignIndexIfAbsent(for: normalized)
-        if assignment.isNew {
-            context.buffer.writeVarUInt32(UInt32(bytes.count) << 1)
-            if bytes.count > 16 {
-                context.buffer.writeInt64(Int64(bitPattern: javaMetaStringHash(metaString: normalized)))
-            } else if !bytes.isEmpty {
-                context.buffer.writeUInt8(normalized.encoding.rawValue)
-            }
-            context.buffer.writeBytes(bytes)
-        } else {
-            context.buffer.writeVarUInt32(((assignment.index + 1) << 1) | 1)
-        }
-    }
-
-    private static func readMetaString(
-        context: ReadContext,
-        decoder: MetaStringDecoder,
-        encodings: [MetaStringEncoding]
-    ) throws -> MetaString {
-        let header = try context.buffer.readVarUInt32()
-        let length = Int(header >> 1)
-        let isRef = (header & 1) == 1
-        if isRef {
-            let index = length - 1
-            guard let cached = context.metaStringReadState.value(at: index) else {
-                throw ForyError.invalidData("unknown meta string ref index \(index)")
-            }
-            return cached
-        }
-
-        let value: MetaString
-        if length == 0 {
-            value = MetaString.empty(
-                specialChar1: decoder.specialChar1,
-                specialChar2: decoder.specialChar2
-            )
-        } else {
-            let encoding: MetaStringEncoding
-            if length > 16 {
-                let hash = try context.buffer.readInt64()
-                let rawEncoding = UInt8(truncatingIfNeeded: hash & 0xFF)
-                guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
-                    throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
-                }
-                encoding = resolved
-            } else {
-                let rawEncoding = try context.buffer.readUInt8()
-                guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
-                    throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
-                }
-                encoding = resolved
-            }
-            guard encodings.contains(encoding) else {
-                throw ForyError.invalidData("meta string encoding \(encoding) not allowed in this context")
-            }
-            let bytes = try context.buffer.readBytes(count: length)
-            value = try decoder.decode(bytes: bytes, encoding: encoding)
-        }
-        context.metaStringReadState.append(value)
-        return value
-    }
-
-    private static func javaMetaStringHash(metaString: MetaString) -> UInt64 {
-        var hash = Int64(bitPattern: MurmurHash3.x64_128(metaString.bytes, seed: 47).0)
-        if hash != Int64.min {
-            hash = Swift.abs(hash)
-        }
-        var result = UInt64(bitPattern: hash)
-        if result == 0 {
-            result &+= 256
-        }
-        result &= 0xffffffffffffff00
-        result |= UInt64(metaString.encoding.rawValue & 0xFF)
-        return result
-    }
 }

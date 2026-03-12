@@ -117,28 +117,25 @@ public class CollectionSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, List<?> value) {
-      try {
-        final Object[] array = (Object[]) Platform.getObject(value, arrayFieldOffset);
-        fory.writeRef(buffer, array);
-      } catch (Exception e) {
-        throw new RuntimeException(e);
+      if (isJava) {
+        try {
+          final Object[] array = (Object[]) Platform.getObject(value, arrayFieldOffset);
+          fory.writeRef(buffer, array);
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      } else {
+        super.write(buffer, value);
       }
     }
 
     @Override
     public List<?> read(MemoryBuffer buffer) {
-      final Object[] array = (Object[]) fory.readRef(buffer);
-      Preconditions.checkNotNull(array);
-      return Arrays.asList(array);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, List<?> value) {
-      super.write(buffer, value);
-    }
-
-    @Override
-    public List<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        final Object[] array = (Object[]) fory.readRef(buffer);
+        Preconditions.checkNotNull(array);
+        return Arrays.asList(array);
+      }
       return super.read(buffer);
     }
 
@@ -263,7 +260,7 @@ public class CollectionSerializers {
   // For cross-language serialization, if the data is passed from python, the data will be
   // deserialized by `MapSerializers` and `CollectionSerializers`.
   // But if the data is serialized by following collections serializers, we need to ensure the real
-  // type of `xread` is the same as the type when serializing.
+  // type of read result is the same as the type when serializing.
   public static final class EmptyListSerializer extends CollectionSerializer<List<?>> {
 
     public EmptyListSerializer(Fory fory, Class<List<?>> cls) {
@@ -271,22 +268,18 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, List<?> value) {}
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, List<?> value) {
-      // write length
-      buffer.writeVarUint32Small7(0);
+    public void write(MemoryBuffer buffer, List<?> value) {
+      if (!isJava) {
+        // write length
+        buffer.writeVarUint32Small7(0);
+      }
     }
 
     @Override
     public List<?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_LIST;
-    }
-
-    @Override
-    public List<?> xread(MemoryBuffer buffer) {
-      buffer.readVarUint32Small7();
+      if (!isJava) {
+        buffer.readVarUint32Small7();
+      }
       return Collections.EMPTY_LIST;
     }
   }
@@ -364,20 +357,17 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Set<?> value) {}
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Set<?> value) {
-      super.write(buffer, value);
+    public void write(MemoryBuffer buffer, Set<?> value) {
+      if (!isJava) {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Set<?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_SET;
-    }
-
-    @Override
-    public Set<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.EMPTY_SET;
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -389,20 +379,17 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, SortedSet<?> value) {}
+    public void write(MemoryBuffer buffer, SortedSet<?> value) {
+      if (!isJava) {
+        super.write(buffer, value);
+      }
+    }
 
     @Override
     public SortedSet<?> read(MemoryBuffer buffer) {
-      return Collections.emptySortedSet();
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, SortedSet<?> value) {
-      super.write(buffer, value);
-    }
-
-    @Override
-    public SortedSet<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.emptySortedSet();
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -421,21 +408,18 @@ public class CollectionSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, List<?> value) {
-      fory.writeRef(buffer, value.get(0));
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, List<?> value) {
-      super.write(buffer, value);
+      if (isJava) {
+        fory.writeRef(buffer, value.get(0));
+      } else {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public List<?> read(MemoryBuffer buffer) {
-      return Collections.singletonList(fory.readRef(buffer));
-    }
-
-    @Override
-    public List<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.singletonList(fory.readRef(buffer));
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -453,21 +437,18 @@ public class CollectionSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Set<?> value) {
-      fory.writeRef(buffer, value.iterator().next());
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Set<?> value) {
-      super.write(buffer, value);
+      if (isJava) {
+        fory.writeRef(buffer, value.iterator().next());
+      } else {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Set<?> read(MemoryBuffer buffer) {
-      return Collections.singleton(fory.readRef(buffer));
-    }
-
-    @Override
-    public Set<?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.singleton(fory.readRef(buffer));
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -531,7 +512,7 @@ public class CollectionSerializers {
 
     @Override
     public Collection newCollection(MemoryBuffer buffer) {
-      final TypeInfo mapTypeInfo = fory.getClassResolver().readTypeInfo(buffer);
+      final TypeInfo mapTypeInfo = fory.getTypeResolver().readTypeInfo(buffer);
       final MapLikeSerializer mapSerializer = (MapLikeSerializer) mapTypeInfo.getSerializer();
       RefResolver refResolver = fory.getRefResolver();
       // It's possible that elements or nested fields has circular ref to set.
@@ -562,7 +543,7 @@ public class CollectionSerializers {
       Map<?, Boolean> map =
           (Map<?, Boolean>) Platform.getObject(originCollection, MAP_FIELD_OFFSET);
       MapLikeSerializer mapSerializer =
-          (MapLikeSerializer) fory.getClassResolver().getSerializer(map.getClass());
+          (MapLikeSerializer) fory.getTypeResolver().getSerializer(map.getClass());
       Map newMap = mapSerializer.newMap(map);
       return Collections.newSetFromMap(newMap);
     }
@@ -570,9 +551,9 @@ public class CollectionSerializers {
     @Override
     public Collection onCollectionWrite(MemoryBuffer buffer, Set<?> value) {
       final Map<?, Boolean> map = (Map<?, Boolean>) Platform.getObject(value, MAP_FIELD_OFFSET);
-      final TypeInfo typeInfo = fory.getClassResolver().getTypeInfo(map.getClass());
+      final TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(map.getClass());
       MapLikeSerializer mapSerializer = (MapLikeSerializer) typeInfo.getSerializer();
-      fory.getClassResolver().writeTypeInfo(buffer, typeInfo);
+      fory.getTypeResolver().writeTypeInfo(buffer, typeInfo);
       if (mapSerializer.supportCodegenHook) {
         buffer.writeBoolean(true);
         mapSerializer.onMapWrite(buffer, map);
@@ -593,8 +574,8 @@ public class CollectionSerializers {
     public ConcurrentHashMapKeySetViewSerializer(
         Fory fory, Class<ConcurrentHashMap.KeySetView> type) {
       super(fory, type, false);
-      mapTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
-      valueTypeInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+      mapTypeInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
+      valueTypeInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
     }
 
     @Override
@@ -677,8 +658,8 @@ public class CollectionSerializers {
       if (!elemClass.isEnum()) {
         elemClass = elemClass.getEnclosingClass();
       }
-      fory.getClassResolver().writeClassAndUpdateCache(buffer, elemClass);
-      Serializer serializer = fory.getClassResolver().getSerializer(elemClass);
+      ((ClassResolver) fory.getTypeResolver()).writeClassAndUpdateCache(buffer, elemClass);
+      Serializer serializer = fory.getTypeResolver().getSerializer(elemClass);
       buffer.writeVarUint32Small7(object.size());
       for (Object element : object) {
         serializer.write(buffer, element);
@@ -687,9 +668,9 @@ public class CollectionSerializers {
 
     @Override
     public EnumSet read(MemoryBuffer buffer) {
-      Class elemClass = fory.getClassResolver().readTypeInfo(buffer).getCls();
+      Class elemClass = fory.getTypeResolver().readTypeInfo(buffer).getCls();
       EnumSet object = EnumSet.noneOf(elemClass);
-      Serializer elemSerializer = fory.getClassResolver().getSerializer(elemClass);
+      Serializer elemSerializer = fory.getTypeResolver().getSerializer(elemClass);
       int length = buffer.readVarUint32Small7();
       for (int i = 0; i < length; i++) {
         object.add(elemSerializer.read(buffer));
@@ -888,14 +869,14 @@ public class CollectionSerializers {
           !fory.isCrossLanguage(),
           "Fory cross-language default collection serializer should use "
               + CollectionSerializer.class);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
       Class<? extends Serializer> serializerClass =
-          fory.getClassResolver()
+          ((ClassResolver) fory.getTypeResolver())
               .getObjectSerializerClass(
                   cls, sc -> dataSerializer = Serializers.newSerializer(fory, cls, sc));
       dataSerializer = Serializers.newSerializer(fory, cls, serializerClass);
       // No need to set object serializer to this, it will be set in class resolver later.
-      // fory.getClassResolver().setSerializer(cls, this);
+      // fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override

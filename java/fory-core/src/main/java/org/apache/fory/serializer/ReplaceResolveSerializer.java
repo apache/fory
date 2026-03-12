@@ -185,7 +185,7 @@ public class ReplaceResolveSerializer extends Serializer {
     } else if (JavaSerializer.getReadObjectMethod(cls, true) == null
         && JavaSerializer.getWriteObjectMethod(cls, true) == null) {
       serializerClass =
-          fory.getClassResolver()
+          ((ClassResolver) fory.getTypeResolver())
               .getObjectSerializerClass(
                   cls,
                   sc -> methodInfoCache.setObjectSerializer(createDataSerializer(fory, cls, sc)));
@@ -204,9 +204,10 @@ public class ReplaceResolveSerializer extends Serializer {
    */
   private static Serializer createDataSerializer(
       Fory fory, Class<?> cls, Class<? extends Serializer> sc) {
-    Serializer prev = fory.getClassResolver().getSerializer(cls, false);
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+    Serializer prev = classResolver.getSerializer(cls, false);
     Serializer serializer = Serializers.newSerializer(fory, cls, sc);
-    fory.getClassResolver().resetSerializer(cls, prev);
+    classResolver.resetSerializer(cls, prev);
     return serializer;
   }
 
@@ -224,7 +225,7 @@ public class ReplaceResolveSerializer extends Serializer {
       Fory fory, Class type, boolean isFinalField, boolean setSerializer) {
     super(fory, type);
     refResolver = fory.getRefResolver();
-    classResolver = fory.getClassResolver();
+    classResolver = (ClassResolver) fory.getTypeResolver();
     if (setSerializer) {
       // `setSerializer` before `newJDKMethodInfoCache` since it query classinfo from
       // `classResolver`,

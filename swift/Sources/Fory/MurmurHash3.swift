@@ -29,8 +29,8 @@ enum MurmurHash3 {
         let nblocks = length / 16
 
         if nblocks > 0 {
-            for i in 0..<nblocks {
-                let base = i * 16
+            for blockIndex in 0..<nblocks {
+                let base = blockIndex * 16
                 var k1 = readUInt64LE(bytes, offset: base)
                 var k2 = readUInt64LE(bytes, offset: base + 8)
 
@@ -142,17 +142,17 @@ enum MurmurHash3 {
         return value
     }
 
-    private static func rotl64(_ x: UInt64, _ r: UInt64) -> UInt64 {
-        (x << r) | (x >> (64 - r))
+    private static func rotl64(_ value: UInt64, _ rotationBits: UInt64) -> UInt64 {
+        (value << rotationBits) | (value >> (64 - rotationBits))
     }
 
     private static func fmix64(_ value: UInt64) -> UInt64 {
-        var x = value
-        x ^= x >> 33
-        x &*= 0xff51afd7ed558ccd
-        x ^= x >> 33
-        x &*= 0xc4ceb9fe1a85ec53
-        x ^= x >> 33
-        return x
+        var mixed = value
+        mixed ^= mixed >> 33
+        mixed &*= 0xff51afd7ed558ccd
+        mixed ^= mixed >> 33
+        mixed &*= 0xc4ceb9fe1a85ec53
+        mixed ^= mixed >> 33
+        return mixed
     }
 }

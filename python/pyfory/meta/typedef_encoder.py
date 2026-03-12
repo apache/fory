@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from collections import Counter
 
 from pyfory.meta.typedef import (
     FieldInfo,
@@ -38,7 +37,7 @@ from pyfory.meta.typedef import (
 from pyfory.meta.metastring import MetaStringEncoder
 from pyfory._fory import NO_USER_TYPE_ID
 
-from pyfory.buffer import Buffer
+from pyfory.serialization import Buffer
 from pyfory.lib.mmh3 import hash_buffer
 
 
@@ -61,12 +60,6 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
     """
     if include_fields:
         field_infos = build_field_infos(type_resolver, cls)
-        # Check for duplicate field names
-        field_names = [field_info.name for field_info in field_infos]
-        duplicate_field_names = [name for name, count in Counter(field_names).items() if count > 1]
-        if duplicate_field_names:
-            # TODO: handle duplicate field names for inheritance in future
-            raise ValueError(f"Duplicate field names: {duplicate_field_names}")
     else:
         field_infos = []
 
@@ -104,11 +97,10 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
     # Get the encoded binary (only the written portion, not the full buffer)
     binary = buffer.to_bytes(0, buffer.get_writer_index())
 
-    # Compress if beneficial
-    compressed_binary = type_resolver.get_meta_compressor().compress(binary)
-    is_compressed = len(compressed_binary) < len(binary)
-    if is_compressed:
-        binary = compressed_binary
+    # Temporary xlang behavior: always write TypeDef metadata uncompressed.
+    # Some runtimes still do not support TypeMeta decompression, so keep the
+    # xlang wire payload uncompressed until all xlang implementations support it.
+    is_compressed = False
     # Prepend header
     binary = prepend_header(binary, is_compressed, len(field_infos) > 0)
     # Extract namespace and typename

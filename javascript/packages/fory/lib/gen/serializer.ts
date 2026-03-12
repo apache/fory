@@ -47,6 +47,7 @@ export interface SerializerGenerator {
   readRef(assignStmt: (v: string) => string): string;
   readRefWithoutTypeInfo(assignStmt: (v: string) => string): string;
   readNoRef(assignStmt: (v: string) => string, refState: string): string;
+  readWithDepth(assignStmt: (v: string) => string, refState: string): string;
   readTypeInfo(): string;
   read(assignStmt: (v: string) => string, refState: string): string;
   readEmbed(): any;
@@ -186,6 +187,17 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
   abstract read(assignStmt: (v: string) => string, refState: string): string;
 
+  readWithDepth(assignStmt: (v: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
+    return `
+      fory.incReadDepth();
+      let ${result};
+      ${this.read(v => `${result} = ${v}`, refState)};
+      fory.decReadDepth();
+      ${assignStmt(result)};
+    `;
+  }
+
   readTypeInfo(): string {
     const typeId = this.getTypeId();
     const readUserTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
@@ -200,26 +212,29 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     return `
       ${this.readTypeInfo()}
-      ${this.read(assignStmt, refState)};
+      ${this.readWithDepth(assignStmt, refState)}
     `;
   }
 
   readRefWithoutTypeInfo(assignStmt: (v: string) => string): string {
     const refFlag = this.scope.uniqueName("refFlag");
+    const result = this.scope.uniqueName("result");
     return `
         const ${refFlag} = ${this.builder.reader.readInt8()};
+        let ${result};
         switch (${refFlag}) {
             case ${RefFlags.NotNullValueFlag}:
             case ${RefFlags.RefValueFlag}:
-                ${this.read(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                ${this.readWithDepth(v => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
-                ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()))}
+                ${result} = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())};
                 break;
             case ${RefFlags.NullFlag}:
-                ${assignStmt("null")}
+                ${result} = null;
                 break;
         }
+        ${assignStmt(result)};
     `;
   }
 

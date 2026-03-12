@@ -41,7 +41,7 @@ public class DurationSerializer(fory: Fory, needToWriteRef: Boolean) :
   ) : this(fory, fory.config.isTimeRefIgnored)
 
   private val durationUnitSerializer: Serializer<DurationUnit> by lazy {
-    fory.classResolver.getSerializer(DurationUnit::class.java)
+    fory.typeResolver.getSerializer(DurationUnit::class.java)
   }
 
   override fun write(buffer: MemoryBuffer, value: Duration) {

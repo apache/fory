@@ -27,7 +27,7 @@ public enum MetaStringEncoding: UInt8, CaseIterable, Sendable {
     case allToLowerSpecial = 4
 }
 
-public struct MetaString: Equatable, Hashable, Sendable {
+public final class MetaString: Equatable, Hashable, @unchecked Sendable {
     public let value: String
     public let encoding: MetaStringEncoding
     public let specialChar1: Character
@@ -57,13 +57,34 @@ public struct MetaString: Equatable, Hashable, Sendable {
     }
 
     public static func empty(specialChar1: Character, specialChar2: Character) -> MetaString {
-        try! MetaString(
+        guard let emptyMetaString = try? MetaString(
             value: "",
             encoding: .utf8,
             specialChar1: specialChar1,
             specialChar2: specialChar2,
             bytes: []
-        )
+        ) else {
+            preconditionFailure("failed to create empty MetaString")
+        }
+        return emptyMetaString
+    }
+
+    public static func == (lhs: MetaString, rhs: MetaString) -> Bool {
+        lhs.value == rhs.value &&
+            lhs.encoding == rhs.encoding &&
+            lhs.specialChar1 == rhs.specialChar1 &&
+            lhs.specialChar2 == rhs.specialChar2 &&
+            lhs.bytes == rhs.bytes &&
+            lhs.stripLastChar == rhs.stripLastChar
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(value)
+        hasher.combine(encoding)
+        hasher.combine(specialChar1)
+        hasher.combine(specialChar2)
+        hasher.combine(bytes)
+        hasher.combine(stripLastChar)
     }
 }
 
@@ -176,11 +197,11 @@ public struct MetaStringEncoder: Sendable {
         var canLowerUpperDigitSpecial = true
 
         for scalar in input.unicodeScalars {
-            let c = Character(scalar)
+            let character = Character(scalar)
             if canLowerSpecial {
                 let isValid =
                     (scalar.value >= 97 && scalar.value <= 122) ||
-                    c == "." || c == "_" || c == "$" || c == "|"
+                    character == "." || character == "_" || character == "$" || character == "|"
                 if !isValid {
                     canLowerSpecial = false
                 }
@@ -189,7 +210,7 @@ public struct MetaStringEncoder: Sendable {
                 let isLower = scalar.value >= 97 && scalar.value <= 122
                 let isUpper = scalar.value >= 65 && scalar.value <= 90
                 let isDigit = scalar.value >= 48 && scalar.value <= 57
-                let isSpecial = c == specialChar1 || c == specialChar2
+                let isSpecial = character == specialChar1 || character == specialChar2
                 if !(isLower || isUpper || isDigit || isSpecial) {
                     canLowerUpperDigitSpecial = false
                 }
@@ -211,8 +232,7 @@ public struct MetaStringEncoder: Sendable {
             }
             if upperCount == 1,
                input.first?.isUppercase == true,
-               allow(.firstToLowerSpecial)
-            {
+               allow(.firstToLowerSpecial) {
                 return .firstToLowerSpecial
             }
             if ((input.count + upperCount) * 5) < (input.count * 6), allow(.allToLowerSpecial) {
@@ -236,10 +256,10 @@ public struct MetaStringEncoder: Sendable {
         var bytes = Array(repeating: UInt8(0), count: byteLength)
         var currentBit = 1
 
-        for c in chars {
-            let value = try mapper(c)
-            for i in stride(from: bitsPerChar - 1, through: 0, by: -1) {
-                if ((value >> UInt8(i)) & 0x01) != 0 {
+        for character in chars {
+            let value = try mapper(character)
+            for bitOffset in stride(from: bitsPerChar - 1, through: 0, by: -1) {
+                if ((value >> UInt8(bitOffset)) & 0x01) != 0 {
                     let bytePos = currentBit / 8
                     let bitPos = currentBit % 8
                     bytes[bytePos] |= UInt8(1 << (7 - bitPos))
@@ -254,14 +274,14 @@ public struct MetaStringEncoder: Sendable {
         return bytes
     }
 
-    private func mapLowerSpecial(_ c: Character) throws -> UInt8 {
-        guard let scalar = c.unicodeScalars.first, c.unicodeScalars.count == 1 else {
+    private func mapLowerSpecial(_ character: Character) throws -> UInt8 {
+        guard let scalar = character.unicodeScalars.first, character.unicodeScalars.count == 1 else {
             throw ForyError.encodingError("unsupported character in LOWER_SPECIAL")
         }
         if scalar.value >= 97 && scalar.value <= 122 {
             return UInt8(scalar.value - 97)
         }
-        switch c {
+        switch character {
         case ".": return 26
         case "_": return 27
         case "$": return 28
@@ -271,8 +291,8 @@ public struct MetaStringEncoder: Sendable {
         }
     }
 
-    private func mapLowerUpperDigitSpecial(_ c: Character) throws -> UInt8 {
-        guard let scalar = c.unicodeScalars.first, c.unicodeScalars.count == 1 else {
+    private func mapLowerUpperDigitSpecial(_ character: Character) throws -> UInt8 {
+        guard let scalar = character.unicodeScalars.first, character.unicodeScalars.count == 1 else {
             throw ForyError.encodingError("unsupported character in LOWER_UPPER_DIGIT_SPECIAL")
         }
         if scalar.value >= 97 && scalar.value <= 122 {
@@ -284,10 +304,10 @@ public struct MetaStringEncoder: Sendable {
         if scalar.value >= 48 && scalar.value <= 57 {
             return UInt8(52 + scalar.value - 48)
         }
-        if c == specialChar1 {
+        if character == specialChar1 {
             return 62
         }
-        if c == specialChar2 {
+        if character == specialChar2 {
             return 63
         }
         throw ForyError.encodingError("unsupported character in LOWER_UPPER_DIGIT_SPECIAL")
@@ -304,12 +324,12 @@ public struct MetaStringEncoder: Sendable {
     private func escapeAllUpper(_ input: String) -> String {
         var out = String()
         out.reserveCapacity(input.count * 2)
-        for c in input {
-            if c.isUppercase {
+        for character in input {
+            if character.isUppercase {
                 out.append("|")
-                out.append(String(c).lowercased())
+                out.append(String(character).lowercased())
             } else {
-                out.append(c)
+                out.append(character)
             }
         }
         return out
@@ -340,7 +360,10 @@ public struct MetaStringDecoder: Sendable {
         let value: String
         switch encoding {
         case .utf8:
-            value = String(decoding: bytes, as: UTF8.self)
+            guard let decoded = String(bytes: bytes, encoding: .utf8) else {
+                throw ForyError.encodingError("invalid UTF-8 meta string payload")
+            }
+            value = decoded
         case .lowerSpecial:
             value = try decodeGeneric(bytes: bytes, bitsPerChar: 5, mapper: unmapLowerSpecial)
         case .lowerUpperDigitSpecial:
@@ -431,14 +454,132 @@ public struct MetaStringDecoder: Sendable {
     private func unescapeAllUpper(_ input: String) -> String {
         var out = String()
         out.reserveCapacity(input.count)
-        var it = input.makeIterator()
-        while let c = it.next() {
-            if c == "|", let next = it.next() {
-                out.append(String(next).uppercased())
+        var iterator = input.makeIterator()
+        while let currentCharacter = iterator.next() {
+            if currentCharacter == "|", let nextCharacter = iterator.next() {
+                out.append(String(nextCharacter).uppercased())
             } else {
-                out.append(c)
+                out.append(currentCharacter)
             }
         }
         return out
     }
+}
+
+@inline(__always)
+func writeMetaString(
+    context: WriteContext,
+    value: MetaString,
+    encodings: [MetaStringEncoding],
+    encoder: MetaStringEncoder
+) throws {
+    let normalized: MetaString
+    if encodings.contains(value.encoding) {
+        normalized = value
+    } else {
+        normalized = try encoder.encode(value.value, allowedEncodings: encodings)
+    }
+
+    guard encodings.contains(normalized.encoding) else {
+        throw ForyError.encodingError("failed to normalize meta string encoding")
+    }
+
+    context.markMetaStringWriteStateUsed()
+    let bytes = normalized.bytes
+    let assignment = context.metaStringWriteState.assignIndexIfAbsent(for: normalized)
+    if assignment.isNew {
+        context.buffer.writeVarUInt32(UInt32(bytes.count) << 1)
+        if bytes.count > 16 {
+            context.buffer.writeInt64(Int64(bitPattern: metaStringHash(normalized)))
+        } else if !bytes.isEmpty {
+            context.buffer.writeUInt8(normalized.encoding.rawValue)
+        }
+        context.buffer.writeBytes(bytes)
+    } else {
+        context.buffer.writeVarUInt32(((assignment.index + 1) << 1) | 1)
+    }
+}
+
+@inline(__always)
+func readMetaString(
+    context: ReadContext,
+    decoder: MetaStringDecoder,
+    encodings: [MetaStringEncoding]
+) throws -> MetaString {
+    let header = try context.buffer.readVarUInt32()
+    let length = Int(header >> 1)
+    let isRef = (header & 1) == 1
+    if isRef {
+        let index = length - 1
+        guard let cached = context.getReadMetaString(at: index) else {
+            throw ForyError.invalidData("unknown meta string ref index \(index)")
+        }
+        return cached
+    }
+
+    let value: MetaString
+    if length == 0 {
+        value = MetaString.empty(
+            specialChar1: decoder.specialChar1,
+            specialChar2: decoder.specialChar2
+        )
+    } else {
+        let encoding: MetaStringEncoding
+        if length > 16 {
+            let hash = try context.buffer.readInt64()
+            let rawEncoding = UInt8(truncatingIfNeeded: hash & 0xFF)
+            guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
+                throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
+            }
+            encoding = resolved
+        } else {
+            let rawEncoding = try context.buffer.readUInt8()
+            guard let resolved = MetaStringEncoding(rawValue: rawEncoding) else {
+                throw ForyError.invalidData("invalid meta string encoding \(rawEncoding)")
+            }
+            encoding = resolved
+        }
+        guard encodings.contains(encoding) else {
+            throw ForyError.invalidData("meta string encoding \(encoding) not allowed in this context")
+        }
+        let bytes = try context.buffer.readBytes(count: length)
+        value = try decoder.decode(bytes: bytes, encoding: encoding)
+    }
+    context.appendReadMetaString(value)
+    return value
+}
+
+@inline(__always)
+func readMetaString(
+    buffer: ByteBuffer,
+    decoder: MetaStringDecoder,
+    encodings: [MetaStringEncoding]
+) throws -> MetaString {
+    let header = try buffer.readUInt8()
+    let encodingIndex = Int(header & 0b11)
+    guard encodingIndex < encodings.count else {
+        throw ForyError.invalidData("invalid meta string encoding index")
+    }
+
+    var length = Int(header >> 2)
+    if length >= 0b11_1111 {
+        length = 0b11_1111 + Int(try buffer.readVarUInt32())
+    }
+    let bytes = try buffer.readBytes(count: length)
+    return try decoder.decode(bytes: bytes, encoding: encodings[encodingIndex])
+}
+
+@inline(__always)
+func metaStringHash(_ metaString: MetaString) -> UInt64 {
+    var hash = Int64(bitPattern: MurmurHash3.x64_128(metaString.bytes, seed: 47).0)
+    if hash != Int64.min {
+        hash = Swift.abs(hash)
+    }
+    var result = UInt64(bitPattern: hash)
+    if result == 0 {
+        result &+= 256
+    }
+    result &= 0xffffffffffffff00
+    result |= UInt64(metaString.encoding.rawValue & 0xFF)
+    return result
 }

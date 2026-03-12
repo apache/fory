@@ -321,7 +321,7 @@ def test_cross_language_serializer(data_file_path):
         assert _deserialize_and_append(fory, buffer, objects) == "str"
         day = datetime.date(2021, 11, 23)
         assert _deserialize_and_append(fory, buffer, objects) == day
-        instant = datetime.datetime.fromtimestamp(100)
+        instant = datetime.datetime.fromtimestamp(100, tz=datetime.timezone.utc)
         assert _deserialize_and_append(fory, buffer, objects) == instant
         list_ = ["a", 1, -1.0, instant, day]
         assert _deserialize_and_append(fory, buffer, objects) == list_

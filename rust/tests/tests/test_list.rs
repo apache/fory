@@ -138,3 +138,55 @@ fn test_struct_with_collections() {
     let obj: CollectionStruct = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(data, obj);
 }
+
+#[test]
+fn test_vec_float16_basic() {
+    use fory_core::float16::float16;
+    let fory = fory_core::fory::Fory::default();
+    let vec: Vec<float16> = vec![
+        float16::from_f32(1.0),
+        float16::from_f32(2.5),
+        float16::from_f32(-3.0),
+        float16::ZERO,
+    ];
+    let bin = fory.serialize(&vec).unwrap();
+    let obj: Vec<float16> = fory.deserialize(&bin).expect("deserialize float16 vec");
+    assert_eq!(vec.len(), obj.len());
+    for (a, b) in vec.iter().zip(obj.iter()) {
+        assert_eq!(a.to_bits(), b.to_bits());
+    }
+}
+
+#[test]
+fn test_vec_float16_special_values() {
+    use fory_core::float16::float16;
+    let fory = fory_core::fory::Fory::default();
+    let vec: Vec<float16> = vec![
+        float16::INFINITY,
+        float16::NEG_INFINITY,
+        float16::NAN,
+        float16::MAX,
+        float16::MIN_POSITIVE,
+        float16::MIN_POSITIVE_SUBNORMAL,
+    ];
+    let bin = fory.serialize(&vec).unwrap();
+    let obj: Vec<float16> = fory.deserialize(&bin).expect("deserialize float16 special");
+    assert_eq!(vec.len(), obj.len());
+    assert!(obj[0].is_infinite() && obj[0].is_sign_positive());
+    assert!(obj[1].is_infinite() && obj[1].is_sign_negative());
+    assert!(obj[2].is_nan());
+    assert_eq!(obj[3].to_bits(), float16::MAX.to_bits());
+    assert!(obj[5].is_subnormal());
+}
+
+#[test]
+fn test_vec_float16_empty() {
+    use fory_core::float16::float16;
+    let fory = fory_core::fory::Fory::default();
+    let vec: Vec<float16> = vec![];
+    let bin = fory.serialize(&vec).unwrap();
+    let obj: Vec<float16> = fory
+        .deserialize(&bin)
+        .expect("deserialize empty float16 vec");
+    assert_eq!(obj.len(), 0);
+}

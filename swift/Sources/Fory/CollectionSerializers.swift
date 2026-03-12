@@ -34,8 +34,8 @@ private enum MapHeader {
     static let declaredValueType: UInt8 = 0b0010_0000
 }
 
-private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> ForyTypeId? {
-    if Element.self == UInt8.self { return .binary }
+private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> TypeId? {
+    if Element.self == UInt8.self { return .uint8Array }
     if Element.self == Bool.self { return .boolArray }
     if Element.self == Int8.self { return .int8Array }
     if Element.self == Int16.self { return .int16Array }
@@ -44,21 +44,44 @@ private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> F
     if Element.self == UInt16.self { return .uint16Array }
     if Element.self == UInt32.self { return .uint32Array }
     if Element.self == UInt64.self { return .uint64Array }
+    if Element.self == Float16.self { return .float16Array }
+    if Element.self == BFloat16.self { return .bfloat16Array }
     if Element.self == Float.self { return .float32Array }
     if Element.self == Double.self { return .float64Array }
     return nil
 }
 
+private let hostIsLittleEndian = Int(littleEndian: 1) == 1
+
+@inline(__always)
+private func uncheckedArrayCast<From, To>(_ array: [From], to _: To.Type) -> [To] {
+    assert(From.self == To.self)
+    return unsafeBitCast(array, to: [To].self)
+}
+
+@inline(__always)
+private func readArrayUninitialized<Element>(
+    count: Int,
+    _ initializer: (UnsafeMutablePointer<Element>) throws -> Void
+) rethrows -> [Element] {
+    try [Element](unsafeUninitializedCapacity: count) { destination, initializedCount in
+        if count > 0 {
+            try initializer(destination.baseAddress!)
+        }
+        initializedCount = count
+    }
+}
+
 private func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
     if Element.self == UInt8.self {
-        let bytes = value as! [UInt8]
+        let bytes = uncheckedArrayCast(value, to: UInt8.self)
         context.buffer.writeVarUInt32(UInt32(bytes.count))
         context.buffer.writeBytes(bytes)
         return
     }
 
     if Element.self == Bool.self {
-        let bools = value as! [Bool]
+        let bools = uncheckedArrayCast(value, to: Bool.self)
         context.buffer.writeVarUInt32(UInt32(bools.count))
         for item in bools {
             context.buffer.writeUInt8(item ? 1 : 0)
@@ -67,187 +90,352 @@ private func writePrimitiveArray<Element: Serializer>(_ value: [Element], contex
     }
 
     if Element.self == Int8.self {
-        let values = value as! [Int8]
+        let values = uncheckedArrayCast(value, to: Int8.self)
         context.buffer.writeVarUInt32(UInt32(values.count))
-        for item in values {
-            context.buffer.writeInt8(item)
+        values.withUnsafeBytes { rawBytes in
+            context.buffer.writeBytes(rawBytes)
         }
         return
     }
 
     if Element.self == Int16.self {
-        let values = value as! [Int16]
+        let values = uncheckedArrayCast(value, to: Int16.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 2))
-        for item in values {
-            context.buffer.writeInt16(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeInt16(item)
+            }
         }
         return
     }
 
     if Element.self == Int32.self {
-        let values = value as! [Int32]
+        let values = uncheckedArrayCast(value, to: Int32.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 4))
-        for item in values {
-            context.buffer.writeInt32(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeInt32(item)
+            }
         }
         return
     }
 
     if Element.self == UInt32.self {
-        let values = value as! [UInt32]
+        let values = uncheckedArrayCast(value, to: UInt32.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 4))
-        for item in values {
-            context.buffer.writeUInt32(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeUInt32(item)
+            }
         }
         return
     }
 
     if Element.self == Int64.self {
-        let values = value as! [Int64]
+        let values = uncheckedArrayCast(value, to: Int64.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 8))
-        for item in values {
-            context.buffer.writeInt64(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeInt64(item)
+            }
         }
         return
     }
 
     if Element.self == UInt64.self {
-        let values = value as! [UInt64]
+        let values = uncheckedArrayCast(value, to: UInt64.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 8))
-        for item in values {
-            context.buffer.writeUInt64(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeUInt64(item)
+            }
         }
         return
     }
 
     if Element.self == UInt16.self {
-        let values = value as! [UInt16]
+        let values = uncheckedArrayCast(value, to: UInt16.self)
+        context.buffer.writeVarUInt32(UInt32(values.count * 2))
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeUInt16(item)
+            }
+        }
+        return
+    }
+
+    if Element.self == Float16.self {
+        let values = uncheckedArrayCast(value, to: Float16.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 2))
         for item in values {
-            context.buffer.writeUInt16(item)
+            context.buffer.writeUInt16(item.bitPattern)
+        }
+        return
+    }
+
+    if Element.self == BFloat16.self {
+        let values = uncheckedArrayCast(value, to: BFloat16.self)
+        context.buffer.writeVarUInt32(UInt32(values.count * 2))
+        for item in values {
+            context.buffer.writeUInt16(item.rawValue)
         }
         return
     }
 
     if Element.self == Float.self {
-        let values = value as! [Float]
+        let values = uncheckedArrayCast(value, to: Float.self)
         context.buffer.writeVarUInt32(UInt32(values.count * 4))
-        for item in values {
-            context.buffer.writeFloat32(item)
+        if hostIsLittleEndian {
+            values.withUnsafeBytes { rawBytes in
+                context.buffer.writeBytes(rawBytes)
+            }
+        } else {
+            for item in values {
+                context.buffer.writeFloat32(item)
+            }
         }
         return
     }
 
-    let values = value as! [Double]
+    let values = uncheckedArrayCast(value, to: Double.self)
     context.buffer.writeVarUInt32(UInt32(values.count * 8))
-    for item in values {
-        context.buffer.writeFloat64(item)
+    if hostIsLittleEndian {
+        values.withUnsafeBytes { rawBytes in
+            context.buffer.writeBytes(rawBytes)
+        }
+    } else {
+        for item in values {
+            context.buffer.writeFloat64(item)
+        }
     }
 }
 
 private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
     let payloadSize = Int(try context.buffer.readVarUInt32())
+    try context.ensureRemainingBytes(payloadSize, label: "primitive_array_payload")
 
     if Element.self == UInt8.self {
+        try context.ensureCollectionLength(payloadSize, label: "uint8_array")
         let bytes = try context.buffer.readBytes(count: payloadSize)
-        return bytes as! [Element]
+        return uncheckedArrayCast(bytes, to: Element.self)
     }
 
     if Element.self == Bool.self {
-        var out: [Bool] = []
-        out.reserveCapacity(payloadSize)
-        for _ in 0..<payloadSize {
-            out.append(try context.buffer.readUInt8() != 0)
+        try context.ensureCollectionLength(payloadSize, label: "bool_array")
+        let out = try readArrayUninitialized(count: payloadSize) { destination in
+            for index in 0..<payloadSize {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt8() != 0)
+            }
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int8.self {
-        var out: [Int8] = []
-        out.reserveCapacity(payloadSize)
-        for _ in 0..<payloadSize {
-            out.append(try context.buffer.readInt8())
+        try context.ensureCollectionLength(payloadSize, label: "int8_array")
+        var out = Array(repeating: Int8(0), count: payloadSize)
+        try out.withUnsafeMutableBytes { rawBytes in
+            try context.buffer.readBytes(into: rawBytes)
         }
-        return out as! [Element]
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int16.self {
         if payloadSize % 2 != 0 { throw ForyError.invalidData("int16 array payload size mismatch") }
-        var out: [Int16] = []
-        out.reserveCapacity(payloadSize / 2)
-        for _ in 0..<(payloadSize / 2) {
-            out.append(try context.buffer.readInt16())
+        let count = payloadSize / 2
+        try context.ensureCollectionLength(count, label: "int16_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: Int16(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readInt16())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int32.self {
         if payloadSize % 4 != 0 { throw ForyError.invalidData("int32 array payload size mismatch") }
-        var out: [Int32] = []
-        out.reserveCapacity(payloadSize / 4)
-        for _ in 0..<(payloadSize / 4) {
-            out.append(try context.buffer.readInt32())
+        let count = payloadSize / 4
+        try context.ensureCollectionLength(count, label: "int32_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: Int32(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readInt32())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == UInt32.self {
         if payloadSize % 4 != 0 { throw ForyError.invalidData("uint32 array payload size mismatch") }
-        var out: [UInt32] = []
-        out.reserveCapacity(payloadSize / 4)
-        for _ in 0..<(payloadSize / 4) {
-            out.append(try context.buffer.readUInt32())
+        let count = payloadSize / 4
+        try context.ensureCollectionLength(count, label: "uint32_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: UInt32(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt32())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == Int64.self {
         if payloadSize % 8 != 0 { throw ForyError.invalidData("int64 array payload size mismatch") }
-        var out: [Int64] = []
-        out.reserveCapacity(payloadSize / 8)
-        for _ in 0..<(payloadSize / 8) {
-            out.append(try context.buffer.readInt64())
+        let count = payloadSize / 8
+        try context.ensureCollectionLength(count, label: "int64_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: Int64(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readInt64())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == UInt64.self {
         if payloadSize % 8 != 0 { throw ForyError.invalidData("uint64 array payload size mismatch") }
-        var out: [UInt64] = []
-        out.reserveCapacity(payloadSize / 8)
-        for _ in 0..<(payloadSize / 8) {
-            out.append(try context.buffer.readUInt64())
+        let count = payloadSize / 8
+        try context.ensureCollectionLength(count, label: "uint64_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: UInt64(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt64())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if Element.self == UInt16.self {
         if payloadSize % 2 != 0 { throw ForyError.invalidData("uint16 array payload size mismatch") }
-        var out: [UInt16] = []
-        out.reserveCapacity(payloadSize / 2)
-        for _ in 0..<(payloadSize / 2) {
-            out.append(try context.buffer.readUInt16())
+        let count = payloadSize / 2
+        try context.ensureCollectionLength(count, label: "uint16_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: UInt16(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readUInt16())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
+    }
+
+    if Element.self == Float16.self {
+        if payloadSize % 2 != 0 { throw ForyError.invalidData("float16 array payload size mismatch") }
+        let count = payloadSize / 2
+        try context.ensureCollectionLength(count, label: "float16_array")
+        let values = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: Float16(bitPattern: try context.buffer.readUInt16()))
+            }
+        }
+        return uncheckedArrayCast(values, to: Element.self)
+    }
+
+    if Element.self == BFloat16.self {
+        if payloadSize % 2 != 0 { throw ForyError.invalidData("bfloat16 array payload size mismatch") }
+        let count = payloadSize / 2
+        try context.ensureCollectionLength(count, label: "bfloat16_array")
+        let values = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: BFloat16(rawValue: try context.buffer.readUInt16()))
+            }
+        }
+        return uncheckedArrayCast(values, to: Element.self)
     }
 
     if Element.self == Float.self {
         if payloadSize % 4 != 0 { throw ForyError.invalidData("float32 array payload size mismatch") }
-        var out: [Float] = []
-        out.reserveCapacity(payloadSize / 4)
-        for _ in 0..<(payloadSize / 4) {
-            out.append(try context.buffer.readFloat32())
+        let count = payloadSize / 4
+        try context.ensureCollectionLength(count, label: "float32_array")
+        if hostIsLittleEndian {
+            var out = Array(repeating: Float(0), count: count)
+            try out.withUnsafeMutableBytes { rawBytes in
+                try context.buffer.readBytes(into: rawBytes)
+            }
+            return uncheckedArrayCast(out, to: Element.self)
         }
-        return out as! [Element]
+        let out = try readArrayUninitialized(count: count) { destination in
+            for index in 0..<count {
+                destination.advanced(by: index).initialize(to: try context.buffer.readFloat32())
+            }
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
 
     if payloadSize % 8 != 0 { throw ForyError.invalidData("float64 array payload size mismatch") }
-    var out: [Double] = []
-    out.reserveCapacity(payloadSize / 8)
-    for _ in 0..<(payloadSize / 8) {
-        out.append(try context.buffer.readFloat64())
+    let count = payloadSize / 8
+    try context.ensureCollectionLength(count, label: "float64_array")
+    if hostIsLittleEndian {
+        var out = Array(repeating: Double(0), count: count)
+        try out.withUnsafeMutableBytes { rawBytes in
+            try context.buffer.readBytes(into: rawBytes)
+        }
+        return uncheckedArrayCast(out, to: Element.self)
     }
-    return out as! [Element]
+    let out = try readArrayUninitialized(count: count) { destination in
+        for index in 0..<count {
+            destination.advanced(by: index).initialize(to: try context.buffer.readFloat64())
+        }
+    }
+    return uncheckedArrayCast(out, to: Element.self)
 }
 
 extension Array: Serializer where Element: Serializer {
@@ -255,8 +443,37 @@ extension Array: Serializer where Element: Serializer {
         []
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
+        // Primitive Swift arrays must use ARRAY ids in protocol, not LIST.
         primitiveArrayTypeID(for: Element.self) ?? .list
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        if Element.self == UInt8.self, context.compatible {
+            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.binary.rawValue))
+            return
+        }
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        let rawTypeID = try context.buffer.readVarUInt32()
+        guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
+            throw ForyError.invalidData("unknown type id \(rawTypeID)")
+        }
+
+        if Element.self == UInt8.self {
+            if actualTypeID == .uint8Array || actualTypeID == .binary {
+                return nil
+            }
+            throw ForyError.typeMismatch(expected: TypeId.uint8Array.rawValue, actual: rawTypeID)
+        }
+
+        let expectedTypeID = staticTypeId
+        if actualTypeID != expectedTypeID {
+            throw ForyError.typeMismatch(expected: expectedTypeID.rawValue, actual: rawTypeID)
+        }
+        return nil
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -265,14 +482,15 @@ extension Array: Serializer where Element: Serializer {
             return
         }
 
-        context.buffer.writeVarUInt32(UInt32(self.count))
+        let buffer = context.buffer
+        buffer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
             return
         }
 
         let hasNull = Element.isNullableType && self.contains(where: { $0.foryIsNone })
-        let trackRef = context.trackRef && Element.isReferenceTrackableType
-        let declaredElementType = hasGenerics && !ForyTypeId.needsTypeInfoForField(Element.staticTypeId)
+        let trackRef = context.trackRef && Element.isRefType
+        let declaredElementType = hasGenerics && !TypeId.needsTypeInfoForField(Element.staticTypeId)
         let dynamicElementType = Element.staticTypeId == .unknown
 
         var header: UInt8 = dynamicElementType ? 0 : CollectionHeader.sameType
@@ -286,9 +504,9 @@ extension Array: Serializer where Element: Serializer {
             header |= CollectionHeader.declaredElementType
         }
 
-        context.buffer.writeUInt8(header)
+        buffer.writeUInt8(header)
         if !dynamicElementType && !declaredElementType {
-            try Element.foryWriteTypeInfo(context)
+            try Element.foryWriteStaticTypeInfo(context)
         }
 
         if dynamicElementType {
@@ -313,9 +531,9 @@ extension Array: Serializer where Element: Serializer {
         } else if hasNull {
             for element in self {
                 if element.foryIsNone {
-                    context.buffer.writeInt8(RefFlag.null.rawValue)
+                    buffer.writeInt8(RefFlag.null.rawValue)
                 } else {
-                    context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
+                    buffer.writeInt8(RefFlag.notNullValue.rawValue)
                     try element.foryWriteData(context, hasGenerics: hasGenerics)
                 }
             }
@@ -331,134 +549,129 @@ extension Array: Serializer where Element: Serializer {
             return try readPrimitiveArray(context)
         }
 
-        let length = Int(try context.buffer.readVarUInt32())
+        let buffer = context.buffer
+        let length = Int(try buffer.readVarUInt32())
+        try context.ensureCollectionLength(length, label: "array")
         if length == 0 {
             return []
         }
 
-        let header = try context.buffer.readUInt8()
+        let header = try buffer.readUInt8()
         let trackRef = (header & CollectionHeader.trackingRef) != 0
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
-        let canonicalizeElements = context.trackRef && !trackRef && Element.isReferenceTrackableType
-
         if !sameType {
-            var values: [Element] = []
-            values.reserveCapacity(length)
-
             if trackRef {
-                for _ in 0..<length {
-                    values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: true))
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        destination.advanced(by: index).initialize(
+                            to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: true)
+                        )
+                    }
                 }
-                return values
             }
 
             if hasNull {
-                for _ in 0..<length {
-                    let refFlag = try context.buffer.readInt8()
-                    if refFlag == RefFlag.null.rawValue {
-                        values.append(Element.foryDefault())
-                    } else if refFlag == RefFlag.notNullValue.rawValue {
-                        if canonicalizeElements {
-                            let start = context.buffer.getCursor()
-                            let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                            let end = context.buffer.getCursor()
-                            values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        let refFlag = try buffer.readInt8()
+                        if refFlag == RefFlag.null.rawValue {
+                            destination.advanced(by: index).initialize(to: Element.foryDefault())
+                        } else if refFlag == RefFlag.notNullValue.rawValue {
+                            destination.advanced(by: index).initialize(
+                                to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                            )
                         } else {
-                            values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                            throw ForyError.refError("invalid nullability flag \(refFlag)")
                         }
-                    } else {
-                        throw ForyError.refError("invalid nullability flag \(refFlag)")
-                    }
-                }
-            } else {
-                for _ in 0..<length {
-                    if canonicalizeElements {
-                        let start = context.buffer.getCursor()
-                        let value = try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                        let end = context.buffer.getCursor()
-                        values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
-                    } else {
-                        values.append(try Element.foryRead(context, refMode: .none, readTypeInfo: true))
                     }
                 }
             }
-            return values
-        }
 
-        if !declared {
-            try Element.foryReadTypeInfo(context)
-        }
-
-        var values: [Element] = []
-        values.reserveCapacity(length)
-
-        if trackRef {
-            for _ in 0..<length {
-                values.append(try Element.foryRead(context, refMode: .tracking, readTypeInfo: false))
+            return try readArrayUninitialized(count: length) { destination in
+                for index in 0..<length {
+                    destination.advanced(by: index).initialize(
+                        to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                    )
+                }
             }
-            if !declared {
-                context.clearDynamicTypeInfo(for: Element.self)
-            }
-            return values
         }
 
-        if hasNull {
-            for _ in 0..<length {
-                let refFlag = try context.buffer.readInt8()
-                if refFlag == RefFlag.null.rawValue {
-                    values.append(Element.foryDefault())
-                } else {
-                    if canonicalizeElements {
-                        let start = context.buffer.getCursor()
-                        let value = try Element.foryReadData(context)
-                        let end = context.buffer.getCursor()
-                        values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
-                    } else {
-                        values.append(try Element.foryReadData(context))
+        let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
+        return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
+            if trackRef {
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        destination.advanced(by: index).initialize(
+                            to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: false)
+                        )
                     }
                 }
             }
-        } else {
-            for _ in 0..<length {
-                if canonicalizeElements {
-                    let start = context.buffer.getCursor()
-                    let value = try Element.foryReadData(context)
-                    let end = context.buffer.getCursor()
-                    values.append(context.canonicalizeNonTrackingReference(value, start: start, end: end))
-                } else {
-                    values.append(try Element.foryReadData(context))
+
+            if hasNull {
+                return try readArrayUninitialized(count: length) { destination in
+                    for index in 0..<length {
+                        let refFlag = try buffer.readInt8()
+                        if refFlag == RefFlag.null.rawValue {
+                            destination.advanced(by: index).initialize(to: Element.foryDefault())
+                        } else if refFlag == RefFlag.notNullValue.rawValue {
+                            destination.advanced(by: index).initialize(
+                                to: try Element.foryRead(context, refMode: .none, readTypeInfo: false)
+                            )
+                        } else {
+                            throw ForyError.refError("invalid nullability flag \(refFlag)")
+                        }
+                    }
+                }
+            }
+
+            return try readArrayUninitialized(count: length) { destination in
+                for index in 0..<length {
+                    destination.advanced(by: index).initialize(
+                        to: try Element.foryRead(context, refMode: .none, readTypeInfo: false)
+                    )
                 }
             }
         }
-
-        if !declared {
-            context.clearDynamicTypeInfo(for: Element.self)
-        }
-
-        return values
     }
 }
 
 extension Set: Serializer where Element: Serializer & Hashable {
     public static func foryDefault() -> Set<Element> { [] }
 
-    public static var staticTypeId: ForyTypeId { .set }
+    public static var staticTypeId: TypeId { .set }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         try Array(self).foryWriteData(context, hasGenerics: hasGenerics)
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
-        Set(try Array<Element>.foryReadData(context))
+        Set(try [Element].foryReadData(context))
     }
 }
 
 extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
-    public static func foryDefault() -> Dictionary<Key, Value> { [:] }
+    public static func foryDefault() -> [Key: Value] { [:] }
 
-    public static var staticTypeId: ForyTypeId { .map }
+    public static var staticTypeId: TypeId { .map }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         context.buffer.writeVarUInt32(UInt32(self.count))
@@ -466,10 +679,10 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             return
         }
 
-        let trackKeyRef = context.trackRef && Key.isReferenceTrackableType
-        let trackValueRef = context.trackRef && Value.isReferenceTrackableType
-        let keyDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Key.staticTypeId)
-        let valueDeclared = hasGenerics && !ForyTypeId.needsTypeInfoForField(Value.staticTypeId)
+        let trackKeyRef = context.trackRef && Key.isRefType
+        let trackValueRef = context.trackRef && Value.isRefType
+        let keyDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Key.staticTypeId)
+        let valueDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Value.staticTypeId)
         let keyDynamicType = Key.staticTypeId == .unknown
         let valueDynamicType = Value.staticTypeId == .unknown
 
@@ -504,7 +717,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         if valueDynamicType {
                             try pair.value.foryWriteTypeInfo(context)
                         } else {
-                            try Value.foryWriteTypeInfo(context)
+                            try Value.foryWriteStaticTypeInfo(context)
                         }
                     }
                     if trackValueRef {
@@ -525,7 +738,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         if keyDynamicType {
                             try pair.key.foryWriteTypeInfo(context)
                         } else {
-                            try Key.foryWriteTypeInfo(context)
+                            try Key.foryWriteStaticTypeInfo(context)
                         }
                     }
                     if trackKeyRef {
@@ -547,14 +760,14 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     if keyDynamicType {
                         try pair.key.foryWriteTypeInfo(context)
                     } else {
-                        try Key.foryWriteTypeInfo(context)
+                        try Key.foryWriteStaticTypeInfo(context)
                     }
                 }
                 if !valueDeclared {
                     if valueDynamicType {
                         try pair.value.foryWriteTypeInfo(context)
                     } else {
-                        try Value.foryWriteTypeInfo(context)
+                        try Value.foryWriteStaticTypeInfo(context)
                     }
                 }
 
@@ -582,11 +795,10 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             return
         }
 
-        var index = 0
-        let pairs = Array(self)
+        var iterator = makeIterator()
+        var pendingPair = iterator.next()
 
-        while index < pairs.count {
-            let pair = pairs[index]
+        while let pair = pendingPair {
             let keyIsNil = pair.key.foryIsNone
             let valueIsNil = pair.value.foryIsNone
 
@@ -606,7 +818,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 context.buffer.writeUInt8(header)
                 if !keyIsNil {
                     if !keyDeclared {
-                        try Key.foryWriteTypeInfo(context)
+                        try Key.foryWriteStaticTypeInfo(context)
                     }
                     if trackKeyRef {
                         try pair.key.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
@@ -616,7 +828,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 }
                 if !valueIsNil {
                     if !valueDeclared {
-                        try Value.foryWriteTypeInfo(context)
+                        try Value.foryWriteStaticTypeInfo(context)
                     }
                     if trackValueRef {
                         try pair.value.foryWrite(context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
@@ -624,7 +836,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                         try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
                     }
                 }
-                index += 1
+                pendingPair = iterator.next()
                 continue
             }
 
@@ -639,15 +851,14 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             context.buffer.writeUInt8(0)
 
             if !keyDeclared {
-                try Key.foryWriteTypeInfo(context)
+                try Key.foryWriteStaticTypeInfo(context)
             }
             if !valueDeclared {
-                try Value.foryWriteTypeInfo(context)
+                try Value.foryWriteStaticTypeInfo(context)
             }
 
             var chunkSize: UInt8 = 0
-            while index < pairs.count && chunkSize < UInt8.max {
-                let current = pairs[index]
+            while chunkSize < UInt8.max, let current = pendingPair {
                 if current.key.foryIsNone || current.value.foryIsNone {
                     break
                 }
@@ -662,24 +873,23 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     try current.value.foryWriteData(context, hasGenerics: hasGenerics)
                 }
                 chunkSize &+= 1
-                index += 1
+                pendingPair = iterator.next()
             }
             context.buffer.setByte(at: chunkSizeOffset, to: chunkSize)
         }
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Dictionary<Key, Value> {
+    public static func foryReadData(_ context: ReadContext) throws -> [Key: Value] {
         let totalLength = Int(try context.buffer.readVarUInt32())
+        try context.ensureCollectionLength(totalLength, label: "map")
         if totalLength == 0 {
             return [:]
         }
 
         var map: [Key: Value] = [:]
-        map.reserveCapacity(totalLength)
+        map.reserveCapacity(Swift.min(totalLength, context.buffer.remaining))
         let keyDynamicType = Key.staticTypeId == .unknown
         let valueDynamicType = Value.staticTypeId == .unknown
-        let canonicalizeValues = context.trackRef && Value.isReferenceTrackableType
-
         if keyDynamicType || valueDynamicType {
             var dynamicReadCount = 0
             while dynamicReadCount < totalLength {
@@ -699,27 +909,12 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 }
 
                 if keyNull {
-                    if trackValueRef || !canonicalizeValues {
-                        let value = try Value.foryRead(
-                            context,
-                            refMode: trackValueRef ? .tracking : .none,
-                            readTypeInfo: valueDynamicType || !valueDeclared
-                        )
-                        map[Key.foryDefault()] = value
-                    } else {
-                        let start = context.buffer.getCursor()
-                        let value = try Value.foryRead(
-                            context,
-                            refMode: .none,
-                            readTypeInfo: valueDynamicType || !valueDeclared
-                        )
-                        let end = context.buffer.getCursor()
-                        map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
-                            value,
-                            start: start,
-                            end: end
-                        )
-                    }
+                    let value = try Value.foryRead(
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        readTypeInfo: valueDynamicType || !valueDeclared
+                    )
+                    map[Key.foryDefault()] = value
                     dynamicReadCount += 1
                     continue
                 }
@@ -736,41 +931,27 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 }
 
                 let chunkSize = Int(try context.buffer.readUInt8())
-                if !keyDeclared {
-                    try Key.foryReadTypeInfo(context)
+                if chunkSize > (totalLength - dynamicReadCount) {
+                    throw ForyError.invalidData("map dynamic chunk size exceeds remaining entries")
                 }
-                if !valueDeclared {
-                    try Value.foryReadTypeInfo(context)
-                }
+                let keyTypeInfo = keyDeclared ? nil : try Key.foryReadTypeInfo(context)
+                let valueTypeInfo = valueDeclared ? nil : try Value.foryReadTypeInfo(context)
                 for _ in 0..<chunkSize {
-                    let key = try Key.foryRead(
-                        context,
-                        refMode: trackKeyRef ? .tracking : .none,
-                        readTypeInfo: false
-                    )
-                    if trackValueRef || !canonicalizeValues {
-                        let value = try Value.foryRead(
+                    let key = try context.withTypeInfo(keyTypeInfo, for: Key.self) {
+                        try Key.foryRead(
+                            context,
+                            refMode: trackKeyRef ? .tracking : .none,
+                            readTypeInfo: false
+                        )
+                    }
+                    let value = try context.withTypeInfo(valueTypeInfo, for: Value.self) {
+                        try Value.foryRead(
                             context,
                             refMode: trackValueRef ? .tracking : .none,
                             readTypeInfo: false
                         )
-                        map[key] = value
-                    } else {
-                        let start = context.buffer.getCursor()
-                        let value = try Value.foryRead(
-                            context,
-                            refMode: .none,
-                            readTypeInfo: false
-                        )
-                        let end = context.buffer.getCursor()
-                        map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
                     }
-                }
-                if !keyDeclared {
-                    context.clearDynamicTypeInfo(for: Key.self)
-                }
-                if !valueDeclared {
-                    context.clearDynamicTypeInfo(for: Value.self)
+                    map[key] = value
                 }
                 dynamicReadCount += chunkSize
             }
@@ -795,27 +976,12 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             }
 
             if keyNull {
-                if trackValueRef || !canonicalizeValues {
-                    let value = try Value.foryRead(
-                        context,
-                        refMode: trackValueRef ? .tracking : .none,
-                        readTypeInfo: !valueDeclared
-                    )
-                    map[Key.foryDefault()] = value
-                } else {
-                    let start = context.buffer.getCursor()
-                    let value = try Value.foryRead(
-                        context,
-                        refMode: .none,
-                        readTypeInfo: !valueDeclared
-                    )
-                    let end = context.buffer.getCursor()
-                    map[Key.foryDefault()] = context.canonicalizeNonTrackingReference(
-                        value,
-                        start: start,
-                        end: end
-                    )
-                }
+                let value = try Value.foryRead(
+                    context,
+                    refMode: trackValueRef ? .tracking : .none,
+                    readTypeInfo: !valueDeclared
+                )
+                map[Key.foryDefault()] = value
                 readCount += 1
                 continue
             }
@@ -832,36 +998,27 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             }
 
             let chunkSize = Int(try context.buffer.readUInt8())
-            if !keyDeclared {
-                try Key.foryReadTypeInfo(context)
+            if chunkSize > (totalLength - readCount) {
+                throw ForyError.invalidData("map chunk size exceeds remaining entries")
             }
-            if !valueDeclared {
-                try Value.foryReadTypeInfo(context)
-            }
-
+            let keyTypeInfo = keyDeclared ? nil : try Key.foryReadTypeInfo(context)
+            let valueTypeInfo = valueDeclared ? nil : try Value.foryReadTypeInfo(context)
             for _ in 0..<chunkSize {
-                let key = try Key.foryRead(
-                    context,
-                    refMode: trackKeyRef ? .tracking : .none,
-                    readTypeInfo: false
-                )
-                if trackValueRef || !canonicalizeValues {
-                    let value = try Value.foryRead(
+                let key = try context.withTypeInfo(keyTypeInfo, for: Key.self) {
+                    try Key.foryRead(
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        readTypeInfo: false
+                    )
+                }
+                let value = try context.withTypeInfo(valueTypeInfo, for: Value.self) {
+                    try Value.foryRead(
                         context,
                         refMode: trackValueRef ? .tracking : .none,
                         readTypeInfo: false
                     )
-                    map[key] = value
-                } else {
-                    let start = context.buffer.getCursor()
-                    let value = try Value.foryRead(
-                        context,
-                        refMode: .none,
-                        readTypeInfo: false
-                    )
-                    let end = context.buffer.getCursor()
-                    map[key] = context.canonicalizeNonTrackingReference(value, start: start, end: end)
                 }
+                map[key] = value
             }
             readCount += chunkSize
         }

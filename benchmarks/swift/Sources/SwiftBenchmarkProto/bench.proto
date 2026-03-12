@@ -1,0 +1,127 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+syntax = "proto3";
+package protobuf;
+
+option java_package = "org.apache.fory.integration_tests.state.generated";
+option java_outer_classname = "ProtoMessage";
+
+message Foo {
+  optional string f1 = 1;
+  map<string, int32> f2 = 2;
+}
+
+message Bar {
+  optional Foo f1 = 1;
+  optional string f2 = 2;
+  repeated Foo f3 = 3;
+  map<int32, Foo> f4 = 4;
+  optional int32 f5 = 5;
+  optional int64 f6 = 6;
+  optional float f7 = 7;
+  optional double f8 = 8;
+  repeated int32 f9 = 9; // proto does not support int16
+  repeated int64 f10 = 10;
+}
+
+message Sample {
+  int32 int_value = 1;
+  int64 long_value = 2;
+  float float_value = 3;
+  double double_value = 4;
+  int32 short_value = 5;
+  int32 char_value = 6;
+  bool boolean_value = 7;
+  int32 int_value_boxed = 8;
+  int64 long_value_boxed = 9;
+  float float_value_boxed = 10;
+  double double_value_boxed = 11;
+  int32 short_value_boxed = 12;
+  int32 char_value_boxed = 13;
+  bool boolean_value_boxed = 14;
+  repeated int32 int_array = 15;
+  repeated int64 long_array = 16;
+  repeated float float_array = 17;
+  repeated double double_array = 18;
+  repeated int32 short_array = 19;
+  repeated int32 char_array = 20;
+  repeated bool boolean_array = 21;
+  string string = 22;
+}
+
+message SampleList {
+  repeated Sample sample_list = 1;
+}
+
+message MediaContent {
+  Media media = 1;
+  repeated Image images = 2;
+}
+
+message MediaContentList {
+  repeated MediaContent media_content_list = 1;
+}
+
+message Media {
+  string uri = 1;
+  optional string title = 2;
+  int32 width = 3;
+  int32 height = 4;
+  string format = 5;
+  int64 duration = 6;
+  int64 size = 7;
+  int32 bitrate = 8;
+  bool has_bitrate = 9;
+  repeated string persons = 10;
+  Player player = 11;
+  string copyright = 12;
+}
+
+message Image {
+  string uri = 1;
+  optional string title = 2; // Can be null.
+  int32 width = 3;
+  int32 height = 4;
+  Size size = 5;
+  optional Media media = 6; // Can be null.
+}
+
+enum Player {
+  JAVA = 0;
+  FLASH = 1;
+}
+
+enum Size {
+  SMALL = 0;
+  LARGE = 1;
+}
+
+message Struct {
+  int32 f1 = 1;
+  int32 f2 = 2;
+  int32 f3 = 3;
+  int32 f4 = 4;
+  int32 f5 = 5;
+  int32 f6 = 6;
+  int32 f7 = 7;
+  int32 f8 = 8;
+}
+
+message StructList { repeated Struct struct_list = 1; }

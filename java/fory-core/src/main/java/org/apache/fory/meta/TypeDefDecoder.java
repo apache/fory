@@ -121,7 +121,7 @@ class TypeDefDecoder {
       boolean trackingRef = (header & 0b1) != 0;
       int typeId = buffer.readUint8();
       FieldType fieldType =
-          FieldTypes.FieldType.xread(buffer, resolver, typeId, nullable, trackingRef);
+          FieldTypes.FieldType.readCrossLanguage(buffer, resolver, typeId, nullable, trackingRef);
 
       // read field name or tag ID
       if (useTagID) {

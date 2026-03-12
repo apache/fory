@@ -47,12 +47,7 @@ public class GuavaCollectionSerializers {
       extends CollectionSerializer<T> {
     public GuavaCollectionSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, true);
-      fory.getClassResolver().setSerializer(cls, this);
-    }
-
-    @Override
-    public T xread(MemoryBuffer buffer) {
-      return read(buffer);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     protected abstract T xnewInstance(Collection collection);
@@ -62,7 +57,7 @@ public class GuavaCollectionSerializers {
       extends GuavaCollectionSerializer<T> {
     public ImmutableListSerializer(Fory fory, Class<T> cls) {
       super(fory, cls);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override
@@ -181,7 +176,7 @@ public class GuavaCollectionSerializers {
       extends CollectionSerializer<T> {
     public ImmutableSortedSetSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, false);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override
@@ -219,7 +214,7 @@ public class GuavaCollectionSerializers {
 
     public GuavaMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, true);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     protected abstract ImmutableMap.Builder makeBuilder(int size);
@@ -252,7 +247,7 @@ public class GuavaCollectionSerializers {
     }
 
     @Override
-    public T xread(MemoryBuffer buffer) {
+    public T read(MemoryBuffer buffer) {
       int size = buffer.readVarUint32Small7();
       Map map = new HashMap();
       readElements(buffer, size, map);
@@ -295,7 +290,7 @@ public class GuavaCollectionSerializers {
     public ImmutableMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls);
       builderCtr = builderCtrCache.get(ImmutableMap.Builder.class);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override
@@ -316,7 +311,7 @@ public class GuavaCollectionSerializers {
     public ImmutableBiMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls);
       builderCtr = builderCtrCache.get(ImmutableBiMap.Builder.class);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override
@@ -335,7 +330,7 @@ public class GuavaCollectionSerializers {
 
     public ImmutableSortedMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override

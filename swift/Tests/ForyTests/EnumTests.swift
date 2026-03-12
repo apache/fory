@@ -100,7 +100,7 @@ func mixedEnumShapesRoundTrip() throws {
     let nestedMap: [String: Token] = [
         "one": .number(1),
         "plus": .plus,
-        "nested": .child(.ident("deep")),
+        "nested": .child(.ident("deep"))
     ]
 
     let tokens: [Token] = [
@@ -111,7 +111,7 @@ func mixedEnumShapesRoundTrip() throws {
         .other(42),
         .other(nil),
         .child(.child(.other(nil))),
-        .map(nestedMap),
+        .map(nestedMap)
     ]
 
     let data = try fory.serialize(tokens)

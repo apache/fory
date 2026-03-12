@@ -28,8 +28,16 @@ public struct ForyDate: Serializer, Equatable, Hashable {
         .init()
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .date
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -56,8 +64,16 @@ public struct ForyTimestamp: Serializer, Equatable, Hashable {
         .init()
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .timestamp
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -94,13 +110,57 @@ public struct ForyTimestamp: Serializer, Equatable, Hashable {
     }
 }
 
+extension Duration: Serializer {
+    public static func foryDefault() -> Duration {
+        .zero
+    }
+
+    public static var staticTypeId: TypeId {
+        .duration
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
+
+    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        _ = hasGenerics
+        let components = self.components
+        let nanos = components.attoseconds / 1_000_000_000
+        let remainder = components.attoseconds % 1_000_000_000
+        if remainder != 0 {
+            throw ForyError.encodingError("Duration precision finer than nanoseconds is not supported")
+        }
+        context.buffer.writeVarInt64(components.seconds)
+        context.buffer.writeInt32(Int32(nanos))
+    }
+
+    public static func foryReadData(_ context: ReadContext) throws -> Duration {
+        let seconds = try context.buffer.readVarInt64()
+        let nanos = try context.buffer.readInt32()
+        return .seconds(seconds) + .nanoseconds(Int64(nanos))
+    }
+}
+
 extension Date: Serializer {
     public static func foryDefault() -> Date {
         Date(timeIntervalSince1970: 0)
     }
 
-    public static var staticTypeId: ForyTypeId {
+    public static var staticTypeId: TypeId {
         .timestamp
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {

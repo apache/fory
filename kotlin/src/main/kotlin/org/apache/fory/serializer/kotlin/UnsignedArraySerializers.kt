@@ -32,19 +32,11 @@ public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
 ) : Serializer<T>(fory, cls) {
 
   // Lazily initialize the delegatingSerializer here to avoid lookup cost.
-  private val delegatingSerializer by lazy { fory.classResolver.getSerializer(delegateClass) }
+  private val delegatingSerializer by lazy { fory.typeResolver.getSerializer(delegateClass) }
 
   protected abstract fun toDelegateClass(value: T): T_Delegate
 
   protected abstract fun fromDelegateClass(value: T_Delegate): T
-
-  override fun xwrite(buffer: MemoryBuffer, value: T) {
-    write(buffer, value)
-  }
-
-  override fun xread(buffer: MemoryBuffer): T {
-    return read(buffer)
-  }
 
   override fun write(buffer: MemoryBuffer, value: T) {
     delegatingSerializer.write(buffer, toDelegateClass(value))

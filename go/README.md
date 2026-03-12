@@ -62,7 +62,7 @@ Fory Go demonstrates excellent performance compared to other go serialization fr
 <img src="../docs/benchmarks/go/benchmark_combined.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [Go Benchmark](../benchmarks/go_benchmark).
+For more detailed benchmarks and methodology, see [Go Benchmark](../benchmarks/go).
 
 ## Code Style
 

@@ -31,3 +31,11 @@ message FixedMessage [id=1001, evolving=false] {
     int32 score = 3;
     string note = 4;
 }
+
+message EvolvingSizeMessage [id=1002, evolving=true] {
+    string payload = 1;
+}
+
+message FixedSizeMessage [id=1003, evolving=false] {
+    string payload = 1;
+}

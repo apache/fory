@@ -87,7 +87,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     WriteObjectTestClass o = new WriteObjectTestClass(new char[] {'a', 'b'});
     serDeCheckSerializer(fory, o, "ObjectStreamSerializer");
     assertSame(
-        fory.getClassResolver().getSerializerClass(StringBuilder.class),
+        fory.getTypeResolver().getSerializerClass(StringBuilder.class),
         ObjectStreamSerializer.class);
     StringBuilder buf = (StringBuilder) serDe(fory, new StringBuilder("abc"));
     assertEquals(buf.toString(), "abc");
@@ -170,7 +170,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
         WriteObjectTestClass3.class, new ObjectStreamSerializer(fory, WriteObjectTestClass3.class));
 
     assertSame(
-        fory.getClassResolver().getSerializerClass(StringBuffer.class),
+        fory.getTypeResolver().getSerializerClass(StringBuffer.class),
         ObjectStreamSerializer.class);
     // test `putFields`
     StringBuffer newStringBuffer = (StringBuffer) serDe(fory, new StringBuffer("abc"));
@@ -237,7 +237,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     {
       serDeCheck(fory, new ConcurrentHashMap<>(mapData));
       assertSame(
-          fory.getClassResolver().getSerializer(ConcurrentHashMap.class).getClass(),
+          fory.getTypeResolver().getSerializer(ConcurrentHashMap.class).getClass(),
           ObjectStreamSerializer.class);
     }
     {

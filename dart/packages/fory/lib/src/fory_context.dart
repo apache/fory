@@ -19,7 +19,7 @@
 
 import 'dart:collection';
 import 'package:fory/src/config/fory_config.dart';
-import 'package:fory/src/exception/registration_exception.dart'
+import 'package:fory/src/fory_exception.dart'
     show
         DuplicatedTagRegistrationException,
         DuplicatedTypeRegistrationException,

@@ -135,11 +135,6 @@ public class UnionSerializer extends Serializer<Union> {
 
   @Override
   public void write(MemoryBuffer buffer, Union union) {
-    xwrite(buffer, union);
-  }
-
-  @Override
-  public void xwrite(MemoryBuffer buffer, Union union) {
     int index = union.getIndex();
     buffer.writeVarUint32(index);
 
@@ -147,11 +142,7 @@ public class UnionSerializer extends Serializer<Union> {
     int valueTypeId = union.getValueTypeId();
     if (valueTypeId == Types.UNKNOWN) {
       if (value != null) {
-        if (fory.isCrossLanguage()) {
-          fory.xwriteRef(buffer, value);
-        } else {
-          fory.writeRef(buffer, value);
-        }
+        fory.writeRef(buffer, value);
       } else {
         buffer.writeByte(Fory.NULL_FLAG);
       }
@@ -162,11 +153,6 @@ public class UnionSerializer extends Serializer<Union> {
 
   @Override
   public Union read(MemoryBuffer buffer) {
-    return xread(buffer);
-  }
-
-  @Override
-  public Union xread(MemoryBuffer buffer) {
     int index = buffer.readVarUint32();
     Object caseValue;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);

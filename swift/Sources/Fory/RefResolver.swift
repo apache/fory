@@ -23,7 +23,7 @@ public final class RefWriter {
 
     public init() {}
 
-    public func tryWriteReference(buffer: ByteBuffer, object: AnyObject) -> Bool {
+    public func tryWriteRef(buffer: ByteBuffer, object: AnyObject) -> Bool {
         let objectID = ObjectIdentifier(object)
         if let refID = refs[objectID] {
             buffer.writeInt8(RefFlag.ref.rawValue)
@@ -36,15 +36,13 @@ public final class RefWriter {
         return false
     }
 
-    public func reserveRefID() -> UInt32 {
-        let id = nextRefID
-        nextRefID &+= 1
-        return id
-    }
-
     public func reset() {
-        refs.removeAll(keepingCapacity: true)
-        nextRefID = 0
+        if !refs.isEmpty {
+            refs.removeAll(keepingCapacity: true)
+        }
+        if nextRefID != 0 {
+            nextRefID = 0
+        }
     }
 }
 
@@ -83,6 +81,8 @@ public final class RefReader {
     }
 
     public func reset() {
-        refs.removeAll(keepingCapacity: true)
+        if !refs.isEmpty {
+            refs.removeAll(keepingCapacity: true)
+        }
     }
 }

@@ -53,12 +53,12 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     PrimitiveSerializers.Uint8Serializer serializer =
         new PrimitiveSerializers.Uint8Serializer(fory);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
-    serializer.xwrite(buffer, 0);
-    assertEquals(serializer.xread(buffer), Integer.valueOf(0));
-    serializer.xwrite(buffer, 255);
-    assertEquals(serializer.xread(buffer), Integer.valueOf(255));
-    assertThrows(IllegalArgumentException.class, () -> serializer.xwrite(buffer, -1));
-    assertThrows(IllegalArgumentException.class, () -> serializer.xwrite(buffer, 256));
+    serializer.write(buffer, 0);
+    assertEquals(serializer.read(buffer), Integer.valueOf(0));
+    serializer.write(buffer, 255);
+    assertEquals(serializer.read(buffer), Integer.valueOf(255));
+    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, -1));
+    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, 256));
   }
 
   @Test
@@ -67,12 +67,12 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     PrimitiveSerializers.Uint16Serializer serializer =
         new PrimitiveSerializers.Uint16Serializer(fory);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
-    serializer.xwrite(buffer, 0);
-    assertEquals(serializer.xread(buffer), Integer.valueOf(0));
-    serializer.xwrite(buffer, 65535);
-    assertEquals(serializer.xread(buffer), Integer.valueOf(65535));
-    assertThrows(IllegalArgumentException.class, () -> serializer.xwrite(buffer, -1));
-    assertThrows(IllegalArgumentException.class, () -> serializer.xwrite(buffer, 65536));
+    serializer.write(buffer, 0);
+    assertEquals(serializer.read(buffer), Integer.valueOf(0));
+    serializer.write(buffer, 65535);
+    assertEquals(serializer.read(buffer), Integer.valueOf(65535));
+    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, -1));
+    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, 65536));
   }
 
   @Data

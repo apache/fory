@@ -83,23 +83,15 @@ struct HeaderInfo {
 /// @param buffer Input buffer
 /// @return Header information or error
 inline Result<HeaderInfo, Error> read_header(Buffer &buffer) {
-  // Check minimum header size (1 byte: flags)
-  if (buffer.reader_index() + 1 > buffer.size()) {
-    return Unexpected(
-        Error::buffer_out_of_bound(buffer.reader_index(), 1, buffer.size()));
+  Error error;
+  uint8_t flags = buffer.read_uint8(error);
+  if (FORY_PREDICT_FALSE(!error.ok())) {
+    return Unexpected(std::move(error));
   }
-
   HeaderInfo info;
-  uint32_t start_pos = buffer.reader_index();
-
-  // Read flags byte
-  uint8_t flags = buffer.get_byte_as<uint8_t>(start_pos);
   info.is_null = (flags & (1 << 0)) != 0;
   info.is_xlang = (flags & (1 << 1)) != 0;
   info.is_oob = (flags & (1 << 2)) != 0;
-
-  // Update reader index (1 byte consumed: flags)
-  buffer.increase_reader_index(1);
 
   // Note: Meta start offset would be read here if present
   info.meta_start_offset = 0;
