@@ -152,7 +152,7 @@ public class Encoders {
    *
    * @param token TypeToken instance which explicit specified the type.
    * @param <T> T is a array type, can be a nested list type.
-   * @return
+   * @return the array encoder
    */
   public static <T extends Collection<?>> ArrayEncoder<T> arrayEncoder(TypeRef<T> token) {
     return arrayEncoder(token, null);
@@ -170,7 +170,7 @@ public class Encoders {
    *
    * @param token TypeToken instance which explicit specified the type.
    * @param <T> T is a array type, can be a nested list type.
-   * @return
+   * @return the map encoder
    */
   public static <T extends Map> MapEncoder<T> mapEncoder(TypeRef<T> token) {
     return mapEncoder(token, null);
@@ -180,7 +180,7 @@ public class Encoders {
    * The underlying implementation uses array, only supported {@link Map} format, because generic
    * type such as List is erased to simply List, so a bean class input param is required.
    *
-   * @return
+   * @return the map encoder
    */
   @SuppressWarnings("unchecked")
   public static <T extends Map, K, V> MapEncoder<T> mapEncoder(

@@ -73,7 +73,7 @@
     <janino.version>3.1.12</janino.version>
     <commons_codec.version>1.13</commons_codec.version>
     <fory.java.rootdir>${basedir}</fory.java.rootdir>
-    <maven-spotless-plugin.version>2.41.1</maven-spotless-plugin.version>
+    <maven-spotless-plugin.version>3.3.0</maven-spotless-plugin.version>
     <lombok.version>1.18.38</lombok.version>
   </properties>
 
@@ -224,14 +224,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-checkstyle-plugin</artifactId>
-        <version>3.1.0</version>
-        <dependencies>
-          <dependency>
-            <groupId>com.puppycrawl.tools</groupId>
-            <artifactId>checkstyle</artifactId>
-            <version>8.29</version>
-          </dependency>
-        </dependencies>
+        <version>3.6.0</version>
         <executions>
           <execution>
             <id>validate</id>
@@ -245,7 +238,6 @@
         <configuration>
           <configLocation>${fory.java.rootdir}/checkstyle.xml</configLocation>
           <suppressionsLocation>${fory.java.rootdir}/checkstyle-suppressions.xml</suppressionsLocation>
-          <encoding>UTF-8</encoding>
           <consoleOutput>true</consoleOutput>
           <failsOnError>true</failsOnError>
           <failOnViolation>true</failOnViolation>
@@ -261,8 +253,8 @@
         <configuration>
           <java>
             <googleJavaFormat>
-              <!-- 1.19.1 support JDK21 -->
-              <version>1.19.1</version>
+              <!-- 1.35 support JDK25 -->
+              <version>1.35.0</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
