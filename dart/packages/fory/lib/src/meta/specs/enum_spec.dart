@@ -27,7 +27,6 @@ import 'package:fory/src/const/types.dart';
 @immutable
 class EnumSpec extends CustomTypeSpec {
   // final String tag;
-  // TODO: Currently, enums only support using ordinal for transmission. There is also support for ForyEnum annotation, such as using value, so we can directly use the values array here.
   final List<Enum> values;
   final Map<int, Enum>? idToValue;
   const EnumSpec(Type dartType, this.values, [this.idToValue])
