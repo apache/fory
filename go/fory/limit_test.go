@@ -18,8 +18,8 @@
 package fory
 
 import (
-	"testing"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 func TestMaxCollectionSizeGuardrail(t *testing.T) {
@@ -77,7 +77,7 @@ func TestMaxBinarySizeGuardrail(t *testing.T) {
 
 		// We can serialize a byte slice using standard serializer, then decode with the f instance
 		slice := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fBase := NewFory() 
+		fBase := NewFory()
 		bytes, _ := fBase.Serialize(slice)
 
 		var decoded []byte

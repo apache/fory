@@ -508,11 +508,11 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 // The target must be a pointer to the value to deserialize into.
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
-	
+
 	// Apply Fory config guardrails
 	f.readCtx.buffer.maxCollectionSize = f.config.MaxCollectionSize
 	f.readCtx.buffer.maxBinarySize = f.config.MaxBinarySize
-	
+
 	f.readCtx.SetData(data)
 
 	isNull := readHeader(f.readCtx)
@@ -1020,11 +1020,11 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
-	
+
 	// Apply Fory config guardrails
 	f.readCtx.buffer.maxCollectionSize = f.config.MaxCollectionSize
 	f.readCtx.buffer.maxBinarySize = f.config.MaxBinarySize
-	
+
 	f.readCtx.SetData(data)
 
 	// ReadData and validate header
