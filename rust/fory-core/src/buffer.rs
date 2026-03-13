@@ -70,10 +70,17 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     pub fn set_bytes(&mut self, offset: usize, data: &[u8]) {
-        self.bf
-            .get_mut(offset..offset + data.len())
-            .unwrap()
-            .copy_from_slice(data);
+        debug_assert!(offset + data.len() <= self.bf.len());
+        // SAFETY: Callers write placeholder bytes first (via write_*/skip), then
+        // call set_bytes to back-fill. The offset always points to previously
+        // written data within bounds.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                data.as_ptr(),
+                self.bf.as_mut_ptr().add(offset),
+                data.len(),
+            );
+        }
     }
 
     #[inline(always)]
