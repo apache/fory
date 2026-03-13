@@ -44,6 +44,7 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
   @override
   EnumSpecGenerator analyze(EnumElement enumElement) {
     String packageName = enumElement.location!.components[0];
+    final String enumName = enumElement.name;
     final List<FieldElement> enumFields =
         enumElement.fields.where((FieldElement e) => e.isEnumConstant).toList();
 
@@ -51,19 +52,50 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
         enumFields.map((FieldElement e) => e.name).toList();
 
     final Map<String, int> enumIds = <String, int>{};
-    final Set<int> usedIds = <int>{};
-    bool useAnnotatedIds = true;
+    final Map<int, String> usedIds = <int, String>{};
+    final List<String> missingIdValues = <String>[];
+    final List<String> duplicateIds = <String>[];
+    int annotatedCount = 0;
     for (final FieldElement enumField in enumFields) {
       final int? id = _readEnumId(enumField);
-      if (id == null || !usedIds.add(id)) {
-        useAnnotatedIds = false;
-        break;
+      if (id == null) {
+        missingIdValues.add(enumField.name);
+        continue;
       }
+      annotatedCount++;
+
+      final String? firstValueWithId = usedIds[id];
+      if (firstValueWithId != null) {
+        duplicateIds.add('$id for $firstValueWithId and ${enumField.name}');
+        continue;
+      }
+
+      usedIds[id] = enumField.name;
       enumIds[enumField.name] = id;
     }
 
+    final bool useAnnotatedIds =
+        missingIdValues.isEmpty && duplicateIds.isEmpty;
+    final bool hasAnyAnnotatedIds = annotatedCount > 0;
+    if (hasAnyAnnotatedIds && !useAnnotatedIds) {
+      if (missingIdValues.isNotEmpty) {
+        print(
+          '[WARNING] Enum $enumName in $packageName has partial @ForyEnumId annotations. '
+          'Missing values: ${missingIdValues.join(', ')}. '
+          'All @ForyEnumId annotations are ignored and ordinal serialization is used.',
+        );
+      }
+      if (duplicateIds.isNotEmpty) {
+        print(
+          '[WARNING] Enum $enumName in $packageName has duplicate @ForyEnumId values '
+          '(${duplicateIds.join('; ')}). '
+          'All @ForyEnumId annotations are ignored and ordinal serialization is used.',
+        );
+      }
+    }
+
     return EnumSpecGenerator(
-      enumElement.name,
+      enumName,
       packageName,
       enumValues,
       useAnnotatedIds ? enumIds : null,
