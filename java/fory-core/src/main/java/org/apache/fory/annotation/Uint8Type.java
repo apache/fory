@@ -38,7 +38,7 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Uint8Type
+ *   {@literal @}Uint8Type
  *   short flags;  // Will be serialized as unsigned 8-bit [0, 255]
  * }
  * }</pre>

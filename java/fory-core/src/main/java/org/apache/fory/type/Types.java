@@ -220,7 +220,7 @@ public class Types {
   /** One dimensional float64 array. */
   public static final int FLOAT64_ARRAY = 56;
 
-  /** Bound value for range checks (types with id >= BOUND are not internal types). */
+  /** Bound value for range checks (types with id &gt;= BOUND are not internal types). */
   public static final int BOUND = 64;
 
   public static final int INVALID_USER_TYPE_ID = -1;

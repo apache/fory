@@ -41,10 +41,10 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Int32Type(compress = true)  // Uses varint encoding (default)
+ *   {@literal @}Int32Type(compress = true)  // Uses varint encoding (default)
  *   int compactId;
  *
- *   @Int32Type(compress = false) // Uses fixed 4-byte encoding
+ *   {@literal @}Int32Type(compress = false) // Uses fixed 4-byte encoding
  *   int fixedId;
  * }
  * }</pre>

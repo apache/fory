@@ -30,7 +30,7 @@ import org.apache.fory.annotation.CodegenInvoke;
  *   <li>{@link #NULL_ONLY} - Field is nullable but no ref tracking. Write null flag (-3) for null,
  *       or not-null flag (-1) then data.
  *   <li>{@link #TRACKING} - Ref tracking enabled (implies nullable). Write ref flag: -3 for null,
- *       -1 for first occurrence (then data), or ref id (>=0) for subsequent references.
+ *       -1 for first occurrence (then data), or ref id (&gt;=0) for subsequent references.
  * </ul>
  */
 public enum RefMode {

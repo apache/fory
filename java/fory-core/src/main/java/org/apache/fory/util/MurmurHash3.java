@@ -26,7 +26,7 @@ package org.apache.fory.util;
  * to this file.
  *
  * <p>This java port is faster than guava and consistent cross-language for all seeds, see <a
- * href="https://yonik.com/murmurhash3-for-java/>murmurhash3-for-java</a>
+ * href="https://yonik.com/murmurhash3-for-java/">murmurhash3-for-java</a>
  */
 public final class MurmurHash3 {
 
