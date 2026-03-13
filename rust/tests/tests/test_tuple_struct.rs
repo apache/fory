@@ -21,10 +21,13 @@
 //! - `struct Point(f64, f64);`
 //! - `struct Wrapper(String);`
 
+mod test_helpers;
+
 use fory_core::fory::Fory;
 use fory_derive::ForyObject;
 use std::collections::HashMap;
 use std::rc::Rc;
+use test_helpers::deserialize_check;
 
 // Basic Tuple Structs
 
@@ -47,7 +50,7 @@ fn test_basic_tuple_struct() {
 
     let point = Point(3.15, 2.72);
     let bytes = fory.serialize(&point).unwrap();
-    let result: Point = fory.deserialize(&bytes).unwrap();
+    let result: Point = deserialize_check(&fory, &bytes);
     assert_eq!(result, point);
 }
 
@@ -58,7 +61,7 @@ fn test_single_field_tuple_struct() {
 
     let single = Single(42);
     let bytes = fory.serialize(&single).unwrap();
-    let result: Single = fory.deserialize(&bytes).unwrap();
+    let result: Single = deserialize_check(&fory, &bytes);
     assert_eq!(result, single);
 }
 
@@ -69,7 +72,7 @@ fn test_string_wrapper_tuple_struct() {
 
     let wrapper = Wrapper("hello world".to_string());
     let bytes = fory.serialize(&wrapper).unwrap();
-    let result: Wrapper = fory.deserialize(&bytes).unwrap();
+    let result: Wrapper = deserialize_check(&fory, &bytes);
     assert_eq!(result, wrapper);
 }
 
@@ -80,7 +83,7 @@ fn test_triple_tuple_struct() {
 
     let triple = Triple(1, 2, 3);
     let bytes = fory.serialize(&triple).unwrap();
-    let result: Triple = fory.deserialize(&bytes).unwrap();
+    let result: Triple = deserialize_check(&fory, &bytes);
     assert_eq!(result, triple);
 }
 
@@ -102,7 +105,7 @@ fn test_tuple_struct_with_vec() {
 
     let data = WithVec(vec![1, 2, 3, 4, 5], "test".to_string());
     let bytes = fory.serialize(&data).unwrap();
-    let result: WithVec = fory.deserialize(&bytes).unwrap();
+    let result: WithVec = deserialize_check(&fory, &bytes);
     assert_eq!(result, data);
 }
 
@@ -114,19 +117,19 @@ fn test_tuple_struct_with_option() {
     // Test with Some values
     let data1 = WithOption(Some(42), Some("hello".to_string()));
     let bytes1 = fory.serialize(&data1).unwrap();
-    let result1: WithOption = fory.deserialize(&bytes1).unwrap();
+    let result1: WithOption = deserialize_check(&fory, &bytes1);
     assert_eq!(result1, data1);
 
     // Test with None values
     let data2 = WithOption(None, None);
     let bytes2 = fory.serialize(&data2).unwrap();
-    let result2: WithOption = fory.deserialize(&bytes2).unwrap();
+    let result2: WithOption = deserialize_check(&fory, &bytes2);
     assert_eq!(result2, data2);
 
     // Test with mixed values
     let data3 = WithOption(Some(100), None);
     let bytes3 = fory.serialize(&data3).unwrap();
-    let result3: WithOption = fory.deserialize(&bytes3).unwrap();
+    let result3: WithOption = deserialize_check(&fory, &bytes3);
     assert_eq!(result3, data3);
 }
 
@@ -142,7 +145,7 @@ fn test_tuple_struct_with_map() {
 
     let data = WithMap(map);
     let bytes = fory.serialize(&data).unwrap();
-    let result: WithMap = fory.deserialize(&bytes).unwrap();
+    let result: WithMap = deserialize_check(&fory, &bytes);
     assert_eq!(result, data);
 }
 
@@ -166,7 +169,7 @@ fn test_nested_tuple_structs() {
 
     let outer = Outer(inner1.clone(), vec![inner2, inner3]);
     let bytes = fory.serialize(&outer).unwrap();
-    let result: Outer = fory.deserialize(&bytes).unwrap();
+    let result: Outer = deserialize_check(&fory, &bytes);
     assert_eq!(result, outer);
 }
 
@@ -182,7 +185,7 @@ fn test_tuple_struct_with_rc() {
 
     let data = WithRc(Rc::new("shared".to_string()), Rc::new(42));
     let bytes = fory.serialize(&data).unwrap();
-    let result: WithRc = fory.deserialize(&bytes).unwrap();
+    let result: WithRc = deserialize_check(&fory, &bytes);
     assert_eq!(*result.0, "shared");
     assert_eq!(*result.1, 42);
 }
@@ -210,7 +213,7 @@ fn test_named_struct_with_tuple_struct_fields() {
     };
 
     let bytes = fory.serialize(&data).unwrap();
-    let result: NamedWithTupleStruct = fory.deserialize(&bytes).unwrap();
+    let result: NamedWithTupleStruct = deserialize_check(&fory, &bytes);
     assert_eq!(result, data);
 }
 
@@ -226,7 +229,7 @@ fn test_tuple_struct_with_tuple_field() {
 
     let data = TupleStructWithTuple(42, ("hello".to_string(), 3.15));
     let bytes = fory.serialize(&data).unwrap();
-    let result: TupleStructWithTuple = fory.deserialize(&bytes).unwrap();
+    let result: TupleStructWithTuple = deserialize_check(&fory, &bytes);
     assert_eq!(result, data);
 }
 
@@ -241,17 +244,17 @@ fn test_tuple_struct_xlang_mode() {
 
     let point = Point(3.15, 2.72);
     let bytes = fory.serialize(&point).unwrap();
-    let result: Point = fory.deserialize(&bytes).unwrap();
+    let result: Point = deserialize_check(&fory, &bytes);
     assert_eq!(result, point);
 
     let wrapper = Wrapper("xlang test".to_string());
     let bytes = fory.serialize(&wrapper).unwrap();
-    let result: Wrapper = fory.deserialize(&bytes).unwrap();
+    let result: Wrapper = deserialize_check(&fory, &bytes);
     assert_eq!(result, wrapper);
 
     let triple = Triple(-100, 9999999999i64, 200);
     let bytes = fory.serialize(&triple).unwrap();
-    let result: Triple = fory.deserialize(&bytes).unwrap();
+    let result: Triple = deserialize_check(&fory, &bytes);
     assert_eq!(result, triple);
 }
 
@@ -267,7 +270,7 @@ fn test_tuple_struct_with_empty_vec() {
 
     let data = EmptyVecTuple(vec![]);
     let bytes = fory.serialize(&data).unwrap();
-    let result: EmptyVecTuple = fory.deserialize(&bytes).unwrap();
+    let result: EmptyVecTuple = deserialize_check(&fory, &bytes);
     assert_eq!(result, data);
 }
 
@@ -295,7 +298,7 @@ fn test_large_tuple_struct() {
     );
 
     let bytes = fory.serialize(&data).unwrap();
-    let result: LargeTupleStruct = fory.deserialize(&bytes).unwrap();
+    let result: LargeTupleStruct = deserialize_check(&fory, &bytes);
     assert_eq!(result, data);
 }
 
