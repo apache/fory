@@ -39,7 +39,7 @@ func TestFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []float16.Float16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -50,7 +50,7 @@ func TestFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []float16.Float16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -62,7 +62,7 @@ func TestFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []float16.Float16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -81,7 +81,7 @@ func TestBFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []bfloat16.BFloat16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -92,7 +92,7 @@ func TestBFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []bfloat16.BFloat16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -104,7 +104,7 @@ func TestBFloat16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []bfloat16.BFloat16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -119,7 +119,7 @@ func TestIntSlice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -130,7 +130,7 @@ func TestIntSlice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -142,7 +142,7 @@ func TestIntSlice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -157,7 +157,7 @@ func TestUintSlice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -168,7 +168,7 @@ func TestUintSlice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -180,7 +180,7 @@ func TestUintSlice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -195,7 +195,7 @@ func TestInt8Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int8
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -206,7 +206,7 @@ func TestInt8Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int8
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -218,7 +218,7 @@ func TestInt8Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int8
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -233,7 +233,7 @@ func TestInt16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -244,7 +244,7 @@ func TestInt16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -256,7 +256,7 @@ func TestInt16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -271,7 +271,7 @@ func TestInt32Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -282,7 +282,7 @@ func TestInt32Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -294,7 +294,7 @@ func TestInt32Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -309,7 +309,7 @@ func TestInt64Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -320,7 +320,7 @@ func TestInt64Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -332,7 +332,7 @@ func TestInt64Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []int64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -347,7 +347,7 @@ func TestUint16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -358,7 +358,7 @@ func TestUint16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -370,7 +370,7 @@ func TestUint16Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint16
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -385,7 +385,7 @@ func TestUint32Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -396,7 +396,7 @@ func TestUint32Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -408,7 +408,7 @@ func TestUint32Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint32
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})
@@ -423,7 +423,7 @@ func TestUint64Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Equal(t, slice, result)
 	})
@@ -434,7 +434,7 @@ func TestUint64Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -446,7 +446,7 @@ func TestUint64Slice(t *testing.T) {
 		assert.NoError(t, err)
 
 		var result []uint64
-		err = f.Deserialize(data, &result)
+		err = testDeserialize(t, f, data, &result)
 		assert.NoError(t, err)
 		assert.Nil(t, result)
 	})

@@ -291,7 +291,7 @@ func skipTypeDef(buffer *ByteBuffer, header int64, err *Error) {
 	if sz == META_SIZE_MASK {
 		sz += int(buffer.ReadVarUint32(err))
 	}
-	buffer.IncreaseReaderIndex(sz)
+	buffer.Skip(sz, err)
 }
 
 const BIG_NAME_THRESHOLD = 0b111111 // 6 bits for size when using 2 bits for encoding

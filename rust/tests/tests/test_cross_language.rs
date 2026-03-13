@@ -68,6 +68,17 @@ struct SimpleStruct {
     last: i32,
 }
 
+#[derive(ForyObject, Debug, PartialEq, Default)]
+struct EvolvingOverrideStruct {
+    f1: String,
+}
+
+#[derive(ForyObject, Debug, PartialEq, Default)]
+#[fory(evolving = false)]
+struct FixedOverrideStruct {
+    f1: String,
+}
+
 #[test]
 #[ignore]
 fn test_buffer() {
@@ -418,6 +429,39 @@ fn test_named_simple_struct() {
     let new_local_obj: SimpleStruct = fory.deserialize(&new_bytes).unwrap();
     assert_eq!(new_local_obj, local_obj);
     fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_struct_evolving_override() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register_by_namespace::<EvolvingOverrideStruct>("test", "evolving_yes")
+        .unwrap();
+    fory.register_by_namespace::<FixedOverrideStruct>("test", "evolving_off")
+        .unwrap();
+
+    let mut reader = Reader::new(bytes.as_slice());
+    let evolving: EvolvingOverrideStruct = fory.deserialize_from(&mut reader).unwrap();
+    let fixed: FixedOverrideStruct = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(
+        evolving,
+        EvolvingOverrideStruct {
+            f1: "payload".to_string(),
+        }
+    );
+    assert_eq!(
+        fixed,
+        FixedOverrideStruct {
+            f1: "payload".to_string(),
+        }
+    );
+
+    let mut out = Vec::new();
+    fory.serialize_to(&mut out, &evolving).unwrap();
+    fory.serialize_to(&mut out, &fixed).unwrap();
+    fs::write(&data_file_path, out).unwrap();
 }
 
 #[test]

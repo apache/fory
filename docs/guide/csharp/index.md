@@ -37,6 +37,16 @@ Apache Fory™ C# is a high-performance, cross-language serialization runtime fo
 - .NET SDK 8.0+
 - C# language version 12+
 
+### Install from NuGet
+
+Reference the single `Apache.Fory` package. It includes the runtime and the source generator for `[ForyObject]` types.
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Apache.Fory" Version="0.1.0" />
+</ItemGroup>
+```
+
 ### Basic Example
 
 ```csharp

@@ -17,14 +17,12 @@
 
 namespace Apache.Fory;
 
-internal readonly record struct PendingRefSlot(uint RefId, bool Bound);
-
 public sealed class RefWriter
 {
     private readonly Dictionary<object, uint> _refs = new(ReferenceEqualityComparer.Instance);
     private uint _nextRefId;
 
-    public bool TryWriteReference(ByteWriter writer, object obj)
+    public bool TryWriteRef(ByteWriter writer, object obj)
     {
         if (_refs.TryGetValue(obj, out uint refId))
         {
@@ -56,7 +54,16 @@ public sealed class RefWriter
 public sealed class RefReader
 {
     private readonly List<object?> _refs = [];
-    private readonly List<PendingRefSlot> _pendingRefStack = [];
+
+    public RefFlag ReadRefFlag(ByteReader reader)
+    {
+        return (RefFlag)reader.ReadInt8();
+    }
+
+    public uint ReadRefId(ByteReader reader)
+    {
+        return reader.ReadVarUInt32();
+    }
 
     public uint ReserveRefId()
     {
@@ -65,53 +72,13 @@ public sealed class RefReader
         return id;
     }
 
-    public void StoreRef(object? value, uint refId)
+    public void StoreRefAt(uint refId, object? value)
     {
         int index = checked((int)refId);
         _refs[index] = value;
     }
 
-    public void PushPendingReference(uint refId)
-    {
-        _pendingRefStack.Add(new PendingRefSlot(refId, false));
-    }
-
-    public void BindPendingReference(object? value)
-    {
-        if (_pendingRefStack.Count == 0)
-        {
-            return;
-        }
-
-        PendingRefSlot last = _pendingRefStack[^1];
-        _pendingRefStack.RemoveAt(_pendingRefStack.Count - 1);
-        _pendingRefStack.Add(last with { Bound = true });
-        StoreRef(value, last.RefId);
-    }
-
-    public void FinishPendingReferenceIfNeeded(object? value)
-    {
-        if (_pendingRefStack.Count == 0)
-        {
-            return;
-        }
-
-        PendingRefSlot last = _pendingRefStack[^1];
-        if (!last.Bound)
-        {
-            StoreRef(value, last.RefId);
-        }
-    }
-
-    public void PopPendingReference()
-    {
-        if (_pendingRefStack.Count > 0)
-        {
-            _pendingRefStack.RemoveAt(_pendingRefStack.Count - 1);
-        }
-    }
-
-    public T ReadRef<T>(uint refId)
+    public T GetRef<T>(uint refId)
     {
         int index = checked((int)refId);
         if (index < 0 || index >= _refs.Count)
@@ -127,7 +94,7 @@ public sealed class RefReader
         throw new RefException($"ref_id {refId} has unexpected runtime type");
     }
 
-    public object? ReadRefValue(uint refId)
+    public object? GetRefValue(uint refId)
     {
         int index = checked((int)refId);
         if (index < 0 || index >= _refs.Count)
@@ -141,6 +108,5 @@ public sealed class RefReader
     public void Reset()
     {
         _refs.Clear();
-        _pendingRefStack.Clear();
     }
 }

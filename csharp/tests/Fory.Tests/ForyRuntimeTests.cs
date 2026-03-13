@@ -92,6 +92,18 @@ public sealed class TwoStringField
 }
 
 [ForyObject]
+public sealed class EvolvingOverrideValue
+{
+    public string F1 { get; set; } = string.Empty;
+}
+
+[ForyObject(Evolving = false)]
+public sealed class FixedOverrideValue
+{
+    public string F1 { get; set; } = string.Empty;
+}
+
+[ForyObject]
 public sealed class OneStringFieldListHolder
 {
     public List<OneStringField?> Items { get; set; } = [];
@@ -579,7 +591,7 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void MacroClassReferenceTracking()
+    public void MacroClassRefTracking()
     {
         ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
         fory.Register<Node>(200);
@@ -669,6 +681,24 @@ public sealed class ForyRuntimeTests
         Assert.Equal("value1", key1);
         Assert.True(decoded.Data.TryGetValue("key3", out string? key3));
         Assert.Null(key3);
+    }
+
+    [Fact]
+    public void StructEvolvingOverrideUsesSmallerCompatiblePayload()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
+        fory.Register<EvolvingOverrideValue>(1001);
+        fory.Register<FixedOverrideValue>(1002);
+
+        EvolvingOverrideValue evolving = new() { F1 = "payload" };
+        FixedOverrideValue fixedValue = new() { F1 = "payload" };
+
+        byte[] evolvingPayload = fory.Serialize(evolving);
+        byte[] fixedPayload = fory.Serialize(fixedValue);
+
+        Assert.True(fixedPayload.Length < evolvingPayload.Length);
+        Assert.Equal("payload", fory.Deserialize<EvolvingOverrideValue>(evolvingPayload).F1);
+        Assert.Equal("payload", fory.Deserialize<FixedOverrideValue>(fixedPayload).F1);
     }
 
     [Fact]
@@ -902,6 +932,27 @@ public sealed class ForyRuntimeTests
         Assert.Contains("a", setDecoded);
         Assert.Contains(7, setDecoded);
         Assert.Contains(false, setDecoded);
+    }
+
+    [Fact]
+    public void DynamicObjectCompatibleModeSupportsStructKeyAndValue()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
+        fory.Register<EvolvingOverrideValue>(410);
+        fory.Register<FixedOverrideValue>(411);
+
+        Dictionary<object, object?> source = new()
+        {
+            [new FixedOverrideValue { F1 = "key" }] = new EvolvingOverrideValue { F1 = "value" },
+        };
+
+        Dictionary<object, object?> decoded =
+            Assert.IsType<Dictionary<object, object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(source)));
+        KeyValuePair<object, object?> entry = Assert.Single(decoded);
+        FixedOverrideValue key = Assert.IsType<FixedOverrideValue>(entry.Key);
+        EvolvingOverrideValue value = Assert.IsType<EvolvingOverrideValue>(entry.Value);
+        Assert.Equal("key", key.F1);
+        Assert.Equal("value", value.F1);
     }
 
     [Fact]

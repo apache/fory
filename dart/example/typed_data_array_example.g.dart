@@ -29,6 +29,7 @@ final $TypedDataArrayExample = TypeSpec(
   TypedDataArrayExample,
   false,
   true,
+  true,
   [
     FieldSpec(
       'bools',

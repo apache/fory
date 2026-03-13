@@ -83,8 +83,8 @@ public sealed class RefException : ForyException
     /// <summary>
     /// Creates a new reference exception.
     /// </summary>
-    /// <param name="message">Reference error details.</param>
-    public RefException(string message) : base($"Reference error: {message}")
+    /// <param name="message">Ref error details.</param>
+    public RefException(string message) : base($"Ref error: {message}")
     {
     }
 }

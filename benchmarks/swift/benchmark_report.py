@@ -253,7 +253,7 @@ def write_report(
     else:
         image_path = plot_name
     lines.append('<p align="center">')
-    lines.append(f'<img src="{image_path}" width="95%">')
+    lines.append(f'<img src="{image_path}" width="95%" />')
     lines.append("</p>")
     lines.append("")
     lines.append(

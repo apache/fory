@@ -129,6 +129,14 @@ Fory C# demonstrates excellent performance compared to protobuf-net and MessageP
 
 For more detailed benchmarks and methodology, see [C# Benchmarks](docs/benchmarks/csharp).
 
+### Swift Serialization Performance
+
+<p align="center">
+<img src="docs/benchmarks/swift/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [SwiftBenchmarks](docs/benchmarks/swift).
+
 ## Installation
 
 **Java**:

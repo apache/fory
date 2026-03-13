@@ -52,8 +52,10 @@ class ClassAnnotationAnalyzer {
     assert(
         getForyClass); // There must be a ForyMeta annotation, otherwise this class would not be analyzed
     bool promiseAcyclic = anno.getField("promiseAcyclic")!.toBoolValue()!;
+    bool evolving = anno.getField("evolving")!.toBoolValue()!;
     return ForyClass(
       promiseAcyclic: promiseAcyclic,
+      evolving: evolving,
     );
   }
 

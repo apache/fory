@@ -28,6 +28,16 @@ Is there any related issue? If this PR closes them you say say fix/closes:
 - Fixes #xxxx2
 -->
 
+## AI Contribution Checklist
+
+<!-- Full requirements and disclosure template:
+https://github.com/apache/fory/blob/main/AI_POLICY.md#9-contributor-checklist-for-ai-assisted-prs -->
+
+- [ ] Substantial AI assistance was used in this PR: `yes` / `no`
+- [ ] If `yes`, I included a completed [AI Contribution Checklist](https://github.com/apache/fory/blob/main/AI_POLICY.md#9-contributor-checklist-for-ai-assisted-prs) in this PR description and the required `AI Usage Disclosure`.
+
+<!-- If substantial AI assistance = `yes`, paste the completed checklist and disclosure block here. -->
+
 ## Does this PR introduce any user-facing change?
 
 <!--

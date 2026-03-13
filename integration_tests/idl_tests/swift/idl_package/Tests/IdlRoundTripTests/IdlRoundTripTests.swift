@@ -58,6 +58,24 @@ final class IdlRoundTripTests: XCTestCase {
         } catch {
             // non-evolving type mismatch is allowed to fail
         }
+
+        let evolvingSizeV1 = Evolving1.EvolvingSizeMessage(payload: "payload")
+        let fixedSizeV1 = Evolving1.FixedSizeMessage(payload: "payload")
+        let evolvingSizeBytes = try foryV1.serialize(evolvingSizeV1)
+        let fixedSizeBytes = try foryV1.serialize(fixedSizeV1)
+        XCTAssertLessThan(fixedSizeBytes.count, evolvingSizeBytes.count)
+
+        let evolvingSizeV2: Evolving2.EvolvingSizeMessage = try foryV2.deserialize(evolvingSizeBytes)
+        XCTAssertEqual(evolvingSizeV2.payload, evolvingSizeV1.payload)
+        let evolvingSizeRoundBytes = try foryV2.serialize(evolvingSizeV2)
+        let evolvingSizeRound: Evolving1.EvolvingSizeMessage = try foryV1.deserialize(evolvingSizeRoundBytes)
+        XCTAssertEqual(evolvingSizeRound, evolvingSizeV1)
+
+        let fixedSizeV2: Evolving2.FixedSizeMessage = try foryV2.deserialize(fixedSizeBytes)
+        XCTAssertEqual(fixedSizeV2.payload, fixedSizeV1.payload)
+        let fixedSizeRoundBytes = try foryV2.serialize(fixedSizeV2)
+        let fixedSizeRound: Evolving1.FixedSizeMessage = try foryV1.deserialize(fixedSizeRoundBytes)
+        XCTAssertEqual(fixedSizeRound, fixedSizeV1)
     }
 
     func testRootToBytesFromBytes() throws {
