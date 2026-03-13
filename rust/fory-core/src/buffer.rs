@@ -556,6 +556,20 @@ impl<'a> Reader<'a> {
         self.stream.is_some()
     }
 
+    /// Returns the stream buffer's `reader_index` (read position).
+    /// Returns `None` when this reader is not stream-backed.
+    #[inline(always)]
+    pub fn stream_reader_index(&self) -> Option<usize> {
+        self.stream.as_ref().map(|s| s.reader_index())
+    }
+
+    /// Returns the stream buffer's `remaining` unread byte count.
+    /// Returns `None` when this reader is not stream-backed.
+    #[inline(always)]
+    pub fn stream_remaining(&self) -> Option<usize> {
+        self.stream.as_ref().map(|s| s.remaining())
+    }
+
     #[inline(always)]
     pub(crate) fn move_next(&mut self, additional: usize) {
         self.cursor += additional;
@@ -1199,10 +1213,6 @@ impl<'a> Reader<'a> {
 
         let b = self.value_at(self.cursor)? as u64;
         self.cursor += 1;
-
-        if b >= (1 << 8) {
-            return Err(Error::encode_error("var_uint36small overflow"));
-        }
 
         result |= b << 28;
 

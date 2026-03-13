@@ -120,13 +120,14 @@ mod stream_tests {
     fn test_varuint36small_boundary_round_trip() {
         let fory = Fory::default();
 
+        // (0..500) forces 2-byte varuint36small length encoding
         let large_vec: Vec<i32> = (0..500).collect();
         let bytes = fory.serialize(&large_vec).unwrap();
 
         assert_eq!(deserialize_helper::<Vec<i32>>(&fory, &bytes), large_vec);
     }
 
-    // ── Vec round-trip ─────────────────────────────────────────────────────
+    // ── Vec round-trip ──────────────────────────────────────────────────────
 
     #[test]
     fn test_vec_round_trip() {
@@ -138,7 +139,7 @@ mod stream_tests {
         assert_eq!(deserialize_helper::<Vec<i32>>(&fory, &bytes), vec);
     }
 
-    // ── Struct round-trip ──────────────────────────────────────────────────
+    // ── Struct round-trip ───────────────────────────────────────────────────
 
     #[derive(Debug, PartialEq, fory_derive::ForyObject)]
     struct Point {
@@ -157,7 +158,9 @@ mod stream_tests {
         assert_eq!(deserialize_helper::<Point>(&fory, &bytes), point);
     }
 
-    // ── Sequential multi-object stream decode ──────────────────────────────
+    // ── Sequential multi-object stream decode ───────────────────────────────
+    // FIX: added reader_index() == 0 assertions after each read,
+    // mirroring C++ EXPECT_EQ(stream.get_buffer().reader_index(), 0U)
 
     #[test]
     fn test_sequential_stream_reads() {
@@ -173,29 +176,58 @@ mod stream_tests {
         let mut reader = Reader::from_stream(ForyStreamBuf::new(OneByte(Cursor::new(bytes))));
 
         let first: i32 = fory.deserialize_from(&mut reader).unwrap();
-        let second: String = fory.deserialize_from(&mut reader).unwrap();
-        let third: i64 = fory.deserialize_from(&mut reader).unwrap();
-
         assert_eq!(first, 12345);
+        // Mirrors C++: EXPECT_EQ(stream.get_buffer().reader_index(), 0U)
+        assert_eq!(
+            reader.stream_reader_index().unwrap(),
+            0,
+            "buffer must be compacted to 0 after first read"
+        );
+
+        let second: String = fory.deserialize_from(&mut reader).unwrap();
         assert_eq!(second, "next-value");
+        // Mirrors C++: EXPECT_EQ(stream.get_buffer().reader_index(), 0U)
+        assert_eq!(
+            reader.stream_reader_index().unwrap(),
+            0,
+            "buffer must be compacted to 0 after second read"
+        );
+
+        let third: i64 = fory.deserialize_from(&mut reader).unwrap();
         assert_eq!(third, 99);
+        // Mirrors C++: EXPECT_EQ(stream.get_buffer().reader_index(), 0U)
+        assert_eq!(
+            reader.stream_reader_index().unwrap(),
+            0,
+            "buffer must be compacted to 0 after third read"
+        );
+
+        // Mirrors C++: EXPECT_EQ(stream.get_buffer().remaining_size(), 0U)
+        assert_eq!(
+            reader.stream_remaining().unwrap(),
+            0,
+            "stream must be fully consumed"
+        );
     }
 
-    // ── Truncated stream must return Err ───────────────────────────────────
+    // ── Truncated stream must return Err ────────────────────────────────────
+    // FIX: wrapped Cursor with OneByte to exercise streaming refill path,
+    // matching C++ OneByteIStream usage in TruncatedStreamReturnsError
 
     #[test]
     fn test_truncated_stream_returns_error() {
         let fory = Fory::default();
 
         let mut bytes = fory.serialize(&"hello world".to_string()).unwrap();
-        bytes.pop();
+        bytes.pop(); // corrupt the stream
 
-        let result: Result<String, _> = fory.deserialize_from_stream(Cursor::new(bytes));
+        // FIX: OneByte wrapper added — was bare Cursor::new(bytes) before
+        let result: Result<String, _> = fory.deserialize_from_stream(OneByte(Cursor::new(bytes)));
 
         assert!(result.is_err());
     }
 
-    // ── shrink_buffer compaction behavior ──────────────────────────────────
+    // ── shrink_buffer compaction behavior ───────────────────────────────────
 
     #[test]
     fn test_shrink_between_sequential_reads() {
@@ -219,7 +251,7 @@ mod stream_tests {
         assert_eq!(fory.deserialize_from::<i64>(&mut reader).unwrap(), 100);
     }
 
-    // ── ForyStreamBuf unit tests ───────────────────────────────────────────
+    // ── ForyStreamBuf unit tests ────────────────────────────────────────────
 
     mod buf_tests {
         use fory_core::stream::ForyStreamBuf;

@@ -998,7 +998,7 @@ impl Fory {
                     .expect("is_stream_backed was true but stream is None");
                 let cursor = reader.cursor;
                 let mut stream_reader = Reader::from_stream(*stream);
-                let _ = stream_reader.set_cursor(cursor);
+                stream_reader.set_cursor(cursor).ok();
                 context.attach_reader(stream_reader);
 
                 let result = self.deserialize_with_context(context);
@@ -1008,7 +1008,7 @@ impl Fory {
                 reader.stream = returned.stream;
 
                 if let Some(ref mut s) = reader.stream {
-                    let _ = s.set_reader_index(reader.cursor);
+                    s.set_reader_index(reader.cursor).ok();
                     s.shrink_buffer();
                     reader.bf = unsafe { std::slice::from_raw_parts(s.data(), s.size()) };
                     reader.cursor = s.reader_index();
@@ -1018,12 +1018,12 @@ impl Fory {
                 // IN-MEMORY PATH — unchanged fast path
                 let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
                 let mut new_reader = Reader::new(outlive_buffer);
-                let _ = new_reader.set_cursor(reader.cursor);
+                new_reader.set_cursor(reader.cursor).ok();
                 context.attach_reader(new_reader);
 
                 let result = self.deserialize_with_context(context);
                 let end = context.detach_reader().get_cursor();
-                let _ = reader.set_cursor(end);
+                reader.set_cursor(end).ok();
                 result
             }
         })
