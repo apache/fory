@@ -25,10 +25,9 @@ import (
 // RowWriter builds a Standard Row Format byte slice.
 // Call NewRowWriter, then WriteInt64/WriteString/SetNull for each field, then Bytes().
 type RowWriter struct {
-	buf         []byte
-	numFields   int
-	startOffset int // relativeOffset = absPos - startOffset (0 for top-level rows)
-	varCursor   int // next write position in the variable-length data region
+	buf       []byte
+	numFields int
+	varCursor int // next write position in the variable-length data region
 }
 
 // NewRowWriter allocates a zeroed buffer and positions varCursor after the fixed region.
@@ -37,10 +36,9 @@ func NewRowWriter(numFields int, extraVarBytes int) *RowWriter {
 	fixed := FixedRegionSize(numFields)
 	buf := make([]byte, fixed+extraVarBytes) // Go runtime zeroes this
 	return &RowWriter{
-		buf:         buf,
-		numFields:   numFields,
-		startOffset: 0,
-		varCursor:   fixed,
+		buf:       buf,
+		numFields: numFields,
+		varCursor: fixed,
 	}
 }
 
@@ -135,7 +133,7 @@ func (w *RowWriter) writeVarSlot(fieldIdx int, data []byte) {
 	}
 	copy(w.buf[w.varCursor:], data)
 
-	relOffset := w.varCursor - w.startOffset
+	relOffset := w.varCursor
 	binary.LittleEndian.PutUint64(
 		w.buf[SlotOffset(fieldIdx, w.numFields):],
 		uint64(relOffset)<<32|uint64(size),

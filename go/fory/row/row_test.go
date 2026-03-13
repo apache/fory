@@ -25,19 +25,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// javaGoldenHex is the expected hex dump of the Java BinaryRowWriter output for:
-//
-//	schema: {id int64 (non-null), name utf8 (nullable)}
-//	values: {id=42, name="Alice"}
-//
-// Manually verified layout (32 bytes):
-//
-//	Bytes 00-07: null bitmap          → 0000000000000000  (no nulls; bit=1 would mean null)
-//	Bytes 08-15: id=42 LE int64       → 2a00000000000000
-//	Bytes 16-23: name slot            → 0500000018000000  (size=5 in lo32, relOffset=24=0x18 in hi32, stored LE)
-//	Bytes 24-31: "Alice" + 3 pad zeros→ 416c696365000000
-//
-// To regenerate from Java, run BinaryRowTest#testGoldenFile and read stdout.
+// javaGoldenNullHex is the Java golden hex for {id=1, value=null} (null-field cross-language test).
+const javaGoldenNullHex = "020000000000000001000000000000000000000000000000"
+
+// javaGoldenArrayHex is the Java golden hex for {id=7, scores=[10,20,30]} (array cross-language test).
+const javaGoldenArrayHex = "000000000000000007000000000000002800000018000000" +
+	"030000000000000000000000000000000a00000000000000" +
+	"14000000000000001e00000000000000"
+
+// javaGoldenMapHex is the Java golden hex for {id=1, config={"a":100}} (map cross-language test).
+const javaGoldenMapHex = "00000000000000000100000000000000400000001800000020000000000000000100000000000000" +
+	"000000000000000001000000180000006100000000000000" +
+	"010000000000000000000000000000006400000000000000"
+
+// javaGoldenHex is the Java golden hex for {id=42, name="Alice"} (basic cross-language test).
 const javaGoldenHex = "00000000000000002a000000000000000500000018000000416c696365000000"
 
 // TestLayoutConstants validates the pure arithmetic at the foundation of every other test.
@@ -65,7 +66,6 @@ func TestRoundtrip(t *testing.T) {
 }
 
 // TestGoldenEncode verifies the Go encoder produces bytes identical to the Java implementation.
-// A mismatch here means the alignment math or slot packing disagrees with Java.
 func TestGoldenEncode(t *testing.T) {
 	w := NewRowWriter(2, 16)
 	w.WriteInt64(0, 42)
@@ -77,7 +77,6 @@ func TestGoldenEncode(t *testing.T) {
 }
 
 // TestRandomAccess parses the Java golden bytes and reads id without touching the string region.
-// This demonstrates O(1) partial deserialization: only bytes 8-15 are accessed for id.
 func TestRandomAccess(t *testing.T) {
 	raw, err := hex.DecodeString(javaGoldenHex)
 	require.NoError(t, err)
@@ -163,8 +162,7 @@ func TestBinaryField(t *testing.T) {
 	require.Equal(t, payload, r.ReadBinary(0))
 }
 
-// TestMultiByteUTF8 verifies that multi-byte UTF-8 strings (non-ASCII) round-trip correctly.
-// The row format stores raw UTF-8 bytes; the size field is byte count, not rune count.
+// TestMultiByteUTF8 verifies that multi-byte UTF-8 strings round-trip correctly.
 func TestMultiByteUTF8(t *testing.T) {
 	s := "こんにちは🌍" // 5×3-byte hiragana + 4-byte emoji = 19 bytes
 	w := NewRowWriter(1, 32)
@@ -174,8 +172,7 @@ func TestMultiByteUTF8(t *testing.T) {
 	require.Equal(t, s, r.ReadString(0))
 }
 
-// TestBitmapBoundary64Fields verifies that a 64-field row uses an 8-byte bitmap and
-// all field slots are reachable.
+// TestBitmapBoundary64Fields verifies that a 64-field row uses an 8-byte bitmap and all slots are reachable.
 func TestBitmapBoundary64Fields(t *testing.T) {
 	const n = 64
 	require.Equal(t, 8, BitmapSize(n), "64-field bitmap must be 8 bytes")
@@ -191,8 +188,7 @@ func TestBitmapBoundary64Fields(t *testing.T) {
 	}
 }
 
-// TestBitmapBoundary65Fields verifies that a 65-field row bumps the bitmap to 16 bytes
-// and the 65th field slot is correctly offset.
+// TestBitmapBoundary65Fields verifies that a 65-field row bumps the bitmap to 16 bytes.
 func TestBitmapBoundary65Fields(t *testing.T) {
 	const n = 65
 	require.Equal(t, 16, BitmapSize(n), "65-field bitmap must be 16 bytes")
@@ -212,7 +208,6 @@ func TestBitmapBoundary65Fields(t *testing.T) {
 }
 
 // TestNestedRow verifies a row can be embedded in another row's variable region.
-// Per ADR-3: the child row bytes are copied into the parent's variable region.
 func TestNestedRow(t *testing.T) {
 	// Child row: {score int64, label string}
 	child := NewRowWriter(2, 16)
@@ -257,8 +252,7 @@ func TestWriteBoolFalse(t *testing.T) {
 	require.False(t, r.ReadBool(1))
 }
 
-// TestWriterBufferGrowth verifies writeVarSlot grows the buffer correctly when the
-// initial extraVarBytes hint is too small (exercises the reallocation branch).
+// TestWriterBufferGrowth verifies the buffer grows correctly when the initial extraVarBytes hint is too small.
 func TestWriterBufferGrowth(t *testing.T) {
 	// Start with 0 extra bytes — the first variable-length write must trigger growth.
 	w := NewRowWriter(1, 0)
@@ -275,4 +269,251 @@ func TestZeroFieldRow(t *testing.T) {
 	w := NewRowWriter(0, 0)
 	r := NewRowReader(w.Bytes(), 0)
 	_ = r // nothing to read; just verify no panic
+}
+
+// TestGoldenEncodeNull verifies the Go encoder matches Java for a row containing a null field.
+func TestGoldenEncodeNull(t *testing.T) {
+	w := NewRowWriter(2, 0)
+	w.WriteInt64(0, 1)
+	w.SetNull(1)
+
+	got := hex.EncodeToString(w.Bytes())
+	require.Equal(t, javaGoldenNullHex, got,
+		"Go null encoding does not match Java golden — check bitmap bit ordering")
+}
+
+// TestGoldenDecodeNull parses javaGoldenNullHex and verifies field 1 is null.
+func TestGoldenDecodeNull(t *testing.T) {
+	raw, err := hex.DecodeString(javaGoldenNullHex)
+	require.NoError(t, err)
+
+	r := NewRowReader(raw, 2)
+	require.False(t, r.IsNull(0))
+	require.True(t, r.IsNull(1))
+	require.Equal(t, int64(1), r.ReadInt64(0))
+}
+
+// TestGoldenEncodeArray verifies the Go encoder matches Java for a row with a fixed int64 array.
+func TestGoldenEncodeArray(t *testing.T) {
+	w := NewRowWriter(2, 48)
+	w.WriteInt64(0, 7)
+	aw := NewFixedArrayWriter(3, 8)
+	aw.WriteInt64(0, 10)
+	aw.WriteInt64(1, 20)
+	aw.WriteInt64(2, 30)
+	w.WriteArray(1, aw)
+
+	got := hex.EncodeToString(w.Bytes())
+	require.Equal(t, javaGoldenArrayHex, got,
+		"Go array encoding does not match Java golden — check array header or element layout")
+}
+
+// TestGoldenDecodeArray parses javaGoldenArrayHex and reads the scores array.
+func TestGoldenDecodeArray(t *testing.T) {
+	raw, err := hex.DecodeString(javaGoldenArrayHex)
+	require.NoError(t, err)
+
+	r := NewRowReader(raw, 2)
+	require.Equal(t, int64(7), r.ReadInt64(0))
+
+	ar := r.ReadFixedArray(1, 8)
+	require.Equal(t, 3, ar.Len())
+	require.Equal(t, int64(10), ar.ReadInt64(0))
+	require.Equal(t, int64(20), ar.ReadInt64(1))
+	require.Equal(t, int64(30), ar.ReadInt64(2))
+}
+
+// TestGoldenEncodeMap verifies the Go encoder matches Java for a row with a string→int64 map.
+func TestGoldenEncodeMap(t *testing.T) {
+	keys := NewVarArrayWriter(1, 16)
+	keys.WriteString(0, "a")
+
+	vals := NewFixedArrayWriter(1, 8)
+	vals.WriteInt64(0, 100)
+
+	mw := NewMapWriter(keys, vals)
+
+	w := NewRowWriter(2, 96)
+	w.WriteInt64(0, 1)
+	w.WriteMap(1, mw)
+
+	got := hex.EncodeToString(w.Bytes())
+	require.Equal(t, javaGoldenMapHex, got,
+		"Go map encoding does not match Java golden — check keysSize prefix or array slot encoding")
+}
+
+// TestGoldenDecodeMap parses javaGoldenMapHex and reads the config map.
+func TestGoldenDecodeMap(t *testing.T) {
+	raw, err := hex.DecodeString(javaGoldenMapHex)
+	require.NoError(t, err)
+
+	r := NewRowReader(raw, 2)
+	require.Equal(t, int64(1), r.ReadInt64(0))
+
+	mr := r.ReadMap(1)
+	kr := mr.KeysVarArray()
+	vr := mr.ValuesFixedArray(8)
+
+	require.Equal(t, 1, kr.Len())
+	require.Equal(t, "a", kr.ReadString(0))
+	require.Equal(t, 1, vr.Len())
+	require.Equal(t, int64(100), vr.ReadInt64(0))
+}
+
+// TestNullSlotIsZero verifies that a null field's slot bytes are zero.
+func TestNullSlotIsZero(t *testing.T) {
+	w := NewRowWriter(3, 0)
+	w.WriteInt64(0, 99)
+	w.SetNull(1)
+	w.WriteInt64(2, 77)
+
+	b := w.Bytes()
+	// Slot for field 1 starts at BitmapSize(3)+8 = 8+8 = 16; must be all zero.
+	for i := 16; i < 24; i++ {
+		require.Equal(t, byte(0), b[i], "null slot byte %d must be zero", i)
+	}
+}
+
+// TestAllFieldsNull verifies every field can be independently nulled in a large row.
+func TestAllFieldsNull(t *testing.T) {
+	const n = 10
+	w := NewRowWriter(n, 0)
+	for i := 0; i < n; i++ {
+		w.SetNull(i)
+	}
+
+	r := NewRowReader(w.Bytes(), n)
+	for i := 0; i < n; i++ {
+		require.True(t, r.IsNull(i), "field %d should be null", i)
+	}
+}
+
+// TestMixedNullAndValue verifies null and non-null fields interleave correctly across a bitmap word boundary.
+func TestMixedNullAndValue(t *testing.T) {
+	const n = 66
+	w := NewRowWriter(n, 0)
+	w.WriteInt64(0, 1)
+	w.SetNull(1)
+	w.WriteInt64(63, 63)
+	w.SetNull(64)
+	w.WriteInt64(65, 65)
+
+	r := NewRowReader(w.Bytes(), n)
+	require.False(t, r.IsNull(0))
+	require.True(t, r.IsNull(1))
+	require.False(t, r.IsNull(63))
+	require.True(t, r.IsNull(64))
+	require.False(t, r.IsNull(65))
+	require.Equal(t, int64(1), r.ReadInt64(0))
+	require.Equal(t, int64(63), r.ReadInt64(63))
+	require.Equal(t, int64(65), r.ReadInt64(65))
+}
+
+// TestVariableFieldsOutOfOrder writes variable-width fields in reverse ordinal order and verifies correct reads.
+func TestVariableFieldsOutOfOrder(t *testing.T) {
+	w := NewRowWriter(3, 64)
+	w.WriteString(2, "last")
+	w.WriteString(0, "first")
+	w.WriteString(1, "middle")
+
+	r := NewRowReader(w.Bytes(), 3)
+	require.Equal(t, "first", r.ReadString(0))
+	require.Equal(t, "middle", r.ReadString(1))
+	require.Equal(t, "last", r.ReadString(2))
+}
+
+// TestEmptyBinary verifies a zero-length binary field round-trips without panic.
+func TestEmptyBinary(t *testing.T) {
+	w := NewRowWriter(1, 0)
+	w.WriteBinary(0, []byte{})
+
+	r := NewRowReader(w.Bytes(), 1)
+	require.Equal(t, []byte{}, r.ReadBinary(0))
+}
+
+// TestLargeBinaryField verifies a >64-byte binary payload is stored and retrieved intact.
+func TestLargeBinaryField(t *testing.T) {
+	payload := make([]byte, 200)
+	for i := range payload {
+		payload[i] = byte(i % 251)
+	}
+	w := NewRowWriter(1, 256)
+	w.WriteBinary(0, payload)
+
+	r := NewRowReader(w.Bytes(), 1)
+	require.Equal(t, payload, r.ReadBinary(0))
+}
+
+// TestSlotIndependence verifies that writing field N does not corrupt adjacent field slots.
+func TestSlotIndependence(t *testing.T) {
+	w := NewRowWriter(4, 32)
+	w.WriteInt64(0, 111)
+	w.WriteString(1, "x")
+	w.WriteInt64(2, 333)
+	w.WriteString(3, "y")
+
+	r := NewRowReader(w.Bytes(), 4)
+	require.Equal(t, int64(111), r.ReadInt64(0))
+	require.Equal(t, "x", r.ReadString(1))
+	require.Equal(t, int64(333), r.ReadInt64(2))
+	require.Equal(t, "y", r.ReadString(3))
+}
+
+// TestNestedRowNullField verifies a null field inside a nested row is correctly propagated.
+func TestNestedRowNullField(t *testing.T) {
+	child := NewRowWriter(2, 0)
+	child.WriteInt64(0, 5)
+	child.SetNull(1)
+
+	parent := NewRowWriter(1, 32)
+	parent.WriteNestedRow(0, child)
+
+	pr := NewRowReader(parent.Bytes(), 1)
+	cr := pr.ReadNestedRow(0, 2)
+	require.Equal(t, int64(5), cr.ReadInt64(0))
+	require.True(t, cr.IsNull(1))
+}
+
+// TestMapEmptyArrays verifies a map with zero-element key and value arrays round-trips cleanly.
+func TestMapEmptyArrays(t *testing.T) {
+	keys := NewFixedArrayWriter(0, 8)
+	vals := NewFixedArrayWriter(0, 8)
+	mw := NewMapWriter(keys, vals)
+
+	mr := NewMapReader(mw.Bytes())
+	kr := mr.KeysFixedArray(8)
+	vr := mr.ValuesFixedArray(8)
+	require.Equal(t, 0, kr.Len())
+	require.Equal(t, 0, vr.Len())
+}
+
+// TestMapInRowRoundtrip verifies a map embedded in a row survives encode→decode intact.
+func TestMapInRowRoundtrip(t *testing.T) {
+	keys := NewVarArrayWriter(3, 32)
+	keys.WriteString(0, "alpha")
+	keys.WriteString(1, "beta")
+	keys.WriteString(2, "gamma")
+
+	vals := NewFixedArrayWriter(3, 8)
+	vals.WriteInt64(0, -1)
+	vals.WriteInt64(1, 0)
+	vals.WriteInt64(2, math.MaxInt64)
+
+	rw := NewRowWriter(2, 128)
+	rw.WriteInt64(0, 42)
+	rw.WriteMap(1, NewMapWriter(keys, vals))
+
+	rr := NewRowReader(rw.Bytes(), 2)
+	require.Equal(t, int64(42), rr.ReadInt64(0))
+
+	mr := rr.ReadMap(1)
+	kr := mr.KeysVarArray()
+	vr := mr.ValuesFixedArray(8)
+
+	require.Equal(t, "alpha", kr.ReadString(0))
+	require.Equal(t, "beta", kr.ReadString(1))
+	require.Equal(t, "gamma", kr.ReadString(2))
+	require.Equal(t, int64(-1), vr.ReadInt64(0))
+	require.Equal(t, int64(0), vr.ReadInt64(1))
+	require.Equal(t, int64(math.MaxInt64), vr.ReadInt64(2))
 }
