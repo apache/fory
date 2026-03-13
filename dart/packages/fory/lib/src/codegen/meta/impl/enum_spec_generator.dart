@@ -25,9 +25,15 @@ import 'package:meta/meta.dart';
 @immutable
 class EnumSpecGenerator extends CustomTypeSpecGenerator {
   final List<String> _enumVarNames;
+  final Map<String, int>? _enumValueIds;
   late final String _varName;
 
-  EnumSpecGenerator(super.name, super.importPath, this._enumVarNames) {
+  EnumSpecGenerator(
+    super.name,
+    super.importPath,
+    this._enumVarNames,
+    this._enumValueIds,
+  ) {
     _varName = "\$$name";
     assert(_enumVarNames.isNotEmpty);
   }
@@ -43,6 +49,34 @@ class EnumSpecGenerator extends CustomTypeSpecGenerator {
       buf.write(', ');
     }
     buf.write("],\n");
+  }
+
+  void _writeEnumIdMap(StringBuffer buf, int indentLevel) {
+    final Map<String, int>? enumValueIds = _enumValueIds;
+    if (enumValueIds == null) {
+      return;
+    }
+
+    final int totalIndent = indentLevel * CodegenStyle.indent;
+    CodegenTool.writeIndent(buf, totalIndent);
+    buf.write("{\n");
+
+    for (final String varName in _enumVarNames) {
+      final int? id = enumValueIds[varName];
+      if (id == null) {
+        continue;
+      }
+      CodegenTool.writeIndent(buf, totalIndent + CodegenStyle.indent);
+      buf.write(id);
+      buf.write(": ");
+      buf.write(name);
+      buf.write(".");
+      buf.write(varName);
+      buf.write(",\n");
+    }
+
+    CodegenTool.writeIndent(buf, totalIndent);
+    buf.write("},\n");
   }
 
   @override
@@ -75,6 +109,7 @@ class EnumSpecGenerator extends CustomTypeSpecGenerator {
     // buf.write(",\n");
 
     _writeFieldsStr(buf, indentLevel + 1);
+    _writeEnumIdMap(buf, indentLevel + 1);
 
     // tail part
     buf.write(");\n");
