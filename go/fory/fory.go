@@ -50,10 +50,12 @@ const (
 
 // Config holds configuration options for Fory instances
 type Config struct {
-	TrackRef   bool
-	MaxDepth   int
-	IsXlang    bool
-	Compatible bool // Schema evolution compatibility mode
+	TrackRef          bool
+	MaxDepth          int
+	IsXlang           bool
+	Compatible        bool // Schema evolution compatibility mode
+	MaxCollectionSize int
+	MaxBinarySize     int
 }
 
 // defaultConfig returns the default configuration
@@ -98,6 +100,20 @@ func WithXlang(enabled bool) Option {
 func WithCompatible(enabled bool) Option {
 	return func(f *Fory) {
 		f.config.Compatible = enabled
+	}
+}
+
+// WithMaxCollectionSize sets the maximum collection size limit
+func WithMaxCollectionSize(size int) Option {
+	return func(f *Fory) {
+		f.config.MaxCollectionSize = size
+	}
+}
+
+// WithMaxBinarySize sets the maximum binary size limit
+func WithMaxBinarySize(size int) Option {
+	return func(f *Fory) {
+		f.config.MaxBinarySize = size
 	}
 }
 
@@ -152,6 +168,8 @@ func New(opts ...Option) *Fory {
 	f.writeCtx.xlang = f.config.IsXlang
 
 	f.readCtx = NewReadContext(f.config.TrackRef)
+	f.readCtx.buffer.maxCollectionSize = f.config.MaxCollectionSize
+	f.readCtx.buffer.maxBinarySize = f.config.MaxBinarySize
 	f.readCtx.typeResolver = f.typeResolver
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
@@ -490,6 +508,11 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 // The target must be a pointer to the value to deserialize into.
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
+	
+	// Apply Fory config guardrails
+	f.readCtx.buffer.maxCollectionSize = f.config.MaxCollectionSize
+	f.readCtx.buffer.maxBinarySize = f.config.MaxBinarySize
+	
 	f.readCtx.SetData(data)
 
 	isNull := readHeader(f.readCtx)
@@ -592,6 +615,10 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	// Reset contexts for each independent serialized object
 	defer f.resetReadState()
 
+	// Apply Fory config guardrails to the incoming buffer
+	buf.maxCollectionSize = f.config.MaxCollectionSize
+	buf.maxBinarySize = f.config.MaxBinarySize
+
 	// Temporarily swap buffer
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
@@ -686,6 +713,10 @@ func (f *Fory) SerializeWithCallback(buffer *ByteBuffer, v any, callback func(Bu
 // DeserializeWithCallbackBuffers deserializes from buffer into the provided value (for streaming/cross-language use).
 // The third parameter is optional external buffers for out-of-band data (can be nil).
 func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers []*ByteBuffer) error {
+	// Apply Fory config guardrails to the incoming buffer
+	buffer.maxCollectionSize = f.config.MaxCollectionSize
+	buffer.maxBinarySize = f.config.MaxBinarySize
+
 	// Reset context and use the provided buffer
 	f.readCtx.buffer = buffer
 	defer func() {
@@ -989,6 +1020,11 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
+	
+	// Apply Fory config guardrails
+	f.readCtx.buffer.maxCollectionSize = f.config.MaxCollectionSize
+	f.readCtx.buffer.maxBinarySize = f.config.MaxBinarySize
+	
 	f.readCtx.SetData(data)
 
 	// ReadData and validate header
