@@ -242,6 +242,10 @@ class MapAnySerializer {
 
   read(fromRef: boolean): any {
     let count = this.fory.binaryReader.readVarUint32Small7();
+    const maxEntries = this.fory.config.maxMapEntries;
+    if (typeof maxEntries === "number" && maxEntries > 0 && count > maxEntries) {
+      throw new Error(`Map entry count ${count} exceeds configured maxMapEntries ${maxEntries}`);
+    }
     const result = new Map();
     if (fromRef) {
       this.fory.referenceResolver.reference(result);
@@ -407,8 +411,17 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
     const count = this.scope.uniqueName("count");
     const result = this.scope.uniqueName("result");
 
+    const maxEntriesConfig = this.builder.fory.config.maxMapEntries;
+    const limitCheck = typeof maxEntriesConfig === "number" && maxEntriesConfig > 0
+      ? `
+      if (${count} > ${maxEntriesConfig}) {
+        throw new Error(\`Map entry count \${${count}} exceeds configured maxMapEntries ${maxEntriesConfig}\`);
+      }
+    `
+      : "";
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
+      ${limitCheck}
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}

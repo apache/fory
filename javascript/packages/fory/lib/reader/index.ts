@@ -30,11 +30,14 @@ export class BinaryReader {
   private platformBuffer!: PlatformBuffer;
   private bigString = "";
   private byteLength = 0;
+  private maxBinarySize?: number;
 
   constructor(config: {
     useSliceString?: boolean;
+    maxBinarySize?: number;
   }) {
     this.sliceStringEnable = isNodeEnv && config.useSliceString;
+    this.maxBinarySize = config.maxBinarySize;
   }
 
   reset(ab: Uint8Array) {
@@ -189,6 +192,9 @@ export class BinaryReader {
     const header = this.readVarUint36Small();
     const type = header & 0b11;
     const len = header >>> 2;
+    if (typeof this.maxBinarySize === "number" && this.maxBinarySize > 0 && len > this.maxBinarySize) {
+      throw new Error(`String byte length ${len} exceeds configured maxBinarySize ${this.maxBinarySize}`);
+    }
     switch (type) {
       case LATIN1:
         return this.stringLatin1(len);

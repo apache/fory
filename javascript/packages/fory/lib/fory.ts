@@ -65,11 +65,15 @@ export default class {
 
   private initConfig(config: Partial<Config> | undefined) {
     return {
+      hps: config?.hps,
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
       hooks: config?.hooks || {},
       compatible: Boolean(config?.compatible),
+      maxBinarySize: config?.maxBinarySize,
+      maxCollectionSize: config?.maxCollectionSize,
+      maxMapEntries: config?.maxMapEntries,
     };
   }
 

@@ -269,6 +269,9 @@ export interface Config {
     afterCodeGenerated?: (code: string) => string;
   };
   compatible?: boolean;
+  maxBinarySize?: number;
+  maxCollectionSize?: number;
+  maxMapEntries?: number;
 }
 
 export interface WithForyClsInfo {
