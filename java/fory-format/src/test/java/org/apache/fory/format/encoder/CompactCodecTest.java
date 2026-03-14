@@ -181,16 +181,13 @@ public class CompactCodecTest {
     row.pointTo(buffer, 0, buffer.size());
     final CompactUuidType deserializedBean = encoder.fromRow(row);
     assertEquals(bean1, deserializedBean);
-    // Note: Using binary() type which is variable-width, so size includes offset+size header (8
-    // bytes)
-    // plus the actual data (16 bytes) plus null bitmap (1 byte) plus alignment = 32 bytes
-    assertEquals(buffer.size(), 32);
+    assertEquals(buffer.size(), 17);
   }
 
   static class CompactUUIDCodec implements CustomCodec.MemoryBufferCodec<UUID> {
     @Override
     public Field getForyField(final String fieldName) {
-      return DataTypes.field(fieldName, DataTypes.binary());
+      return DataTypes.field(fieldName, DataTypes.fixedWidthBinary(16));
     }
 
     @Override
@@ -293,8 +290,7 @@ public class CompactCodecTest {
     row.pointTo(buffer, 0, buffer.size());
     final InlineNestedArrayType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
-    // Size is larger due to variable-width binary encoding for UUIDs
-    assertEquals(buffer.size(), 109);
+    assertEquals(buffer.size(), 88);
   }
 
   @Data
@@ -353,8 +349,7 @@ public class CompactCodecTest {
     row.pointTo(buffer, 0, buffer.size());
     final CompactMapType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
-    // Size is larger due to variable-width binary encoding for UUIDs
-    assertEquals(buffer.size(), 161);
+    assertEquals(buffer.size(), 109);
   }
 
   @Test
