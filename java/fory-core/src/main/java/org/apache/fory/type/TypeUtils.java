@@ -71,6 +71,7 @@ import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float16List;
 import org.apache.fory.collection.Float32List;
 import org.apache.fory.collection.Float64List;
 import org.apache.fory.collection.IdentityMap;
@@ -682,6 +683,7 @@ public class TypeUtils {
         || cls == Uint16List.class
         || cls == Uint32List.class
         || cls == Uint64List.class
+        || cls == Float16List.class
         || cls == Float32List.class
         || cls == Float64List.class;
   }
