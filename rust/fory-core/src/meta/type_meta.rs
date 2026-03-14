@@ -277,7 +277,9 @@ impl FieldInfo {
             // Field ID mode: | 0b11:2bits | field_id_low:4bits | nullable:1bit | track_ref:1bit |
             let mut field_id = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as i16;
             if field_id == SMALL_FIELD_ID_THRESHOLD {
-                field_id += reader.read_varuint32()? as i16;
+                field_id = field_id
+                    .checked_add(reader.read_varuint32()? as i16)
+                    .ok_or_else(|| Error::invalid_data("field_id overflow"))?;
             }
 
             let mut field_type = FieldType::from_bytes(reader, false, Option::from(nullable))?;
@@ -302,9 +304,7 @@ impl FieldInfo {
 
             let field_name_bytes = reader.read_bytes(name_size)?;
 
-            let field_name = FIELD_NAME_DECODER
-                .decode(field_name_bytes, encoding)
-                .unwrap();
+            let field_name = FIELD_NAME_DECODER.decode(field_name_bytes, encoding)?;
             Ok(FieldInfo {
                 field_id: -1i16,
                 field_name: field_name.original,
