@@ -43,13 +43,13 @@ import org.apache.fory.config.LongEncoding;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Int64Type(encoding = LongEncoding.VARINT64)  // Variable-length (default)
+ *   {@literal @}Int64Type(encoding = LongEncoding.VARINT64)  // Variable-length (default)
  *   long compactId;
  *
- *   @Int64Type(encoding = LongEncoding.FIXED_INT64)     // Fixed 8-byte
+ *   {@literal @}Int64Type(encoding = LongEncoding.FIXED_INT64)     // Fixed 8-byte
  *   long fixedTimestamp;
  *
- *   @Int64Type(encoding = LongEncoding.TAGGED_INT64) // Tagged encoding
+ *   {@literal @}Int64Type(encoding = LongEncoding.TAGGED_INT64) // Tagged encoding
  *   long taggedValue;
  * }
  * }</pre>

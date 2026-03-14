@@ -38,7 +38,7 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Uint64ArrayType
+ *   {@literal @}Uint64ArrayType
  *   long[] timestamps;  // Will be serialized as unsigned 64-bit array
  * }
  * }</pre>
