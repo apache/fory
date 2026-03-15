@@ -24,12 +24,20 @@ struct FieldAccessorHelper<'a> {
 }
 
 impl<'a> FieldAccessorHelper<'a> {
-    fn get_offset_size(&self, idx: usize) -> (u32, u32) {
+    fn read_u32(row: &[u8], offset: usize) -> Option<u32> {
+        // in case `row` does not have enough bytes
+        let end = offset.checked_add(4)?;
+        let bytes = row.get(offset..end)?;
+        Some(LittleEndian::read_u32(bytes))
+    }
+
+    fn get_offset_size(&self, idx: usize) -> Option<(u32, u32)> {
         let row = self.row;
         let field_offset = (self.get_field_offset)(idx);
-        let offset = LittleEndian::read_u32(&row[field_offset..field_offset + 4]);
-        let size = LittleEndian::read_u32(&row[field_offset + 4..field_offset + 8]);
-        (offset, size)
+        let offset = Self::read_u32(row, field_offset)?;
+        let size_offset = field_offset.checked_add(4)?;
+        let size = Self::read_u32(row, size_offset)?;
+        Some((offset, size))
     }
 
     pub fn new(
@@ -44,8 +52,15 @@ impl<'a> FieldAccessorHelper<'a> {
 
     pub fn get_field_bytes(&self, idx: usize) -> &'a [u8] {
         let row = self.row;
-        let (offset, size) = self.get_offset_size(idx);
-        &row[(offset as usize)..(offset + size) as usize]
+        let Some((offset, size)) = self.get_offset_size(idx) else {
+            return &[];
+        };
+        let offset = offset as usize;
+        let size = size as usize;
+        let Some(end) = offset.checked_add(size) else {
+            return &[];
+        };
+        row.get(offset..end).unwrap_or(&[])
     }
 }
 
@@ -76,7 +91,10 @@ pub struct ArrayViewer<'r> {
 
 impl<'r> ArrayViewer<'r> {
     pub fn new(row: &'r [u8]) -> ArrayViewer<'r> {
-        let num_elements = LittleEndian::read_u64(&row[0..8]) as usize;
+        let num_elements = row
+            .get(0..8)
+            .map(|bytes| LittleEndian::read_u64(bytes) as usize)
+            .unwrap_or(0);
         let bit_map_width_in_bytes = calculate_bitmap_width_in_bytes(num_elements);
         ArrayViewer {
             num_elements,
@@ -103,10 +121,17 @@ pub struct MapViewer<'r> {
 
 impl<'r> MapViewer<'r> {
     pub fn new(row: &'r [u8]) -> MapViewer<'r> {
-        let key_byte_size = LittleEndian::read_u64(&row[0..8]) as usize;
+        let Some(header) = row.get(0..8) else {
+            return MapViewer {
+                key_row: &[],
+                value_row: &[],
+            };
+        };
+        let key_byte_size = LittleEndian::read_u64(header) as usize;
+        let key_end = (8usize).saturating_add(key_byte_size).min(row.len());
         MapViewer {
-            value_row: &row[key_byte_size + 8..row.len()],
-            key_row: &row[8..key_byte_size + 8],
+            value_row: &row[key_end..],
+            key_row: &row[8..key_end],
         }
     }
 

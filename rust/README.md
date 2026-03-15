@@ -670,7 +670,7 @@ cargo build
 
 ```bash
 # Run all tests
-cargo test --features tests
+cargo test --workspace
 
 # Run specific test
 cargo test -p tests --test test_complex_struct
