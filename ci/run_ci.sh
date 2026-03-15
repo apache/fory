@@ -341,9 +341,16 @@ case $1 in
       "$ROOT"/ci/deploy.sh install_pyarrow
       export PATH=~/bin:$PATH
       echo "bazel version: $(bazel version)"
+      ARCH="$(uname -m)"
+      BAZEL_TEST_CONFIG=""
+      case "${ARCH}" in
+        x86_64|amd64)
+          BAZEL_TEST_CONFIG="--config=x86_64"
+          ;;
+      esac
       set +e
       echo "Executing fory c++ tests"
-      bazel test $(bazel query //...)
+      bazel test ${BAZEL_TEST_CONFIG} $(bazel query //...)
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         echo "Executing fory c++ tests failed"
