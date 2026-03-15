@@ -37,6 +37,12 @@ float bits_to_float(uint32_t bits) {
   return value;
 }
 
+uint32_t float_to_bits(float value) {
+  uint32_t bits = 0;
+  std::memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+
 double half_bits_to_double(const uint16_t bits) {
   const auto sign = static_cast<uint16_t>(bits >> 15);
   const auto exponent = static_cast<uint16_t>((bits >> 10) & 0x1F);
@@ -112,6 +118,22 @@ TEST(Float16FromFloatTest, PreservesNaNPayloadAndQuietsSignalingNaNs) {
   EXPECT_NE(a, b);
 }
 
+// min normal 2^-14, min subnormal 2^-24
+TEST(Float16FromFloatTest, MinNormalMinSubnormalMaxSubnormal) {
+  // Min normal: 2^-14
+  EXPECT_HALF_EQ(convert_bits(std::ldexp(1.0f, -14)), 0x0400);
+  EXPECT_HALF_EQ(convert_bits(-std::ldexp(1.0f, -14)), 0x8400);
+  // Min positive subnormal: 2^-24
+  EXPECT_HALF_EQ(convert_bits(std::ldexp(1.0f, -24)), 0x0001);
+  EXPECT_HALF_EQ(convert_bits(-std::ldexp(1.0f, -24)), 0x8001);
+  // Max subnormal: 1023 * 2^-24
+  EXPECT_HALF_EQ(convert_bits(std::ldexp(1023.0f, -24)), 0x03FF);
+  EXPECT_HALF_EQ(convert_bits(-std::ldexp(1023.0f, -24)), 0x83FF);
+  // Sign symmetry
+  ExpectSignSymmetry(std::ldexp(1.0f, -14));
+  ExpectSignSymmetry(std::ldexp(1.0f, -24));
+}
+
 TEST(Float16FromFloatTest, PreservesEveryFiniteExactlyRepresentableHalfValue) {
   for (uint32_t bits = 0; bits <= 0xFFFF; ++bits) {
     const auto half = static_cast<uint16_t>(bits);
@@ -161,6 +183,16 @@ TEST(Float16FromFloatTest, SubnormalGradualUnderflowAndTieToZero) {
                    static_cast<uint16_t>(lower | 0x8000));
     EXPECT_HALF_EQ(convert_bits(-just_above),
                    static_cast<uint16_t>(upper | 0x8000));
+    // Exact midpoint: ties to even (lowest bit of the even one is 0)
+    const double exact_mid_d =
+        (half_bits_to_double(lower) + half_bits_to_double(upper)) * 0.5;
+    const auto exact_mid_f = static_cast<float>(exact_mid_d);
+    if (static_cast<double>(exact_mid_f) == exact_mid_d) {
+      const uint16_t even = (lower & 1u) == 0 ? lower : upper;
+      EXPECT_HALF_EQ(convert_bits(exact_mid_f), even);
+      EXPECT_HALF_EQ(convert_bits(-exact_mid_f),
+                     static_cast<uint16_t>(even | 0x8000));
+    }
   }
 }
 
@@ -243,8 +275,12 @@ TEST(Float16FromFloatTest, IntegerAndUlpRegressionCases) {
   const float one_half_ulp = std::ldexp(1.0f, -11);
   const float one_full_ulp = std::ldexp(1.0f, -10);
   EXPECT_HALF_EQ(convert_bits(one + one_full_ulp), 0x3C01);
+  // 1 + half-ULP (midpoint between 0x3C00 and 0x3C01): ties to even → 0x3C00
   EXPECT_HALF_EQ(convert_bits(one + one_half_ulp), 0x3C00);
-  EXPECT_HALF_EQ(convert_bits(one - one_half_ulp), 0x3C00);
+  // 1 - 2^-11 = 2047/2048 is EXACTLY 0x3BFF in float16 — no rounding occurs
+  EXPECT_HALF_EQ(convert_bits(one - one_half_ulp), 0x3BFF);
+  // The true midpoint between 0x3BFF and 0x3C00 is 1 - 2^-12; ties to even → 0x3C00
+  EXPECT_HALF_EQ(convert_bits(one - std::ldexp(1.0f, -12)), 0x3C00);
   EXPECT_HALF_EQ(
       convert_bits(std::nextafter(one + one_half_ulp,
                                   std::numeric_limits<float>::infinity())),
@@ -265,6 +301,182 @@ TEST(Float16Test, FromBitsRoundTrip) {
   for (uint32_t bits = 0; bits <= 0xFFFF; ++bits) {
     const auto half_bits = static_cast<uint16_t>(bits);
     EXPECT_HALF_EQ(float16_t::from_bits(half_bits).to_bits(), half_bits);
+  }
+}
+
+// ============================================================
+// to_float() tests — testing both directions
+// ============================================================
+
+TEST(Float16ToFloatTest, SignedZerosAndInfinities) {
+  // +0: value is 0.0 and sign bit is clear
+  const float pos_zero = float16_t::from_bits(0x0000).to_float();
+  EXPECT_EQ(pos_zero, 0.0f);
+  EXPECT_FALSE(std::signbit(pos_zero));
+
+  // -0: value is 0.0 but sign bit is set
+  const float neg_zero = float16_t::from_bits(0x8000).to_float();
+  EXPECT_EQ(neg_zero, -0.0f);
+  EXPECT_TRUE(std::signbit(neg_zero));
+
+  // +Inf
+  const float pos_inf = float16_t::from_bits(0x7C00).to_float();
+  EXPECT_TRUE(std::isinf(pos_inf));
+  EXPECT_GT(pos_inf, 0.0f);
+
+  // -Inf
+  const float neg_inf = float16_t::from_bits(0xFC00).to_float();
+  EXPECT_TRUE(std::isinf(neg_inf));
+  EXPECT_LT(neg_inf, 0.0f);
+}
+
+TEST(Float16ToFloatTest, NaNPayloadAndSignPreservation) {
+  // Canonical positive qNaN (0x7E00): maps to f32 canonical qNaN 0x7FC00000
+  // f16 mantissa=0x200; 0x200<<13 = 0x400000 (f32 quiet bit), so f32=0x7FC00000
+  const float qnan_pos = float16_t::from_bits(0x7E00).to_float();
+  EXPECT_TRUE(std::isnan(qnan_pos));
+  EXPECT_FALSE(std::signbit(qnan_pos));
+  EXPECT_EQ(float_to_bits(qnan_pos), 0x7FC00000u);
+
+  // Canonical negative qNaN (0xFE00): f32 = 0xFFC00000
+  const float qnan_neg = float16_t::from_bits(0xFE00).to_float();
+  EXPECT_TRUE(std::isnan(qnan_neg));
+  EXPECT_TRUE(std::signbit(qnan_neg));
+  EXPECT_EQ(float_to_bits(qnan_neg), 0xFFC00000u);
+
+  // qNaN with payload bit 0 set (0x7E01): f16 mantissa=0x201; 0x201<<13=0x402000
+  // f32 = 0x7F800000 | 0x402000 = 0x7FC02000
+  const float qnan_payload = float16_t::from_bits(0x7E01).to_float();
+  EXPECT_TRUE(std::isnan(qnan_payload));
+  EXPECT_FALSE(std::signbit(qnan_payload));
+  EXPECT_EQ(float_to_bits(qnan_payload), 0x7FC02000u);
+
+  // qNaN with full payload (0x7EFF): f16 mantissa=0x2FF; 0x2FF<<13=0x5FE000
+  // f32 = 0x7F800000 | 0x5FE000 = 0x7FDFE000
+  const float qnan_full = float16_t::from_bits(0x7EFF).to_float();
+  EXPECT_TRUE(std::isnan(qnan_full));
+  EXPECT_EQ(float_to_bits(qnan_full), 0x7FDFE000u);
+
+  // Negative qNaN with payload (0xFE01): f32 = 0xFFC02000
+  const float qnan_neg_payload = float16_t::from_bits(0xFE01).to_float();
+  EXPECT_TRUE(std::isnan(qnan_neg_payload));
+  EXPECT_TRUE(std::signbit(qnan_neg_payload));
+  EXPECT_EQ(float_to_bits(qnan_neg_payload), 0xFFC02000u);
+
+  // to_float() faithfully preserves all 1024 NaN bit patterns.
+  // The f16 quiet bit (bit 9) maps to the f32 quiet bit (bit 22) via <<13.
+  for (uint16_t frac = 1; frac <= 0x03FF; ++frac) {
+    const auto nan_bits = static_cast<uint16_t>(0x7C00 | frac);
+    const float f = float16_t::from_bits(nan_bits).to_float();
+    EXPECT_TRUE(std::isnan(f)) << "bits=0x" << std::hex << nan_bits;
+    // f16 quiet bit (bit 9) preserved as f32 quiet bit (bit 22)
+    const bool f16_quiet = (frac & 0x0200u) != 0;
+    const bool f32_quiet = (float_to_bits(f) & 0x00400000u) != 0u;
+    EXPECT_EQ(f16_quiet, f32_quiet)
+        << "quiet bit not preserved for bits=0x" << std::hex << nan_bits;
+    // Negative counterpart: sign preserved
+    const auto neg_nan_bits = static_cast<uint16_t>(nan_bits | 0x8000);
+    const float fn = float16_t::from_bits(neg_nan_bits).to_float();
+    EXPECT_TRUE(std::isnan(fn));
+    EXPECT_TRUE(std::signbit(fn))
+        << "sign not preserved for bits=0x" << std::hex << neg_nan_bits;
+  }
+}
+
+// min normal 2^-14 and min subnormal 2^-24
+TEST(Float16ToFloatTest, BoundaryValues) {
+  // Max finite: 65504
+  EXPECT_EQ(float16_t::from_bits(0x7BFF).to_float(), 65504.0f);
+  EXPECT_EQ(float16_t::from_bits(0xFBFF).to_float(), -65504.0f);
+
+  // Min normal: 2^-14
+  EXPECT_EQ(float16_t::from_bits(0x0400).to_float(), std::ldexp(1.0f, -14));
+  EXPECT_EQ(float16_t::from_bits(0x8400).to_float(), -std::ldexp(1.0f, -14));
+
+  // Min positive subnormal: 2^-24
+  EXPECT_EQ(float16_t::from_bits(0x0001).to_float(), std::ldexp(1.0f, -24));
+  EXPECT_EQ(float16_t::from_bits(0x8001).to_float(), -std::ldexp(1.0f, -24));
+
+  // Max subnormal: 1023 * 2^-24
+  EXPECT_EQ(float16_t::from_bits(0x03FF).to_float(), std::ldexp(1023.0f, -24));
+  EXPECT_EQ(float16_t::from_bits(0x83FF).to_float(), -std::ldexp(1023.0f, -24));
+}
+
+TEST(Float16ToFloatTest, NormalValueSpotChecks) {
+  EXPECT_EQ(float16_t::from_bits(0x3C00).to_float(), 1.0f);
+  EXPECT_EQ(float16_t::from_bits(0xBC00).to_float(), -1.0f);
+  EXPECT_EQ(float16_t::from_bits(0x4000).to_float(), 2.0f);
+  EXPECT_EQ(float16_t::from_bits(0xC000).to_float(), -2.0f);
+  EXPECT_EQ(float16_t::from_bits(0x3800).to_float(), 0.5f);
+  EXPECT_EQ(float16_t::from_bits(0xB800).to_float(), -0.5f);
+  EXPECT_EQ(float16_t::from_bits(0x3E00).to_float(), 1.5f);
+  EXPECT_EQ(float16_t::from_bits(0x4200).to_float(), 3.0f);
+  // Exponent range: 2^15 at exp=30
+  EXPECT_EQ(float16_t::from_bits(0x7800).to_float(), std::ldexp(1.0f, 15));
+  // 2^-14 at exp=1
+  EXPECT_EQ(float16_t::from_bits(0x0400).to_float(), std::ldexp(1.0f, -14));
+}
+
+TEST(Float16ToFloatTest, AllSubnormalsMatchReference) {
+  for (uint16_t frac = 1; frac <= 0x03FF; ++frac) {
+    const auto expected_pos =
+        static_cast<float>(half_bits_to_double(frac));
+    EXPECT_EQ(float16_t::from_bits(frac).to_float(), expected_pos)
+        << "to_float mismatch for subnormal 0x" << std::hex << frac;
+    const auto neg_bits = static_cast<uint16_t>(frac | 0x8000);
+    const auto expected_neg =
+        static_cast<float>(half_bits_to_double(neg_bits));
+    EXPECT_EQ(float16_t::from_bits(neg_bits).to_float(), expected_neg)
+        << "to_float mismatch for negative subnormal 0x" << std::hex << neg_bits;
+  }
+}
+
+TEST(Float16ToFloatTest, AllNormalsMatchReference) {
+  for (uint16_t exp = 1; exp <= 30; ++exp) {
+    for (uint16_t frac = 0; frac <= 0x03FF; ++frac) {
+      const auto bits = static_cast<uint16_t>((exp << 10) | frac);
+      const auto expected_pos =
+          static_cast<float>(half_bits_to_double(bits));
+      EXPECT_EQ(float16_t::from_bits(bits).to_float(), expected_pos)
+          << "to_float mismatch for normal 0x" << std::hex << bits;
+      const auto neg_bits = static_cast<uint16_t>(bits | 0x8000);
+      const auto expected_neg =
+          static_cast<float>(half_bits_to_double(neg_bits));
+      EXPECT_EQ(float16_t::from_bits(neg_bits).to_float(), expected_neg)
+          << "to_float mismatch for negative normal 0x" << std::hex << neg_bits;
+    }
+  }
+}
+
+// verify bit preservation for all non-NaN; for NaN validate chosen policy.
+
+TEST(Float16Test, StressAllBitPatternsViaToFloat) {
+  for (uint32_t bits = 0; bits <= 0xFFFF; ++bits) {
+    const auto half_bits = static_cast<uint16_t>(bits);
+    const float16_t h = float16_t::from_bits(half_bits);
+    const float h_float = h.to_float();
+    const float16_t h2 = float16_t::from_float(h_float);
+
+    const auto exp = static_cast<uint16_t>((half_bits >> 10) & 0x1F);
+    const auto frac = static_cast<uint16_t>(half_bits & 0x03FF);
+
+    if (exp == 0x1F && frac != 0) {
+      // NaN: validate chosen policy (always quieted, sign preserved)
+      EXPECT_TRUE(std::isnan(h_float))
+          << "to_float of NaN bits=0x" << std::hex << half_bits << " must be NaN";
+      EXPECT_EQ(h2.to_bits() & 0x7C00u, 0x7C00u)
+          << "NaN round-trip exp must be all-ones for bits=0x" << std::hex << half_bits;
+      EXPECT_NE(h2.to_bits() & 0x03FFu, 0u)
+          << "NaN round-trip frac must be non-zero for bits=0x" << std::hex << half_bits;
+      EXPECT_NE(h2.to_bits() & 0x0200u, 0u)
+          << "NaN round-trip quiet bit must be set for bits=0x" << std::hex << half_bits;
+      EXPECT_EQ(h2.to_bits() & 0x8000u, static_cast<uint16_t>(half_bits & 0x8000u))
+          << "NaN sign must be preserved for bits=0x" << std::hex << half_bits;
+    } else {
+      // Non-NaN: must round-trip exactly
+      EXPECT_EQ(h2.to_bits(), half_bits)
+          << "Round-trip failed for bits=0x" << std::hex << half_bits;
+    }
   }
 }
 
