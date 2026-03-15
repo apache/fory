@@ -18,5 +18,5 @@
 const WORD_SIZE: usize = 8;
 
 pub fn calculate_bitmap_width_in_bytes(num_fields: usize) -> usize {
-    ((num_fields + 63) / 64) * WORD_SIZE
+    (num_fields.saturating_add(63) / 64).saturating_mul(WORD_SIZE)
 }

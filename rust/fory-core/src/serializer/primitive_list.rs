@@ -83,6 +83,15 @@ pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>
     if size_bytes % std::mem::size_of::<T>() != 0 {
         return Err(Error::invalid_data("Invalid data length"));
     }
+    let remaining = context.reader.slice_after_cursor().len();
+    if size_bytes > remaining {
+        let cursor = context.reader.get_cursor();
+        return Err(Error::buffer_out_of_bound(
+            cursor,
+            size_bytes,
+            cursor + remaining,
+        ));
+    }
     let len = size_bytes / std::mem::size_of::<T>();
     let mut vec: Vec<T> = Vec::with_capacity(len);
 
