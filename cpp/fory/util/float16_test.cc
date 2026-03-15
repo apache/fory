@@ -20,7 +20,15 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
 
+#include "fory/serialization/basic_serializer.h"
+#include "fory/serialization/fory.h"
+#include "fory/type/type.h"
+#include "fory/util/buffer.h"
 #include "fory/util/float16.h"
 #include "gtest/gtest.h"
 
@@ -920,6 +928,296 @@ TEST(Float16MathTest, FloorCeilTruncRound) {
     EXPECT_TRUE(float16_t::is_nan(float16_t::trunc(H(kQNaN))));
     EXPECT_TRUE(float16_t::is_nan(float16_t::round(H(kQNaN))));
     EXPECT_TRUE(float16_t::is_nan(float16_t::round_to_even(H(kQNaN))));
+}
+
+// ============================================================
+// §3.8 / §6  Buffer write_f16 / read_f16 tests
+// ============================================================
+
+TEST(Float16BufferTest, WriteReadRoundTrip) {
+  const uint16_t cases[] = {
+      0x0000, // +0
+      0x8000, // -0
+      0x7C00, // +Inf
+      0xFC00, // -Inf
+      0x7E00, // canonical qNaN
+      0x3C00, // 1.0
+      0xBC00, // -1.0
+      0x7BFF, // 65504 (max finite)
+      0x0001, // min subnormal (2^-24)
+      0x0400, // min normal (2^-14)
+      0x03FF, // max subnormal
+      0x4000, // 2.0
+  };
+  for (uint16_t bits : cases) {
+    std::shared_ptr<Buffer> buf;
+    allocate_buffer(16, &buf);
+    buf->write_f16(float16_t::from_bits(bits));
+    buf->reader_index(0);
+    Error err;
+    const float16_t got = buf->read_f16(err);
+    ASSERT_TRUE(err.ok())
+        << "read_f16 error for bits=0x" << std::hex << bits;
+    EXPECT_EQ(got.to_bits(), bits)
+        << "round-trip failed for bits=0x" << std::hex << bits;
+  }
+}
+
+TEST(Float16BufferTest, WireFormatGoldenLittleEndian) {
+  // IEEE 754 binary16 wire format: little-endian (low byte first).
+  struct Case {
+    uint16_t bits;
+    uint8_t lo;
+    uint8_t hi;
+  };
+  const Case cases[] = {
+      {0x3C00, 0x00, 0x3C}, // 1.0
+      {0x7C00, 0x00, 0x7C}, // +Inf
+      {0x8000, 0x00, 0x80}, // -0
+      {0x0001, 0x01, 0x00}, // min subnormal
+      {0x7BFF, 0xFF, 0x7B}, // 65504 max finite
+      {0xFC00, 0x00, 0xFC}, // -Inf
+  };
+  for (const auto &c : cases) {
+    std::shared_ptr<Buffer> buf;
+    allocate_buffer(4, &buf);
+    buf->write_f16(float16_t::from_bits(c.bits));
+    EXPECT_EQ(buf->get<uint8_t>(0), c.lo)
+        << "lo byte mismatch for bits=0x" << std::hex << c.bits;
+    EXPECT_EQ(buf->get<uint8_t>(1), c.hi)
+        << "hi byte mismatch for bits=0x" << std::hex << c.bits;
+  }
+}
+
+TEST(Float16BufferTest, ReadBoundsErrorOnEmpty) {
+  // size_=0 means no bytes available; reading 2 must fail.
+  std::shared_ptr<Buffer> buf;
+  allocate_buffer(0, &buf);
+  Error error;
+  const float16_t result = buf->read_f16(error);
+  EXPECT_FALSE(error.ok());
+  EXPECT_EQ(result.to_bits(), 0x0000u);
+}
+
+TEST(Float16BufferTest, ReadBoundsErrorOnOneByte) {
+  // Only 1 byte of capacity; reading 2 must fail.
+  std::shared_ptr<Buffer> buf;
+  allocate_buffer(1, &buf);
+  Error error;
+  buf->read_f16(error);
+  EXPECT_FALSE(error.ok());
+}
+
+TEST(Float16BufferTest, MultipleValuesSequential) {
+  const uint16_t vals[] = {0x3C00, 0x4000, 0x7BFF, 0x0001, 0x7E00};
+  std::shared_ptr<Buffer> buf;
+  allocate_buffer(32, &buf);
+  for (uint16_t v : vals) {
+    buf->write_f16(float16_t::from_bits(v));
+  }
+  buf->reader_index(0);
+  for (uint16_t expected : vals) {
+    Error err;
+    const float16_t got = buf->read_f16(err);
+    ASSERT_TRUE(err.ok());
+    EXPECT_EQ(got.to_bits(), expected);
+  }
+}
+
+// ============================================================
+// §3.8 / §6  Serializer<float16_t> type-ID check
+// ============================================================
+
+TEST(Float16SerializerTest, TypeId) {
+  using namespace fory::serialization;
+  EXPECT_EQ(static_cast<uint32_t>(Serializer<float16_t>::type_id),
+            static_cast<uint32_t>(fory::TypeId::FLOAT16));
+  EXPECT_EQ(static_cast<uint32_t>(fory::TypeId::FLOAT16), 17u);
+}
+
+// ============================================================
+// §6  Full Fory struct round-trip tests
+// ============================================================
+
+namespace {
+
+struct Float16Scalar {
+  float16_t value;
+  bool operator==(const Float16Scalar &o) const {
+    return value.to_bits() == o.value.to_bits();
+  }
+  FORY_STRUCT(Float16Scalar, value);
+};
+
+struct Float16Vector {
+  std::vector<float16_t> values;
+  bool operator==(const Float16Vector &o) const {
+    if (values.size() != o.values.size()) return false;
+    for (size_t i = 0; i < values.size(); ++i) {
+      if (values[i].to_bits() != o.values[i].to_bits()) return false;
+    }
+    return true;
+  }
+  FORY_STRUCT(Float16Vector, values);
+};
+
+struct Float16Map {
+  std::map<std::string, float16_t> named_values;
+  bool operator==(const Float16Map &o) const {
+    if (named_values.size() != o.named_values.size()) return false;
+    for (const auto &kv : named_values) {
+      auto it = o.named_values.find(kv.first);
+      if (it == o.named_values.end()) return false;
+      if (kv.second.to_bits() != it->second.to_bits()) return false;
+    }
+    return true;
+  }
+  FORY_STRUCT(Float16Map, named_values);
+};
+
+struct Float16Optional {
+  std::optional<float16_t> opt_value;
+  bool operator==(const Float16Optional &o) const {
+    if (opt_value.has_value() != o.opt_value.has_value()) return false;
+    if (!opt_value.has_value()) return true;
+    return opt_value->to_bits() == o.opt_value->to_bits();
+  }
+  FORY_STRUCT(Float16Optional, opt_value);
+};
+
+fory::serialization::Fory make_xlang_fory() {
+  return fory::serialization::Fory::builder()
+      .xlang(true)
+      .track_ref(false)
+      .build();
+}
+
+} // namespace
+
+TEST(Float16SerializerTest, ScalarRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Scalar>(200);
+
+  const uint16_t cases[] = {
+      0x0000, 0x8000, 0x3C00, 0xBC00,
+      0x7C00, 0xFC00, 0x7BFF, 0x0001,
+      0x0400, 0x7E00,
+  };
+  for (uint16_t bits : cases) {
+    Float16Scalar original{float16_t::from_bits(bits)};
+    auto ser = fory.serialize(original);
+    ASSERT_TRUE(ser.ok())
+        << "serialize failed bits=0x" << std::hex << bits
+        << ": " << ser.error().to_string();
+    auto deser = fory.deserialize<Float16Scalar>(
+        ser.value().data(), ser.value().size());
+    ASSERT_TRUE(deser.ok())
+        << "deserialize failed bits=0x" << std::hex << bits
+        << ": " << deser.error().to_string();
+    EXPECT_EQ(deser.value(), original)
+        << "round-trip mismatch bits=0x" << std::hex << bits;
+  }
+}
+
+TEST(Float16SerializerTest, VectorRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Vector>(201);
+
+  Float16Vector original;
+  original.values = {
+      float16_t::from_float(0.0f),
+      float16_t::from_float(1.0f),
+      float16_t::from_float(-1.0f),
+      float16_t::from_bits(0x7C00), // +Inf
+      float16_t::from_bits(0x7BFF), // max finite
+      float16_t::from_bits(0x0001), // min subnormal
+  };
+  auto ser = fory.serialize(original);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+  auto deser = fory.deserialize<Float16Vector>(
+      ser.value().data(), ser.value().size());
+  ASSERT_TRUE(deser.ok()) << deser.error().to_string();
+  EXPECT_EQ(deser.value(), original);
+}
+
+TEST(Float16SerializerTest, EmptyVectorRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Vector>(201);
+
+  Float16Vector original;
+  auto ser = fory.serialize(original);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+  auto deser = fory.deserialize<Float16Vector>(
+      ser.value().data(), ser.value().size());
+  ASSERT_TRUE(deser.ok()) << deser.error().to_string();
+  EXPECT_EQ(deser.value(), original);
+}
+
+TEST(Float16SerializerTest, MapRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Map>(202);
+
+  Float16Map original;
+  original.named_values["one"]     = float16_t::from_float(1.0f);
+  original.named_values["neg_inf"] = float16_t::from_bits(0xFC00);
+  original.named_values["max"]     = float16_t::from_bits(0x7BFF);
+  original.named_values["zero"]    = float16_t::from_float(0.0f);
+
+  auto ser = fory.serialize(original);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+  auto deser = fory.deserialize<Float16Map>(
+      ser.value().data(), ser.value().size());
+  ASSERT_TRUE(deser.ok()) << deser.error().to_string();
+  EXPECT_EQ(deser.value(), original);
+}
+
+TEST(Float16SerializerTest, OptionalPresentRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Optional>(203);
+
+  Float16Optional original;
+  original.opt_value = float16_t::from_float(1.5f);
+
+  auto ser = fory.serialize(original);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+  auto deser = fory.deserialize<Float16Optional>(
+      ser.value().data(), ser.value().size());
+  ASSERT_TRUE(deser.ok()) << deser.error().to_string();
+  EXPECT_EQ(deser.value(), original);
+}
+
+TEST(Float16SerializerTest, OptionalAbsentRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Optional>(203);
+
+  Float16Optional original; // opt_value is nullopt
+  auto ser = fory.serialize(original);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+  auto deser = fory.deserialize<Float16Optional>(
+      ser.value().data(), ser.value().size());
+  ASSERT_TRUE(deser.ok()) << deser.error().to_string();
+  EXPECT_EQ(deser.value(), original);
+}
+
+TEST(Float16SerializerTest, WireGoldenOnePointZero) {
+  // 1.0 = 0x3C00; serialized data bytes must contain [0x00, 0x3C] (LE).
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Scalar>(200);
+
+  Float16Scalar s{float16_t::from_bits(0x3C00)};
+  auto ser = fory.serialize(s);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+
+  const std::vector<uint8_t> &bytes = ser.value();
+  bool found = false;
+  for (size_t i = 0; i + 1 < bytes.size(); ++i) {
+    if (bytes[i] == 0x00 && bytes[i + 1] == 0x3C) {
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found)
+      << "wire bytes [0x00, 0x3C] for 1.0 not found in serialized output";
 }
 
 } // namespace

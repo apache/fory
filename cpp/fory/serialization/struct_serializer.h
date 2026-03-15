@@ -139,6 +139,9 @@ FORY_ALWAYS_INLINE uint32_t put_primitive_at(T value, Buffer &buffer,
                        std::is_same_v<T, uint16_t>) {
     buffer.unsafe_put<T>(offset, value);
     return 2;
+  } else if constexpr (std::is_same_v<T, float16_t>) {
+    buffer.unsafe_put<uint16_t>(offset, value.to_bits());
+    return 2;
   } else if constexpr (std::is_same_v<T, float>) {
     buffer.unsafe_put<float>(offset, value);
     return 4;
@@ -175,6 +178,8 @@ FORY_ALWAYS_INLINE void put_fixed_primitive_at(T value, Buffer &buffer,
   } else if constexpr (std::is_same_v<T, int64_t> ||
                        std::is_same_v<T, long long>) {
     buffer.unsafe_put<int64_t>(offset, static_cast<int64_t>(value));
+  } else if constexpr (std::is_same_v<T, float16_t>) {
+    buffer.unsafe_put<uint16_t>(offset, value.to_bits());
   } else if constexpr (std::is_same_v<T, float>) {
     buffer.unsafe_put<float>(offset, value);
   } else if constexpr (std::is_same_v<T, double>) {
@@ -768,6 +773,7 @@ template <typename T> struct CompileTimeFieldHelpers {
              std::is_same_v<FieldType, uint8_t> ||
              std::is_same_v<FieldType, int16_t> ||
              std::is_same_v<FieldType, uint16_t> ||
+             std::is_same_v<FieldType, float16_t> ||
              std::is_same_v<FieldType, float> ||
              std::is_same_v<FieldType, double>;
     }
@@ -807,7 +813,8 @@ template <typename T> struct CompileTimeFieldHelpers {
                     std::is_same_v<FieldType, uint8_t>) {
         return 1;
       } else if constexpr (std::is_same_v<FieldType, int16_t> ||
-                           std::is_same_v<FieldType, uint16_t>) {
+                           std::is_same_v<FieldType, uint16_t> ||
+                           std::is_same_v<FieldType, float16_t>) {
         return 2;
       } else if constexpr (is_configurable_int_v<FieldType>) {
         return configurable_int_fixed_size_bytes<FieldType, T, Index>();
@@ -2060,6 +2067,7 @@ template <> struct is_raw_primitive<int32_t> : std::true_type {};
 template <> struct is_raw_primitive<uint32_t> : std::true_type {};
 template <> struct is_raw_primitive<int64_t> : std::true_type {};
 template <> struct is_raw_primitive<uint64_t> : std::true_type {};
+template <> struct is_raw_primitive<float16_t> : std::true_type {};
 template <> struct is_raw_primitive<float> : std::true_type {};
 template <> struct is_raw_primitive<double> : std::true_type {};
 template <typename T>
@@ -2072,59 +2080,70 @@ template <typename TargetType>
 FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
                                                         uint32_t type_id,
                                                         Error &error) {
-  // Read based on remote type_id encoding, then convert to TargetType
-  switch (static_cast<TypeId>(type_id)) {
-  case TypeId::BOOL:
-    return static_cast<TargetType>(ctx.read_uint8(error) != 0);
-  case TypeId::INT8:
-    return static_cast<TargetType>(ctx.read_int8(error));
-  case TypeId::UINT8:
-    return static_cast<TargetType>(ctx.read_uint8(error));
-  case TypeId::INT16:
-    return static_cast<TargetType>(ctx.read_int16(error));
-  case TypeId::UINT16:
-    return static_cast<TargetType>(
-        static_cast<uint16_t>(ctx.read_int16(error)));
-  case TypeId::INT32:
-    // INT32 uses fixed encoding
-    return static_cast<TargetType>(ctx.read_int32(error));
-  case TypeId::VARINT32:
-    // VARINT32 uses varint encoding
-    return static_cast<TargetType>(ctx.read_varint32(error));
-  case TypeId::UINT32:
-    // UINT32 uses fixed 4-byte encoding
-    return static_cast<TargetType>(
-        static_cast<uint32_t>(ctx.read_int32(error)));
-  case TypeId::VAR_UINT32:
-    // VAR_UINT32 uses varint encoding
-    return static_cast<TargetType>(ctx.read_var_uint32(error));
-  case TypeId::INT64:
-    // INT64 uses fixed encoding
-    return static_cast<TargetType>(ctx.read_int64(error));
-  case TypeId::VARINT64:
-    // VARINT64 uses varint encoding
-    return static_cast<TargetType>(ctx.read_varint64(error));
-  case TypeId::TAGGED_INT64:
-    // TAGGED_INT64 uses tagged encoding (special hybrid encoding)
-    return static_cast<TargetType>(ctx.read_tagged_int64(error));
-  case TypeId::UINT64:
-    // UINT64 uses fixed 8-byte encoding
-    return static_cast<TargetType>(
-        static_cast<uint64_t>(ctx.read_int64(error)));
-  case TypeId::VAR_UINT64:
-    // VAR_UINT64 uses varint encoding
-    return static_cast<TargetType>(ctx.read_var_uint64(error));
-  case TypeId::TAGGED_UINT64:
-    // TAGGED_UINT64 uses tagged encoding (special hybrid encoding)
-    return static_cast<TargetType>(ctx.read_tagged_uint64(error));
-  case TypeId::FLOAT32:
-    return static_cast<TargetType>(ctx.read_float(error));
-  case TypeId::FLOAT64:
-    return static_cast<TargetType>(ctx.read_double(error));
-  default:
-    error = Error::type_error("Unsupported type_id for primitive read: " +
-                              std::to_string(type_id));
-    return TargetType{};
+  // float16_t has no implicit conversion from other numeric types; only
+  // FLOAT16 wire encoding is valid.
+  if constexpr (std::is_same_v<TargetType, float16_t>) {
+    if (static_cast<TypeId>(type_id) == TypeId::FLOAT16) {
+      return ctx.read_f16(error);
+    }
+    error = Error::type_error("Cannot convert type_id " +
+                              std::to_string(type_id) + " to float16_t");
+    return float16_t::from_bits(0);
+  } else {
+    // Read based on remote type_id encoding, then convert to TargetType
+    switch (static_cast<TypeId>(type_id)) {
+    case TypeId::BOOL:
+      return static_cast<TargetType>(ctx.read_uint8(error) != 0);
+    case TypeId::INT8:
+      return static_cast<TargetType>(ctx.read_int8(error));
+    case TypeId::UINT8:
+      return static_cast<TargetType>(ctx.read_uint8(error));
+    case TypeId::INT16:
+      return static_cast<TargetType>(ctx.read_int16(error));
+    case TypeId::UINT16:
+      return static_cast<TargetType>(
+          static_cast<uint16_t>(ctx.read_int16(error)));
+    case TypeId::INT32:
+      // INT32 uses fixed encoding
+      return static_cast<TargetType>(ctx.read_int32(error));
+    case TypeId::VARINT32:
+      // VARINT32 uses varint encoding
+      return static_cast<TargetType>(ctx.read_varint32(error));
+    case TypeId::UINT32:
+      // UINT32 uses fixed 4-byte encoding
+      return static_cast<TargetType>(
+          static_cast<uint32_t>(ctx.read_int32(error)));
+    case TypeId::VAR_UINT32:
+      // VAR_UINT32 uses varint encoding
+      return static_cast<TargetType>(ctx.read_var_uint32(error));
+    case TypeId::INT64:
+      // INT64 uses fixed encoding
+      return static_cast<TargetType>(ctx.read_int64(error));
+    case TypeId::VARINT64:
+      // VARINT64 uses varint encoding
+      return static_cast<TargetType>(ctx.read_varint64(error));
+    case TypeId::TAGGED_INT64:
+      // TAGGED_INT64 uses tagged encoding (special hybrid encoding)
+      return static_cast<TargetType>(ctx.read_tagged_int64(error));
+    case TypeId::UINT64:
+      // UINT64 uses fixed 8-byte encoding
+      return static_cast<TargetType>(
+          static_cast<uint64_t>(ctx.read_int64(error)));
+    case TypeId::VAR_UINT64:
+      // VAR_UINT64 uses varint encoding
+      return static_cast<TargetType>(ctx.read_var_uint64(error));
+    case TypeId::TAGGED_UINT64:
+      // TAGGED_UINT64 uses tagged encoding (special hybrid encoding)
+      return static_cast<TargetType>(ctx.read_tagged_uint64(error));
+    case TypeId::FLOAT32:
+      return static_cast<TargetType>(ctx.read_float(error));
+    case TypeId::FLOAT64:
+      return static_cast<TargetType>(ctx.read_double(error));
+    default:
+      error = Error::type_error("Unsupported type_id for primitive read: " +
+                                std::to_string(type_id));
+      return TargetType{};
+    }
   }
 }
 
@@ -2166,6 +2185,8 @@ FORY_ALWAYS_INLINE FieldType read_primitive_field_direct(ReadContext &ctx,
   } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
     // uint64_t uses fixed 8-byte encoding (not varint!)
     return static_cast<uint64_t>(ctx.read_int64(error));
+  } else if constexpr (std::is_same_v<FieldType, float16_t>) {
+    return ctx.read_f16(error);
   } else if constexpr (std::is_same_v<FieldType, float>) {
     return ctx.read_float(error);
   } else if constexpr (std::is_same_v<FieldType, double>) {
@@ -2531,7 +2552,8 @@ template <typename T> constexpr size_t fixed_primitive_size() {
                 std::is_same_v<T, uint8_t>) {
     return 1;
   } else if constexpr (std::is_same_v<T, int16_t> ||
-                       std::is_same_v<T, uint16_t>) {
+                       std::is_same_v<T, uint16_t> ||
+                       std::is_same_v<T, float16_t>) {
     return 2;
   } else if constexpr (std::is_same_v<T, uint32_t> ||
                        std::is_same_v<T, int32_t> || std::is_same_v<T, int> ||
@@ -2582,6 +2604,8 @@ FORY_ALWAYS_INLINE T read_fixed_primitive_at(Buffer &buffer, uint32_t offset) {
                        std::is_same_v<T, unsigned int>) {
     // Handle both uint32_t and unsigned int (different types on some platforms)
     return static_cast<T>(buffer.unsafe_get<uint32_t>(offset));
+  } else if constexpr (std::is_same_v<T, float16_t>) {
+    return float16_t::from_bits(buffer.unsafe_get<uint16_t>(offset));
   } else if constexpr (std::is_same_v<T, float>) {
     return buffer.unsafe_get<float>(offset);
   } else if constexpr (std::is_same_v<T, uint64_t> ||
