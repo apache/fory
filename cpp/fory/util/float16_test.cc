@@ -480,5 +480,176 @@ TEST(Float16Test, StressAllBitPatternsViaToFloat) {
   }
 }
 
+// ============================================================
+// 3.3 Classification tests
+// ============================================================
+
+// Representative bit patterns used across classification tests.
+// Named constants avoid magic numbers and make intent clear.
+constexpr uint16_t kPosZero     = 0x0000; // +0
+constexpr uint16_t kNegZero     = 0x8000; // -0
+constexpr uint16_t kPosInf      = 0x7C00; // +Inf
+constexpr uint16_t kNegInf      = 0xFC00; // -Inf
+constexpr uint16_t kQNaN        = 0x7E00; // canonical quiet NaN
+constexpr uint16_t kNegQNaN     = 0xFE00; // negative quiet NaN
+constexpr uint16_t kSNaN        = 0x7C01; // smallest signaling NaN
+constexpr uint16_t kNegSNaN     = 0xFC01; // negative signaling NaN
+constexpr uint16_t kMinSubnorm  = 0x0001; // smallest positive subnormal (2^-24)
+constexpr uint16_t kMaxSubnorm  = 0x03FF; // largest positive subnormal
+constexpr uint16_t kMinNormal   = 0x0400; // smallest positive normal (2^-14)
+constexpr uint16_t kOne         = 0x3C00; // 1.0
+constexpr uint16_t kNegOne      = 0xBC00; // -1.0
+constexpr uint16_t kMaxFinite   = 0x7BFF; // 65504
+
+static float16_t H(uint16_t b) { return float16_t::from_bits(b); }
+
+TEST(Float16ClassificationTest, IsNaN) {
+  EXPECT_TRUE(float16_t::is_nan(H(kQNaN)));
+  EXPECT_TRUE(float16_t::is_nan(H(kNegQNaN)));
+  EXPECT_TRUE(float16_t::is_nan(H(kSNaN)));
+  EXPECT_TRUE(float16_t::is_nan(H(kNegSNaN)));
+  EXPECT_TRUE(float16_t::is_nan(H(0x7FFFu))); // NaN with all fraction bits set
+  EXPECT_TRUE(float16_t::is_nan(H(0xFFFFu))); // negative NaN, all fraction bits set
+  // All 1024 non-zero fraction values with exp=0x1F are NaN
+  for (uint16_t frac = 1; frac <= 0x03FF; ++frac) {
+    EXPECT_TRUE(float16_t::is_nan(H(static_cast<uint16_t>(0x7C00u | frac))));
+    EXPECT_TRUE(float16_t::is_nan(H(static_cast<uint16_t>(0xFC00u | frac))));
+  }
+  EXPECT_FALSE(float16_t::is_nan(H(kPosInf)));
+  EXPECT_FALSE(float16_t::is_nan(H(kNegInf)));
+  EXPECT_FALSE(float16_t::is_nan(H(kPosZero)));
+  EXPECT_FALSE(float16_t::is_nan(H(kNegZero)));
+  EXPECT_FALSE(float16_t::is_nan(H(kOne)));
+  EXPECT_FALSE(float16_t::is_nan(H(kNegOne)));
+  EXPECT_FALSE(float16_t::is_nan(H(kMinSubnorm)));
+  EXPECT_FALSE(float16_t::is_nan(H(kMaxFinite)));
+}
+
+TEST(Float16ClassificationTest, IsInf) {
+  EXPECT_TRUE(float16_t::is_inf(H(kPosInf)));
+  EXPECT_TRUE(float16_t::is_inf(H(kNegInf)));
+  EXPECT_FALSE(float16_t::is_inf(H(kQNaN)));
+  EXPECT_FALSE(float16_t::is_inf(H(kSNaN)));
+  EXPECT_FALSE(float16_t::is_inf(H(kPosZero)));
+  EXPECT_FALSE(float16_t::is_inf(H(kNegZero)));
+  EXPECT_FALSE(float16_t::is_inf(H(kOne)));
+  EXPECT_FALSE(float16_t::is_inf(H(kMaxFinite)));
+  EXPECT_FALSE(float16_t::is_inf(H(kMinSubnorm)));
+}
+
+TEST(Float16ClassificationTest, IsInfWithSign) {
+  // sign == 0: either infinity
+  EXPECT_TRUE(float16_t::is_inf(H(kPosInf), 0));
+  EXPECT_TRUE(float16_t::is_inf(H(kNegInf), 0));
+  EXPECT_FALSE(float16_t::is_inf(H(kQNaN), 0));
+  EXPECT_FALSE(float16_t::is_inf(H(kOne), 0));
+
+  // sign > 0: +Inf only
+  EXPECT_TRUE(float16_t::is_inf(H(kPosInf), +1));
+  EXPECT_FALSE(float16_t::is_inf(H(kNegInf), +1));
+  EXPECT_FALSE(float16_t::is_inf(H(kOne), +1));
+
+  // sign < 0: -Inf only
+  EXPECT_TRUE(float16_t::is_inf(H(kNegInf), -1));
+  EXPECT_FALSE(float16_t::is_inf(H(kPosInf), -1));
+  EXPECT_FALSE(float16_t::is_inf(H(kNegOne), -1));
+}
+
+TEST(Float16ClassificationTest, IsZero) {
+  EXPECT_TRUE(float16_t::is_zero(H(kPosZero)));
+  EXPECT_TRUE(float16_t::is_zero(H(kNegZero)));
+  EXPECT_FALSE(float16_t::is_zero(H(kMinSubnorm)));
+  EXPECT_FALSE(float16_t::is_zero(H(kOne)));
+  EXPECT_FALSE(float16_t::is_zero(H(kPosInf)));
+  EXPECT_FALSE(float16_t::is_zero(H(kQNaN)));
+}
+
+TEST(Float16ClassificationTest, Signbit) {
+  EXPECT_FALSE(float16_t::signbit(H(kPosZero)));
+  EXPECT_TRUE(float16_t::signbit(H(kNegZero)));
+  EXPECT_FALSE(float16_t::signbit(H(kOne)));
+  EXPECT_TRUE(float16_t::signbit(H(kNegOne)));
+  EXPECT_FALSE(float16_t::signbit(H(kPosInf)));
+  EXPECT_TRUE(float16_t::signbit(H(kNegInf)));
+  EXPECT_FALSE(float16_t::signbit(H(kQNaN)));
+  EXPECT_TRUE(float16_t::signbit(H(kNegQNaN)));
+  EXPECT_FALSE(float16_t::signbit(H(kMinSubnorm)));
+  EXPECT_TRUE(float16_t::signbit(H(static_cast<uint16_t>(kMinSubnorm | 0x8000u))));
+}
+
+TEST(Float16ClassificationTest, IsSubnormal) {
+  EXPECT_TRUE(float16_t::is_subnormal(H(kMinSubnorm)));
+  EXPECT_TRUE(float16_t::is_subnormal(H(kMaxSubnorm)));
+  // All 1023 positive subnormals
+  for (uint16_t frac = 1; frac <= 0x03FFu; ++frac) {
+    EXPECT_TRUE(float16_t::is_subnormal(H(frac)));
+    EXPECT_TRUE(float16_t::is_subnormal(
+        H(static_cast<uint16_t>(frac | 0x8000u))));
+  }
+  EXPECT_FALSE(float16_t::is_subnormal(H(kPosZero)));
+  EXPECT_FALSE(float16_t::is_subnormal(H(kNegZero)));
+  EXPECT_FALSE(float16_t::is_subnormal(H(kMinNormal)));
+  EXPECT_FALSE(float16_t::is_subnormal(H(kOne)));
+  EXPECT_FALSE(float16_t::is_subnormal(H(kPosInf)));
+  EXPECT_FALSE(float16_t::is_subnormal(H(kQNaN)));
+}
+
+TEST(Float16ClassificationTest, IsNormal) {
+  EXPECT_TRUE(float16_t::is_normal(H(kMinNormal)));
+  EXPECT_TRUE(float16_t::is_normal(H(kOne)));
+  EXPECT_TRUE(float16_t::is_normal(H(kNegOne)));
+  EXPECT_TRUE(float16_t::is_normal(H(kMaxFinite)));
+  // All 30 exponent values (1..30), all 1024 mantissa values
+  for (uint16_t exp = 1; exp <= 30; ++exp) {
+    for (uint16_t frac = 0; frac <= 0x03FFu; ++frac) {
+      EXPECT_TRUE(float16_t::is_normal(
+          H(static_cast<uint16_t>((exp << 10) | frac))));
+    }
+  }
+  EXPECT_FALSE(float16_t::is_normal(H(kPosZero)));
+  EXPECT_FALSE(float16_t::is_normal(H(kNegZero)));
+  EXPECT_FALSE(float16_t::is_normal(H(kMinSubnorm)));
+  EXPECT_FALSE(float16_t::is_normal(H(kPosInf)));
+  EXPECT_FALSE(float16_t::is_normal(H(kNegInf)));
+  EXPECT_FALSE(float16_t::is_normal(H(kQNaN)));
+  EXPECT_FALSE(float16_t::is_normal(H(kSNaN)));
+}
+
+TEST(Float16ClassificationTest, IsFinite) {
+  EXPECT_TRUE(float16_t::is_finite(H(kPosZero)));
+  EXPECT_TRUE(float16_t::is_finite(H(kNegZero)));
+  EXPECT_TRUE(float16_t::is_finite(H(kMinSubnorm)));
+  EXPECT_TRUE(float16_t::is_finite(H(kOne)));
+  EXPECT_TRUE(float16_t::is_finite(H(kNegOne)));
+  EXPECT_TRUE(float16_t::is_finite(H(kMaxFinite)));
+  EXPECT_TRUE(float16_t::is_finite(H(kMinNormal)));
+  EXPECT_FALSE(float16_t::is_finite(H(kPosInf)));
+  EXPECT_FALSE(float16_t::is_finite(H(kNegInf)));
+  EXPECT_FALSE(float16_t::is_finite(H(kQNaN)));
+  EXPECT_FALSE(float16_t::is_finite(H(kSNaN)));
+  EXPECT_FALSE(float16_t::is_finite(H(kNegQNaN)));
+}
+
+TEST(Float16ClassificationTest, MutualExclusionAcrossAllBitPatterns) {
+  // Every bit pattern falls into exactly one of: zero, subnormal, normal,
+  // inf, nan.  Also validate that is_finite == !inf && !nan.
+  for (uint32_t b = 0; b <= 0xFFFFu; ++b) {
+    const float16_t h = float16_t::from_bits(static_cast<uint16_t>(b));
+    const bool z  = float16_t::is_zero(h);
+    const bool sub= float16_t::is_subnormal(h);
+    const bool nor= float16_t::is_normal(h);
+    const bool inf= float16_t::is_inf(h);
+    const bool nan= float16_t::is_nan(h);
+    // Exactly one category is true
+    const int count = static_cast<int>(z) + static_cast<int>(sub) +
+                      static_cast<int>(nor) + static_cast<int>(inf) +
+                      static_cast<int>(nan);
+    EXPECT_EQ(count, 1) << "bits=0x" << std::hex << b;
+    // is_finite agrees with !inf && !nan
+    EXPECT_EQ(float16_t::is_finite(h), !inf && !nan)
+        << "bits=0x" << std::hex << b;
+  }
+}
+
 } // namespace
 } // namespace fory
