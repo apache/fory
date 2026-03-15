@@ -41,7 +41,52 @@ struct float16_t {
     [[nodiscard]] float to_float() const noexcept;
     [[nodiscard]] static float16_t from_float(float f) noexcept;
 
+    // ---- Classification (IEEE 754-consistent) ----
 
+    // True if the value is a NaN (quiet or signaling).
+    [[nodiscard]] static bool is_nan(float16_t h) noexcept {
+        return (h.bits & 0x7C00u) == 0x7C00u && (h.bits & 0x03FFu) != 0u;
+    }
+
+    // True if the value is positive or negative infinity.
+    [[nodiscard]] static bool is_inf(float16_t h) noexcept {
+        return (h.bits & 0x7FFFu) == 0x7C00u;
+    }
+
+    // True if the value is infinity of the requested sign.
+    //   sign > 0  →  +Inf only
+    //   sign < 0  →  -Inf only
+    //   sign == 0 →  either +Inf or -Inf
+    [[nodiscard]] static bool is_inf(float16_t h, int sign) noexcept {
+        if (sign == 0) return is_inf(h);
+        return sign > 0 ? h.bits == 0x7C00u : h.bits == 0xFC00u;
+    }
+
+    // True if the value is +0 or -0.
+    [[nodiscard]] static bool is_zero(float16_t h) noexcept {
+        return (h.bits & 0x7FFFu) == 0u;
+    }
+
+    // True if the sign bit is set (value is negative or negative zero/NaN).
+    [[nodiscard]] static bool signbit(float16_t h) noexcept {
+        return (h.bits & 0x8000u) != 0u;
+    }
+
+    // True if the value is a subnormal (denormal): exp == 0, mantissa != 0.
+    [[nodiscard]] static bool is_subnormal(float16_t h) noexcept {
+        return (h.bits & 0x7C00u) == 0u && (h.bits & 0x03FFu) != 0u;
+    }
+
+    // True if the value is a normal number (not zero, subnormal, Inf, or NaN).
+    [[nodiscard]] static bool is_normal(float16_t h) noexcept {
+        const uint16_t exp = h.bits & 0x7C00u;
+        return exp != 0u && exp != 0x7C00u;
+    }
+
+    // True if the value is finite (not Inf and not NaN).
+    [[nodiscard]] static bool is_finite(float16_t h) noexcept {
+        return (h.bits & 0x7C00u) != 0x7C00u;
+    }
 };
 
 static_assert(sizeof(float16_t) == 2);
