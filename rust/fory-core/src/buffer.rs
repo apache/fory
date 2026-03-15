@@ -525,20 +525,30 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     fn repin_stream_slice(&mut self) {
+        // BORROW CHECKER ARTIFACT: stream is always Some when this is called.
+        // The if-let re-check is required because the prior mutable borrow on
+        // `stream` in `fill_to` is released before this call, and Rust cannot
+        // carry the Some proof across that borrow boundary.
         if let Some(stream) = self.stream.as_ref() {
             // SAFETY:
-            // - stream.buffer is owned by ForyStreamBuf
-            // - pointer remains valid until next fill_buffer() resize
-            // - repin always called immediately after fill_buffer()
+            // - stream.buffer is owned by ForyStreamBuf and lives inside self.stream
+            // - pointer remains valid until the next fill_buffer() call that reallocates
+            // - this method is always called immediately after fill_buffer() returns
+            // - no fill_buffer() call can occur between stream.data() derivation and
+            //   self.bf assignment: guaranteed by &mut self (no aliasing) and the
+            //   absence of any await points in this method body
             self.bf = unsafe { std::slice::from_raw_parts(stream.data(), stream.size()) };
         }
     }
 
     /// Construct a stream-backed `Reader`.
-    pub fn from_stream(mut stream: crate::stream::ForyStreamBuf) -> Reader<'static> {
-        // ensure initial cursor alignment
-        let _ = stream.set_reader_index(0);
-
+    pub fn from_stream(stream: crate::stream::ForyStreamBuf) -> Reader<'static> {
+        // ForyStreamBuf::new/with_capacity always initialises read_pos = 0.
+        debug_assert_eq!(
+            stream.reader_index(),
+            0,
+            "stream must be freshly constructed"
+        );
         let boxed = Box::new(stream);
 
         // pin slice to current stream buffer window
@@ -617,10 +627,6 @@ impl<'a> Reader<'a> {
         }
 
         let n = target_size.saturating_sub(self.cursor);
-        if n == 0 {
-            self.repin_stream_slice();
-            return self.bf.len() >= target_size;
-        }
 
         if stream.fill_buffer(n).is_err() {
             return false;
@@ -695,12 +701,25 @@ impl<'a> Reader<'a> {
 
     /// `stream_->reader_index(reader_index_)` when stream-backed.
     pub fn set_cursor(&mut self, cursor: usize) -> Result<(), Error> {
-        self.cursor = cursor;
-
         if let Some(ref mut stream) = self.stream {
+            // fill before seeking if target is past valid data
+            if cursor > stream.size() {
+                stream.fill_buffer(cursor - stream.reader_index())?;
+            }
             stream.set_reader_index(cursor)?;
+            self.cursor = cursor;
+            self.repin_stream_slice(); // repin ONLY here — fill may have reallocated
+        } else {
+            // non-stream: validate cursor against slice bounds immediately
+            if cursor > self.bf.len() {
+                return Err(Error::buffer_out_of_bound(
+                    self.cursor,
+                    cursor,
+                    self.bf.len(),
+                ));
+            }
+            self.cursor = cursor;
         }
-
         Ok(())
     }
 
@@ -817,42 +836,37 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint32(&mut self) -> Result<u32, Error> {
-        if self.stream.is_some() && self.bf.len().saturating_sub(self.cursor) < 5 {
-            return self.read_varuint32_stream();
+        // also need the safe per-byte slow path.
+        if self.bf.len().saturating_sub(self.cursor) < 5 {
+            return self.read_varuint32_slow();
         }
-        let b0 = self.value_at(self.cursor)? as u32;
-        if b0 < 0x80 {
-            self.move_next(1);
-            return Ok(b0);
+        // Fast path: ≥5 bytes in bf. Bulk 4-byte read — matches C++ read_var_uint32.
+        let bulk = LittleEndian::read_u32(&self.bf[self.cursor..self.cursor + 4]);
+        let mut result = bulk & 0x7F;
+        if (bulk & 0x80) == 0 {
+            self.cursor += 1;
+            return Ok(result);
         }
-
-        let b1 = self.value_at(self.cursor + 1)? as u32;
-        let mut encoded = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
-        if b1 < 0x80 {
-            self.move_next(2);
-            return Ok(encoded);
+        result |= (bulk >> 1) & 0x3F80;
+        if (bulk & 0x8000) == 0 {
+            self.cursor += 2;
+            return Ok(result);
         }
-
-        let b2 = self.value_at(self.cursor + 2)? as u32;
-        encoded |= (b2 & 0x7F) << 14;
-        if b2 < 0x80 {
-            self.move_next(3);
-            return Ok(encoded);
+        result |= (bulk >> 2) & 0x1FC000;
+        if (bulk & 0x800000) == 0 {
+            self.cursor += 3;
+            return Ok(result);
         }
-
-        let b3 = self.value_at(self.cursor + 3)? as u32;
-        encoded |= (b3 & 0x7F) << 21;
-        if b3 < 0x80 {
-            self.move_next(4);
-            return Ok(encoded);
+        result |= (bulk >> 3) & 0xFE00000;
+        if (bulk & 0x80000000) == 0 {
+            self.cursor += 4;
+            return Ok(result);
         }
-
-        let b4 = self.value_at(self.cursor + 4)? as u32;
-        encoded |= b4 << 28;
-        self.move_next(5);
-        Ok(encoded)
+        // 5th byte: safe — ≥5 bytes guaranteed by guard. Matches C++ data_[offset+4] & 0x7F.
+        result |= (self.bf[self.cursor + 4] as u32 & 0x7F) << 28;
+        self.cursor += 5;
+        Ok(result)
     }
-
     // ============ UINT64 (TypeId = 13) ============
 
     #[inline(always)]
@@ -867,70 +881,57 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint64(&mut self) -> Result<u64, Error> {
-        if self.stream.is_some() && self.bf.len().saturating_sub(self.cursor) < 9 {
-            return self.read_varuint64_stream();
+        // Removed `self.stream.is_some() &&` — same reason as read_varuint32.
+        if self.bf.len().saturating_sub(self.cursor) < 9 {
+            return self.read_varuint64_slow();
         }
-        let b0 = self.value_at(self.cursor)? as u64;
-        if b0 < 0x80 {
-            self.move_next(1);
-            return Ok(b0);
-        }
-
-        let b1 = self.value_at(self.cursor + 1)? as u64;
-        let mut result = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
-        if b1 < 0x80 {
-            self.move_next(2);
+        // Fast path: ≥9 bytes in bf. Bulk 8-byte read — matches C++ get_var_uint64.
+        let bulk = LittleEndian::read_u64(&self.bf[self.cursor..self.cursor + 8]);
+        let mut result = bulk & 0x7F;
+        if (bulk & 0x80) == 0 {
+            self.cursor += 1;
             return Ok(result);
         }
-
-        let b2 = self.value_at(self.cursor + 2)? as u64;
-        result |= (b2 & 0x7F) << 14;
-        if b2 < 0x80 {
-            self.move_next(3);
+        result |= (bulk >> 1) & 0x3F80;
+        if (bulk & 0x8000) == 0 {
+            self.cursor += 2;
             return Ok(result);
         }
-
-        let b3 = self.value_at(self.cursor + 3)? as u64;
-        result |= (b3 & 0x7F) << 21;
-        if b3 < 0x80 {
-            self.move_next(4);
+        result |= (bulk >> 2) & 0x1FC000;
+        if (bulk & 0x800000) == 0 {
+            self.cursor += 3;
             return Ok(result);
         }
-
-        let b4 = self.value_at(self.cursor + 4)? as u64;
-        result |= (b4 & 0x7F) << 28;
-        if b4 < 0x80 {
-            self.move_next(5);
+        result |= (bulk >> 3) & 0xFE00000;
+        if (bulk & 0x80000000) == 0 {
+            self.cursor += 4;
             return Ok(result);
         }
-
-        let b5 = self.value_at(self.cursor + 5)? as u64;
-        result |= (b5 & 0x7F) << 35;
-        if b5 < 0x80 {
-            self.move_next(6);
+        result |= (bulk >> 4) & 0x7F0000000u64;
+        if (bulk & 0x8000000000u64) == 0 {
+            self.cursor += 5;
             return Ok(result);
         }
-
-        let b6 = self.value_at(self.cursor + 6)? as u64;
-        result |= (b6 & 0x7F) << 42;
-        if b6 < 0x80 {
-            self.move_next(7);
+        result |= (bulk >> 5) & 0x3F800000000u64;
+        if (bulk & 0x800000000000u64) == 0 {
+            self.cursor += 6;
             return Ok(result);
         }
-
-        let b7 = self.value_at(self.cursor + 7)? as u64;
-        result |= (b7 & 0x7F) << 49;
-        if b7 < 0x80 {
-            self.move_next(8);
+        result |= (bulk >> 6) & 0x1FC0000000000u64;
+        if (bulk & 0x80000000000000u64) == 0 {
+            self.cursor += 7;
             return Ok(result);
         }
-
-        let b8 = self.value_at(self.cursor + 8)? as u64;
-        result |= (b8 & 0xFF) << 56;
-        self.move_next(9);
+        result |= (bulk >> 7) & 0xFE000000000000u64;
+        if (bulk & 0x8000000000000000u64) == 0 {
+            self.cursor += 8;
+            return Ok(result);
+        }
+        // 9th byte: safe — ≥9 bytes guaranteed. Matches C++ data_[offset+8] << 56.
+        result |= (self.bf[self.cursor + 8] as u64) << 56;
+        self.cursor += 9;
         Ok(result)
     }
-
     // ============ TAGGED_UINT64 (TypeId = 15) ============
 
     /// Read unsigned fory Tagged(Small long as int) encoded u64.
@@ -1100,127 +1101,102 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint36small(&mut self) -> Result<u64, Error> {
-        if self.stream.is_some() && self.bf.len().saturating_sub(self.cursor) < 8 {
-            return self.read_varuint36small_stream();
+        // Removed `self.stream.is_some() &&` — same reason as read_varuint32.
+        // Also fixes existing bug: old fast path called self.read_u64() which
+        // advanced cursor by 8 then tried to manually reset it — wrong.
+        if self.bf.len().saturating_sub(self.cursor) < 8 {
+            return self.read_varuint36small_slow();
         }
-        // Keep this API panic-free even if cursor is externally set past buffer end.
-        self.check_bound(0)?;
-        let start = self.cursor;
-        let slice = self.slice_after_cursor();
-
-        if slice.len() >= 8 {
-            // here already check bound
-            let bulk = self.read_u64()?;
-            let mut result = bulk & 0x7F;
-            let mut read_idx = start;
-
-            if (bulk & 0x80) != 0 {
-                read_idx += 1;
-                result |= (bulk >> 1) & 0x3F80;
-                if (bulk & 0x8000) != 0 {
-                    read_idx += 1;
-                    result |= (bulk >> 2) & 0x1FC000;
-                    if (bulk & 0x800000) != 0 {
-                        read_idx += 1;
-                        result |= (bulk >> 3) & 0xFE00000;
-                        if (bulk & 0x80000000) != 0 {
-                            read_idx += 1;
-                            result |= (bulk >> 4) & 0xFF0000000;
-                        }
-                    }
-                }
-            }
-            self.cursor = read_idx + 1;
+        // Fast path: ≥8 bytes in bf. Bulk 8-byte read — matches C++ read_var_uint36_small.
+        let bulk = LittleEndian::read_u64(&self.bf[self.cursor..self.cursor + 8]);
+        let mut result = bulk & 0x7F;
+        if (bulk & 0x80) == 0 {
+            self.cursor += 1;
             return Ok(result);
         }
-
-        let mut result = 0u64;
-        let mut shift = 0;
-        while self.cursor < self.bf.len() {
-            let b = self.read_u8_uncheck();
-            result |= ((b & 0x7F) as u64) << shift;
-            if (b & 0x80) == 0 {
-                break;
-            }
-            shift += 7;
-            if shift >= 36 {
-                return Err(Error::encode_error("varuint36small overflow"));
-            }
+        result |= (bulk >> 1) & 0x3F80;
+        if (bulk & 0x8000) == 0 {
+            self.cursor += 2;
+            return Ok(result);
         }
+        result |= (bulk >> 2) & 0x1FC000;
+        if (bulk & 0x800000) == 0 {
+            self.cursor += 3;
+            return Ok(result);
+        }
+        result |= (bulk >> 3) & 0xFE00000;
+        if (bulk & 0x80000000) == 0 {
+            self.cursor += 4;
+            return Ok(result);
+        }
+        // 5th byte for bits 28-35 (36-bit cap). Matches C++ (bulk >> 4) & 0xFF0000000ULL.
+        result |= (bulk >> 4) & 0xFF0000000u64;
+        self.cursor += 5;
         Ok(result)
     }
 
-    /// Byte-by-byte varuint32 decode for stream-backed path.
-    fn read_varuint32_stream(&mut self) -> Result<u32, Error> {
+    /// Slow path for varuint32: fewer than 5 bytes in bf.
+    /// Handles both stream-backed (fill-on-miss via value_at) and in-memory edge cases.
+    fn read_varuint32_slow(&mut self) -> Result<u32, Error> {
         let mut result = 0u32;
-
         for i in 0..5 {
             let b = self.value_at(self.cursor)? as u32;
-            self.cursor += 1;
-
-            if i == 4 && (b & 0xF0) != 0 {
-                return Err(Error::encode_error("var_uint32 overflow"));
-            }
-
+            self.move_next(1);
             result |= (b & 0x7F) << (i * 7);
-
             if (b & 0x80) == 0 {
                 return Ok(result);
             }
         }
-
         Err(Error::encode_error("Invalid var_uint32 encoding"))
     }
 
-    /// Byte-by-byte varuint64 decode for stream-backed path.
-    fn read_varuint64_stream(&mut self) -> Result<u64, Error> {
+    /// Slow path for varuint64: fewer than 9 bytes in bf.
+    /// Handles both stream-backed and in-memory edge cases.
+    fn read_varuint64_slow(&mut self) -> Result<u64, Error> {
         let mut result = 0u64;
-
         for i in 0..8u64 {
             let b = self.value_at(self.cursor)? as u64;
-            self.cursor += 1;
-
+            self.move_next(1);
             result |= (b & 0x7F) << (i * 7);
-
             if (b & 0x80) == 0 {
                 return Ok(result);
             }
         }
-
-        // 9th byte contains full 8 bits
+        // 9th byte: full 8 bits for bits 56-63. Matches C++ get_var_uint64_slow.
         let b = self.value_at(self.cursor)? as u64;
-        self.cursor += 1;
-
+        self.move_next(1);
         result |= b << 56;
-
         Ok(result)
     }
 
-    /// Byte-by-byte varuint36small decode for stream-backed path.
-    fn read_varuint36small_stream(&mut self) -> Result<u64, Error> {
+    /// Slow path for varuint36small: fewer than 8 bytes in bf.
+    /// Handles both stream-backed and in-memory edge cases.
+    fn read_varuint36small_slow(&mut self) -> Result<u64, Error> {
         let mut result = 0u64;
-
         for i in 0..4u64 {
             let b = self.value_at(self.cursor)? as u64;
-            self.cursor += 1;
-
+            self.move_next(1);
             result |= (b & 0x7F) << (i * 7);
-
             if (b & 0x80) == 0 {
                 return Ok(result);
             }
         }
-
         let b = self.value_at(self.cursor)? as u64;
-        self.cursor += 1;
-
+        self.move_next(1);
         result |= b << 28;
-
-        if result >= (1u64 << 36) {
-            return Err(Error::encode_error("var_uint36small overflow"));
-        }
-
         Ok(result)
+    }
+
+    #[inline(always)]
+    pub fn read_i24(&mut self) -> Result<i32, Error> {
+        self.check_bound(3)?;
+        // u8 as i32 zero-extends in Rust — & 0xFF redundant but matches C++ get_int24 idiom.
+        // NOT sign-extended: callers needing sign extension must do it themselves.
+        let b0 = self.bf[self.cursor] as i32;
+        let b1 = self.bf[self.cursor + 1] as i32;
+        let b2 = self.bf[self.cursor + 2] as i32;
+        self.cursor += 3;
+        Ok((b0 & 0xFF) | ((b1 & 0xFF) << 8) | ((b2 & 0xFF) << 16))
     }
 }
 

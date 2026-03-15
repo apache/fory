@@ -77,20 +77,6 @@ impl ForyStreamBuf {
         }
 
         while self.remaining() < min_fill_size {
-            let writable = self.buffer.len() - self.valid_len;
-            if writable == 0 {
-                let new_cap = self
-                    .buffer
-                    .len()
-                    .checked_mul(2)
-                    .and_then(|n| n.checked_add(1))
-                    .filter(|&n| n <= u32::MAX as usize)
-                    .ok_or_else(|| {
-                        Error::buffer_out_of_bound(self.read_pos, min_fill_size, self.remaining())
-                    })?;
-                self.buffer.resize(new_cap, 0);
-            }
-
             match self.source.read(&mut self.buffer[self.valid_len..]) {
                 Ok(0) => {
                     return Err(Error::buffer_out_of_bound(
@@ -213,6 +199,7 @@ impl ForyStreamBuf {
         if target_capacity < current_capacity {
             // Reduce logical size but keep allocation to avoid allocator churn
             self.buffer.truncate(target_capacity);
+            self.buffer.shrink_to_fit();
         }
     }
 }

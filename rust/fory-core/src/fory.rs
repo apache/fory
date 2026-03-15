@@ -996,9 +996,14 @@ impl Fory {
                 // STREAM PATH — single attach
                 let stream = mem::take(&mut reader.stream)
                     .expect("is_stream_backed was true but stream is None");
+                // SAFETY: reader.stream is gone so reader.bf now dangles.
+                // Immediately zero it out to prevent any accidental read before re-pin.
+                reader.bf = &[];
                 let cursor = reader.cursor;
                 let mut stream_reader = Reader::from_stream(*stream);
-                stream_reader.set_cursor(cursor).ok();
+                stream_reader
+                    .set_cursor(cursor)
+                    .expect("set_cursor on a live stream cursor must not fail");
                 context.attach_reader(stream_reader);
 
                 let result = self.deserialize_with_context(context);
@@ -1018,12 +1023,16 @@ impl Fory {
                 // IN-MEMORY PATH — unchanged fast path
                 let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
                 let mut new_reader = Reader::new(outlive_buffer);
-                new_reader.set_cursor(reader.cursor).ok();
+                new_reader
+                    .set_cursor(reader.cursor)
+                    .expect("set_cursor on a live in-memory cursor must not fail");
                 context.attach_reader(new_reader);
 
                 let result = self.deserialize_with_context(context);
                 let end = context.detach_reader().get_cursor();
-                reader.set_cursor(end).ok();
+                reader
+                    .set_cursor(end)
+                    .expect("set_cursor on a live in-memory cursor must not fail");
                 result
             }
         })
@@ -1054,7 +1063,10 @@ impl Fory {
         self.with_read_context(|context| {
             context.attach_reader(Reader::from_stream(ForyStreamBuf::new(source)));
             let result = self.deserialize_with_context(context);
-            context.detach_reader();
+            let mut reader = context.detach_reader();
+            if let Some(ref mut s) = reader.stream {
+                s.shrink_buffer();
+            }
             result
         })
     }
