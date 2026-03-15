@@ -17,9 +17,12 @@
 
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_enum
 
+mod test_helpers;
+
 use fory_core::Fory;
 use fory_derive::ForyObject;
 use std::collections::HashMap;
+use test_helpers::deserialize_check;
 
 #[test]
 fn basic() {
@@ -59,7 +62,7 @@ fn basic() {
         Token::Map(map),
     ];
     let bin = fory.serialize(&tokens).unwrap();
-    let new_tokens = fory.deserialize::<Vec<Token>>(&bin).unwrap();
+    let new_tokens: Vec<Token> = deserialize_check(&fory, &bin);
     assert_eq!(tokens, new_tokens);
 }
 
@@ -143,7 +146,7 @@ fn struct_with_enum_field() {
     };
 
     let bin = fory.serialize(&obj).unwrap();
-    let result: StructWithEnum = fory.deserialize(&bin).unwrap();
+    let result: StructWithEnum = deserialize_check(&fory, &bin);
     assert_eq!(obj, result);
 }
 
@@ -185,7 +188,7 @@ fn union_compatible_enum_xlang_format() {
         union_field: StringOrLong::Text("hello".to_string()),
     };
     let bin1 = fory.serialize(&obj1).unwrap();
-    let result1: StructWithUnion = fory.deserialize(&bin1).unwrap();
+    let result1: StructWithUnion = deserialize_check(&fory, &bin1);
     assert_eq!(obj1, result1);
 
     // Test with Long variant (index 1)
@@ -193,7 +196,7 @@ fn union_compatible_enum_xlang_format() {
         union_field: StringOrLong::Number(42),
     };
     let bin2 = fory.serialize(&obj2).unwrap();
-    let result2: StructWithUnion = fory.deserialize(&bin2).unwrap();
+    let result2: StructWithUnion = deserialize_check(&fory, &bin2);
     assert_eq!(obj2, result2);
 }
 
@@ -234,6 +237,6 @@ fn struct_with_enum_field_explicit_nullable() {
     };
 
     let bin = fory.serialize(&obj).unwrap();
-    let result: StructWithExplicitNullable = fory.deserialize(&bin).unwrap();
+    let result: StructWithExplicitNullable = deserialize_check(&fory, &bin);
     assert_eq!(obj, result);
 }

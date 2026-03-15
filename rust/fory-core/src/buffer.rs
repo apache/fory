@@ -18,6 +18,7 @@
 use crate::error::Error;
 use crate::float16::float16;
 use crate::meta::buffer_rw_string::read_latin1_simd;
+use crate::stream::ForyStreamBuf;
 use byteorder::{ByteOrder, LittleEndian};
 use std::cmp::max;
 
@@ -506,6 +507,7 @@ impl<'a> Writer<'a> {
 pub struct Reader<'a> {
     pub(crate) bf: &'a [u8],
     pub(crate) cursor: usize,
+    pub(crate) stream: Option<Box<ForyStreamBuf>>,
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -514,7 +516,58 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn new(bf: &[u8]) -> Reader<'_> {
-        Reader { bf, cursor: 0 }
+        Reader {
+            bf,
+            cursor: 0,
+            stream: None,
+        }
+    }
+
+    #[inline(always)]
+    fn repin_stream_slice(&mut self) {
+        if let Some(stream) = self.stream.as_ref() {
+            // SAFETY:
+            // - stream.buffer is owned by ForyStreamBuf
+            // - pointer remains valid until next fill_buffer() resize
+            // - repin always called immediately after fill_buffer()
+            self.bf = unsafe { std::slice::from_raw_parts(stream.data(), stream.size()) };
+        }
+    }
+
+    /// Construct a stream-backed `Reader`.
+    pub fn from_stream(mut stream: crate::stream::ForyStreamBuf) -> Reader<'static> {
+        // ensure initial cursor alignment
+        let _ = stream.set_reader_index(0);
+
+        let boxed = Box::new(stream);
+
+        // pin slice to current stream buffer window
+        let bf = unsafe { std::slice::from_raw_parts(boxed.data(), boxed.size()) };
+
+        Reader {
+            bf,
+            cursor: 0,
+            stream: Some(boxed),
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_stream_backed(&self) -> bool {
+        self.stream.is_some()
+    }
+
+    /// Returns the stream buffer's `reader_index` (read position).
+    /// Returns `None` when this reader is not stream-backed.
+    #[inline(always)]
+    pub fn stream_reader_index(&self) -> Option<usize> {
+        self.stream.as_ref().map(|s| s.reader_index())
+    }
+
+    /// Returns the stream buffer's `remaining` unread byte count.
+    /// Returns `None` when this reader is not stream-backed.
+    #[inline(always)]
+    pub fn stream_remaining(&self) -> Option<usize> {
+        self.stream.as_ref().map(|s| s.remaining())
     }
 
     #[inline(always)]
@@ -551,29 +604,63 @@ impl<'a> Reader<'a> {
         self.cursor
     }
 
-    #[inline(always)]
-    fn value_at(&self, index: usize) -> Result<u8, Error> {
-        match self.bf.get(index) {
-            None => Err(Error::buffer_out_of_bound(
-                index,
-                self.bf.len(),
-                self.bf.len(),
-            )),
-            Some(v) => Ok(*v),
+    /// Fill stream buffer up to `target_size` total bytes, then re-pin `bf`.
+    /// Returns `false` if stream is None OR fill failed.
+    fn fill_to(&mut self, target_size: usize) -> bool {
+        let stream = match self.stream.as_mut() {
+            Some(s) => s,
+            None => return false,
+        };
+        // intentional: fill_buffer validates; set_reader_index only syncs read_pos
+        if stream.set_reader_index(self.cursor).is_err() {
+            return false;
         }
+
+        let n = target_size.saturating_sub(self.cursor);
+        if n == 0 {
+            self.repin_stream_slice();
+            return self.bf.len() >= target_size;
+        }
+
+        if stream.fill_buffer(n).is_err() {
+            return false;
+        }
+
+        self.repin_stream_slice();
+        self.bf.len() >= target_size
     }
 
+    /// Ensure `self.cursor + n` bytes are available.
+    ///   fast path: target <= size_ → return true
+    ///   stream path: call fill_to(target), check again.
     #[inline(always)]
-    fn check_bound(&self, n: usize) -> Result<(), Error> {
-        let end = self
+    fn ensure_readable(&mut self, n: usize) -> Result<(), Error> {
+        let target = self
             .cursor
             .checked_add(n)
             .ok_or_else(|| Error::buffer_out_of_bound(self.cursor, n, self.bf.len()))?;
-        if end > self.bf.len() {
-            Err(Error::buffer_out_of_bound(self.cursor, n, self.bf.len()))
-        } else {
-            Ok(())
+
+        if target > self.bf.len() && !self.fill_to(target) {
+            return Err(Error::buffer_out_of_bound(self.cursor, n, self.bf.len()));
         }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn value_at(&mut self, index: usize) -> Result<u8, Error> {
+        if index >= self.bf.len() && !self.fill_to(index + 1) {
+            return Err(Error::buffer_out_of_bound(index, 1, self.bf.len()));
+        }
+
+        Ok(unsafe { *self.bf.get_unchecked(index) })
+    }
+    /// stream fill on miss. Changing to `&mut self` is the single
+    /// change that gives ALL 27 existing read methods stream support
+    /// without touching them individually — they all call this.
+    #[inline(always)]
+    fn check_bound(&mut self, n: usize) -> Result<(), Error> {
+        self.ensure_readable(n)
     }
 
     #[inline(always)]
@@ -606,8 +693,15 @@ impl<'a> Reader<'a> {
         }
     }
 
-    pub fn set_cursor(&mut self, cursor: usize) {
+    /// `stream_->reader_index(reader_index_)` when stream-backed.
+    pub fn set_cursor(&mut self, cursor: usize) -> Result<(), Error> {
         self.cursor = cursor;
+
+        if let Some(ref mut stream) = self.stream {
+            stream.set_reader_index(cursor)?;
+        }
+
+        Ok(())
     }
 
     // ============ BOOL (TypeId = 1) ============
@@ -723,6 +817,9 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint32(&mut self) -> Result<u32, Error> {
+        if self.stream.is_some() && self.bf.len().saturating_sub(self.cursor) < 5 {
+            return self.read_varuint32_stream();
+        }
         let b0 = self.value_at(self.cursor)? as u32;
         if b0 < 0x80 {
             self.move_next(1);
@@ -770,6 +867,9 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint64(&mut self) -> Result<u64, Error> {
+        if self.stream.is_some() && self.bf.len().saturating_sub(self.cursor) < 9 {
+            return self.read_varuint64_stream();
+        }
         let b0 = self.value_at(self.cursor)? as u64;
         if b0 < 0x80 {
             self.move_next(1);
@@ -1000,6 +1100,9 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_varuint36small(&mut self) -> Result<u64, Error> {
+        if self.stream.is_some() && self.bf.len().saturating_sub(self.cursor) < 8 {
+            return self.read_varuint36small_stream();
+        }
         // Keep this API panic-free even if cursor is externally set past buffer end.
         self.check_bound(0)?;
         let start = self.cursor;
@@ -1044,6 +1147,79 @@ impl<'a> Reader<'a> {
                 return Err(Error::encode_error("varuint36small overflow"));
             }
         }
+        Ok(result)
+    }
+
+    /// Byte-by-byte varuint32 decode for stream-backed path.
+    fn read_varuint32_stream(&mut self) -> Result<u32, Error> {
+        let mut result = 0u32;
+
+        for i in 0..5 {
+            let b = self.value_at(self.cursor)? as u32;
+            self.cursor += 1;
+
+            if i == 4 && (b & 0xF0) != 0 {
+                return Err(Error::encode_error("var_uint32 overflow"));
+            }
+
+            result |= (b & 0x7F) << (i * 7);
+
+            if (b & 0x80) == 0 {
+                return Ok(result);
+            }
+        }
+
+        Err(Error::encode_error("Invalid var_uint32 encoding"))
+    }
+
+    /// Byte-by-byte varuint64 decode for stream-backed path.
+    fn read_varuint64_stream(&mut self) -> Result<u64, Error> {
+        let mut result = 0u64;
+
+        for i in 0..8u64 {
+            let b = self.value_at(self.cursor)? as u64;
+            self.cursor += 1;
+
+            result |= (b & 0x7F) << (i * 7);
+
+            if (b & 0x80) == 0 {
+                return Ok(result);
+            }
+        }
+
+        // 9th byte contains full 8 bits
+        let b = self.value_at(self.cursor)? as u64;
+        self.cursor += 1;
+
+        result |= b << 56;
+
+        Ok(result)
+    }
+
+    /// Byte-by-byte varuint36small decode for stream-backed path.
+    fn read_varuint36small_stream(&mut self) -> Result<u64, Error> {
+        let mut result = 0u64;
+
+        for i in 0..4u64 {
+            let b = self.value_at(self.cursor)? as u64;
+            self.cursor += 1;
+
+            result |= (b & 0x7F) << (i * 7);
+
+            if (b & 0x80) == 0 {
+                return Ok(result);
+            }
+        }
+
+        let b = self.value_at(self.cursor)? as u64;
+        self.cursor += 1;
+
+        result |= b << 28;
+
+        if result >= (1u64 << 36) {
+            return Err(Error::encode_error("var_uint36small overflow"));
+        }
+
         Ok(result)
     }
 }

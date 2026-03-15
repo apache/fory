@@ -15,9 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+mod test_helpers;
+
 use fory_core::fory::Fory;
 use fory_derive::ForyObject;
 use std::collections::{LinkedList, VecDeque};
+use test_helpers::deserialize_check;
 
 #[test]
 fn test_vecdeque_i32() {
@@ -27,7 +30,7 @@ fn test_vecdeque_i32() {
     deque.push_back(2);
     deque.push_back(3);
     let bin = fory.serialize(&deque).unwrap();
-    let obj: VecDeque<i32> = fory.deserialize(&bin).expect("deserialize");
+    let obj: VecDeque<i32> = deserialize_check(&fory, &bin);
     assert_eq!(deque, obj);
 }
 
@@ -36,7 +39,7 @@ fn test_vecdeque_empty() {
     let fory = Fory::default();
     let deque: VecDeque<i32> = VecDeque::new();
     let bin = fory.serialize(&deque).unwrap();
-    let obj: VecDeque<i32> = fory.deserialize(&bin).expect("deserialize");
+    let obj: VecDeque<i32> = deserialize_check(&fory, &bin);
     assert_eq!(deque, obj);
 }
 
@@ -47,7 +50,7 @@ fn test_vecdeque_string() {
     deque.push_back("hello".to_string());
     deque.push_back("world".to_string());
     let bin = fory.serialize(&deque).unwrap();
-    let obj: VecDeque<String> = fory.deserialize(&bin).expect("deserialize");
+    let obj: VecDeque<String> = deserialize_check(&fory, &bin);
     assert_eq!(deque, obj);
 }
 
@@ -59,7 +62,7 @@ fn test_vecdeque_f64() {
     deque.push_back(2.5);
     deque.push_back(3.5);
     let bin = fory.serialize(&deque).unwrap();
-    let obj: VecDeque<f64> = fory.deserialize(&bin).expect("deserialize");
+    let obj: VecDeque<f64> = deserialize_check(&fory, &bin);
     assert_eq!(deque, obj);
 }
 
@@ -71,7 +74,7 @@ fn test_linkedlist_i32() {
     list.push_back(2);
     list.push_back(3);
     let bin = fory.serialize(&list).unwrap();
-    let obj: LinkedList<i32> = fory.deserialize(&bin).expect("deserialize");
+    let obj: LinkedList<i32> = deserialize_check(&fory, &bin);
     assert_eq!(list, obj);
 }
 
@@ -80,7 +83,7 @@ fn test_linkedlist_empty() {
     let fory = Fory::default();
     let list: LinkedList<i32> = LinkedList::new();
     let bin = fory.serialize(&list).unwrap();
-    let obj: LinkedList<i32> = fory.deserialize(&bin).expect("deserialize");
+    let obj: LinkedList<i32> = deserialize_check(&fory, &bin);
     assert_eq!(list, obj);
 }
 
@@ -91,7 +94,7 @@ fn test_linkedlist_string() {
     list.push_back("foo".to_string());
     list.push_back("bar".to_string());
     let bin = fory.serialize(&list).unwrap();
-    let obj: LinkedList<String> = fory.deserialize(&bin).expect("deserialize");
+    let obj: LinkedList<String> = deserialize_check(&fory, &bin);
     assert_eq!(list, obj);
 }
 
@@ -103,7 +106,7 @@ fn test_linkedlist_bool() {
     list.push_back(false);
     list.push_back(true);
     let bin = fory.serialize(&list).unwrap();
-    let obj: LinkedList<bool> = fory.deserialize(&bin).expect("deserialize");
+    let obj: LinkedList<bool> = deserialize_check(&fory, &bin);
     assert_eq!(list, obj);
 }
 
@@ -135,7 +138,7 @@ fn test_struct_with_collections() {
     };
 
     let bin = fory.serialize(&data).unwrap();
-    let obj: CollectionStruct = fory.deserialize(&bin).expect("deserialize");
+    let obj: CollectionStruct = deserialize_check(&fory, &bin);
     assert_eq!(data, obj);
 }
 
