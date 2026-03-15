@@ -237,10 +237,16 @@ func (c *ReadContext) ReadAndValidateTypeId(expected TypeId) {
 	}
 }
 
-// ReadLength reads a length value as varint (non-negative values)
-func (c *ReadContext) ReadLength() int {
+// ReadCollectionLength reads a length value for collections with size guardrails
+func (c *ReadContext) ReadCollectionLength() int {
 	err := c.Err()
-	return int(c.buffer.ReadVarUint32(err))
+	return c.buffer.ReadCollectionLength(err)
+}
+
+// ReadBinaryLength reads a length value for binary arrays with size guardrails
+func (c *ReadContext) ReadBinaryLength() int {
+	err := c.Err()
+	return c.buffer.ReadBinaryLength(err)
 }
 
 // ============================================================================
@@ -434,7 +440,7 @@ func (c *ReadContext) ReadByteSlice(refMode RefMode, readType bool) []byte {
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	size := c.buffer.ReadLength(err)
+	size := c.buffer.ReadBinaryLength(err)
 	return c.buffer.ReadBinary(size, err)
 }
 
@@ -583,7 +589,7 @@ func (c *ReadContext) ReadBufferObject() *ByteBuffer {
 	err := c.Err()
 	isInBand := c.buffer.ReadBool(err)
 	if isInBand {
-		size := c.buffer.ReadLength(err)
+		size := c.buffer.ReadBinaryLength(err)
 		buf := c.buffer.Slice(c.buffer.readerIndex, size)
 		c.buffer.readerIndex += size
 		return buf

@@ -70,7 +70,7 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 
 // readMapStringString reads map[string]string using chunk protocol
 func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[string]string, size)
 	if size == 0 {
 		return result
@@ -173,7 +173,7 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 
 // readMapStringInt64 reads map[string]int64 using chunk protocol
 func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[string]int64, size)
 	if size == 0 {
 		return result
@@ -247,7 +247,7 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 
 // readMapStringInt32 reads map[string]int32 using chunk protocol
 func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[string]int32, size)
 	if size == 0 {
 		return result
@@ -321,7 +321,7 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 
 // readMapStringInt reads map[string]int using chunk protocol
 func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[string]int, size)
 	if size == 0 {
 		return result
@@ -395,7 +395,7 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 
 // readMapStringFloat64 reads map[string]float64 using chunk protocol
 func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[string]float64, size)
 	if size == 0 {
 		return result
@@ -469,7 +469,7 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 
 // readMapStringBool reads map[string]bool using chunk protocol
 func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[string]bool, size)
 	if size == 0 {
 		return result
@@ -548,7 +548,7 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 
 // readMapInt32Int32 reads map[int32]int32 using chunk protocol
 func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[int32]int32, size)
 	if size == 0 {
 		return result
@@ -622,7 +622,7 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 
 // readMapInt64Int64 reads map[int64]int64 using chunk protocol
 func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[int64]int64, size)
 	if size == 0 {
 		return result
@@ -696,7 +696,7 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 
 // readMapIntInt reads map[int]int using chunk protocol
 func readMapIntInt(buf *ByteBuffer, err *Error) map[int]int {
-	size := int(buf.ReadVarUint32(err))
+	size := buf.ReadCollectionLength(err)
 	result := make(map[int]int, size)
 	if size == 0 {
 		return result
