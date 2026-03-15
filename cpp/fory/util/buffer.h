@@ -29,6 +29,7 @@
 
 #include "fory/util/bit_util.h"
 #include "fory/util/error.h"
+#include "fory/util/float16.h"
 #include "fory/util/logging.h"
 #include "fory/util/result.h"
 #include "fory/util/stream.h"
@@ -760,6 +761,14 @@ public:
     increase_writer_index(8);
   }
 
+  /// Write float16_t as fixed 2 bytes (raw IEEE 754 bits, little-endian).
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void write_f16(float16_t value) {
+    grow(2);
+    unsafe_put<uint16_t>(writer_index_, value.to_bits());
+    increase_writer_index(2);
+  }
+
   /// write uint32_t value as varint to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
   FORY_ALWAYS_INLINE void write_var_uint32(uint32_t value) {
@@ -966,6 +975,17 @@ public:
     }
     double value = reinterpret_cast<const double *>(data_ + reader_index_)[0];
     reader_index_ += 8;
+    return value;
+  }
+
+  /// Read float16_t from buffer. Sets error on bounds violation.
+  FORY_ALWAYS_INLINE float16_t read_f16(Error &error) {
+    if (FORY_PREDICT_FALSE(!ensure_readable(2, error))) {
+      return float16_t::from_bits(0);
+    }
+    float16_t value =
+        float16_t::from_bits(unsafe_get<uint16_t>(reader_index_));
+    reader_index_ += 2;
     return value;
   }
 
