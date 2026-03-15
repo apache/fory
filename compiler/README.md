@@ -4,7 +4,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 
 ## Features
 
-- **Multi-language code generation**: Java, Python, Go, Rust, C++, C#
+- **Multi-language code generation**: Java, Python, Go, Rust, C++, C#, Javascript, and Swift
 - **Rich type system**: Primitives, enums, messages, lists, maps
 - **Cross-language serialization**: Generated code works seamlessly with Apache Fory
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
@@ -64,16 +64,16 @@ message Cat [id=103] {
 foryc schema.fdl --output ./generated
 
 # Generate for specific languages
-foryc schema.fdl --lang java,python,csharp --output ./generated
+foryc schema.fdl --lang java,python,csharp,javascript --output ./generated
 
 # Override package name
 foryc schema.fdl --package myapp.models --output ./generated
 
 # Language-specific output directories (protoc-style)
-foryc schema.fdl --java_out=./src/main/java --python_out=./python/src --csharp_out=./csharp/src/Generated
+foryc schema.fdl --java_out=./src/main/java --python_out=./python/src --csharp_out=./csharp/src/Generated --javascript_out=./javascript
 
 # Combine with other options
-foryc schema.fdl --java_out=./gen --go_out=./gen/go --csharp_out=./gen/csharp -I ./proto
+foryc schema.fdl --java_out=./gen --go_out=./gen/go --csharp_out=./gen/csharp --javascript_out=./gen/js -I ./proto
 ```
 
 ### 3. Use Generated Code
@@ -185,19 +185,19 @@ message Config { ... }  // Registered as "package.Config"
 
 ### Primitive Types
 
-| FDL Type    | Java        | Python              | Go          | Rust                    | C++                    | C#               |
-| ----------- | ----------- | ------------------- | ----------- | ----------------------- | ---------------------- | ---------------- |
-| `bool`      | `boolean`   | `bool`              | `bool`      | `bool`                  | `bool`                 | `bool`           |
-| `int8`      | `byte`      | `pyfory.int8`       | `int8`      | `i8`                    | `int8_t`               | `sbyte`          |
-| `int16`     | `short`     | `pyfory.int16`      | `int16`     | `i16`                   | `int16_t`              | `short`          |
-| `int32`     | `int`       | `pyfory.int32`      | `int32`     | `i32`                   | `int32_t`              | `int`            |
-| `int64`     | `long`      | `pyfory.int64`      | `int64`     | `i64`                   | `int64_t`              | `long`           |
-| `float32`   | `float`     | `pyfory.float32`    | `float32`   | `f32`                   | `float`                | `float`          |
-| `float64`   | `double`    | `pyfory.float64`    | `float64`   | `f64`                   | `double`               | `double`         |
-| `string`    | `String`    | `str`               | `string`    | `String`                | `std::string`          | `string`         |
-| `bytes`     | `byte[]`    | `bytes`             | `[]byte`    | `Vec<u8>`               | `std::vector<uint8_t>` | `byte[]`         |
-| `date`      | `LocalDate` | `datetime.date`     | `time.Time` | `chrono::NaiveDate`     | `fory::Date`           | `DateOnly`       |
-| `timestamp` | `Instant`   | `datetime.datetime` | `time.Time` | `chrono::NaiveDateTime` | `fory::Timestamp`      | `DateTimeOffset` |
+| FDL Type    | Java        | Python              | Go          | Rust                    | C++                    | C#               | JavaScript         |
+| ----------- | ----------- | ------------------- | ----------- | ----------------------- | ---------------------- | ---------------- | ------------------ |
+| `bool`      | `boolean`   | `bool`              | `bool`      | `bool`                  | `bool`                 | `bool`           | `boolean`          |
+| `int8`      | `byte`      | `pyfory.int8`       | `int8`      | `i8`                    | `int8_t`               | `sbyte`          | `number`           |
+| `int16`     | `short`     | `pyfory.int16`      | `int16`     | `i16`                   | `int16_t`              | `short`          | `number`           |
+| `int32`     | `int`       | `pyfory.int32`      | `int32`     | `i32`                   | `int32_t`              | `int`            | `number`           |
+| `int64`     | `long`      | `pyfory.int64`      | `int64`     | `i64`                   | `int64_t`              | `long`           | `bigint \| number` |
+| `float32`   | `float`     | `pyfory.float32`    | `float32`   | `f32`                   | `float`                | `float`          | `number`           |
+| `float64`   | `double`    | `pyfory.float64`    | `float64`   | `f64`                   | `double`               | `double`         | `number`           |
+| `string`    | `String`    | `str`               | `string`    | `String`                | `std::string`          | `string`         | `string`           |
+| `bytes`     | `byte[]`    | `bytes`             | `[]byte`    | `Vec<u8>`               | `std::vector<uint8_t>` | `byte[]`         | `Uint8Array`       |
+| `date`      | `LocalDate` | `datetime.date`     | `time.Time` | `chrono::NaiveDate`     | `fory::Date`           | `DateOnly`       | `Date`             |
+| `timestamp` | `Instant`   | `datetime.datetime` | `time.Time` | `chrono::NaiveDateTime` | `fory::Timestamp`      | `DateTimeOffset` | `Date`             |
 
 ### Collection Types
 
@@ -285,7 +285,8 @@ fory_compiler/
     ├── go.py             # Go struct generator
     ├── rust.py           # Rust struct generator
     ├── cpp.py            # C++ struct generator
-    └── csharp.py         # C# class generator
+    ├── csharp.py         # C# class generator
+    └── javascript.py     # JavaScript interface generator
 ```
 
 ### FDL Frontend
@@ -422,6 +423,25 @@ cd integration_tests/idl_tests
 ./run_csharp_tests.sh
 ```
 
+### JavaScript
+
+Generates interfaces with:
+
+- `export interface` declarations for messages
+- `export enum` declarations for enums
+- Discriminated unions with case enums
+- Registration helper function
+
+```javascript
+export interface Cat {
+  friend?: Dog | undefined;
+  name?: string | undefined;
+  tags: string[];
+  scores: Record<string, number>;
+  lives: number;
+}
+```
+
 ## CLI Reference
 
 ```
@@ -431,7 +451,7 @@ Arguments:
   FILES                 FDL files to compile
 
 Options:
-  --lang TEXT          Target languages (java,python,cpp,rust,go,csharp or "all")
+  --lang TEXT          Target languages (java,python,cpp,rust,go,csharp,javascript or "all")
                        Default: all
   --output, -o PATH    Output directory
                        Default: ./generated

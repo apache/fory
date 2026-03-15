@@ -653,7 +653,7 @@ public class IdlRoundTripTest {
             .filter(value -> !value.isEmpty())
             .collect(Collectors.toList());
     if (peers.contains("all")) {
-      return Arrays.asList("python", "go", "rust", "cpp", "swift");
+      return Arrays.asList("python", "go", "rust", "cpp", "swift", "javascript");
     }
     return peers;
   }
@@ -711,6 +711,11 @@ public class IdlRoundTripTest {
                 ? "IdlRoundTripTests/testAddressBookRoundTripCompatible"
                 : "IdlRoundTripTests/testAddressBookRoundTripSchemaConsistent";
         command = Arrays.asList("swift", "test", "--filter", swiftTest);
+        peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
+        break;
+      case "javascript":
+        workDir = idlRoot.resolve("javascript");
+        command = Arrays.asList("npx", "ts-node", "roundtrip.ts");
         peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
         break;
       default:
