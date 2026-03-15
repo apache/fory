@@ -36,6 +36,12 @@ struct float16_t {
         half.bits = bits;
         return half;
     }
+
+    // Conversions
+    [[nodiscard]] float to_float() const noexcept;
+    [[nodiscard]] static float16_t from_float(float f) noexcept;
+
+
 };
 
 static_assert(sizeof(float16_t) == 2);
