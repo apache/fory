@@ -547,18 +547,30 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_varuint32()?;
-        let mut map = HashMap::<K, V>::with_capacity(len as usize);
         if len == 0 {
-            return Ok(map);
+            return Ok(HashMap::new());
         }
+        let remaining = context
+            .reader
+            .bf
+            .len()
+            .saturating_sub(context.reader.cursor);
+        if len as usize > remaining {
+            return Err(Error::invalid_data(format!(
+                "map entry count {} exceeds buffer remaining {}",
+                len, remaining
+            )));
+        }
+        context.check_collection_size(len as usize)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
             || V::fory_is_shared_ref()
         {
-            let map: HashMap<K, V> = HashMap::with_capacity(len as usize);
+            let map = HashMap::<K, V>::with_capacity(len as usize);
             return read_hashmap_data_dyn_ref(context, map, len);
         }
+        let mut map = HashMap::<K, V>::with_capacity(len as usize);
         let mut len_counter = 0;
         loop {
             if len_counter == len {
@@ -698,18 +710,30 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_varuint32()?;
-        let mut map = BTreeMap::<K, V>::new();
         if len == 0 {
-            return Ok(map);
+            return Ok(BTreeMap::new());
         }
+        let remaining = context
+            .reader
+            .bf
+            .len()
+            .saturating_sub(context.reader.cursor);
+        if len as usize > remaining {
+            return Err(Error::invalid_data(format!(
+                "map entry count {} exceeds buffer remaining {}",
+                len, remaining
+            )));
+        }
+        context.check_collection_size(len as usize)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
             || V::fory_is_shared_ref()
         {
-            let map: BTreeMap<K, V> = BTreeMap::new();
+            let map = BTreeMap::<K, V>::new();
             return read_btreemap_data_dyn_ref(context, map, len);
         }
+        let mut map = BTreeMap::<K, V>::new();
         let mut len_counter = 0;
         loop {
             if len_counter == len {
