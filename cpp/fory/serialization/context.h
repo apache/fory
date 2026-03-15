@@ -558,6 +558,11 @@ public:
     return buffer().read_double(error);
   }
 
+  /// Read float16_t from buffer. Sets error on failure.
+  FORY_ALWAYS_INLINE float16_t read_f16(Error &error) {
+    return buffer().read_f16(error);
+  }
+
   /// Read uint32_t value as varint from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE uint32_t read_var_uint32(Error &error) {
     return buffer().read_var_uint32(error);
