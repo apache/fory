@@ -136,6 +136,12 @@ foryc schema.fdl --package com.myapp.models
 foryc user.fdl order.fdl product.fdl --output ./generated
 ```
 
+**Compile a simple service schema (Java + Python):**
+
+```bash
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python
+```
+
 **Use import search paths:**
 
 ```bash
@@ -597,6 +603,10 @@ Error: Unknown type 'Address' in Customer.address
 ```
 
 Fix: Define the referenced type before using it, or check for typos.
+
+Service RPC request and response types are validated in the same way: an RPC such as
+`rpc SayHello (HelloRequest) returns (HelloReply);` must reference defined message
+types, otherwise the validator reports an `Unknown type '...'` error on the RPC line.
 
 ### Duplicate Field Numbers
 
