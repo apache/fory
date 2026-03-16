@@ -983,8 +983,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(2, error))) {
       return float16_t::from_bits(0);
     }
-    float16_t value =
-        float16_t::from_bits(unsafe_get<uint16_t>(reader_index_));
+    float16_t value = float16_t::from_bits(unsafe_get<uint16_t>(reader_index_));
     reader_index_ += 2;
     return value;
   }

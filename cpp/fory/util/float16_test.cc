@@ -105,20 +105,24 @@ TEST(Float16FromFloatTest, PreservesNaNPayloadAndQuietsSignalingNaNs) {
     uint16_t expected_half_bits;
   };
   const Case cases[] = {
-    {0x7FC00000u, 0x7E00u}, //qNaN
-    {0x7F800001u, 0x7E00u}, //smallest sNaN, quieted
-    {0x7FC02000u, 0x7E01u}, //qNaN with small payload should be preserved
-    {0x7FDFF000u, 0x7EFFu}, //qNaN with large payload should be truncated
-    {0xFFC02000u, 0xFE01u}, // negative qNaN with small payload should be preserved
-    {0x7FA00000u, 0x7F00u}, // sNaN with payload, quieted
-    {0xFFA00000u, 0xFF00u}, // negative sNaN with payload, quieted
+      {0x7FC00000u, 0x7E00u}, // qNaN
+      {0x7F800001u, 0x7E00u}, // smallest sNaN, quieted
+      {0x7FC02000u, 0x7E01u}, // qNaN with small payload should be preserved
+      {0x7FDFF000u, 0x7EFFu}, // qNaN with large payload should be truncated
+      {0xFFC02000u,
+       0xFE01u}, // negative qNaN with small payload should be preserved
+      {0x7FA00000u, 0x7F00u}, // sNaN with payload, quieted
+      {0xFFA00000u, 0xFF00u}, // negative sNaN with payload, quieted
   };
   for (const auto &[input_bits, expected_half_bits] : cases) {
     const uint16_t got = convert_bits(bits_to_float(input_bits));
     EXPECT_HALF_EQ(got, expected_half_bits);
-    EXPECT_HALF_EQ(static_cast<uint16_t>(got & 0x7C00), 0x7C00); // Exponent bits should be all 1s for NaNs
+    EXPECT_HALF_EQ(static_cast<uint16_t>(got & 0x7C00),
+                   0x7C00);     // Exponent bits should be all 1s for NaNs
     EXPECT_NE(got & 0x03FF, 0); // Fraction bits should not be all 0s for NaNs
-    EXPECT_NE(got & 0x0200, 0); // The quiet bit (bit 9 of the fraction) should be set for NaNs
+    EXPECT_NE(
+        got & 0x0200,
+        0); // The quiet bit (bit 9 of the fraction) should be set for NaNs
   }
 
   const uint16_t a = convert_bits(bits_to_float(0x7FC02000u));
@@ -146,7 +150,8 @@ TEST(Float16FromFloatTest, PreservesEveryFiniteExactlyRepresentableHalfValue) {
   for (uint32_t bits = 0; bits <= 0xFFFF; ++bits) {
     const auto half = static_cast<uint16_t>(bits);
     const auto exponent = static_cast<uint16_t>((half >> 10) & 0x1F);
-    if (const auto fraction = static_cast<uint16_t>(half & 0x03FF); exponent == 0x1F && fraction != 0) {
+    if (const auto fraction = static_cast<uint16_t>(half & 0x03FF);
+        exponent == 0x1F && fraction != 0) {
       continue;
     }
     const auto value = static_cast<float>(half_bits_to_double(half));
@@ -171,7 +176,8 @@ TEST(Float16FromFloatTest, PreservesAllSubnormalHalfValues) {
 }
 
 TEST(Float16FromFloatTest, SubnormalGradualUnderflowAndTieToZero) {
-  const float tie_to_zero = std::ldexp(1.0f, -25); // halfway between 0 and the smallest subnormal
+  const float tie_to_zero =
+      std::ldexp(1.0f, -25); // halfway between 0 and the smallest subnormal
   EXPECT_HALF_EQ(convert_bits(tie_to_zero), 0x0000);
   EXPECT_HALF_EQ(convert_bits(-tie_to_zero), 0x8000);
 
@@ -206,7 +212,9 @@ TEST(Float16FromFloatTest, SubnormalGradualUnderflowAndTieToZero) {
 
 TEST(Float16FromFloatTest, RoundsToNearestTiesToEvenAcrossMidpoints) {
 
-  const double zero_subnormal_midpoint = half_bits_to_double(0x0001) * 0.5; // halfway between 0 and the smallest subnormal
+  const double zero_subnormal_midpoint =
+      half_bits_to_double(0x0001) *
+      0.5; // halfway between 0 and the smallest subnormal
   const auto zero_subnormal_midpoint_float =
       static_cast<float>(zero_subnormal_midpoint);
   ASSERT_EQ(static_cast<double>(zero_subnormal_midpoint_float),
@@ -224,10 +232,12 @@ TEST(Float16FromFloatTest, RoundsToNearestTiesToEvenAcrossMidpoints) {
         (half_bits_to_double(lower) + half_bits_to_double(upper)) * 0.5;
     const auto midpoint_as_float = static_cast<float>(midpoint);
     if (static_cast<double>(midpoint_as_float) != midpoint) {
-      continue; // skip midpoints that aren't exactly representable in float32, since they won't round to either half value
+      continue; // skip midpoints that aren't exactly representable in float32,
+                // since they won't round to either half value
     }
 
-    const uint16_t expected = (lower & 1u) == 0 ? lower : upper; // which one is even?
+    const uint16_t expected =
+        (lower & 1u) == 0 ? lower : upper; // which one is even?
     EXPECT_HALF_EQ(convert_bits(midpoint_as_float), expected);
     EXPECT_HALF_EQ(convert_bits(-midpoint_as_float),
                    static_cast<uint16_t>(expected | 0x8000));
@@ -287,7 +297,8 @@ TEST(Float16FromFloatTest, IntegerAndUlpRegressionCases) {
   EXPECT_HALF_EQ(convert_bits(one + one_half_ulp), 0x3C00);
   // 1 - 2^-11 = 2047/2048 is EXACTLY 0x3BFF in float16 — no rounding occurs
   EXPECT_HALF_EQ(convert_bits(one - one_half_ulp), 0x3BFF);
-  // The true midpoint between 0x3BFF and 0x3C00 is 1 - 2^-12; ties to even → 0x3C00
+  // The true midpoint between 0x3BFF and 0x3C00 is 1 - 2^-12; ties to even →
+  // 0x3C00
   EXPECT_HALF_EQ(convert_bits(one - std::ldexp(1.0f, -12)), 0x3C00);
   EXPECT_HALF_EQ(
       convert_bits(std::nextafter(one + one_half_ulp,
@@ -352,8 +363,8 @@ TEST(Float16ToFloatTest, NaNPayloadAndSignPreservation) {
   EXPECT_TRUE(std::signbit(qnan_neg));
   EXPECT_EQ(float_to_bits(qnan_neg), 0xFFC00000u);
 
-  // qNaN with payload bit 0 set (0x7E01): f16 mantissa=0x201; 0x201<<13=0x402000
-  // f32 = 0x7F800000 | 0x402000 = 0x7FC02000
+  // qNaN with payload bit 0 set (0x7E01): f16 mantissa=0x201;
+  // 0x201<<13=0x402000 f32 = 0x7F800000 | 0x402000 = 0x7FC02000
   const float qnan_payload = float16_t::from_bits(0x7E01).to_float();
   EXPECT_TRUE(std::isnan(qnan_payload));
   EXPECT_FALSE(std::signbit(qnan_payload));
@@ -427,15 +438,14 @@ TEST(Float16ToFloatTest, NormalValueSpotChecks) {
 
 TEST(Float16ToFloatTest, AllSubnormalsMatchReference) {
   for (uint16_t frac = 1; frac <= 0x03FF; ++frac) {
-    const auto expected_pos =
-        static_cast<float>(half_bits_to_double(frac));
+    const auto expected_pos = static_cast<float>(half_bits_to_double(frac));
     EXPECT_EQ(float16_t::from_bits(frac).to_float(), expected_pos)
         << "to_float mismatch for subnormal 0x" << std::hex << frac;
     const auto neg_bits = static_cast<uint16_t>(frac | 0x8000);
-    const auto expected_neg =
-        static_cast<float>(half_bits_to_double(neg_bits));
+    const auto expected_neg = static_cast<float>(half_bits_to_double(neg_bits));
     EXPECT_EQ(float16_t::from_bits(neg_bits).to_float(), expected_neg)
-        << "to_float mismatch for negative subnormal 0x" << std::hex << neg_bits;
+        << "to_float mismatch for negative subnormal 0x" << std::hex
+        << neg_bits;
   }
 }
 
@@ -443,8 +453,7 @@ TEST(Float16ToFloatTest, AllNormalsMatchReference) {
   for (uint16_t exp = 1; exp <= 30; ++exp) {
     for (uint16_t frac = 0; frac <= 0x03FF; ++frac) {
       const auto bits = static_cast<uint16_t>((exp << 10) | frac);
-      const auto expected_pos =
-          static_cast<float>(half_bits_to_double(bits));
+      const auto expected_pos = static_cast<float>(half_bits_to_double(bits));
       EXPECT_EQ(float16_t::from_bits(bits).to_float(), expected_pos)
           << "to_float mismatch for normal 0x" << std::hex << bits;
       const auto neg_bits = static_cast<uint16_t>(bits | 0x8000);
@@ -470,15 +479,19 @@ TEST(Float16Test, StressAllBitPatternsViaToFloat) {
 
     if (exp == 0x1F && frac != 0) {
       // NaN: validate chosen policy (always quieted, sign preserved)
-      EXPECT_TRUE(std::isnan(h_float))
-          << "to_float of NaN bits=0x" << std::hex << half_bits << " must be NaN";
+      EXPECT_TRUE(std::isnan(h_float)) << "to_float of NaN bits=0x" << std::hex
+                                       << half_bits << " must be NaN";
       EXPECT_EQ(h2.to_bits() & 0x7C00u, 0x7C00u)
-          << "NaN round-trip exp must be all-ones for bits=0x" << std::hex << half_bits;
+          << "NaN round-trip exp must be all-ones for bits=0x" << std::hex
+          << half_bits;
       EXPECT_NE(h2.to_bits() & 0x03FFu, 0u)
-          << "NaN round-trip frac must be non-zero for bits=0x" << std::hex << half_bits;
+          << "NaN round-trip frac must be non-zero for bits=0x" << std::hex
+          << half_bits;
       EXPECT_NE(h2.to_bits() & 0x0200u, 0u)
-          << "NaN round-trip quiet bit must be set for bits=0x" << std::hex << half_bits;
-      EXPECT_EQ(h2.to_bits() & 0x8000u, static_cast<uint16_t>(half_bits & 0x8000u))
+          << "NaN round-trip quiet bit must be set for bits=0x" << std::hex
+          << half_bits;
+      EXPECT_EQ(h2.to_bits() & 0x8000u,
+                static_cast<uint16_t>(half_bits & 0x8000u))
           << "NaN sign must be preserved for bits=0x" << std::hex << half_bits;
     } else {
       // Non-NaN: must round-trip exactly
@@ -494,20 +507,20 @@ TEST(Float16Test, StressAllBitPatternsViaToFloat) {
 
 // Representative bit patterns used across classification tests.
 // Named constants avoid magic numbers and make intent clear.
-constexpr uint16_t kPosZero     = 0x0000; // +0
-constexpr uint16_t kNegZero     = 0x8000; // -0
-constexpr uint16_t kPosInf      = 0x7C00; // +Inf
-constexpr uint16_t kNegInf      = 0xFC00; // -Inf
-constexpr uint16_t kQNaN        = 0x7E00; // canonical quiet NaN
-constexpr uint16_t kNegQNaN     = 0xFE00; // negative quiet NaN
-constexpr uint16_t kSNaN        = 0x7C01; // smallest signaling NaN
-constexpr uint16_t kNegSNaN     = 0xFC01; // negative signaling NaN
-constexpr uint16_t kMinSubnorm  = 0x0001; // smallest positive subnormal (2^-24)
-constexpr uint16_t kMaxSubnorm  = 0x03FF; // largest positive subnormal
-constexpr uint16_t kMinNormal   = 0x0400; // smallest positive normal (2^-14)
-constexpr uint16_t kOne         = 0x3C00; // 1.0
-constexpr uint16_t kNegOne      = 0xBC00; // -1.0
-constexpr uint16_t kMaxFinite   = 0x7BFF; // 65504
+constexpr uint16_t kPosZero = 0x0000;    // +0
+constexpr uint16_t kNegZero = 0x8000;    // -0
+constexpr uint16_t kPosInf = 0x7C00;     // +Inf
+constexpr uint16_t kNegInf = 0xFC00;     // -Inf
+constexpr uint16_t kQNaN = 0x7E00;       // canonical quiet NaN
+constexpr uint16_t kNegQNaN = 0xFE00;    // negative quiet NaN
+constexpr uint16_t kSNaN = 0x7C01;       // smallest signaling NaN
+constexpr uint16_t kNegSNaN = 0xFC01;    // negative signaling NaN
+constexpr uint16_t kMinSubnorm = 0x0001; // smallest positive subnormal (2^-24)
+constexpr uint16_t kMaxSubnorm = 0x03FF; // largest positive subnormal
+constexpr uint16_t kMinNormal = 0x0400;  // smallest positive normal (2^-14)
+constexpr uint16_t kOne = 0x3C00;        // 1.0
+constexpr uint16_t kNegOne = 0xBC00;     // -1.0
+constexpr uint16_t kMaxFinite = 0x7BFF;  // 65504
 
 static float16_t H(uint16_t b) { return float16_t::from_bits(b); }
 
@@ -517,7 +530,8 @@ TEST(Float16ClassificationTest, IsNaN) {
   EXPECT_TRUE(float16_t::is_nan(H(kSNaN)));
   EXPECT_TRUE(float16_t::is_nan(H(kNegSNaN)));
   EXPECT_TRUE(float16_t::is_nan(H(0x7FFFu))); // NaN with all fraction bits set
-  EXPECT_TRUE(float16_t::is_nan(H(0xFFFFu))); // negative NaN, all fraction bits set
+  EXPECT_TRUE(
+      float16_t::is_nan(H(0xFFFFu))); // negative NaN, all fraction bits set
   // All 1024 non-zero fraction values with exp=0x1F are NaN
   for (uint16_t frac = 1; frac <= 0x03FF; ++frac) {
     EXPECT_TRUE(float16_t::is_nan(H(static_cast<uint16_t>(0x7C00u | frac))));
@@ -582,7 +596,8 @@ TEST(Float16ClassificationTest, Signbit) {
   EXPECT_FALSE(float16_t::signbit(H(kQNaN)));
   EXPECT_TRUE(float16_t::signbit(H(kNegQNaN)));
   EXPECT_FALSE(float16_t::signbit(H(kMinSubnorm)));
-  EXPECT_TRUE(float16_t::signbit(H(static_cast<uint16_t>(kMinSubnorm | 0x8000u))));
+  EXPECT_TRUE(
+      float16_t::signbit(H(static_cast<uint16_t>(kMinSubnorm | 0x8000u))));
 }
 
 TEST(Float16ClassificationTest, IsSubnormal) {
@@ -591,8 +606,8 @@ TEST(Float16ClassificationTest, IsSubnormal) {
   // All 1023 positive subnormals
   for (uint16_t frac = 1; frac <= 0x03FFu; ++frac) {
     EXPECT_TRUE(float16_t::is_subnormal(H(frac)));
-    EXPECT_TRUE(float16_t::is_subnormal(
-        H(static_cast<uint16_t>(frac | 0x8000u))));
+    EXPECT_TRUE(
+        float16_t::is_subnormal(H(static_cast<uint16_t>(frac | 0x8000u))));
   }
   EXPECT_FALSE(float16_t::is_subnormal(H(kPosZero)));
   EXPECT_FALSE(float16_t::is_subnormal(H(kNegZero)));
@@ -610,8 +625,8 @@ TEST(Float16ClassificationTest, IsNormal) {
   // All 30 exponent values (1..30), all 1024 mantissa values
   for (uint16_t exp = 1; exp <= 30; ++exp) {
     for (uint16_t frac = 0; frac <= 0x03FFu; ++frac) {
-      EXPECT_TRUE(float16_t::is_normal(
-          H(static_cast<uint16_t>((exp << 10) | frac))));
+      EXPECT_TRUE(
+          float16_t::is_normal(H(static_cast<uint16_t>((exp << 10) | frac))));
     }
   }
   EXPECT_FALSE(float16_t::is_normal(H(kPosZero)));
@@ -643,11 +658,11 @@ TEST(Float16ClassificationTest, MutualExclusionAcrossAllBitPatterns) {
   // inf, nan.  Also validate that is_finite == !inf && !nan.
   for (uint32_t b = 0; b <= 0xFFFFu; ++b) {
     const float16_t h = float16_t::from_bits(static_cast<uint16_t>(b));
-    const bool z  = float16_t::is_zero(h);
-    const bool sub= float16_t::is_subnormal(h);
-    const bool nor= float16_t::is_normal(h);
-    const bool inf= float16_t::is_inf(h);
-    const bool nan= float16_t::is_nan(h);
+    const bool z = float16_t::is_zero(h);
+    const bool sub = float16_t::is_subnormal(h);
+    const bool nor = float16_t::is_normal(h);
+    const bool inf = float16_t::is_inf(h);
+    const bool nan = float16_t::is_nan(h);
     // Exactly one category is true
     const int count = static_cast<int>(z) + static_cast<int>(sub) +
                       static_cast<int>(nor) + static_cast<int>(inf) +
@@ -664,178 +679,181 @@ TEST(Float16ClassificationTest, MutualExclusionAcrossAllBitPatterns) {
 // ============================================================
 
 TEST(Float16ToStringTest, MatchesToFloat) {
-    // to_string must equal std::to_string of the float32 value
-    const uint16_t cases[] = {kPosZero, kNegZero, kOne, kNegOne,
-                               kPosInf,  kNegInf,  kQNaN, kMinSubnorm,
-                               kMaxFinite, 0x4000u, 0x3800u};
-    for (uint16_t b : cases) {
-        const float16_t h = H(b);
-        EXPECT_EQ(float16_t::to_string(h), std::to_string(h.to_float()))
-            << "bits=0x" << std::hex << b;
-    }
+  // to_string must equal std::to_string of the float32 value
+  const uint16_t cases[] = {kPosZero,   kNegZero, kOne,   kNegOne,
+                            kPosInf,    kNegInf,  kQNaN,  kMinSubnorm,
+                            kMaxFinite, 0x4000u,  0x3800u};
+  for (uint16_t b : cases) {
+    const float16_t h = H(b);
+    EXPECT_EQ(float16_t::to_string(h), std::to_string(h.to_float()))
+        << "bits=0x" << std::hex << b;
+  }
 }
 
 TEST(Float16ToStringTest, SpecialValues) {
-    // Normal finite values produce digit strings
-    const std::string s_one = float16_t::to_string(H(kOne));
-    EXPECT_FALSE(s_one.empty());
-    EXPECT_NE(s_one.find('1'), std::string::npos);
+  // Normal finite values produce digit strings
+  const std::string s_one = float16_t::to_string(H(kOne));
+  EXPECT_FALSE(s_one.empty());
+  EXPECT_NE(s_one.find('1'), std::string::npos);
 
-    // ±Inf: std::to_string of ±infinity is implementation-defined but non-empty
-    EXPECT_FALSE(float16_t::to_string(H(kPosInf)).empty());
-    EXPECT_FALSE(float16_t::to_string(H(kNegInf)).empty());
+  // ±Inf: std::to_string of ±infinity is implementation-defined but non-empty
+  EXPECT_FALSE(float16_t::to_string(H(kPosInf)).empty());
+  EXPECT_FALSE(float16_t::to_string(H(kNegInf)).empty());
 
-    // NaN: std::to_string of NaN is non-empty
-    EXPECT_FALSE(float16_t::to_string(H(kQNaN)).empty());
+  // NaN: std::to_string of NaN is non-empty
+  EXPECT_FALSE(float16_t::to_string(H(kQNaN)).empty());
 }
 
 // ============================================================
 // 3.4 Arithmetic tests
 // ============================================================
 
-// Helper: convert two float16 bit patterns through an operation and return bits.
+// Helper: convert two float16 bit patterns through an operation and return
+// bits.
 static uint16_t add_bits(uint16_t a, uint16_t b) {
-    return float16_t::add(H(a), H(b)).to_bits();
+  return float16_t::add(H(a), H(b)).to_bits();
 }
 static uint16_t sub_bits(uint16_t a, uint16_t b) {
-    return float16_t::sub(H(a), H(b)).to_bits();
+  return float16_t::sub(H(a), H(b)).to_bits();
 }
 static uint16_t mul_bits(uint16_t a, uint16_t b) {
-    return float16_t::mul(H(a), H(b)).to_bits();
+  return float16_t::mul(H(a), H(b)).to_bits();
 }
 static uint16_t div_bits(uint16_t a, uint16_t b) {
-    return float16_t::div(H(a), H(b)).to_bits();
+  return float16_t::div(H(a), H(b)).to_bits();
 }
 
 TEST(Float16ArithmeticTest, AddBasic) {
-    // 1.0 + 1.0 = 2.0
-    EXPECT_HALF_EQ(add_bits(kOne, kOne), 0x4000u);
-    // 1.0 + (-1.0) = +0
-    EXPECT_HALF_EQ(add_bits(kOne, kNegOne), 0x0000u);
-    // 1.0 + 0 = 1.0
-    EXPECT_HALF_EQ(add_bits(kOne, kPosZero), kOne);
-    // -0 + -0 = -0
-    EXPECT_HALF_EQ(add_bits(kNegZero, kNegZero), kNegZero);
-    // +Inf + 1.0 = +Inf
-    EXPECT_HALF_EQ(add_bits(kPosInf, kOne), kPosInf);
-    // +Inf + (-Inf) = NaN
-    {
-        const float16_t r = float16_t::add(H(kPosInf), H(kNegInf));
-        EXPECT_TRUE(float16_t::is_nan(r));
-    }
-    // NaN propagates
-    EXPECT_TRUE(float16_t::is_nan(float16_t::add(H(kQNaN), H(kOne))));
+  // 1.0 + 1.0 = 2.0
+  EXPECT_HALF_EQ(add_bits(kOne, kOne), 0x4000u);
+  // 1.0 + (-1.0) = +0
+  EXPECT_HALF_EQ(add_bits(kOne, kNegOne), 0x0000u);
+  // 1.0 + 0 = 1.0
+  EXPECT_HALF_EQ(add_bits(kOne, kPosZero), kOne);
+  // -0 + -0 = -0
+  EXPECT_HALF_EQ(add_bits(kNegZero, kNegZero), kNegZero);
+  // +Inf + 1.0 = +Inf
+  EXPECT_HALF_EQ(add_bits(kPosInf, kOne), kPosInf);
+  // +Inf + (-Inf) = NaN
+  {
+    const float16_t r = float16_t::add(H(kPosInf), H(kNegInf));
+    EXPECT_TRUE(float16_t::is_nan(r));
+  }
+  // NaN propagates
+  EXPECT_TRUE(float16_t::is_nan(float16_t::add(H(kQNaN), H(kOne))));
 }
 
 TEST(Float16ArithmeticTest, SubBasic) {
-    // 2.0 - 1.0 = 1.0
-    EXPECT_HALF_EQ(sub_bits(0x4000u, kOne), kOne);
-    // 1.0 - 1.0 = +0
-    EXPECT_HALF_EQ(sub_bits(kOne, kOne), kPosZero);
-    // 0 - 1.0 = -1.0
-    EXPECT_HALF_EQ(sub_bits(kPosZero, kOne), kNegOne);
-    // -Inf - (-Inf) = NaN
-    EXPECT_TRUE(float16_t::is_nan(float16_t::sub(H(kNegInf), H(kNegInf))));
-    // NaN propagates
-    EXPECT_TRUE(float16_t::is_nan(float16_t::sub(H(kQNaN), H(kOne))));
+  // 2.0 - 1.0 = 1.0
+  EXPECT_HALF_EQ(sub_bits(0x4000u, kOne), kOne);
+  // 1.0 - 1.0 = +0
+  EXPECT_HALF_EQ(sub_bits(kOne, kOne), kPosZero);
+  // 0 - 1.0 = -1.0
+  EXPECT_HALF_EQ(sub_bits(kPosZero, kOne), kNegOne);
+  // -Inf - (-Inf) = NaN
+  EXPECT_TRUE(float16_t::is_nan(float16_t::sub(H(kNegInf), H(kNegInf))));
+  // NaN propagates
+  EXPECT_TRUE(float16_t::is_nan(float16_t::sub(H(kQNaN), H(kOne))));
 }
 
 TEST(Float16ArithmeticTest, MulBasic) {
-    // 2.0 * 3.0 = 6.0  (0x4600)
-    EXPECT_HALF_EQ(mul_bits(0x4000u, 0x4200u), 0x4600u);
-    // 1.0 * -1.0 = -1.0
-    EXPECT_HALF_EQ(mul_bits(kOne, kNegOne), kNegOne);
-    // -1.0 * -1.0 = 1.0
-    EXPECT_HALF_EQ(mul_bits(kNegOne, kNegOne), kOne);
-    // 0 * +Inf = NaN
-    EXPECT_TRUE(float16_t::is_nan(float16_t::mul(H(kPosZero), H(kPosInf))));
-    // +Inf * 2.0 = +Inf
-    EXPECT_HALF_EQ(mul_bits(kPosInf, 0x4000u), kPosInf);
-    // NaN propagates
-    EXPECT_TRUE(float16_t::is_nan(float16_t::mul(H(kQNaN), H(kOne))));
+  // 2.0 * 3.0 = 6.0  (0x4600)
+  EXPECT_HALF_EQ(mul_bits(0x4000u, 0x4200u), 0x4600u);
+  // 1.0 * -1.0 = -1.0
+  EXPECT_HALF_EQ(mul_bits(kOne, kNegOne), kNegOne);
+  // -1.0 * -1.0 = 1.0
+  EXPECT_HALF_EQ(mul_bits(kNegOne, kNegOne), kOne);
+  // 0 * +Inf = NaN
+  EXPECT_TRUE(float16_t::is_nan(float16_t::mul(H(kPosZero), H(kPosInf))));
+  // +Inf * 2.0 = +Inf
+  EXPECT_HALF_EQ(mul_bits(kPosInf, 0x4000u), kPosInf);
+  // NaN propagates
+  EXPECT_TRUE(float16_t::is_nan(float16_t::mul(H(kQNaN), H(kOne))));
 }
 
 TEST(Float16ArithmeticTest, DivBasic) {
-    // 1.0 / 2.0 = 0.5  (0x3800)
-    EXPECT_HALF_EQ(div_bits(kOne, 0x4000u), 0x3800u);
-    // 6.0 / 3.0 = 2.0
-    EXPECT_HALF_EQ(div_bits(0x4600u, 0x4200u), 0x4000u);
-    // 1.0 / 0 = +Inf
-    EXPECT_HALF_EQ(div_bits(kOne, kPosZero), kPosInf);
-    // -1.0 / 0 = -Inf
-    EXPECT_HALF_EQ(div_bits(kNegOne, kPosZero), kNegInf);
-    // 0 / 0 = NaN
-    EXPECT_TRUE(float16_t::is_nan(float16_t::div(H(kPosZero), H(kPosZero))));
-    // NaN propagates
-    EXPECT_TRUE(float16_t::is_nan(float16_t::div(H(kQNaN), H(kOne))));
+  // 1.0 / 2.0 = 0.5  (0x3800)
+  EXPECT_HALF_EQ(div_bits(kOne, 0x4000u), 0x3800u);
+  // 6.0 / 3.0 = 2.0
+  EXPECT_HALF_EQ(div_bits(0x4600u, 0x4200u), 0x4000u);
+  // 1.0 / 0 = +Inf
+  EXPECT_HALF_EQ(div_bits(kOne, kPosZero), kPosInf);
+  // -1.0 / 0 = -Inf
+  EXPECT_HALF_EQ(div_bits(kNegOne, kPosZero), kNegInf);
+  // 0 / 0 = NaN
+  EXPECT_TRUE(float16_t::is_nan(float16_t::div(H(kPosZero), H(kPosZero))));
+  // NaN propagates
+  EXPECT_TRUE(float16_t::is_nan(float16_t::div(H(kQNaN), H(kOne))));
 }
 
 TEST(Float16ArithmeticTest, NegAndAbs) {
-    // neg: flip sign bit
-    EXPECT_HALF_EQ(float16_t::neg(H(kOne)).to_bits(), kNegOne);
-    EXPECT_HALF_EQ(float16_t::neg(H(kNegOne)).to_bits(), kOne);
-    EXPECT_HALF_EQ(float16_t::neg(H(kPosZero)).to_bits(), kNegZero);
-    EXPECT_HALF_EQ(float16_t::neg(H(kNegZero)).to_bits(), kPosZero);
-    EXPECT_HALF_EQ(float16_t::neg(H(kPosInf)).to_bits(), kNegInf);
-    EXPECT_HALF_EQ(float16_t::neg(H(kNegInf)).to_bits(), kPosInf);
-    // neg(NaN): flip sign, keep NaN
-    EXPECT_TRUE(float16_t::is_nan(float16_t::neg(H(kQNaN))));
-    EXPECT_TRUE(float16_t::signbit(float16_t::neg(H(kQNaN))));
+  // neg: flip sign bit
+  EXPECT_HALF_EQ(float16_t::neg(H(kOne)).to_bits(), kNegOne);
+  EXPECT_HALF_EQ(float16_t::neg(H(kNegOne)).to_bits(), kOne);
+  EXPECT_HALF_EQ(float16_t::neg(H(kPosZero)).to_bits(), kNegZero);
+  EXPECT_HALF_EQ(float16_t::neg(H(kNegZero)).to_bits(), kPosZero);
+  EXPECT_HALF_EQ(float16_t::neg(H(kPosInf)).to_bits(), kNegInf);
+  EXPECT_HALF_EQ(float16_t::neg(H(kNegInf)).to_bits(), kPosInf);
+  // neg(NaN): flip sign, keep NaN
+  EXPECT_TRUE(float16_t::is_nan(float16_t::neg(H(kQNaN))));
+  EXPECT_TRUE(float16_t::signbit(float16_t::neg(H(kQNaN))));
 
-    // abs: clear sign bit
-    EXPECT_HALF_EQ(float16_t::abs(H(kNegOne)).to_bits(), kOne);
-    EXPECT_HALF_EQ(float16_t::abs(H(kOne)).to_bits(), kOne);
-    EXPECT_HALF_EQ(float16_t::abs(H(kNegZero)).to_bits(), kPosZero);
-    EXPECT_HALF_EQ(float16_t::abs(H(kNegInf)).to_bits(), kPosInf);
-    // abs of negative NaN → positive NaN
-    EXPECT_TRUE(float16_t::is_nan(float16_t::abs(H(kNegQNaN))));
-    EXPECT_FALSE(float16_t::signbit(float16_t::abs(H(kNegQNaN))));
+  // abs: clear sign bit
+  EXPECT_HALF_EQ(float16_t::abs(H(kNegOne)).to_bits(), kOne);
+  EXPECT_HALF_EQ(float16_t::abs(H(kOne)).to_bits(), kOne);
+  EXPECT_HALF_EQ(float16_t::abs(H(kNegZero)).to_bits(), kPosZero);
+  EXPECT_HALF_EQ(float16_t::abs(H(kNegInf)).to_bits(), kPosInf);
+  // abs of negative NaN → positive NaN
+  EXPECT_TRUE(float16_t::is_nan(float16_t::abs(H(kNegQNaN))));
+  EXPECT_FALSE(float16_t::signbit(float16_t::abs(H(kNegQNaN))));
 }
 
 TEST(Float16ArithmeticTest, OperatorOverloads) {
-    const float16_t one = H(kOne);
-    const float16_t two = H(0x4000u);
+  const float16_t one = H(kOne);
+  const float16_t two = H(0x4000u);
 
-    // Binary operators
-    EXPECT_HALF_EQ((one + one).to_bits(), 0x4000u);
-    EXPECT_HALF_EQ((two - one).to_bits(), kOne);
-    EXPECT_HALF_EQ((two * two).to_bits(), 0x4400u); // 4.0
-    EXPECT_HALF_EQ((two / two).to_bits(), kOne);
+  // Binary operators
+  EXPECT_HALF_EQ((one + one).to_bits(), 0x4000u);
+  EXPECT_HALF_EQ((two - one).to_bits(), kOne);
+  EXPECT_HALF_EQ((two * two).to_bits(), 0x4400u); // 4.0
+  EXPECT_HALF_EQ((two / two).to_bits(), kOne);
 
-    // Unary minus
-    EXPECT_HALF_EQ((-one).to_bits(), kNegOne);
-    // Unary plus (identity)
-    EXPECT_HALF_EQ((+one).to_bits(), kOne);
+  // Unary minus
+  EXPECT_HALF_EQ((-one).to_bits(), kNegOne);
+  // Unary plus (identity)
+  EXPECT_HALF_EQ((+one).to_bits(), kOne);
 }
 
 TEST(Float16ArithmeticTest, CompoundAssignmentOperators) {
-    float16_t v = H(kOne);
+  float16_t v = H(kOne);
 
-    v += H(kOne);
-    EXPECT_HALF_EQ(v.to_bits(), 0x4000u); // 2.0
+  v += H(kOne);
+  EXPECT_HALF_EQ(v.to_bits(), 0x4000u); // 2.0
 
-    v -= H(kOne);
-    EXPECT_HALF_EQ(v.to_bits(), kOne); // 1.0
+  v -= H(kOne);
+  EXPECT_HALF_EQ(v.to_bits(), kOne); // 1.0
 
-    v *= H(0x4000u); // *= 2.0
-    EXPECT_HALF_EQ(v.to_bits(), 0x4000u); // 2.0
+  v *= H(0x4000u);                      // *= 2.0
+  EXPECT_HALF_EQ(v.to_bits(), 0x4000u); // 2.0
 
-    v /= H(0x4000u); // /= 2.0
-    EXPECT_HALF_EQ(v.to_bits(), kOne); // 1.0
+  v /= H(0x4000u);                   // /= 2.0
+  EXPECT_HALF_EQ(v.to_bits(), kOne); // 1.0
 }
 
 TEST(Float16ArithmeticTest, RoundingThroughFloat32) {
-    // 1.0 + epsilon should produce 1.0 if epsilon is below the rounding threshold,
-    // or 1.0 + ULP if large enough.  Verify the float32→float16 round-trip path.
-    const float16_t one = H(kOne);
-    // Adding min subnormal (~6e-8) to 1.0: too small to shift 1.0 in f16,
-    // so result should still be 1.0 (ties-to-even with the even side).
-    const float16_t result = one + H(kMinSubnorm);
-    EXPECT_HALF_EQ(result.to_bits(), kOne);
-    // Adding one full f16 ULP (2^-10) to 1.0 must advance to 0x3C01.
-    // Actual 1 ULP for 1.0 is 2^-10. Build it from_float:
-    const float16_t result2 = float16_t::add(H(kOne), float16_t::from_float(std::ldexp(1.0f, -10)));
-    EXPECT_HALF_EQ(result2.to_bits(), 0x3C01u);
+  // 1.0 + epsilon should produce 1.0 if epsilon is below the rounding
+  // threshold, or 1.0 + ULP if large enough.  Verify the float32→float16
+  // round-trip path.
+  const float16_t one = H(kOne);
+  // Adding min subnormal (~6e-8) to 1.0: too small to shift 1.0 in f16,
+  // so result should still be 1.0 (ties-to-even with the even side).
+  const float16_t result = one + H(kMinSubnorm);
+  EXPECT_HALF_EQ(result.to_bits(), kOne);
+  // Adding one full f16 ULP (2^-10) to 1.0 must advance to 0x3C01.
+  // Actual 1 ULP for 1.0 is 2^-10. Build it from_float:
+  const float16_t result2 =
+      float16_t::add(H(kOne), float16_t::from_float(std::ldexp(1.0f, -10)));
+  EXPECT_HALF_EQ(result2.to_bits(), 0x3C01u);
 }
 
 // ============================================================
@@ -843,91 +861,93 @@ TEST(Float16ArithmeticTest, RoundingThroughFloat32) {
 // ============================================================
 
 TEST(Float16MathTest, Sqrt) {
-    // sqrt(4.0) = 2.0
-    EXPECT_HALF_EQ(float16_t::sqrt(H(0x4400u)).to_bits(), 0x4000u);
-    // sqrt(1.0) = 1.0
-    EXPECT_HALF_EQ(float16_t::sqrt(H(kOne)).to_bits(), kOne);
-    // sqrt(0) = 0
-    EXPECT_HALF_EQ(float16_t::sqrt(H(kPosZero)).to_bits(), kPosZero);
-    // sqrt(+Inf) = +Inf
-    EXPECT_HALF_EQ(float16_t::sqrt(H(kPosInf)).to_bits(), kPosInf);
-    // sqrt(negative) = NaN
-    EXPECT_TRUE(float16_t::is_nan(float16_t::sqrt(H(kNegOne))));
+  // sqrt(4.0) = 2.0
+  EXPECT_HALF_EQ(float16_t::sqrt(H(0x4400u)).to_bits(), 0x4000u);
+  // sqrt(1.0) = 1.0
+  EXPECT_HALF_EQ(float16_t::sqrt(H(kOne)).to_bits(), kOne);
+  // sqrt(0) = 0
+  EXPECT_HALF_EQ(float16_t::sqrt(H(kPosZero)).to_bits(), kPosZero);
+  // sqrt(+Inf) = +Inf
+  EXPECT_HALF_EQ(float16_t::sqrt(H(kPosInf)).to_bits(), kPosInf);
+  // sqrt(negative) = NaN
+  EXPECT_TRUE(float16_t::is_nan(float16_t::sqrt(H(kNegOne))));
 }
 
 TEST(Float16MathTest, MinMax) {
-    // min(1.0, 2.0) = 1.0
-    EXPECT_HALF_EQ(float16_t::min(H(kOne), H(0x4000u)).to_bits(), kOne);
-    // max(1.0, 2.0) = 2.0
-    EXPECT_HALF_EQ(float16_t::max(H(kOne), H(0x4000u)).to_bits(), 0x4000u);
-    // min(-1.0, 1.0) = -1.0
-    EXPECT_HALF_EQ(float16_t::min(H(kNegOne), H(kOne)).to_bits(), kNegOne);
-    // max(-1.0, 1.0) = 1.0
-    EXPECT_HALF_EQ(float16_t::max(H(kNegOne), H(kOne)).to_bits(), kOne);
-    // fmin(x, NaN) = x (NaN is suppressed by fmin)
-    EXPECT_HALF_EQ(float16_t::min(H(kOne), H(kQNaN)).to_bits(), kOne);
-    EXPECT_HALF_EQ(float16_t::max(H(kOne), H(kQNaN)).to_bits(), kOne);
-    // min/max with -0 and +0: sign handling
-    // fmin(-0, +0) is implementation-defined between -0 and +0, but result is zero
-    EXPECT_TRUE(float16_t::is_zero(float16_t::min(H(kNegZero), H(kPosZero))));
-    EXPECT_TRUE(float16_t::is_zero(float16_t::max(H(kNegZero), H(kPosZero))));
+  // min(1.0, 2.0) = 1.0
+  EXPECT_HALF_EQ(float16_t::min(H(kOne), H(0x4000u)).to_bits(), kOne);
+  // max(1.0, 2.0) = 2.0
+  EXPECT_HALF_EQ(float16_t::max(H(kOne), H(0x4000u)).to_bits(), 0x4000u);
+  // min(-1.0, 1.0) = -1.0
+  EXPECT_HALF_EQ(float16_t::min(H(kNegOne), H(kOne)).to_bits(), kNegOne);
+  // max(-1.0, 1.0) = 1.0
+  EXPECT_HALF_EQ(float16_t::max(H(kNegOne), H(kOne)).to_bits(), kOne);
+  // fmin(x, NaN) = x (NaN is suppressed by fmin)
+  EXPECT_HALF_EQ(float16_t::min(H(kOne), H(kQNaN)).to_bits(), kOne);
+  EXPECT_HALF_EQ(float16_t::max(H(kOne), H(kQNaN)).to_bits(), kOne);
+  // min/max with -0 and +0: sign handling
+  // fmin(-0, +0) is implementation-defined between -0 and +0, but result is
+  // zero
+  EXPECT_TRUE(float16_t::is_zero(float16_t::min(H(kNegZero), H(kPosZero))));
+  EXPECT_TRUE(float16_t::is_zero(float16_t::max(H(kNegZero), H(kPosZero))));
 }
 
 TEST(Float16MathTest, Copysign) {
-    // copysign(1.0, -2.0) = -1.0
-    EXPECT_HALF_EQ(float16_t::copysign(H(kOne), H(kNegOne)).to_bits(), kNegOne);
-    // copysign(-1.0, 1.0) = 1.0
-    EXPECT_HALF_EQ(float16_t::copysign(H(kNegOne), H(kOne)).to_bits(), kOne);
-    // copysign(+Inf, -1.0) = -Inf
-    EXPECT_HALF_EQ(float16_t::copysign(H(kPosInf), H(kNegOne)).to_bits(), kNegInf);
-    // copysign(NaN, -1.0): NaN with sign flipped
-    const float16_t r = float16_t::copysign(H(kQNaN), H(kNegOne));
-    EXPECT_TRUE(float16_t::is_nan(r));
-    EXPECT_TRUE(float16_t::signbit(r));
+  // copysign(1.0, -2.0) = -1.0
+  EXPECT_HALF_EQ(float16_t::copysign(H(kOne), H(kNegOne)).to_bits(), kNegOne);
+  // copysign(-1.0, 1.0) = 1.0
+  EXPECT_HALF_EQ(float16_t::copysign(H(kNegOne), H(kOne)).to_bits(), kOne);
+  // copysign(+Inf, -1.0) = -Inf
+  EXPECT_HALF_EQ(float16_t::copysign(H(kPosInf), H(kNegOne)).to_bits(),
+                 kNegInf);
+  // copysign(NaN, -1.0): NaN with sign flipped
+  const float16_t r = float16_t::copysign(H(kQNaN), H(kNegOne));
+  EXPECT_TRUE(float16_t::is_nan(r));
+  EXPECT_TRUE(float16_t::signbit(r));
 }
 
 TEST(Float16MathTest, FloorCeilTruncRound) {
-    // Values: 1.5, -1.5, 1.0, -1.0
-    const float16_t one_point_five = float16_t::from_float(1.5f);
-    const float16_t neg_one_point_five = float16_t::from_float(-1.5f);
+  // Values: 1.5, -1.5, 1.0, -1.0
+  const float16_t one_point_five = float16_t::from_float(1.5f);
+  const float16_t neg_one_point_five = float16_t::from_float(-1.5f);
 
-    // floor
-    EXPECT_EQ(float16_t::floor(one_point_five).to_float(), 1.0f);
-    EXPECT_EQ(float16_t::floor(neg_one_point_five).to_float(), -2.0f);
-    EXPECT_EQ(float16_t::floor(H(kOne)).to_float(), 1.0f);
-    EXPECT_EQ(float16_t::floor(H(kNegOne)).to_float(), -1.0f);
+  // floor
+  EXPECT_EQ(float16_t::floor(one_point_five).to_float(), 1.0f);
+  EXPECT_EQ(float16_t::floor(neg_one_point_five).to_float(), -2.0f);
+  EXPECT_EQ(float16_t::floor(H(kOne)).to_float(), 1.0f);
+  EXPECT_EQ(float16_t::floor(H(kNegOne)).to_float(), -1.0f);
 
-    // ceil
-    EXPECT_EQ(float16_t::ceil(one_point_five).to_float(), 2.0f);
-    EXPECT_EQ(float16_t::ceil(neg_one_point_five).to_float(), -1.0f);
-    EXPECT_EQ(float16_t::ceil(H(kOne)).to_float(), 1.0f);
+  // ceil
+  EXPECT_EQ(float16_t::ceil(one_point_five).to_float(), 2.0f);
+  EXPECT_EQ(float16_t::ceil(neg_one_point_five).to_float(), -1.0f);
+  EXPECT_EQ(float16_t::ceil(H(kOne)).to_float(), 1.0f);
 
-    // trunc
-    EXPECT_EQ(float16_t::trunc(one_point_five).to_float(), 1.0f);
-    EXPECT_EQ(float16_t::trunc(neg_one_point_five).to_float(), -1.0f);
+  // trunc
+  EXPECT_EQ(float16_t::trunc(one_point_five).to_float(), 1.0f);
+  EXPECT_EQ(float16_t::trunc(neg_one_point_five).to_float(), -1.0f);
 
-    // round (half away from zero)
-    EXPECT_EQ(float16_t::round(one_point_five).to_float(), 2.0f);
-    EXPECT_EQ(float16_t::round(neg_one_point_five).to_float(), -2.0f);
-    EXPECT_EQ(float16_t::round(float16_t::from_float(1.4f)).to_float(), 1.0f);
-    EXPECT_EQ(float16_t::round(float16_t::from_float(-1.4f)).to_float(), -1.0f);
+  // round (half away from zero)
+  EXPECT_EQ(float16_t::round(one_point_five).to_float(), 2.0f);
+  EXPECT_EQ(float16_t::round(neg_one_point_five).to_float(), -2.0f);
+  EXPECT_EQ(float16_t::round(float16_t::from_float(1.4f)).to_float(), 1.0f);
+  EXPECT_EQ(float16_t::round(float16_t::from_float(-1.4f)).to_float(), -1.0f);
 
-    // round_to_even (half to even / banker's rounding)
-    // 0.5 rounds to 0.0 (even), 1.5 rounds to 2.0 (even)
-    const float16_t half = float16_t::from_float(0.5f);
-    EXPECT_EQ(float16_t::round_to_even(half).to_float(), 0.0f);
-    EXPECT_EQ(float16_t::round_to_even(one_point_five).to_float(), 2.0f);
-    EXPECT_EQ(float16_t::round_to_even(neg_one_point_five).to_float(), -2.0f);
+  // round_to_even (half to even / banker's rounding)
+  // 0.5 rounds to 0.0 (even), 1.5 rounds to 2.0 (even)
+  const float16_t half = float16_t::from_float(0.5f);
+  EXPECT_EQ(float16_t::round_to_even(half).to_float(), 0.0f);
+  EXPECT_EQ(float16_t::round_to_even(one_point_five).to_float(), 2.0f);
+  EXPECT_EQ(float16_t::round_to_even(neg_one_point_five).to_float(), -2.0f);
 
-    // Special values: floor/ceil/trunc/round of ±Inf = ±Inf
-    EXPECT_TRUE(std::isinf(float16_t::floor(H(kPosInf)).to_float()));
-    EXPECT_TRUE(std::isinf(float16_t::ceil(H(kNegInf)).to_float()));
-    // NaN propagates
-    EXPECT_TRUE(float16_t::is_nan(float16_t::floor(H(kQNaN))));
-    EXPECT_TRUE(float16_t::is_nan(float16_t::ceil(H(kQNaN))));
-    EXPECT_TRUE(float16_t::is_nan(float16_t::trunc(H(kQNaN))));
-    EXPECT_TRUE(float16_t::is_nan(float16_t::round(H(kQNaN))));
-    EXPECT_TRUE(float16_t::is_nan(float16_t::round_to_even(H(kQNaN))));
+  // Special values: floor/ceil/trunc/round of ±Inf = ±Inf
+  EXPECT_TRUE(std::isinf(float16_t::floor(H(kPosInf)).to_float()));
+  EXPECT_TRUE(std::isinf(float16_t::ceil(H(kNegInf)).to_float()));
+  // NaN propagates
+  EXPECT_TRUE(float16_t::is_nan(float16_t::floor(H(kQNaN))));
+  EXPECT_TRUE(float16_t::is_nan(float16_t::ceil(H(kQNaN))));
+  EXPECT_TRUE(float16_t::is_nan(float16_t::trunc(H(kQNaN))));
+  EXPECT_TRUE(float16_t::is_nan(float16_t::round(H(kQNaN))));
+  EXPECT_TRUE(float16_t::is_nan(float16_t::round_to_even(H(kQNaN))));
 }
 
 // ============================================================
@@ -956,8 +976,7 @@ TEST(Float16BufferTest, WriteReadRoundTrip) {
     buf->reader_index(0);
     Error err;
     const float16_t got = buf->read_f16(err);
-    ASSERT_TRUE(err.ok())
-        << "read_f16 error for bits=0x" << std::hex << bits;
+    ASSERT_TRUE(err.ok()) << "read_f16 error for bits=0x" << std::hex << bits;
     EXPECT_EQ(got.to_bits(), bits)
         << "round-trip failed for bits=0x" << std::hex << bits;
   }
@@ -1052,9 +1071,11 @@ struct Float16Scalar {
 struct Float16Vector {
   std::vector<float16_t> values;
   bool operator==(const Float16Vector &o) const {
-    if (values.size() != o.values.size()) return false;
+    if (values.size() != o.values.size())
+      return false;
     for (size_t i = 0; i < values.size(); ++i) {
-      if (values[i].to_bits() != o.values[i].to_bits()) return false;
+      if (values[i].to_bits() != o.values[i].to_bits())
+        return false;
     }
     return true;
   }
@@ -1064,11 +1085,14 @@ struct Float16Vector {
 struct Float16Map {
   std::map<std::string, float16_t> named_values;
   bool operator==(const Float16Map &o) const {
-    if (named_values.size() != o.named_values.size()) return false;
+    if (named_values.size() != o.named_values.size())
+      return false;
     for (const auto &kv : named_values) {
       auto it = o.named_values.find(kv.first);
-      if (it == o.named_values.end()) return false;
-      if (kv.second.to_bits() != it->second.to_bits()) return false;
+      if (it == o.named_values.end())
+        return false;
+      if (kv.second.to_bits() != it->second.to_bits())
+        return false;
     }
     return true;
   }
@@ -1078,8 +1102,10 @@ struct Float16Map {
 struct Float16Optional {
   std::optional<float16_t> opt_value;
   bool operator==(const Float16Optional &o) const {
-    if (opt_value.has_value() != o.opt_value.has_value()) return false;
-    if (!opt_value.has_value()) return true;
+    if (opt_value.has_value() != o.opt_value.has_value())
+      return false;
+    if (!opt_value.has_value())
+      return true;
     return opt_value->to_bits() == o.opt_value->to_bits();
   }
   FORY_STRUCT(Float16Optional, opt_value);
@@ -1099,21 +1125,18 @@ TEST(Float16SerializerTest, ScalarRoundTrip) {
   fory.register_struct<Float16Scalar>(200);
 
   const uint16_t cases[] = {
-      0x0000, 0x8000, 0x3C00, 0xBC00,
-      0x7C00, 0xFC00, 0x7BFF, 0x0001,
-      0x0400, 0x7E00,
+      0x0000, 0x8000, 0x3C00, 0xBC00, 0x7C00,
+      0xFC00, 0x7BFF, 0x0001, 0x0400, 0x7E00,
   };
   for (uint16_t bits : cases) {
     Float16Scalar original{float16_t::from_bits(bits)};
     auto ser = fory.serialize(original);
-    ASSERT_TRUE(ser.ok())
-        << "serialize failed bits=0x" << std::hex << bits
-        << ": " << ser.error().to_string();
-    auto deser = fory.deserialize<Float16Scalar>(
-        ser.value().data(), ser.value().size());
-    ASSERT_TRUE(deser.ok())
-        << "deserialize failed bits=0x" << std::hex << bits
-        << ": " << deser.error().to_string();
+    ASSERT_TRUE(ser.ok()) << "serialize failed bits=0x" << std::hex << bits
+                          << ": " << ser.error().to_string();
+    auto deser =
+        fory.deserialize<Float16Scalar>(ser.value().data(), ser.value().size());
+    ASSERT_TRUE(deser.ok()) << "deserialize failed bits=0x" << std::hex << bits
+                            << ": " << deser.error().to_string();
     EXPECT_EQ(deser.value(), original)
         << "round-trip mismatch bits=0x" << std::hex << bits;
   }
@@ -1125,8 +1148,7 @@ TEST(Float16SerializerTest, VectorRoundTrip) {
 
   Float16Vector original;
   original.values = {
-      float16_t::from_float(0.0f),
-      float16_t::from_float(1.0f),
+      float16_t::from_float(0.0f),  float16_t::from_float(1.0f),
       float16_t::from_float(-1.0f),
       float16_t::from_bits(0x7C00), // +Inf
       float16_t::from_bits(0x7BFF), // max finite
@@ -1134,8 +1156,8 @@ TEST(Float16SerializerTest, VectorRoundTrip) {
   };
   auto ser = fory.serialize(original);
   ASSERT_TRUE(ser.ok()) << ser.error().to_string();
-  auto deser = fory.deserialize<Float16Vector>(
-      ser.value().data(), ser.value().size());
+  auto deser =
+      fory.deserialize<Float16Vector>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
 }
@@ -1147,8 +1169,8 @@ TEST(Float16SerializerTest, EmptyVectorRoundTrip) {
   Float16Vector original;
   auto ser = fory.serialize(original);
   ASSERT_TRUE(ser.ok()) << ser.error().to_string();
-  auto deser = fory.deserialize<Float16Vector>(
-      ser.value().data(), ser.value().size());
+  auto deser =
+      fory.deserialize<Float16Vector>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
 }
@@ -1158,15 +1180,15 @@ TEST(Float16SerializerTest, MapRoundTrip) {
   fory.register_struct<Float16Map>(202);
 
   Float16Map original;
-  original.named_values["one"]     = float16_t::from_float(1.0f);
+  original.named_values["one"] = float16_t::from_float(1.0f);
   original.named_values["neg_inf"] = float16_t::from_bits(0xFC00);
-  original.named_values["max"]     = float16_t::from_bits(0x7BFF);
-  original.named_values["zero"]    = float16_t::from_float(0.0f);
+  original.named_values["max"] = float16_t::from_bits(0x7BFF);
+  original.named_values["zero"] = float16_t::from_float(0.0f);
 
   auto ser = fory.serialize(original);
   ASSERT_TRUE(ser.ok()) << ser.error().to_string();
-  auto deser = fory.deserialize<Float16Map>(
-      ser.value().data(), ser.value().size());
+  auto deser =
+      fory.deserialize<Float16Map>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
 }
@@ -1180,8 +1202,8 @@ TEST(Float16SerializerTest, OptionalPresentRoundTrip) {
 
   auto ser = fory.serialize(original);
   ASSERT_TRUE(ser.ok()) << ser.error().to_string();
-  auto deser = fory.deserialize<Float16Optional>(
-      ser.value().data(), ser.value().size());
+  auto deser =
+      fory.deserialize<Float16Optional>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
 }
@@ -1193,8 +1215,8 @@ TEST(Float16SerializerTest, OptionalAbsentRoundTrip) {
   Float16Optional original; // opt_value is nullopt
   auto ser = fory.serialize(original);
   ASSERT_TRUE(ser.ok()) << ser.error().to_string();
-  auto deser = fory.deserialize<Float16Optional>(
-      ser.value().data(), ser.value().size());
+  auto deser =
+      fory.deserialize<Float16Optional>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
 }

@@ -45,8 +45,8 @@ float16_t float16_t::from_float(float f) noexcept {
     // force quiet bit (bit 9 of f16 fraction).
     const uint32_t nan_payload = (mantissa >> 13) & 0x03FFu;
     const uint32_t quiet_bit = 0x0200u;
-    return from_bits(static_cast<uint16_t>(
-        (sign >> 16) | 0x7C00u | quiet_bit | nan_payload));
+    return from_bits(static_cast<uint16_t>((sign >> 16) | 0x7C00u | quiet_bit |
+                                           nan_payload));
   }
 
   // ±0 (also catches -0.0)
@@ -80,11 +80,10 @@ float16_t float16_t::from_float(float f) noexcept {
     const bool sticky = (full_mantissa & sticky_mask) != 0u;
     const uint32_t mantissa16 = full_mantissa >> shift_total;
     // Round-to-nearest, ties-to-even
-    const uint32_t result =
-        ((full_mantissa & round_bit) != 0u &&
-         (sticky || (mantissa16 & 1u) != 0u))
-            ? mantissa16 + 1u
-            : mantissa16;
+    const uint32_t result = ((full_mantissa & round_bit) != 0u &&
+                             (sticky || (mantissa16 & 1u) != 0u))
+                                ? mantissa16 + 1u
+                                : mantissa16;
     // Note: if rounding carries out of the subnormal mantissa the natural
     // carry produces the bit pattern for the f16 minimum normal (0x0400).
     return from_bits(static_cast<uint16_t>((sign >> 16) | result));
@@ -159,7 +158,7 @@ float float16_t::to_float() const noexcept {
       m <<= 1;
       e -= 1;
     }
-    m &= 0x03FFu;  // strip implicit leading 1
+    m &= 0x03FFu; // strip implicit leading 1
     const uint32_t exp32 = static_cast<uint32_t>(e + 127);
     const uint32_t mantissa32 = m << 13;
     const uint32_t f32_bits = sign | (exp32 << 23) | mantissa32;
@@ -178,4 +177,4 @@ float float16_t::to_float() const noexcept {
   return result;
 }
 
-}  // namespace fory
+} // namespace fory
