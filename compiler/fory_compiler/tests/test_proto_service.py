@@ -156,6 +156,4 @@ def test_service_unknown_response_type_fails_validation():
     schema = parse_and_translate(source)
     validator = SchemaValidator(schema)
     assert not validator.validate()
-    assert any(
-        "Unknown type 'UnknownReply'" in err.message for err in validator.errors
-    )
+    assert any("Unknown type 'UnknownReply'" in err.message for err in validator.errors)
