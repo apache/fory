@@ -15,14 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-mod test_helpers;
-
 use std::collections::HashMap;
 
 use fory_core::fory::Fory;
 use fory_core::TypeId;
 use fory_derive::ForyObject;
-use test_helpers::deserialize_check;
 
 // Test 1: Simple struct with one primitive field, non-compatible mode
 #[test]
@@ -36,7 +33,7 @@ fn test_one_field_primitive_non_compatible() {
     fory.register::<Data>(100).unwrap();
     let data = Data { value: 42 };
     let bytes = fory.serialize(&data).unwrap();
-    let result: Data = deserialize_check(&fory, &bytes);
+    let result: Data = fory.deserialize(&bytes).unwrap();
     assert_eq!(data, result);
 }
 
@@ -54,7 +51,7 @@ fn test_one_field_string_non_compatible() {
         name: String::from("hello"),
     };
     let bytes = fory.serialize(&data).unwrap();
-    let result: Data = deserialize_check(&fory, &bytes);
+    let result: Data = fory.deserialize(&bytes).unwrap();
     assert_eq!(data, result);
 }
 

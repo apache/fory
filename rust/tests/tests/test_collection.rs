@@ -15,12 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#[path = "test_helpers.rs"]
 mod test_helpers;
-use fory_core::{Fory, Serializer};
-use fory_derive::ForyObject;
-use std::collections::{BTreeSet, BinaryHeap, HashSet};
 use test_helpers::deserialize_check;
+
+
+use fory_core::{Fory, Serializer};
+
+use fory_derive::ForyObject;
+
+use std::collections::{BTreeSet, BinaryHeap, HashSet};
 
 #[test]
 fn test_btreeset_roundtrip() {
@@ -35,7 +38,7 @@ fn test_btreeset_roundtrip() {
     let trait_obj: Box<dyn Serializer> = Box::new(original.clone());
     let serialized = fory.serialize(&trait_obj).unwrap();
 
-    let deserialized_concrete: BTreeSet<i32> = deserialize_check(&fory, &serialized);
+    let deserialized_concrete: BTreeSet<i32> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized_concrete.len(), 3);
     assert!(deserialized_concrete.contains(&1));
@@ -86,7 +89,7 @@ fn test_set_container() {
     };
 
     let serialized = fory.serialize(&original).unwrap();
-    let deserialized: SetContainer = deserialize_check(&fory, &serialized);
+    let deserialized: SetContainer = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized, original);
     assert_eq!(deserialized.btree_set.len(), 3);

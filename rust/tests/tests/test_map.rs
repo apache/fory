@@ -16,11 +16,14 @@
 // under the License.
 
 mod test_helpers;
+use test_helpers::deserialize_check;
+
 
 use fory_core::fory::Fory;
+
 use fory_derive::ForyObject;
+
 use std::collections::{BTreeMap, HashMap};
-use test_helpers::deserialize_check;
 
 #[test]
 fn test_hashmap_string() {
@@ -29,7 +32,7 @@ fn test_hashmap_string() {
     map.insert("key1".to_string(), "value1".to_string());
     map.insert("key2".to_string(), "value2".to_string());
     let bin = fory.serialize(&map).unwrap();
-    let obj: HashMap<String, String> = deserialize_check(&fory, &bin);
+    let obj: HashMap<String, String> = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(map, obj);
 }
 
@@ -40,7 +43,7 @@ fn test_btreemap_string() {
     map.insert("key1".to_string(), "value1".to_string());
     map.insert("key2".to_string(), "value2".to_string());
     let bin = fory.serialize(&map).unwrap();
-    let obj: BTreeMap<String, String> = deserialize_check(&fory, &bin);
+    let obj: BTreeMap<String, String> = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(map, obj);
 }
 
@@ -67,6 +70,6 @@ fn test_struct_with_maps() {
     };
 
     let bin = fory.serialize(&container).unwrap();
-    let obj: MapContainer = deserialize_check(&fory, &bin);
+    let obj: MapContainer = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(container, obj);
 }

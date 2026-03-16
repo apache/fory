@@ -16,14 +16,20 @@
 // under the License.
 
 mod test_helpers;
+use test_helpers::deserialize_check;
+
 
 use fory_core::error::Error;
+
 use fory_core::fory::Fory;
+
 use fory_core::resolver::context::{ReadContext, WriteContext};
+
 use fory_core::serializer::{ForyDefault, Serializer};
+
 use fory_core::TypeResolver;
+
 use fory_derive::ForyObject;
-use test_helpers::deserialize_check;
 
 #[test]
 #[allow(dead_code)]
@@ -89,7 +95,7 @@ fn test_use() {
     let item = Item { f1: 1, f2: 2 };
     fory.register_serializer::<Item>(100).unwrap();
     let bytes = fory.serialize(&item).unwrap();
-    let new_item: Item = deserialize_check(&fory, &bytes);
+    let new_item: Item = fory.deserialize(&bytes).unwrap();
     assert_eq!(new_item.f1, item.f1);
     assert_eq!(new_item.f2, 0);
 }

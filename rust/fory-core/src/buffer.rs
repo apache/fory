@@ -670,13 +670,6 @@ impl<'a> Reader<'a> {
     }
 
     #[inline(always)]
-    fn read_u8_uncheck(&mut self) -> u8 {
-        let result = unsafe { self.bf.get_unchecked(self.cursor) };
-        self.move_next(1);
-        *result
-    }
-
-    #[inline(always)]
     pub fn skip(&mut self, len: usize) -> Result<(), Error> {
         self.check_bound(len)?;
         self.move_next(len);

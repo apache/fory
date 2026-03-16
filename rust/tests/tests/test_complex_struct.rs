@@ -16,12 +16,16 @@
 // under the License.
 
 mod test_helpers;
+use test_helpers::deserialize_check;
+
 
 use fory_core::fory::Fory;
+
 use fory_derive::ForyObject;
-use test_helpers::deserialize_check;
 // use std::any::Any;
+
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
+
 use std::collections::HashMap;
 
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_complex_struct
@@ -64,7 +68,7 @@ fn enum_without_payload() {
     fory.register::<Color>(999).unwrap();
     let color = Color::Red;
     let bin = fory.serialize(&color).unwrap();
-    let color2: Color = deserialize_check(&fory, &bin);
+    let color2: Color = fory.deserialize(&bin).expect("");
     assert_eq!(color, color2);
 }
 
@@ -115,13 +119,13 @@ fn complex_struct() {
     fory.register::<Animal>(899).unwrap();
     fory.register::<Person>(999).unwrap();
     let bin: Vec<u8> = fory.serialize(&person).unwrap();
-    let obj: Person = deserialize_check(&fory, &bin);
+    let obj: Person = fory.deserialize(&bin).expect("should success");
     assert_eq!(person, obj);
     let mut fory = Fory::default();
     fory.register_by_name::<Animal>("animal").unwrap();
     fory.register_by_name::<Person>("person").unwrap();
     let bin: Vec<u8> = fory.serialize(&person).unwrap();
-    let obj: Person = deserialize_check(&fory, &bin);
+    let obj: Person = fory.deserialize(&bin).expect("should success");
     assert_eq!(person, obj);
 }
 

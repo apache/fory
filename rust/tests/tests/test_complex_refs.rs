@@ -18,11 +18,14 @@
 //! Tests for shared reference handling in Fory Rust
 
 mod test_helpers;
+use test_helpers::deserialize_check;
+
 
 use fory_core::fory::Fory;
+
 use std::rc::Rc;
+
 use std::sync::Arc;
-use test_helpers::deserialize_check;
 
 #[test]
 fn test_rc_shared_in_nested_vec() {
@@ -39,7 +42,7 @@ fn test_rc_shared_in_nested_vec() {
     ];
 
     let serialized = fory.serialize(&nested).unwrap();
-    let deserialized: Vec<Vec<Rc<String>>> = deserialize_check(&fory, &serialized);
+    let deserialized: Vec<Vec<Rc<String>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
     assert_eq!(deserialized[0].len(), 2);
@@ -71,7 +74,7 @@ fn test_arc_shared_in_nested_vec() {
     ];
 
     let serialized = fory.serialize(&nested).unwrap();
-    let deserialized: Vec<Vec<Arc<String>>> = deserialize_check(&fory, &serialized);
+    let deserialized: Vec<Vec<Arc<String>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
     assert_eq!(deserialized[0].len(), 2);
@@ -103,8 +106,8 @@ fn test_mixed_rc_arc_sharing() {
     let serialized_rc = fory.serialize(&rc_vec).unwrap();
     let serialized_arc = fory.serialize(&arc_vec).unwrap();
 
-    let deserialized_rc: Vec<Rc<i32>> = deserialize_check(&fory, &serialized_rc);
-    let deserialized_arc: Vec<Arc<String>> = deserialize_check(&fory, &serialized_arc);
+    let deserialized_rc: Vec<Rc<i32>> = fory.deserialize(&serialized_rc).unwrap();
+    let deserialized_arc: Vec<Arc<String>> = fory.deserialize(&serialized_arc).unwrap();
 
     // Verify Rc sharing
     assert!(Rc::ptr_eq(&deserialized_rc[0], &deserialized_rc[1]));
@@ -129,7 +132,7 @@ fn test_deep_sharing_stress_test() {
     ];
 
     let serialized = fory.serialize(&deep_structure).unwrap();
-    let deserialized: Vec<Vec<Vec<Rc<String>>>> = deserialize_check(&fory, &serialized);
+    let deserialized: Vec<Vec<Vec<Rc<String>>>> = fory.deserialize(&serialized).unwrap();
 
     // Verify structure
     assert_eq!(deserialized.len(), 3);

@@ -154,7 +154,7 @@ fn test_serialize_to_detailed() {
 
     // Verify we can deserialize the data portion by skipping the header
     let mut reader = Reader::new(&buf);
-    reader.set_cursor(header_size).unwrap();
+    reader.set_cursor(header_size);
     let des4: Point = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(p4, des4);
 
