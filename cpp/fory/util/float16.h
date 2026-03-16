@@ -20,7 +20,6 @@
 #pragma once
 
 #include <cmath>
-#include <cstdint>
 #include <string>
 #include <type_traits>
 namespace fory {
@@ -88,6 +87,40 @@ struct float16_t {
     // True if the value is finite (not Inf and not NaN).
     [[nodiscard]] static bool is_finite(float16_t h) noexcept {
         return (h.bits & 0x7C00u) != 0x7C00u;
+    }
+
+    // ---- Comparisons (IEEE 754-consistent) ----
+    // NaN != NaN; +0 == -0.
+    [[nodiscard]] static bool equal(const float16_t a, const float16_t b) noexcept {
+        if (is_nan(a) || is_nan(b)) return false;
+        if (is_zero(a) && is_zero(b)) return true;
+        return a.bits == b.bits;
+    }
+    // Returns false if either operand is NaN (unordered).
+    [[nodiscard]] static bool less(const float16_t a, const float16_t b) noexcept {
+        if (is_nan(a) || is_nan(b)) return false;
+        if (is_zero(a) && is_zero(b)) return false;
+        // Exploit sign-magnitude encoding: for non-NaN values, signed comparison
+        // of the bit patterns works after handling the negative number ordering.
+        const bool neg_a = signbit(a);
+        const bool neg_b = signbit(b);
+        if (neg_a != neg_b) return neg_a;        // negative < positive
+        return neg_a ? a.bits > b.bits : a.bits < b.bits;
+    }
+    [[nodiscard]] static bool less_eq(float16_t a, float16_t b) noexcept {
+        return equal(a, b) || less(a, b);
+    }
+    [[nodiscard]] static bool greater(float16_t a, float16_t b) noexcept {
+        return less(b, a);
+    }
+    [[nodiscard]] static bool greater_eq(float16_t a, float16_t b) noexcept {
+        return equal(a, b) || greater(a, b);
+    }
+    // Returns -1, 0, or 1. NaN operands produce 0 (unordered).
+    [[nodiscard]] static int compare(float16_t a, float16_t b) noexcept {
+        if (is_nan(a) || is_nan(b)) return 0;
+        if (equal(a, b)) return 0;
+        return less(a, b) ? -1 : 1;
     }
 
     // ---- String representation ----
@@ -195,6 +228,25 @@ static_assert(std::is_standard_layout_v<float16_t>);
 }
 [[nodiscard]] inline float16_t operator+(float16_t a) noexcept {
     return a;
+}
+
+[[nodiscard]] inline bool operator==(float16_t a, float16_t b) noexcept {
+    return float16_t::equal(a, b);
+}
+[[nodiscard]] inline bool operator!=(float16_t a, float16_t b) noexcept {
+    return !float16_t::equal(a, b);
+}
+[[nodiscard]] inline bool operator<(float16_t a, float16_t b) noexcept {
+    return float16_t::less(a, b);
+}
+[[nodiscard]] inline bool operator<=(float16_t a, float16_t b) noexcept {
+    return float16_t::less_eq(a, b);
+}
+[[nodiscard]] inline bool operator>(float16_t a, float16_t b) noexcept {
+    return float16_t::greater(a, b);
+}
+[[nodiscard]] inline bool operator>=(float16_t a, float16_t b) noexcept {
+    return float16_t::greater_eq(a, b);
 }
 
 }  // namespace fory
