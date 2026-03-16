@@ -17,18 +17,10 @@
 
 //! Tests for Rc and Arc serialization support in Fory
 
-mod test_helpers;
-use test_helpers::deserialize_check;
-
-
 use fory_core::fory::Fory;
-
 use fory_derive::ForyObject;
-
 use std::collections::HashMap;
-
 use std::rc::Rc;
-
 use std::sync::Arc;
 
 /// A simple struct for testing nested Rc/Arc serialization

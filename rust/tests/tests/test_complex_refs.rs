@@ -17,14 +17,8 @@
 
 //! Tests for shared reference handling in Fory Rust
 
-mod test_helpers;
-use test_helpers::deserialize_check;
-
-
 use fory_core::fory::Fory;
-
 use std::rc::Rc;
-
 use std::sync::Arc;
 
 #[test]

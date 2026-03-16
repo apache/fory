@@ -17,14 +17,8 @@
 
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_enum
 
-mod test_helpers;
-use test_helpers::deserialize_check;
-
-
 use fory_core::Fory;
-
 use fory_derive::ForyObject;
-
 use std::collections::HashMap;
 
 #[test]

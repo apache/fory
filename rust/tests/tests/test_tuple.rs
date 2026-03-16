@@ -15,14 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-mod test_helpers;
-use test_helpers::deserialize_check;
-
-
 use fory_core::fory::Fory;
-
 use fory_derive::ForyObject;
-
 use std::rc::Rc;
 
 const PI_F64: f64 = std::f64::consts::PI;

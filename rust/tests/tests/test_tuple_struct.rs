@@ -21,16 +21,9 @@
 //! - `struct Point(f64, f64);`
 //! - `struct Wrapper(String);`
 
-mod test_helpers;
-use test_helpers::deserialize_check;
-
-
 use fory_core::fory::Fory;
-
 use fory_derive::ForyObject;
-
 use std::collections::HashMap;
-
 use std::rc::Rc;
 
 // Basic Tuple Structs
