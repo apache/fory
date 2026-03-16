@@ -193,7 +193,9 @@ def test_service_unknown_request_type_fails_validation():
     assert not validator.validate()
     # Ensure we surface a clear unknown-type error on the RPC line.
     matching_errors = [
-        err for err in validator.errors if "Unknown type 'UnknownRequest'" in err.message
+        err
+        for err in validator.errors
+        if "Unknown type 'UnknownRequest'" in err.message
     ]
     assert matching_errors
     # Location should be attached so tooling/CLI can point at the RPC.
@@ -213,9 +215,7 @@ def test_service_unknown_response_type_fails_validation():
     schema = parse(source)
     validator = SchemaValidator(schema)
     assert not validator.validate()
-    assert any(
-        "Unknown type 'UnknownReply'" in err.message for err in validator.errors
-    )
+    assert any("Unknown type 'UnknownReply'" in err.message for err in validator.errors)
 
 
 def test_service_known_types_pass_validation():
