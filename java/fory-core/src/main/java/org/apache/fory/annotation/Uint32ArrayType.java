@@ -38,7 +38,7 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Uint32ArrayType
+ *   {@literal @}Uint32ArrayType
  *   int[] counts;  // Will be serialized as unsigned 32-bit array
  * }
  * }</pre>
