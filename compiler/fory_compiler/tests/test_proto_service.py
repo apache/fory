@@ -20,6 +20,7 @@
 from fory_compiler.frontend.proto.lexer import Lexer
 from fory_compiler.frontend.proto.parser import Parser
 from fory_compiler.frontend.proto.translator import ProtoTranslator
+from fory_compiler.ir.validator import SchemaValidator
 
 
 def parse_and_translate(source):
@@ -120,3 +121,41 @@ def test_service_options():
     schema = parse_and_translate(source)
     service = schema.services[0]
     assert service.options["deprecated"] is True
+
+
+def test_service_unknown_request_type_fails_validation():
+    source = """
+    syntax = "proto3";
+    package demo;
+
+    message Response {}
+
+    service Greeter {
+        rpc SayHello (UnknownRequest) returns (Response);
+    }
+    """
+    schema = parse_and_translate(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    assert any(
+        "Unknown type 'UnknownRequest'" in err.message for err in validator.errors
+    )
+
+
+def test_service_unknown_response_type_fails_validation():
+    source = """
+    syntax = "proto3";
+    package demo;
+
+    message Request {}
+
+    service Greeter {
+        rpc SayHello (Request) returns (UnknownReply);
+    }
+    """
+    schema = parse_and_translate(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    assert any(
+        "Unknown type 'UnknownReply'" in err.message for err in validator.errors
+    )

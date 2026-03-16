@@ -17,12 +17,20 @@
 
 import pytest
 from fory_compiler.frontend.fdl.parser import Parser, ParseError
+from fory_compiler.ir.validator import SchemaValidator
 
 
 def parse(source: str):
     parser = Parser.from_source(source)
     schema = parser.parse()
     return schema
+
+
+def validate(source: str) -> SchemaValidator:
+    schema = parse(source)
+    validator = SchemaValidator(schema)
+    validator.validate()
+    return validator
 
 
 def test_empty_service():
@@ -168,3 +176,59 @@ def test_invalid_syntax_missing_parens():
     """
     with pytest.raises(ParseError):
         parse(source)
+
+
+def test_service_unknown_request_type_fails_validation():
+    source = """
+    package test;
+
+    message HelloReply {}
+
+    service Greeter {
+        rpc SayHello (UnknownRequest) returns (HelloReply);
+    }
+    """
+    schema = parse(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    # Ensure we surface a clear unknown-type error on the RPC line.
+    matching_errors = [
+        err for err in validator.errors if "Unknown type 'UnknownRequest'" in err.message
+    ]
+    assert matching_errors
+    # Location should be attached so tooling/CLI can point at the RPC.
+    assert matching_errors[0].location is not None
+
+
+def test_service_unknown_response_type_fails_validation():
+    source = """
+    package test;
+
+    message HelloRequest {}
+
+    service Greeter {
+        rpc SayHello (HelloRequest) returns (UnknownReply);
+    }
+    """
+    schema = parse(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    assert any(
+        "Unknown type 'UnknownReply'" in err.message for err in validator.errors
+    )
+
+
+def test_service_known_types_pass_validation():
+    source = """
+    package test;
+
+    message HelloRequest {}
+    message HelloReply {}
+
+    service Greeter {
+        rpc SayHello (HelloRequest) returns (HelloReply);
+    }
+    """
+    schema = parse(source)
+    validator = SchemaValidator(schema)
+    assert validator.validate()
