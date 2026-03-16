@@ -464,7 +464,7 @@ class DataClassSerializer(Serializer):
                 serializer.write(buffer, field_value)
             return
         if is_tracking_ref:
-            self.fory.write_ref(buffer, field_value, serializer=None if is_dynamic else serializer)
+            self.fory.write_ref(buffer, field_value, None if is_dynamic else serializer)
             return
         if is_nullable:
             if field_value is None:
@@ -474,7 +474,7 @@ class DataClassSerializer(Serializer):
         if is_dynamic:
             self.fory.write_no_ref(buffer, field_value)
         else:
-            self.fory.write_no_ref(buffer, field_value, serializer=serializer)
+            self.fory.write_no_ref(buffer, field_value, serializer)
 
     def _read_field_value(self, buffer, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref):
         if is_nullable and is_basic:
@@ -484,12 +484,12 @@ class DataClassSerializer(Serializer):
         if is_basic:
             return serializer.read(buffer)
         if is_tracking_ref:
-            return self.fory.read_ref(buffer, serializer=None if is_dynamic else serializer)
+            return self.fory.read_ref(buffer, None if is_dynamic else serializer)
         if is_nullable and buffer.read_int8() == NULL_FLAG:
             return None
         if is_dynamic:
             return self.fory.read_no_ref(buffer)
-        return self.fory.read_no_ref(buffer, serializer=serializer)
+        return self.fory.read_no_ref(buffer, serializer)
 
     def write(self, buffer: Buffer, value):
         if not self.fory.compatible:
