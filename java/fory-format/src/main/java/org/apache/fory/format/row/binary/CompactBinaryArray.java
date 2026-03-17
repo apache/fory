@@ -109,7 +109,7 @@ public class CompactBinaryArray extends BinaryArray {
       return super.getStruct(ordinal, field, extDataSlot);
     }
     if (extData[extDataSlot] == null) {
-      extData[extDataSlot] = DataTypes.createSchema(field);
+      extData[extDataSlot] = newSchema(field);
     }
     final BinaryRow row = newRow((Schema) extData[extDataSlot]);
     row.pointTo(getBuffer(), getOffset(ordinal), fixedWidth);

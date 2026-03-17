@@ -50,10 +50,10 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Uint32Type(compress = true)  // Uses varuint encoding (default)
+ *   {@literal @}Uint32Type(compress = true)  // Uses varuint encoding (default)
  *   long compactCount;
  *
- *   @Uint32Type(compress = false) // Uses fixed 4-byte encoding
+ *   {@literal @}Uint32Type(compress = false) // Uses fixed 4-byte encoding
  *   long fixedCount;
  * }
  * }</pre>

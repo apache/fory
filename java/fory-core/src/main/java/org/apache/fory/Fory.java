@@ -1090,7 +1090,7 @@ public final class Fory implements BaseFory {
       case ClassResolver.HASHMAP_ID:
         copy = hashMapSerializer.copy((HashMap) obj);
         break;
-        // todo: add fastpath for other types.
+      // todo: add fastpath for other types.
       default:
         copy = copyObject(obj, typeInfo.getSerializer());
     }

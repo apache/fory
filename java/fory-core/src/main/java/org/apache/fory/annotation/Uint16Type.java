@@ -38,7 +38,7 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Uint16Type
+ *   {@literal @}Uint16Type
  *   int port;  // Will be serialized as unsigned 16-bit [0, 65535]
  * }
  * }</pre>

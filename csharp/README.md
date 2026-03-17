@@ -25,7 +25,15 @@ The C# implementation provides high-performance object graph serialization for .
 
 ### Add Apache Fory™ C\#
 
-From this repository, reference the library project:
+From NuGet, reference the single `Apache.Fory` package. It includes the runtime plus the source generator for `[ForyObject]` types.
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Apache.Fory" Version="0.1.0" />
+</ItemGroup>
+```
+
+For local development against this repository, reference the runtime project and generator project directly:
 
 ```xml
 <ItemGroup>
@@ -215,7 +223,7 @@ Fory fory = Fory.Builder()
 fory.Register<Person>(100); // same ID on other language peers
 ```
 
-See [xlang guide](../docs/guide/xlang/index.md) for mapping details.
+See [xlang guide](https://fory.apache.org/docs/guide/xlang/) for mapping details.
 
 ## Architecture
 
@@ -240,7 +248,7 @@ csharp/
     └── Fory.XlangPeer/
 ```
 
-## Building and Testing
+## Building, Testing, and Publishing
 
 Run from the `csharp` directory:
 
@@ -250,10 +258,13 @@ dotnet build Fory.sln -c Release
 
 # Run tests
 dotnet test Fory.sln -c Release
+
+# Publish to nuget.org after bumping <Version> in Directory.Build.props
+NUGET_API_KEY=... ../ci/publish-nuget.sh
 ```
 
 ## Documentation
 
-- [C# guide index](../docs/guide/csharp/index.md)
-- [Cross-language serialization spec](../docs/specification/xlang_serialization_spec.md)
-- [Cross-language type mapping](../docs/specification/xlang_type_mapping.md)
+- [C# guide index](https://fory.apache.org/docs/guide/csharp/)
+- [Cross-language serialization spec](https://fory.apache.org/docs/specification/xlang_serialization_spec/)
+- [Cross-language type mapping](https://fory.apache.org/docs/specification/xlang_type_mapping/)

@@ -125,7 +125,7 @@ public class LongMap<V> {
   }
 
   /**
-   * Returns an index >= 0 and <= {@link #mask} for the specified {@code item}.
+   * Returns an {@code index >= 0 and <= mask} for the specified {@code item}.
    *
    * <p>The default implementation uses Fibonacci hashing on the item's {@link Object#hashCode()}:
    * the hashcode is multiplied by a long constant (2 to the 64th, divided by the golden ratio) then
@@ -141,6 +141,8 @@ public class LongMap<V> {
    * event that most hashcodes are Fibonacci numbers, if keys provide poor or incorrect hashcodes,
    * or to simplify hashing if keys provide high quality hashcodes and don't need Fibonacci hashing:
    * {@code return item.hashCode() & mask;}
+   *
+   * @see #mask
    */
   protected int place(long item) {
     return (int) (item * MASK_NUMBER >>> shift);
@@ -344,6 +346,7 @@ public class LongMap<V> {
     }
   }
 
+  @Override
   public String toString() {
     if (size == 0) {
       return "[]";

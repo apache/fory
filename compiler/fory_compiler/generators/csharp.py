@@ -752,7 +752,10 @@ class CSharpGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, f"{ind}//")
         if comment:
             lines.append(comment)
-        lines.append(f"{ind}[ForyObject]")
+        if self.get_effective_evolving(message):
+            lines.append(f"{ind}[ForyObject]")
+        else:
+            lines.append(f"{ind}[ForyObject(Evolving = false)]")
         lines.append(f"{ind}public sealed partial class {type_name}")
         lines.append(f"{ind}{{")
 

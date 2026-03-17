@@ -52,6 +52,12 @@ struct Config {
   /// When enabled, avoids duplicating shared objects and handles cycles.
   bool track_ref = true;
 
+  /// Maximum allowed size for binary data in bytes.
+  uint32_t max_binary_size = 64 * 1024 * 1024; // 64MB default
+
+  /// Maximum allowed number of elements in a collection or entries in a map.
+  uint32_t max_collection_size = 1024 * 1024; // 1M elements default
+
   /// Default constructor with sensible defaults
   Config() = default;
 };

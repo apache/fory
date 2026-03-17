@@ -90,6 +90,7 @@ class ClassAnalyzerImpl implements ClassAnalyzer {
       className,
       packageName,
       foryClass.promiseAcyclic,
+      foryClass.evolving,
       fieldsUnit.allFieldsIndependent,
       fieldsSpecGen,
       libImportPack,

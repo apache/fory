@@ -52,8 +52,8 @@ public @interface ForyField {
    * Field tag ID for schema evolution mode.
    *
    * <ul>
-   *   <li>When >= 0: Uses this numeric ID instead of field name string for compact encoding
-   *   <li>When -1 (default): Uses field name with meta string encoding
+   *   <li>When {@code >= 0}: Uses this numeric ID instead of field name string for compact encoding
+   *   <li>When {@code -1} (default): Uses field name with meta string encoding
    * </ul>
    *
    * <p>Must be unique within the class (except -1) and stable across versions.

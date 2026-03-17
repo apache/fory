@@ -21,6 +21,7 @@ package org.apache.fory.resolver;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyObject;
@@ -58,5 +59,17 @@ public class TypeInfoTest {
     assertNotNull(fixedInfo);
     assertEquals(evolvingInfo.getTypeId(), Types.NAMED_COMPATIBLE_STRUCT);
     assertEquals(fixedInfo.getTypeId(), Types.NAMED_STRUCT);
+
+    EvolvingStruct evolving = new EvolvingStruct();
+    evolving.id = 123;
+    FixedStruct fixed = new FixedStruct();
+    fixed.id = 123;
+
+    byte[] evolvingPayload = fory.serialize(evolving);
+    byte[] fixedPayload = fory.serialize(fixed);
+
+    assertTrue(fixedPayload.length < evolvingPayload.length);
+    assertEquals(fory.deserialize(evolvingPayload, EvolvingStruct.class).id, evolving.id);
+    assertEquals(fory.deserialize(fixedPayload, FixedStruct.class).id, fixed.id);
   }
 }

@@ -29,6 +29,7 @@ import 'package:fory/src/codegen/tool/codegen_tool.dart';
 @immutable
 class ClassSpecGenerator extends CustomTypeSpecGenerator {
   final bool promiseAcyclic;
+  final bool evolving;
   final bool noCyclicRisk;
   final FieldsSpecGenerator _fieldsSpecGen;
   final LibraryImportPack imports;
@@ -41,6 +42,7 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     super.name,
     super.importPath,
     this.promiseAcyclic,
+    this.evolving,
     this.noCyclicRisk,
     this._fieldsSpecGen,
     this.imports,
@@ -88,6 +90,10 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     // arg: type name
     CodegenTool.writeIndent(buf, nextTotalIndent);
     buf.write(promiseAcyclic ? "true" : "false");
+    buf.write(",\n");
+
+    CodegenTool.writeIndent(buf, nextTotalIndent);
+    buf.write(evolving ? "true" : "false");
     buf.write(",\n");
 
     // arg: noCyclicRisk

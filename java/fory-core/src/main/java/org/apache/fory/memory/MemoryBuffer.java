@@ -1209,8 +1209,8 @@ public final class MemoryBuffer {
 
   /**
    * Write signed long using fory Tagged(Small long as int) encoding. If long is in [0xc0000000,
-   * 0x3fffffff], encode as 4 bytes int: | little-endian: ((int) value) << 1 |; Otherwise write as 9
-   * bytes: | 0b1 | little-endian 8bytes long |
+   * 0x3fffffff], encode as 4 bytes int: {@code | little-endian: ((int) value) << 1 |}; Otherwise
+   * write as 9 bytes: {@code | 0b1 | little-endian 8bytes long |}.
    */
   public int writeTaggedInt64(long value) {
     ensure(writerIndex + 9);
@@ -1219,8 +1219,8 @@ public final class MemoryBuffer {
 
   /**
    * Write unsigned long using fory Tagged(Small long as int) encoding. If long is in [0,
-   * 0x7fffffff], encode as 4 bytes int: | little-endian: ((int) value) << 1 |; Otherwise write as 9
-   * bytes: | 0b1 | little-endian 8bytes long |
+   * 0x7fffffff], encode as 4 bytes int: {@code | little-endian: ((int) value) << 1 |}; Otherwise
+   * write as 9 bytes: {@code | 0b1 | little-endian 8bytes long |}.
    */
   public int writeTaggedUint64(long value) {
     ensure(writerIndex + 9);

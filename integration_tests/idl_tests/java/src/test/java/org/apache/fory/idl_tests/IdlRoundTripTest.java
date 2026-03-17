@@ -50,7 +50,9 @@ import complex_fbs.ScalarPack;
 import complex_fbs.Status;
 import evolving1.Evolving1ForyRegistration;
 import evolving1.EvolvingMessage;
+import evolving1.EvolvingSizeMessage;
 import evolving1.FixedMessage;
+import evolving1.FixedSizeMessage;
 import evolving2.Evolving2ForyRegistration;
 import graph.Edge;
 import graph.Graph;
@@ -225,6 +227,33 @@ public class IdlRoundTripTest {
     } catch (Exception ignored) {
       // Expected failure for non-evolving struct.
     }
+
+    EvolvingSizeMessage evolvingSizeV1 = new EvolvingSizeMessage();
+    evolvingSizeV1.setPayload("payload");
+    FixedSizeMessage fixedSizeV1 = new FixedSizeMessage();
+    fixedSizeV1.setPayload("payload");
+
+    byte[] evolvingSizeBytes = foryV1.serialize(evolvingSizeV1);
+    byte[] fixedSizeBytes = foryV1.serialize(fixedSizeV1);
+    Assert.assertTrue(fixedSizeBytes.length < evolvingSizeBytes.length);
+
+    Object evolvingSizeDecoded = foryV2.deserialize(evolvingSizeBytes);
+    Assert.assertTrue(evolvingSizeDecoded instanceof evolving2.EvolvingSizeMessage);
+    Assert.assertEquals(
+        ((evolving2.EvolvingSizeMessage) evolvingSizeDecoded).getPayload(),
+        evolvingSizeV1.getPayload());
+    Object evolvingSizeRoundTrip = foryV1.deserialize(foryV2.serialize(evolvingSizeDecoded));
+    Assert.assertTrue(evolvingSizeRoundTrip instanceof EvolvingSizeMessage);
+    Assert.assertEquals(evolvingSizeRoundTrip, evolvingSizeV1);
+
+    Object fixedSizeDecoded = foryV2.deserialize(fixedSizeBytes);
+    Assert.assertTrue(fixedSizeDecoded instanceof evolving2.FixedSizeMessage);
+    Assert.assertEquals(
+        ((evolving2.FixedSizeMessage) fixedSizeDecoded).getPayload(),
+        fixedSizeV1.getPayload());
+    Object fixedSizeRoundTrip = foryV1.deserialize(foryV2.serialize(fixedSizeDecoded));
+    Assert.assertTrue(fixedSizeRoundTrip instanceof FixedSizeMessage);
+    Assert.assertEquals(fixedSizeRoundTrip, fixedSizeV1);
   }
 
   @Test

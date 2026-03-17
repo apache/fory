@@ -77,21 +77,3 @@ public enum TypeId : uint
     Float32Array = 55,
     Float64Array = 56,
 }
-
-internal static class TypeIdExtensions
-{
-    public static bool NeedsTypeInfoForField(this TypeId typeId)
-    {
-        return typeId switch
-        {
-            TypeId.Struct or
-                TypeId.CompatibleStruct or
-                TypeId.NamedStruct or
-                TypeId.NamedCompatibleStruct or
-                TypeId.Ext or
-                TypeId.NamedExt or
-                TypeId.Unknown => true,
-            _ => false,
-        };
-    }
-}

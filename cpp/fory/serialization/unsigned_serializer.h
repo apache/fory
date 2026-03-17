@@ -703,6 +703,12 @@ template <> struct Serializer<std::vector<uint8_t>> {
 
   static inline std::vector<uint8_t> read_data(ReadContext &ctx) {
     uint32_t length = ctx.read_var_uint32(ctx.error());
+
+    if (FORY_PREDICT_FALSE(length > ctx.config().max_binary_size)) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return std::vector<uint8_t>();
+    }
+
     if (FORY_PREDICT_FALSE(length > ctx.buffer().remaining_size())) {
       ctx.set_error(
           Error::invalid_data("Invalid length: " + std::to_string(length)));
@@ -798,6 +804,12 @@ template <> struct Serializer<std::vector<uint16_t>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<uint16_t>();
     }
+
+    if (FORY_PREDICT_FALSE(total_bytes > ctx.config().max_binary_size)) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return std::vector<uint16_t>();
+    }
+
     if (total_bytes % sizeof(uint16_t) != 0) {
       ctx.set_error(Error::invalid_data("Invalid length: " +
                                         std::to_string(total_bytes)));
@@ -900,6 +912,12 @@ template <> struct Serializer<std::vector<uint32_t>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<uint32_t>();
     }
+
+    if (FORY_PREDICT_FALSE(total_bytes > ctx.config().max_binary_size)) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return std::vector<uint32_t>();
+    }
+
     if (total_bytes % sizeof(uint32_t) != 0) {
       ctx.set_error(Error::invalid_data("Invalid length: " +
                                         std::to_string(total_bytes)));
@@ -1002,6 +1020,12 @@ template <> struct Serializer<std::vector<uint64_t>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<uint64_t>();
     }
+
+    if (FORY_PREDICT_FALSE(total_bytes > ctx.config().max_binary_size)) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return std::vector<uint64_t>();
+    }
+
     if (total_bytes % sizeof(uint64_t) != 0) {
       ctx.set_error(Error::invalid_data("Invalid length: " +
                                         std::to_string(total_bytes)));

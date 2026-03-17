@@ -60,6 +60,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   namespace = "";
   typeName = "";
   userTypeId = -1;
+  evolving = true;
   options?: TypeInfoOptions;
   _typeId: number;
   nullable: boolean = false;
@@ -129,6 +130,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       'namespace': { writable: false, configurable: false },
       'typeName': { writable: false, configurable: false },
       'userTypeId': { writable: false, configurable: false },
+      'evolving': { writable: false, configurable: false },
       'options': { writable: false, configurable: false },
       '_typeId': { writable: false, configurable: false },
       'nullable': { writable: false, configurable: false },
@@ -170,6 +172,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     result.named = this.named;
     result.namespace = this.namespace;
     result.typeName = this.typeName;
+    result.evolving = this.evolving;
     result.options = { ...this.options };
     result.dynamicTypeId = this.dynamicTypeId;
     result.nullable = this.nullable;
@@ -188,10 +191,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (!fory) {
       throw new Error("fory is not attached")
     }
-    if (internalTypeId === TypeId.NAMED_STRUCT && fory.isCompatible()) {
+    if (internalTypeId === TypeId.NAMED_STRUCT && fory.isCompatible() && this.evolving) {
       return TypeId.NAMED_COMPATIBLE_STRUCT;
     }
-    if (internalTypeId === TypeId.STRUCT && fory.isCompatible()) {
+    if (internalTypeId === TypeId.STRUCT && fory.isCompatible() && this.evolving) {
       return TypeId.COMPATIBLE_STRUCT;
     }
     return this._typeId;
@@ -294,6 +297,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     typeId?: number;
     namespace?: string;
     typeName?: string;
+    evolving?: boolean;
   } | string | number, props?: Record<string, TypeInfo>, {
     withConstructor = false,
   }: {
@@ -302,6 +306,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     let typeId: number | undefined;
     let namespace: string | undefined;
     let typeName: string | undefined;
+    let evolving = true;
     if (typeof nameInfo === "string") {
       typeName = nameInfo;
     } else if (typeof nameInfo === "number") {
@@ -310,6 +315,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       namespace = nameInfo.namespace;
       typeName = nameInfo.typeName;
       typeId = nameInfo.typeId;
+      evolving = nameInfo.evolving ?? true;
     }
     if (typeId !== undefined && typeName !== undefined) {
       throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
@@ -339,6 +345,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       props: props || {},
       withConstructor,
     };
+    typeInfo.evolving = evolving;
     typeInfo.namespace = namespace || "";
     typeInfo.typeName = typeId !== undefined ? "" : typeName!;
     typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
@@ -661,6 +668,7 @@ export const Type = {
     typeId?: number;
     namespace?: string;
     typeName?: string;
+    evolving?: boolean;
   } | string | number, props?: T, {
     withConstructor = false,
   }: {

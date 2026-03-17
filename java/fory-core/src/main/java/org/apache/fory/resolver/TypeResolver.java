@@ -383,8 +383,8 @@ public abstract class TypeResolver {
 
   /**
    * Writes shared class metadata using the meta-share protocol. Protocol: If class already written,
-   * writes (index << 1) | 1 (reference). If new class, writes (index << 1) followed by TypeDef
-   * bytes.
+   * writes {@code (index << 1) | 1} (reference). If new class, writes {@code (index << 1)} followed
+   * by TypeDef bytes.
    *
    * <p>This method is shared between XtypeResolver and ClassResolver.
    */
@@ -1276,7 +1276,7 @@ public abstract class TypeResolver {
   /**
    * Gets the sort key for a field descriptor.
    *
-   * <p>If the field has a {@link ForyField} annotation with id >= 0, returns the id as a string.
+   * <p>If the field has a {@link ForyField} annotation with id &gt;= 0, returns the id as a string.
    * Otherwise, returns the snake_case field name. This ensures fields are sorted by tag ID when
    * configured, matching the fingerprint computation order.
    *

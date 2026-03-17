@@ -17,13 +17,14 @@
 
 import datetime
 import pyfory
+import pytest
 
 from dataclasses import dataclass
 from pyfory.format.infer import infer_schema, infer_field, ForyTypeVisitor
 from pyfory.format import (
     TypeId,
 )
-from typing import List, Dict
+from typing import Dict, List, Tuple
 
 
 @dataclass
@@ -53,8 +54,14 @@ def test_infer_field():
     assert _infer_field("", str).type.id == TypeId.STRING
     assert _infer_field("", bytes).type.id == TypeId.BINARY
     assert _infer_field("", List[str]).type.id == TypeId.LIST
+    assert _infer_field("", Tuple[str, ...]).type.id == TypeId.LIST
+    assert _infer_field("", Tuple[int, int]).type.id == TypeId.LIST
     assert _infer_field("", Dict[str, str]).type.id == TypeId.MAP
     assert _infer_field("", List[Dict[str, str]]).type.id == TypeId.LIST
+    assert _infer_field("", List[Tuple[int, ...]]).type.id == TypeId.LIST
+
+    with pytest.raises(TypeError):
+        _infer_field("", Tuple[str, int])
 
     # Custom class is treated as a struct
     class X:
@@ -87,6 +94,19 @@ def test_type_id():
     assert pyfory.format.infer.get_type_id(str) == TypeId.STRING
     assert pyfory.format.infer.get_type_id(datetime.date) == TypeId.DATE
     assert pyfory.format.infer.get_type_id(datetime.datetime) == TypeId.TIMESTAMP
+
+
+def test_infer_class_schema_with_tuple_fields():
+    @dataclass
+    class TupleFoo:
+        f1: Tuple[str, ...]
+        f2: List[Tuple[int, int]]
+        f3: Dict[str, Tuple[pyfory.int32, ...]]
+
+    schema = infer_schema(TupleFoo)
+    assert schema.field(0).type.id == TypeId.LIST
+    assert schema.field(1).type.id == TypeId.LIST
+    assert schema.field(2).type.id == TypeId.MAP
 
 
 if __name__ == "__main__":

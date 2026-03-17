@@ -61,9 +61,14 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
     return `
       ${this.readTypeInfo()}
-      ${this.read(assignStmt, refState)};
+      fory.incReadDepth();
+      let ${result};
+      ${this.read(v => `${result} = ${v}`, refState)};
+      fory.decReadDepth();
+      ${assignStmt(result)};
     `;
   }
 

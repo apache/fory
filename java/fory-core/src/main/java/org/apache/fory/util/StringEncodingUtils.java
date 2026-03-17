@@ -423,8 +423,8 @@ public class StringEncodingUtils {
   }
 
   /**
-   * Fast scan to check if UTF-8 data fits in Latin1 encoding (all code points <= 0xFF). This is a
-   * read-only pass optimized for cache locality.
+   * Fast scan to check if UTF-8 data fits in Latin1 encoding (all code points {@code <= 0xFF}).
+   * This is a read-only pass optimized for cache locality.
    */
   public static boolean isUTF8WithinLatin1(byte[] src, int offset, int length) {
     final int end = offset + length;

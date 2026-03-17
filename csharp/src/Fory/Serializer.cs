@@ -17,11 +17,6 @@
 
 namespace Apache.Fory;
 
-public interface ICompatibleNoTypeMetaReader<T>
-{
-    T ReadDataCompatibleNoTypeMeta(ReadContext context);
-}
-
 /// <summary>
 /// Base class for custom serializers.
 /// </summary>
@@ -51,11 +46,11 @@ public abstract class Serializer<T>
     public abstract T ReadData(ReadContext context);
 
     /// <summary>
-    /// Writes reference metadata and optional type metadata, then delegates to <see cref="WriteData"/>.
+    /// Writes ref metadata and optional type metadata, then delegates to <see cref="WriteData"/>.
     /// </summary>
     /// <param name="context">Write context.</param>
     /// <param name="value">Value to write.</param>
-    /// <param name="refMode">Reference handling mode.</param>
+    /// <param name="refMode">Ref handling mode.</param>
     /// <param name="writeTypeInfo">Whether type metadata should be written.</param>
     /// <param name="hasGenerics">Whether generic type metadata is present for the current field path.</param>
     public virtual void Write(WriteContext context, in T value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
@@ -66,7 +61,7 @@ public abstract class Serializer<T>
             if (refMode == RefMode.Tracking &&
                 value is object obj)
             {
-                if (context.RefWriter.TryWriteReference(context.Writer, obj))
+                if (context.RefWriter.TryWriteRef(context.Writer, obj))
                 {
                     return;
                 }
@@ -95,46 +90,50 @@ public abstract class Serializer<T>
     }
 
     /// <summary>
-    /// Reads reference metadata and optional type metadata, then delegates to <see cref="ReadData"/>.
+    /// Reads ref metadata and optional type metadata, then delegates to <see cref="ReadData"/>.
     /// </summary>
     /// <param name="context">Read context.</param>
-    /// <param name="refMode">Reference handling mode.</param>
+    /// <param name="refMode">Ref handling mode.</param>
     /// <param name="readTypeInfo">Whether type metadata should be read.</param>
     /// <returns>Decoded value.</returns>
     public virtual T Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
         if (refMode != RefMode.None)
         {
-            sbyte rawFlag = context.Reader.ReadInt8();
-            RefFlag flag = (RefFlag)rawFlag;
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
             switch (flag)
             {
                 case RefFlag.Null:
                     return DefaultValue;
                 case RefFlag.Ref:
                     {
-                        uint refId = context.Reader.ReadVarUInt32();
-                        return context.RefReader.ReadRef<T>(refId);
+                        uint refId = context.RefReader.ReadRefId(context.Reader);
+                        return context.RefReader.GetRef<T>(refId);
                     }
                 case RefFlag.RefValue:
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
-                        context.RefReader.PushPendingReference(reservedRefId);
-                        if (readTypeInfo)
+                        context.SetReservedRefId(reservedRefId);
+                        try
                         {
-                            context.TypeResolver.ReadTypeInfo(this, context);
+                            if (readTypeInfo)
+                            {
+                                context.TypeResolver.ReadTypeInfo(this, context);
+                            }
+
+                            T value = ReadData(context);
+                            context.StoreRef(value);
+                            return value;
                         }
-
-                        T value = ReadData(context);
-
-                        context.RefReader.FinishPendingReferenceIfNeeded(value);
-                        context.RefReader.PopPendingReference();
-                        return value;
+                        finally
+                        {
+                            context.ClearReservedRefId();
+                        }
                     }
                 case RefFlag.NotNullValue:
                     break;
                 default:
-                    throw new RefException($"invalid ref flag {rawFlag}");
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
             }
         }
 

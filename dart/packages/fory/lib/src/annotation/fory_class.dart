@@ -37,10 +37,13 @@ class ForyClass extends ForyObject {
   /// constructor if one exists.
   final bool promiseAcyclic;
 
+  /// Indicates whether the class should use schema evolution metadata in compatible mode.
+  final bool evolving;
+
   /// Creates a ForyClass annotation.
   ///
   /// [promiseAcyclic] - Set to true if the class guarantees no circular references.
-  const ForyClass({this.promiseAcyclic = false});
+  const ForyClass({this.promiseAcyclic = false, this.evolving = true});
 }
 
 /// A convenience constant instance of [ForyClass] with default values.
