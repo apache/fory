@@ -145,20 +145,20 @@ For more detailed benchmarks and methodology, see [SwiftBenchmarks](docs/benchma
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.15.0</version>
+  <version>0.16.0</version>
 </dependency>
 ```
 
-Snapshots are available from `https://repository.apache.org/snapshots/` (version `0.15.0-SNAPSHOT`).
+Snapshots are available from `https://repository.apache.org/snapshots/` (version `0.16.0-SNAPSHOT`).
 
 **Scala**:
 
 ```sbt
 // Scala 2.13
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.15.0"
+libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.16.0"
 
 // Scala 3
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.15.0"
+libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.16.0"
 ```
 
 **Kotlin**:
@@ -167,7 +167,7 @@ libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.15.0"
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.15.0</version>
+  <version>0.16.0</version>
 </dependency>
 ```
 
@@ -184,7 +184,7 @@ pip install pyfory[format]
 
 ```toml
 [dependencies]
-fory = "0.14"
+fory = "0.16"
 ```
 
 **C++**:

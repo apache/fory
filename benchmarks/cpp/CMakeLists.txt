@@ -22,7 +22,7 @@ if(POLICY CMP0169)
 endif()
 
 project(fory_cpp_benchmark
-    VERSION 0.16.0
+    VERSION 0.17.0
     DESCRIPTION "C++ Benchmark comparing Fory, Protobuf, and Msgpack serialization"
     LANGUAGES CXX
 )
