@@ -20,8 +20,8 @@
 #pragma once
 
 #include <cmath>
-#include <string>
 #include <cstdint>
+#include <string>
 #include <type_traits>
 namespace fory {
 
