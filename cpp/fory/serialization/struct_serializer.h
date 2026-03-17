@@ -2073,21 +2073,6 @@ template <> struct is_raw_primitive<double> : std::true_type {};
 template <typename T>
 inline constexpr bool is_raw_primitive_v = is_raw_primitive<T>::value;
 
-// Cast a numeric value V to TargetType. float16_t has no implicit numeric
-// conversions, so route through to_float/from_float at the boundary.
-template <typename TargetType, typename V>
-FORY_ALWAYS_INLINE TargetType primitive_cast(V val) {
-  if constexpr (std::is_same_v<TargetType, V>) {
-    return val;
-  } else if constexpr (std::is_same_v<TargetType, float16_t>) {
-    return float16_t::from_float(static_cast<float>(val));
-  } else if constexpr (std::is_same_v<V, float16_t>) {
-    return static_cast<TargetType>(val.to_float());
-  } else {
-    return static_cast<TargetType>(val);
-  }
-}
-
 /// Read a primitive value based on remote type_id (for compatible mode).
 /// Returns the value as a uint64_t (or int64_t for signed types).
 /// The caller must convert to the correct local type.
@@ -2095,46 +2080,64 @@ template <typename TargetType>
 FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
                                                         uint32_t type_id,
                                                         Error &error) {
+  if constexpr (std::is_same_v<TargetType, float16_t>) {
+    if (static_cast<TypeId>(type_id) == TypeId::FLOAT16) {
+      return ctx.read_f16(error);
+    }
+    return float16_t::from_float(
+        read_primitive_by_type_id<float>(ctx, type_id, error));
+  }
+
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::BOOL:
-    return primitive_cast<TargetType>(ctx.read_uint8(error) != 0);
+    return static_cast<TargetType>(ctx.read_uint8(error) != 0);
   case TypeId::INT8:
-    return primitive_cast<TargetType>(ctx.read_int8(error));
+    return static_cast<TargetType>(ctx.read_int8(error));
   case TypeId::UINT8:
-    return primitive_cast<TargetType>(ctx.read_uint8(error));
+    return static_cast<TargetType>(ctx.read_uint8(error));
   case TypeId::INT16:
-    return primitive_cast<TargetType>(ctx.read_int16(error));
+    return static_cast<TargetType>(ctx.read_int16(error));
   case TypeId::UINT16:
-    return primitive_cast<TargetType>(
+    return static_cast<TargetType>(
         static_cast<uint16_t>(ctx.read_int16(error)));
   case TypeId::INT32:
-    return primitive_cast<TargetType>(ctx.read_int32(error));
+    // INT32 uses fixed encoding
+    return static_cast<TargetType>(ctx.read_int32(error));
   case TypeId::VARINT32:
-    return primitive_cast<TargetType>(ctx.read_varint32(error));
+    // VARINT32 uses varint encoding
+    return static_cast<TargetType>(ctx.read_varint32(error));
   case TypeId::UINT32:
-    return primitive_cast<TargetType>(
+    // UINT32 uses fixed 4-byte encoding
+    return static_cast<TargetType>(
         static_cast<uint32_t>(ctx.read_int32(error)));
   case TypeId::VAR_UINT32:
-    return primitive_cast<TargetType>(ctx.read_var_uint32(error));
+    // VAR_UINT32 uses varint encoding
+    return static_cast<TargetType>(ctx.read_var_uint32(error));
   case TypeId::INT64:
-    return primitive_cast<TargetType>(ctx.read_int64(error));
+    // INT64 uses fixed encoding
+    return static_cast<TargetType>(ctx.read_int64(error));
   case TypeId::VARINT64:
-    return primitive_cast<TargetType>(ctx.read_varint64(error));
+    // VARINT64 uses varint encoding
+    return static_cast<TargetType>(ctx.read_varint64(error));
   case TypeId::TAGGED_INT64:
-    return primitive_cast<TargetType>(ctx.read_tagged_int64(error));
+    // TAGGED_INT64 uses tagged encoding (special hybrid encoding)
+    return static_cast<TargetType>(ctx.read_tagged_int64(error));
   case TypeId::UINT64:
-    return primitive_cast<TargetType>(
+    // UINT64 uses fixed 8-byte encoding
+    return static_cast<TargetType>(
         static_cast<uint64_t>(ctx.read_int64(error)));
   case TypeId::VAR_UINT64:
-    return primitive_cast<TargetType>(ctx.read_var_uint64(error));
+    // VAR_UINT64 uses varint encoding
+    return static_cast<TargetType>(ctx.read_var_uint64(error));
   case TypeId::TAGGED_UINT64:
-    return primitive_cast<TargetType>(ctx.read_tagged_uint64(error));
+    // TAGGED_UINT64 uses tagged encoding (special hybrid encoding)
+    return static_cast<TargetType>(ctx.read_tagged_uint64(error));
   case TypeId::FLOAT16:
-    return primitive_cast<TargetType>(ctx.read_f16(error));
+    return static_cast<TargetType>(ctx.read_f16(error).to_float());
   case TypeId::FLOAT32:
-    return primitive_cast<TargetType>(ctx.read_float(error));
+    return static_cast<TargetType>(ctx.read_float(error));
   case TypeId::FLOAT64:
-    return primitive_cast<TargetType>(ctx.read_double(error));
+    return static_cast<TargetType>(ctx.read_double(error));
   default:
     error = Error::type_error("Unsupported type_id for primitive read: " +
                               std::to_string(type_id));
