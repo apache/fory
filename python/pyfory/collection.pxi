@@ -128,6 +128,7 @@ cdef class CollectionSerializer(Serializer):
         cdef int8_t collect_flag
         cdef TypeInfo elem_type_info = self.write_header(buffer, value, &collect_flag)
         cdef elem_type = elem_type_info.cls
+        cdef Serializer elem_serializer = self.elem_serializer if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) != 0 and self.elem_serializer is not None else elem_type_info.serializer
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef TypeResolver type_resolver = self.type_resolver
         cdef PyObject **items = fory_sequence_get_items(value)
@@ -143,13 +144,13 @@ cdef class CollectionSerializer(Serializer):
                 if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._write_primitive_fastpath(buffer, value, type_id, items, size)
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._write_same_type_no_ref(buffer, value, elem_type_info)
+                    self._write_same_type_no_ref(buffer, value, elem_serializer)
                 else:
-                    self._write_same_type_ref(buffer, value, elem_type_info)
+                    self._write_same_type_ref(buffer, value, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
-                self._write_same_type_ref(buffer, value, elem_type_info)
+                self._write_same_type_ref(buffer, value, elem_serializer)
             else:
-                self._write_same_type_has_null(buffer, value, elem_type_info)
+                self._write_same_type_has_null(buffer, value, elem_serializer)
         else:
             # Check tracking_ref and has_null flags for different types writing
             tracking_ref = (collect_flag & COLL_TRACKING_REF) != 0
@@ -253,7 +254,7 @@ cdef class CollectionSerializer(Serializer):
     cdef inline _read_primitive_fastpath(self, Buffer buffer, int64_t len_, object collection_, uint8_t type_id):
         Fory_PyPrimitiveCollectionReadFromBuffer(collection_, &buffer.c_buffer, len_, type_id)
 
-    cpdef _write_same_type_no_ref(self, Buffer buffer, value, TypeInfo typeinfo):
+    cpdef _write_same_type_no_ref(self, Buffer buffer, value, Serializer serializer):
         cdef PyObject **items = fory_sequence_get_items(value)
         cdef Py_ssize_t i
         cdef Py_ssize_t size
@@ -262,18 +263,18 @@ cdef class CollectionSerializer(Serializer):
             size = Py_SIZE(value)
             for i in range(size):
                 s = <object> items[i]
-                typeinfo.serializer.write(buffer, s)
+                serializer.write(buffer, s)
             return
         for s in value:
-            typeinfo.serializer.write(buffer, s)
+            serializer.write(buffer, s)
 
-    cpdef _read_same_type_no_ref(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
+    cpdef _read_same_type_no_ref(self, Buffer buffer, int64_t len_, object collection_, Serializer serializer):
         cdef PyObject **items = fory_sequence_get_items(collection_)
         cdef c_bool is_list = type(collection_) is list
         self.fory.inc_depth()
         if items != NULL:
             for i in range(len_):
-                obj = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
+                obj = self.fory.read_no_ref(buffer, serializer=serializer)
                 Py_INCREF(obj)
                 if is_list:
                     PyList_SET_ITEM(collection_, i, obj)
@@ -281,11 +282,11 @@ cdef class CollectionSerializer(Serializer):
                     PyTuple_SET_ITEM(collection_, i, obj)
         else:
             for i in range(len_):
-                obj = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
+                obj = self.fory.read_no_ref(buffer, serializer=serializer)
                 self._add_element(collection_, i, obj)
         self.fory.dec_depth()
 
-    cpdef _write_same_type_has_null(self, Buffer buffer, value, TypeInfo typeinfo):
+    cpdef _write_same_type_has_null(self, Buffer buffer, value, Serializer serializer):
         cdef PyObject **items = fory_sequence_get_items(value)
         cdef PyObject *item
         cdef Py_ssize_t i
@@ -300,16 +301,16 @@ cdef class CollectionSerializer(Serializer):
                 else:
                     buffer.write_int8(NOT_NULL_VALUE_FLAG)
                     s = <object> item
-                    typeinfo.serializer.write(buffer, s)
+                    serializer.write(buffer, s)
             return
         for s in value:
             if s is None:
                 buffer.write_int8(NULL_FLAG)
             else:
                 buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                typeinfo.serializer.write(buffer, s)
+                serializer.write(buffer, s)
 
-    cpdef _read_same_type_has_null(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
+    cpdef _read_same_type_has_null(self, Buffer buffer, int64_t len_, object collection_, Serializer serializer):
         cdef int8_t flag
         cdef PyObject **items = fory_sequence_get_items(collection_)
         cdef c_bool is_list = type(collection_) is list
@@ -320,7 +321,7 @@ cdef class CollectionSerializer(Serializer):
                 if flag == NULL_FLAG:
                     obj = None
                 else:
-                    obj = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
+                    obj = self.fory.read_no_ref(buffer, serializer=serializer)
                 Py_INCREF(obj)
                 if is_list:
                     PyList_SET_ITEM(collection_, i, obj)
@@ -335,11 +336,11 @@ cdef class CollectionSerializer(Serializer):
                     self._add_element(
                         collection_,
                         i,
-                        self.fory.read_no_ref(buffer, serializer=typeinfo.serializer),
+                        self.fory.read_no_ref(buffer, serializer=serializer),
                     )
         self.fory.dec_depth()
 
-    cpdef _write_same_type_ref(self, Buffer buffer, value, TypeInfo typeinfo):
+    cpdef _write_same_type_ref(self, Buffer buffer, value, Serializer serializer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef PyObject **items = fory_sequence_get_items(value)
         cdef Py_ssize_t i
@@ -350,13 +351,13 @@ cdef class CollectionSerializer(Serializer):
             for i in range(size):
                 s = <object> items[i]
                 if not ref_resolver.write_ref_or_null(buffer, s):
-                    typeinfo.serializer.write(buffer, s)
+                    serializer.write(buffer, s)
             return
         for s in value:
             if not ref_resolver.write_ref_or_null(buffer, s):
-                typeinfo.serializer.write(buffer, s)
+                serializer.write(buffer, s)
 
-    cpdef _read_same_type_ref(self, Buffer buffer, int64_t len_, object collection_, TypeInfo typeinfo):
+    cpdef _read_same_type_ref(self, Buffer buffer, int64_t len_, object collection_, Serializer serializer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef PyObject **items = fory_sequence_get_items(collection_)
         cdef c_bool is_list = type(collection_) is list
@@ -367,7 +368,7 @@ cdef class CollectionSerializer(Serializer):
                 if ref_id < NOT_NULL_VALUE_FLAG:
                     obj = ref_resolver.get_read_object()
                 else:
-                    obj = typeinfo.serializer.read(buffer)
+                    obj = serializer.read(buffer)
                     ref_resolver.set_read_object(ref_id, obj)
                 Py_INCREF(obj)
                 if is_list:
@@ -380,7 +381,7 @@ cdef class CollectionSerializer(Serializer):
                 if ref_id < NOT_NULL_VALUE_FLAG:
                     obj = ref_resolver.get_read_object()
                 else:
-                    obj = typeinfo.serializer.read(buffer)
+                    obj = serializer.read(buffer)
                     ref_resolver.set_read_object(ref_id, obj)
                 self._add_element(collection_, i, obj)
         self.fory.dec_depth()
@@ -406,24 +407,27 @@ cdef class ListSerializer(CollectionSerializer):
         cdef c_bool tracking_ref
         cdef c_bool has_null
         cdef int8_t head_flag
+        cdef Serializer elem_serializer = self.elem_serializer
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_type_info(buffer)
+                elem_serializer = typeinfo.serializer
             else:
                 typeinfo = self.elem_type_info
+                elem_serializer = self.elem_serializer
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(buffer, len_, list_, type_id)
                     return list_
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._read_same_type_no_ref(buffer, len_, list_, typeinfo)
+                    self._read_same_type_no_ref(buffer, len_, list_, elem_serializer)
                 else:
-                    self._read_same_type_ref(buffer, len_, list_, typeinfo)
+                    self._read_same_type_ref(buffer, len_, list_, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
-                self._read_same_type_ref(buffer, len_, list_, typeinfo)
+                self._read_same_type_ref(buffer, len_, list_, elem_serializer)
             else:
-                self._read_same_type_has_null(buffer, len_, list_, typeinfo)
+                self._read_same_type_has_null(buffer, len_, list_, elem_serializer)
         else:
             self.fory.inc_depth()
             # Check tracking_ref and has_null flags for different types handling
@@ -508,24 +512,27 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef c_bool tracking_ref
         cdef c_bool has_null
         cdef int8_t head_flag
+        cdef Serializer elem_serializer = self.elem_serializer
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_type_info(buffer)
+                elem_serializer = typeinfo.serializer
             else:
                 typeinfo = self.elem_type_info
+                elem_serializer = self.elem_serializer
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(buffer, len_, tuple_, type_id)
                     return tuple_
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._read_same_type_no_ref(buffer, len_, tuple_, typeinfo)
+                    self._read_same_type_no_ref(buffer, len_, tuple_, elem_serializer)
                 else:
-                    self._read_same_type_ref(buffer, len_, tuple_, typeinfo)
+                    self._read_same_type_ref(buffer, len_, tuple_, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
-                self._read_same_type_ref(buffer, len_, tuple_, typeinfo)
+                self._read_same_type_ref(buffer, len_, tuple_, elem_serializer)
             else:
-                self._read_same_type_has_null(buffer, len_, tuple_, typeinfo)
+                self._read_same_type_has_null(buffer, len_, tuple_, elem_serializer)
         else:
             self.fory.inc_depth()
             # Check tracking_ref and has_null flags for different types handling
@@ -593,24 +600,27 @@ cdef class SetSerializer(CollectionSerializer):
         cdef c_bool tracking_ref
         cdef c_bool has_null
         cdef int8_t head_flag
+        cdef Serializer elem_serializer = self.elem_serializer
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_type_info(buffer)
+                elem_serializer = typeinfo.serializer
             else:
                 typeinfo = self.elem_type_info
+                elem_serializer = self.elem_serializer
             if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if Fory_CanUsePrimitiveCollectionFastpath(type_id):
                     self._read_primitive_fastpath(buffer, len_, instance, type_id)
                     return instance
                 elif (collect_flag & COLL_TRACKING_REF) == 0:
-                    self._read_same_type_no_ref(buffer, len_, instance, typeinfo)
+                    self._read_same_type_no_ref(buffer, len_, instance, elem_serializer)
                 else:
-                    self._read_same_type_ref(buffer, len_, instance, typeinfo)
+                    self._read_same_type_ref(buffer, len_, instance, elem_serializer)
             elif (collect_flag & COLL_TRACKING_REF) != 0:
-                self._read_same_type_ref(buffer, len_, instance, typeinfo)
+                self._read_same_type_ref(buffer, len_, instance, elem_serializer)
             else:
-                self._read_same_type_has_null(buffer, len_, instance, typeinfo)
+                self._read_same_type_has_null(buffer, len_, instance, elem_serializer)
         else:
             self.fory.inc_depth()
             # Check tracking_ref and has_null flags for different types handling

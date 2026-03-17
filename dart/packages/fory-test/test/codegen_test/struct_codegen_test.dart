@@ -31,6 +31,7 @@ void main() {
       TypeSpec spec = TypeSpec(
         ComplexObject2,
         true,
+        true,
         false,
         [
           FieldSpec(

@@ -64,7 +64,8 @@ export class AnyHelper {
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();
           const named = `${ns}$${typeName}`;
-          serializer = tryUpdateSerializer(fory.typeResolver.getSerializerByName(named), typeMeta);
+          const namedSerializer = fory.typeResolver.getSerializerByName(named);
+          serializer = tryUpdateSerializer(namedSerializer, typeMeta);
         } else {
           const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
           const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);

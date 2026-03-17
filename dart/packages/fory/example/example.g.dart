@@ -29,6 +29,7 @@ final $Person = TypeSpec(
   Person,
   false,
   true,
+  true,
   [
     FieldSpec(
       'age',

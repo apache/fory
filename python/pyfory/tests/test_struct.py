@@ -19,7 +19,7 @@ import dataclasses
 from dataclasses import dataclass
 import datetime
 import enum
-from typing import Dict, Any, List, Set, Optional
+from typing import Dict, Any, List, Set, Optional, Tuple
 
 import pytest
 import typing
@@ -143,6 +143,25 @@ class DataClassObject:
 @dataclass
 class BoolCoercionObject:
     b: bool
+
+
+@dataclass(frozen=True)
+class TupleFieldObject:
+    bar: Tuple[str, int]
+
+
+@dataclass(frozen=True)
+class XlangTupleFieldObject:
+    bar: Tuple[str, int]
+
+
+@dataclass(frozen=True)
+class XlangNestedTupleObject:
+    tuple_field: Tuple[List[int], Dict[str, int]]
+    list_of_tuples: List[Tuple[str, int]]
+    map_of_tuples: Dict[str, Tuple[str, int]]
+    set_of_tuples: Set[Tuple[str, int]]
+    tuple_of_tuples: Tuple[Tuple[str, int], Tuple[str, int]]
 
 
 def test_sort_fields():
@@ -289,6 +308,44 @@ def test_data_class_serializer_xlang():
     assert obj_deserialized_none == obj_with_none_complex
 
 
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_dataclass_with_typed_tuple_field(track_ref):
+    fory = Fory(xlang=False, ref=track_ref, strict=False)
+    obj = TupleFieldObject(bar=("a", 1))
+    assert ser_de(fory, obj) == obj
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_xlang_dataclass_tuple_field(track_ref):
+    fory = Fory(xlang=True, ref=track_ref, strict=False)
+    fory.register_type(XlangTupleFieldObject, typename="example.XlangTupleFieldObject")
+    obj = XlangTupleFieldObject(bar=("a", 1))
+    result = ser_de(fory, obj)
+    assert result == obj
+    assert isinstance(result.bar, tuple)
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_xlang_nested_tuple_container_fields(track_ref):
+    fory = Fory(xlang=True, ref=track_ref, strict=False)
+    fory.register_type(XlangNestedTupleObject, typename="example.XlangNestedTupleObject")
+    obj = XlangNestedTupleObject(
+        tuple_field=([1, 2], {"a": 1, "b": 2}),
+        list_of_tuples=[("a", 1), ("b", 2)],
+        map_of_tuples={"left": ("c", 3), "right": ("d", 4)},
+        set_of_tuples={("e", 5), ("f", 6)},
+        tuple_of_tuples=(("g", 7), ("h", 8)),
+    )
+    result = ser_de(fory, obj)
+    assert result == obj
+    assert isinstance(result.tuple_field, tuple)
+    assert all(isinstance(value, tuple) for value in result.list_of_tuples)
+    assert all(isinstance(value, tuple) for value in result.map_of_tuples.values())
+    assert all(isinstance(value, tuple) for value in result.set_of_tuples)
+    assert isinstance(result.tuple_of_tuples, tuple)
+    assert all(isinstance(value, tuple) for value in result.tuple_of_tuples)
+
+
 def test_struct_evolving_override():
     @pyfory.dataclass
     class EvolvingStruct:
@@ -305,6 +362,15 @@ def test_struct_evolving_override():
     fixed_info = fory.type_resolver.get_type_info(FixedStruct)
     assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
     assert fixed_info.type_id == TypeId.NAMED_STRUCT
+
+    evolving = EvolvingStruct(f1=123)
+    fixed = FixedStruct(f1=123)
+    evolving_bytes = fory.serialize(evolving)
+    fixed_bytes = fory.serialize(fixed)
+
+    assert len(fixed_bytes) < len(evolving_bytes)
+    assert fory.deserialize(evolving_bytes) == evolving
+    assert fory.deserialize(fixed_bytes) == fixed
 
 
 def test_data_class_serializer_xlang_serializer():

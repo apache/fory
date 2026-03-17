@@ -103,10 +103,11 @@ examples/cpp/cmake_example/build
 **/benchmark_*.png
 **/results/
 benchmarks/**/report/
-ignored/**
+**/ignored/**
 ci-logs/**
 **/*.log
 swift/.build
+.build-*
 integration_tests/idl_tests/swift/.build
 integration_tests/idl_tests/swift/idl_package/.build
 
@@ -118,5 +119,6 @@ csharp/tests/Fory.Tests/bin/
 csharp/tests/Fory.Tests/obj/
 csharp/tests/Fory.XlangPeer/bin/
 csharp/tests/Fory.XlangPeer/obj/
+csharp/artifacts/
 
 tasks/

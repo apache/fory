@@ -83,7 +83,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           ${embedGenerator.readRefWithoutTypeInfo(assignStmt)}
         `;
       } else {
-        stmt = embedGenerator.read(assignStmt, "false");
+        stmt = embedGenerator.readWithDepth(assignStmt, "false");
       }
     } else {
       if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
@@ -207,13 +207,18 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
+    const result = this.scope.uniqueName("result");
     return `
       ${this.readTypeInfo()}
+      fory.incReadDepth();
+      let ${result};
       if (${this.metaChangedSerializer} !== null) {
-        ${assignStmt(`${this.metaChangedSerializer}.read(${refState})`)}
+        ${result} = ${this.metaChangedSerializer}.read(${refState});
       } else {
-        ${this.read(assignStmt, refState)};
+        ${this.read(v => `${result} = ${v}`, refState)};
       }
+      fory.decReadDepth();
+      ${assignStmt(result)};
     `;
   }
 
@@ -331,17 +336,19 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         }
         break;
       case TypeId.NAMED_STRUCT:
-        if (!this.builder.fory.isCompatible()) {
-          const typeInfo = this.typeInfo;
-          const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
-          const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
-          typeMeta = `
-            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
-            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
-          `;
-        } else {
-          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+        {
+          if (!this.builder.fory.isCompatible()) {
+            const typeInfo = this.typeInfo;
+            const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
+            const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
+            typeMeta = `
+              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
+              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
+            `;
+          } else {
+            const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
+            typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+          }
         }
         break;
       default:

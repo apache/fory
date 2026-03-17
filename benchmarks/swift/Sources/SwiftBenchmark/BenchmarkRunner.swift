@@ -68,7 +68,7 @@ final class BenchmarkSuite {
 
     init(config: BenchmarkConfig) {
         self.config = config
-        self.fory = Fory(xlang: false, trackRef: false, compatible: false)
+        self.fory = Fory(xlang: false, trackRef: false, compatible: true)
         registerTypes()
     }
 
@@ -129,11 +129,9 @@ final class BenchmarkSuite {
         fory.register(Media.self, id: 3)
         fory.register(Image.self, id: 4)
         fory.register(MediaContent.self, id: 5)
-        fory.register(Player.self, id: 6)
-        fory.register(Size.self, id: 7)
-        fory.register(StructList.self, id: 8)
-        fory.register(SampleList.self, id: 9)
-        fory.register(MediaContentList.self, id: 10)
+        fory.register(StructList.self, id: 6)
+        fory.register(SampleList.self, id: 7)
+        fory.register(MediaContentList.self, id: 8)
     }
 
     private func shouldRun(_ dataKind: DataKind, _ serializer: SerializerKind) -> Bool {

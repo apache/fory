@@ -73,7 +73,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.4</version>
         <configuration>
           <argLine>--add-modules=jdk.incubator.vector</argLine>
         </configuration>
@@ -83,6 +82,8 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
         <configuration>
+          <!-- Turn this on once https://github.com/apache/maven-javadoc-plugin/issues/1310 is resolved -->
+          <failOnWarnings>false</failOnWarnings>
           <additionalOptions>
             <additionalOption>--add-modules=jdk.incubator.vector</additionalOption>
           </additionalOptions>

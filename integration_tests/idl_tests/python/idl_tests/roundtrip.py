@@ -200,6 +200,24 @@ def local_roundtrip_evolving() -> None:
     fixed_v1_round = fory_v1.deserialize(round_fixed)
     assert fixed_v1_round != fixed_v1
 
+    evolving_size_v1 = evolving1.EvolvingSizeMessage(payload="payload")
+    fixed_size_v1 = evolving1.FixedSizeMessage(payload="payload")
+    evolving_size_bytes = fory_v1.serialize(evolving_size_v1)
+    fixed_size_bytes = fory_v1.serialize(fixed_size_v1)
+    assert len(fixed_size_bytes) < len(evolving_size_bytes)
+
+    evolving_size_v2 = fory_v2.deserialize(evolving_size_bytes)
+    assert isinstance(evolving_size_v2, evolving2.EvolvingSizeMessage)
+    assert evolving_size_v2.payload == evolving_size_v1.payload
+    evolving_size_v1_round = fory_v1.deserialize(fory_v2.serialize(evolving_size_v2))
+    assert evolving_size_v1_round == evolving_size_v1
+
+    fixed_size_v2 = fory_v2.deserialize(fixed_size_bytes)
+    assert isinstance(fixed_size_v2, evolving2.FixedSizeMessage)
+    assert fixed_size_v2.payload == fixed_size_v1.payload
+    fixed_size_v1_round = fory_v1.deserialize(fory_v2.serialize(fixed_size_v2))
+    assert fixed_size_v1_round == fixed_size_v1
+
 
 def build_primitive_types() -> "complex_pb.PrimitiveTypes":
     contact = complex_pb.PrimitiveTypes.Contact.email("alice@example.com")

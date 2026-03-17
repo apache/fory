@@ -623,6 +623,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 
 - **Performance First**: Never introduce code that reduces performance without explicit justification
 - **Benchmark Required After Perf Optimizations**: For every code change expected to improve performance, run the relevant benchmark immediately after applying the change and report the measured results (command + before/after numbers) in your response/PR.
+- **Performance Trace Log**: For every performance-optimization round, append the hypothesis, code change, benchmark command, before/after numbers, and keep/revert decision to `tasks/perf_optimization_rounds.md` before moving to the next round.
 - **Zero-Copy**: Leverage zero-copy techniques when possible
 - **JIT Compilation**: Consider JIT compilation opportunities
 - **Memory Layout**: Optimize for cache-friendly memory access patterns
