@@ -89,7 +89,7 @@ module(
 
 bazel_dep(name = "rules_cc", version = "0.1.1")
 
-bazel_dep(name = "fory", version = "0.15.0")
+bazel_dep(name = "fory", version = "0.16.0")
 git_override(
     module_name = "fory",
     remote = "https://github.com/apache/fory.git",
@@ -117,7 +117,7 @@ bazel run //:my_app
 For local development, you can use `local_path_override` instead:
 
 ```bazel
-bazel_dep(name = "fory", version = "0.15.0")
+bazel_dep(name = "fory", version = "0.16.0")
 local_path_override(
     module_name = "fory",
     path = "/path/to/fory",

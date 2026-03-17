@@ -48,7 +48,7 @@ See [Java Features](../java/index.md#features) for complete feature list.
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.15.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.16.0"
 ```
 
 ## Quick Start
