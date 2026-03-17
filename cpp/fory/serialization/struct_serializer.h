@@ -2080,14 +2080,7 @@ template <typename TargetType>
 FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
                                                         uint32_t type_id,
                                                         Error &error) {
-  if constexpr (std::is_same_v<TargetType, float16_t>) {
-    if (static_cast<TypeId>(type_id) == TypeId::FLOAT16) {
-      return ctx.read_f16(error);
-    }
-    return float16_t::from_float(
-        read_primitive_by_type_id<float>(ctx, type_id, error));
-  }
-
+  // Read based on remote type_id encoding, then convert to TargetType
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::BOOL:
     return static_cast<TargetType>(ctx.read_uint8(error) != 0);
@@ -2143,6 +2136,16 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
                               std::to_string(type_id));
     return TargetType{};
   }
+}
+
+template <>
+FORY_ALWAYS_INLINE float16_t read_primitive_by_type_id<float16_t>(
+    ReadContext &ctx, uint32_t type_id, Error &error) {
+  if (static_cast<TypeId>(type_id) == TypeId::FLOAT16) {
+    return ctx.read_f16(error);
+  }
+  return float16_t::from_float(
+      read_primitive_by_type_id<float>(ctx, type_id, error));
 }
 
 /// Helper to read a primitive field directly using Error* pattern.
