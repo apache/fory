@@ -1245,104 +1245,104 @@ TEST(Float16SerializerTest, WireGoldenOnePointZero) {
 // ---- Comparison static methods ----
 
 TEST(Float16CompareTest, EqualBasic) {
-    // Same value
-    EXPECT_TRUE(float16_t::equal(H(kOne), H(kOne)));
-    // +0 == -0
-    EXPECT_TRUE(float16_t::equal(H(kPosZero), H(kNegZero)));
-    // NaN != NaN
-    EXPECT_FALSE(float16_t::equal(H(kQNaN), H(kQNaN)));
-    // NaN != any finite
-    EXPECT_FALSE(float16_t::equal(H(kQNaN), H(kOne)));
-    // 1.0 != -1.0
-    EXPECT_FALSE(float16_t::equal(H(kOne), H(kNegOne)));
-    // +Inf == +Inf
-    EXPECT_TRUE(float16_t::equal(H(kPosInf), H(kPosInf)));
-    // +Inf != -Inf
-    EXPECT_FALSE(float16_t::equal(H(kPosInf), H(kNegInf)));
+  // Same value
+  EXPECT_TRUE(float16_t::equal(H(kOne), H(kOne)));
+  // +0 == -0
+  EXPECT_TRUE(float16_t::equal(H(kPosZero), H(kNegZero)));
+  // NaN != NaN
+  EXPECT_FALSE(float16_t::equal(H(kQNaN), H(kQNaN)));
+  // NaN != any finite
+  EXPECT_FALSE(float16_t::equal(H(kQNaN), H(kOne)));
+  // 1.0 != -1.0
+  EXPECT_FALSE(float16_t::equal(H(kOne), H(kNegOne)));
+  // +Inf == +Inf
+  EXPECT_TRUE(float16_t::equal(H(kPosInf), H(kPosInf)));
+  // +Inf != -Inf
+  EXPECT_FALSE(float16_t::equal(H(kPosInf), H(kNegInf)));
 }
 
 TEST(Float16CompareTest, LessBasic) {
-    // 1.0 < 2.0
-    EXPECT_TRUE(float16_t::less(H(kOne), H(0x4000u)));
-    // 2.0 < 1.0 is false
-    EXPECT_FALSE(float16_t::less(H(0x4000u), H(kOne)));
-    // equal is not less
-    EXPECT_FALSE(float16_t::less(H(kOne), H(kOne)));
-    // -1.0 < 1.0
-    EXPECT_TRUE(float16_t::less(H(kNegOne), H(kOne)));
-    // -2.0 < -1.0
-    EXPECT_TRUE(float16_t::less(H(float16_t::from_float(-2.0f).to_bits()),
-                                H(kNegOne)));
-    // -Inf < any finite
-    EXPECT_TRUE(float16_t::less(H(kNegInf), H(kOne)));
-    // finite < +Inf
-    EXPECT_TRUE(float16_t::less(H(kOne), H(kPosInf)));
-    // NaN operand always false
-    EXPECT_FALSE(float16_t::less(H(kQNaN), H(kOne)));
-    EXPECT_FALSE(float16_t::less(H(kOne), H(kQNaN)));
-    // -0 < +0 is false (+0 == -0)
-    EXPECT_FALSE(float16_t::less(H(kNegZero), H(kPosZero)));
-    EXPECT_FALSE(float16_t::less(H(kPosZero), H(kNegZero)));
+  // 1.0 < 2.0
+  EXPECT_TRUE(float16_t::less(H(kOne), H(0x4000u)));
+  // 2.0 < 1.0 is false
+  EXPECT_FALSE(float16_t::less(H(0x4000u), H(kOne)));
+  // equal is not less
+  EXPECT_FALSE(float16_t::less(H(kOne), H(kOne)));
+  // -1.0 < 1.0
+  EXPECT_TRUE(float16_t::less(H(kNegOne), H(kOne)));
+  // -2.0 < -1.0
+  EXPECT_TRUE(
+      float16_t::less(H(float16_t::from_float(-2.0f).to_bits()), H(kNegOne)));
+  // -Inf < any finite
+  EXPECT_TRUE(float16_t::less(H(kNegInf), H(kOne)));
+  // finite < +Inf
+  EXPECT_TRUE(float16_t::less(H(kOne), H(kPosInf)));
+  // NaN operand always false
+  EXPECT_FALSE(float16_t::less(H(kQNaN), H(kOne)));
+  EXPECT_FALSE(float16_t::less(H(kOne), H(kQNaN)));
+  // -0 < +0 is false (+0 == -0)
+  EXPECT_FALSE(float16_t::less(H(kNegZero), H(kPosZero)));
+  EXPECT_FALSE(float16_t::less(H(kPosZero), H(kNegZero)));
 }
 
 TEST(Float16CompareTest, LessEqBasic) {
-    EXPECT_TRUE(float16_t::less_eq(H(kOne), H(kOne)));
-    EXPECT_TRUE(float16_t::less_eq(H(kOne), H(0x4000u)));
-    EXPECT_FALSE(float16_t::less_eq(H(0x4000u), H(kOne)));
-    EXPECT_FALSE(float16_t::less_eq(H(kQNaN), H(kOne)));
-    // +0 <= -0
-    EXPECT_TRUE(float16_t::less_eq(H(kPosZero), H(kNegZero)));
+  EXPECT_TRUE(float16_t::less_eq(H(kOne), H(kOne)));
+  EXPECT_TRUE(float16_t::less_eq(H(kOne), H(0x4000u)));
+  EXPECT_FALSE(float16_t::less_eq(H(0x4000u), H(kOne)));
+  EXPECT_FALSE(float16_t::less_eq(H(kQNaN), H(kOne)));
+  // +0 <= -0
+  EXPECT_TRUE(float16_t::less_eq(H(kPosZero), H(kNegZero)));
 }
 
 TEST(Float16CompareTest, GreaterAndGreaterEq) {
-    EXPECT_TRUE(float16_t::greater(H(0x4000u), H(kOne)));
-    EXPECT_FALSE(float16_t::greater(H(kOne), H(kOne)));
-    EXPECT_FALSE(float16_t::greater(H(kQNaN), H(kOne)));
-    EXPECT_TRUE(float16_t::greater_eq(H(kOne), H(kOne)));
-    EXPECT_TRUE(float16_t::greater_eq(H(0x4000u), H(kOne)));
-    EXPECT_FALSE(float16_t::greater_eq(H(kQNaN), H(kOne)));
+  EXPECT_TRUE(float16_t::greater(H(0x4000u), H(kOne)));
+  EXPECT_FALSE(float16_t::greater(H(kOne), H(kOne)));
+  EXPECT_FALSE(float16_t::greater(H(kQNaN), H(kOne)));
+  EXPECT_TRUE(float16_t::greater_eq(H(kOne), H(kOne)));
+  EXPECT_TRUE(float16_t::greater_eq(H(0x4000u), H(kOne)));
+  EXPECT_FALSE(float16_t::greater_eq(H(kQNaN), H(kOne)));
 }
 
 TEST(Float16CompareTest, CompareReturnValue) {
-    EXPECT_EQ(float16_t::compare(H(kOne), H(kOne)), 0);
-    EXPECT_EQ(float16_t::compare(H(kOne), H(0x4000u)), -1);
-    EXPECT_EQ(float16_t::compare(H(0x4000u), H(kOne)), 1);
-    // NaN unordered → 0
-    EXPECT_EQ(float16_t::compare(H(kQNaN), H(kOne)), 0);
-    EXPECT_EQ(float16_t::compare(H(kOne), H(kQNaN)), 0);
-    // +0 vs -0 → 0
-    EXPECT_EQ(float16_t::compare(H(kPosZero), H(kNegZero)), 0);
+  EXPECT_EQ(float16_t::compare(H(kOne), H(kOne)), 0);
+  EXPECT_EQ(float16_t::compare(H(kOne), H(0x4000u)), -1);
+  EXPECT_EQ(float16_t::compare(H(0x4000u), H(kOne)), 1);
+  // NaN unordered → 0
+  EXPECT_EQ(float16_t::compare(H(kQNaN), H(kOne)), 0);
+  EXPECT_EQ(float16_t::compare(H(kOne), H(kQNaN)), 0);
+  // +0 vs -0 → 0
+  EXPECT_EQ(float16_t::compare(H(kPosZero), H(kNegZero)), 0);
 }
 
 TEST(Float16CompareTest, OperatorOverloads) {
-    const float16_t one = H(kOne);
-    const float16_t two = H(0x4000u);
-    const float16_t nan = H(kQNaN);
+  const float16_t one = H(kOne);
+  const float16_t two = H(0x4000u);
+  const float16_t nan = H(kQNaN);
 
-    EXPECT_TRUE(one == one);
-    EXPECT_FALSE(one == two);
-    EXPECT_TRUE(one != two);
-    EXPECT_FALSE(one != one);
-    EXPECT_TRUE(one < two);
-    EXPECT_FALSE(two < one);
-    EXPECT_TRUE(one <= one);
-    EXPECT_TRUE(one <= two);
-    EXPECT_FALSE(two <= one);
-    EXPECT_TRUE(two > one);
-    EXPECT_FALSE(one > two);
-    EXPECT_TRUE(two >= one);
-    EXPECT_TRUE(one >= one);
-    EXPECT_FALSE(one >= two);
-    // NaN comparisons (all false except !=)
-    EXPECT_FALSE(nan == one);
-    EXPECT_TRUE(nan != one);
-    EXPECT_FALSE(nan < one);
-    EXPECT_FALSE(nan <= one);
-    EXPECT_FALSE(nan > one);
-    EXPECT_FALSE(nan >= one);
-    // +0 == -0
-    EXPECT_TRUE(H(kPosZero) == H(kNegZero));
-    EXPECT_FALSE(H(kPosZero) != H(kNegZero));
+  EXPECT_TRUE(one == one);
+  EXPECT_FALSE(one == two);
+  EXPECT_TRUE(one != two);
+  EXPECT_FALSE(one != one);
+  EXPECT_TRUE(one < two);
+  EXPECT_FALSE(two < one);
+  EXPECT_TRUE(one <= one);
+  EXPECT_TRUE(one <= two);
+  EXPECT_FALSE(two <= one);
+  EXPECT_TRUE(two > one);
+  EXPECT_FALSE(one > two);
+  EXPECT_TRUE(two >= one);
+  EXPECT_TRUE(one >= one);
+  EXPECT_FALSE(one >= two);
+  // NaN comparisons (all false except !=)
+  EXPECT_FALSE(nan == one);
+  EXPECT_TRUE(nan != one);
+  EXPECT_FALSE(nan < one);
+  EXPECT_FALSE(nan <= one);
+  EXPECT_FALSE(nan > one);
+  EXPECT_FALSE(nan >= one);
+  // +0 == -0
+  EXPECT_TRUE(H(kPosZero) == H(kNegZero));
+  EXPECT_FALSE(H(kPosZero) != H(kNegZero));
 }
 
 } // namespace
