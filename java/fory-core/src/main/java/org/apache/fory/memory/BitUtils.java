@@ -30,8 +30,8 @@ public class BitUtils {
   /**
    * Sets the bit at the specified index to {@code true}.
    *
-   * <p>Every byte is set form right to left(the least significant -> the most significant): 1L <<
-   * bitIndex
+   * <p>Every byte is set from right to left(the least significant → the most significant): {@code
+   * 1L << bitIndex}.
    */
   public static void set(MemoryBuffer bitmapBuffer, int baseOffset, int index) {
     final int byteIndex = baseOffset + (index >> 3);
@@ -140,7 +140,7 @@ public class BitUtils {
   /**
    * Given a bitmap buffer, count the number of bits that are not set.
    *
-   * <p>Every byte is set form right to left: 0xFF << remainder
+   * <p>Every byte is set from right to left: {@code 0xFF << remainder}
    *
    * @return number of bits not set.
    */

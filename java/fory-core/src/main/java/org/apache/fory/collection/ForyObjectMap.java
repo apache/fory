@@ -118,7 +118,7 @@ public class ForyObjectMap<K, V> {
   }
 
   /**
-   * Returns an index >= 0 and <= {@link #mask} for the specified {@code item}.
+   * Returns an {@code index >= 0 and <= mask} for the specified {@code item}.
    *
    * <p>The default implementation uses Fibonacci hashing on the item's {@link Object#hashCode()}:
    * the hashcode is multiplied by a long constant (2 to the 64th, divided by the golden ratio) then
@@ -134,6 +134,8 @@ public class ForyObjectMap<K, V> {
    * event that most hashcodes are Fibonacci numbers, if keys provide poor or incorrect hashcodes,
    * or to simplify hashing if keys provide high quality hashcodes and don't need Fibonacci hashing:
    * {@code return item.hashCode() & mask;}
+   *
+   * @see #mask
    */
   protected int place(K item) {
     return (int) (item.hashCode() * MASK_NUMBER >>> shift);
@@ -351,6 +353,7 @@ public class ForyObjectMap<K, V> {
     }
   }
 
+  @Override
   public int hashCode() {
     int h = size;
     K[] keyTable = this.keyTable;
@@ -368,6 +371,7 @@ public class ForyObjectMap<K, V> {
     return h;
   }
 
+  @Override
   public boolean equals(Object obj) {
     if (obj == this) {
       return true;
@@ -403,6 +407,7 @@ public class ForyObjectMap<K, V> {
     return toString(separator, false);
   }
 
+  @Override
   public String toString() {
     return toString(", ", true);
   }

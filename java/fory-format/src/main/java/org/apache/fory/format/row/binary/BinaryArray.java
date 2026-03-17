@@ -38,8 +38,9 @@ import org.apache.fory.memory.Platform;
 import org.apache.fory.util.Preconditions;
 
 /**
- * Each array has four parts(8-byte aligned): [numElements][validity bits][values or
- * offset&length][variable length portion]
+ * Each array has four parts(8-byte aligned):
+ *
+ * <p>{@code [numElements][validity bits][values or offset&length][variable length portion]}
  *
  * <p>numElements is int, but use 8-byte to align
  *

@@ -37,7 +37,7 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Int8ArrayType
+ *   {@literal @}Int8ArrayType
  *   byte[] data;  // Will be serialized as signed 8-bit array
  * }
  * }</pre>

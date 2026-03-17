@@ -66,6 +66,8 @@ public class ArrowSchemaConverter {
       return ArrowType.Utf8.INSTANCE;
     } else if (foryType instanceof DataTypes.BinaryType) {
       return ArrowType.Binary.INSTANCE;
+    } else if (foryType instanceof DataTypes.FixedWidthBinaryType) {
+      return new ArrowType.FixedSizeBinary(foryType.byteWidth());
     } else if (foryType instanceof DataTypes.DurationType) {
       return new ArrowType.Duration(TimeUnit.NANOSECOND);
     } else if (foryType instanceof DataTypes.TimestampType) {
@@ -183,6 +185,8 @@ public class ArrowSchemaConverter {
       return DataTypes.utf8();
     } else if (arrowType instanceof ArrowType.Binary) {
       return DataTypes.binary();
+    } else if (arrowType instanceof ArrowType.FixedSizeBinary) {
+      return DataTypes.fixedWidthBinary(((ArrowType.FixedSizeBinary) arrowType).getByteWidth());
     } else if (arrowType instanceof ArrowType.Duration) {
       return DataTypes.duration();
     } else if (arrowType instanceof ArrowType.Timestamp) {

@@ -38,7 +38,7 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   @Uint8ArrayType
+ *   {@literal @}Uint8ArrayType
  *   byte[] data;  // Will be serialized as unsigned 8-bit array
  * }
  * }</pre>
