@@ -181,6 +181,29 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.ANY: "Type.any()",
     }
 
+    # Mapping from FDL primitive types to Fory JS typed array Type.xxx() calls
+    PRIMITIVE_ARRAY_RUNTIME_MAP = {
+        PrimitiveKind.BOOL: "Type.boolArray()",
+        PrimitiveKind.INT8: "Type.int8Array()",
+        PrimitiveKind.INT16: "Type.int16Array()",
+        PrimitiveKind.INT32: "Type.int32Array()",
+        PrimitiveKind.VARINT32: "Type.int32Array()",
+        PrimitiveKind.INT64: "Type.int64Array()",
+        PrimitiveKind.VARINT64: "Type.int64Array()",
+        PrimitiveKind.TAGGED_INT64: "Type.int64Array()",
+        PrimitiveKind.UINT8: "Type.uint8Array()",
+        PrimitiveKind.UINT16: "Type.uint16Array()",
+        PrimitiveKind.UINT32: "Type.uint32Array()",
+        PrimitiveKind.VAR_UINT32: "Type.uint32Array()",
+        PrimitiveKind.UINT64: "Type.uint64Array()",
+        PrimitiveKind.VAR_UINT64: "Type.uint64Array()",
+        PrimitiveKind.TAGGED_UINT64: "Type.uint64Array()",
+        PrimitiveKind.FLOAT16: "Type.float16Array()",
+        PrimitiveKind.BFLOAT16: "Type.bfloat16Array()",
+        PrimitiveKind.FLOAT32: "Type.float32Array()",
+        PrimitiveKind.FLOAT64: "Type.float64Array()",
+    }
+
     def __init__(self, schema: Schema, options):
         super().__init__(schema, options)
         self.indent_str = "  "  # TypeScript uses 2 spaces
@@ -721,7 +744,17 @@ class JavaScriptGenerator(BaseGenerator):
             # Named type — could be a Message, Enum, or Union
             resolved = self._resolve_named_type(field_type.name, parent_stack)
             if isinstance(resolved, Enum):
-                return "Type.int32()"
+                if self.should_register_by_id(resolved):
+                    name_info = str(resolved.type_id)
+                else:
+                    ns = self.schema.package or "default"
+                    qname = self._qualified_type_names.get(id(resolved), resolved.name)
+                    name_info = f'"{ns}.{qname}"'
+                props = ", ".join(
+                    f"{self.strip_enum_prefix(resolved.name, v.name)}: {v.value}"
+                    for v in resolved.values
+                )
+                return f"Type.enum({name_info}, {{ {props} }})"
             if isinstance(resolved, Union):
                 return "Type.any()"
             if isinstance(resolved, Message):
@@ -733,6 +766,27 @@ class JavaScriptGenerator(BaseGenerator):
             # Unresolved — fall back to any
             return "Type.any()"
         elif isinstance(field_type, ListType):
+            if isinstance(field_type.element_type, PrimitiveType):
+                array_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(field_type.element_type.kind)
+                if array_expr:
+                    return array_expr
+            elif isinstance(field_type.element_type, NamedType):
+                lower = field_type.element_type.name.lower()
+                shorthand_map = {
+                    "float": PrimitiveKind.FLOAT32,
+                    "double": PrimitiveKind.FLOAT64,
+                }
+                found_kind = shorthand_map.get(lower)
+                if not found_kind:
+                    for pk in PrimitiveKind:
+                        if pk.value == lower:
+                            found_kind = pk
+                            break
+                if found_kind:
+                    array_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(found_kind)
+                    if array_expr:
+                        return array_expr
+
             inner = self._field_type_expr(field_type.element_type, parent_stack)
             return f"Type.array({inner})"
         elif isinstance(field_type, MapType):
@@ -758,8 +812,16 @@ class JavaScriptGenerator(BaseGenerator):
         for field in type_def.fields:
             member = self.safe_member_name(field.name)
             expr = self._field_type_expr(field.field_type, field_parent_stack)
+            if field.number > 0:
+                is_union = False
+                if isinstance(field.field_type, NamedType):
+                    resolved_type = self._resolve_named_type(field.field_type.name, field_parent_stack)
+                    is_union = isinstance(resolved_type, Union)
+                expr += f".setId({field.number})"
             if field.optional:
                 expr += ".setNullable(true)"
+            if field.ref:
+                expr += ".setTrackingRef(true)"
             props_parts.append(f"{member}: {expr}")
 
         props_str = ", ".join(props_parts)
