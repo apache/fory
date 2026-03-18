@@ -246,7 +246,7 @@ func (c *ReadContext) ReadCollectionLength() int {
 	if c.err.HasError() {
 		return 0
 	}
-	if c.maxCollectionSize > 0 && length > c.maxCollectionSize {
+	if length > c.maxCollectionSize {
 		c.SetError(MaxCollectionSizeExceededError(length, c.maxCollectionSize))
 		return 0
 	}
@@ -260,7 +260,7 @@ func (c *ReadContext) ReadBinaryLength() int {
 	if c.err.HasError() {
 		return 0
 	}
-	if c.maxBinarySize > 0 && length > c.maxBinarySize {
+	if length > c.maxBinarySize {
 		c.SetError(MaxBinarySizeExceededError(length, c.maxBinarySize))
 		return 0
 	}

@@ -61,9 +61,11 @@ type Config struct {
 // defaultConfig returns the default configuration
 func defaultConfig() Config {
 	return Config{
-		TrackRef: false, // Match Java's default: reference tracking disabled
-		MaxDepth: 20,
-		IsXlang:  false,
+		TrackRef:          false, // Match Java's default: reference tracking disabled
+		MaxDepth:          20,
+		IsXlang:           false,
+		MaxCollectionSize: 1_000_000,
+		MaxBinarySize:     64 * 1024 * 1024,
 	}
 }
 
