@@ -386,6 +386,17 @@ class SchemaValidator:
             for f in union.fields:
                 check_type_ref(f.field_type, f, None)
 
+        # Also validate service RPC request/response type references.
+        for service in self.schema.services:
+            for method in service.methods:
+                for named_type in (method.request_type, method.response_type):
+                    type_name = named_type.name
+                    if self.schema.get_type(type_name) is None:
+                        self._error(
+                            f"Unknown type '{type_name}'",
+                            named_type.location,
+                        )
+
     def _check_ref_rules(self) -> None:
         def is_any_type(field_type: FieldType) -> bool:
             return (
