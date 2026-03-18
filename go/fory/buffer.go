@@ -26,13 +26,11 @@ import (
 )
 
 type ByteBuffer struct {
-	data              []byte // Most accessed field first for cache locality
-	writerIndex       int
-	readerIndex       int
-	reader            io.Reader
-	bufferSize        int
-	maxCollectionSize int
-	maxBinarySize     int
+	data        []byte // Most accessed field first for cache locality
+	writerIndex int
+	readerIndex int
+	reader      io.Reader
+	bufferSize  int
 }
 
 func NewByteBuffer(data []byte) *ByteBuffer {
@@ -198,32 +196,8 @@ func (b *ByteBuffer) WriteLength(value int) {
 	b.WriteVarUint32(uint32(value))
 }
 
-func (b *ByteBuffer) ReadCollectionLength(err *Error) int {
-	length := int(b.ReadVarUint32(err))
-	if err != nil && err.HasError() {
-		return 0
-	}
-	if b.maxCollectionSize > 0 && length > b.maxCollectionSize {
-		if err != nil {
-			*err = MaxCollectionSizeExceededError(length, b.maxCollectionSize)
-		}
-		return 0
-	}
-	return length
-}
-
-func (b *ByteBuffer) ReadBinaryLength(err *Error) int {
-	length := int(b.ReadVarUint32(err))
-	if err != nil && err.HasError() {
-		return 0
-	}
-	if b.maxBinarySize > 0 && length > b.maxBinarySize {
-		if err != nil {
-			*err = MaxBinarySizeExceededError(length, b.maxBinarySize)
-		}
-		return 0
-	}
-	return length
+func (b *ByteBuffer) ReadLength(err *Error) int {
+	return int(b.ReadVarUint32(err))
 }
 
 func (b *ByteBuffer) WriteUint64(value uint64) {

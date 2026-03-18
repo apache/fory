@@ -29,20 +29,22 @@ import (
 
 // ReadContext holds all state needed during deserialization.
 type ReadContext struct {
-	buffer           *ByteBuffer
-	refReader        *RefReader
-	trackRef         bool          // Cached flag to avoid indirection
-	xlang            bool          // Cross-language serialization mode
-	compatible       bool          // Schema evolution compatibility mode
-	typeResolver     *TypeResolver // For complex type deserialization
-	refResolver      *RefResolver  // For reference tracking (legacy)
-	outOfBandBuffers []*ByteBuffer // Out-of-band buffers for deserialization
-	outOfBandIndex   int           // Current index into out-of-band buffers
-	depth            int           // Current nesting depth for cycle detection
-	maxDepth         int           // Maximum allowed nesting depth
-	err              Error         // Accumulated error state for deferred checking
-	lastTypePtr      uintptr
-	lastTypeInfo     *TypeInfo
+	buffer            *ByteBuffer
+	refReader         *RefReader
+	trackRef          bool          // Cached flag to avoid indirection
+	xlang             bool          // Cross-language serialization mode
+	compatible        bool          // Schema evolution compatibility mode
+	typeResolver      *TypeResolver // For complex type deserialization
+	refResolver       *RefResolver  // For reference tracking (legacy)
+	outOfBandBuffers  []*ByteBuffer // Out-of-band buffers for deserialization
+	outOfBandIndex    int           // Current index into out-of-band buffers
+	depth             int           // Current nesting depth for cycle detection
+	maxDepth          int           // Maximum allowed nesting depth
+	err               Error         // Accumulated error state for deferred checking
+	lastTypePtr       uintptr
+	lastTypeInfo      *TypeInfo
+	maxCollectionSize int // Size guardrail for collection reads
+	maxBinarySize     int // Size guardrail for binary reads
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -240,13 +242,29 @@ func (c *ReadContext) ReadAndValidateTypeId(expected TypeId) {
 // ReadCollectionLength reads a length value for collections with size guardrails
 func (c *ReadContext) ReadCollectionLength() int {
 	err := c.Err()
-	return c.buffer.ReadCollectionLength(err)
+	length := c.buffer.ReadLength(err)
+	if c.err.HasError() {
+		return 0
+	}
+	if c.maxCollectionSize > 0 && length > c.maxCollectionSize {
+		c.SetError(MaxCollectionSizeExceededError(length, c.maxCollectionSize))
+		return 0
+	}
+	return length
 }
 
-// ReadBinaryLength reads a length value for binary arrays with size guardrails
+// ReadBinaryLength reads a length value for binary data with size guardrails
 func (c *ReadContext) ReadBinaryLength() int {
 	err := c.Err()
-	return c.buffer.ReadBinaryLength(err)
+	length := c.buffer.ReadLength(err)
+	if c.err.HasError() {
+		return 0
+	}
+	if c.maxBinarySize > 0 && length > c.maxBinarySize {
+		c.SetError(MaxBinarySizeExceededError(length, c.maxBinarySize))
+		return 0
+	}
+	return length
 }
 
 // ============================================================================
@@ -440,7 +458,7 @@ func (c *ReadContext) ReadByteSlice(refMode RefMode, readType bool) []byte {
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	size := c.buffer.ReadBinaryLength(err)
+	size := c.ReadBinaryLength()
 	return c.buffer.ReadBinary(size, err)
 }
 
@@ -469,7 +487,7 @@ func (c *ReadContext) ReadStringStringMap(refMode RefMode, readType bool) map[st
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringString(c.buffer, err)
+	return readMapStringString(c)
 }
 
 // ReadStringInt64Map reads map[string]int64 with optional ref/type info
@@ -483,7 +501,7 @@ func (c *ReadContext) ReadStringInt64Map(refMode RefMode, readType bool) map[str
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringInt64(c.buffer, err)
+	return readMapStringInt64(c)
 }
 
 // ReadStringInt32Map reads map[string]int32 with optional ref/type info
@@ -497,7 +515,7 @@ func (c *ReadContext) ReadStringInt32Map(refMode RefMode, readType bool) map[str
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringInt32(c.buffer, err)
+	return readMapStringInt32(c)
 }
 
 // ReadStringIntMap reads map[string]int with optional ref/type info
@@ -511,7 +529,7 @@ func (c *ReadContext) ReadStringIntMap(refMode RefMode, readType bool) map[strin
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringInt(c.buffer, err)
+	return readMapStringInt(c)
 }
 
 // ReadStringFloat64Map reads map[string]float64 with optional ref/type info
@@ -525,7 +543,7 @@ func (c *ReadContext) ReadStringFloat64Map(refMode RefMode, readType bool) map[s
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringFloat64(c.buffer, err)
+	return readMapStringFloat64(c)
 }
 
 // ReadStringBoolMap reads map[string]bool with optional ref/type info
@@ -539,7 +557,7 @@ func (c *ReadContext) ReadStringBoolMap(refMode RefMode, readType bool) map[stri
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapStringBool(c.buffer, err)
+	return readMapStringBool(c)
 }
 
 // ReadInt32Int32Map reads map[int32]int32 with optional ref/type info
@@ -553,7 +571,7 @@ func (c *ReadContext) ReadInt32Int32Map(refMode RefMode, readType bool) map[int3
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapInt32Int32(c.buffer, err)
+	return readMapInt32Int32(c)
 }
 
 // ReadInt64Int64Map reads map[int64]int64 with optional ref/type info
@@ -567,7 +585,7 @@ func (c *ReadContext) ReadInt64Int64Map(refMode RefMode, readType bool) map[int6
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapInt64Int64(c.buffer, err)
+	return readMapInt64Int64(c)
 }
 
 // ReadIntIntMap reads map[int]int with optional ref/type info
@@ -581,7 +599,7 @@ func (c *ReadContext) ReadIntIntMap(refMode RefMode, readType bool) map[int]int 
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return readMapIntInt(c.buffer, err)
+	return readMapIntInt(c)
 }
 
 // ReadBufferObject reads a buffer object
@@ -589,7 +607,7 @@ func (c *ReadContext) ReadBufferObject() *ByteBuffer {
 	err := c.Err()
 	isInBand := c.buffer.ReadBool(err)
 	if isInBand {
-		size := c.buffer.ReadBinaryLength(err)
+		size := c.ReadBinaryLength()
 		buf := c.buffer.Slice(c.buffer.readerIndex, size)
 		c.buffer.readerIndex += size
 		return buf
