@@ -17,9 +17,9 @@
  * under the License.
  */
 
-import Fory, { TypeInfo, Type } from '../packages/fory/index';
+import Fory, { TypeInfo, Type } from '../packages/core/index';
 import { describe, expect, test } from '@jest/globals';
-import { fromUint8Array } from '../packages/fory/lib/platformBuffer';
+import { fromUint8Array } from '../packages/core/lib/platformBuffer';
 
 describe('fory', () => {
     test('should deserialize null work', () => {

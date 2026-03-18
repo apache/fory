@@ -56,7 +56,7 @@ excludes = [
     "java/fory-core/src/main/java/org/apache/fory/util/Preconditions.java",
     "java/fory-core/src/test/java/org/apache/fory/type/GenericsTest.java",
     "java/fory-format/src/main/java/org/apache/fory/format/vectorized/ArrowWriter.java",
-    "javascript/packages/fory/lib/murmurHash3.ts",
+    "javascript/packages/core/lib/murmurHash3.ts",
     "cpp/fory/thirdparty/MurmurHash3.*",
 ]
 

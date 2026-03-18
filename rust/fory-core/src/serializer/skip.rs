@@ -25,9 +25,8 @@ use crate::serializer::Serializer;
 use crate::types;
 use crate::types::RefFlag;
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{Duration, NaiveDate, NaiveDateTime};
 use std::rc::Rc;
-use std::time::Duration;
 
 #[allow(unreachable_code)]
 pub fn skip_field_value(
