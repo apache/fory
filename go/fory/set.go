@@ -295,7 +295,7 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	err := ctx.Err()
 	type_ := value.Type()
 	// ReadData collection length from buffer
-	length := buf.ReadCollectionLength(err)
+	length := ctx.ReadCollectionLength()
 	if length == 0 {
 		// Initialize empty set if length is 0
 		value.Set(reflect.MakeMap(type_))

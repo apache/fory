@@ -74,7 +74,7 @@ func (s byteSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode,
 func (s byteSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := buf.ReadBinaryLength(ctxErr)
+	length := ctx.ReadBinaryLength()
 	ptr := (*[]byte)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]byte, 0)
@@ -642,7 +642,7 @@ func (s stringSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMod
 func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := buf.ReadCollectionLength(ctxErr)
+	length := ctx.ReadCollectionLength()
 	ptr := (*[]string)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]string, 0)
@@ -691,7 +691,7 @@ func WriteByteSlice(buf *ByteBuffer, value []byte) {
 
 // ReadByteSlice reads []byte from buffer using ARRAY protocol
 func ReadByteSlice(buf *ByteBuffer, err *Error) []byte {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	if size == 0 {
 		return make([]byte, 0)
 	}
@@ -712,7 +712,7 @@ func WriteBoolSlice(buf *ByteBuffer, value []bool) {
 
 // ReadBoolSlice reads []bool from buffer using ARRAY protocol
 func ReadBoolSlice(buf *ByteBuffer, err *Error) []bool {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	if size == 0 {
 		return make([]bool, 0)
 	}
@@ -733,7 +733,7 @@ func WriteInt8Slice(buf *ByteBuffer, value []int8) {
 
 // ReadInt8Slice reads []int8 from buffer using ARRAY protocol
 func ReadInt8Slice(buf *ByteBuffer, err *Error) []int8 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	if size == 0 {
 		return make([]int8, 0)
 	}
@@ -760,7 +760,7 @@ func WriteInt16Slice(buf *ByteBuffer, value []int16) {
 
 // ReadInt16Slice reads []int16 from buffer using ARRAY protocol
 func ReadInt16Slice(buf *ByteBuffer, err *Error) []int16 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 2
 	if length == 0 {
 		return make([]int16, 0)
@@ -794,7 +794,7 @@ func WriteInt32Slice(buf *ByteBuffer, value []int32) {
 
 // ReadInt32Slice reads []int32 from buffer using ARRAY protocol
 func ReadInt32Slice(buf *ByteBuffer, err *Error) []int32 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 4
 	if length == 0 {
 		return make([]int32, 0)
@@ -828,7 +828,7 @@ func WriteInt64Slice(buf *ByteBuffer, value []int64) {
 
 // ReadInt64Slice reads []int64 from buffer using ARRAY protocol
 func ReadInt64Slice(buf *ByteBuffer, err *Error) []int64 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 8
 	if length == 0 {
 		return make([]int64, 0)
@@ -862,7 +862,7 @@ func WriteUint16Slice(buf *ByteBuffer, value []uint16) {
 
 // ReadUint16Slice reads []uint16 from buffer using ARRAY protocol
 func ReadUint16Slice(buf *ByteBuffer, err *Error) []uint16 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 2
 	if length == 0 {
 		return make([]uint16, 0)
@@ -896,7 +896,7 @@ func WriteUint32Slice(buf *ByteBuffer, value []uint32) {
 
 // ReadUint32Slice reads []uint32 from buffer using ARRAY protocol
 func ReadUint32Slice(buf *ByteBuffer, err *Error) []uint32 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 4
 	if length == 0 {
 		return make([]uint32, 0)
@@ -930,7 +930,7 @@ func WriteUint64Slice(buf *ByteBuffer, value []uint64) {
 
 // ReadUint64Slice reads []uint64 from buffer using ARRAY protocol
 func ReadUint64Slice(buf *ByteBuffer, err *Error) []uint64 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 8
 	if length == 0 {
 		return make([]uint64, 0)
@@ -964,7 +964,7 @@ func WriteFloat32Slice(buf *ByteBuffer, value []float32) {
 
 // ReadFloat32Slice reads []float32 from buffer using ARRAY protocol
 func ReadFloat32Slice(buf *ByteBuffer, err *Error) []float32 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 4
 	if length == 0 {
 		return make([]float32, 0)
@@ -998,7 +998,7 @@ func WriteFloat64Slice(buf *ByteBuffer, value []float64) {
 
 // ReadFloat64Slice reads []float64 from buffer using ARRAY protocol
 func ReadFloat64Slice(buf *ByteBuffer, err *Error) []float64 {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	length := size / 8
 	if length == 0 {
 		return make([]float64, 0)
@@ -1071,7 +1071,7 @@ func (s float16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMo
 func (s float16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	size := buf.ReadBinaryLength(ctxErr)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return
@@ -1131,7 +1131,7 @@ func WriteIntSlice(buf *ByteBuffer, value []int) {
 
 // ReadIntSlice reads []int from buffer using ARRAY protocol
 func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	if strconv.IntSize == 64 {
 		length := size / 8
 		if length == 0 {
@@ -1196,7 +1196,7 @@ func WriteUintSlice(buf *ByteBuffer, value []uint) {
 
 // ReadUintSlice reads []uint from buffer using ARRAY protocol
 func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
-	size := buf.ReadBinaryLength(err)
+	size := buf.ReadLength(err)
 	if strconv.IntSize == 64 {
 		length := size / 8
 		if length == 0 {
@@ -1253,7 +1253,7 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 
 // ReadStringSlice reads []string from buffer using LIST protocol
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
-	length := buf.ReadCollectionLength(err)
+	length := buf.ReadLength(err)
 	if length == 0 {
 		return make([]string, 0)
 	}
@@ -1328,7 +1328,7 @@ func (s bfloat16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefM
 func (s bfloat16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	size := buf.ReadBinaryLength(ctxErr)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return

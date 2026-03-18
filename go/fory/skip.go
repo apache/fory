@@ -213,7 +213,7 @@ func readTypeInfoForSkip(ctx *ReadContext, fieldTypeId TypeId) *TypeInfo {
 // Uses context error state for deferred error checking.
 func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 	err := ctx.Err()
-	length := uint32(ctx.buffer.ReadCollectionLength(err))
+	length := uint32(ctx.ReadCollectionLength())
 	if ctx.HasError() || length == 0 {
 		return
 	}
@@ -283,7 +283,7 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 // Uses context error state for deferred error checking.
 func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 	bufErr := ctx.Err()
-	length := uint32(ctx.buffer.ReadCollectionLength(bufErr))
+	length := uint32(ctx.ReadCollectionLength())
 	if ctx.HasError() || length == 0 {
 		return
 	}
@@ -601,31 +601,31 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 			_ = ctx.buffer.ReadBinary(int(size), err)
 		}
 	case BINARY:
-		length := uint32(ctx.buffer.ReadBinaryLength(err))
+		length := uint32(ctx.ReadBinaryLength())
 		if ctx.HasError() {
 			return
 		}
 		_ = ctx.buffer.ReadBinary(int(length), err)
 	case BOOL_ARRAY, INT8_ARRAY, UINT8_ARRAY:
-		length := ctx.buffer.ReadBinaryLength(err)
+		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
 		_ = ctx.buffer.ReadBinary(length, err)
 	case INT16_ARRAY, UINT16_ARRAY, FLOAT16_ARRAY, BFLOAT16_ARRAY:
-		length := ctx.buffer.ReadBinaryLength(err)
+		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
 		_ = ctx.buffer.ReadBinary(length*2, err)
 	case INT32_ARRAY, UINT32_ARRAY, FLOAT32_ARRAY:
-		length := ctx.buffer.ReadBinaryLength(err)
+		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
 		_ = ctx.buffer.ReadBinary(length*4, err)
 	case INT64_ARRAY, UINT64_ARRAY, FLOAT64_ARRAY:
-		length := ctx.buffer.ReadBinaryLength(err)
+		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}

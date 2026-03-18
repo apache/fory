@@ -66,7 +66,7 @@ func (s boolArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 func (s boolArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	length := buf.ReadBinaryLength(err)
+	length := ctx.ReadBinaryLength()
 	if ctx.HasError() {
 		return
 	}
@@ -131,7 +131,7 @@ func (s int8ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 func (s int8ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	length := buf.ReadBinaryLength(err)
+	length := ctx.ReadBinaryLength()
 	if ctx.HasError() {
 		return
 	}
@@ -197,7 +197,7 @@ func (s int16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 func (s int16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return
@@ -269,7 +269,7 @@ func (s int32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 func (s int32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 4
 	if ctx.HasError() {
 		return
@@ -341,7 +341,7 @@ func (s int64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 func (s int64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 8
 	if ctx.HasError() {
 		return
@@ -413,7 +413,7 @@ func (s float32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeT
 func (s float32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 4
 	if ctx.HasError() {
 		return
@@ -485,7 +485,7 @@ func (s float64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeT
 func (s float64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 8
 	if ctx.HasError() {
 		return
@@ -556,7 +556,7 @@ func (s uint8ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 func (s uint8ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	length := buf.ReadBinaryLength(err)
+	length := ctx.ReadBinaryLength()
 	if ctx.HasError() {
 		return
 	}
@@ -623,7 +623,7 @@ func (s uint16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 func (s uint16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return
@@ -694,7 +694,7 @@ func (s uint32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 func (s uint32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 4
 	if ctx.HasError() {
 		return
@@ -764,7 +764,7 @@ func (s uint64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 func (s uint64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	size := buf.ReadBinaryLength(err)
+	size := ctx.ReadBinaryLength()
 	length := size / 8
 	if ctx.HasError() {
 		return
@@ -838,7 +838,7 @@ func (s float16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeT
 func (s float16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	size := buf.ReadBinaryLength(ctxErr)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return
@@ -912,7 +912,7 @@ func (s bfloat16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, write
 func (s bfloat16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	size := buf.ReadBinaryLength(ctxErr)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return

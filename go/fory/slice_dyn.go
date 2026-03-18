@@ -261,7 +261,7 @@ func (s sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 func (s sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := buf.ReadCollectionLength(ctxErr)
+	length := ctx.ReadCollectionLength()
 	sliceType := value.Type()
 	value.Set(reflect.MakeSlice(sliceType, length, length))
 	if length == 0 {
