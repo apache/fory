@@ -1111,6 +1111,18 @@ struct Float16Optional {
   FORY_STRUCT(Float16Optional, opt_value);
 };
 
+struct Float16Array {
+  std::array<float16_t, 3> values;
+  bool operator==(const Float16Array &o) const {
+    for (size_t i = 0; i < values.size(); ++i) {
+      if (values[i].to_bits() != o.values[i].to_bits())
+        return false;
+    }
+    return true;
+  }
+  FORY_STRUCT(Float16Array, values);
+};
+
 fory::serialization::Fory make_xlang_fory() {
   return fory::serialization::Fory::builder()
       .xlang(true)
@@ -1160,6 +1172,12 @@ TEST(Float16SerializerTest, VectorRoundTrip) {
       fory.deserialize<Float16Vector>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
+
+  // Verify at compile time that vector<float16_t> uses the typed-array path.
+  static_assert(
+      fory::serialization::Serializer<std::vector<float16_t>>::type_id ==
+          fory::TypeId::FLOAT16_ARRAY,
+      "std::vector<float16_t> must use FLOAT16_ARRAY, not LIST");
 }
 
 TEST(Float16SerializerTest, EmptyVectorRoundTrip) {
@@ -1173,6 +1191,27 @@ TEST(Float16SerializerTest, EmptyVectorRoundTrip) {
       fory.deserialize<Float16Vector>(ser.value().data(), ser.value().size());
   ASSERT_TRUE(deser.ok()) << deser.error().to_string();
   EXPECT_EQ(deser.value(), original);
+}
+
+TEST(Float16SerializerTest, ArrayRoundTrip) {
+  auto fory = make_xlang_fory();
+  fory.register_struct<Float16Array>(204);
+
+  Float16Array original;
+  original.values = {float16_t::from_float(1.0f), float16_t::from_float(-0.5f),
+                     float16_t::from_bits(0x7C00)}; // +Inf
+  auto ser = fory.serialize(original);
+  ASSERT_TRUE(ser.ok()) << ser.error().to_string();
+  auto deser =
+      fory.deserialize<Float16Array>(ser.value().data(), ser.value().size());
+  ASSERT_TRUE(deser.ok()) << deser.error().to_string();
+  EXPECT_EQ(deser.value(), original);
+
+  // Verify at compile time that array<float16_t, N> uses the typed-array path.
+  static_assert(
+      fory::serialization::Serializer<std::array<float16_t, 3>>::type_id ==
+          fory::TypeId::FLOAT16_ARRAY,
+      "std::array<float16_t, N> must use FLOAT16_ARRAY, not generic LIST");
 }
 
 TEST(Float16SerializerTest, MapRoundTrip) {

@@ -263,3 +263,14 @@ static_assert(std::is_standard_layout_v<float16_t>);
 }
 
 } // namespace fory
+
+namespace std {
+template <> struct hash<fory::float16_t> {
+  size_t operator()(fory::float16_t h) const noexcept {
+    // Canonicalize ±0: float16_t::equal treats +0 == -0, so they must hash
+    // identically.
+    uint16_t bits = fory::float16_t::is_zero(h) ? 0u : h.to_bits();
+    return std::hash<uint16_t>{}(bits);
+  }
+};
+} // namespace std
