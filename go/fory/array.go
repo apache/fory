@@ -365,7 +365,6 @@ func (s byteArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 
 func (s byteArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
-	_ = ctx.Err()
 	length := ctx.ReadCollectionLength()
 	if ctx.HasError() {
 		return
