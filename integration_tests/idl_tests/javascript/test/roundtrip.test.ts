@@ -26,7 +26,7 @@
  * 3. Roundtrip serialization works via the Fory JS runtime
  */
 
-import Fory, { Type } from '@fory/fory';
+import Fory, { Type } from '@apache-fory/core';
 import {
   AddressBook,
   Person,

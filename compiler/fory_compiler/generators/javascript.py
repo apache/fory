@@ -767,7 +767,9 @@ class JavaScriptGenerator(BaseGenerator):
             return "Type.any()"
         elif isinstance(field_type, ListType):
             if isinstance(field_type.element_type, PrimitiveType):
-                array_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(field_type.element_type.kind)
+                array_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(
+                    field_type.element_type.kind
+                )
                 if array_expr:
                     return array_expr
             elif isinstance(field_type.element_type, NamedType):
@@ -813,10 +815,6 @@ class JavaScriptGenerator(BaseGenerator):
             member = self.safe_member_name(field.name)
             expr = self._field_type_expr(field.field_type, field_parent_stack)
             if field.number > 0:
-                is_union = False
-                if isinstance(field.field_type, NamedType):
-                    resolved_type = self._resolve_named_type(field.field_type.name, field_parent_stack)
-                    is_union = isinstance(resolved_type, Union)
                 expr += f".setId({field.number})"
             if field.optional:
                 expr += ".setNullable(true)"

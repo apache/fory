@@ -8,7 +8,7 @@
     "roundtrip": "ts-node roundtrip.ts"
   },
   "dependencies": {
-    "@fory/fory": "file:../../../javascript/packages/fory"
+    "@apache-fory/core": "file:../../../javascript/packages/core"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",

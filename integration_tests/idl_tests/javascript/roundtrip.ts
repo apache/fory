@@ -42,7 +42,7 @@
  */
 
 import * as fs from "fs";
-import Fory, { Type } from "@fory/fory";
+import Fory, { Type } from "@apache-fory/core";
 
 import { registerAddressbookTypes } from "./generated/addressbook";
 import { registerAutoIdTypes } from "./generated/auto_id";
@@ -84,14 +84,14 @@ if (compatible && !SUPPORTS_COMPATIBLE_MODE) {
   const present = dataFileVars.filter((v) => process.env[v]);
   console.log(
     "TypeScript roundtrip: compatible mode is NOT SUPPORTED " +
-      "(SUPPORTS_COMPATIBLE_MODE = false)."
+    "(SUPPORTS_COMPATIBLE_MODE = false)."
   );
   for (const v of present) {
     console.log(`  SKIP [compatible]: ${v}`);
   }
   console.log(
     `  0/${present.length} compatible-mode roundtrips executed. ` +
-      "Files left unchanged so Java reads back its own bytes."
+    "Files left unchanged so Java reads back its own bytes."
   );
   process.exit(0);
 }
