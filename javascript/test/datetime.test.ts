@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/fory/index';
+import Fory, { Type } from '../packages/core/index';
 import {describe, expect, test} from '@jest/globals';
 
 describe('datetime', () => {

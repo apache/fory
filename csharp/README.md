@@ -225,44 +225,6 @@ fory.Register<Person>(100); // same ID on other language peers
 
 See [xlang guide](https://fory.apache.org/docs/guide/xlang/) for mapping details.
 
-## Architecture
-
-The C# implementation consists of:
-
-```text
-csharp/
-├── src/
-│   ├── Fory/
-│   │   ├── Fory.cs                 # Main runtime entry point
-│   │   ├── Config.cs               # Builder + runtime config
-│   │   ├── TypeResolver.cs         # Type binding and registration
-│   │   ├── Serializer.cs           # Serializer base class
-│   │   ├── PrimitiveSerializers.cs # Primitive serializers
-│   │   ├── CollectionSerializers.cs
-│   │   ├── DictionarySerializers.cs
-│   │   └── ...
-│   └── Fory.Generator/
-│       └── ForyObjectGenerator.cs  # Source generator for [ForyObject]
-└── tests/
-    ├── Fory.Tests/
-    └── Fory.XlangPeer/
-```
-
-## Building, Testing, and Publishing
-
-Run from the `csharp` directory:
-
-```bash
-# Build
-dotnet build Fory.sln -c Release
-
-# Run tests
-dotnet test Fory.sln -c Release
-
-# Publish to nuget.org after bumping <Version> in Directory.Build.props
-NUGET_API_KEY=... ../ci/publish-nuget.sh
-```
-
 ## Documentation
 
 - [C# guide index](https://fory.apache.org/docs/guide/csharp/)

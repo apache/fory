@@ -22,11 +22,11 @@ import Fory, {
   BinaryWriter,
   Type,
   Dynamic,
-} from "../packages/fory/index";
+} from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
 import * as fs from "node:fs";
 import * as beautify from 'js-beautify';
-import { TypeId } from "../packages/fory/lib/type";
+import { TypeId } from "../packages/core/lib/type";
 
 const Byte = {
   MAX_VALUE: 127,
@@ -183,7 +183,7 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_murmurhash3", () => {
-    const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
+    const { x64hash128 } = require("../packages/core/lib/murmurHash3");
     const reader = new BinaryReader({});
     reader.reset(content);
     let dataview = x64hash128(new Uint8Array([1, 2, 8]), 47);

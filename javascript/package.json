@@ -2,15 +2,15 @@
   "scripts": {
     "test:crosslanguage": "f() { npx jest crossLanguage.test.ts -t \"$@\" > /dev/null 2>&1; }; f",
     "test": "npm run build && jest",
-    "clear": "rm -rf ./packages/fory/dist && rm -rf ./packages/hps/dist",
-    "build": "npm run clear && npm run build -w packages/fory -w packages/hps",
+    "clear": "rm -rf ./packages/core/dist && rm -rf ./packages/hps/dist",
+    "build": "npm run clear && npm run build -w packages/core -w packages/hps",
     "lint": "eslint .",
     "lint-fix": "eslint . --fix"
   },
   "repository": "git@github.com:apache/fory.git",
   "workspaces": [
     "packages/hps",
-    "packages/fory"
+    "packages/core"
   ],
   "devDependencies": {
     "@stylistic/eslint-plugin": "^1.5.1",
