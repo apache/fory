@@ -126,6 +126,27 @@ logger = logging.getLogger(__name__)
 namespace_decoder = MetaStringDecoder(".", "_")
 typename_decoder = MetaStringDecoder("$", "_")
 
+_NO_REF_NUMERIC_TYPE_IDS = frozenset(
+    {
+        TypeId.INT8,
+        TypeId.INT16,
+        TypeId.INT32,
+        TypeId.VARINT32,
+        TypeId.INT64,
+        TypeId.VARINT64,
+        TypeId.TAGGED_INT64,
+        TypeId.UINT8,
+        TypeId.UINT16,
+        TypeId.UINT32,
+        TypeId.VAR_UINT32,
+        TypeId.UINT64,
+        TypeId.VAR_UINT64,
+        TypeId.TAGGED_UINT64,
+        TypeId.FLOAT32,
+        TypeId.FLOAT64,
+    }
+)
+
 if ENABLE_FORY_CYTHON_SERIALIZATION:
     from pyfory.serialization import TypeInfo
 else:
@@ -538,6 +559,8 @@ class TypeResolver:
 
         if should_create_serializer:
             serializer = self._create_serializer(cls)
+        if serializer is not None and type_id in _NO_REF_NUMERIC_TYPE_IDS:
+            serializer.need_to_write_ref = False
 
         if typename is None:
             typeinfo = TypeInfo(cls, type_id, user_type_id, serializer, None, None, dynamic_type)
@@ -614,6 +637,8 @@ class TypeResolver:
         return self.get_type_info(cls).serializer
 
     def get_type_info(self, cls, create=True):
+        if cls is tuple and self.fory.xlang:
+            return self.get_type_info(list, create=create)
         type_info = self._types_info.get(cls)
         if type_info is not None:
             if type_info.serializer is None:
@@ -636,9 +661,18 @@ class TypeResolver:
             elif self._internal_py_serializer_map.get(type(serializer)) is not None:
                 type_id = self._internal_py_serializer_map.get(type(serializer))[1]
             if not self.require_registration:
-                from pyfory.struct import DataClassSerializer
+                from pyfory import struct as struct_module
 
-                if isinstance(serializer, DataClassSerializer):
+                data_class_types = tuple(
+                    cls
+                    for cls in (
+                        getattr(struct_module, "DataClassSerializer", None),
+                        getattr(struct_module, "DataClassStubSerializer", None),
+                        getattr(struct_module, "PythonDataClassSerializer", None),
+                    )
+                    if cls is not None
+                )
+                if data_class_types and isinstance(serializer, data_class_types):
                     type_id = TypeId.NAMED_STRUCT
         if type_id is None:
             raise TypeUnregisteredError(f"{cls} must be registered using `fory.register_type` API")

@@ -295,6 +295,11 @@ public class JavaScriptXlangTest extends XlangTestBase {
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testStructEvolvingOverride(boolean enableCodegen) throws java.io.IOException {
+    super.testStructEvolvingOverride(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testList(boolean enableCodegen) throws java.io.IOException {
     super.testList(enableCodegen);
   }

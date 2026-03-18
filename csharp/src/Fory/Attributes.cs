@@ -23,6 +23,10 @@ namespace Apache.Fory;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum)]
 public sealed class ForyObjectAttribute : Attribute
 {
+    /// <summary>
+    /// Whether the annotated struct should use schema evolution metadata in compatible mode.
+    /// </summary>
+    public bool Evolving { get; set; } = true;
 }
 
 /// <summary>
@@ -50,6 +54,12 @@ public enum FieldEncoding
 [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
 public sealed class FieldAttribute : Attribute
 {
+    /// <summary>
+    /// Optional stable field tag id used for compatible metadata dispatch.
+    /// Use a non-negative value to emit numeric field ids instead of field names.
+    /// </summary>
+    public short Id { get; set; } = -1;
+
     /// <summary>
     /// Gets or sets the field encoding strategy used by generated serializers.
     /// </summary>

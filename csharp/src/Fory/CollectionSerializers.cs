@@ -38,12 +38,42 @@ internal static class CollectionCodec
             return true;
         }
 
-        if (!typeInfo.NeedsTypeInfoForField())
+        if (!TypeResolver.NeedToWriteTypeInfoForField(typeInfo))
         {
             return true;
         }
 
         return typeof(T).IsSealed;
+    }
+
+    private static bool CanDeclareRuntimeElementType<T>(List<T> list, TypeInfo typeInfo)
+    {
+        if (list.Count == 0 ||
+            typeInfo.IsDynamicType ||
+            typeInfo.IsBuiltinType ||
+            !TypeResolver.NeedToWriteTypeInfoForField(typeInfo) ||
+            typeof(T).IsSealed)
+        {
+            return false;
+        }
+
+        Type declaredType = typeof(T);
+        bool nullable = typeInfo.IsNullableType;
+        for (int i = 0; i < list.Count; i++)
+        {
+            T value = list[i];
+            if (nullable && value is null)
+            {
+                continue;
+            }
+
+            if (value is null || value.GetType() != declaredType)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static void WriteCollectionData<T>(
@@ -54,8 +84,9 @@ internal static class CollectionCodec
     {
         TypeInfo elementTypeInfo = context.TypeResolver.GetTypeInfo<T>();
         List<T> list = values as List<T> ?? [.. values];
-        context.Writer.WriteVarUInt32((uint)list.Count);
-        if (list.Count == 0)
+        int count = list.Count;
+        context.Writer.WriteVarUInt32((uint)count);
+        if (count == 0)
         {
             return;
         }
@@ -63,9 +94,9 @@ internal static class CollectionCodec
         bool hasNull = false;
         if (elementTypeInfo.IsNullableType)
         {
-            for (int i = 0; i < list.Count; i++)
+            for (int i = 0; i < count; i++)
             {
-                if (!context.TypeResolver.IsNoneObject(elementTypeInfo, list[i]))
+                if (list[i] is not null)
                 {
                     continue;
                 }
@@ -75,14 +106,16 @@ internal static class CollectionCodec
             }
         }
 
-        bool trackRef = context.TrackRef && elementTypeInfo.IsReferenceTrackableType;
-        bool declaredElementType = hasGenerics && CanDeclareElementType<T>(elementTypeInfo);
+        bool trackRef = context.TrackRef && elementTypeInfo.IsRefType;
+        bool declaredElementType = hasGenerics &&
+                                   (CanDeclareElementType<T>(elementTypeInfo) ||
+                                    CanDeclareRuntimeElementType(list, elementTypeInfo));
         bool dynamicElementType = elementTypeInfo.IsDynamicType;
-        bool writeDeclaredCompatibleTypeInfo =
+        bool writeDeclaredTypeMeta =
             context.Compatible &&
             declaredElementType &&
             !dynamicElementType &&
-            elementTypeInfo.NeedsTypeInfoForField();
+            TypeResolver.NeedToWriteTypeInfoForField(elementTypeInfo);
 
         byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
         if (trackRef)
@@ -101,7 +134,7 @@ internal static class CollectionCodec
         }
 
         context.Writer.WriteUInt8(header);
-        if (!dynamicElementType && (!declaredElementType || writeDeclaredCompatibleTypeInfo))
+        if (!dynamicElementType && (!declaredElementType || writeDeclaredTypeMeta))
         {
             context.TypeResolver.WriteTypeInfo(elementSerializer, context);
         }
@@ -109,9 +142,9 @@ internal static class CollectionCodec
         if (dynamicElementType)
         {
             RefMode refMode = trackRef ? RefMode.Tracking : hasNull ? RefMode.NullOnly : RefMode.None;
-            foreach (T element in list)
+            for (int i = 0; i < count; i++)
             {
-                elementSerializer.Write(context, element, refMode, true, hasGenerics);
+                elementSerializer.Write(context, list[i], refMode, true, hasGenerics);
             }
 
             return;
@@ -119,9 +152,9 @@ internal static class CollectionCodec
 
         if (trackRef)
         {
-            foreach (T element in list)
+            for (int i = 0; i < count; i++)
             {
-                elementSerializer.Write(context, element, RefMode.Tracking, false, hasGenerics);
+                elementSerializer.Write(context, list[i], RefMode.Tracking, false, hasGenerics);
             }
 
             return;
@@ -129,9 +162,10 @@ internal static class CollectionCodec
 
         if (hasNull)
         {
-            foreach (T element in list)
+            for (int i = 0; i < count; i++)
             {
-                if (context.TypeResolver.IsNoneObject(elementTypeInfo, element))
+                T element = list[i];
+                if (element is null)
                 {
                     context.Writer.WriteInt8((sbyte)RefFlag.Null);
                 }
@@ -145,9 +179,9 @@ internal static class CollectionCodec
             return;
         }
 
-        foreach (T element in list)
+        for (int i = 0; i < count; i++)
         {
-            elementSerializer.WriteData(context, element, hasGenerics);
+            elementSerializer.WriteData(context, list[i], hasGenerics);
         }
     }
 
@@ -165,12 +199,12 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
-        bool canonicalizeElements = context.TrackRef && !trackRef && elementTypeInfo.IsReferenceTrackableType;
-        bool readDeclaredCompatibleTypeInfo =
+        bool canonicalizeElements = context.TrackRef && !trackRef && elementTypeInfo.IsRefType;
+        bool readDeclaredTypeMeta =
             context.Compatible &&
             declared &&
             !elementTypeInfo.IsDynamicType &&
-            elementTypeInfo.NeedsTypeInfoForField();
+            TypeResolver.NeedToWriteTypeInfoForField(elementTypeInfo);
 
         List<T> values = new(length);
         if (!sameType)
@@ -215,7 +249,7 @@ internal static class CollectionCodec
             return values;
         }
 
-        if (!declared || readDeclaredCompatibleTypeInfo)
+        if (!declared || readDeclaredTypeMeta)
         {
             context.TypeResolver.ReadTypeInfo(elementSerializer, context);
         }
@@ -229,7 +263,7 @@ internal static class CollectionCodec
 
             if (!declared)
             {
-                context.ClearDynamicTypeInfo(typeof(T));
+                context.ClearReadTypeInfo(typeof(T));
             }
 
             return values;
@@ -246,7 +280,11 @@ internal static class CollectionCodec
                 }
                 else
                 {
-                    values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, context, canonicalizeElements));
+                    values.Add(
+                        ReadCollectionElementDataWithCanonicalization(
+                            elementSerializer,
+                            context,
+                            canonicalizeElements));
                 }
             }
         }
@@ -254,13 +292,17 @@ internal static class CollectionCodec
         {
             for (int i = 0; i < length; i++)
             {
-                values.Add(ReadCollectionElementDataWithCanonicalization(elementSerializer, context, canonicalizeElements));
+                values.Add(
+                    ReadCollectionElementDataWithCanonicalization(
+                        elementSerializer,
+                        context,
+                        canonicalizeElements));
             }
         }
 
         if (!declared)
         {
-            context.ClearDynamicTypeInfo(typeof(T));
+            context.ClearReadTypeInfo(typeof(T));
         }
 
         return values;
@@ -280,7 +322,7 @@ internal static class CollectionCodec
         int start = context.Reader.Cursor;
         T value = elementSerializer.Read(context, RefMode.None, readTypeInfo);
         int end = context.Reader.Cursor;
-        return context.CanonicalizeNonTrackingReference(value, start, end);
+        return context.CanonicalizeNonTrackingRef(value, start, end);
     }
 
     private static T ReadCollectionElementDataWithCanonicalization<T>(
@@ -296,7 +338,7 @@ internal static class CollectionCodec
         int start = context.Reader.Cursor;
         T value = elementSerializer.ReadData(context);
         int end = context.Reader.Cursor;
-        return context.CanonicalizeNonTrackingReference(value, start, end);
+        return context.CanonicalizeNonTrackingRef(value, start, end);
     }
 }
 

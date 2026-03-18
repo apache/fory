@@ -275,5 +275,4 @@ cdef class TimestampSerializer(Serializer):
         cdef long long seconds = buffer.read_int64()
         cdef unsigned int nanos = buffer.read_uint32()
         ts = seconds + (<double>nanos) / 1000000000.0
-        # TODO support timezone
-        return datetime.datetime.fromtimestamp(ts)
+        return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)

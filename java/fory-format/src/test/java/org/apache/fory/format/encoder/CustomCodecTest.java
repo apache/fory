@@ -212,7 +212,7 @@ public class CustomCodecTest {
 
     @Override
     public Field getForyField(final String fieldName) {
-      return DataTypes.field(fieldName, DataTypes.binary());
+      return DataTypes.field(fieldName, DataTypes.fixedWidthBinary(16));
     }
   }
 

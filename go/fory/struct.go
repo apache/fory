@@ -1424,6 +1424,11 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 
 	// Phase 1: Fixed-size primitives (inline unsafe reads with endian handling)
 	if s.fieldGroup.FixedSize > 0 {
+		var errOut Error
+		if !buf.CheckReadable(int(s.fieldGroup.FixedSize), &errOut) {
+			ctx.SetError(errOut)
+			return
+		}
 		baseOffset := buf.ReaderIndex()
 		data := buf.GetData()
 

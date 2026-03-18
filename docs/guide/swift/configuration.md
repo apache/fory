@@ -1,6 +1,6 @@
 ---
 title: Configuration
-sidebar_position: 1
+sidebar_position: 2
 id: configuration
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -38,6 +38,11 @@ Default configuration:
 ```swift
 let fory = Fory() // xlang=true, trackRef=false, compatible=false
 ```
+
+## Threading
+
+`Fory` is single-threaded and optimized to reuse one read/write context pair on the calling thread.
+Reuse one instance per thread and do not use the same instance concurrently.
 
 ## Options
 

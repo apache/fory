@@ -22,11 +22,11 @@ import Fory, {
   BinaryWriter,
   Type,
   Dynamic,
-} from "../packages/fory/index";
+} from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
 import * as fs from "node:fs";
 import * as beautify from 'js-beautify';
-import { TypeId } from "../packages/fory/lib/type";
+import { TypeId } from "../packages/core/lib/type";
 
 const Byte = {
   MAX_VALUE: 127,
@@ -183,7 +183,7 @@ describe("bool", () => {
     writeToFile(writer.dump() as Buffer);
   });
   test("test_murmurhash3", () => {
-    const { x64hash128 } = require("../packages/fory/lib/murmurHash3");
+    const { x64hash128 } = require("../packages/core/lib/murmurHash3");
     const reader = new BinaryReader({});
     reader.reset(content);
     let dataview = x64hash128(new Uint8Array([1, 2, 8]), 47);
@@ -379,6 +379,43 @@ describe("bool", () => {
     // Serialize the deserialized object back
     const serializedData = fory.serialize(deserializedObj);
     writeToFile(serializedData as Buffer);
+  });
+
+  test("test_struct_evolving_override", () => {
+    const fory = new Fory({
+      compatible: true
+    });
+
+    @Type.struct({ namespace: "test", typeName: "evolving_yes" }, {
+      f1: Type.string()
+    })
+    class EvolvingOverrideStruct {
+      f1: string = "";
+    }
+    fory.registerSerializer(EvolvingOverrideStruct);
+
+    @Type.struct({ namespace: "test", typeName: "evolving_off", evolving: false }, {
+      f1: Type.string()
+    })
+    class FixedOverrideStruct {
+      f1: string = "";
+    }
+    fory.registerSerializer(FixedOverrideStruct);
+
+    let cursor = 0;
+    const evolving = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.readGetCursor();
+    const fixed = fory.deserialize(content.subarray(cursor));
+    cursor += fory.binaryReader.readGetCursor();
+
+    expect(evolving).toEqual({ f1: "payload" });
+    expect(fixed).toEqual({ f1: "payload" });
+
+    const serializedData = Buffer.concat([
+      fory.serialize(evolving) as Buffer,
+      fory.serialize(fixed) as Buffer,
+    ]);
+    writeToFile(serializedData);
   });
 
   test("test_list", () => {

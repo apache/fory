@@ -21,7 +21,7 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/type_analysis_models.dart';
 import 'package:fory/src/codegen/analyze/analyzer.dart';
 import 'package:fory/src/codegen/entity/either.dart';
-import 'package:fory/src/codegen/exception/annotation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/const/dart_type.dart';
 
 class CustomTypeAnalyzer {

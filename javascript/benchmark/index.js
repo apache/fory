@@ -17,8 +17,8 @@
  * under the License.
  */
 
-const Fory = require("@apache-fory/fory");
-const utils = require("@apache-fory/fory/dist/lib/util");
+const Fory = require("@apache-fory/core");
+const utils = require("@apache-fory/core/dist/lib/util");
 const hps = require('@apache-fory/hps').default;
 const fory = new Fory.default({ hps, refTracking: false, useSliceString: true });
 const Benchmark = require("benchmark");

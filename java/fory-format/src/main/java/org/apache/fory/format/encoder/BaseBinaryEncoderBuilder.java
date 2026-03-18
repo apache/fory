@@ -546,7 +546,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   /**
    * Return an expression to serialize opaque <code>inputObject</code> as binary using <code>fory
    * </code>. When deserialization, using fory to deserialize sliced MemoryBuffer. See {@link
-   * BinaryUtils#getElemAccessMethodName(TypeRef)}, {@link Getters#getBuffer(int)}
+   * BinaryUtils#getElemAccessMethodName(TypeRef,TypeResolutionContext)}, {@link
+   * Getters#getBuffer(int)}
    */
   protected Expression serializeForObject(
       Expression ordinal, Expression writer, Expression inputObject) {
@@ -907,7 +908,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
   /**
    * Using fory to deserialize sliced MemoryBuffer. see {@link
-   * BinaryUtils#getElemAccessMethodName(TypeRef)}, {@link Getters#getBuffer(int)}
+   * BinaryUtils#getElemAccessMethodName(TypeRef,TypeResolutionContext)}, {@link
+   * Getters#getBuffer(int)}
    */
   protected Expression deserializeForObject(Expression value, TypeRef<?> typeRef) {
     return new Invoke(foryRef, "deserialize", typeRef, value);

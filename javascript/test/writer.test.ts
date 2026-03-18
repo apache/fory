@@ -17,8 +17,8 @@
  * under the License.
  */
 
-import { OwnershipError } from '../packages/fory/lib/error';
-import { BinaryWriter } from '../packages/fory/lib/writer';
+import { OwnershipError } from '../packages/core/lib/error';
+import { BinaryWriter } from '../packages/core/lib/writer';
 import { describe, expect, test } from '@jest/globals';
 
 describe('writer', () => {

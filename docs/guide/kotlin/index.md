@@ -50,14 +50,14 @@ See [Java Features](../java/index.md#features) for complete feature list.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.15.0</version>
+  <version>0.16.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:0.15.0")
+implementation("org.apache.fory:fory-kotlin:0.16.0")
 ```
 
 ## Quick Start
@@ -93,7 +93,7 @@ fun main() {
 
 Fory Kotlin is built on top of Fory Java. Most configuration options, features, and concepts from Fory Java apply directly to Kotlin. Refer to the Java documentation for:
 
-- [Configuration Options](../java/configuration.md) - All ForyBuilder options
+- [Configuration](../java/configuration.md) - All ForyBuilder options
 - [Basic Serialization](../java/basic-serialization.md) - Serialization patterns and APIs
 - [Type Registration](../java/type-registration.md) - Class registration and security
 - [Schema Evolution](../java/schema-evolution.md) - Forward/backward compatibility

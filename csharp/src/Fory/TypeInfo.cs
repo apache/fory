@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection;
@@ -31,13 +32,19 @@ internal enum UserTypeKind
 
 public sealed class TypeInfo
 {
+    internal readonly record struct TypeMetaCacheEntry(TypeMeta TypeMeta, byte[] EncodedBytes, ulong HeaderHash);
+
     private readonly object _serializer;
+    private readonly TypeMeta? _typeMeta;
     private readonly Action<WriteContext, object?, bool> _writeDataObject;
     private readonly Func<ReadContext, object?> _readDataObject;
     private readonly Action<WriteContext, object?, RefMode, bool, bool> _writeObject;
     private readonly Func<ReadContext, RefMode, bool, object?> _readObject;
-    private readonly Func<bool, IReadOnlyList<TypeMetaFieldInfo>> _compatibleTypeMetaFields;
+    private readonly Func<bool, IReadOnlyList<TypeMetaFieldInfo>> _typeMetaFields;
+    private readonly object _typeMetaCacheLock = new();
     private static readonly IReadOnlyList<TypeMetaFieldInfo> EmptyTypeMetaFields = Array.Empty<TypeMetaFieldInfo>();
+    private TypeMetaCacheEntry? _typeMetaNoTrackRef;
+    private TypeMetaCacheEntry? _typeMetaTrackRef;
 
     private TypeInfo(
         Type type,
@@ -46,38 +53,55 @@ public sealed class TypeInfo
         UserTypeKind? userTypeKind,
         bool isDynamicType,
         bool isNullableType,
-        bool isReferenceTrackableType,
+        bool isRefType,
         object? defaultObject,
+        bool evolving,
+        bool isRegistered,
+        uint? userTypeId,
+        bool registerByName,
+        MetaString? namespaceName,
+        MetaString? typeName,
         Action<WriteContext, object?, bool> writeDataObject,
         Func<ReadContext, object?> readDataObject,
         Action<WriteContext, object?, RefMode, bool, bool> writeObject,
         Func<ReadContext, RefMode, bool, object?> readObject,
-        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> compatibleTypeMetaFields)
+        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> typeMetaFields,
+        TypeId? wireTypeId,
+        TypeMeta? typeMeta)
     {
         Type = type;
         _serializer = serializer;
+        _typeMeta = typeMeta;
         BuiltInTypeId = builtInTypeId;
         UserTypeKind = userTypeKind;
         IsDynamicType = isDynamicType;
         IsNullableType = isNullableType;
-        IsReferenceTrackableType = isReferenceTrackableType;
+        IsRefType = isRefType;
         DefaultObject = defaultObject;
+        Evolving = evolving;
+        IsRegistered = isRegistered;
+        UserTypeId = userTypeId;
+        RegisterByName = registerByName;
+        NamespaceName = namespaceName;
+        TypeName = typeName;
         _writeDataObject = writeDataObject;
         _readDataObject = readDataObject;
         _writeObject = writeObject;
         _readObject = readObject;
-        _compatibleTypeMetaFields = compatibleTypeMetaFields;
+        _typeMetaFields = typeMetaFields;
+        WireTypeId = wireTypeId;
     }
 
     internal static TypeInfo Create<T>(Type type, Serializer<T> serializer)
     {
-        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> compatibleTypeMetaFields =
-            CreateCompatibleTypeMetaFieldsProvider(serializer, out bool hasCompatibleTypeMetaFieldsProvider);
+        Func<bool, IReadOnlyList<TypeMetaFieldInfo>> typeMetaFields =
+            CreateTypeMetaFieldsProvider(serializer, out bool hasTypeMetaFieldsProvider);
         (TypeId? builtInTypeId, UserTypeKind? userTypeKind, bool isDynamicType) = ResolveTypeShape(
             type,
-            hasCompatibleTypeMetaFieldsProvider);
+            hasTypeMetaFieldsProvider);
+        bool evolving = ResolveStructEvolving(type, userTypeKind);
         bool isNullableType = !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
-        bool isReferenceTrackableType = type != typeof(string) && !type.IsValueType;
+        bool isRefType = type != typeof(string) && !type.IsValueType;
         return new TypeInfo(
             type,
             serializer,
@@ -85,22 +109,30 @@ public sealed class TypeInfo
             userTypeKind,
             isDynamicType,
             isNullableType,
-            isReferenceTrackableType,
+            isRefType,
             serializer.DefaultObject,
+            evolving,
+            isRegistered: false,
+            userTypeId: null,
+            registerByName: false,
+            namespaceName: null,
+            typeName: null,
             (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
             context => serializer.ReadData(context),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
                 WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
             (context, refMode, readTypeInfo) => serializer.Read(context, refMode, readTypeInfo),
-            compatibleTypeMetaFields);
+            typeMetaFields,
+            builtInTypeId,
+            null);
     }
 
-    private static Func<bool, IReadOnlyList<TypeMetaFieldInfo>> CreateCompatibleTypeMetaFieldsProvider(
+    private static Func<bool, IReadOnlyList<TypeMetaFieldInfo>> CreateTypeMetaFieldsProvider(
         object serializer,
         out bool hasProvider)
     {
         MethodInfo? method = serializer.GetType().GetMethod(
-            "CompatibleTypeMetaFields",
+            "TypeMetaFields",
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
             null,
             [typeof(bool)],
@@ -108,7 +140,7 @@ public sealed class TypeInfo
         if (method is null || method.ReturnType != typeof(IReadOnlyList<TypeMetaFieldInfo>))
         {
             hasProvider = false;
-            return EmptyCompatibleTypeMetaFields;
+            return EmptyTypeMetaFieldsProvider;
         }
 
         try
@@ -120,13 +152,25 @@ public sealed class TypeInfo
         catch
         {
             hasProvider = false;
-            return EmptyCompatibleTypeMetaFields;
+            return EmptyTypeMetaFieldsProvider;
         }
     }
 
-    private static IReadOnlyList<TypeMetaFieldInfo> EmptyCompatibleTypeMetaFields(bool _)
+    private static IReadOnlyList<TypeMetaFieldInfo> EmptyTypeMetaFieldsProvider(bool _)
     {
         return EmptyTypeMetaFields;
+    }
+
+    private static bool ResolveStructEvolving(Type type, UserTypeKind? userTypeKind)
+    {
+        if (userTypeKind != Apache.Fory.UserTypeKind.Struct)
+        {
+            return true;
+        }
+
+        Type structType = Nullable.GetUnderlyingType(type) ?? type;
+        ForyObjectAttribute? attribute = structType.GetCustomAttribute<ForyObjectAttribute>();
+        return attribute?.Evolving ?? true;
     }
 
     private static void WriteDataObject<T>(Serializer<T> serializer, WriteContext context, object? value, bool hasGenerics)
@@ -163,12 +207,12 @@ public sealed class TypeInfo
 
     private static (TypeId? BuiltInTypeId, UserTypeKind? UserTypeKind, bool IsDynamicType) ResolveTypeShape(
         Type type,
-        bool hasCompatibleTypeMetaFieldsProvider)
+        bool hasTypeMetaFieldsProvider)
     {
         Type? nullableType = Nullable.GetUnderlyingType(type);
         if (nullableType is not null)
         {
-            return ResolveTypeShape(nullableType, hasCompatibleTypeMetaFieldsProvider);
+            return ResolveTypeShape(nullableType, hasTypeMetaFieldsProvider);
         }
 
         if (TryResolveBuiltInTypeId(type, out TypeId builtInTypeId))
@@ -191,7 +235,7 @@ public sealed class TypeInfo
             return (null, Apache.Fory.UserTypeKind.TypedUnion, false);
         }
 
-        if (hasCompatibleTypeMetaFieldsProvider)
+        if (hasTypeMetaFieldsProvider)
         {
             return (null, Apache.Fory.UserTypeKind.Struct, false);
         }
@@ -407,38 +451,27 @@ public sealed class TypeInfo
         return false;
     }
 
-    public Type Type { get; }
+    internal Type Type { get; }
 
-    public bool IsBuiltinType => BuiltInTypeId.HasValue;
+    internal bool IsBuiltinType => BuiltInTypeId.HasValue;
 
-    public TypeId? BuiltInTypeId { get; }
-
-    public bool IsUserType => UserTypeKind.HasValue;
+    internal TypeId? BuiltInTypeId { get; }
 
     internal UserTypeKind? UserTypeKind { get; }
 
-    public bool IsDynamicType { get; }
+    internal bool IsDynamicType { get; }
 
-    public bool IsNullableType { get; }
+    internal bool IsNullableType { get; }
 
-    public bool IsReferenceTrackableType { get; }
+    internal bool IsRefType { get; }
 
-    public object? DefaultObject { get; }
+    internal object? DefaultObject { get; }
 
-    public bool NeedsTypeInfoForField()
-    {
-        if (IsDynamicType)
-        {
-            return true;
-        }
+    internal bool Evolving { get; }
 
-        if (!UserTypeKind.HasValue)
-        {
-            return false;
-        }
+    internal TypeId? WireTypeId { get; }
 
-        return UserTypeKind.Value is Apache.Fory.UserTypeKind.Struct or Apache.Fory.UserTypeKind.Ext;
-    }
+    internal Type SerializerType => _serializer.GetType();
 
     internal Serializer<T> RequireSerializer<T>()
     {
@@ -470,45 +503,217 @@ public sealed class TypeInfo
         return _readObject(context, refMode, readTypeInfo);
     }
 
-    internal IReadOnlyList<TypeMetaFieldInfo> CompatibleTypeMetaFields(bool trackRef)
+    internal IReadOnlyList<TypeMetaFieldInfo> TypeMetaFields(bool trackRef)
     {
-        return _compatibleTypeMetaFields(trackRef);
+        return _typeMetaFields(trackRef);
     }
 
-    internal bool IsRegistered { get; private set; }
-
-    internal uint? UserTypeId { get; private set; }
-
-    internal bool RegisterByName { get; private set; }
-
-    internal MetaString? NamespaceName { get; private set; }
-
-    internal MetaString? TypeName { get; private set; }
-
-    internal void RegisterByTypeId(uint userTypeId)
+    internal TypeMeta? GetTypeMeta()
     {
-        IsRegistered = true;
-        UserTypeId = userTypeId;
-        RegisterByName = false;
-        NamespaceName = null;
-        TypeName = null;
+        return _typeMeta;
     }
 
-    internal void RegisterByTypeName(MetaString namespaceName, MetaString typeName)
+    public ulong GetTypeMetaHeaderHash(bool trackRef)
     {
-        IsRegistered = true;
-        UserTypeId = null;
-        RegisterByName = true;
-        NamespaceName = namespaceName;
-        TypeName = typeName;
+        return GetTypeMetaCacheEntry(trackRef).HeaderHash;
     }
 
-    internal void CopyRegistrationFrom(TypeInfo source)
+    internal bool IsRegistered { get; }
+
+    internal uint? UserTypeId { get; }
+
+    internal bool RegisterByName { get; }
+
+    internal MetaString? NamespaceName { get; }
+
+    internal MetaString? TypeName { get; }
+
+    internal TypeInfo WithTypeIdRegistration(uint userTypeId)
     {
-        IsRegistered = source.IsRegistered;
-        UserTypeId = source.UserTypeId;
-        RegisterByName = source.RegisterByName;
-        NamespaceName = source.NamespaceName;
-        TypeName = source.TypeName;
+        return new TypeInfo(
+            Type,
+            _serializer,
+            BuiltInTypeId,
+            UserTypeKind,
+            IsDynamicType,
+            IsNullableType,
+            IsRefType,
+            DefaultObject,
+            Evolving,
+            isRegistered: true,
+            userTypeId: userTypeId,
+            registerByName: false,
+            namespaceName: null,
+            typeName: null,
+            _writeDataObject,
+            _readDataObject,
+            _writeObject,
+            _readObject,
+            _typeMetaFields,
+            WireTypeId,
+            _typeMeta);
+    }
+
+    internal TypeInfo WithTypeNameRegistration(MetaString namespaceName, MetaString typeName)
+    {
+        return new TypeInfo(
+            Type,
+            _serializer,
+            BuiltInTypeId,
+            UserTypeKind,
+            IsDynamicType,
+            IsNullableType,
+            IsRefType,
+            DefaultObject,
+            Evolving,
+            isRegistered: true,
+            userTypeId: null,
+            registerByName: true,
+            namespaceName: namespaceName,
+            typeName: typeName,
+            _writeDataObject,
+            _readDataObject,
+            _writeObject,
+            _readObject,
+            _typeMetaFields,
+            WireTypeId,
+            _typeMeta);
+    }
+
+    internal TypeInfo WithRegistrationFrom(TypeInfo source)
+    {
+        if (!source.IsRegistered)
+        {
+            return this;
+        }
+
+        if (source.RegisterByName)
+        {
+            if (!source.NamespaceName.HasValue || !source.TypeName.HasValue)
+            {
+                throw new InvalidDataException("missing type name metadata for name-registered type");
+            }
+
+            return WithTypeNameRegistration(source.NamespaceName.Value, source.TypeName.Value);
+        }
+
+        if (!source.UserTypeId.HasValue)
+        {
+            throw new InvalidDataException("missing user type id metadata for id-registered type");
+        }
+
+        return WithTypeIdRegistration(source.UserTypeId.Value);
+    }
+
+    internal TypeInfo WithWireTypeInfo(TypeId wireTypeId, TypeMeta? typeMeta = null)
+    {
+        return new TypeInfo(
+            Type,
+            _serializer,
+            BuiltInTypeId,
+            UserTypeKind,
+            IsDynamicType,
+            IsNullableType,
+            IsRefType,
+            DefaultObject,
+            Evolving,
+            IsRegistered,
+            UserTypeId,
+            RegisterByName,
+            NamespaceName,
+            TypeName,
+            _writeDataObject,
+            _readDataObject,
+            _writeObject,
+            _readObject,
+            _typeMetaFields,
+            wireTypeId,
+            typeMeta);
+    }
+
+    internal TypeMetaCacheEntry GetTypeMetaCacheEntry(bool trackRef)
+    {
+        if (trackRef)
+        {
+            if (_typeMetaTrackRef.HasValue)
+            {
+                return _typeMetaTrackRef.Value;
+            }
+        }
+        else if (_typeMetaNoTrackRef.HasValue)
+        {
+            return _typeMetaNoTrackRef.Value;
+        }
+
+        lock (_typeMetaCacheLock)
+        {
+            if (trackRef)
+            {
+                _typeMetaTrackRef ??= BuildTypeMetaCacheEntry(trackRef: true);
+                return _typeMetaTrackRef.Value;
+            }
+
+            _typeMetaNoTrackRef ??= BuildTypeMetaCacheEntry(trackRef: false);
+            return _typeMetaNoTrackRef.Value;
+        }
+    }
+
+    private TypeMetaCacheEntry BuildTypeMetaCacheEntry(bool trackRef)
+    {
+        if (!UserTypeKind.HasValue)
+        {
+            throw new InvalidDataException($"type meta is only available for user types, got {Type}");
+        }
+
+        if (!IsRegistered)
+        {
+            throw new TypeNotRegisteredException($"{Type} is not registered");
+        }
+
+        TypeId wireTypeId = TypeResolver.ResolveWireTypeId(
+            UserTypeKind.Value,
+            RegisterByName,
+            compatible: true,
+            Evolving);
+        IReadOnlyList<TypeMetaFieldInfo> fields = TypeMetaFields(trackRef);
+        bool hasFieldsMeta = fields.Count > 0;
+        TypeMeta typeMeta;
+        if (RegisterByName)
+        {
+            if (!NamespaceName.HasValue || !TypeName.HasValue)
+            {
+                throw new InvalidDataException("missing type name metadata for name-registered type");
+            }
+
+            typeMeta = new TypeMeta(
+                (uint)wireTypeId,
+                null,
+                NamespaceName.Value,
+                TypeName.Value,
+                true,
+                fields,
+                hasFieldsMeta);
+        }
+        else
+        {
+            if (!UserTypeId.HasValue)
+            {
+                throw new InvalidDataException("missing user type id metadata for id-registered type");
+            }
+
+            typeMeta = new TypeMeta(
+                (uint)wireTypeId,
+                UserTypeId.Value,
+                MetaString.Empty('.', '_'),
+                MetaString.Empty('$', '_'),
+                false,
+                fields,
+                hasFieldsMeta);
+        }
+
+        byte[] encoded = typeMeta.Encode();
+        ulong header = BinaryPrimitives.ReadUInt64LittleEndian(encoded);
+        ulong headerHash = header >> (int)(64 - TypeMetaConstants.TypeMetaNumHashBits);
+        return new TypeMetaCacheEntry(typeMeta, encoded, headerHash);
     }
 }

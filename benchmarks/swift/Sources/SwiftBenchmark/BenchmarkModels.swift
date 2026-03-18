@@ -65,39 +65,69 @@ enum OperationKind: String, CaseIterable {
 
 @ForyObject
 struct NumericStruct: Codable, Equatable {
+    @ForyField(id: 1)
     var f1: Int32 = 0
+    @ForyField(id: 2)
     var f2: Int32 = 0
+    @ForyField(id: 3)
     var f3: Int32 = 0
+    @ForyField(id: 4)
     var f4: Int32 = 0
+    @ForyField(id: 5)
     var f5: Int32 = 0
+    @ForyField(id: 6)
     var f6: Int32 = 0
+    @ForyField(id: 7)
     var f7: Int32 = 0
+    @ForyField(id: 8)
     var f8: Int32 = 0
 }
 
 @ForyObject
 struct Sample: Codable, Equatable {
+    @ForyField(id: 1)
     var intValue: Int32 = 0
+    @ForyField(id: 2)
     var longValue: Int64 = 0
+    @ForyField(id: 3)
     var floatValue: Float = 0
+    @ForyField(id: 4)
     var doubleValue: Double = 0
+    @ForyField(id: 5)
     var shortValue: Int32 = 0
+    @ForyField(id: 6)
     var charValue: Int32 = 0
+    @ForyField(id: 7)
     var booleanValue: Bool = false
+    @ForyField(id: 8)
     var intValueBoxed: Int32 = 0
+    @ForyField(id: 9)
     var longValueBoxed: Int64 = 0
+    @ForyField(id: 10)
     var floatValueBoxed: Float = 0
+    @ForyField(id: 11)
     var doubleValueBoxed: Double = 0
+    @ForyField(id: 12)
     var shortValueBoxed: Int32 = 0
+    @ForyField(id: 13)
     var charValueBoxed: Int32 = 0
+    @ForyField(id: 14)
     var booleanValueBoxed: Bool = false
+    @ForyField(id: 15)
     var intArray: [Int32] = []
+    @ForyField(id: 16)
     var longArray: [Int64] = []
+    @ForyField(id: 17)
     var floatArray: [Float] = []
+    @ForyField(id: 18)
     var doubleArray: [Double] = []
+    @ForyField(id: 19)
     var shortArray: [Int32] = []
+    @ForyField(id: 20)
     var charArray: [Int32] = []
+    @ForyField(id: 21)
     var booleanArray: [Bool] = []
+    @ForyField(id: 22)
     var string: String = ""
 }
 
@@ -115,47 +145,69 @@ enum Size: Int32, Codable, Equatable {
 
 @ForyObject
 struct Media: Codable, Equatable {
+    @ForyField(id: 1)
     var uri: String = ""
+    @ForyField(id: 2)
     var title: String = ""
+    @ForyField(id: 3)
     var width: Int32 = 0
+    @ForyField(id: 4)
     var height: Int32 = 0
+    @ForyField(id: 5)
     var format: String = ""
+    @ForyField(id: 6)
     var duration: Int64 = 0
+    @ForyField(id: 7)
     var size: Int64 = 0
+    @ForyField(id: 8)
     var bitrate: Int32 = 0
+    @ForyField(id: 9)
     var hasBitrate: Bool = false
+    @ForyField(id: 10)
     var persons: [String] = []
+    @ForyField(id: 11)
     var player: Player = .java
+    @ForyField(id: 12)
     var copyright: String = ""
 }
 
 @ForyObject
 struct Image: Codable, Equatable {
+    @ForyField(id: 1)
     var uri: String = ""
+    @ForyField(id: 2)
     var title: String = ""
+    @ForyField(id: 3)
     var width: Int32 = 0
+    @ForyField(id: 4)
     var height: Int32 = 0
+    @ForyField(id: 5)
     var size: Size = .small
 }
 
 @ForyObject
 struct MediaContent: Codable, Equatable {
+    @ForyField(id: 1)
     var media: Media = .init()
+    @ForyField(id: 2)
     var images: [Image] = []
 }
 
 @ForyObject
 struct StructList: Codable, Equatable {
+    @ForyField(id: 1)
     var structList: [NumericStruct] = []
 }
 
 @ForyObject
 struct SampleList: Codable, Equatable {
+    @ForyField(id: 1)
     var sampleList: [Sample] = []
 }
 
 @ForyObject
 struct MediaContentList: Codable, Equatable {
+    @ForyField(id: 1)
     var mediaContentList: [MediaContent] = []
 }
 

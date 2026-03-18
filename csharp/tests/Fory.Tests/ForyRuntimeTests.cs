@@ -92,6 +92,30 @@ public sealed class TwoStringField
 }
 
 [ForyObject]
+public sealed class EvolvingOverrideValue
+{
+    public string F1 { get; set; } = string.Empty;
+}
+
+[ForyObject(Evolving = false)]
+public sealed class FixedOverrideValue
+{
+    public string F1 { get; set; } = string.Empty;
+}
+
+[ForyObject]
+public sealed class OneStringFieldListHolder
+{
+    public List<OneStringField?> Items { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class TwoStringFieldListHolder
+{
+    public List<TwoStringField?> Items { get; set; } = [];
+}
+
+[ForyObject]
 public sealed class StructWithEnum
 {
     public string Name { get; set; } = string.Empty;
@@ -567,7 +591,7 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void MacroClassReferenceTracking()
+    public void MacroClassRefTracking()
     {
         ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
         fory.Register<Node>(200);
@@ -660,6 +684,24 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void StructEvolvingOverrideUsesSmallerCompatiblePayload()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
+        fory.Register<EvolvingOverrideValue>(1001);
+        fory.Register<FixedOverrideValue>(1002);
+
+        EvolvingOverrideValue evolving = new() { F1 = "payload" };
+        FixedOverrideValue fixedValue = new() { F1 = "payload" };
+
+        byte[] evolvingPayload = fory.Serialize(evolving);
+        byte[] fixedPayload = fory.Serialize(fixedValue);
+
+        Assert.True(fixedPayload.Length < evolvingPayload.Length);
+        Assert.Equal("payload", fory.Deserialize<EvolvingOverrideValue>(evolvingPayload).F1);
+        Assert.Equal("payload", fory.Deserialize<FixedOverrideValue>(fixedPayload).F1);
+    }
+
+    [Fact]
     public void MacroFieldOrderFollowsForyRules()
     {
         ForyRuntime fory = ForyRuntime.Builder().CheckStructVersion(true).Build();
@@ -719,6 +761,92 @@ public sealed class ForyRuntimeTests
 
         Assert.Equal("hello", evolved.F1);
         Assert.Equal(string.Empty, evolved.F2);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CompatibleSchemaEvolutionRoundTripForListElements(bool trackRef)
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        writer.Register<OneStringField>(200);
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        reader.Register<TwoStringField>(200);
+
+        List<OneStringField?> source =
+        [
+            new OneStringField { F1 = "hello" },
+            null,
+            new OneStringField { F1 = "world" },
+        ];
+
+        byte[] payload = writer.Serialize(source);
+        List<TwoStringField?> evolved = reader.Deserialize<List<TwoStringField?>>(payload);
+
+        Assert.Equal(3, evolved.Count);
+        TwoStringField first = Assert.IsType<TwoStringField>(evolved[0]);
+        Assert.Equal("hello", first.F1);
+        Assert.Equal(string.Empty, first.F2);
+        Assert.Null(evolved[1]);
+        TwoStringField third = Assert.IsType<TwoStringField>(evolved[2]);
+        Assert.Equal("world", third.F1);
+        Assert.Equal(string.Empty, third.F2);
+
+        first.F2 = "extra-first";
+        third.F2 = "extra-third";
+        List<OneStringField?> roundTripped = writer.Deserialize<List<OneStringField?>>(reader.Serialize(evolved));
+
+        Assert.Equal(3, roundTripped.Count);
+        OneStringField firstRound = Assert.IsType<OneStringField>(roundTripped[0]);
+        Assert.Equal("hello", firstRound.F1);
+        Assert.Null(roundTripped[1]);
+        OneStringField thirdRound = Assert.IsType<OneStringField>(roundTripped[2]);
+        Assert.Equal("world", thirdRound.F1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CompatibleSchemaEvolutionRoundTripForNestedListField(bool trackRef)
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        writer.Register<OneStringField>(200);
+        writer.Register<OneStringFieldListHolder>(201);
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        reader.Register<TwoStringField>(200);
+        reader.Register<TwoStringFieldListHolder>(201);
+
+        OneStringFieldListHolder source = new()
+        {
+            Items =
+            [
+                new OneStringField { F1 = "hello" },
+                null,
+                new OneStringField { F1 = "world" },
+            ],
+        };
+
+        TwoStringFieldListHolder evolved = reader.Deserialize<TwoStringFieldListHolder>(writer.Serialize(source));
+        Assert.Equal(3, evolved.Items.Count);
+        TwoStringField first = Assert.IsType<TwoStringField>(evolved.Items[0]);
+        Assert.Equal("hello", first.F1);
+        Assert.Equal(string.Empty, first.F2);
+        Assert.Null(evolved.Items[1]);
+        TwoStringField third = Assert.IsType<TwoStringField>(evolved.Items[2]);
+        Assert.Equal("world", third.F1);
+        Assert.Equal(string.Empty, third.F2);
+
+        first.F2 = "extra-first";
+        third.F2 = "extra-third";
+        OneStringFieldListHolder roundTripped = writer.Deserialize<OneStringFieldListHolder>(reader.Serialize(evolved));
+        Assert.Equal(3, roundTripped.Items.Count);
+        OneStringField firstRound = Assert.IsType<OneStringField>(roundTripped.Items[0]);
+        Assert.Equal("hello", firstRound.F1);
+        Assert.Null(roundTripped.Items[1]);
+        OneStringField thirdRound = Assert.IsType<OneStringField>(roundTripped.Items[2]);
+        Assert.Equal("world", thirdRound.F1);
     }
 
     [Fact]
@@ -804,6 +932,27 @@ public sealed class ForyRuntimeTests
         Assert.Contains("a", setDecoded);
         Assert.Contains(7, setDecoded);
         Assert.Contains(false, setDecoded);
+    }
+
+    [Fact]
+    public void DynamicObjectCompatibleModeSupportsStructKeyAndValue()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
+        fory.Register<EvolvingOverrideValue>(410);
+        fory.Register<FixedOverrideValue>(411);
+
+        Dictionary<object, object?> source = new()
+        {
+            [new FixedOverrideValue { F1 = "key" }] = new EvolvingOverrideValue { F1 = "value" },
+        };
+
+        Dictionary<object, object?> decoded =
+            Assert.IsType<Dictionary<object, object?>>(fory.Deserialize<object?>(fory.Serialize<object?>(source)));
+        KeyValuePair<object, object?> entry = Assert.Single(decoded);
+        FixedOverrideValue key = Assert.IsType<FixedOverrideValue>(entry.Key);
+        EvolvingOverrideValue value = Assert.IsType<EvolvingOverrideValue>(entry.Value);
+        Assert.Equal("key", key.F1);
+        Assert.Equal("value", value.F1);
     }
 
     [Fact]
@@ -928,6 +1077,220 @@ public sealed class ForyRuntimeTests
         (ulong encoding, string decoded) = WriteAndReadString(value);
         Assert.Equal(StringEncodingUtf8, encoding);
         Assert.Equal(value, decoded);
+    }
+
+    [Fact]
+    public void TypeResolverVersionHashIncludesUnregisteredTypeBindings()
+    {
+        TypeResolver resolver = new();
+        ulong baselineHash = resolver.VersionHash();
+        _ = resolver.GetTypeInfo<List<int>>();
+        ulong boundHash = resolver.VersionHash();
+
+        Assert.NotEqual(baselineHash, boundHash);
+    }
+
+    [Fact]
+    public void TypeResolverVersionHashIsStableWithinSameFinalizedResolver()
+    {
+        TypeResolver resolver = new();
+        _ = resolver.GetTypeInfo<List<int>>();
+        _ = resolver.GetTypeInfo<Dictionary<string, int>>();
+
+        ulong first = resolver.VersionHash();
+        ulong second = resolver.VersionHash();
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void TypeResolverVersionHashIsDeterministicForSameBoundTypes()
+    {
+        TypeResolver resolverA = new();
+        _ = resolverA.GetTypeInfo<List<int>>();
+        _ = resolverA.GetTypeInfo<Dictionary<string, int>>();
+        ulong hashA = resolverA.VersionHash();
+
+        TypeResolver resolverB = new();
+        _ = resolverB.GetTypeInfo<List<int>>();
+        _ = resolverB.GetTypeInfo<Dictionary<string, int>>();
+        ulong hashB = resolverB.VersionHash();
+
+        Assert.Equal(hashA, hashB);
+    }
+
+    [Fact]
+    public void CompatibleStructFastPathValidatesEmbeddedTypeMetaTypeId()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
+        writer.Register<OneStringField>(200);
+        byte[] payload = writer.Serialize(new OneStringField { F1 = "hello" });
+
+        byte[] tamperedPayload = RewriteCompatibleTypeMetaTypeId(payload, (uint)TypeId.Map);
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
+        reader.Register<OneStringField>(200);
+        Assert.Throws<TypeMismatchException>(() => reader.Deserialize<OneStringField>(tamperedPayload));
+    }
+
+    [Fact]
+    public void TypeMetaAssignFieldIdsPrefersIdAndFallsBackToName()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "int_value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(2, "name", new TypeMetaFieldType((uint)TypeId.String, true)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(2, "$tag2", new TypeMetaFieldType((uint)TypeId.String, true)),
+            new TypeMetaFieldInfo(null, "intValue", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(99, "$tag99", new TypeMetaFieldType((uint)TypeId.String, true)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            500,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
+        Assert.Equal(1, remoteTypeMeta.Fields[0].AssignedFieldId);
+        Assert.Equal(0, remoteTypeMeta.Fields[1].AssignedFieldId);
+        Assert.Equal(-1, remoteTypeMeta.Fields[2].AssignedFieldId);
+    }
+
+    [Fact]
+    public void TypeMetaAssignFieldIdsSkipsTypeMismatchedField()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            501,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
+        Assert.Equal(-1, remoteTypeMeta.Fields[0].AssignedFieldId);
+    }
+
+    [Fact]
+    public void TypeMetaAssignFieldIdsNormalizesStructLikeTypeIds()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "payload", new TypeMetaFieldType((uint)TypeId.Struct, true)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Unknown, true)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            502,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
+        Assert.Equal(0, remoteTypeMeta.Fields[0].AssignedFieldId);
+    }
+
+    [Fact]
+    public void TypeMetaAssignFieldIdsThrowsOnDuplicateLocalFieldId()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(7, "first", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(7, "second", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(7, "$tag7", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            503,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
+        Assert.Contains("duplicate local field id 7", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TypeMetaAssignFieldIdsThrowsOnDuplicateRemoteFieldId()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(9, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(9, "$tag9a", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(9, "$tag9b", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            504,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
+        Assert.Contains("duplicate remote field id 9", exception.Message, StringComparison.Ordinal);
+    }
+
+    private static byte[] RewriteCompatibleTypeMetaTypeId(byte[] payload, uint embeddedTypeId)
+    {
+        ByteReader reader = new(payload);
+        _ = reader.ReadUInt8(); // frame header bitmap
+
+        sbyte refFlag = reader.ReadInt8();
+        Assert.Equal((sbyte)RefFlag.NotNullValue, refFlag);
+
+        uint wireTypeId = reader.ReadUInt8();
+        Assert.Equal((uint)TypeId.CompatibleStruct, wireTypeId);
+
+        uint typeMetaIndexMarker = reader.ReadVarUInt32();
+        Assert.Equal(0u, typeMetaIndexMarker & 1u);
+
+        int typeMetaStart = reader.Cursor;
+        TypeMeta originalTypeMeta = TypeMeta.Decode(reader);
+        int typeMetaEnd = reader.Cursor;
+
+        TypeMeta rewrittenTypeMeta = new(
+            embeddedTypeId,
+            originalTypeMeta.UserTypeId,
+            originalTypeMeta.NamespaceName,
+            originalTypeMeta.TypeName,
+            originalTypeMeta.RegisterByName,
+            originalTypeMeta.Fields,
+            originalTypeMeta.HasFieldsMeta,
+            originalTypeMeta.Compressed);
+        byte[] rewrittenTypeMetaBytes = rewrittenTypeMeta.Encode();
+
+        byte[] rewrittenPayload = new byte[typeMetaStart + rewrittenTypeMetaBytes.Length + (payload.Length - typeMetaEnd)];
+        Buffer.BlockCopy(payload, 0, rewrittenPayload, 0, typeMetaStart);
+        Buffer.BlockCopy(rewrittenTypeMetaBytes, 0, rewrittenPayload, typeMetaStart, rewrittenTypeMetaBytes.Length);
+        Buffer.BlockCopy(payload, typeMetaEnd, rewrittenPayload, typeMetaStart + rewrittenTypeMetaBytes.Length, payload.Length - typeMetaEnd);
+        return rewrittenPayload;
     }
 
     private static (ulong Encoding, string Decoded) WriteAndReadString(string value)

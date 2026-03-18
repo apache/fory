@@ -39,17 +39,13 @@ public sealed class Fory
             _typeResolver,
             Config.TrackRef,
             Config.Compatible,
-            Config.CheckStructVersion,
-            new CompatibleTypeDefWriteState(),
-            new MetaStringWriteState());
+            Config.CheckStructVersion);
         _readContext = new ReadContext(
             new ByteReader(Array.Empty<byte>()),
             _typeResolver,
             Config.TrackRef,
             Config.Compatible,
             Config.CheckStructVersion,
-            new CompatibleTypeDefReadState(),
-            new MetaStringReadState(),
             Config.MaxDepth);
     }
 
@@ -146,15 +142,14 @@ public sealed class Fory
         ByteWriter writer = _writeContext.Writer;
         writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
-        TypeInfo typeInfo = _typeResolver.GetTypeInfo<T>();
-        bool isNone = typeInfo.IsNullableType && value is null;
+        bool isNone = value is null;
         WriteHead(writer, isNone);
         if (!isNone)
         {
             _writeContext.ResetFor(writer);
             RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
             serializer.Write(_writeContext, value, refMode, true, false);
-            _writeContext.ResetObjectState();
+            _writeContext.RefWriter.Reset();
         }
 
         return writer.ToArray();
@@ -234,7 +229,7 @@ public sealed class Fory
     /// </summary>
     /// <param name="writer">Destination writer.</param>
     /// <param name="isNone">Whether the payload value is null.</param>
-    public void WriteHead(ByteWriter writer, bool isNone)
+    internal void WriteHead(ByteWriter writer, bool isNone)
     {
         byte bitmap = 0;
         if (Config.Xlang)
@@ -256,7 +251,7 @@ public sealed class Fory
     /// <param name="reader">Source reader.</param>
     /// <returns><c>true</c> if the payload value is null; otherwise <c>false</c>.</returns>
     /// <exception cref="InvalidDataException">Thrown when the peer xlang bitmap does not match this runtime mode.</exception>
-    public bool ReadHead(ByteReader reader)
+    internal bool ReadHead(ByteReader reader)
     {
         byte bitmap = reader.ReadUInt8();
         bool peerIsXlang = (bitmap & ForyHeaderFlag.IsXlang) != 0;
@@ -277,10 +272,20 @@ public sealed class Fory
             return serializer.DefaultValue;
         }
 
-        _readContext.ResetFor(reader);
+        ReadContext readContext = _readContext;
+        readContext.ResetFor(reader);
         RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-        T value = serializer.Read(_readContext, refMode, true);
-        _readContext.ResetObjectState();
+        T value = serializer.Read(readContext, refMode, true);
+        readContext.RefReader.Reset();
+        readContext._typeMetaType = null;
+        readContext._typeMeta = null;
+        readContext._typeMetaByType?.ClearKeys();
+        readContext._readTypeInfoByType.ClearKeys();
+        readContext._canonicalRefCache.Clear();
+        readContext._reservedRefIds.Clear();
+        readContext._cachedTypeMetaType = null;
+        readContext._cachedTypeMeta = null;
+        readContext._currentDynamicReadDepth = 0;
         return value;
     }
 

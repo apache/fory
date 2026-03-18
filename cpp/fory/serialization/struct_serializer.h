@@ -2773,7 +2773,7 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
     // Note: varint bounds checking is done per-byte during reading since
     // varint lengths are variable (actual size << max possible size)
     if constexpr (varint_count > 0) {
-      if (FORY_PREDICT_FALSE(buffer.is_stream_backed())) {
+      if (FORY_PREDICT_FALSE(buffer.has_input_stream())) {
         // Stream-backed buffers may not have all varint bytes materialized yet.
         // Fall back to per-field readers that propagate stream read errors.
         read_remaining_fields<T, fixed_count, total_count>(obj, ctx);
@@ -2828,7 +2828,7 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
 
   // Phase 2: Read consecutive varint primitives (int32, int64) if any
   if constexpr (varint_count > 0) {
-    if (FORY_PREDICT_FALSE(buffer.is_stream_backed())) {
+    if (FORY_PREDICT_FALSE(buffer.has_input_stream())) {
       // Stream-backed buffers may not have all varint bytes materialized yet.
       // Fall back to per-field readers that propagate stream read errors.
       read_remaining_fields<T, fixed_count, total_count>(obj, ctx);
@@ -2997,6 +2997,10 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     constexpr size_t field_count = FieldDescriptor::Size;
     detail::write_struct_fields_impl(
         obj, ctx, std::make_index_sequence<field_count>{}, false);
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    ctx.try_flush();
   }
 
   static void write_data_generic(const T &obj, WriteContext &ctx,
@@ -3025,6 +3029,10 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     constexpr size_t field_count = FieldDescriptor::Size;
     detail::write_struct_fields_impl(
         obj, ctx, std::make_index_sequence<field_count>{}, has_generics);
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    ctx.try_flush();
   }
 
   static T read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
@@ -3079,7 +3087,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
               remote_type_id ==
                   static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
               remote_type_id ==
-                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
+                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT) ||
+              remote_type_id == static_cast<uint8_t>(TypeId::NAMED_STRUCT);
           (void)remote_user_type_id;
           if (remote_has_meta) {
             // Read TypeMeta inline using streaming protocol
@@ -3262,6 +3271,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return T{};
         }
+        ctx.buffer().shrink_input_buffer();
         return obj;
       }
 
@@ -3271,6 +3281,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return T{};
       }
+      ctx.buffer().shrink_input_buffer();
       return obj;
     }
 
@@ -3282,6 +3293,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       return T{};
     }
 
+    ctx.buffer().shrink_input_buffer();
     return obj;
   }
 
@@ -3325,6 +3337,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       return T{};
     }
 
+    ctx.buffer().shrink_input_buffer();
     return obj;
   }
 

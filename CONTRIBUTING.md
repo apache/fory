@@ -10,7 +10,7 @@ Create an issue with [this form](https://github.com/apache/fory/issues/new/choos
 
 ## How to title your PR
 
-Generally we follows the [Conventional Commits](https://www.conventionalcommits.org/) for pull request titles,
+Generally we follow the [Conventional Commits](https://www.conventionalcommits.org/) for pull request titles,
 since we will squash and merge the PR and use the PR title as the first line of commit message.
 
 For example, here are good PR titles:
@@ -24,6 +24,19 @@ and need to provide benchmark data in the PR description. For how to run the ben
 please check [Apache Fory™ Java Benchmark](https://github.com/apache/fory/blob/main/benchmarks/java/README.md).
 
 For more details, please check [pr-lint.yml](./.github/workflows/pr-lint.yml).
+
+## AI-assisted contributions
+
+For full requirements, see [AI Contribution Policy](./AI_POLICY.md).
+
+Key points:
+
+- AI tools are allowed as assistants, but contributors remain fully responsible for all submitted changes.
+- AI-assisted code must be reviewed carefully line by line before submission, and contributors must be able to explain and defend it during review.
+- For substantial AI assistance, provide privacy-safe disclosure in the PR using the [AI Contribution Checklist](./AI_POLICY.md#9-contributor-checklist-for-ai-assisted-prs) template. Minor/narrow AI assistance does not require full disclosure.
+- Include adequate human verification evidence (for example exact build/lint/test commands and pass/fail outcomes), and add/update tests and specs where required.
+- For protocol/type-mapping/wire-format or performance-sensitive changes, provide the required compatibility/performance validation evidence.
+- Ensure licensing and provenance compliance with [ASF Generative Tooling Guidance](https://www.apache.org/legal/generative-tooling.html) and do not submit content with uncertain provenance.
 
 ## Testing
 

@@ -141,7 +141,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithDuplicateTagIds() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithDuplicateTagIds.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -158,7 +158,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithDuplicateTagIdsZero() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithDuplicateTagIdsZero.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -174,7 +174,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithValidTagIds() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithValidTagIds.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -205,7 +205,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithMixedAnnotations() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithMixedAnnotations.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -242,7 +242,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithMixedDuplicateTagIds() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithMixedDuplicateTagIds.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -261,7 +261,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithSingleField() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithSingleField.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields = Collections.singletonList(getField(ClassWithSingleField.class, "field"));
 
@@ -278,7 +278,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithNoAnnotations() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithNoAnnotations.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -301,7 +301,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithAllFieldNames() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithAllFieldNames.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -324,7 +324,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithLargeTagIds() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithLargeTagIds.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields =
         Arrays.asList(
@@ -347,7 +347,7 @@ public class TypeDefEncoderTest {
   public void testBuildFieldsInfoWithEmptyFieldList() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithValidTagIds.class);
-    TypeResolver resolver = fory.getXtypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
 
     List<Field> fields = Collections.emptyList();
 
@@ -355,6 +355,15 @@ public class TypeDefEncoderTest {
         TypeDefEncoder.buildFieldsInfo(resolver, ClassWithValidTagIds.class, fields);
 
     Assert.assertEquals(fieldInfos.size(), 0);
+  }
+
+  @Test
+  public void testXlangTypeDefIsNotCompressed() {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
+    fory.register(ClassWithNoAnnotations.class);
+
+    TypeDef typeDef = TypeDef.buildTypeDef(fory, ClassWithNoAnnotations.class);
+    Assert.assertEquals(typeDef.getId() & TypeDef.COMPRESS_META_FLAG, 0);
   }
 
   /** Helper method to get a field from a class by name. */

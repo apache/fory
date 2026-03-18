@@ -148,6 +148,8 @@ def bump_version(**kwargs):
             "cpp",
             "go",
             "dart",
+            "csharp",
+            "swift",
             "compiler",
         ]
     else:
@@ -192,6 +194,10 @@ def bump_version(**kwargs):
             bump_go_version(new_version)
         elif lang == "dart":
             bump_dart_version(new_version)
+        elif lang == "csharp":
+            bump_csharp_version(new_version)
+        elif lang == "swift":
+            bump_swift_version(new_version)
         elif lang == "compiler":
             bump_compiler_version(new_version)
         else:
@@ -296,6 +302,36 @@ def bump_compiler_version(new_version):
         "__init__.py",
         new_version,
         _update_python_version,
+    )
+
+
+def bump_csharp_version(new_version):
+    _bump_version(
+        "csharp",
+        "Directory.Build.props",
+        new_version,
+        _update_csharp_props_version,
+    )
+    _bump_version(
+        "csharp",
+        "README.md",
+        new_version,
+        _update_csharp_readme_package_version,
+    )
+    _bump_version(
+        "docs/guide/csharp",
+        "index.md",
+        new_version,
+        _update_csharp_readme_package_version,
+    )
+
+
+def bump_swift_version(new_version):
+    _bump_version(
+        "swift",
+        "README.md",
+        new_version,
+        _update_swift_readme_dependency_version,
     )
 
 
@@ -459,6 +495,45 @@ def _update_pubspec_version(lines, v: str):
             if prefix:
                 lines[index] = f"{prefix.group(1)} {v}\n"
     return lines
+
+
+def _update_csharp_props_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if "<Version>" not in line:
+            continue
+        lines[index] = re.sub(
+            r"(<Version>)[^<]+(</Version>)",
+            r"\g<1>" + v + r"\2",
+            line,
+        )
+        return lines
+    raise ValueError("No <Version> element found in csharp/Directory.Build.props")
+
+
+def _update_csharp_readme_package_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if "PackageReference" not in line or "Apache.Fory" not in line:
+            continue
+        lines[index] = re.sub(
+            r'(<PackageReference\s+Include="Apache\.Fory"\s+Version=")[^"]+(")',
+            r"\g<1>" + v + r"\2",
+            line,
+        )
+        return lines
+    raise ValueError("No Apache.Fory PackageReference version snippet found")
+
+
+def _update_swift_readme_dependency_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if "https://github.com/apache/fory.git" not in line:
+            continue
+        lines[index] = re.sub(
+            r'(\.package\(url:\s*"https://github\.com/apache/fory\.git",\s*from:\s*")[^"]+("\))',
+            r"\g<1>" + v + r"\2",
+            line,
+        )
+        return lines
+    raise ValueError("No Swift Package dependency snippet for apache/fory.git found")
 
 
 def _normalize_python_version(v: str) -> str:

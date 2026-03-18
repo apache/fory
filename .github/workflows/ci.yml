@@ -515,6 +515,10 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
       - name: Run Rust CI
         run: python ./ci/run_ci.py rust
 
@@ -539,6 +543,10 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
       - name: Run Rust Xlang Test
         env:
           FORY_RUST_JAVA_CI: "1"
@@ -743,6 +751,11 @@ jobs:
           bazel clean --expunge || true
       - name: Run Python CI
         shell: bash
+        run: python ./ci/run_ci.py python
+      - name: Run Python CI (ENABLE_FORY_CYTHON_SERIALIZATION=1)
+        shell: bash
+        env:
+          ENABLE_FORY_CYTHON_SERIALIZATION: "1"
         run: python ./ci/run_ci.py python
 
   python_xlang:

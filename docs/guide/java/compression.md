@@ -84,7 +84,7 @@ CompressedArraySerializers.registerSerializers(fory);
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-simd</artifactId>
-  <version>0.15.0</version>
+  <version>0.16.0</version>
 </dependency>
 ```
 
@@ -132,5 +132,5 @@ CompressedArraySerializers.registerSerializers(fory);
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - All ForyBuilder options
+- [Configuration](configuration.md) - All ForyBuilder options
 - [Advanced Features](advanced-features.md) - Memory management

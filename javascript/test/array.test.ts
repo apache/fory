@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type, BFloat16Array } from '../packages/fory/index';
+import Fory, { Type, BFloat16Array } from '../packages/core/index';
 import { describe, expect, test } from '@jest/globals';
 import * as beautify from 'js-beautify';
 

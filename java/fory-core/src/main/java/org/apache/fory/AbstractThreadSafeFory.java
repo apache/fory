@@ -20,8 +20,8 @@
 package org.apache.fory;
 
 import java.util.function.Function;
-import org.apache.fory.resolver.ClassChecker;
 import org.apache.fory.resolver.TypeChecker;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 
@@ -123,9 +123,8 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   }
 
   @Override
-  @Deprecated
-  public void setClassChecker(ClassChecker classChecker) {
-    registerCallback(fory -> fory.getClassResolver().setClassChecker(classChecker));
+  public TypeResolver getTypeResolver() {
+    return execute(Fory::getTypeResolver);
   }
 
   @Override

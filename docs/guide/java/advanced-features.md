@@ -205,5 +205,5 @@ static {
 ## Related Topics
 
 - [Compression](compression.md) - Data compression options
-- [Configuration Options](configuration.md) - All ForyBuilder options
+- [Configuration](configuration.md) - All ForyBuilder options
 - [Cross-Language Serialization](cross-language.md) - XLANG mode

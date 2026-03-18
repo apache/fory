@@ -17,7 +17,7 @@
  * under the License.
  */
 
-const { BrowserBuffer } = require('@apache-fory/fory/dist/lib/platformBuffer')
+const { BrowserBuffer } = require('@apache-fory/core/dist/lib/platformBuffer')
 const Benchmark = require("benchmark");
 const { spawn } = require("child_process");
 

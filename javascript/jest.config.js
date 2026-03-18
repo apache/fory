@@ -27,7 +27,7 @@ module.exports = {
     "**/*.ts",
     "!**/dist/**",
     "!**/build/**",
-    "!packages/fory/lib/murmurHash3.ts"
+    "!packages/core/lib/murmurHash3.ts"
   ],
   testPathIgnorePatterns : (
     !process.env["DATA_FILE"] ? ["test/crossLanguage.test.ts"] : []

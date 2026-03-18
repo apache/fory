@@ -115,6 +115,6 @@ fory.deserialize(buffer);
 
 ## Related Topics
 
-- [Configuration Options](configuration.md) - ForyBuilder options
+- [Configuration](configuration.md) - ForyBuilder options
 - [Schema Evolution](schema-evolution.md) - Handling class changes
 - [Troubleshooting](troubleshooting.md) - Common migration issues

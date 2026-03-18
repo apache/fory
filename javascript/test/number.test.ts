@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type, BFloat16 } from '../packages/fory/index';
+import Fory, { Type, BFloat16 } from '../packages/core/index';
 import { describe, expect, test } from '@jest/globals';
 
 describe('number', () => {

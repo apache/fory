@@ -41,6 +41,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -121,6 +122,19 @@ public:
 
   /// Build a thread-safe Fory instance (uses context pools).
   ThreadSafeFory build_thread_safe();
+
+  /// Set the maximum allowed size for binary data in bytes.
+  inline ForyBuilder &max_binary_size(uint32_t size) {
+    config_.max_binary_size = size;
+    return *this;
+  }
+
+  /// Set the maximum allowed number of elements in a collection or entries in a
+  /// map.
+  inline ForyBuilder &max_collection_size(uint32_t size) {
+    config_.max_collection_size = size;
+    return *this;
+  }
 
 private:
   Config config_;
@@ -501,6 +515,52 @@ public:
     return result;
   }
 
+  /// Serialize an object to an output stream.
+  ///
+  /// @tparam T The type of object to serialize.
+  /// @param output_stream The output stream.
+  /// @param obj The object to serialize.
+  /// @return Number of bytes written, or error.
+  template <typename T>
+  Result<size_t, Error> serialize(OutputStream &output_stream, const T &obj) {
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
+    WriteContextGuard guard(*write_ctx_);
+    output_stream.reset();
+    write_ctx_->set_output_stream(&output_stream);
+    Buffer &buffer = write_ctx_->buffer();
+    buffer.bind_output_stream(&output_stream);
+    auto serialize_result = serialize_impl(obj, buffer);
+    if (FORY_PREDICT_FALSE(!serialize_result.ok())) {
+      buffer.clear_output_stream();
+      write_ctx_->set_output_stream(nullptr);
+      return Unexpected(std::move(serialize_result).error());
+    }
+    output_stream.force_flush();
+    buffer.clear_output_stream();
+    write_ctx_->set_output_stream(nullptr);
+    if (FORY_PREDICT_FALSE(output_stream.has_error())) {
+      return Unexpected(output_stream.error());
+    }
+    if (FORY_PREDICT_FALSE(write_ctx_->has_error())) {
+      return Unexpected(write_ctx_->take_error());
+    }
+    return output_stream.flushed_bytes();
+  }
+
+  /// Serialize an object to a std::ostream.
+  ///
+  /// @tparam T The type of object to serialize.
+  /// @param ostream The output stream.
+  /// @param obj The object to serialize.
+  /// @return Number of bytes written, or error.
+  template <typename T>
+  Result<size_t, Error> serialize(std::ostream &ostream, const T &obj) {
+    StdOutputStream output_stream(ostream);
+    return serialize(output_stream, obj);
+  }
+
   /// Serialize an object to an existing Buffer (fastest path).
   ///
   /// @tparam T The type of object to serialize.
@@ -627,36 +687,36 @@ public:
     return deserialize_impl<T>(buffer);
   }
 
-  /// Deserialize an object from a stream reader.
+  /// Deserialize an object from an input stream.
   ///
   /// This overload obtains the reader-owned Buffer via get_buffer() and
   /// continues deserialization on that buffer.
   ///
   /// @tparam T The type of object to deserialize.
-  /// @param stream_reader Stream reader to read from.
+  /// @param input_stream Input stream to read from.
   /// @return Deserialized object, or error.
   template <typename T>
-  Result<T, Error> deserialize(StreamReader &stream_reader) {
+  Result<T, Error> deserialize(InputStream &input_stream) {
     struct StreamShrinkGuard {
-      StreamReader *stream_reader = nullptr;
+      InputStream *input_stream = nullptr;
       ~StreamShrinkGuard() {
-        if (stream_reader != nullptr) {
-          stream_reader->shrink_buffer();
+        if (input_stream != nullptr) {
+          input_stream->shrink_buffer();
         }
       }
     };
-    StreamShrinkGuard shrink_guard{&stream_reader};
-    Buffer &buffer = stream_reader.get_buffer();
+    StreamShrinkGuard shrink_guard{&input_stream};
+    Buffer &buffer = input_stream.get_buffer();
     return deserialize<T>(buffer);
   }
 
-  /// Deserialize an object from ForyInputStream.
+  /// Deserialize an object from StdInputStream.
   ///
   /// @tparam T The type of object to deserialize.
   /// @param stream Input stream wrapper to read from.
   /// @return Deserialized object, or error.
-  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
-    return deserialize<T>(static_cast<StreamReader &>(stream));
+  template <typename T> Result<T, Error> deserialize(StdInputStream &stream) {
+    return deserialize<T>(static_cast<InputStream &>(stream));
   }
 
   // ==========================================================================
@@ -806,6 +866,18 @@ public:
   }
 
   template <typename T>
+  Result<size_t, Error> serialize(OutputStream &output_stream, const T &obj) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->serialize(output_stream, obj);
+  }
+
+  template <typename T>
+  Result<size_t, Error> serialize(std::ostream &ostream, const T &obj) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->serialize(ostream, obj);
+  }
+
+  template <typename T>
   Result<size_t, Error> serialize_to(Buffer &buffer, const T &obj) {
     auto fory_handle = fory_pool_.acquire();
     return fory_handle->serialize_to(buffer, obj);
@@ -830,12 +902,12 @@ public:
   }
 
   template <typename T>
-  Result<T, Error> deserialize(StreamReader &stream_reader) {
+  Result<T, Error> deserialize(InputStream &input_stream) {
     auto fory_handle = fory_pool_.acquire();
-    return fory_handle->template deserialize<T>(stream_reader);
+    return fory_handle->template deserialize<T>(input_stream);
   }
 
-  template <typename T> Result<T, Error> deserialize(ForyInputStream &stream) {
+  template <typename T> Result<T, Error> deserialize(StdInputStream &stream) {
     auto fory_handle = fory_pool_.acquire();
     return fory_handle->template deserialize<T>(stream);
   }

@@ -28,10 +28,10 @@ public class UnsignedSerializers {
 
   /** Register all Uint wrapper type serializers. */
   public static void registerSerializers(Fory fory) {
-    fory.getClassResolver().registerSerializer(Uint8.class, new Uint8Serializer(fory));
-    fory.getClassResolver().registerSerializer(Uint16.class, new Uint16Serializer(fory));
-    fory.getClassResolver().registerSerializer(Uint32.class, new Uint32Serializer(fory));
-    fory.getClassResolver().registerSerializer(Uint64.class, new Uint64Serializer(fory));
+    fory.getTypeResolver().registerSerializer(Uint8.class, new Uint8Serializer(fory));
+    fory.getTypeResolver().registerSerializer(Uint16.class, new Uint16Serializer(fory));
+    fory.getTypeResolver().registerSerializer(Uint32.class, new Uint32Serializer(fory));
+    fory.getTypeResolver().registerSerializer(Uint64.class, new Uint64Serializer(fory));
   }
 
   /** Serializer for Uint8 wrapper type. */

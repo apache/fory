@@ -479,8 +479,8 @@ internal static class PrimitiveDictionaryCodecWriter
 
         TypeId keyTypeId = TKeyCodec.WireTypeId;
         TypeId valueTypeId = TValueCodec.WireTypeId;
-        bool keyDeclared = hasGenerics && !keyTypeId.NeedsTypeInfoForField();
-        bool valueDeclared = hasGenerics && !valueTypeId.NeedsTypeInfoForField();
+        bool keyDeclared = hasGenerics && !TypeResolver.NeedToWriteTypeInfoForField(keyTypeId);
+        bool valueDeclared = hasGenerics && !TypeResolver.NeedToWriteTypeInfoForField(valueTypeId);
         bool keyNullable = TKeyCodec.IsNullable;
         bool valueNullable = TValueCodec.IsNullable;
 

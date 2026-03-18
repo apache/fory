@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type, TypeInfo } from '../packages/fory/index';
+import Fory, { Type, TypeInfo } from '../packages/core/index';
 import { describe, expect, test } from '@jest/globals';
 import * as beautify from 'js-beautify';
 
@@ -224,6 +224,30 @@ describe('object', () => {
     const result = deserialize(input);
     expect(result).toEqual({ a: "Hello, world! 🌍😊" });
   });
+
+  test('should support struct evolving override', () => {
+    const fory = new Fory({ compatible: true });
+    const evolvingType = Type.struct(
+      { typeId: 1001 },
+      {
+        f1: Type.string(),
+      }
+    );
+    const fixedType = Type.struct(
+      { typeId: 1002, evolving: false },
+      {
+        f1: Type.string(),
+      }
+    );
+
+    const evolvingSerializer = fory.registerSerializer(evolvingType);
+    const fixedSerializer = fory.registerSerializer(fixedType);
+
+    const evolvingPayload = evolvingSerializer.serialize({ f1: "payload" }) as Buffer;
+    const fixedPayload = fixedSerializer.serialize({ f1: "payload" }) as Buffer;
+
+    expect(fixedPayload.length).toBeLessThan(evolvingPayload.length);
+    expect(evolvingSerializer.deserialize(evolvingPayload)).toEqual({ f1: "payload" });
+    expect(fixedSerializer.deserialize(fixedPayload)).toEqual({ f1: "payload" });
+  });
 });
-
-

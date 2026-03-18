@@ -258,6 +258,33 @@ public sealed class RoundtripTests
         }
 
         Assert.False(fixedRoundTripMatches);
+
+        evolving1.EvolvingSizeMessage evolvingSizeV1 = new()
+        {
+            Payload = "payload",
+        };
+        evolving1.FixedSizeMessage fixedSizeV1 = new()
+        {
+            Payload = "payload",
+        };
+
+        byte[] evolvingSizeBytes = foryV1.Serialize(evolvingSizeV1);
+        byte[] fixedSizeBytes = foryV1.Serialize(fixedSizeV1);
+        Assert.True(fixedSizeBytes.Length < evolvingSizeBytes.Length);
+
+        evolving2.EvolvingSizeMessage evolvingSizeV2 =
+            foryV2.Deserialize<evolving2.EvolvingSizeMessage>(evolvingSizeBytes);
+        Assert.Equal(evolvingSizeV1.Payload, evolvingSizeV2.Payload);
+        evolving1.EvolvingSizeMessage evolvingSizeV1Round =
+            foryV1.Deserialize<evolving1.EvolvingSizeMessage>(foryV2.Serialize(evolvingSizeV2));
+        Assert.Equal(evolvingSizeV1.Payload, evolvingSizeV1Round.Payload);
+
+        evolving2.FixedSizeMessage fixedSizeV2 =
+            foryV2.Deserialize<evolving2.FixedSizeMessage>(fixedSizeBytes);
+        Assert.Equal(fixedSizeV1.Payload, fixedSizeV2.Payload);
+        evolving1.FixedSizeMessage fixedSizeV1Round =
+            foryV1.Deserialize<evolving1.FixedSizeMessage>(foryV2.Serialize(fixedSizeV2));
+        Assert.Equal(fixedSizeV1.Payload, fixedSizeV1Round.Payload);
     }
 
     [Theory]

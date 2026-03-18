@@ -48,7 +48,7 @@ See [Java Features](../java/index.md#features) for complete feature list.
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.15.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.16.0"
 ```
 
 ## Quick Start
@@ -85,7 +85,7 @@ object ScalaExample {
 
 Fory Scala is built on top of Fory Java. Most configuration options, features, and concepts from Fory Java apply directly to Scala. Refer to the Java documentation for:
 
-- [Configuration Options](../java/configuration.md) - All ForyBuilder options
+- [Configuration](../java/configuration.md) - All ForyBuilder options
 - [Basic Serialization](../java/basic-serialization.md) - Serialization patterns and APIs
 - [Type Registration](../java/type-registration.md) - Class registration and security
 - [Schema Evolution](../java/schema-evolution.md) - Forward/backward compatibility

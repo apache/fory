@@ -214,7 +214,14 @@ class MapRefResolver(RefResolver):
     def get_read_object(self, id_=None):
         if id_ is None:
             return self.read_object
-        return self.read_objects[id_]
+        ref_id = id_
+        size = len(self.read_objects)
+        if ref_id < 0 or ref_id >= size:
+            raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
+        obj = self.read_objects[ref_id]
+        if obj is None:
+            raise ValueError(f"Invalid ref id {ref_id}, current size {size}")
+        return obj
 
     def set_read_object(self, id_, obj):
         if id_ >= 0:
