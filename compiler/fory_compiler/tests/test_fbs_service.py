@@ -20,6 +20,7 @@
 from fory_compiler.frontend.fbs.lexer import Lexer
 from fory_compiler.frontend.fbs.parser import Parser
 from fory_compiler.frontend.fbs.translator import FbsTranslator
+from fory_compiler.ir.validator import SchemaValidator
 
 
 def parse_and_translate(source):
@@ -107,3 +108,43 @@ def test_streaming_attributes():
     assert m3.name == "BidiStream"
     assert m3.client_streaming is True
     assert m3.server_streaming is True
+
+
+def test_service_unknown_request_type_fails_validation():
+    source = """
+    namespace demo;
+
+    table Response {
+        result: string;
+    }
+
+    rpc_service Greeter {
+        SayHello(UnknownRequest):Response;
+    }
+    """
+    schema = parse_and_translate(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    assert any(
+        "Unknown type 'UnknownRequest'" in err.message for err in validator.errors
+    )
+
+
+def test_service_unknown_response_type_fails_validation():
+    source = """
+    namespace demo;
+
+    table Request {
+        id: int;
+    }
+
+    rpc_service Greeter {
+        SayHello(Request):UnknownResponse;
+    }
+    """
+    schema = parse_and_translate(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    assert any(
+        "Unknown type 'UnknownResponse'" in err.message for err in validator.errors
+    )
