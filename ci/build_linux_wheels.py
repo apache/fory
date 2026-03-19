@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from typing import List
@@ -67,6 +68,11 @@ def parse_args():
     p.add_argument(
         "--python", required=True, help="Python version (e.g. cp38-cp38, cp313-cp313)"
     )
+    p.add_argument(
+        "--bazel-bin",
+        default="",
+        help="Path to host bazel executable to mount into the container",
+    )
     p.add_argument("--release", action="store_true", help="Run in release mode")
     p.add_argument(
         "--dry-run", action="store_true", help="Print docker command without running"
@@ -89,9 +95,14 @@ def get_image_for_arch(arch_normalized: str) -> str:
 
 
 def build_docker_cmd(
-    workspace: str, image: str, python_version: str, release: bool = False
+    workspace: str,
+    image: str,
+    python_version: str,
+    bazel_bin: str,
+    release: bool = False,
 ) -> List[str]:
     workspace = os.path.abspath(workspace)
+    bazel_bin = os.path.abspath(bazel_bin)
     github_ref_name = os.environ.get("GITHUB_REF_NAME", "")
 
     cmd = [
@@ -107,6 +118,8 @@ def build_docker_cmd(
         f"PYTHON_VERSIONS={python_version}",
         "-e",
         f"RELEASE_BUILD={'1' if release else '0'}",
+        "-v",
+        f"{bazel_bin}:/usr/local/bin/bazel:ro",
     ]
 
     if github_ref_name:
@@ -121,13 +134,25 @@ def main() -> int:
     arch = normalize_arch(args.arch)
     image = get_image_for_arch(arch)
     workspace = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
+    bazel_bin = args.bazel_bin or shutil.which("bazel")
 
     script_path = os.path.join(workspace, CONTAINER_SCRIPT_PATH)
     if not os.path.exists(script_path):
         print(f"Container script not found at {script_path}", file=sys.stderr)
         return 2
+    if not bazel_bin:
+        print(
+            "Unable to locate bazel on host. Please provide --bazel-bin.",
+            file=sys.stderr,
+        )
+        return 2
+    if not os.path.exists(bazel_bin):
+        print(f"Host bazel binary does not exist: {bazel_bin}", file=sys.stderr)
+        return 2
 
-    docker_cmd = build_docker_cmd(workspace, image, args.python, release=args.release)
+    docker_cmd = build_docker_cmd(
+        workspace, image, args.python, bazel_bin, release=args.release
+    )
     printable = " ".join(shlex.quote(c) for c in docker_cmd)
     print(f"+ {printable}")
 

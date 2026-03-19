@@ -262,13 +262,10 @@ def parse_args():
             else:
                 run_shell_script(f"java{version}")
     elif command == "cpp":
-        if USE_PYTHON_CPP:
+        if USE_PYTHON_CPP or arg_dict.get("install_deps_only", False):
             func(arg_dict.get("install_deps_only", False))
         else:
-            if arg_dict.get("install_deps_only", False):
-                run_shell_script("install_bazel")
-            else:
-                run_shell_script("cpp")
+            run_shell_script("cpp")
     elif command == "rust":
         if USE_PYTHON_RUST:
             func()

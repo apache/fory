@@ -35,11 +35,16 @@ jobs:
           - cp313-cp313
     steps:
       - uses: actions/checkout@v5
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Bump version
         # Pass the tag name from the push (e.g. "v0.12.1b1"); deploy.sh will strip leading "v".
         run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
       - name: Build and test wheels
-        run: ./ci/build_linux_wheels.py --arch ${{ runner.arch }} --python ${{ matrix.python }} --release
+        run: ./ci/build_linux_wheels.py --arch ${{ runner.arch }} --python ${{ matrix.python }} --release --bazel-bin "$(command -v bazel)"
       - name: Upload wheels as artifacts
         uses: actions/upload-artifact@v4
         with:
