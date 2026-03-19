@@ -503,6 +503,25 @@ def test_generated_code_tree_ref_options_equivalent():
     assert "SharedWeak<TreeNode>" in cpp_output
 
 
+def test_java_float16_equals_hash_contract_generation():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Float16Contract {
+                float16 f16 = 1;
+                optional float16 opt_f16 = 2;
+            }
+            """
+        )
+    )
+    java_output = render_files(generate_files(schema, JavaGenerator))
+    assert "Objects.equals(f16, that.f16)" in java_output
+    assert "Objects.equals(optF16, that.optF16)" in java_output
+    assert "return Objects.hash(f16, optF16);" in java_output
+
+
 def test_go_bfloat16_generation():
     idl = dedent(
         """
