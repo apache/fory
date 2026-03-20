@@ -25,7 +25,15 @@ The C# implementation provides high-performance object graph serialization for .
 
 ### Add Apache Fory™ C\#
 
-From this repository, reference the library project:
+From NuGet, reference the single `Apache.Fory` package. It includes the runtime plus the source generator for `[ForyObject]` types.
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Apache.Fory" Version="0.16.0" />
+</ItemGroup>
+```
+
+For local development against this repository, reference the runtime project and generator project directly:
 
 ```xml
 <ItemGroup>
@@ -215,45 +223,10 @@ Fory fory = Fory.Builder()
 fory.Register<Person>(100); // same ID on other language peers
 ```
 
-See [xlang guide](../docs/guide/xlang/index.md) for mapping details.
-
-## Architecture
-
-The C# implementation consists of:
-
-```text
-csharp/
-├── src/
-│   ├── Fory/
-│   │   ├── Fory.cs                 # Main runtime entry point
-│   │   ├── Config.cs               # Builder + runtime config
-│   │   ├── TypeResolver.cs         # Type binding and registration
-│   │   ├── Serializer.cs           # Serializer base class
-│   │   ├── PrimitiveSerializers.cs # Primitive serializers
-│   │   ├── CollectionSerializers.cs
-│   │   ├── DictionarySerializers.cs
-│   │   └── ...
-│   └── Fory.Generator/
-│       └── ForyObjectGenerator.cs  # Source generator for [ForyObject]
-└── tests/
-    ├── Fory.Tests/
-    └── Fory.XlangPeer/
-```
-
-## Building and Testing
-
-Run from the `csharp` directory:
-
-```bash
-# Build
-dotnet build Fory.sln -c Release
-
-# Run tests
-dotnet test Fory.sln -c Release
-```
+See [xlang guide](https://fory.apache.org/docs/guide/xlang/) for mapping details.
 
 ## Documentation
 
-- [C# guide index](../docs/guide/csharp/index.md)
-- [Cross-language serialization spec](../docs/specification/xlang_serialization_spec.md)
-- [Cross-language type mapping](../docs/specification/xlang_type_mapping.md)
+- [C# guide index](https://fory.apache.org/docs/guide/csharp/)
+- [Cross-language serialization spec](https://fory.apache.org/docs/specification/xlang_serialization_spec/)
+- [Cross-language type mapping](https://fory.apache.org/docs/specification/xlang_type_mapping/)

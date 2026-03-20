@@ -35,17 +35,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-            C:\bazel\bazel.exe
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-      - name: Install bazel (Windows)
-        run: ./ci/run_ci.sh install_bazel_windows
-        shell: bash
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Build wheel
         run: ./ci/deploy.sh build_pyfory
         shell: bash
@@ -72,15 +66,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-      - name: Install bazel
-        run: ./ci/run_ci.sh install_bazel
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Build wheel
         run: ./ci/deploy.sh build_pyfory
         shell: bash
@@ -110,15 +100,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-      - name: Install bazel
-        run: ./ci/run_ci.sh install_bazel
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Build wheel
         run: ./ci/deploy.sh build_pyfory
         shell: bash

@@ -1,6 +1,7 @@
 # Apache Fory™ Swift
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/apache/fory/blob/main/LICENSE)
+[![Swift Package Index](https://img.shields.io/badge/Swift_Package_Index-Fory-blue?logo=swift)](https://swiftpackageindex.com/apache/fory)
 
 **Apache Fory™** is a blazing-fast multi-language serialization framework.
 
@@ -32,7 +33,7 @@ The Swift implementation provides high-performance object graph serialization wi
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", branch: "main")
+    .package(url: "https://github.com/apache/fory.git", from: "0.16.0")
 ],
 targets: [
     .target(
@@ -44,7 +45,13 @@ targets: [
 ]
 ```
 
-### 2. Basic serialization
+### 2. API documentation
+
+Swift Package Index documentation for the Swift target:
+
+<https://swiftpackageindex.com/apache/fory/main/documentation/fory>
+
+### 3. Basic serialization
 
 ```swift
 import Fory
@@ -65,7 +72,7 @@ let output: User = try fory.deserialize(data)
 assert(input == output)
 ```
 
-### 3. Buffer-oriented APIs
+### 4. Buffer-oriented APIs
 
 ```swift
 var out = Data()
@@ -75,6 +82,10 @@ let buffer = ByteBuffer(data: out)
 let output2: User = try fory.deserialize(from: buffer)
 assert(output2 == input)
 ```
+
+### 4. Threading
+
+`Fory` is the fastest option for single-threaded reuse. Keep one instance per thread.
 
 ## 📚 Core Features
 

@@ -882,7 +882,10 @@ class SwiftGenerator(BaseGenerator):
         comment = self.format_type_id_comment(message, f"{ind}//")
         if comment:
             lines.append(comment)
-        lines.append(f"{ind}@ForyObject")
+        if self.get_effective_evolving(message):
+            lines.append(f"{ind}@ForyObject")
+        else:
+            lines.append(f"{ind}@ForyObject(evolving: false)")
 
         if is_class:
             declaration = f"public final class {type_name}"

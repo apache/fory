@@ -118,7 +118,7 @@ public abstract class MetaSharedLayerSerializerBase<T> extends AbstractObjectSer
    * Populate field index map and field types array in the serializer's field order. This is used by
    * ObjectStreamSerializer to build fieldIndexMap and putFieldTypes in the correct order.
    *
-   * @param fieldIndexMap map to populate with field name -> index
+   * @param fieldIndexMap map to populate with field name → index
    * @param fieldTypes array to populate with field types (must be pre-allocated with getNumFields()
    *     size)
    */

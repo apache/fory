@@ -21,7 +21,7 @@ from typing import List
 from pyfory.types import TypeId, is_polymorphic_type, is_union_type
 from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.serialization import Buffer
-from pyfory.type_util import infer_field
+from pyfory.type_util import get_homogeneous_tuple_elem_type, infer_field
 from pyfory.meta.metastring import Encoding
 from pyfory.type_util import infer_field_types
 
@@ -356,12 +356,23 @@ class CollectionFieldType(FieldType):
         self.element_type = element_type
 
     def create_serializer(self, resolver, type_):
-        from pyfory.serializer import ListSerializer, SetSerializer
+        from pyfory.serializer import ListSerializer, SetSerializer, TupleSerializer
 
-        elem_type = type_[1] if type_ and len(type_) >= 2 else None
+        declared_root_type = type_
+        elem_type = None
+        if isinstance(type_, list):
+            declared_root_type = type_[0]
+        if isinstance(declared_root_type, tuple):
+            if declared_root_type:
+                declared_root_type, *extra = declared_root_type
+                elem_type = extra[0] if extra else None
+        elif type_ and len(type_) >= 2:
+            elem_type = type_[1]
         elem_serializer = self.element_type.create_serializer(resolver, elem_type)
         elem_override = getattr(self.element_type, "tracking_ref_override", None)
         if self.type_id == TypeId.LIST:
+            if declared_root_type in (tuple, typing.Tuple):
+                return TupleSerializer(resolver.fory, tuple, elem_serializer, elem_override)
             return ListSerializer(resolver.fory, list, elem_serializer, elem_override)
         elif self.type_id == TypeId.SET:
             return SetSerializer(resolver.fory, set, elem_serializer, elem_override)
@@ -569,6 +580,10 @@ def build_field_type_from_type_ids_with_ref(
                 args = typing.get_args(type_hint) if hasattr(typing, "get_args") else getattr(type_hint, "__args__", ())
                 if args:
                     elem_hint, elem_ref_override = unwrap_ref(args[0])
+            elif origin in (tuple, typing.Tuple):
+                tuple_elem_hint = get_homogeneous_tuple_elem_type(type_hint)
+                if tuple_elem_hint is not None:
+                    elem_hint, elem_ref_override = unwrap_ref(tuple_elem_hint)
         elem_tracking_ref = is_tracking_ref
         if elem_ref_override is not None:
             elem_tracking_ref = elem_ref_override and is_tracking_ref

@@ -7,7 +7,7 @@ The Cross-Language part of the protocol is not stable, so the output of this lib
 ## Usage
 
 ```Javascript
-import Fory, { Type } from '@apache-fory/fory';
+import Fory, { Type } from '@apache-fory/core';
 
 /**
  * @apache-fory/hps use v8's fast-calls-api that can be called directly by jit, ensure that the version of Node is 20 or above.
@@ -29,9 +29,9 @@ console.log(result);
 
 ## Packages
 
-### fory
+### core
 
-Fory protocol implementation. It generates JavaScript code at runtime to make sure that all the code could be optimized by v8 JIT efficiently.
+`@apache-fory/core` is the main Fory protocol implementation for JavaScript. It generates JavaScript code at runtime to make sure that all the code could be optimized by v8 JIT efficiently.
 
 ### hps
 

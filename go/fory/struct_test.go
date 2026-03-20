@@ -144,6 +144,23 @@ func TestStructEvolvingOverride(t *testing.T) {
 	fixedInfo, err := resolver.GetTypeInfo(reflect.ValueOf(fixedStruct{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(STRUCT), fixedInfo.TypeID)
+
+	evolving := &evolvingStruct{ID: 123}
+	fixed := &fixedStruct{ID: 123}
+
+	evolvingBytes, err := f.Serialize(evolving)
+	require.NoError(t, err)
+	fixedBytes, err := f.Serialize(fixed)
+	require.NoError(t, err)
+	require.Greater(t, len(evolvingBytes), len(fixedBytes))
+
+	var evolvingResult evolvingStruct
+	require.NoError(t, testDeserialize(t, f, evolvingBytes, &evolvingResult))
+	require.Equal(t, *evolving, evolvingResult)
+
+	var fixedResult fixedStruct
+	require.NoError(t, testDeserialize(t, f, fixedBytes, &fixedResult))
+	require.Equal(t, *fixed, fixedResult)
 }
 
 func TestOptionFieldUnsupportedTypes(t *testing.T) {

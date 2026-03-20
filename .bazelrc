@@ -18,6 +18,13 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
+# The maximum number of attempts to retry a download error. The default value is 5
+common --experimental_repository_downloader_retries=10
+# The maximum number of attempts for http downloads. The default value is 8.
+common --http_connector_attempts=16
+# Scale all timeouts related to http downloads by the given factor. The default value is 1.0.
+common --http_timeout_scaling=2.0
+
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
@@ -69,3 +76,4 @@ build:ubsan --copt=-fsanitize=alignment,bool,bounds,bounds-strict,builtin,enum,i
 build:ubsan --copt=-g
 build:ubsan --copt=-fno-omit-frame-pointer
 build:ubsan --linkopt=-fsanitize=alignment,bool,bounds,bounds-strict,builtin,enum,integer-divide-by-zero,object-size,pointer-overflow,return,shift,signed-integer-overflow,unreachable,vla-bound,vptr
+build:arm64 --copt=-march=armv8-a

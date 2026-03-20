@@ -17,72 +17,63 @@
 
 import Foundation
 
-public enum FieldSkipper {
-    public static func skipFieldValue(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType
-    ) throws {
-        _ = try readFieldValue(
-            context: context,
+public extension ReadContext {
+    func skipFieldValue(_ fieldType: TypeMeta.FieldType) throws {
+        _ = try readSkippedFieldValue(
             fieldType: fieldType,
-            readTypeInfo: needsTypeInfoForField(fieldType.typeID)
+            readTypeInfo: needsTypeInfoForSkippedField(fieldType.typeID)
         )
     }
 
-    private static func needsTypeInfoForField(_ typeID: UInt32) -> Bool {
+    private func needsTypeInfoForSkippedField(_ typeID: UInt32) -> Bool {
         guard let resolved = TypeId(rawValue: typeID) else {
             return true
         }
         return TypeId.needsTypeInfoForField(resolved)
     }
 
-    private static func readFieldValue(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType,
-        runtimeTypeInfo: DynamicTypeInfo? = nil,
+    private func readSkippedFieldValue(
+        fieldType: TypeMeta.FieldType,
+        typeInfo: TypeInfo? = nil,
         readTypeInfo: Bool
     ) throws -> Any? {
         let refMode = RefMode.from(nullable: fieldType.nullable, trackRef: fieldType.trackRef)
-        return try readValueWithRefMode(
-            context: context,
+        return try readSkippedValue(
             fieldType: fieldType,
-            runtimeTypeInfo: runtimeTypeInfo,
+            typeInfo: typeInfo,
             refMode: refMode,
             readTypeInfo: readTypeInfo
         )
     }
 
-    private static func readValueWithRefMode(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType,
-        runtimeTypeInfo: DynamicTypeInfo?,
+    private func readSkippedValue(
+        fieldType: TypeMeta.FieldType,
+        typeInfo: TypeInfo?,
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> Any? {
         switch refMode {
         case .none:
-            return try readFieldPayload(
-                context: context,
+            return try readSkippedFieldPayload(
                 fieldType: fieldType,
-                runtimeTypeInfo: runtimeTypeInfo,
+                typeInfo: typeInfo,
                 readTypeInfo: readTypeInfo
             )
         case .nullOnly:
-            let flag = try context.buffer.readInt8()
+            let flag = try buffer.readInt8()
             if flag == RefFlag.null.rawValue {
                 return nil
             }
             guard flag == RefFlag.notNullValue.rawValue else {
                 throw ForyError.invalidData("unexpected nullOnly flag \(flag)")
             }
-            return try readFieldPayload(
-                context: context,
+            return try readSkippedFieldPayload(
                 fieldType: fieldType,
-                runtimeTypeInfo: runtimeTypeInfo,
+                typeInfo: typeInfo,
                 readTypeInfo: readTypeInfo
             )
         case .tracking:
-            let rawFlag = try context.buffer.readInt8()
+            let rawFlag = try buffer.readInt8()
             guard let flag = RefFlag(rawValue: rawFlag) else {
                 throw ForyError.invalidData("unexpected tracking flag \(rawFlag)")
             }
@@ -91,41 +82,38 @@ public enum FieldSkipper {
             case .null:
                 return nil
             case .ref:
-                let refID = try context.buffer.readVarUInt32()
-                return try context.refReader.readRefValue(refID)
+                let refID = try buffer.readVarUInt32()
+                return try refReader.readRefValue(refID)
             case .refValue:
-                let refID = context.refReader.reserveRefID()
-                let value = try readFieldPayload(
-                    context: context,
+                let refID = refReader.reserveRefID()
+                let value = try readSkippedFieldPayload(
                     fieldType: fieldType,
-                    runtimeTypeInfo: runtimeTypeInfo,
+                    typeInfo: typeInfo,
                     readTypeInfo: readTypeInfo
                 )
-                context.refReader.storeRef(value, at: refID)
+                refReader.storeRef(value, at: refID)
                 return value
             case .notNullValue:
-                return try readFieldPayload(
-                    context: context,
+                return try readSkippedFieldPayload(
                     fieldType: fieldType,
-                    runtimeTypeInfo: runtimeTypeInfo,
+                    typeInfo: typeInfo,
                     readTypeInfo: readTypeInfo
                 )
             }
         }
     }
 
-    private static func readFieldPayload(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType,
-        runtimeTypeInfo: DynamicTypeInfo?,
+    private func readSkippedFieldPayload(
+        fieldType: TypeMeta.FieldType,
+        typeInfo: TypeInfo?,
         readTypeInfo: Bool
     ) throws -> Any {
-        if let runtimeTypeInfo {
-            return try context.typeResolver.readDynamicValue(typeInfo: runtimeTypeInfo, context: context)
+        if let typeInfo {
+            return try readAnyValue(typeInfo: typeInfo)
         }
         if readTypeInfo {
-            let typeInfo = try context.typeResolver.readDynamicTypeInfo(context: context)
-            return try context.typeResolver.readDynamicValue(typeInfo: typeInfo, context: context)
+            let typeInfo = try self.readTypeInfo()
+            return try readAnyValue(typeInfo: typeInfo)
         }
 
         guard let resolvedTypeID = TypeId(rawValue: fieldType.typeID) else {
@@ -136,144 +124,140 @@ public enum FieldSkipper {
         case .none:
             return ForyAnyNullValue()
         case .bool:
-            return try Bool.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Bool.foryRead(self, refMode: .none, readTypeInfo: false)
         case .int8:
-            return try Int8.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Int8.foryRead(self, refMode: .none, readTypeInfo: false)
         case .int16:
-            return try Int16.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Int16.foryRead(self, refMode: .none, readTypeInfo: false)
         case .int32:
-            return try ForyInt32Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyInt32Fixed.foryRead(self, refMode: .none, readTypeInfo: false)
         case .varint32:
-            return try Int32.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Int32.foryRead(self, refMode: .none, readTypeInfo: false)
         case .int64:
-            return try ForyInt64Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyInt64Fixed.foryRead(self, refMode: .none, readTypeInfo: false)
         case .varint64:
-            return try Int64.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Int64.foryRead(self, refMode: .none, readTypeInfo: false)
         case .taggedInt64:
-            return try ForyInt64Tagged.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyInt64Tagged.foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint8:
-            return try UInt8.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try UInt8.foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint16:
-            return try UInt16.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try UInt16.foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint32:
-            return try ForyUInt32Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyUInt32Fixed.foryRead(self, refMode: .none, readTypeInfo: false)
         case .varUInt32:
-            return try UInt32.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try UInt32.foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint64:
-            return try ForyUInt64Fixed.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyUInt64Fixed.foryRead(self, refMode: .none, readTypeInfo: false)
         case .varUInt64:
-            return try UInt64.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try UInt64.foryRead(self, refMode: .none, readTypeInfo: false)
         case .taggedUInt64:
-            return try ForyUInt64Tagged.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyUInt64Tagged.foryRead(self, refMode: .none, readTypeInfo: false)
         case .float16:
-            return try Float16.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Float16.foryRead(self, refMode: .none, readTypeInfo: false)
         case .bfloat16:
-            return try BFloat16.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try BFloat16.foryRead(self, refMode: .none, readTypeInfo: false)
         case .float32:
-            return try Float.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Float.foryRead(self, refMode: .none, readTypeInfo: false)
         case .float64:
-            return try Double.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Double.foryRead(self, refMode: .none, readTypeInfo: false)
         case .string:
-            return try String.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try String.foryRead(self, refMode: .none, readTypeInfo: false)
         case .duration:
-            return try Duration.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Duration.foryRead(self, refMode: .none, readTypeInfo: false)
         case .timestamp:
-            return try Date.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Date.foryRead(self, refMode: .none, readTypeInfo: false)
         case .date:
-            return try ForyDate.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try ForyDate.foryRead(self, refMode: .none, readTypeInfo: false)
         case .binary, .uint8Array:
-            return try Data.foryRead(context, refMode: .none, readTypeInfo: false)
+            return try Data.foryRead(self, refMode: .none, readTypeInfo: false)
         case .boolArray:
-            return try [Bool].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Bool].foryRead(self, refMode: .none, readTypeInfo: false)
         case .int8Array:
-            return try [Int8].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Int8].foryRead(self, refMode: .none, readTypeInfo: false)
         case .int16Array:
-            return try [Int16].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Int16].foryRead(self, refMode: .none, readTypeInfo: false)
         case .int32Array:
-            return try [Int32].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Int32].foryRead(self, refMode: .none, readTypeInfo: false)
         case .int64Array:
-            return try [Int64].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Int64].foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint16Array:
-            return try [UInt16].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [UInt16].foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint32Array:
-            return try [UInt32].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [UInt32].foryRead(self, refMode: .none, readTypeInfo: false)
         case .uint64Array:
-            return try [UInt64].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [UInt64].foryRead(self, refMode: .none, readTypeInfo: false)
         case .float16Array:
-            return try [Float16].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Float16].foryRead(self, refMode: .none, readTypeInfo: false)
         case .bfloat16Array:
-            return try [BFloat16].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [BFloat16].foryRead(self, refMode: .none, readTypeInfo: false)
         case .float32Array:
-            return try [Float].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Float].foryRead(self, refMode: .none, readTypeInfo: false)
         case .float64Array:
-            return try [Double].foryRead(context, refMode: .none, readTypeInfo: false)
+            return try [Double].foryRead(self, refMode: .none, readTypeInfo: false)
         case .array, .list:
-            return try readCollection(context: context, fieldType: fieldType)
+            return try readSkippedCollection(fieldType: fieldType)
         case .set:
-            return try readSet(context: context, fieldType: fieldType)
+            return try readSkippedSet(fieldType: fieldType)
         case .map:
-            return try readMap(context: context, fieldType: fieldType)
+            return try readSkippedMap(fieldType: fieldType)
         case .union, .typedUnion, .namedUnion:
-            return try readUnion(context: context)
+            return try readSkippedUnion()
         case .enumType, .namedEnum:
-            return try context.buffer.readVarUInt32()
+            return try buffer.readVarUInt32()
         default:
             throw ForyError.invalidData("unsupported compatible field type id \(fieldType.typeID)")
         }
     }
 
-    private static func readCollection(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType
+    private func readSkippedCollection(
+        fieldType: TypeMeta.FieldType
     ) throws -> [Any] {
         let elementFieldType = fieldType.generics.first
-            ?? TypeMetaFieldType(typeID: TypeId.unknown.rawValue, nullable: true)
-        let length = Int(try context.buffer.readVarUInt32())
-        try context.ensureCollectionLength(length, label: "compatible_collection")
+            ?? TypeMeta.FieldType(typeID: TypeId.unknown.rawValue, nullable: true)
+        let length = Int(try buffer.readVarUInt32())
+        try ensureCollectionLength(length, label: "compatible_collection")
         if length == 0 {
             return []
         }
 
-        let header = try context.buffer.readUInt8()
+        let header = try buffer.readUInt8()
         let trackRef = (header & 0b0000_0001) != 0
         let hasNull = (header & 0b0000_0010) != 0
         let declared = (header & 0b0000_0100) != 0
         let sameType = (header & 0b0000_1000) != 0
 
-        var runtimeTypeInfo: DynamicTypeInfo?
+        var typeInfo: TypeInfo?
         if sameType, !declared {
-            runtimeTypeInfo = try context.typeResolver.readDynamicTypeInfo(context: context)
+            typeInfo = try self.readTypeInfo()
         }
 
         for _ in 0..<length {
             if sameType {
                 if trackRef {
-                    _ = try readValueWithRefMode(
-                        context: context,
+                    _ = try readSkippedValue(
                         fieldType: elementFieldType,
-                        runtimeTypeInfo: runtimeTypeInfo,
+                        typeInfo: typeInfo,
                         refMode: .tracking,
                         readTypeInfo: false
                     )
                 } else if hasNull {
-                    let refFlag = try context.buffer.readInt8()
+                    let refFlag = try buffer.readInt8()
                     if refFlag == RefFlag.null.rawValue {
                         continue
                     }
                     if refFlag != RefFlag.notNullValue.rawValue {
                         throw ForyError.invalidData("invalid collection nullability flag \(refFlag)")
                     }
-                    _ = try readFieldPayload(
-                        context: context,
+                    _ = try readSkippedFieldPayload(
                         fieldType: elementFieldType,
-                        runtimeTypeInfo: runtimeTypeInfo,
+                        typeInfo: typeInfo,
                         readTypeInfo: false
                     )
                 } else {
-                    _ = try readFieldPayload(
-                        context: context,
+                    _ = try readSkippedFieldPayload(
                         fieldType: elementFieldType,
-                        runtimeTypeInfo: runtimeTypeInfo,
+                        typeInfo: typeInfo,
                         readTypeInfo: false
                     )
                 }
@@ -281,32 +265,29 @@ public enum FieldSkipper {
             }
 
             if trackRef {
-                _ = try readValueWithRefMode(
-                    context: context,
+                _ = try readSkippedValue(
                     fieldType: elementFieldType,
-                    runtimeTypeInfo: nil,
+                    typeInfo: nil,
                     refMode: .tracking,
                     readTypeInfo: true
                 )
             } else if hasNull {
-                let refFlag = try context.buffer.readInt8()
+                let refFlag = try buffer.readInt8()
                 if refFlag == RefFlag.null.rawValue {
                     continue
                 }
                 if refFlag != RefFlag.notNullValue.rawValue {
                     throw ForyError.invalidData("invalid collection nullability flag \(refFlag)")
                 }
-                _ = try readFieldPayload(
-                    context: context,
+                _ = try readSkippedFieldPayload(
                     fieldType: elementFieldType,
-                    runtimeTypeInfo: nil,
+                    typeInfo: nil,
                     readTypeInfo: true
                 )
             } else {
-                _ = try readFieldPayload(
-                    context: context,
+                _ = try readSkippedFieldPayload(
                     fieldType: elementFieldType,
-                    runtimeTypeInfo: nil,
+                    typeInfo: nil,
                     readTypeInfo: true
                 )
             }
@@ -315,32 +296,30 @@ public enum FieldSkipper {
         return []
     }
 
-    private static func readSet(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType
+    private func readSkippedSet(
+        fieldType: TypeMeta.FieldType
     ) throws -> Set<AnyHashable> {
-        _ = try readCollection(context: context, fieldType: fieldType)
+        _ = try readSkippedCollection(fieldType: fieldType)
         return []
     }
 
-    private static func readMap(
-        context: ReadContext,
-        fieldType: TypeMetaFieldType
+    private func readSkippedMap(
+        fieldType: TypeMeta.FieldType
     ) throws -> [AnyHashable: Any] {
         let keyType = fieldType.generics.first
-            ?? TypeMetaFieldType(typeID: TypeId.unknown.rawValue, nullable: true)
+            ?? TypeMeta.FieldType(typeID: TypeId.unknown.rawValue, nullable: true)
         let valueType = fieldType.generics.dropFirst().first
-            ?? TypeMetaFieldType(typeID: TypeId.unknown.rawValue, nullable: true)
+            ?? TypeMeta.FieldType(typeID: TypeId.unknown.rawValue, nullable: true)
 
-        let totalLength = Int(try context.buffer.readVarUInt32())
-        try context.ensureCollectionLength(totalLength, label: "compatible_map")
+        let totalLength = Int(try buffer.readVarUInt32())
+        try ensureCollectionLength(totalLength, label: "compatible_map")
         if totalLength == 0 {
             return [:]
         }
 
         var readCount = 0
         while readCount < totalLength {
-            let header = try context.buffer.readUInt8()
+            let header = try buffer.readUInt8()
             let trackKeyRef = (header & 0b0000_0001) != 0
             let keyNull = (header & 0b0000_0010) != 0
             let keyDeclared = (header & 0b0000_0100) != 0
@@ -355,11 +334,10 @@ public enum FieldSkipper {
             }
 
             if keyNull {
-                let valueRuntimeType = valueDeclared ? nil : try context.typeResolver.readDynamicTypeInfo(context: context)
-                _ = try readValueWithRefMode(
-                    context: context,
+                let valueTypeInfo = valueDeclared ? nil : try self.readTypeInfo()
+                _ = try readSkippedValue(
                     fieldType: valueType,
-                    runtimeTypeInfo: valueRuntimeType,
+                    typeInfo: valueTypeInfo,
                     refMode: trackValueRef ? .tracking : .none,
                     readTypeInfo: false
                 )
@@ -368,11 +346,10 @@ public enum FieldSkipper {
             }
 
             if valueNull {
-                let keyRuntimeType = keyDeclared ? nil : try context.typeResolver.readDynamicTypeInfo(context: context)
-                _ = try readValueWithRefMode(
-                    context: context,
+                let keyTypeInfo = keyDeclared ? nil : try self.readTypeInfo()
+                _ = try readSkippedValue(
                     fieldType: keyType,
-                    runtimeTypeInfo: keyRuntimeType,
+                    typeInfo: keyTypeInfo,
                     refMode: trackKeyRef ? .tracking : .none,
                     readTypeInfo: false
                 )
@@ -380,7 +357,7 @@ public enum FieldSkipper {
                 continue
             }
 
-            let chunkSize = Int(try context.buffer.readUInt8())
+            let chunkSize = Int(try buffer.readUInt8())
             if chunkSize <= 0 {
                 throw ForyError.invalidData("invalid map chunk size \(chunkSize)")
             }
@@ -388,21 +365,19 @@ public enum FieldSkipper {
                 throw ForyError.invalidData("map chunk size exceeds remaining entries")
             }
 
-            let keyRuntimeType = keyDeclared ? nil : try context.typeResolver.readDynamicTypeInfo(context: context)
-            let valueRuntimeType = valueDeclared ? nil : try context.typeResolver.readDynamicTypeInfo(context: context)
+            let keyTypeInfo = keyDeclared ? nil : try self.readTypeInfo()
+            let valueTypeInfo = valueDeclared ? nil : try self.readTypeInfo()
 
             for _ in 0..<chunkSize {
-                _ = try readValueWithRefMode(
-                    context: context,
+                _ = try readSkippedValue(
                     fieldType: keyType,
-                    runtimeTypeInfo: keyRuntimeType,
+                    typeInfo: keyTypeInfo,
                     refMode: trackKeyRef ? .tracking : .none,
                     readTypeInfo: false
                 )
-                _ = try readValueWithRefMode(
-                    context: context,
+                _ = try readSkippedValue(
                     fieldType: valueType,
-                    runtimeTypeInfo: valueRuntimeType,
+                    typeInfo: valueTypeInfo,
                     refMode: trackValueRef ? .tracking : .none,
                     readTypeInfo: false
                 )
@@ -413,8 +388,8 @@ public enum FieldSkipper {
         return [:]
     }
 
-    private static func readUnion(context: ReadContext) throws -> Any {
-        _ = try context.buffer.readVarUInt32()
-        return try context.readAny(refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
+    private func readSkippedUnion() throws -> Any {
+        _ = try buffer.readVarUInt32()
+        return try readAny(refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
     }
 }

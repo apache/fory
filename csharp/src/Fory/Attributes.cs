@@ -23,6 +23,10 @@ namespace Apache.Fory;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum)]
 public sealed class ForyObjectAttribute : Attribute
 {
+    /// <summary>
+    /// Whether the annotated struct should use schema evolution metadata in compatible mode.
+    /// </summary>
+    public bool Evolving { get; set; } = true;
 }
 
 /// <summary>

@@ -96,7 +96,7 @@ public final class ObjectArray<T> {
 
   /**
    * Set all object array elements to null. This method is faster than {@link Arrays#fill} for large
-   * arrays (> 128).
+   * arrays ({@code > 128}).
    */
   public static void clearObjectArray(Object[] objects, int start, int size) {
     if (size < COPY_THRESHOLD) {

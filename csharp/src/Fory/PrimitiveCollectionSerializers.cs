@@ -29,7 +29,7 @@ internal static class PrimitiveCollectionHeader
             return;
         }
 
-        bool declared = hasGenerics && !elementTypeId.NeedsTypeInfoForField();
+        bool declared = hasGenerics && !TypeResolver.NeedToWriteTypeInfoForField(elementTypeId);
         byte header = CollectionBits.SameType;
         if (hasNull)
         {

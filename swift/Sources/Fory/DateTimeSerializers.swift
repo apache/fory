@@ -32,6 +32,14 @@ public struct ForyDate: Serializer, Equatable, Hashable {
         .date
     }
 
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
+
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
         context.buffer.writeInt32(daysSinceEpoch)
@@ -58,6 +66,14 @@ public struct ForyTimestamp: Serializer, Equatable, Hashable {
 
     public static var staticTypeId: TypeId {
         .timestamp
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
@@ -103,6 +119,14 @@ extension Duration: Serializer {
         .duration
     }
 
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
+
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
         _ = hasGenerics
         let components = self.components
@@ -129,6 +153,14 @@ extension Date: Serializer {
 
     public static var staticTypeId: TypeId {
         .timestamp
+    }
+
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {

@@ -28,6 +28,7 @@ part of 'nested_collection_example.dart';
 final $NestedObject = TypeSpec(
   NestedObject,
   false,
+  true,
   false,
   [
     FieldSpec(

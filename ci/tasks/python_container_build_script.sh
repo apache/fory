@@ -21,8 +21,11 @@ yum install -y git sudo wget || true
 
 git config --global --add safe.directory /work
 
-ci/run_ci.sh install_bazel
-export PATH="$HOME/.local/bin:$PATH"
+if ! command -v bazel >/dev/null 2>&1; then
+    echo "bazel is required in container PATH"
+    exit 1
+fi
+echo "Using bazel: $(bazel --version)"
 
 # Function to verify the installed version against expected version
 verify_version() {

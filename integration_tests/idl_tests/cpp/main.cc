@@ -222,6 +222,49 @@ fory::Result<void, fory::Error> RunEvolvingRoundTrip() {
     return fory::Unexpected(
         fory::Error::invalid("fixed message unexpectedly compatible"));
   }
+
+  evolving1::EvolvingSizeMessage evolving_size_v1;
+  evolving_size_v1.set_payload("payload");
+  evolving1::FixedSizeMessage fixed_size_v1;
+  fixed_size_v1.set_payload("payload");
+
+  FORY_TRY(evolving_size_bytes, fory_v1.serialize(evolving_size_v1));
+  FORY_TRY(fixed_size_bytes, fory_v1.serialize(fixed_size_v1));
+  if (fixed_size_bytes.size() >= evolving_size_bytes.size()) {
+    return fory::Unexpected(
+        fory::Error::invalid("fixed size message was not smaller"));
+  }
+
+  FORY_TRY(
+      evolving_size_decoded,
+      fory_v2.deserialize<evolving2::EvolvingSizeMessage>(evolving_size_bytes));
+  if (evolving_size_decoded.payload() != evolving_size_v1.payload()) {
+    return fory::Unexpected(
+        fory::Error::invalid("evolving size payload mismatch"));
+  }
+  FORY_TRY(evolving_size_round_bytes, fory_v2.serialize(evolving_size_decoded));
+  FORY_TRY(evolving_size_round,
+           fory_v1.deserialize<evolving1::EvolvingSizeMessage>(
+               evolving_size_round_bytes));
+  if (!(evolving_size_round == evolving_size_v1)) {
+    return fory::Unexpected(
+        fory::Error::invalid("evolving size roundtrip mismatch"));
+  }
+
+  FORY_TRY(fixed_size_decoded,
+           fory_v2.deserialize<evolving2::FixedSizeMessage>(fixed_size_bytes));
+  if (fixed_size_decoded.payload() != fixed_size_v1.payload()) {
+    return fory::Unexpected(
+        fory::Error::invalid("fixed size payload mismatch"));
+  }
+  FORY_TRY(fixed_size_round_bytes, fory_v2.serialize(fixed_size_decoded));
+  FORY_TRY(fixed_size_round, fory_v1.deserialize<evolving1::FixedSizeMessage>(
+                                 fixed_size_round_bytes));
+  if (!(fixed_size_round == fixed_size_v1)) {
+    return fory::Unexpected(
+        fory::Error::invalid("fixed size roundtrip mismatch"));
+  }
+
   return fory::Result<void, fory::Error>();
 }
 

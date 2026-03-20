@@ -724,6 +724,33 @@ TEST(StructComprehensiveTest, StructEvolvingOverride) {
   auto fixed_info = fory.type_resolver().get_type_info<FixedStruct>();
   ASSERT_TRUE(fixed_info.ok());
   EXPECT_EQ(fixed_info.value()->type_id, static_cast<uint32_t>(TypeId::STRUCT));
+
+  EvolvingStruct evolving{123};
+  auto evolving_bytes_result = fory.serialize(evolving);
+  ASSERT_TRUE(evolving_bytes_result.ok())
+      << "Serialization failed: " << evolving_bytes_result.error().to_string();
+  std::vector<uint8_t> evolving_bytes =
+      std::move(evolving_bytes_result).value();
+
+  FixedStruct fixed{123};
+  auto fixed_bytes_result = fory.serialize(fixed);
+  ASSERT_TRUE(fixed_bytes_result.ok())
+      << "Serialization failed: " << fixed_bytes_result.error().to_string();
+  std::vector<uint8_t> fixed_bytes = std::move(fixed_bytes_result).value();
+
+  EXPECT_LT(fixed_bytes.size(), evolving_bytes.size());
+
+  auto evolving_result = fory.deserialize<EvolvingStruct>(
+      evolving_bytes.data(), evolving_bytes.size());
+  ASSERT_TRUE(evolving_result.ok())
+      << "Deserialization failed: " << evolving_result.error().to_string();
+  EXPECT_EQ(evolving_result.value().id, evolving.id);
+
+  auto fixed_result =
+      fory.deserialize<FixedStruct>(fixed_bytes.data(), fixed_bytes.size());
+  ASSERT_TRUE(fixed_result.ok())
+      << "Deserialization failed: " << fixed_result.error().to_string();
+  EXPECT_EQ(fixed_result.value().id, fixed.id);
 }
 
 } // namespace test

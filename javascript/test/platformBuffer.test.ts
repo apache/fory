@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { fromUint8Array, alloc, BrowserBuffer, PlatformBuffer } from '../packages/fory/lib/platformBuffer';
+import { fromUint8Array, alloc, BrowserBuffer, PlatformBuffer } from '../packages/core/lib/platformBuffer';
 import { describe, expect, test } from '@jest/globals';
 
 describe('platformBuffer', () => {

@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <Version>0.16.0</Version>
+    <Authors>Apache Software Foundation</Authors>
+    <Company>Apache Software Foundation</Company>
+    <Description>Apache Fory for .NET provides high-performance cross-language serialization with source-generated serializers and schema evolution support.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/apache/fory</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/apache/fory</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>apache;fory;serialization;binary;cross-language;source-generator;dotnet</PackageTags>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+</Project>

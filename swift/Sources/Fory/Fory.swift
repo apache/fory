@@ -43,109 +43,39 @@ public struct ForyConfig {
         self.maxBinarySize = maxBinarySize
         self.maxDepth = maxDepth
     }
-}
 
-private final class ForyRuntimeContext {
-    let writeBuffer: ByteBuffer
-    let writeContext: WriteContext
-    let readBuffer: ByteBuffer
-    let readContext: ReadContext
-
-    var writeInUse = false
-    var readInUse = false
-
-    var lastReadDataAddress: UnsafeRawPointer?
-    var lastReadDataCount: Int = -1
-
-    init(typeResolver: TypeResolver, config: ForyConfig) {
-        writeBuffer = ByteBuffer()
-        writeContext = WriteContext(
-            buffer: writeBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            checkClassVersion: config.checkClassVersion,
-            maxDepth: config.maxDepth,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
-        )
-
-        readBuffer = ByteBuffer()
-        readContext = ReadContext(
-            buffer: readBuffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            checkClassVersion: config.checkClassVersion,
-            maxCollectionSize: config.maxCollectionSize,
-            maxBinarySize: config.maxBinarySize,
-            maxDepth: config.maxDepth,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
+    static func resolved(
+        xlang: Bool = true,
+        trackRef: Bool = false,
+        compatible: Bool = false,
+        checkClassVersion: Bool? = nil,
+        maxCollectionSize: Int = 1_000_000,
+        maxBinarySize: Int = 64 * 1024 * 1024,
+        maxDepth: Int = 5
+    ) -> ForyConfig {
+        let effectiveCheckClassVersion = checkClassVersion ?? (xlang && !compatible)
+        return ForyConfig(
+            xlang: xlang,
+            trackRef: trackRef,
+            compatible: compatible,
+            checkClassVersion: effectiveCheckClassVersion,
+            maxCollectionSize: maxCollectionSize,
+            maxBinarySize: maxBinarySize,
+            maxDepth: maxDepth
         )
     }
 }
 
-private final class ForyThreadContextCache {
-    private var cachedID: UInt64 = .max
-    private var cachedContext: ForyRuntimeContext?
-    private var others: [UInt64: ForyRuntimeContext] = [:]
-
-    @inline(__always)
-    func getOrCreate(id: UInt64, create: () -> ForyRuntimeContext) -> ForyRuntimeContext {
-        if cachedID == id, let cachedContext {
-            return cachedContext
-        }
-
-        if let cachedContext {
-            others[cachedID] = cachedContext
-        }
-
-        let context = others.removeValue(forKey: id) ?? create()
-        cachedID = id
-        cachedContext = context
-        return context
-    }
-}
-
-private final class ForyThreadContextStore: @unchecked Sendable {
-    private let key: pthread_key_t
-
-    init() {
-        var localKey = pthread_key_t()
-        let createResult = pthread_key_create(&localKey) { rawPointer in
-            Unmanaged<ForyThreadContextCache>.fromOpaque(rawPointer).release()
-        }
-        precondition(createResult == 0, "failed to create pthread TLS key")
-        key = localKey
-    }
-
-    deinit {
-        pthread_key_delete(key)
-    }
-
-    @inline(__always)
-    func get() -> ForyThreadContextCache {
-        if let rawPointer = pthread_getspecific(key) {
-            return Unmanaged<ForyThreadContextCache>.fromOpaque(rawPointer).takeUnretainedValue()
-        }
-
-        let cache = ForyThreadContextCache()
-        let setResult = pthread_setspecific(key, Unmanaged.passRetained(cache).toOpaque())
-        precondition(setResult == 0, "failed to set pthread TLS value")
-        return cache
-    }
-}
-
+/// Single-threaded Fory runtime.
+///
+/// Reuse one `Fory` per thread for the fastest path. The runtime keeps one
+/// reusable read/write context pair and must not be used concurrently from
+/// multiple threads.
 public final class Fory {
     public let config: ForyConfig
-    public let typeResolver: TypeResolver
-
-    private let instanceID: UInt64
-
-    private static let threadContextStore = ForyThreadContextStore()
-    private static let instanceIDLock = NSLock()
-    nonisolated(unsafe) private static var nextInstanceID: UInt64 = 0
+    let typeResolver: TypeResolver
+    private let writeContext: WriteContext
+    private let readContext: ReadContext
 
     public init(
         xlang: Bool = true,
@@ -156,18 +86,35 @@ public final class Fory {
         maxBinarySize: Int = 64 * 1024 * 1024,
         maxDepth: Int = 5
     ) {
-        let effectiveCheckClassVersion = checkClassVersion ?? (xlang && !compatible)
-        self.config = ForyConfig(
+        self.config = ForyConfig.resolved(
             xlang: xlang,
             trackRef: trackRef,
             compatible: compatible,
-            checkClassVersion: effectiveCheckClassVersion,
+            checkClassVersion: checkClassVersion,
             maxCollectionSize: maxCollectionSize,
             maxBinarySize: maxBinarySize,
             maxDepth: maxDepth
         )
-        self.typeResolver = TypeResolver()
-        self.instanceID = Self.allocateInstanceID()
+        self.typeResolver = TypeResolver(trackRef: self.config.trackRef)
+        self.writeContext = WriteContext(
+            buffer: ByteBuffer(),
+            typeResolver: typeResolver,
+            trackRef: self.config.trackRef,
+            compatible: self.config.compatible,
+            checkClassVersion: self.config.checkClassVersion,
+            maxDepth: self.config.maxDepth,
+            metaStringWriteState: MetaStringWriteState()
+        )
+        self.readContext = ReadContext(
+            buffer: ByteBuffer(),
+            typeResolver: typeResolver,
+            trackRef: self.config.trackRef,
+            compatible: self.config.compatible,
+            checkClassVersion: self.config.checkClassVersion,
+            maxCollectionSize: self.config.maxCollectionSize,
+            maxBinarySize: self.config.maxBinarySize,
+            maxDepth: self.config.maxDepth
+        )
     }
 
     public convenience init(config: ForyConfig) {
@@ -195,35 +142,44 @@ public final class Fory {
     }
 
     public func serialize<T: Serializer>(_ value: T) throws -> Data {
-        try serializeRoot(isNone: value.foryIsNone) { context in
-            if useRootDataFastPath {
-                try value.foryWriteData(context, hasGenerics: false)
-            } else {
-                try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
-            }
+        let context = writeContext
+        context.buffer.clear()
+        defer {
+            context.reset()
         }
+
+        writeHead(buffer: context.buffer, isNone: value.foryIsNone)
+        if !value.foryIsNone {
+            try writeRootTypedValue(value, context: context)
+        }
+        return context.buffer.copyToData()
     }
 
     public func deserialize<T: Serializer>(_ data: Data, as _: T.Type = T.self) throws -> T {
-        try deserializeRoot(
-            data: data,
-            nilValue: T.foryDefault()
-        ) { context in
-            if useRootDataFastPath {
-                return try T.foryReadData(context)
+        try withReusableReadContext(data: data) { context in
+            if try readHead(buffer: context.buffer) {
+                return T.foryDefault()
             }
-            return try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
+            let value: T = try readRootTypedValue(context: context)
+            if context.buffer.remaining != 0 {
+                throw ForyError.invalidData("unexpected trailing bytes at root: \(context.buffer.remaining)")
+            }
+            return value
         }
     }
 
     public func serialize<T: Serializer>(_ value: T, to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer, isNone: value.foryIsNone) { context in
-            if useRootDataFastPath {
-                try value.foryWriteData(context, hasGenerics: false)
-            } else {
-                try value.foryWrite(context, refMode: rootRefMode, writeTypeInfo: shouldWriteRootTypeInfo, hasGenerics: false)
-            }
+        let context = writeContext
+        context.buffer.clear()
+        defer {
+            context.reset()
         }
+
+        writeHead(buffer: context.buffer, isNone: value.foryIsNone)
+        if !value.foryIsNone {
+            try writeRootTypedValue(value, context: context)
+        }
+        buffer.append(contentsOf: context.buffer.storage.prefix(context.buffer.count))
     }
 
     public func deserialize<T: Serializer>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T {
@@ -231,10 +187,7 @@ public final class Fory {
             from: buffer,
             nilValue: T.foryDefault()
         ) { context in
-            if useRootDataFastPath {
-                return try T.foryReadData(context)
-            }
-            return try T.foryRead(context, refMode: rootRefMode, readTypeInfo: shouldWriteRootTypeInfo)
+            try readRootTypedValue(context: context)
         }
     }
 
@@ -497,7 +450,9 @@ public final class Fory {
         }
     }
 
-    public func writeHead(buffer: ByteBuffer, isNone: Bool) {
+    @inlinable
+    @inline(__always)
+    func writeHead(buffer: ByteBuffer, isNone: Bool) {
         var bitmap: UInt8 = 0
         if config.xlang {
             bitmap |= ForyHeaderFlag.isXlang
@@ -508,7 +463,9 @@ public final class Fory {
         buffer.writeUInt8(bitmap)
     }
 
-    public func readHead(buffer: ByteBuffer) throws -> Bool {
+    @inlinable
+    @inline(__always)
+    func readHead(buffer: ByteBuffer) throws -> Bool {
         let bitmap = try buffer.readUInt8()
         let peerIsXlang = (bitmap & ForyHeaderFlag.isXlang) != 0
         if peerIsXlang != config.xlang {
@@ -517,137 +474,46 @@ public final class Fory {
         return (bitmap & ForyHeaderFlag.isNull) != 0
     }
 
-    private static func allocateInstanceID() -> UInt64 {
-        instanceIDLock.lock()
-        defer { instanceIDLock.unlock() }
-        let id = nextInstanceID
-        nextInstanceID &+= 1
-        return id
-    }
-
     @inline(__always)
     private var refMode: RefMode {
         config.trackRef ? .tracking : .nullOnly
     }
 
-    @inline(__always)
-    private var shouldWriteRootTypeInfo: Bool {
-        config.xlang || config.compatible
-    }
-
-    @inline(__always)
-    private var rootRefMode: RefMode {
-        if config.trackRef {
-            return .tracking
-        }
-        return shouldWriteRootTypeInfo ? .nullOnly : .none
-    }
-
-    @inline(__always)
-    private var useRootDataFastPath: Bool {
-        !shouldWriteRootTypeInfo && rootRefMode == .none
-    }
-
-    @inline(__always)
-    private func makeWriteContext(buffer: ByteBuffer) -> WriteContext {
-        WriteContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            checkClassVersion: config.checkClassVersion,
-            maxDepth: config.maxDepth,
-            compatibleTypeDefState: CompatibleTypeDefWriteState(),
-            metaStringWriteState: MetaStringWriteState()
+    private func writeRootTypedValue<T: Serializer>(
+        _ value: T,
+        context: WriteContext
+    ) throws {
+        let writeTypeInfo = config.xlang || config.compatible
+        try value.foryWrite(
+            context,
+            refMode: config.trackRef ? .tracking : (writeTypeInfo ? .nullOnly : .none),
+            writeTypeInfo: writeTypeInfo,
+            hasGenerics: false
         )
     }
 
     @inline(__always)
-    private func makeReadContext(buffer: ByteBuffer) -> ReadContext {
-        ReadContext(
-            buffer: buffer,
-            typeResolver: typeResolver,
-            trackRef: config.trackRef,
-            compatible: config.compatible,
-            checkClassVersion: config.checkClassVersion,
-            maxCollectionSize: config.maxCollectionSize,
-            maxBinarySize: config.maxBinarySize,
-            maxDepth: config.maxDepth,
-            compatibleTypeDefState: CompatibleTypeDefReadState(),
-            metaStringReadState: MetaStringReadState()
+    private func readRootTypedValue<T: Serializer>(
+        context: ReadContext
+    ) throws -> T {
+        let readTypeInfo = config.xlang || config.compatible
+        return try T.foryRead(
+            context,
+            refMode: config.trackRef ? .tracking : (readTypeInfo ? .nullOnly : .none),
+            readTypeInfo: readTypeInfo
         )
     }
 
     @inline(__always)
-    private func runtimeContext() -> ForyRuntimeContext {
-        let cache = threadContextCache()
-        return cache.getOrCreate(id: instanceID) {
-            ForyRuntimeContext(typeResolver: typeResolver, config: config)
-        }
-    }
-
-    @inline(__always)
-    private func threadContextCache() -> ForyThreadContextCache {
-        Self.threadContextStore.get()
-    }
-
-    @inline(__always)
-    private func withReusableWriteContext<R>(
-        _ body: (WriteContext) throws -> R
-    ) rethrows -> R {
-        let runtimeContext = runtimeContext()
-
-        if runtimeContext.writeInUse {
-            let temporaryBuffer = ByteBuffer()
-            let temporaryContext = makeWriteContext(buffer: temporaryBuffer)
-            defer { temporaryContext.reset() }
-            return try body(temporaryContext)
-        }
-
-        runtimeContext.writeInUse = true
-        runtimeContext.writeBuffer.clear()
-        defer {
-            runtimeContext.writeContext.reset()
-            runtimeContext.writeInUse = false
-        }
-        return try body(runtimeContext.writeContext)
-    }
-
-    @inline(__always)
-    private func withReusableReadContext<R>(
+    func withReusableReadContext<R>(
         data: Data,
         _ body: (ReadContext) throws -> R
     ) rethrows -> R {
-        let runtimeContext = runtimeContext()
-
-        if runtimeContext.readInUse {
-            let temporaryBuffer = ByteBuffer(data: data)
-            let temporaryContext = makeReadContext(buffer: temporaryBuffer)
-            defer { temporaryContext.reset() }
-            return try body(temporaryContext)
-        }
-
-        runtimeContext.readInUse = true
-        runtimeContext.readBuffer.replace(with: data)
-        data.withUnsafeBytes { rawBytes in
-            runtimeContext.lastReadDataAddress = rawBytes.baseAddress
-            runtimeContext.lastReadDataCount = rawBytes.count
-        }
+        readContext.buffer.replace(with: data)
         defer {
-            runtimeContext.readContext.reset()
-            runtimeContext.readInUse = false
+            readContext.reset()
         }
-        return try body(runtimeContext.readContext)
-    }
-
-    @inline(__always)
-    private func withTemporaryReadContext<R>(
-        buffer: ByteBuffer,
-        _ body: (ReadContext) throws -> R
-    ) rethrows -> R {
-        let context = makeReadContext(buffer: buffer)
-        defer { context.reset() }
-        return try body(context)
+        return try body(readContext)
     }
 
     @inline(__always)
@@ -655,13 +521,16 @@ public final class Fory {
         isNone: Bool,
         _ body: (WriteContext) throws -> Void
     ) throws -> Data {
-        try withReusableWriteContext { context in
-            writeHead(buffer: context.buffer, isNone: isNone)
-            if !isNone {
-                try body(context)
-            }
-            return context.buffer.toData()
+        let context = writeContext
+        context.buffer.clear()
+        defer {
+            context.reset()
         }
+        writeHead(buffer: context.buffer, isNone: isNone)
+        if !isNone {
+            try body(context)
+        }
+        return context.buffer.copyToData()
     }
 
     @inline(__always)
@@ -670,13 +539,16 @@ public final class Fory {
         isNone: Bool,
         _ body: (WriteContext) throws -> Void
     ) throws {
-        try withReusableWriteContext { context in
-            writeHead(buffer: context.buffer, isNone: isNone)
-            if !isNone {
-                try body(context)
-            }
-            output.append(contentsOf: context.buffer.storage)
+        let context = writeContext
+        context.buffer.clear()
+        defer {
+            context.reset()
         }
+        writeHead(buffer: context.buffer, isNone: isNone)
+        if !isNone {
+            try body(context)
+        }
+        output.append(contentsOf: context.buffer.storage.prefix(context.buffer.count))
     }
 
     @inline(__always)
@@ -703,11 +575,14 @@ public final class Fory {
         nilValue: @autoclosure () -> R,
         _ body: (ReadContext) throws -> R
     ) throws -> R {
-        try withTemporaryReadContext(buffer: buffer) { context in
-            if try readHead(buffer: buffer) {
-                return nilValue()
-            }
-            return try body(context)
+        readContext.buffer.swapState(with: buffer)
+        defer {
+            readContext.buffer.swapState(with: buffer)
+            readContext.reset()
         }
+        if try readHead(buffer: readContext.buffer) {
+            return nilValue()
+        }
+        return try body(readContext)
     }
 }

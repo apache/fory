@@ -178,6 +178,58 @@ func TestEvolvingRoundTrip(t *testing.T) {
 	if reflect.DeepEqual(fixedV1Round, fixedV1) {
 		t.Fatalf("fixed message unexpectedly compatible: %v", fixedV1Round)
 	}
+
+	evolvingSizeV1 := evolving1.EvolvingSizeMessage{Payload: "payload"}
+	fixedSizeV1 := evolving1.FixedSizeMessage{Payload: "payload"}
+	evolvingSizeBytes, err := foryV1.Serialize(&evolvingSizeV1)
+	if err != nil {
+		t.Fatalf("serialize evolving size v1: %v", err)
+	}
+	fixedSizeBytes, err := foryV1.Serialize(&fixedSizeV1)
+	if err != nil {
+		t.Fatalf("serialize fixed size v1: %v", err)
+	}
+	if len(fixedSizeBytes) >= len(evolvingSizeBytes) {
+		t.Fatalf("fixed size payload was not smaller: fixed=%d evolving=%d", len(fixedSizeBytes), len(evolvingSizeBytes))
+	}
+
+	var evolvingSizeV2 evolving2.EvolvingSizeMessage
+	if err := foryV2.Deserialize(evolvingSizeBytes, &evolvingSizeV2); err != nil {
+		t.Fatalf("deserialize evolving size v2: %v", err)
+	}
+	if evolvingSizeV2.Payload != evolvingSizeV1.Payload {
+		t.Fatalf("evolving size payload mismatch: v1=%+v v2=%+v", evolvingSizeV1, evolvingSizeV2)
+	}
+	evolvingSizeRoundBytes, err := foryV2.Serialize(&evolvingSizeV2)
+	if err != nil {
+		t.Fatalf("serialize evolving size v2: %v", err)
+	}
+	var evolvingSizeV1Round evolving1.EvolvingSizeMessage
+	if err := foryV1.Deserialize(evolvingSizeRoundBytes, &evolvingSizeV1Round); err != nil {
+		t.Fatalf("deserialize evolving size v1: %v", err)
+	}
+	if !reflect.DeepEqual(evolvingSizeV1Round, evolvingSizeV1) {
+		t.Fatalf("evolving size roundtrip mismatch: %v vs %v", evolvingSizeV1Round, evolvingSizeV1)
+	}
+
+	var fixedSizeV2 evolving2.FixedSizeMessage
+	if err := foryV2.Deserialize(fixedSizeBytes, &fixedSizeV2); err != nil {
+		t.Fatalf("deserialize fixed size v2: %v", err)
+	}
+	if fixedSizeV2.Payload != fixedSizeV1.Payload {
+		t.Fatalf("fixed size payload mismatch: v1=%+v v2=%+v", fixedSizeV1, fixedSizeV2)
+	}
+	fixedSizeRoundBytes, err := foryV2.Serialize(&fixedSizeV2)
+	if err != nil {
+		t.Fatalf("serialize fixed size v2: %v", err)
+	}
+	var fixedSizeV1Round evolving1.FixedSizeMessage
+	if err := foryV1.Deserialize(fixedSizeRoundBytes, &fixedSizeV1Round); err != nil {
+		t.Fatalf("deserialize fixed size v1: %v", err)
+	}
+	if !reflect.DeepEqual(fixedSizeV1Round, fixedSizeV1) {
+		t.Fatalf("fixed size roundtrip mismatch: %v vs %v", fixedSizeV1Round, fixedSizeV1)
+	}
 }
 
 func runAddressBookRoundTrip(t *testing.T, compatible bool) {

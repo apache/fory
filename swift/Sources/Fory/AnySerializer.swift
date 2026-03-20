@@ -28,6 +28,14 @@ public struct ForyAnyNullValue: Serializer {
         .none
     }
 
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
+    }
+
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
+    }
+
     public var foryIsNone: Bool {
         true
     }
@@ -57,17 +65,22 @@ extension AnyHashable: Serializer {
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> AnyHashable {
-        guard let typeInfo = context.dynamicTypeInfo(for: Self.self) else {
-            throw ForyError.invalidData("dynamic AnyHashable key requires type info")
-        }
-        if typeInfo.wireTypeID == .none {
+        _ = context
+        throw ForyError.invalidData(
+            "dynamic AnyHashable key read requires type info; foryReadData should not be called directly"
+        )
+    }
+
+    public static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> AnyHashable {
+        let typeInfo = remoteTypeInfo
+        if typeInfo.typeID == .none {
             throw ForyError.invalidData("dynamic AnyHashable key cannot be null")
         }
-        let decoded = try context.typeResolver.readDynamicValue(typeInfo: typeInfo, context: context)
+        let decoded = try context.readAnyValue(typeInfo: typeInfo)
         return try toAnyHashableKey(decoded)
     }
 
-    public static func foryWriteTypeInfo(_ context: WriteContext) throws {
+    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
         _ = context
         throw ForyError.invalidData("dynamic AnyHashable key type info is runtime-only")
     }
@@ -76,9 +89,8 @@ extension AnyHashable: Serializer {
         try writeAnyTypeInfo(base, context: context)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws {
-        let typeInfo = try context.typeResolver.readDynamicTypeInfo(context: context)
-        context.setDynamicTypeInfo(for: Self.self, typeInfo)
+    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readTypeInfo()
     }
 
     public func foryWrite(
@@ -105,7 +117,7 @@ extension Optional: OptionalTypeMarker {
     static var noneValue: Wrapped? { nil }
 }
 
-private struct DynamicAnyValue: Serializer {
+struct DynamicAnyValue: Serializer {
     var value: Any = ForyAnyNullValue()
 
     init(_ value: Any) {
@@ -124,7 +136,7 @@ private struct DynamicAnyValue: Serializer {
         true
     }
 
-    static var isReferenceTrackableType: Bool {
+    static var isRefType: Bool {
         true
     }
 
@@ -161,16 +173,21 @@ private struct DynamicAnyValue: Serializer {
     }
 
     static func foryReadData(_ context: ReadContext) throws -> DynamicAnyValue {
-        guard let typeInfo = context.dynamicTypeInfo(for: Self.self) else {
-            throw ForyError.invalidData("dynamic Any value requires type info")
-        }
-        if typeInfo.wireTypeID == .none {
-            return .foryDefault()
-        }
-        return DynamicAnyValue(try context.typeResolver.readDynamicValue(typeInfo: typeInfo, context: context))
+        _ = context
+        throw ForyError.invalidData(
+            "dynamic Any read requires type info; foryReadData should not be called directly"
+        )
     }
 
-    static func foryWriteTypeInfo(_ context: WriteContext) throws {
+    static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> DynamicAnyValue {
+        let typeInfo = remoteTypeInfo
+        if typeInfo.typeID == .none {
+            return .foryDefault()
+        }
+        return DynamicAnyValue(try context.readAnyValue(typeInfo: typeInfo))
+    }
+
+    static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
         _ = context
         throw ForyError.invalidData("dynamic Any value type info is runtime-only")
     }
@@ -183,9 +200,8 @@ private struct DynamicAnyValue: Serializer {
         try writeAnyTypeInfo(value, context: context)
     }
 
-    static func foryReadTypeInfo(_ context: ReadContext) throws {
-        let typeInfo = try context.typeResolver.readDynamicTypeInfo(context: context)
-        context.setDynamicTypeInfo(for: Self.self, typeInfo)
+    static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readTypeInfo()
     }
 
     func foryWrite(
@@ -199,8 +215,8 @@ private struct DynamicAnyValue: Serializer {
                 context.buffer.writeInt8(RefFlag.null.rawValue)
                 return
             }
-            if refMode == .tracking, anyValueIsReferenceTrackable(value), let object = value as AnyObject? {
-                if context.refWriter.tryWriteReference(buffer: context.buffer, object: object) {
+            if refMode == .tracking, anyValueIsRefType(value), let object = value as AnyObject? {
+                if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
                     return
                 }
             } else {
@@ -219,6 +235,20 @@ private struct DynamicAnyValue: Serializer {
         refMode: RefMode,
         readTypeInfo: Bool
     ) throws -> DynamicAnyValue {
+        @inline(__always)
+        func requireDynamicTypeInfo() throws -> TypeInfo {
+            if readTypeInfo {
+                guard let remoteTypeInfo = try foryReadTypeInfo(context) else {
+                    throw ForyError.invalidData("dynamic Any value requires type info")
+                }
+                return remoteTypeInfo
+            }
+            guard let remoteTypeInfo = context.getTypeInfo(for: Self.self) else {
+                throw ForyError.invalidData("dynamic Any value requires type info")
+            }
+            return remoteTypeInfo
+        }
+
         if refMode != .none {
             let rawFlag = try context.buffer.readInt8()
             guard let flag = RefFlag(rawValue: rawFlag) else {
@@ -239,24 +269,19 @@ private struct DynamicAnyValue: Serializer {
                 }
                 return DynamicAnyValue(referenced)
             case .refValue:
-                let reservedRefID = context.refReader.reserveRefID()
-                context.pushPendingReference(reservedRefID)
-                if readTypeInfo {
-                    try foryReadTypeInfo(context)
+                let reservedRefID = context.trackRef ? context.refReader.reserveRefID() : nil
+                let remoteTypeInfo = try requireDynamicTypeInfo()
+                let value = try foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+                if let reservedRefID {
+                    context.refReader.storeRef(value, at: reservedRefID)
                 }
-                let value = try foryReadData(context)
-                context.finishPendingReferenceIfNeeded(value)
-                context.popPendingReference()
                 return value
             case .notNullValue:
                 break
             }
         }
 
-        if readTypeInfo {
-            try foryReadTypeInfo(context)
-        }
-        return try foryReadData(context)
+        return try foryReadCompatibleData(context, remoteTypeInfo: requireDynamicTypeInfo())
     }
 }
 
@@ -271,11 +296,11 @@ private func unwrapOptionalAny(_ value: Any) -> Any? {
     return child
 }
 
-private func anyValueIsReferenceTrackable(_ value: Any) -> Bool {
+private func anyValueIsRefType(_ value: Any) -> Bool {
     guard let serializer = value as? any Serializer else {
         return false
     }
-    return type(of: serializer).isReferenceTrackableType
+    return type(of: serializer).isRefType
 }
 
 private func toAnyHashableKey(_ value: Any) throws -> AnyHashable {

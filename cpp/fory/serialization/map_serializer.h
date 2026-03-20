@@ -551,6 +551,13 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
   static_assert(!is_shared_ref_v<K> && !is_shared_ref_v<V>,
                 "Fast path is for non-shared-ref types only");
 
+  // Guardrail: Enforce max_collection_size for map reads (entry count)
+  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
+    ctx.set_error(
+        Error::invalid_data("Map entry count exceeds max_collection_size"));
+    return MapType{};
+  }
+
   MapType result;
   MapReserver<MapType>::reserve(result, length);
 
@@ -682,6 +689,13 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 /// Read map data for polymorphic or shared-ref maps
 template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
+  // Guardrail: Enforce max_collection_size for map reads (entry count)
+  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
+    ctx.set_error(
+        Error::invalid_data("Map entry count exceeds max_collection_size"));
+    return MapType{};
+  }
+
   MapType result;
   MapReserver<MapType>::reserve(result, length);
 
