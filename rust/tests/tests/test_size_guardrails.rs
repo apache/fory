@@ -101,3 +101,23 @@ fn test_string_unaffected_by_max_binary_size() {
     );
     assert_eq!(result.unwrap(), s);
 }
+
+#[test]
+fn test_btreemap_exceeds_max_collection_size() {
+    use std::collections::BTreeMap;
+    let fory_base = Fory::default();
+    let mut m: BTreeMap<i32, i32> = BTreeMap::new();
+    m.insert(1, 1);
+    m.insert(2, 2);
+    m.insert(3, 3);
+    let bytes = fory_base.serialize(&m).unwrap();
+
+    let fory = Fory::default().max_collection_size(2);
+    let result: Result<BTreeMap<i32, i32>, _> = fory.deserialize(&bytes);
+    assert!(result.is_err(), "Expected error due to BTreeMap size limit");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("collection length"),
+        "unexpected error: {err_msg}"
+    );
+}
