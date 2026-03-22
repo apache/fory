@@ -79,7 +79,7 @@ pub fn fory_write_type_info(context: &mut WriteContext, type_id: TypeId) -> Resu
 }
 
 pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
-    let size_bytes = context.reader.read_varuint32()? as usize;
+    let size_bytes = context.read_binary_length()?;
     if size_bytes % std::mem::size_of::<T>() != 0 {
         return Err(Error::invalid_data("Invalid data length"));
     }

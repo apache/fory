@@ -172,7 +172,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
 }
 
 fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Error> {
-    let length = context.reader.read_varuint32()? as usize;
+    let length = context.read_collection_length()?;
     if length == 0 {
         return Ok(());
     }
@@ -207,7 +207,7 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
 }
 
 fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Error> {
-    let length = context.reader.read_varuint32()?;
+    let length = context.read_collection_length()? as u32;
     if length == 0 {
         return Ok(());
     }

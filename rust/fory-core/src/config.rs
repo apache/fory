@@ -38,6 +38,10 @@ pub struct Config {
     /// When enabled, shared references and circular references are tracked
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
+    /// Maximum byte length of a single deserialized binary payload.
+    pub max_binary_size: usize,
+    /// Maximum element count of a single deserialized collection or map.
+    pub max_collection_size: usize,
 }
 
 impl Default for Config {
@@ -50,6 +54,8 @@ impl Default for Config {
             max_dyn_depth: 5,
             check_struct_version: false,
             track_ref: false,
+            max_binary_size: 64 * 1024 * 1024,
+            max_collection_size: 1_000_000,
         }
     }
 }
@@ -100,5 +106,15 @@ impl Config {
     #[inline(always)]
     pub fn is_track_ref(&self) -> bool {
         self.track_ref
+    }
+
+    #[inline(always)]
+    pub fn max_binary_size(&self) -> usize {
+        self.max_binary_size
+    }
+
+    #[inline(always)]
+    pub fn max_collection_size(&self) -> usize {
+        self.max_collection_size
     }
 }

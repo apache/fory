@@ -321,6 +321,18 @@ impl Fory {
         self
     }
 
+    /// Sets the maximum byte length of a single deserialized binary payload.
+    pub fn max_binary_size(mut self, max: usize) -> Self {
+        self.config.max_binary_size = max;
+        self
+    }
+
+    /// Sets the maximum element count of a single deserialized collection or map.
+    pub fn max_collection_size(mut self, max: usize) -> Self {
+        self.config.max_collection_size = max;
+        self
+    }
+
     /// Returns whether cross-language serialization is enabled.
     pub fn is_xlang(&self) -> bool {
         self.config.xlang
