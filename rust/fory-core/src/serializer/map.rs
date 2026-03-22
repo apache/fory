@@ -546,22 +546,10 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     }
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let len = context.reader.read_varuint32()?;
+        let len = context.read_collection_length()? as u32;
         if len == 0 {
             return Ok(HashMap::new());
         }
-        let remaining = context
-            .reader
-            .bf
-            .len()
-            .saturating_sub(context.reader.cursor);
-        if len as usize > remaining {
-            return Err(Error::invalid_data(format!(
-                "map entry count {} exceeds buffer remaining {}",
-                len, remaining
-            )));
-        }
-        context.check_collection_size(len as usize)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
@@ -709,22 +697,10 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
     }
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let len = context.reader.read_varuint32()?;
+        let len = context.read_collection_length()? as u32;
         if len == 0 {
             return Ok(BTreeMap::new());
         }
-        let remaining = context
-            .reader
-            .bf
-            .len()
-            .saturating_sub(context.reader.cursor);
-        if len as usize > remaining {
-            return Err(Error::invalid_data(format!(
-                "map entry count {} exceeds buffer remaining {}",
-                len, remaining
-            )));
-        }
-        context.check_collection_size(len as usize)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()

@@ -226,22 +226,10 @@ where
     T: Serializer + ForyDefault,
     C: FromIterator<T>,
 {
-    let len = context.reader.read_varuint32()?;
+    let len = context.read_collection_length()? as u32;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
-    let remaining = context
-        .reader
-        .bf
-        .len()
-        .saturating_sub(context.reader.cursor);
-    if len as usize > remaining {
-        return Err(Error::invalid_data(format!(
-            "collection length {} exceeds buffer remaining {}",
-            len, remaining
-        )));
-    }
-    context.check_collection_size(len as usize)?;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_collection_data_dyn_ref(context, len);
     }
@@ -279,22 +267,10 @@ pub fn read_vec_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error>
 where
     T: Serializer + ForyDefault,
 {
-    let len = context.reader.read_varuint32()?;
+    let len = context.read_collection_length()? as u32;
     if len == 0 {
         return Ok(Vec::new());
     }
-    let remaining = context
-        .reader
-        .bf
-        .len()
-        .saturating_sub(context.reader.cursor);
-    if len as usize > remaining {
-        return Err(Error::invalid_data(format!(
-            "collection length {} exceeds buffer remaining {}",
-            len, remaining
-        )));
-    }
-    context.check_collection_size(len as usize)?;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_vec_data_dyn_ref(context, len);
     }

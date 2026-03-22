@@ -79,27 +79,11 @@ pub fn fory_write_type_info(context: &mut WriteContext, type_id: TypeId) -> Resu
 }
 
 pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
-    let size_bytes = context.reader.read_varuint32()? as usize;
+    let size_bytes = context.read_binary_length()?;
     if size_bytes % std::mem::size_of::<T>() != 0 {
         return Err(Error::invalid_data("Invalid data length"));
     }
-    // Check that the declared byte length is actually available in the buffer
-    // BEFORE allocating. Without this, a crafted size_bytes can trigger an OOM
-    // allocation (Vec::with_capacity) even though read_bytes would later reject
-    // the payload — but only after the damage is done.
-    let remaining = context
-        .reader
-        .bf
-        .len()
-        .saturating_sub(context.reader.cursor);
-    if size_bytes > remaining {
-        return Err(Error::invalid_data(format!(
-            "primitive list byte length {} exceeds buffer remaining {}",
-            size_bytes, remaining
-        )));
-    }
     let len = size_bytes / std::mem::size_of::<T>();
-    context.check_collection_size(len)?;
     let mut vec: Vec<T> = Vec::with_capacity(len);
 
     #[cfg(target_endian = "little")]

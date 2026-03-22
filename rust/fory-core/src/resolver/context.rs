@@ -316,6 +316,7 @@ pub struct ReadContext<'a> {
     max_dyn_depth: u32,
     check_struct_version: bool,
     max_collection_size: usize,
+    max_binary_size: usize,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -344,6 +345,7 @@ impl<'a> ReadContext<'a> {
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
             max_collection_size: config.max_collection_size,
+            max_binary_size: config.max_binary_size,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -475,14 +477,27 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    pub fn check_collection_size(&self, len: usize) -> Result<(), Error> {
+    pub fn read_collection_length(&mut self) -> Result<usize, Error> {
+        let len = self.reader.read_varuint32()? as usize;
         if len > self.max_collection_size {
             return Err(Error::invalid_data(format!(
                 "collection length {} exceeds configured limit {}",
                 len, self.max_collection_size
             )));
         }
-        Ok(())
+        Ok(len)
+    }
+
+    #[inline(always)]
+    pub fn read_binary_length(&mut self) -> Result<usize, Error> {
+        let len = self.reader.read_varuint32()? as usize;
+        if len > self.max_binary_size {
+            return Err(Error::invalid_data(format!(
+                "binary size {} exceeds configured limit {}",
+                len, self.max_binary_size
+            )));
+        }
+        Ok(len)
     }
 
     #[inline(always)]
