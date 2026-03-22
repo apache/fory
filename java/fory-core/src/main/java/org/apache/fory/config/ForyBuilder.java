@@ -88,6 +88,8 @@ public final class ForyBuilder {
   int bufferSizeLimitBytes = 128 * 1024;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
   int maxDepth = 50;
+  int maxBinarySize = -1;
+  int maxCollectionSize = -1;
   float mapRefLoadFactor = 0.51f;
 
   public ForyBuilder() {}
@@ -391,6 +393,16 @@ public final class ForyBuilder {
   public ForyBuilder withMaxDepth(int maxDepth) {
     Preconditions.checkArgument(maxDepth >= 2, "maxDepth must >= 2 but got %s", maxDepth);
     this.maxDepth = maxDepth;
+    return this;
+  }
+
+  public ForyBuilder withMaxBinarySize(int maxBinarySize) {
+    this.maxBinarySize = maxBinarySize;
+    return this;
+  }
+
+  public ForyBuilder withMaxCollectionSize(int maxCollectionSize) {
+    this.maxCollectionSize = maxCollectionSize;
     return this;
   }
 
