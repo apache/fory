@@ -27,9 +27,9 @@ import 'package:fory/src/const/types.dart';
 @immutable
 class EnumSpec extends CustomTypeSpec {
   // final String tag;
-  // TODO: Currently, enums only support using ordinal for transmission. There is also support for ForyEnum annotation, such as using value, so we can directly use the values array here.
   final List<Enum> values;
-  const EnumSpec(Type dartType, this.values)
+  final Map<int, Enum>? idToValue;
+  const EnumSpec(Type dartType, this.values, [this.idToValue])
       : super(dartType, ObjType.NAMED_ENUM);
 
   @override
@@ -38,7 +38,8 @@ class EnumSpec extends CustomTypeSpec {
         other is EnumSpec &&
             runtimeType == other.runtimeType &&
             dartType == other.dartType &&
-            values.equals(other.values);
+            values.equals(other.values) &&
+            const MapEquality<int, Enum>().equals(idToValue, other.idToValue);
   }
 
   @override
@@ -46,5 +47,6 @@ class EnumSpec extends CustomTypeSpec {
         runtimeType,
         dartType,
         values,
+        const MapEquality<int, Enum>().hash(idToValue),
       );
 }
