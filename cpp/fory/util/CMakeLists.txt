@@ -22,6 +22,7 @@ set(FORY_UTIL_SOURCES
     stream.cc
     string_util.cc
     time_util.cc
+    float16.cc
 )
 
 set(FORY_UTIL_HEADERS
@@ -37,6 +38,7 @@ set(FORY_UTIL_HEADERS
     string_util.h
     time_util.h
     flat_int_map.h
+    float16.h
 )
 
 add_library(fory_util ${FORY_UTIL_SOURCES})
@@ -94,4 +96,12 @@ if(FORY_BUILD_TESTS)
     add_executable(fory_util_int_map_test int_map_test.cc)
     target_link_libraries(fory_util_int_map_test fory_util GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_util_int_map_test)
+
+    add_executable(fory_util_flat_int_map_test flat_int_map_test.cc)
+    target_link_libraries(fory_util_flat_int_map_test fory_util GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(fory_util_flat_int_map_test)
+
+    add_executable(fory_util_float16_test float16_test.cc)
+    target_link_libraries(fory_util_float16_test fory_util fory_serialization GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(fory_util_float16_test)
 endif()

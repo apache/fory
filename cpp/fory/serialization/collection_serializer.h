@@ -643,6 +643,114 @@ struct Serializer<
   }
 };
 
+/// Vector serializer for float16_t — typed array path (FLOAT16_ARRAY).
+/// float16_t is not std::is_arithmetic, so it needs an explicit specialization
+/// to avoid falling through to the generic LIST serializer.
+template <typename Alloc> struct Serializer<std::vector<float16_t, Alloc>> {
+  static constexpr TypeId type_id = TypeId::FLOAT16_ARRAY;
+
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    uint32_t actual = ctx.read_uint8(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    if (!type_id_matches(actual, static_cast<uint32_t>(type_id))) {
+      ctx.set_error(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+  }
+
+  static inline void write(const std::vector<float16_t, Alloc> &vec,
+                           WriteContext &ctx, RefMode ref_mode, bool write_type,
+                           bool has_generics = false) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    if (write_type) {
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
+    }
+    write_data(vec, ctx);
+  }
+
+  static inline void write_data(const std::vector<float16_t, Alloc> &vec,
+                                WriteContext &ctx) {
+    uint64_t total_bytes =
+        static_cast<uint64_t>(vec.size()) * sizeof(float16_t);
+    if (total_bytes > std::numeric_limits<uint32_t>::max()) {
+      ctx.set_error(Error::invalid("Vector byte size exceeds uint32_t range"));
+      return;
+    }
+    Buffer &buffer = ctx.buffer();
+    size_t max_size = 8 + total_bytes;
+    buffer.grow(static_cast<uint32_t>(max_size));
+    uint32_t writer_index = buffer.writer_index();
+    writer_index +=
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    if (total_bytes > 0) {
+      buffer.unsafe_put(writer_index, vec.data(),
+                        static_cast<uint32_t>(total_bytes));
+    }
+    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
+  }
+
+  static inline void
+  write_data_generic(const std::vector<float16_t, Alloc> &vec,
+                     WriteContext &ctx, bool has_generics) {
+    write_data(vec, ctx);
+  }
+
+  static inline std::vector<float16_t, Alloc>
+  read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
+    bool has_value = read_null_only_flag(ctx, ref_mode);
+    if (ctx.has_error() || !has_value) {
+      return std::vector<float16_t, Alloc>();
+    }
+    if (read_type) {
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return std::vector<float16_t, Alloc>();
+      }
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
+        ctx.set_error(
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
+        return std::vector<float16_t, Alloc>();
+      }
+    }
+    return read_data(ctx);
+  }
+
+  static inline std::vector<float16_t, Alloc>
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
+                      const TypeInfo &type_info) {
+    return read(ctx, ref_mode, false);
+  }
+
+  static inline std::vector<float16_t, Alloc> read_data(ReadContext &ctx) {
+    uint32_t total_bytes_u32 = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return std::vector<float16_t, Alloc>();
+    }
+    if (FORY_PREDICT_FALSE(total_bytes_u32 > ctx.config().max_binary_size)) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return std::vector<float16_t, Alloc>();
+    }
+    size_t elem_count = total_bytes_u32 / sizeof(float16_t);
+    if (total_bytes_u32 % sizeof(float16_t) != 0) {
+      ctx.set_error(Error::invalid_data(
+          "Vector byte size not aligned with float16_t element size"));
+      return std::vector<float16_t, Alloc>();
+    }
+    std::vector<float16_t, Alloc> result(elem_count);
+    if (total_bytes_u32 > 0) {
+      ctx.read_bytes(result.data(), static_cast<uint32_t>(total_bytes_u32),
+                     ctx.error());
+    }
+    return result;
+  }
+};
+
 /// Vector serializer for non-bool, non-arithmetic types
 template <typename T, typename Alloc>
 struct Serializer<

@@ -23,6 +23,7 @@
 #include "fory/serialization/serializer_traits.h"
 #include "fory/type/type.h"
 #include "fory/util/error.h"
+#include "fory/util/float16.h"
 #include <cstdint>
 #include <type_traits>
 
@@ -527,6 +528,77 @@ template <> struct Serializer<double> {
 
   static inline double read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                            const TypeInfo &) {
+    return read(ctx, ref_mode, false);
+  }
+};
+
+/// float16_t serializer
+template <> struct Serializer<float16_t> {
+  static constexpr TypeId type_id = TypeId::FLOAT16;
+
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    uint32_t actual = ctx.read_uint8(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    if (actual != static_cast<uint32_t>(type_id)) {
+      ctx.set_error(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+  }
+
+  static inline void write(float16_t value, WriteContext &ctx, RefMode ref_mode,
+                           bool write_type, bool = false) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    if (write_type) {
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
+    }
+    write_data(value, ctx);
+  }
+
+  static inline void write_data(float16_t value, WriteContext &ctx) {
+    ctx.write_bytes(&value, sizeof(float16_t));
+  }
+
+  static inline void write_data_generic(float16_t value, WriteContext &ctx,
+                                        bool) {
+    write_data(value, ctx);
+  }
+
+  static inline float16_t read(ReadContext &ctx, RefMode ref_mode,
+                               bool read_type) {
+    bool has_value = read_null_only_flag(ctx, ref_mode);
+    if (ctx.has_error() || !has_value) {
+      return float16_t::from_bits(0);
+    }
+    if (read_type) {
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return float16_t::from_bits(0);
+      }
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
+        ctx.set_error(
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
+        return float16_t::from_bits(0);
+      }
+    }
+    return ctx.read_f16(ctx.error());
+  }
+
+  static inline float16_t read_data(ReadContext &ctx) {
+    return ctx.read_f16(ctx.error());
+  }
+
+  static inline float16_t read_data_generic(ReadContext &ctx, bool) {
+    return read_data(ctx);
+  }
+
+  static inline float16_t
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 };

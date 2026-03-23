@@ -91,3 +91,14 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "float16_test",
+    srcs = ["float16_test.cc"],
+    deps = [
+        ":fory_util",
+        "//cpp/fory/serialization:fory_serialization",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
