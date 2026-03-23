@@ -264,7 +264,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--lang",
         type=str,
         default="all",
-        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp,swift). Default: all",
+        help="Comma-separated list of target languages (java,python,cpp,rust,go,csharp,javascript,swift). Default: all",
     )
 
     parser.add_argument(
@@ -341,6 +341,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         metavar="DST_DIR",
         help="Generate C# code in DST_DIR",
+    )
+
+    parser.add_argument(
+        "--javascript_out",
+        type=Path,
+        default=None,
+        metavar="DST_DIR",
+        help="Generate JavaScript code in DST_DIR",
     )
 
     parser.add_argument(
@@ -650,6 +658,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
         "go": args.go_out,
         "rust": args.rust_out,
         "csharp": args.csharp_out,
+        "javascript": args.javascript_out,
         "swift": args.swift_out,
     }
 

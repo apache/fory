@@ -337,24 +337,24 @@ export class BinaryWriter {
   writeVarUInt32(value: number) {
     value = (value >>> 0) & 0xFFFFFFFF; // keep only the lower 32 bits
 
-    if (value >> 7 == 0) {
+    if (value >>> 7 == 0) {
       this.platformBuffer[this.cursor++] = value;
       return;
     }
     const rawCursor = this.cursor;
     let u32 = 0;
-    if (value >> 14 == 0) {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7) << 16);
+    if (value >>> 14 == 0) {
+      u32 = ((value & 0x7f | 0x80) << 24) | ((value >>> 7) << 16);
       this.cursor += 2;
-    } else if (value >> 21 == 0) {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7 & 0x7f | 0x80) << 16) | ((value >> 14) << 8);
+    } else if (value >>> 21 == 0) {
+      u32 = ((value & 0x7f | 0x80) << 24) | ((value >>> 7 & 0x7f | 0x80) << 16) | ((value >>> 14) << 8);
       this.cursor += 3;
-    } else if (value >> 28 == 0) {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7 & 0x7f | 0x80) << 16) | ((value >> 14 & 0x7f | 0x80) << 8) | (value >> 21);
+    } else if (value >>> 28 == 0) {
+      u32 = ((value & 0x7f | 0x80) << 24) | ((value >>> 7 & 0x7f | 0x80) << 16) | ((value >>> 14 & 0x7f | 0x80) << 8) | (value >>> 21);
       this.cursor += 4;
     } else {
-      u32 = ((value & 0x7f | 0x80) << 24) | ((value >> 7 & 0x7f | 0x80) << 16) | ((value >> 14 & 0x7f | 0x80) << 8) | (value >> 21 & 0x7f | 0x80);
-      this.platformBuffer[rawCursor + 4] = value >> 28;
+      u32 = ((value & 0x7f | 0x80) << 24) | ((value >>> 7 & 0x7f | 0x80) << 16) | ((value >>> 14 & 0x7f | 0x80) << 8) | (value >>> 21 & 0x7f | 0x80);
+      this.platformBuffer[rawCursor + 4] = value >>> 28;
       this.cursor += 5;
     }
     this.dataView.setUint32(rawCursor, u32);

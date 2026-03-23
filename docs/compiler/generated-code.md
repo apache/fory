@@ -744,6 +744,50 @@ public static class AddressbookForyRegistration
 When explicit type IDs are not provided, generated registration uses computed
 numeric IDs (same behavior as other targets).
 
+## JavaScript
+
+### Output Layout
+
+JavaScript output is one `.ts` file per schema, for example:
+
+- `<javascript_out>/addressbook.ts`
+
+### Type Generation
+
+Messages generate `export interface` declarations with camelCase field names:
+
+```typescript
+export interface Person {
+  name: string;
+  id: number;
+  phones: PhoneNumber[];
+  pet?: Animal | undefined;
+}
+```
+
+Enums generate `export enum` declarations:
+
+```typescript
+export enum PhoneType {
+  PHONE_TYPE_MOBILE = 0,
+  PHONE_TYPE_HOME = 1,
+  PHONE_TYPE_WORK = 2,
+}
+```
+
+Unions generate a discriminated union with a case enum:
+
+```typescript
+export enum AnimalCase {
+  DOG = 1,
+  CAT = 2,
+}
+
+export type Animal =
+  | { case: AnimalCase.DOG; value: Dog }
+  | { case: AnimalCase.CAT; value: Cat };
+```
+
 ## Swift
 
 ### Output Layout
@@ -826,24 +870,26 @@ If `option enable_auto_type_id = false;` is set, generated code uses name-based 
 
 ### Nested Type Shape
 
-| Language | Nested type form               |
-| -------- | ------------------------------ |
-| Java     | `Person.PhoneNumber`           |
-| Python   | `Person.PhoneNumber`           |
-| Rust     | `person::PhoneNumber`          |
-| C++      | `Person::PhoneNumber`          |
-| Go       | `Person_PhoneNumber` (default) |
-| C#       | `Person.PhoneNumber`           |
-| Swift    | `Person.PhoneNumber`           |
+| Language   | Nested type form               |
+| ---------- | ------------------------------ |
+| Java       | `Person.PhoneNumber`           |
+| Python     | `Person.PhoneNumber`           |
+| Rust       | `person::PhoneNumber`          |
+| C++        | `Person::PhoneNumber`          |
+| Go         | `Person_PhoneNumber` (default) |
+| C#         | `Person.PhoneNumber`           |
+| JavaScript | `PhoneNumber` (flat)           |
+| Swift      | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
 
-| Language | Helpers                   |
-| -------- | ------------------------- |
-| Java     | `toBytes` / `fromBytes`   |
-| Python   | `to_bytes` / `from_bytes` |
-| Rust     | `to_bytes` / `from_bytes` |
-| C++      | `to_bytes` / `from_bytes` |
-| Go       | `ToBytes` / `FromBytes`   |
-| C#       | `ToBytes` / `FromBytes`   |
-| Swift    | `toBytes` / `fromBytes`   |
+| Language   | Helpers                   |
+| ---------- | ------------------------- |
+| Java       | `toBytes` / `fromBytes`   |
+| Python     | `to_bytes` / `from_bytes` |
+| Rust       | `to_bytes` / `from_bytes` |
+| C++        | `to_bytes` / `from_bytes` |
+| Go         | `ToBytes` / `FromBytes`   |
+| C#         | `ToBytes` / `FromBytes`   |
+| JavaScript | (via `fory.serialize()`)  |
+| Swift      | `toBytes` / `fromBytes`   |

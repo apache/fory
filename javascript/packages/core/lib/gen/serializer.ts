@@ -161,7 +161,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     const typeId = this.getTypeId();
     const userTypeId = this.typeInfo.userTypeId;
     const userTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
-      ? this.builder.writer.writeVarUint32Small7(userTypeId)
+      ? this.builder.writer.writeVarUInt32(userTypeId)
       : "";
     return ` 
       ${this.builder.writer.writeUint8(typeId)};
@@ -201,7 +201,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   readTypeInfo(): string {
     const typeId = this.getTypeId();
     const readUserTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
-      ? `${this.builder.reader.readVarUint32Small7()};`
+      ? `${this.builder.reader.readVarUInt32()};`
       : "";
     return `
       ${this.builder.reader.readUint8()};

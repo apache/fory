@@ -238,8 +238,8 @@ export class TypeMeta {
   }
 
   computeStructHash() {
-    const fields = TypeMeta.groupFieldsByType(this.fields);
-    const fingerprint = this.computeStructFingerprint(fields);
+    // const fields = TypeMeta.groupFieldsByType(this.fields);
+    const fingerprint = this.computeStructFingerprint(this.fields);
     const bytes = fromString(fingerprint);
     const hashLong = x64hash128(bytes, 47).getBigInt64(0);
     const result = Number(BigInt.asIntN(32, hashLong));
@@ -697,14 +697,14 @@ export class TypeMeta {
       }
 
       // Categorize based on type_id
-      if (TypeId.isBuiltin(typeId)) {
-        internalTypeFields.push(typeInfo);
-      } else if (typeId === TypeId.LIST) {
+      if (typeId === TypeId.LIST) {
         listFields.push(typeInfo);
       } else if (typeId === TypeId.SET) {
         setFields.push(typeInfo);
       } else if (typeId === TypeId.MAP) {
         mapFields.push(typeInfo);
+      } else if (TypeId.isBuiltin(typeId)) {
+        internalTypeFields.push(typeInfo);
       } else {
         otherFields.push(typeInfo);
       }

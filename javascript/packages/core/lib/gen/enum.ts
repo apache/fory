@@ -66,7 +66,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     let namesStmt = "";
     switch (internalTypeId) {
       case TypeId.ENUM:
-        readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
+        readUserTypeIdStmt = `${this.builder.reader.readVarUInt32()};`;
         break;
       case TypeId.NAMED_ENUM:
         namesStmt = `
@@ -100,7 +100,7 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.ENUM:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_ENUM:
         {

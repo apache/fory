@@ -48,6 +48,7 @@ interface TypeInfoOptions {
   value?: TypeInfo;
   inner?: TypeInfo;
   enumProps?: { [key: string]: number };
+  cases?: { [caseIndex: number]: TypeInfo };
 }
 
 /**
@@ -682,6 +683,13 @@ export const Type = {
     }>(nameInfo, props, {
       withConstructor,
     });
+  },
+  union(cases?: { [caseIndex: number]: TypeInfo }) {
+    const typeInfo = new TypeInfo<typeof TypeId.TYPED_UNION>(TypeId.TYPED_UNION);
+    if (cases) {
+      typeInfo.options = { cases };
+    }
+    return typeInfo;
   },
   string() {
     return TypeInfo.fromNonParam<typeof TypeId.STRING>(
