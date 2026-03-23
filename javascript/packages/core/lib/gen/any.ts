@@ -31,7 +31,7 @@ export class AnyHelper {
     const typeId = fory.binaryReader.readUint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT) {
-      userTypeId = fory.binaryReader.readVarUint32Small7();
+      userTypeId = fory.binaryReader.readVarUInt32();
     }
     let serializer: Serializer | undefined;
 

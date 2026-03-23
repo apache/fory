@@ -756,7 +756,21 @@ class JavaScriptGenerator(BaseGenerator):
                 )
                 return f"Type.enum({name_info}, {{ {props} }})"
             if isinstance(resolved, Union):
-                return "Type.any()"
+                case_parts = []
+                for case_field in resolved.fields:
+                    case_num = (
+                        case_field.tag_id
+                        if case_field.tag_id is not None
+                        else case_field.number
+                    )
+                    if case_num is not None:
+                        case_type_expr = self._field_type_expr(
+                            case_field.field_type, parent_stack
+                        )
+                        case_parts.append(f"{case_num}: {case_type_expr}")
+                if case_parts:
+                    return f"Type.union({{ {', '.join(case_parts)} }})"
+                return "Type.union()"
             if isinstance(resolved, Message):
                 if self.should_register_by_id(resolved):
                     return f"Type.struct({resolved.type_id})"
@@ -814,8 +828,8 @@ class JavaScriptGenerator(BaseGenerator):
         for field in type_def.fields:
             member = self.safe_member_name(field.name)
             expr = self._field_type_expr(field.field_type, field_parent_stack)
-            if field.number > 0:
-                expr += f".setId({field.number})"
+            if field.tag_id is not None and field.tag_id > 0:
+                expr += f".setId({field.tag_id})"
             if field.optional:
                 expr += ".setNullable(true)"
             if field.ref:

@@ -388,9 +388,6 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.writeSpecificType(accessor);
     }
     const innerSerializer = (innerTypeInfo: TypeInfo) => {
-      if (!innerTypeInfo.isMonomorphic()) {
-        return null;
-      }
       return this.scope.declare(
         "map_inner_ser",
         TypeId.isNamedType(innerTypeInfo.typeId)
@@ -489,9 +486,6 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.readSpecificType(accessor, refState);
     }
     const innerSerializer = (innerTypeInfo: TypeInfo) => {
-      if (!innerTypeInfo.isMonomorphic()) {
-        return null;
-      }
       return this.scope.declare(
         "map_inner_ser",
         TypeId.isNamedType(innerTypeInfo.typeId)

@@ -34,6 +34,7 @@ import "./struct";
 import "./typedArray";
 import "./enum";
 import "./any";
+import "./union";
 import "./ext";
 import Fory from "../fory";
 
@@ -76,7 +77,7 @@ export class Gen {
         return;
       }
       const options = (typeInfo).options;
-      if (options?.props) {
+      if (options?.props && Object.keys(options.props).length > 0) {
         this.register(typeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);

@@ -154,6 +154,12 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
+        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
+        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+      return `${serializerLookup}.write(${accessor});`;
+    }
     const hash = this.typeMeta.computeStructHash();
     return `
       ${!this.builder.fory.isCompatible() ? this.builder.writer.writeInt32(hash) : ""}
@@ -172,6 +178,15 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
+        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
+        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+      return `
+        let ${result} = ${serializerLookup}.read(${refState});
+        ${accessor(result)};
+      `;
+    }
     const hash = this.typeMeta.computeStructHash();
     return `
       ${!this.builder.fory.isCompatible()
@@ -206,8 +221,36 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
+  readWithDepth(assignStmt: (v: string) => string, refState: string): string {
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      const result = this.scope.uniqueName("result");
+      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
+        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
+        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+      return `
+        fory.incReadDepth();
+        let ${result} = ${serializerLookup}.read(${refState});
+        fory.decReadDepth();
+        ${assignStmt(result)};
+      `;
+    }
+    return super.readWithDepth(assignStmt, refState);
+  }
+
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
+        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
+        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+      return `
+        ${this.readTypeInfo()}
+        fory.incReadDepth();
+        let ${result} = ${serializerLookup}.read(${refState});
+        fory.decReadDepth();
+        ${assignStmt(result)};
+      `;
+    }
     return `
       ${this.readTypeInfo()}
       fory.incReadDepth();
@@ -230,7 +273,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     let readUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.STRUCT:
-        readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
+        readUserTypeIdStmt = `${this.builder.reader.readVarUInt32()};`;
         break;
       case TypeId.NAMED_COMPATIBLE_STRUCT:
       case TypeId.COMPATIBLE_STRUCT:
@@ -286,35 +329,90 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readEmbed() {
+    const serializerExpr = TypeId.isNamedType(this.typeInfo.typeId)
+      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
+      : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+    const scope = this.scope;
+    const builder = this.builder;
     return new Proxy({}, {
       get: (target, prop: string) => {
+        if (prop === "readNoRef") {
+          return (accessor: (expr: string) => string, refState: string) => {
+            const result = scope.uniqueName("result");
+            return `
+              fory.incReadDepth();
+              let ${result} = ${serializerExpr}.read(${refState});
+              fory.decReadDepth();
+              ${accessor(result)};
+            `;
+          };
+        }
+        if (prop === "readRef") {
+          return (accessor: (expr: string) => string) => {
+            const refFlag = scope.uniqueName("refFlag");
+            const result = scope.uniqueName("result");
+            return `
+              const ${refFlag} = ${builder.reader.readInt8()};
+              let ${result};
+              if (${refFlag} === ${RefFlags.NullFlag}) {
+                ${result} = null;
+              } else if (${refFlag} === ${RefFlags.RefFlag}) {
+                ${result} = ${builder.referenceResolver.getReadObject(builder.reader.readVarUInt32())};
+              } else {
+                fory.incReadDepth();
+                ${result} = ${serializerExpr}.read(${refFlag} === ${RefFlags.RefValueFlag});
+                fory.decReadDepth();
+              }
+              ${accessor(result)};
+            `;
+          };
+        }
+        if (prop === "readWithDepth") {
+          return (accessor: (expr: string) => string, refState: string) => {
+            const result = scope.uniqueName("result");
+            return `
+              fory.incReadDepth();
+              let ${result} = ${serializerExpr}.read(${refState});
+              fory.decReadDepth();
+              ${accessor(result)};
+            `;
+          };
+        }
         return (accessor: (expr: string) => string, ...args: string[]) => {
-          const name = this.scope.declare(
-            "tag_ser",
-            TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
-          );
-          return accessor(`${name}.${prop}(${args.join(",")})`);
+          return accessor(`${serializerExpr}.${prop}(${args.join(",")})`);
         };
       },
     });
   }
 
   writeEmbed() {
+    const serializerExpr = TypeId.isNamedType(this.typeInfo.typeId)
+      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
+      : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+    const scope = this.scope;
     return new Proxy({}, {
       get: (target, prop: string) => {
+        if (prop === "writeNoRef") {
+          return (accessor: string) => {
+            return `${serializerExpr}.write(${accessor})`;
+          };
+        }
+        if (prop === "writeRef") {
+          return (accessor: string) => {
+            const noneedWrite = scope.uniqueName("noneedWrite");
+            return `
+              let ${noneedWrite} = ${serializerExpr}.writeRefOrNull(${accessor});
+              if (!${noneedWrite}) {
+                ${serializerExpr}.write(${accessor});
+              }
+            `;
+          };
+        }
         return (accessor: string, ...args: any) => {
-          const name = this.scope.declare(
-            "tag_ser",
-            TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
-          );
           if (prop === "writeRefOrNull") {
-            return args[0](`${name}.${prop}(${accessor})`);
+            return args[0](`${serializerExpr}.${prop}(${accessor})`);
           }
-          return `${name}.${prop}(${accessor})`;
+          return `${serializerExpr}.${prop}(${accessor})`;
         };
       },
     });
@@ -326,7 +424,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.STRUCT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_COMPATIBLE_STRUCT:
       case TypeId.COMPATIBLE_STRUCT:

@@ -80,7 +80,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let readUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
+        readUserTypeIdStmt = `${this.builder.reader.readVarUInt32()};`;
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.fory.isCompatible()) {
@@ -151,7 +151,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.fory.isCompatible()) {

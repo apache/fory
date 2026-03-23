@@ -257,7 +257,7 @@ export class BinaryReader {
           }
         }
       }
-      return result;
+      return result >>> 0;
     }
     let byte = this.readUint8();
     let result = byte & 0x7f;
@@ -277,7 +277,7 @@ export class BinaryReader {
         }
       }
     }
-    return result;
+    return result >>> 0;
   }
 
   readVarUint32Small7(): number {
