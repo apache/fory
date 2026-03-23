@@ -18,18 +18,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use fory_benchmarks::run_serialization_benchmarks;
 
-#[cfg(feature = "profiling")]
-use pprof::criterion::{Output, PProfProfiler};
-
 fn config() -> Criterion {
-    #[cfg(feature = "profiling")]
-    {
-        Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)))
-    }
-    #[cfg(not(feature = "profiling"))]
-    {
-        Criterion::default()
-    }
+    Criterion::default()
 }
 
 criterion_group! {

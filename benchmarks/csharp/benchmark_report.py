@@ -363,10 +363,9 @@ def build_markdown(
     for datatype, img in plot_images_sorted:
         img_filename = os.path.basename(img)
         img_path_report = args.plot_prefix + img_filename
-        report_lines.append(f"\n### {datatype.replace('_', ' ').title()}\n\n")
-        report_lines.append(
-            f'<p align="center">\n<img src="{img_path_report}" width="90%" />\n</p>\n'
-        )
+        plot_title = datatype.replace("_", " ").title()
+        report_lines.append(f"\n### {plot_title}\n\n")
+        report_lines.append(f"![{plot_title}]({img_path_report})\n")
 
     report_lines.append("\n## Benchmark Results\n\n")
     report_lines.append("### Timing Results (nanoseconds)\n\n")

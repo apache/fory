@@ -761,6 +761,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     if (serializerRef == null) {
       // potential recursive call for seq codec generation is handled in `getSerializerClass`.
       Class<? extends Serializer> serializerClass = typeResolver(r -> r.getSerializerClass(cls));
+      TypeInfo typeInfo = typeResolver(r -> r.getTypeInfo(cls, false));
+      if (typeInfo != null && typeInfo.getTypeId() == Types.EXT) {
+        serializerClass = Serializer.class;
+      }
       boolean finalClassAsFieldCondition =
           !fory.isShareMeta()
               && !fory.isCompatible()

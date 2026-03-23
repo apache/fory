@@ -15,12 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::models::complex::{ECommerceData, ForyCustomer, ForyOrder, ForyOrderItem, ForyProduct};
-use crate::models::medium::{Company, ForyAddress, Person};
-use crate::models::realworld::{ForyAPIMetrics, ForyLogEntry, ForyUserProfile, SystemData};
-use crate::models::simple::{SimpleList, SimpleMap, SimpleStruct};
-use crate::serializers::Serializer;
-use fory_core::fory::Fory;
+use crate::data::register_fory_types;
+use crate::serializers::{BenchmarkSerializer, BoxError};
+use fory::{Fory, ForyDefault, Serializer as ForyValueSerializer};
 
 #[derive(Default)]
 pub struct ForySerializer {
@@ -29,101 +26,22 @@ pub struct ForySerializer {
 
 impl ForySerializer {
     pub fn new() -> Self {
-        let mut fory = Fory::default().compatible(true);
-
-        // Register simple types
-        fory.register::<SimpleStruct>(100).unwrap();
-        fory.register::<SimpleList>(101).unwrap();
-        fory.register::<SimpleMap>(102).unwrap();
-
-        // Register medium types
-        fory.register::<ForyAddress>(200).unwrap();
-        fory.register::<Person>(201).unwrap();
-        fory.register::<Company>(202).unwrap();
-
-        // Register complex types
-        fory.register::<ForyProduct>(300).unwrap();
-        fory.register::<ForyOrderItem>(301).unwrap();
-        fory.register::<ForyCustomer>(302).unwrap();
-        fory.register::<ForyOrder>(303).unwrap();
-        fory.register::<ECommerceData>(304).unwrap();
-
-        // Register realworld types
-        fory.register::<ForyLogEntry>(400).unwrap();
-        fory.register::<ForyUserProfile>(401).unwrap();
-        fory.register::<ForyAPIMetrics>(402).unwrap();
-        fory.register::<SystemData>(403).unwrap();
+        let mut fory = Fory::default().xlang(true).compatible(true);
+        register_fory_types(&mut fory).expect("register benchmark types");
 
         Self { fory }
     }
 }
 
-impl Serializer<SimpleStruct> for ForySerializer {
-    fn serialize(&self, data: &SimpleStruct) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+impl<T> BenchmarkSerializer<T> for ForySerializer
+where
+    T: ForyValueSerializer + ForyDefault,
+{
+    fn serialize(&self, data: &T) -> Result<Vec<u8>, BoxError> {
         Ok(self.fory.serialize(data)?)
     }
 
-    fn deserialize(&self, data: &[u8]) -> Result<SimpleStruct, Box<dyn std::error::Error>> {
-        Ok(self.fory.deserialize(data)?)
-    }
-}
-
-impl Serializer<SimpleList> for ForySerializer {
-    fn serialize(&self, data: &SimpleList) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<SimpleList, Box<dyn std::error::Error>> {
-        Ok(self.fory.deserialize(data)?)
-    }
-}
-
-impl Serializer<SimpleMap> for ForySerializer {
-    fn serialize(&self, data: &SimpleMap) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<SimpleMap, Box<dyn std::error::Error>> {
-        Ok(self.fory.deserialize(data)?)
-    }
-}
-
-impl Serializer<Person> for ForySerializer {
-    fn serialize(&self, data: &Person) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<Person, Box<dyn std::error::Error>> {
-        Ok(self.fory.deserialize(data)?)
-    }
-}
-
-impl Serializer<Company> for ForySerializer {
-    fn serialize(&self, data: &Company) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<Company, Box<dyn std::error::Error>> {
-        Ok(self.fory.deserialize(data)?)
-    }
-}
-
-impl Serializer<ECommerceData> for ForySerializer {
-    fn serialize(&self, data: &ECommerceData) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<ECommerceData, Box<dyn std::error::Error>> {
-        Ok(self.fory.deserialize(data)?)
-    }
-}
-
-impl Serializer<SystemData> for ForySerializer {
-    fn serialize(&self, data: &SystemData) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<SystemData, Box<dyn std::error::Error>> {
+    fn deserialize(&self, data: &[u8]) -> Result<T, BoxError> {
         Ok(self.fory.deserialize(data)?)
     }
 }

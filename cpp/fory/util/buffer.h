@@ -219,11 +219,11 @@ public:
   // Unsafe methods don't check bound
   template <typename T>
   FORY_ALWAYS_INLINE void unsafe_put(uint32_t offset, T value) {
-    reinterpret_cast<T *>(data_ + offset)[0] = value;
+    store_unaligned(data_ + offset, value);
   }
 
   template <typename T> FORY_ALWAYS_INLINE T unsafe_get(uint32_t offset) {
-    return reinterpret_cast<const T *>(data_ + offset)[0];
+    return load_unaligned<T>(data_ + offset);
   }
 
   template <typename T, typename = std::enable_if_t<std::disjunction_v<
@@ -255,7 +255,7 @@ public:
     FORY_CHECK(relative_offset + sizeof(T) <= size_)
         << "Out of range " << relative_offset << " should be less than "
         << size_;
-    T value = reinterpret_cast<const T *>(data_ + relative_offset)[0];
+    T value = load_unaligned<T>(data_ + relative_offset);
     return value;
   }
 
@@ -348,24 +348,21 @@ public:
     uint64_t encoded = (value & 0x7F) | 0x80;
     encoded |= (static_cast<uint64_t>(value & 0x3F80) << 1);
     if (value < 0x4000) {
-      *reinterpret_cast<uint16_t *>(data_ + offset) =
-          static_cast<uint16_t>(encoded);
+      store_unaligned<uint16_t>(data_ + offset, static_cast<uint16_t>(encoded));
       return 2;
     }
     encoded |= (static_cast<uint64_t>(value & 0x1FC000) << 2) | 0x8000;
     if (value < 0x200000) {
-      *reinterpret_cast<uint32_t *>(data_ + offset) =
-          static_cast<uint32_t>(encoded);
+      store_unaligned<uint32_t>(data_ + offset, static_cast<uint32_t>(encoded));
       return 3;
     }
     encoded |= (static_cast<uint64_t>(value & 0xFE00000) << 3) | 0x800000;
     if (value < 0x10000000) {
-      *reinterpret_cast<uint32_t *>(data_ + offset) =
-          static_cast<uint32_t>(encoded);
+      store_unaligned<uint32_t>(data_ + offset, static_cast<uint32_t>(encoded));
       return 4;
     }
     encoded |= (static_cast<uint64_t>(value >> 28) << 32) | 0x80000000;
-    *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+    store_unaligned<uint64_t>(data_ + offset, encoded);
     return 5;
   }
 
@@ -381,7 +378,7 @@ public:
     // Fast path: need at least 5 bytes for safe bulk read (4 bytes + potential
     // 5th)
     if (FORY_PREDICT_TRUE(size_ - offset >= 5)) {
-      uint32_t bulk = *reinterpret_cast<uint32_t *>(data_ + offset);
+      uint32_t bulk = load_unaligned<uint32_t>(data_ + offset);
 
       uint32_t result = bulk & 0x7F;
       if ((bulk & 0x80) == 0) {
@@ -473,45 +470,42 @@ public:
     uint64_t encoded = (value & 0x7F) | 0x80;
     encoded |= ((value & 0x3F80) << 1);
     if (value < 0x4000) {
-      *reinterpret_cast<uint16_t *>(data_ + offset) =
-          static_cast<uint16_t>(encoded);
+      store_unaligned<uint16_t>(data_ + offset, static_cast<uint16_t>(encoded));
       return 2;
     }
     encoded |= ((value & 0x1FC000) << 2) | 0x8000;
     if (value < 0x200000) {
-      *reinterpret_cast<uint32_t *>(data_ + offset) =
-          static_cast<uint32_t>(encoded);
+      store_unaligned<uint32_t>(data_ + offset, static_cast<uint32_t>(encoded));
       return 3;
     }
     encoded |= ((value & 0xFE00000) << 3) | 0x800000;
     if (value < 0x10000000) {
-      *reinterpret_cast<uint32_t *>(data_ + offset) =
-          static_cast<uint32_t>(encoded);
+      store_unaligned<uint32_t>(data_ + offset, static_cast<uint32_t>(encoded));
       return 4;
     }
     encoded |= ((value & 0x7F0000000ULL) << 4) | 0x80000000;
     if (value < 0x800000000ULL) {
-      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      store_unaligned<uint64_t>(data_ + offset, encoded);
       return 5;
     }
     encoded |= ((value & 0x3F800000000ULL) << 5) | 0x8000000000ULL;
     if (value < 0x40000000000ULL) {
-      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      store_unaligned<uint64_t>(data_ + offset, encoded);
       return 6;
     }
     encoded |= ((value & 0x1FC0000000000ULL) << 6) | 0x800000000000ULL;
     if (value < 0x2000000000000ULL) {
-      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      store_unaligned<uint64_t>(data_ + offset, encoded);
       return 7;
     }
     encoded |= ((value & 0xFE000000000000ULL) << 7) | 0x80000000000000ULL;
     if (value < 0x100000000000000ULL) {
-      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      store_unaligned<uint64_t>(data_ + offset, encoded);
       return 8;
     }
     // 9 bytes: write 8 bytes + 1 byte for bits 56-63
     encoded |= 0x8000000000000000ULL;
-    *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+    store_unaligned<uint64_t>(data_ + offset, encoded);
     data_[offset + 8] = static_cast<uint8_t>(value >> 56);
     return 9;
   }
@@ -528,7 +522,7 @@ public:
     }
     // Fast path: need at least 9 bytes for safe bulk read
     if (FORY_PREDICT_TRUE(size_ - offset >= 9)) {
-      uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
+      uint64_t bulk = load_unaligned<uint64_t>(data_ + offset);
 
       uint64_t result = bulk & 0x7F;
       if ((bulk & 0x80) == 0) {
@@ -617,13 +611,13 @@ public:
   /// - If bit 0 is 1: read 1 byte flag + 8 bytes uint64
   FORY_ALWAYS_INLINE uint64_t get_tagged_uint64(uint32_t offset,
                                                 uint32_t *read_bytes_length) {
-    uint32_t i = *reinterpret_cast<const uint32_t *>(data_ + offset);
+    uint32_t i = load_unaligned<uint32_t>(data_ + offset);
     if ((i & 0b1) != 0b1) {
       *read_bytes_length = 4;
       return static_cast<uint64_t>(i >> 1);
     } else {
       *read_bytes_length = 9;
-      return *reinterpret_cast<const uint64_t *>(data_ + offset + 1);
+      return load_unaligned<uint64_t>(data_ + offset + 1);
     }
   }
 
@@ -633,13 +627,13 @@ public:
   /// - If bit 0 is 1: read 1 byte flag + 8 bytes int64
   FORY_ALWAYS_INLINE int64_t get_tagged_int64(uint32_t offset,
                                               uint32_t *read_bytes_length) {
-    int32_t i = *reinterpret_cast<const int32_t *>(data_ + offset);
+    int32_t i = load_unaligned<int32_t>(data_ + offset);
     if ((i & 0b1) != 0b1) {
       *read_bytes_length = 4;
       return static_cast<int64_t>(i >> 1); // Arithmetic shift for signed
     } else {
       *read_bytes_length = 9;
-      return *reinterpret_cast<const int64_t *>(data_ + offset + 1);
+      return load_unaligned<int64_t>(data_ + offset + 1);
     }
   }
 
@@ -651,12 +645,12 @@ public:
                                                 uint64_t value) {
     constexpr uint64_t MAX_SMALL_VALUE = 0x7fffffff; // INT32_MAX as u64
     if (value <= MAX_SMALL_VALUE) {
-      *reinterpret_cast<int32_t *>(data_ + offset) = static_cast<int32_t>(value)
-                                                     << 1;
+      store_unaligned<int32_t>(data_ + offset, static_cast<int32_t>(value)
+                                                   << 1);
       return 4;
     } else {
       data_[offset] = 0b1;
-      *reinterpret_cast<uint64_t *>(data_ + offset + 1) = value;
+      store_unaligned<uint64_t>(data_ + offset + 1, value);
       return 9;
     }
   }
@@ -670,12 +664,12 @@ public:
     constexpr int64_t MIN_SMALL_VALUE = -1073741824; // -2^30
     constexpr int64_t MAX_SMALL_VALUE = 1073741823;  // 2^30 - 1
     if (value >= MIN_SMALL_VALUE && value <= MAX_SMALL_VALUE) {
-      *reinterpret_cast<int32_t *>(data_ + offset) = static_cast<int32_t>(value)
-                                                     << 1;
+      store_unaligned<int32_t>(data_ + offset, static_cast<int32_t>(value)
+                                                   << 1);
       return 4;
     } else {
       data_[offset] = 0b1;
-      *reinterpret_cast<int64_t *>(data_ + offset + 1) = value;
+      store_unaligned<int64_t>(data_ + offset + 1, value);
       return 9;
     }
   }
@@ -808,28 +802,25 @@ public:
     uint64_t encoded = (value & 0x7F) | 0x80;
     encoded |= ((value & 0x3F80) << 1);
     if (value < 0x4000) {
-      *reinterpret_cast<uint16_t *>(data_ + offset) =
-          static_cast<uint16_t>(encoded);
+      store_unaligned<uint16_t>(data_ + offset, static_cast<uint16_t>(encoded));
       increase_writer_index(2);
       return;
     }
     encoded |= ((value & 0x1FC000) << 2) | 0x8000;
     if (value < 0x200000) {
-      *reinterpret_cast<uint32_t *>(data_ + offset) =
-          static_cast<uint32_t>(encoded);
+      store_unaligned<uint32_t>(data_ + offset, static_cast<uint32_t>(encoded));
       increase_writer_index(3);
       return;
     }
     encoded |= ((value & 0xFE00000) << 3) | 0x800000;
     if (value < 0x10000000) {
-      *reinterpret_cast<uint32_t *>(data_ + offset) =
-          static_cast<uint32_t>(encoded);
+      store_unaligned<uint32_t>(data_ + offset, static_cast<uint32_t>(encoded));
       increase_writer_index(4);
       return;
     }
     // 5 bytes: bits 28-35 (up to 36 bits total)
     encoded |= ((value & 0xFF0000000ULL) << 4) | 0x80000000;
-    *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+    store_unaligned<uint64_t>(data_ + offset, encoded);
     increase_writer_index(5);
   }
 
@@ -875,8 +866,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(2, error))) {
       return 0;
     }
-    uint16_t value =
-        reinterpret_cast<const uint16_t *>(data_ + reader_index_)[0];
+    uint16_t value = load_unaligned<uint16_t>(data_ + reader_index_);
     reader_index_ += 2;
     return value;
   }
@@ -886,7 +876,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(2, error))) {
       return 0;
     }
-    int16_t value = reinterpret_cast<const int16_t *>(data_ + reader_index_)[0];
+    int16_t value = load_unaligned<int16_t>(data_ + reader_index_);
     reader_index_ += 2;
     return value;
   }
@@ -909,8 +899,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(4, error))) {
       return 0;
     }
-    uint32_t value =
-        reinterpret_cast<const uint32_t *>(data_ + reader_index_)[0];
+    uint32_t value = load_unaligned<uint32_t>(data_ + reader_index_);
     reader_index_ += 4;
     return value;
   }
@@ -921,7 +910,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(4, error))) {
       return 0;
     }
-    int32_t value = reinterpret_cast<const int32_t *>(data_ + reader_index_)[0];
+    int32_t value = load_unaligned<int32_t>(data_ + reader_index_);
     reader_index_ += 4;
     return value;
   }
@@ -932,8 +921,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(8, error))) {
       return 0;
     }
-    uint64_t value =
-        reinterpret_cast<const uint64_t *>(data_ + reader_index_)[0];
+    uint64_t value = load_unaligned<uint64_t>(data_ + reader_index_);
     reader_index_ += 8;
     return value;
   }
@@ -944,7 +932,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(8, error))) {
       return 0;
     }
-    int64_t value = reinterpret_cast<const int64_t *>(data_ + reader_index_)[0];
+    int64_t value = load_unaligned<int64_t>(data_ + reader_index_);
     reader_index_ += 8;
     return value;
   }
@@ -954,7 +942,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(4, error))) {
       return 0.0f;
     }
-    float value = reinterpret_cast<const float *>(data_ + reader_index_)[0];
+    float value = load_unaligned<float>(data_ + reader_index_);
     reader_index_ += 4;
     return value;
   }
@@ -964,7 +952,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(8, error))) {
       return 0.0;
     }
-    double value = reinterpret_cast<const double *>(data_ + reader_index_)[0];
+    double value = load_unaligned<double>(data_ + reader_index_);
     reader_index_ += 8;
     return value;
   }
@@ -978,7 +966,7 @@ public:
       return read_var_uint32_slow(error);
     }
     uint32_t offset = reader_index_;
-    uint32_t bulk = *reinterpret_cast<uint32_t *>(data_ + offset);
+    uint32_t bulk = load_unaligned<uint32_t>(data_ + offset);
 
     uint32_t result = bulk & 0x7F;
     if ((bulk & 0x80) == 0) {
@@ -1063,7 +1051,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(4, error))) {
       return 0;
     }
-    int32_t i = reinterpret_cast<const int32_t *>(data_ + reader_index_)[0];
+    int32_t i = load_unaligned<int32_t>(data_ + reader_index_);
     if ((i & 0b1) != 0b1) {
       reader_index_ += 4;
       return static_cast<int64_t>(i >> 1); // arithmetic right shift
@@ -1071,8 +1059,7 @@ public:
       if (FORY_PREDICT_FALSE(!ensure_readable(9, error))) {
         return 0;
       }
-      int64_t value =
-          reinterpret_cast<const int64_t *>(data_ + reader_index_ + 1)[0];
+      int64_t value = load_unaligned<int64_t>(data_ + reader_index_ + 1);
       reader_index_ += 9;
       return value;
     }
@@ -1100,7 +1087,7 @@ public:
     if (FORY_PREDICT_FALSE(!ensure_readable(4, error))) {
       return 0;
     }
-    uint32_t i = reinterpret_cast<const uint32_t *>(data_ + reader_index_)[0];
+    uint32_t i = load_unaligned<uint32_t>(data_ + reader_index_);
     if ((i & 0b1) != 0b1) {
       reader_index_ += 4;
       return static_cast<uint64_t>(i >> 1);
@@ -1108,8 +1095,7 @@ public:
       if (FORY_PREDICT_FALSE(!ensure_readable(9, error))) {
         return 0;
       }
-      uint64_t value =
-          reinterpret_cast<const uint64_t *>(data_ + reader_index_ + 1)[0];
+      uint64_t value = load_unaligned<uint64_t>(data_ + reader_index_ + 1);
       reader_index_ += 9;
       return value;
     }
@@ -1125,7 +1111,7 @@ public:
       return read_var_uint36_small_slow(error);
     }
     // Fast path: need at least 8 bytes for safe bulk read.
-    uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
+    uint64_t bulk = load_unaligned<uint64_t>(data_ + offset);
     uint64_t result = bulk & 0x7F;
     if ((bulk & 0x80) == 0) {
       reader_index_ = offset + 1;
@@ -1262,6 +1248,18 @@ private:
   friend class StdInputStream;
   friend class PyInputStream;
   friend class OutputStream;
+
+  template <typename T>
+  FORY_ALWAYS_INLINE static T load_unaligned(const uint8_t *ptr) {
+    T value;
+    std::memcpy(&value, ptr, sizeof(T));
+    return value;
+  }
+
+  template <typename T>
+  FORY_ALWAYS_INLINE static void store_unaligned(uint8_t *ptr, T value) {
+    std::memcpy(ptr, &value, sizeof(T));
+  }
 
   FORY_ALWAYS_INLINE void rebind_input_stream_to_this() {
     if (input_stream_ == nullptr) {

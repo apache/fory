@@ -69,8 +69,10 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 }
 
 // readMapStringString reads map[string]string using chunk protocol
-func readMapStringString(buf *ByteBuffer, err *Error) map[string]string {
-	size := int(buf.ReadVarUint32(err))
+func readMapStringString(ctx *ReadContext) map[string]string {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[string]string, size)
 	if size == 0 {
 		return result
@@ -172,8 +174,10 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 }
 
 // readMapStringInt64 reads map[string]int64 using chunk protocol
-func readMapStringInt64(buf *ByteBuffer, err *Error) map[string]int64 {
-	size := int(buf.ReadVarUint32(err))
+func readMapStringInt64(ctx *ReadContext) map[string]int64 {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[string]int64, size)
 	if size == 0 {
 		return result
@@ -246,8 +250,10 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 }
 
 // readMapStringInt32 reads map[string]int32 using chunk protocol
-func readMapStringInt32(buf *ByteBuffer, err *Error) map[string]int32 {
-	size := int(buf.ReadVarUint32(err))
+func readMapStringInt32(ctx *ReadContext) map[string]int32 {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[string]int32, size)
 	if size == 0 {
 		return result
@@ -320,8 +326,10 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 }
 
 // readMapStringInt reads map[string]int using chunk protocol
-func readMapStringInt(buf *ByteBuffer, err *Error) map[string]int {
-	size := int(buf.ReadVarUint32(err))
+func readMapStringInt(ctx *ReadContext) map[string]int {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[string]int, size)
 	if size == 0 {
 		return result
@@ -394,8 +402,10 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 }
 
 // readMapStringFloat64 reads map[string]float64 using chunk protocol
-func readMapStringFloat64(buf *ByteBuffer, err *Error) map[string]float64 {
-	size := int(buf.ReadVarUint32(err))
+func readMapStringFloat64(ctx *ReadContext) map[string]float64 {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[string]float64, size)
 	if size == 0 {
 		return result
@@ -468,8 +478,10 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 }
 
 // readMapStringBool reads map[string]bool using chunk protocol
-func readMapStringBool(buf *ByteBuffer, err *Error) map[string]bool {
-	size := int(buf.ReadVarUint32(err))
+func readMapStringBool(ctx *ReadContext) map[string]bool {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[string]bool, size)
 	if size == 0 {
 		return result
@@ -547,8 +559,10 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 }
 
 // readMapInt32Int32 reads map[int32]int32 using chunk protocol
-func readMapInt32Int32(buf *ByteBuffer, err *Error) map[int32]int32 {
-	size := int(buf.ReadVarUint32(err))
+func readMapInt32Int32(ctx *ReadContext) map[int32]int32 {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[int32]int32, size)
 	if size == 0 {
 		return result
@@ -621,8 +635,10 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 }
 
 // readMapInt64Int64 reads map[int64]int64 using chunk protocol
-func readMapInt64Int64(buf *ByteBuffer, err *Error) map[int64]int64 {
-	size := int(buf.ReadVarUint32(err))
+func readMapInt64Int64(ctx *ReadContext) map[int64]int64 {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[int64]int64, size)
 	if size == 0 {
 		return result
@@ -695,8 +711,10 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 }
 
 // readMapIntInt reads map[int]int using chunk protocol
-func readMapIntInt(buf *ByteBuffer, err *Error) map[int]int {
-	size := int(buf.ReadVarUint32(err))
+func readMapIntInt(ctx *ReadContext) map[int]int {
+	err := ctx.Err()
+	buf := ctx.Buffer()
+	size := ctx.ReadCollectionLength()
 	result := make(map[int]int, size)
 	if size == 0 {
 		return result
@@ -752,7 +770,7 @@ func (s stringStringMapSerializer) ReadData(ctx *ReadContext, value reflect.Valu
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringString(ctx.buffer, ctx.Err())
+	result := readMapStringString(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -787,7 +805,7 @@ func (s stringInt64MapSerializer) ReadData(ctx *ReadContext, value reflect.Value
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringInt64(ctx.buffer, ctx.Err())
+	result := readMapStringInt64(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -822,7 +840,7 @@ func (s stringIntMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringInt(ctx.buffer, ctx.Err())
+	result := readMapStringInt(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -857,7 +875,7 @@ func (s stringFloat64MapSerializer) ReadData(ctx *ReadContext, value reflect.Val
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringFloat64(ctx.buffer, ctx.Err())
+	result := readMapStringFloat64(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -892,7 +910,7 @@ func (s stringBoolMapSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapStringBool(ctx.buffer, ctx.Err())
+	result := readMapStringBool(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -927,7 +945,7 @@ func (s int32Int32MapSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapInt32Int32(ctx.buffer, ctx.Err())
+	result := readMapInt32Int32(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -962,7 +980,7 @@ func (s int64Int64MapSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapInt64Int64(ctx.buffer, ctx.Err())
+	result := readMapInt64Int64(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 
@@ -997,7 +1015,7 @@ func (s intIntMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		value.Set(reflect.MakeMap(value.Type()))
 	}
 	ctx.RefResolver().Reference(value)
-	result := readMapIntInt(ctx.buffer, ctx.Err())
+	result := readMapIntInt(ctx)
 	value.Set(reflect.ValueOf(result))
 }
 

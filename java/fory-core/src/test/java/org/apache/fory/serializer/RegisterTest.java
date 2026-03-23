@@ -139,6 +139,44 @@ public class RegisterTest extends ForyTestBase {
     Assert.assertEquals(deserialized.id, "idempotent-test");
   }
 
+  @Test
+  public void testRegisterExtSerializerWithSharedGeneratedCodec() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .suppressClassRegistrationWarnings(true)
+            .withName("testRegisterExtSerializerWithSharedGeneratedCodec");
+
+    Fory fory1 = builder.build();
+    fory1.register(MyExt.class, 105);
+    fory1.registerSerializer(MyExt.class, MyExtSerializer.class);
+    ExtHolder holder1 = new ExtHolder();
+    holder1.ext = new MyExt();
+    holder1.ext.id = "first";
+
+    ExtHolder copy1 = serDe(fory1, holder1);
+    Assert.assertEquals(copy1.ext.id, "first");
+
+    Fory fory2 = builder.build();
+    fory2.register(MyExt.class, 105);
+    fory2.registerSerializer(MyExt.class, AlternativeMyExtSerializer.class);
+    ExtHolder holder2 = new ExtHolder();
+    holder2.ext = new MyExt();
+    holder2.ext.id = "second";
+
+    ExtHolder copy2 = serDe(fory2, holder2);
+    Assert.assertEquals(copy2.ext.id, "second");
+    Assert.assertEquals(
+        fory2.getTypeResolver().getSerializer(MyExt.class).getClass(),
+        AlternativeMyExtSerializer.class);
+  }
+
+  public static class ExtHolder {
+    public MyExt ext;
+  }
+
   public static class MyExt {
     public String id;
   }
@@ -165,6 +203,24 @@ public class RegisterTest extends ForyTestBase {
       } else {
         result.id = fory.readString(buffer);
       }
+      return result;
+    }
+  }
+
+  public static class AlternativeMyExtSerializer extends Serializer<MyExt> {
+    public AlternativeMyExtSerializer(Fory fory) {
+      super(fory, MyExt.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, MyExt value) {
+      fory.writeString(buffer, value.id);
+    }
+
+    @Override
+    public MyExt read(MemoryBuffer buffer) {
+      MyExt result = new MyExt();
+      result.id = fory.readString(buffer);
       return result;
     }
   }

@@ -25,9 +25,7 @@ Note: Protobuf is fetched automatically via CMake FetchContent, so no manual ins
 
 ### Throughput Results (ops/sec)
 
-<p align="center">
-<img src="../../docs/benchmarks/cpp/throughput.png" width="90%">
-</p>
+![Throughput](../../docs/benchmarks/cpp/throughput.png)
 
 | Datatype     | Operation   | Fory TPS  | Protobuf TPS | Faster      |
 | ------------ | ----------- | --------- | ------------ | ----------- |

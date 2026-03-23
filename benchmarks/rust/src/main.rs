@@ -16,271 +16,149 @@
 // under the License.
 
 use clap::{Parser, ValueEnum};
-use fory_benchmarks::models::complex::ECommerceData;
-use fory_benchmarks::models::medium::{Company, Person};
-use fory_benchmarks::models::realworld::SystemData;
-use fory_benchmarks::models::simple::{SimpleList, SimpleMap, SimpleStruct};
-use fory_benchmarks::models::TestDataGenerator;
-use fory_benchmarks::serializers::fory::ForySerializer;
-use fory_benchmarks::serializers::protobuf::ProtobufSerializer;
-use fory_benchmarks::serializers::Serializer;
+use fory_benchmarks::data::{
+    BenchmarkCase, DataKind, MediaContent, MediaContentList, NumericStruct, Sample, SampleList,
+    StructList,
+};
+use fory_benchmarks::serializers::{
+    fory::ForySerializer, protobuf::ProtobufSerializer, BenchmarkSerializer,
+};
 use std::hint::black_box;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum Operation {
+enum Operation {
     Serialize,
     Deserialize,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
-pub enum SerializerType {
-    Protobuf,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum SerializerKind {
     Fory,
+    Protobuf,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum DataType {
-    SimpleStruct,
-    SimpleList,
-    SimpleMap,
-    Person,
-    Company,
-    ECommerceData,
-    SystemData,
+enum DataType {
+    Struct,
+    Sample,
+    Mediacontent,
+    Structlist,
+    Samplelist,
+    Mediacontentlist,
 }
 
 #[derive(Parser)]
 #[command(name = "fory_profiler")]
-#[command(about = "A profiler for Fory and Protobuf serialization performance")]
+#[command(about = "Profile Rust benchmark serializers against the shared bench.proto cases")]
 struct Cli {
-    /// The operation to perform
     #[arg(short, long, value_enum, default_value_t = Operation::Serialize)]
     operation: Operation,
 
-    /// The serializer to use
-    #[arg(short, long, value_enum, default_value_t = SerializerType::Fory)]
-    serializer: SerializerType,
+    #[arg(short, long, value_enum, default_value_t = SerializerKind::Fory)]
+    serializer: SerializerKind,
 
-    /// Number of iterations to run
-    #[arg(short, long, default_value = "10000000")]
+    #[arg(short, long, default_value_t = 10_000_000)]
     iterations: usize,
 
-    /// Data size to use (small, medium, large)
-    #[arg(short, long, default_value = "large")]
-    data_size: String,
-
-    /// Data type to profile
-    #[arg(short = 't', long, value_enum, default_value = "e-commerce-data")]
+    #[arg(short = 't', long, value_enum, default_value_t = DataType::Mediacontent)]
     data_type: DataType,
 
-    /// Print serialized sizes for all data types and serializers, then exit
     #[arg(long)]
     print_all_serialized_sizes: bool,
 }
 
-fn profile<T, S>(num_iterations: usize, data: &T, serializer: &S, operation: Operation)
+fn profile<T, S>(iterations: usize, value: &T, serializer: &S, operation: Operation)
 where
-    T: Clone,
-    S: Serializer<T>,
+    S: BenchmarkSerializer<T>,
 {
     match operation {
         Operation::Serialize => {
-            println!(
-                "Starting serialization profiling with {} iterations...",
-                num_iterations
-            );
-
-            // Warm up - run a few iterations to get the code in cache
             for _ in 0..1000 {
-                let _ = black_box(serializer.serialize(black_box(data)).unwrap());
+                let _ = black_box(serializer.serialize(black_box(value)).unwrap());
             }
 
-            println!("Warmup complete. Starting main profiling loop...");
-
-            // Main profiling loop
-            for i in 0..num_iterations {
-                let _ = black_box(serializer.serialize(black_box(data)).unwrap());
-
-                // Print progress every million iterations
-                if i % 1_000_000 == 0 && i > 0 {
-                    println!("Completed {} iterations", i);
-                }
+            for _ in 0..iterations {
+                let _ = black_box(serializer.serialize(black_box(value)).unwrap());
             }
         }
         Operation::Deserialize => {
-            println!(
-                "Starting deserialization profiling with {} iterations...",
-                num_iterations
-            );
+            let bytes = serializer.serialize(value).unwrap();
 
-            // Pre-serialize the data once
-            let serialized_data = serializer.serialize(data).unwrap();
-            println!("Serialized data size: {} bytes", serialized_data.len());
-
-            // Warm up - run a few iterations to get the code in cache
             for _ in 0..1000 {
-                let _: T = black_box(serializer.deserialize(black_box(&serialized_data)).unwrap());
+                let _: T = black_box(serializer.deserialize(black_box(&bytes)).unwrap());
             }
 
-            println!("Warmup complete. Starting main profiling loop...");
-
-            // Main profiling loop
-            for i in 0..num_iterations {
-                let _: T = black_box(serializer.deserialize(black_box(&serialized_data)).unwrap());
-
-                // Print progress every million iterations
-                if i % 1_000_000 == 0 && i > 0 {
-                    println!("Completed {} iterations", i);
-                }
+            for _ in 0..iterations {
+                let _: T = black_box(serializer.deserialize(black_box(&bytes)).unwrap());
             }
         }
     }
-
-    println!("Profiling complete! Ran {} iterations", num_iterations);
 }
 
-fn profile_with_serializer<T>(
-    num_iterations: usize,
-    data: &T,
-    serializer_type: SerializerType,
-    operation: Operation,
-) where
-    T: Clone,
-    ProtobufSerializer: Serializer<T>,
-    ForySerializer: Serializer<T>,
-{
-    match serializer_type {
-        SerializerType::Protobuf => {
-            let serializer = ProtobufSerializer::new();
-            profile(num_iterations, data, &serializer, operation);
-        }
-        SerializerType::Fory => {
-            let serializer = ForySerializer::new();
-            profile(num_iterations, data, &serializer, operation);
-        }
-    }
-}
-
-fn generate_data<T: TestDataGenerator>(data_size: &str) -> T::Data {
-    match data_size {
-        "small" => T::generate_small(),
-        "medium" => T::generate_medium(),
-        "large" => T::generate_large(),
-        _ => {
-            eprintln!("Invalid data size: {}. Using 'large' instead.", data_size);
-            T::generate_large()
-        }
-    }
-}
-
-fn print_sizes_for_type<T>(type_label: &str, data_sizes: &[&str])
+fn profile_case<T>(iterations: usize, serializer: SerializerKind, operation: Operation)
 where
-    T: TestDataGenerator,
-    T::Data: Clone,
-    ProtobufSerializer: Serializer<T::Data>,
-    ForySerializer: Serializer<T::Data>,
+    T: BenchmarkCase,
+    ForySerializer: BenchmarkSerializer<T>,
+    ProtobufSerializer: BenchmarkSerializer<T>,
 {
-    for data_size in data_sizes {
-        let data = generate_data::<T>(data_size);
-        let mut results = Vec::new();
-        for serializer_type in SerializerType::value_variants() {
-            let serializer_kind = *serializer_type;
-            let result = match serializer_kind {
-                SerializerType::Protobuf => ProtobufSerializer::new().serialize(&data),
-                SerializerType::Fory => ForySerializer::new().serialize(&data),
-            };
-            results.push((serializer_kind, result));
+    let value = T::create();
+
+    match serializer {
+        SerializerKind::Fory => profile(iterations, &value, &ForySerializer::new(), operation),
+        SerializerKind::Protobuf => {
+            profile(iterations, &value, &ProtobufSerializer::new(), operation)
         }
-
-        let fory_size = results
-            .iter()
-            .find(|(kind, _)| *kind == SerializerType::Fory)
-            .and_then(|(_, result)| result.as_ref().ok().map(|bytes| bytes.len()))
-            .map(|size| size.to_string())
-            .unwrap_or_else(|| "error".to_string());
-
-        let protobuf_size = results
-            .iter()
-            .find(|(kind, _)| *kind == SerializerType::Protobuf)
-            .and_then(|(_, result)| result.as_ref().ok().map(|bytes| bytes.len()))
-            .map(|size| size.to_string())
-            .unwrap_or_else(|| "error".to_string());
-
-        println!(
-            "| {:<11} | {:<9} | {:>6} | {:>8} |",
-            type_label, data_size, fory_size, protobuf_size
-        );
     }
+}
+
+fn print_size_row<T>(label: &str)
+where
+    T: BenchmarkCase,
+    ForySerializer: BenchmarkSerializer<T>,
+    ProtobufSerializer: BenchmarkSerializer<T>,
+{
+    let value = T::create();
+    let fory = ForySerializer::new().serialize(&value).unwrap().len();
+    let protobuf = ProtobufSerializer::new().serialize(&value).unwrap().len();
+
+    println!("| {label} | {fory} | {protobuf} |");
 }
 
 fn print_all_serialized_sizes() {
-    const DATA_SIZES: [&str; 3] = ["small", "medium", "large"];
-    println!("| data type   | data size |   fory | protobuf |");
-    println!("|-------------|-----------|--------|----------|");
-    for data_type in DataType::value_variants() {
-        match data_type {
-            DataType::SimpleStruct => {
-                print_sizes_for_type::<SimpleStruct>("simple-struct", &DATA_SIZES)
-            }
-            DataType::SimpleList => print_sizes_for_type::<SimpleList>("simple-list", &DATA_SIZES),
-            DataType::SimpleMap => print_sizes_for_type::<SimpleMap>("simple-map", &DATA_SIZES),
-            DataType::Person => print_sizes_for_type::<Person>("person", &DATA_SIZES),
-            DataType::Company => print_sizes_for_type::<Company>("company", &DATA_SIZES),
-            DataType::ECommerceData => {
-                print_sizes_for_type::<ECommerceData>("e-commerce-data", &DATA_SIZES)
-            }
-            DataType::SystemData => print_sizes_for_type::<SystemData>("system-data", &DATA_SIZES),
-        }
-    }
+    println!("| Datatype | fory | protobuf |");
+    println!("|----------|------|----------|");
+    print_size_row::<NumericStruct>(DataKind::Struct.display_name());
+    print_size_row::<Sample>(DataKind::Sample.display_name());
+    print_size_row::<MediaContent>(DataKind::MediaContent.display_name());
+    print_size_row::<StructList>(DataKind::StructList.display_name());
+    print_size_row::<SampleList>(DataKind::SampleList.display_name());
+    print_size_row::<MediaContentList>(DataKind::MediaContentList.display_name());
 }
 
 fn main() {
     let cli = Cli::parse();
 
     if cli.print_all_serialized_sizes {
-        println!("Serialized sizes (bytes) for all data types and serializers");
         print_all_serialized_sizes();
         return;
     }
 
-    println!("Starting profiling...");
-    println!("Operation: {:?}", cli.operation);
-    println!("Serializer: {:?}", cli.serializer);
-    println!("Data type: {:?}", cli.data_type);
-    println!("Iterations: {}", cli.iterations);
-    println!("Data size: {}", cli.data_size);
-
-    // Generate data and profile based on data type
     match cli.data_type {
-        DataType::SimpleStruct => {
-            let data = generate_data::<SimpleStruct>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        DataType::Struct => {
+            profile_case::<NumericStruct>(cli.iterations, cli.serializer, cli.operation)
         }
-        DataType::SimpleList => {
-            let data = generate_data::<SimpleList>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        DataType::Sample => profile_case::<Sample>(cli.iterations, cli.serializer, cli.operation),
+        DataType::Mediacontent => {
+            profile_case::<MediaContent>(cli.iterations, cli.serializer, cli.operation)
         }
-        DataType::SimpleMap => {
-            let data = generate_data::<SimpleMap>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        DataType::Structlist => {
+            profile_case::<StructList>(cli.iterations, cli.serializer, cli.operation)
         }
-        DataType::Person => {
-            let data = generate_data::<Person>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        DataType::Samplelist => {
+            profile_case::<SampleList>(cli.iterations, cli.serializer, cli.operation)
         }
-        DataType::Company => {
-            let data = generate_data::<Company>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
-        }
-        DataType::ECommerceData => {
-            let data = generate_data::<ECommerceData>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
-        }
-        DataType::SystemData => {
-            let data = generate_data::<SystemData>(&cli.data_size);
-            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        DataType::Mediacontentlist => {
+            profile_case::<MediaContentList>(cli.iterations, cli.serializer, cli.operation)
         }
     }
-
-    println!("\nProfiling completed!");
 }

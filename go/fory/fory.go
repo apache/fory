@@ -50,18 +50,22 @@ const (
 
 // Config holds configuration options for Fory instances
 type Config struct {
-	TrackRef   bool
-	MaxDepth   int
-	IsXlang    bool
-	Compatible bool // Schema evolution compatibility mode
+	TrackRef          bool
+	MaxDepth          int
+	IsXlang           bool
+	Compatible        bool // Schema evolution compatibility mode
+	MaxCollectionSize int
+	MaxBinarySize     int
 }
 
 // defaultConfig returns the default configuration
 func defaultConfig() Config {
 	return Config{
-		TrackRef: false, // Match Java's default: reference tracking disabled
-		MaxDepth: 20,
-		IsXlang:  false,
+		TrackRef:          false, // Match Java's default: reference tracking disabled
+		MaxDepth:          20,
+		IsXlang:           false,
+		MaxCollectionSize: 1_000_000,
+		MaxBinarySize:     64 * 1024 * 1024,
 	}
 }
 
@@ -98,6 +102,20 @@ func WithXlang(enabled bool) Option {
 func WithCompatible(enabled bool) Option {
 	return func(f *Fory) {
 		f.config.Compatible = enabled
+	}
+}
+
+// WithMaxCollectionSize sets the maximum collection size limit
+func WithMaxCollectionSize(size int) Option {
+	return func(f *Fory) {
+		f.config.MaxCollectionSize = size
+	}
+}
+
+// WithMaxBinarySize sets the maximum binary size limit
+func WithMaxBinarySize(size int) Option {
+	return func(f *Fory) {
+		f.config.MaxBinarySize = size
 	}
 }
 
@@ -152,6 +170,8 @@ func New(opts ...Option) *Fory {
 	f.writeCtx.xlang = f.config.IsXlang
 
 	f.readCtx = NewReadContext(f.config.TrackRef)
+	f.readCtx.maxCollectionSize = f.config.MaxCollectionSize
+	f.readCtx.maxBinarySize = f.config.MaxBinarySize
 	f.readCtx.typeResolver = f.typeResolver
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible

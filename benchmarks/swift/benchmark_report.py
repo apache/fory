@@ -252,9 +252,7 @@ def write_report(
         image_path = f"{plot_prefix.rstrip('/')}/{plot_name}"
     else:
         image_path = plot_name
-    lines.append('<p align="center">')
-    lines.append(f'<img src="{image_path}" width="95%" />')
-    lines.append("</p>")
+    lines.append(f"![Throughput]({image_path})")
     lines.append("")
     lines.append(
         "| Datatype | Operation | Fory TPS | Protobuf TPS | Msgpack TPS | Fastest |"

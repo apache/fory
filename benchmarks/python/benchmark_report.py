@@ -328,8 +328,9 @@ def generate_markdown_report(
     for datatype, image_path in plot_images_sorted:
         image_name = os.path.basename(image_path)
         image_ref = f"{plot_prefix}{image_name}"
-        md.append(f"\n### {datatype.replace('_', ' ').title()}\n\n")
-        md.append(f'<p align="center">\n<img src="{image_ref}" width="90%" />\n</p>\n')
+        plot_title = datatype.replace("_", " ").title()
+        md.append(f"\n### {plot_title}\n\n")
+        md.append(f"![{plot_title}]({image_ref})\n")
 
     md.append("\n## Benchmark Results\n\n")
     md.append("### Timing Results (nanoseconds)\n\n")

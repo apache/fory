@@ -15,9 +15,7 @@ This benchmark compares serialization and deserialization throughput for Apache 
 
 ## Throughput Results
 
-<p align="center">
-<img src="throughput.png" width="95%" />
-</p>
+![Throughput](throughput.png)
 
 | Datatype         | Operation   |   Fory TPS | Protobuf TPS | Msgpack TPS | Fastest      |
 | ---------------- | ----------- | ---------: | -----------: | ----------: | ------------ |

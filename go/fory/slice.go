@@ -264,7 +264,7 @@ func (s *sliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, ty
 func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := int(buf.ReadVarUint32(ctxErr))
+	length := ctx.ReadCollectionLength()
 	isArrayType := value.Type().Kind() == reflect.Array
 
 	if length == 0 {

@@ -93,9 +93,7 @@ go test -bench=BenchmarkFory_Struct -benchmem
 
 Example results on Apple M1 Pro:
 
-<p align="center">
-<img src="../../docs/benchmarks/go/benchmark_combined.png" width="95%">
-</p>
+![Combined Benchmark](../../docs/benchmarks/go/benchmark_combined.png)
 
 | Data Type        | Operation   | Fory (ops/s) | Protobuf (ops/s) | Msgpack (ops/s) | Fory vs PB | Fory vs MP |
 | ---------------- | ----------- | ------------ | ---------------- | --------------- | ---------- | ---------- |

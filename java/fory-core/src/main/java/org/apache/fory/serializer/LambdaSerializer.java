@@ -19,18 +19,13 @@
 
 package org.apache.fory.serializer;
 
-import java.io.ObjectStreamClass;
 import java.io.Serializable;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.invoke.SerializedLambda;
-import java.util.Objects;
+import java.lang.reflect.Method;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.ClassValueCache;
-import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.SerializableFunction;
 import org.apache.fory.util.unsafe._JDKAccess;
@@ -42,123 +37,87 @@ import org.apache.fory.util.unsafe._JDKAccess;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class LambdaSerializer extends Serializer {
-  public static Class<?> STUB_LAMBDA_CLASS =
-      ((SerializableFunction<Integer, Integer>) (x -> x * 2)).getClass();
-  private static final Class<SerializedLambda> SERIALIZED_LAMBDA = SerializedLambda.class;
-  private static final MethodHandle READ_RESOLVE_HANDLE;
-  private static final boolean SERIALIZED_LAMBDA_HAS_JDK_WRITE =
-      JavaSerializer.getWriteObjectMethod(SERIALIZED_LAMBDA) != null;
-  private static final boolean SERIALIZED_LAMBDA_HAS_JDK_READ =
-      JavaSerializer.getReadObjectMethod(SERIALIZED_LAMBDA) != null;
+  public static final Class<?> STUB_LAMBDA_CLASS = stubLambdaClass();
   private static final ClassValueCache<MethodHandle> writeReplaceMethodCache =
       ClassValueCache.newClassKeySoftCache(32);
 
   private final MethodHandle writeReplaceHandle;
-  private Serializer dataSerializer;
+  private final SerializedLambdaSerializer serializedLambdaSerializer;
 
-  static {
-    try {
-      // Initialize READ_RESOLVE_HANDLE
-      MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(SERIALIZED_LAMBDA);
-      Object readResolveMethod =
-          ReflectionUtils.getObjectFieldValue(
-              ObjectStreamClass.lookup(SERIALIZED_LAMBDA), "readResolveMethod");
-      READ_RESOLVE_HANDLE = lookup.unreflect((java.lang.reflect.Method) readResolveMethod);
-    } catch (IllegalAccessException e) {
-      throw new ForyException(e);
-    }
+  private static Class<?> stubLambdaClass() {
+    SerializableFunction<Integer, Integer> function = x -> x * 2;
+    return function.getClass();
   }
 
   public LambdaSerializer(Fory fory, Class<?> cls) {
     super(fory, cls);
-    if (cls != ReplaceStub.class) {
-      if (!Serializable.class.isAssignableFrom(cls)) {
-        String msg =
-            String.format(
-                "Lambda %s needs to implement %s for serialization",
-                cls, Serializable.class.getName());
-        throw new UnsupportedOperationException(msg);
-      }
-      MethodHandle methodHandle = writeReplaceMethodCache.getIfPresent(cls);
-      if (methodHandle == null) {
-        try {
-          MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(cls);
-          Object writeReplaceMethod =
-              ReflectionUtils.getObjectFieldValue(
-                  ObjectStreamClass.lookup(cls), "writeReplaceMethod");
-          methodHandle =
-              lookup.unreflect(
-                  (java.lang.reflect.Method) Objects.requireNonNull(writeReplaceMethod));
-          writeReplaceMethodCache.put(cls, methodHandle);
-        } catch (Throwable e) {
-          throw new RuntimeException(
-              String.format("Failed to create writeReplace MethodHandle for %s", cls), e);
-        }
-      }
-      writeReplaceHandle = methodHandle;
-    } else {
+    serializedLambdaSerializer =
+        (SerializedLambdaSerializer)
+            fory.getTypeResolver().getSerializer(SerializedLambdaSerializer.SERIALIZED_LAMBDA);
+    if (cls == ReplaceStub.class) {
       writeReplaceHandle = null;
+      return;
     }
-    if (cls == STUB_LAMBDA_CLASS) {
-      getDataSerializer();
+    if (!Serializable.class.isAssignableFrom(cls)) {
+      String msg =
+          String.format(
+              "Lambda %s needs to implement %s for serialization",
+              cls, Serializable.class.getName());
+      throw new UnsupportedOperationException(msg);
     }
+    MethodHandle methodHandle = writeReplaceMethodCache.getIfPresent(cls);
+    if (methodHandle == null) {
+      methodHandle = createWriteReplaceHandle(cls);
+      writeReplaceMethodCache.put(cls, methodHandle);
+    }
+    writeReplaceHandle = methodHandle;
   }
 
   @Override
   public void write(MemoryBuffer buffer, Object value) {
-    assert value.getClass() != ReplaceStub.class;
-    try {
-      Object replacement = writeReplaceHandle.invoke(value);
-      Preconditions.checkArgument(SERIALIZED_LAMBDA.isInstance(replacement));
-      getDataSerializer().write(buffer, replacement);
-    } catch (Throwable e) {
-      throw new RuntimeException("Can't serialize lambda " + value, e);
-    }
+    serializedLambdaSerializer.write(buffer, extractSerializedLambda(value, "serialize"));
   }
 
   @Override
   public Object copy(Object value) {
-    try {
-      Object replacement = writeReplaceHandle.invoke(value);
-      Object newReplacement = getDataSerializer().copy(replacement);
-      return READ_RESOLVE_HANDLE.invoke(newReplacement);
-    } catch (Throwable e) {
-      throw new RuntimeException("Can't copy lambda " + value, e);
-    }
+    SerializedLambda serializedLambda = extractSerializedLambda(value, "copy");
+    return SerializedLambdaSerializer.readResolve(
+        serializedLambdaSerializer.copy(serializedLambda));
   }
 
   @Override
   public Object read(MemoryBuffer buffer) {
     try {
-      Object replacement = getDataSerializer().read(buffer);
-      return READ_RESOLVE_HANDLE.invoke(replacement);
+      return SerializedLambdaSerializer.readResolve(
+          serializedLambdaSerializer.readUnresolved(buffer));
     } catch (Throwable e) {
       throw new RuntimeException("Can't deserialize lambda", e);
     }
   }
 
-  private Serializer getDataSerializer() {
-    // Create serializer lazily to avoid creation cost if no lambda to be serialized.
-    Serializer dataSerializer = this.dataSerializer;
-    if (dataSerializer == null) {
-      Class<? extends Serializer> sc;
-      if (SERIALIZED_LAMBDA_HAS_JDK_WRITE || SERIALIZED_LAMBDA_HAS_JDK_READ) {
-        sc = fory.getDefaultJDKStreamSerializerType();
-      } else {
-        sc =
-            fory.getJITContext()
-                .registerSerializerJITCallback(
-                    () -> ObjectSerializer.class,
-                    () -> CodegenSerializer.loadCodegenSerializer(fory, SERIALIZED_LAMBDA),
-                    c -> {
-                      this.dataSerializer = Serializers.newSerializer(fory, SERIALIZED_LAMBDA, c);
-                      ((ClassResolver) fory.getTypeResolver()).clearSerializer(SERIALIZED_LAMBDA);
-                    });
-      }
-      this.dataSerializer = dataSerializer = Serializers.newSerializer(fory, SERIALIZED_LAMBDA, sc);
-      ((ClassResolver) fory.getTypeResolver()).clearSerializer(SERIALIZED_LAMBDA);
+  private MethodHandle createWriteReplaceHandle(Class<?> cls) {
+    try {
+      Method writeReplaceMethod = JavaSerializer.getWriteReplaceMethod(cls);
+      Preconditions.checkNotNull(writeReplaceMethod, "Missing writeReplace for " + cls);
+      return _JDKAccess._trustedLookup(cls).unreflect(writeReplaceMethod);
+    } catch (Throwable e) {
+      throw new RuntimeException(
+          String.format("Failed to create writeReplace MethodHandle for %s", cls), e);
     }
-    return dataSerializer;
+  }
+
+  private SerializedLambda extractSerializedLambda(Object value, String operation) {
+    Preconditions.checkState(
+        writeReplaceHandle != null, "Stub lambda serializer should not be used at runtime");
+    Preconditions.checkArgument(value.getClass() != ReplaceStub.class);
+    try {
+      Object replacement = writeReplaceHandle.invoke(value);
+      Preconditions.checkArgument(
+          SerializedLambdaSerializer.SERIALIZED_LAMBDA.isInstance(replacement));
+      return (SerializedLambda) replacement;
+    } catch (Throwable e) {
+      throw new RuntimeException("Can't " + operation + " lambda " + value, e);
+    }
   }
 
   /**

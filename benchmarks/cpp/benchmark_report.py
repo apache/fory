@@ -346,10 +346,9 @@ plot_images_sorted = sorted(
 for datatype, img in plot_images_sorted:
     img_filename = os.path.basename(img)
     img_path_report = args.plot_prefix + img_filename
-    md_report.append(f"\n### {datatype.replace('_', ' ').title()}\n\n")
-    md_report.append(
-        f'<p align="center">\n<img src="{img_path_report}" width="90%" />\n</p>\n'
-    )
+    plot_title = datatype.replace("_", " ").title()
+    md_report.append(f"\n### {plot_title}\n\n")
+    md_report.append(f"![{plot_title}]({img_path_report})\n")
 
 # Results table
 md_report.append("\n## Benchmark Results\n\n")

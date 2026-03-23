@@ -39,45 +39,31 @@ All plots show throughput (ops/sec); higher is better.
 
 ### Throughput
 
-<p align="center">
-<img src="throughput.png" width="90%" />
-</p>
+![Throughput](throughput.png)
 
 ### Mediacontent
 
-<p align="center">
-<img src="mediacontent.png" width="90%" />
-</p>
+![Mediacontent](mediacontent.png)
 
 ### Mediacontentlist
 
-<p align="center">
-<img src="mediacontentlist.png" width="90%" />
-</p>
+![Mediacontentlist](mediacontentlist.png)
 
 ### Sample
 
-<p align="center">
-<img src="sample.png" width="90%" />
-</p>
+![Sample](sample.png)
 
 ### Samplelist
 
-<p align="center">
-<img src="samplelist.png" width="90%" />
-</p>
+![Samplelist](samplelist.png)
 
 ### Struct
 
-<p align="center">
-<img src="struct.png" width="90%" />
-</p>
+![Struct](struct.png)
 
 ### Structlist
 
-<p align="center">
-<img src="structlist.png" width="90%" />
-</p>
+![Structlist](structlist.png)
 
 ## Benchmark Results
 

@@ -74,7 +74,7 @@ func (s byteSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode,
 func (s byteSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := buf.ReadLength(ctxErr)
+	length := ctx.ReadBinaryLength()
 	ptr := (*[]byte)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]byte, 0)
@@ -642,7 +642,7 @@ func (s stringSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMod
 func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := int(buf.ReadVarUint32(ctxErr))
+	length := ctx.ReadCollectionLength()
 	ptr := (*[]string)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]string, 0)
@@ -1071,7 +1071,7 @@ func (s float16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMo
 func (s float16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	size := buf.ReadLength(ctxErr)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return
@@ -1253,7 +1253,7 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 
 // ReadStringSlice reads []string from buffer using LIST protocol
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
-	length := int(buf.ReadVarUint32(err))
+	length := buf.ReadLength(err)
 	if length == 0 {
 		return make([]string, 0)
 	}
@@ -1328,7 +1328,7 @@ func (s bfloat16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefM
 func (s bfloat16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	size := buf.ReadLength(ctxErr)
+	size := ctx.ReadBinaryLength()
 	length := size / 2
 	if ctx.HasError() {
 		return

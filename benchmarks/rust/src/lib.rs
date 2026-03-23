@@ -15,313 +15,108 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod models;
+pub mod data;
 pub mod serializers;
 
-// Include generated protobuf code
-include!(concat!(env!("OUT_DIR"), "/simple.rs"));
-include!(concat!(env!("OUT_DIR"), "/medium.rs"));
-include!(concat!(env!("OUT_DIR"), "/complex.rs"));
-include!(concat!(env!("OUT_DIR"), "/realworld.rs"));
+pub mod generated {
+    include!(concat!(env!("OUT_DIR"), "/protobuf.rs"));
+}
 
-// Benchmark function implementation
-use criterion::{black_box, BenchmarkId, Criterion};
-use models::{
-    complex::ECommerceData,
-    medium::{Company, Person},
-    realworld::SystemData,
-    simple::{SimpleList, SimpleMap, SimpleStruct},
-    TestDataGenerator,
+use criterion::{black_box, Criterion};
+use data::{
+    BenchmarkCase, MediaContent, MediaContentList, NumericStruct, Sample, SampleList, StructList,
 };
-use serializers::{
-    fory::ForySerializer, json::JsonSerializer, protobuf::ProtobufSerializer, Serializer,
-};
+use serializers::{fory::ForySerializer, protobuf::ProtobufSerializer, BenchmarkSerializer};
 
 pub fn run_serialization_benchmarks(c: &mut Criterion) {
     let fory_serializer = ForySerializer::new();
     let protobuf_serializer = ProtobufSerializer::new();
-    let json_serializer = JsonSerializer::new();
 
-    // Simple struct benchmarks
-    run_benchmark_group::<SimpleStruct>(
-        c,
-        "simple_struct",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
-
-    // Simple list benchmarks
-    run_benchmark_group::<SimpleList>(
-        c,
-        "simple_list",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
-
-    // Simple map benchmarks
-    run_benchmark_group::<SimpleMap>(
-        c,
-        "simple_map",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
-
-    // Person benchmarks
-    run_benchmark_group::<Person>(
-        c,
-        "person",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
-
-    // Company benchmarks
-    run_benchmark_group::<Company>(
-        c,
-        "company",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
-
-    // ECommerce data benchmarks
-    run_benchmark_group::<ECommerceData>(
-        c,
-        "ecommerce_data",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
-
-    // System data benchmarks
-    run_benchmark_group::<SystemData>(
-        c,
-        "system_data",
-        &fory_serializer,
-        &protobuf_serializer,
-        &json_serializer,
-    );
+    run_benchmark_case::<NumericStruct>(c, &fory_serializer, &protobuf_serializer);
+    run_benchmark_case::<Sample>(c, &fory_serializer, &protobuf_serializer);
+    run_benchmark_case::<MediaContent>(c, &fory_serializer, &protobuf_serializer);
+    run_benchmark_case::<StructList>(c, &fory_serializer, &protobuf_serializer);
+    run_benchmark_case::<SampleList>(c, &fory_serializer, &protobuf_serializer);
+    run_benchmark_case::<MediaContentList>(c, &fory_serializer, &protobuf_serializer);
 }
 
-fn run_benchmark_group<T>(
+fn run_benchmark_case<T>(
     c: &mut Criterion,
-    group_name: &str,
     fory_serializer: &ForySerializer,
     protobuf_serializer: &ProtobufSerializer,
-    json_serializer: &JsonSerializer,
 ) where
-    T: TestDataGenerator<Data = T> + Clone + PartialEq,
-    ForySerializer: Serializer<T>,
-    ProtobufSerializer: Serializer<T>,
-    JsonSerializer: Serializer<T>,
+    T: BenchmarkCase,
+    ForySerializer: BenchmarkSerializer<T>,
+    ProtobufSerializer: BenchmarkSerializer<T>,
 {
-    let mut group = c.benchmark_group(group_name);
+    let data = T::create();
+    let mut group = c.benchmark_group(T::KIND.group_name());
 
-    // Test data sizes
-    let small_data = T::generate_small();
-    let medium_data = T::generate_medium();
-    let large_data = T::generate_large();
+    group.bench_function("fory_serialize", |b| {
+        b.iter(|| {
+            let _ = black_box(fory_serializer.serialize(black_box(&data)).unwrap());
+        })
+    });
 
-    // Fory serialization benchmarks
-    group.bench_with_input(
-        BenchmarkId::new("fory_serialize", "small"),
-        &small_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(fory_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
+    let fory_bytes = fory_serializer.serialize(&data).unwrap();
+    group.bench_function("fory_deserialize", |b| {
+        b.iter(|| {
+            let value: T = black_box(fory_serializer.deserialize(black_box(&fory_bytes)).unwrap());
+            black_box(value);
+        })
+    });
 
-    group.bench_with_input(
-        BenchmarkId::new("fory_serialize", "medium"),
-        &medium_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(fory_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
+    group.bench_function("protobuf_serialize", |b| {
+        b.iter(|| {
+            let _ = black_box(protobuf_serializer.serialize(black_box(&data)).unwrap());
+        })
+    });
 
-    group.bench_with_input(
-        BenchmarkId::new("fory_serialize", "large"),
-        &large_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(fory_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    // Fory deserialization benchmarks
-    let small_serialized = fory_serializer.serialize(&small_data).unwrap();
-    let medium_serialized = fory_serializer.serialize(&medium_data).unwrap();
-    let large_serialized = fory_serializer.serialize(&large_data).unwrap();
-
-    group.bench_with_input(
-        BenchmarkId::new("fory_deserialize", "small"),
-        &small_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(fory_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("fory_deserialize", "medium"),
-        &medium_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(fory_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("fory_deserialize", "large"),
-        &large_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(fory_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    // Protobuf serialization benchmarks
-    group.bench_with_input(
-        BenchmarkId::new("protobuf_serialize", "small"),
-        &small_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(protobuf_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("protobuf_serialize", "medium"),
-        &medium_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(protobuf_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("protobuf_serialize", "large"),
-        &large_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(protobuf_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    // Protobuf deserialization benchmarks
-    let small_protobuf_serialized = protobuf_serializer.serialize(&small_data).unwrap();
-    let medium_protobuf_serialized = protobuf_serializer.serialize(&medium_data).unwrap();
-    let large_protobuf_serialized = protobuf_serializer.serialize(&large_data).unwrap();
-
-    group.bench_with_input(
-        BenchmarkId::new("protobuf_deserialize", "small"),
-        &small_protobuf_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(protobuf_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("protobuf_deserialize", "medium"),
-        &medium_protobuf_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(protobuf_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("protobuf_deserialize", "large"),
-        &large_protobuf_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(protobuf_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    // JSON serialization benchmarks
-    group.bench_with_input(
-        BenchmarkId::new("json_serialize", "small"),
-        &small_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(json_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("json_serialize", "medium"),
-        &medium_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(json_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("json_serialize", "large"),
-        &large_data,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(json_serializer.serialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    // JSON deserialization benchmarks
-    let small_json_serialized = json_serializer.serialize(&small_data).unwrap();
-    let medium_json_serialized = json_serializer.serialize(&medium_data).unwrap();
-    let large_json_serialized = json_serializer.serialize(&large_data).unwrap();
-
-    group.bench_with_input(
-        BenchmarkId::new("json_deserialize", "small"),
-        &small_json_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(json_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("json_deserialize", "medium"),
-        &medium_json_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(json_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
-
-    group.bench_with_input(
-        BenchmarkId::new("json_deserialize", "large"),
-        &large_json_serialized,
-        |b, data| {
-            b.iter(|| {
-                let _ = black_box(json_serializer.deserialize(black_box(data)).unwrap());
-            })
-        },
-    );
+    let protobuf_bytes = protobuf_serializer.serialize(&data).unwrap();
+    group.bench_function("protobuf_deserialize", |b| {
+        b.iter(|| {
+            let value: T = black_box(
+                protobuf_serializer
+                    .deserialize(black_box(&protobuf_bytes))
+                    .unwrap(),
+            );
+            black_box(value);
+        })
+    });
 
     group.finish();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_round_trip<T>()
+    where
+        T: BenchmarkCase + std::fmt::Debug,
+        ForySerializer: BenchmarkSerializer<T>,
+        ProtobufSerializer: BenchmarkSerializer<T>,
+    {
+        let value = T::create();
+
+        let fory_serializer = ForySerializer::new();
+        let fory_bytes = fory_serializer.serialize(&value).unwrap();
+        let decoded: T = fory_serializer.deserialize(&fory_bytes).unwrap();
+        assert_eq!(value, decoded);
+
+        let protobuf_serializer = ProtobufSerializer::new();
+        let protobuf_bytes = protobuf_serializer.serialize(&value).unwrap();
+        let decoded: T = protobuf_serializer.deserialize(&protobuf_bytes).unwrap();
+        assert_eq!(value, decoded);
+    }
+
+    #[test]
+    fn benchmark_cases_round_trip() {
+        assert_round_trip::<NumericStruct>();
+        assert_round_trip::<Sample>();
+        assert_round_trip::<MediaContent>();
+        assert_round_trip::<StructList>();
+        assert_round_trip::<SampleList>();
+        assert_round_trip::<MediaContentList>();
+    }
 }

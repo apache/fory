@@ -118,6 +118,7 @@ import org.apache.fory.serializer.OptionalSerializers;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.SerializationUtils;
+import org.apache.fory.serializer.SerializedLambdaSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.Serializers;
@@ -323,6 +324,8 @@ public class ClassResolver extends TypeResolver {
     CollectionSerializers.registerDefaultSerializers(fory);
     MapSerializers.registerDefaultSerializers(fory);
     addDefaultSerializer(Locale.class, new LocaleSerializer(fory));
+    addDefaultSerializer(
+        SerializedLambda.class, new SerializedLambdaSerializer(fory, SerializedLambda.class));
     addDefaultSerializer(
         LambdaSerializer.ReplaceStub.class,
         new LambdaSerializer(fory, LambdaSerializer.ReplaceStub.class));
