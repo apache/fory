@@ -181,6 +181,9 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     let is_same_type = (header & IS_SAME_TYPE) != 0;
     let skip_ref_flag = is_same_type && !has_null;
     let is_declared = (header & DECL_ELEMENT_TYPE) != 0;
+    if field_type.generics.is_empty() {
+        return Err(Error::invalid_data("empty generics"));
+    }
     let default_elem_type = field_type.generics.first().unwrap();
     let (type_info, elem_field_type);
     let elem_type = if is_same_type && !is_declared {
@@ -212,6 +215,9 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         return Ok(());
     }
     let mut len_counter = 0;
+    if field_type.generics.len() < 2 {
+        return Err(Error::invalid_data("map must have at least 2 generics"));
+    }
     let default_key_type = field_type.generics.first().unwrap();
     let default_value_type = field_type.generics.get(1).unwrap();
     loop {
