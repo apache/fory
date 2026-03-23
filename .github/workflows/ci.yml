@@ -33,7 +33,6 @@ on:
   pull_request:
     paths-ignore:
       - "**/*.md"
-      - "docs/**"
       - "LICENSE"
       - ".vscode/**"
       - ".gitignore"

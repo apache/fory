@@ -92,7 +92,4 @@ def run(install_deps_only=False, skip_doc_tests=False, doc_tests_only=False):
 
     # Run documentation example tests
     if not skip_doc_tests:
-        try:
-            run_doc_example_tests()
-        except Exception as e:
-            logging.warning(f"Documentation example tests failed: {e}")
+        run_doc_example_tests()
