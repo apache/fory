@@ -60,6 +60,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 const SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
+const MAX_TYPE_META_FIELDS: usize = i16::MAX as usize;
 const REGISTER_BY_NAME_FLAG: u8 = 0b100000;
 const FIELD_NAME_SIZE_THRESHOLD: usize = 0b1111;
 /// Marker value in encoding bits to indicate field ID mode (instead of field name)
@@ -642,6 +643,9 @@ impl TypeMeta {
             length as usize
         };
         let bytes = reader.read_bytes(length)?;
+        if encoding_idx as usize >= encodings.len() {
+            return Err(Error::invalid_data("encoding_index out of bounds"));
+        }
         let encoding = encodings[encoding_idx as usize];
         decoder.decode(bytes, encoding)
     }
@@ -816,6 +820,13 @@ impl TypeMeta {
         let mut num_fields = meta_header as usize & SMALL_NUM_FIELDS_THRESHOLD;
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
             num_fields += reader.read_varuint32()? as usize;
+        }
+        // limit the number of fields to prevent potential OOM when creating Vec<FieldInfo>
+        if num_fields > MAX_TYPE_META_FIELDS {
+            return Err(Error::invalid_data(format!(
+                "too many fields in type meta: {}, max: {}",
+                num_fields, MAX_TYPE_META_FIELDS
+            )));
         }
         let mut type_id;
         let mut user_type_id = NO_USER_TYPE_ID;
