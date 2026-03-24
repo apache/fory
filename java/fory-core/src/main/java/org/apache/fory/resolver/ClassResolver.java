@@ -677,7 +677,8 @@ public class ClassResolver extends TypeResolver {
         if (classId < typeIdToTypeInfo.length && typeIdToTypeInfo[classId] != null) {
           throw new IllegalArgumentException(
               String.format(
-                  "Class %s with id %s has been registered, registering class %s with same id are not allowed.",
+                  "Class %s with id %s has been registered, registering class %s with same id are"
+                      + " not allowed.",
                   typeIdToTypeInfo[classId].getCls(), classId, cls.getName()));
         }
       } else {
@@ -685,7 +686,8 @@ public class ClassResolver extends TypeResolver {
         if (existingInfo != null) {
           throw new IllegalArgumentException(
               String.format(
-                  "Class %s with id %s has been registered, registering class %s with same id are not allowed.",
+                  "Class %s with id %s has been registered, registering class %s with same id are"
+                      + " not allowed.",
                   existingInfo.getCls(), classId, cls.getName()));
         }
       }
@@ -694,7 +696,8 @@ public class ClassResolver extends TypeResolver {
         || extRegistry.registeredClasses.inverse().containsKey(cls)) {
       throw new IllegalArgumentException(
           String.format(
-              "Class %s with name %s has been registered, registering class %s with same name are not allowed.",
+              "Class %s with name %s has been registered, registering class %s with same name are"
+                  + " not allowed.",
               extRegistry.registeredClasses.get(name), name, cls));
     }
   }
