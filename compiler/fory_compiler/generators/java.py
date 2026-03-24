@@ -417,6 +417,7 @@ class JavaGenerator(BaseGenerator):
 
         return GeneratedFile(path=path, content="\n".join(lines))
 
+    # Generates a Java class file from a message schema definition.
     def generate_message_file(self, message: Message) -> GeneratedFile:
         """Generate a Java class file for a message."""
         lines = []
@@ -513,6 +514,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{message.name}.java"
 
+        # Combine all generated lines into a single Java source file.
         return GeneratedFile(path=path, content="\n".join(lines))
 
     def generate_outer_class_file(self, outer_classname: str) -> GeneratedFile:
