@@ -1203,6 +1203,7 @@ class JavaGenerator(BaseGenerator):
                             "org.apache.fory.collection."
                             + self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
                         )
+                    self.collect_type_imports(field_type.element_type, imports)
                     return  # No import needed for primitive arrays or primitive lists
             imports.add("java.util.List")
             if self.is_ref_target_type(field_type.element_type):

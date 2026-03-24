@@ -314,7 +314,14 @@ public final class Float16 extends Number implements Comparable<Float16>, Serial
   }
 
   public static int compare(Float16 a, Float16 b) {
-    return Float.compare(a.floatValue(), b.floatValue());
+    if (a.bits == b.bits) {
+      return 0;
+    }
+    int compare = Float.compare(a.floatValue(), b.floatValue());
+    if (compare != 0) {
+      return compare;
+    }
+    return Integer.compare(a.bits & 0xFFFF, b.bits & 0xFFFF);
   }
 
   public static Float16 parse(String s) {

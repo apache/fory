@@ -173,6 +173,17 @@ public class Float16Test {
   }
 
   @Test
+  public void testCompareDistinguishesNanPayloads() {
+    Float16 nan1 = Float16.fromBits((short) 0x7e01);
+    Float16 nan2 = Float16.fromBits((short) 0x7e02);
+
+    assertNotEquals(nan1, nan2);
+    assertTrue(Float16.compare(nan1, nan2) < 0);
+    assertTrue(Float16.compare(nan2, nan1) > 0);
+    assertEquals(0, Float16.compare(nan1, nan1));
+  }
+
+  @Test
   public void testParse() {
     assertEquals(1.0f, Float16.parse("1.0").floatValue(), 0.0f);
     assertEquals(2.5f, Float16.parse("2.5").floatValue(), 0.01f);

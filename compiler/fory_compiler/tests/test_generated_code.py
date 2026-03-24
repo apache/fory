@@ -522,6 +522,23 @@ def test_java_float16_equals_hash_contract_generation():
     assert "return Objects.hash(f16, optF16);" in java_output
 
 
+def test_java_repeated_float16_generation_imports_float16():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message RepeatedFloat16 {
+                list<float16> vals = 1;
+            }
+            """
+        )
+    )
+    java_output = render_files(generate_files(schema, JavaGenerator))
+    assert "import org.apache.fory.type.Float16;" in java_output
+    assert "private Float16[] vals;" in java_output
+
+
 def test_go_bfloat16_generation():
     idl = dedent(
         """
