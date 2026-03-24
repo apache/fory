@@ -34,7 +34,7 @@ import 'package:fory/fory.dart';
 part 'example.g.dart';
 
 @foryClass
-class SomeClass with _$SomeClassFory {
+class SomeClass {
   late int id;
   late String name;
   late Map<String, double> map;
@@ -51,13 +51,13 @@ After annotating your class with `@foryClass`, run:
 dart run build_runner build
 ```
 
-This generates the necessary code in `example.g.dart` and creates the `_$SomeClassFory` mixin.
+This generates the necessary schema metadata in `example.g.dart`.
 
 ### Serializing and Deserializing
 
 ```dart
 Fory fory = Fory(ref: true);
-fory.register($SomeClass, typename: "example.SomeClass");
+fory.registerStruct(SomeClass, typename: "example.SomeClass");
 SomeClass obj = SomeClass(1, 'SomeClass', {'a': 1.0});
 
 // Serialize
@@ -84,7 +84,7 @@ enum EnumFoo {
 Registration is similar to classes:
 
 ```dart
-fory.register($EnumFoo, typename: "example.EnumFoo");
+fory.registerEnum(EnumFoo, typename: "example.EnumFoo");
 ```
 
 ## Type Support

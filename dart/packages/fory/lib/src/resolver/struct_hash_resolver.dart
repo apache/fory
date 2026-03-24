@@ -87,6 +87,12 @@ class StructHashResolver {
   }
 
   int _fingerprintTypeId(ObjType objType) {
+    if (objType == ObjType.INT32) {
+      return ObjType.VAR_INT32.id;
+    }
+    if (objType == ObjType.INT64) {
+      return ObjType.VAR_INT64.id;
+    }
     if (objType == ObjType.UNKNOWN) {
       return ObjType.UNKNOWN.id;
     }

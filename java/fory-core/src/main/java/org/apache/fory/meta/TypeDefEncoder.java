@@ -61,13 +61,11 @@ class TypeDefEncoder {
 
   /** Build class definition from fields of class. */
   static TypeDef buildTypeDef(Fory fory, Class<?> type) {
+    XtypeResolver resolver = (XtypeResolver) fory.getTypeResolver();
     DescriptorGrouper descriptorGrouper =
-        fory.getXtypeResolver()
-            .createDescriptorGrouper(
-                fory.getXtypeResolver().getFieldDescriptors(type, true),
-                false,
-                Function.identity());
-    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(type);
+        resolver.createDescriptorGrouper(
+            resolver.getFieldDescriptors(type, true), false, Function.identity());
+    TypeInfo typeInfo = resolver.getTypeInfo(type);
     List<Field> fields;
     int typeId = typeInfo.getTypeId();
     if (Types.isStructType(typeId)) {
@@ -78,8 +76,7 @@ class TypeDefEncoder {
     } else {
       fields = new ArrayList<>();
     }
-    return buildTypeDefWithFieldInfos(
-        fory.getXtypeResolver(), type, buildFieldsInfo(fory.getXtypeResolver(), type, fields));
+    return buildTypeDefWithFieldInfos(resolver, type, buildFieldsInfo(resolver, type, fields));
   }
 
   static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, Class<?> type, List<Field> fields) {
@@ -162,18 +159,11 @@ class TypeDefEncoder {
     buffer.putByte(0, currentClassHeader);
     writeFieldsInfo(resolver, buffer, fields);
 
-    byte[] compressed =
-        resolver
-            .getFory()
-            .getMetaCompressor()
-            .compress(buffer.getHeapMemory(), 0, buffer.writerIndex());
-    boolean isCompressed = false;
-    if (compressed.length < buffer.writerIndex()) {
-      isCompressed = true;
-      buffer = MemoryBuffer.fromByteArray(compressed);
-      buffer.writerIndex(compressed.length);
-    }
-    return prependHeader(buffer, isCompressed, !fields.isEmpty());
+    // Temporary xlang behavior: always write TypeMeta uncompressed.
+    // Some runtimes still don't support TypeMeta decompression, so we must avoid emitting
+    // compressed xlang TypeMeta until all xlang implementations support decompress.
+    // Note: native mode is unchanged and still uses NativeTypeDefEncoder compression flow.
+    return prependHeader(buffer, false, !fields.isEmpty());
   }
 
   static Map<String, FieldInfo> getClassFields(Class<?> type, List<FieldInfo> fieldsInfo) {
@@ -221,7 +211,7 @@ class TypeDefEncoder {
         header |= (size << 2);
         buffer.writeByte(header);
       }
-      fieldType.xwrite(buffer, false);
+      fieldType.writeCrossLanguage(buffer, false);
       // write field name
       if (!fieldInfo.hasFieldId()) {
         buffer.writeBytes(encoded);

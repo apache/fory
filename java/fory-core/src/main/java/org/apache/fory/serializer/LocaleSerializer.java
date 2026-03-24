@@ -70,15 +70,15 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> {
   }
 
   public void write(MemoryBuffer buffer, Locale l) {
-    fory.writeJavaString(buffer, l.getLanguage());
-    fory.writeJavaString(buffer, l.getCountry());
-    fory.writeJavaString(buffer, l.getVariant());
+    fory.writeString(buffer, l.getLanguage());
+    fory.writeString(buffer, l.getCountry());
+    fory.writeString(buffer, l.getVariant());
   }
 
   public Locale read(MemoryBuffer buffer) {
-    String language = fory.readJavaString(buffer);
-    String country = fory.readJavaString(buffer);
-    String variant = fory.readJavaString(buffer);
+    String language = fory.readString(buffer);
+    String country = fory.readString(buffer);
+    String variant = fory.readString(buffer);
     // Fast path for Default/US/SIMPLIFIED_CHINESE
     Locale defaultLocale = Locale.getDefault();
     if (isSame(defaultLocale, language, country, variant)) {

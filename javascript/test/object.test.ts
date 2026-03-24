@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { Type, TypeInfo } from '../packages/fory/index';
+import Fory, { Type, TypeInfo } from '../packages/core/index';
 import { describe, expect, test } from '@jest/globals';
 import * as beautify from 'js-beautify';
 
@@ -82,9 +82,7 @@ describe('object', () => {
     const typeInfo = Type.struct("example.foo", {
       a: Type.struct("example.bar", {
         b: Type.string()
-      })
-    }, {
-      fieldInfo: { a: { nullable: true } }
+      }).setNullable(true)
     })
     const fory = new Fory({ refTracking: true });
     const { serialize, deserialize } = fory.registerSerializer(typeInfo);
@@ -137,11 +135,12 @@ describe('object', () => {
       a: Type.struct("example.bar", {
         b: Type.string(),
       }),
-      a2: Type.struct("example.foo")
+      a2: Type.struct("example.foo").setTrackingRef(true)
     })
 
     const fory = new Fory({
-      refTracking: true, hooks: {
+      refTracking: true, 
+      hooks: {
         afterCodeGenerated: (code) => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
         }
@@ -202,11 +201,7 @@ describe('object', () => {
     const hps = undefined;
     const typeInfo = Type.struct('ws-channel-protocol', {
       kind: Type.string(),
-      path: Type.string(),
-    }, {
-      fieldInfo: {
-        path: { nullable: true }
-      }
+      path: Type.string().setNullable(true),
     });
 
     const fory = new Fory({ hps });
@@ -229,6 +224,30 @@ describe('object', () => {
     const result = deserialize(input);
     expect(result).toEqual({ a: "Hello, world! 🌍😊" });
   });
+
+  test('should support struct evolving override', () => {
+    const fory = new Fory({ compatible: true });
+    const evolvingType = Type.struct(
+      { typeId: 1001 },
+      {
+        f1: Type.string(),
+      }
+    );
+    const fixedType = Type.struct(
+      { typeId: 1002, evolving: false },
+      {
+        f1: Type.string(),
+      }
+    );
+
+    const evolvingSerializer = fory.registerSerializer(evolvingType);
+    const fixedSerializer = fory.registerSerializer(fixedType);
+
+    const evolvingPayload = evolvingSerializer.serialize({ f1: "payload" }) as Buffer;
+    const fixedPayload = fixedSerializer.serialize({ f1: "payload" }) as Buffer;
+
+    expect(fixedPayload.length).toBeLessThan(evolvingPayload.length);
+    expect(evolvingSerializer.deserialize(evolvingPayload)).toEqual({ f1: "payload" });
+    expect(fixedSerializer.deserialize(fixedPayload)).toEqual({ f1: "payload" });
+  });
 });
-
-

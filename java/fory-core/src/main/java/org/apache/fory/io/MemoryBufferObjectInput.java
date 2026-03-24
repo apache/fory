@@ -165,6 +165,6 @@ public class MemoryBufferObjectInput extends InputStream implements ObjectInput 
 
   @Override
   public String readUTF() throws IOException {
-    return stringSerializer.readJavaString(buffer);
+    return stringSerializer.readString(buffer);
   }
 }

@@ -18,10 +18,10 @@
 import enum
 import typing
 from typing import List
-from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type
+from pyfory.types import TypeId, is_polymorphic_type, is_union_type
 from pyfory._fory import NO_USER_TYPE_ID
-from pyfory.buffer import Buffer
-from pyfory.type_util import infer_field
+from pyfory.serialization import Buffer
+from pyfory.type_util import get_homogeneous_tuple_elem_type, infer_field
 from pyfory.meta.metastring import Encoding
 from pyfory.type_util import infer_field_types
 
@@ -168,20 +168,22 @@ class TypeDef:
             nullable_fields[resolved_name] = field_info.field_type.is_nullable
 
         dynamic_fields = {}
+        ref_fields = {}
         for i, field_info in enumerate(self.fields):
             resolved_name = field_names[i]
             type_id = field_info.field_type.type_id
+            ref_fields[resolved_name] = field_info.field_type.is_tracking_ref
             if is_polymorphic_type(type_id):
                 dynamic_fields[resolved_name] = True
 
         return DataClassSerializer(
             fory,
             self.cls,
-            xlang=fory.xlang,
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
             nullable_fields=nullable_fields,
             dynamic_fields=dynamic_fields,
+            ref_fields=ref_fields,
         )
 
     def __repr__(self):
@@ -220,12 +222,12 @@ class FieldInfo:
         """Returns True if this field uses TAG_ID encoding."""
         return self.tag_id >= 0
 
-    def xwrite(self, buffer: Buffer):
-        self.field_type.xwrite(buffer, True)
+    def write(self, buffer: Buffer):
+        self.field_type.write(buffer, True)
 
     @classmethod
-    def xread(cls, buffer: Buffer, resolver):
-        field_type = FieldType.xread(buffer, resolver)
+    def read(cls, buffer: Buffer, resolver):
+        field_type = FieldType.read(buffer, resolver)
         # Note: name and defined_class would need to be read from the buffer
         # This is a simplified version
         return cls("", field_type, "")
@@ -250,7 +252,7 @@ class FieldType:
         self.is_tracking_ref = is_tracking_ref
         self.tracking_ref_override = None
 
-    def xwrite(self, buffer: Buffer, write_flags: bool = True):
+    def write(self, buffer: Buffer, write_flags: bool = True):
         xtype_id = self.type_id
         if write_flags:
             xtype_id = xtype_id << 2
@@ -263,28 +265,28 @@ class FieldType:
             buffer.write_uint8(xtype_id)
         # Handle nested types
         if self.type_id in [TypeId.LIST, TypeId.SET]:
-            self.element_type.xwrite(buffer, True)
+            self.element_type.write(buffer, True)
         elif self.type_id == TypeId.MAP:
-            self.key_type.xwrite(buffer, True)
-            self.value_type.xwrite(buffer, True)
+            self.key_type.write(buffer, True)
+            self.value_type.write(buffer, True)
 
     @classmethod
-    def xread(cls, buffer: Buffer, resolver):
+    def read(cls, buffer: Buffer, resolver):
         xtype_id = buffer.read_var_uint32()
         is_tracking_ref = (xtype_id & 0b1) != 0
         is_nullable = (xtype_id & 0b10) != 0
         xtype_id = xtype_id >> 2
-        return cls.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
+        return cls.read_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
     @classmethod
-    def xread_with_type(cls, buffer: Buffer, resolver, xtype_id: int, is_nullable: bool, is_tracking_ref: bool):
+    def read_with_type(cls, buffer: Buffer, resolver, xtype_id: int, is_nullable: bool, is_tracking_ref: bool):
         user_type_id = NO_USER_TYPE_ID
         if xtype_id in [TypeId.LIST, TypeId.SET]:
-            element_type = cls.xread(buffer, resolver)
+            element_type = cls.read(buffer, resolver)
             return CollectionFieldType(xtype_id, True, is_nullable, is_tracking_ref, element_type)
         elif xtype_id == TypeId.MAP:
-            key_type = cls.xread(buffer, resolver)
-            value_type = cls.xread(buffer, resolver)
+            key_type = cls.read(buffer, resolver)
+            value_type = cls.read(buffer, resolver)
             return MapFieldType(xtype_id, True, is_nullable, is_tracking_ref, key_type, value_type)
         elif xtype_id == TypeId.UNKNOWN:
             return DynamicFieldType(xtype_id, False, is_nullable, is_tracking_ref, user_type_id=user_type_id)
@@ -354,12 +356,23 @@ class CollectionFieldType(FieldType):
         self.element_type = element_type
 
     def create_serializer(self, resolver, type_):
-        from pyfory.serializer import ListSerializer, SetSerializer
+        from pyfory.serializer import ListSerializer, SetSerializer, TupleSerializer
 
-        elem_type = type_[1] if type_ and len(type_) >= 2 else None
+        declared_root_type = type_
+        elem_type = None
+        if isinstance(type_, list):
+            declared_root_type = type_[0]
+        if isinstance(declared_root_type, tuple):
+            if declared_root_type:
+                declared_root_type, *extra = declared_root_type
+                elem_type = extra[0] if extra else None
+        elif type_ and len(type_) >= 2:
+            elem_type = type_[1]
         elem_serializer = self.element_type.create_serializer(resolver, elem_type)
         elem_override = getattr(self.element_type, "tracking_ref_override", None)
         if self.type_id == TypeId.LIST:
+            if declared_root_type in (tuple, typing.Tuple):
+                return TupleSerializer(resolver.fory, tuple, elem_serializer, elem_override)
             return ListSerializer(resolver.fory, list, elem_serializer, elem_override)
         elif self.type_id == TypeId.SET:
             return SetSerializer(resolver.fory, set, elem_serializer, elem_override)
@@ -481,23 +494,16 @@ def build_field_infos(type_resolver, cls):
         if fory_meta is not None:
             is_nullable = fory_meta.nullable
         else:
-            # For xlang mode: only Optional[T] types are nullable by default
-            # For native mode: all reference types are nullable by default
-            if not type_resolver.fory.xlang:
-                is_nullable = is_optional or not is_primitive_type(unwrapped_type)
-            else:
-                # For xlang: only Optional[T] types are nullable
-                is_nullable = is_optional
+            # Default behavior: Optional[T] fields are nullable. Global field_nullable
+            # can force nullable for all fields.
+            is_nullable = is_optional or field_nullable
 
         # Determine ref tracking: field.ref AND global track_ref
-        # For xlang mode: ref tracking defaults to false unless explicitly annotated
-        # This matches Java's behavior in TypeResolver.getFieldDescriptors()
         if fory_meta is not None:
             is_tracking_ref = fory_meta.ref and global_ref_tracking
         else:
-            # In xlang mode, default to false (matches Java's xlang behavior)
-            # In native mode, use global track_ref setting
-            is_tracking_ref = global_ref_tracking if not type_resolver.fory.xlang else False
+            # By default, field-level ref tracking is off unless explicitly annotated.
+            is_tracking_ref = False
 
         # Get tag_id from metadata (-1 if not specified)
         tag_id = fory_meta.id if fory_meta is not None else -1
@@ -574,6 +580,10 @@ def build_field_type_from_type_ids_with_ref(
                 args = typing.get_args(type_hint) if hasattr(typing, "get_args") else getattr(type_hint, "__args__", ())
                 if args:
                     elem_hint, elem_ref_override = unwrap_ref(args[0])
+            elif origin in (tuple, typing.Tuple):
+                tuple_elem_hint = get_homogeneous_tuple_elem_type(type_hint)
+                if tuple_elem_hint is not None:
+                    elem_hint, elem_ref_override = unwrap_ref(tuple_elem_hint)
         elem_tracking_ref = is_tracking_ref
         if elem_ref_override is not None:
             elem_tracking_ref = elem_ref_override and is_tracking_ref

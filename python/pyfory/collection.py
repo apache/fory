@@ -26,8 +26,6 @@ For production use, see collection.pxi which contains the optimized Cython
 implementations that are included in serialization.pyx.
 """
 
-from typing import Dict
-
 from pyfory._serializer import Serializer, StringSerializer
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, NULL_FLAG
 
@@ -113,49 +111,35 @@ class CollectionSerializer(Serializer):
             buffer.write_var_uint32(0)
             return
         collect_flag, typeinfo = self.write_header(buffer, value)
+        serializer = (
+            self.elem_serializer if (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) != 0 and self.elem_serializer is not None else typeinfo.serializer
+        )
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if (collect_flag & COLL_TRACKING_REF) != 0:
-                self._write_same_type_ref(buffer, value, typeinfo)
+                self._write_same_type_ref(buffer, value, serializer)
             elif (collect_flag & COLL_HAS_NULL) == 0:
-                self._write_same_type_no_ref(buffer, value, typeinfo)
+                self._write_same_type_no_ref(buffer, value, serializer)
             else:
-                self._write_same_type_has_null(buffer, value, typeinfo)
+                self._write_same_type_has_null(buffer, value, serializer)
         else:
             self._write_different_types(buffer, value, collect_flag)
 
-    def _write_same_type_no_ref(self, buffer, value, typeinfo):
-        if not self.fory.xlang:
-            for s in value:
-                typeinfo.serializer.write(buffer, s)
-        else:
-            for s in value:
-                typeinfo.serializer.xwrite(buffer, s)
+    def _write_same_type_no_ref(self, buffer, value, serializer):
+        for s in value:
+            serializer.write(buffer, s)
 
-    def _write_same_type_has_null(self, buffer, value, typeinfo):
-        if not self.fory.xlang:
-            for s in value:
-                if s is None:
-                    buffer.write_int8(NULL_FLAG)
-                else:
-                    buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                    typeinfo.serializer.write(buffer, s)
-        else:
-            for s in value:
-                if s is None:
-                    buffer.write_int8(NULL_FLAG)
-                else:
-                    buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                    typeinfo.serializer.xwrite(buffer, s)
+    def _write_same_type_has_null(self, buffer, value, serializer):
+        for s in value:
+            if s is None:
+                buffer.write_int8(NULL_FLAG)
+            else:
+                buffer.write_int8(NOT_NULL_VALUE_FLAG)
+                serializer.write(buffer, s)
 
-    def _write_same_type_ref(self, buffer, value, typeinfo):
-        if not self.fory.xlang:
-            for s in value:
-                if not self.ref_resolver.write_ref_or_null(buffer, s):
-                    typeinfo.serializer.write(buffer, s)
-        else:
-            for s in value:
-                if not self.ref_resolver.write_ref_or_null(buffer, s):
-                    typeinfo.serializer.xwrite(buffer, s)
+    def _write_same_type_ref(self, buffer, value, serializer):
+        for s in value:
+            if not self.ref_resolver.write_ref_or_null(buffer, s):
+                serializer.write(buffer, s)
 
     def _write_different_types(self, buffer, value, collect_flag=0):
         tracking_ref = (collect_flag & COLL_TRACKING_REF) != 0
@@ -166,19 +150,13 @@ class CollectionSerializer(Serializer):
                 if not self.ref_resolver.write_ref_or_null(buffer, s):
                     typeinfo = self.type_resolver.get_type_info(type(s))
                     self.type_resolver.write_type_info(buffer, typeinfo)
-                    if not self.fory.xlang:
-                        typeinfo.serializer.write(buffer, s)
-                    else:
-                        typeinfo.serializer.xwrite(buffer, s)
+                    typeinfo.serializer.write(buffer, s)
         elif not has_null:
             # When ref tracking is disabled and no nulls, write type info directly
             for s in value:
                 typeinfo = self.type_resolver.get_type_info(type(s))
                 self.type_resolver.write_type_info(buffer, typeinfo)
-                if not self.fory.xlang:
-                    typeinfo.serializer.write(buffer, s)
-                else:
-                    typeinfo.serializer.xwrite(buffer, s)
+                typeinfo.serializer.write(buffer, s)
         else:
             # When ref tracking is disabled but has nulls, write null flag first
             for s in value:
@@ -188,13 +166,13 @@ class CollectionSerializer(Serializer):
                     buffer.write_int8(NOT_NULL_VALUE_FLAG)
                     typeinfo = self.type_resolver.get_type_info(type(s))
                     self.type_resolver.write_type_info(buffer, typeinfo)
-                    if not self.fory.xlang:
-                        typeinfo.serializer.write(buffer, s)
-                    else:
-                        typeinfo.serializer.xwrite(buffer, s)
+                    typeinfo.serializer.write(buffer, s)
 
     def read(self, buffer):
         len_ = buffer.read_var_uint32()
+        # Check size limit before collection preallocation to prevent OOM attacks
+        if len_ > self.fory.max_collection_size:
+            raise ValueError(f"Collection size {len_} exceeds the configured limit of {self.fory.max_collection_size}")
         collection_ = self.new_instance(self.type_)
         if len_ == 0:
             return collection_
@@ -202,14 +180,16 @@ class CollectionSerializer(Serializer):
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_type_info(buffer)
+                serializer = typeinfo.serializer
             else:
                 typeinfo = self.elem_type_info
+                serializer = self.elem_serializer
             if (collect_flag & COLL_TRACKING_REF) != 0:
-                self._read_same_type_ref(buffer, len_, collection_, typeinfo)
+                self._read_same_type_ref(buffer, len_, collection_, serializer)
             elif (collect_flag & COLL_HAS_NULL) == 0:
-                self._read_same_type_no_ref(buffer, len_, collection_, typeinfo)
+                self._read_same_type_no_ref(buffer, len_, collection_, serializer)
             else:
-                self._read_same_type_has_null(buffer, len_, collection_, typeinfo)
+                self._read_same_type_has_null(buffer, len_, collection_, serializer)
         else:
             self._read_different_types(buffer, len_, collection_, collect_flag)
         return collection_
@@ -220,49 +200,35 @@ class CollectionSerializer(Serializer):
     def _add_element(self, collection_, element):
         raise NotImplementedError
 
-    def _read_same_type_no_ref(self, buffer, len_, collection_, typeinfo):
+    def _read_same_type_no_ref(self, buffer, len_, collection_, serializer):
         self.fory.inc_depth()
-        if not self.fory.xlang:
-            for _ in range(len_):
-                self._add_element(collection_, typeinfo.serializer.read(buffer))
-        else:
-            for _ in range(len_):
+        for _ in range(len_):
+            self._add_element(
+                collection_,
+                self.fory.read_no_ref(buffer, serializer=serializer),
+            )
+        self.fory.dec_depth()
+
+    def _read_same_type_has_null(self, buffer, len_, collection_, serializer):
+        self.fory.inc_depth()
+        for _ in range(len_):
+            if buffer.read_int8() == NULL_FLAG:
+                self._add_element(collection_, None)
+            else:
                 self._add_element(
                     collection_,
-                    self.fory.xread_no_ref(buffer, serializer=typeinfo.serializer),
+                    self.fory.read_no_ref(buffer, serializer=serializer),
                 )
         self.fory.dec_depth()
 
-    def _read_same_type_has_null(self, buffer, len_, collection_, typeinfo):
-        self.fory.inc_depth()
-        if not self.fory.xlang:
-            for _ in range(len_):
-                if buffer.read_int8() == NULL_FLAG:
-                    self._add_element(collection_, None)
-                else:
-                    self._add_element(collection_, typeinfo.serializer.read(buffer))
-        else:
-            for _ in range(len_):
-                if buffer.read_int8() == NULL_FLAG:
-                    self._add_element(collection_, None)
-                else:
-                    self._add_element(
-                        collection_,
-                        self.fory.xread_no_ref(buffer, serializer=typeinfo.serializer),
-                    )
-        self.fory.dec_depth()
-
-    def _read_same_type_ref(self, buffer, len_, collection_, typeinfo):
+    def _read_same_type_ref(self, buffer, len_, collection_, serializer):
         self.fory.inc_depth()
         for _ in range(len_):
             ref_id = self.ref_resolver.try_preserve_ref_id(buffer)
             if ref_id < NOT_NULL_VALUE_FLAG:
                 obj = self.ref_resolver.get_read_object()
             else:
-                if not self.fory.xlang:
-                    obj = typeinfo.serializer.read(buffer)
-                else:
-                    obj = typeinfo.serializer.xread(buffer)
+                obj = serializer.read(buffer)
                 self.ref_resolver.set_read_object(ref_id, obj)
             self._add_element(collection_, obj)
         self.fory.dec_depth()
@@ -274,7 +240,7 @@ class CollectionSerializer(Serializer):
         if tracking_ref:
             # When ref tracking is enabled, read with ref handling
             for i in range(len_):
-                elem = get_next_element(buffer, self.ref_resolver, self.type_resolver, not self.fory.xlang)
+                elem = get_next_element(buffer, self.ref_resolver, self.type_resolver)
                 self._add_element(collection_, elem)
         elif not has_null:
             # When ref tracking is disabled and no nulls, read type info directly
@@ -282,10 +248,8 @@ class CollectionSerializer(Serializer):
                 typeinfo = self.type_resolver.read_type_info(buffer)
                 if typeinfo is None:
                     elem = None
-                elif not self.fory.xlang:
-                    elem = typeinfo.serializer.read(buffer)
                 else:
-                    elem = self.fory.xread_no_ref(buffer, serializer=typeinfo.serializer)
+                    elem = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
                 self._add_element(collection_, elem)
         else:
             # When ref tracking is disabled but has nulls, read null flag first
@@ -297,18 +261,10 @@ class CollectionSerializer(Serializer):
                     typeinfo = self.type_resolver.read_type_info(buffer)
                     if typeinfo is None:
                         elem = None
-                    elif not self.fory.xlang:
-                        elem = typeinfo.serializer.read(buffer)
                     else:
-                        elem = self.fory.xread_no_ref(buffer, serializer=typeinfo.serializer)
+                        elem = self.fory.read_no_ref(buffer, serializer=typeinfo.serializer)
                 self._add_element(collection_, elem)
         self.fory.dec_depth()
-
-    def xwrite(self, buffer, value):
-        self.write(buffer, value)
-
-    def xread(self, buffer):
-        return self.read(buffer)
 
 
 class ListSerializer(CollectionSerializer):
@@ -347,15 +303,12 @@ class SetSerializer(CollectionSerializer):
         collection_.add(element)
 
 
-def get_next_element(buffer, ref_resolver, type_resolver, is_py):
+def get_next_element(buffer, ref_resolver, type_resolver):
     ref_id = ref_resolver.try_preserve_ref_id(buffer)
     if ref_id < NOT_NULL_VALUE_FLAG:
         return ref_resolver.get_read_object()
     typeinfo = type_resolver.read_type_info(buffer)
-    if is_py:
-        obj = typeinfo.serializer.read(buffer)
-    else:
-        obj = typeinfo.serializer.xread(buffer)
+    obj = typeinfo.serializer.read(buffer)
     ref_resolver.set_read_object(ref_id, obj)
     return obj
 
@@ -428,7 +381,7 @@ class MapSerializer(Serializer):
         items_iter = iter(obj.items())
         key, value = next(items_iter)
         has_next = True
-        write_ref = fory.write_ref if not self.fory.xlang else fory.xwrite_ref
+        write_ref = fory.write_ref
         while has_next:
             while True:
                 if key is not None:
@@ -452,8 +405,6 @@ class MapSerializer(Serializer):
                             value_write_ref = self.value_tracking_ref
                             if value_write_ref:
                                 buffer.write_int8(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF)
-                                if not ref_resolver.write_ref_or_null(buffer, key):
-                                    value_serializer.write(buffer, key)
                                 if not ref_resolver.write_ref_or_null(buffer, value):
                                     value_serializer.write(buffer, value)
                             else:
@@ -475,6 +426,7 @@ class MapSerializer(Serializer):
 
             key_cls = type(key)
             value_cls = type(value)
+            fory.enter_flush_barrier()
             buffer.write_int16(-1)
             chunk_size_offset = buffer.get_writer_index() - 1
             chunk_header = 0
@@ -527,19 +479,24 @@ class MapSerializer(Serializer):
             key_serializer = self.key_serializer
             value_serializer = self.value_serializer
             buffer.put_uint8(chunk_size_offset, chunk_size)
+            fory.exit_flush_barrier()
+            fory.try_flush()
 
     def read(self, buffer):
         fory = self.fory
         ref_resolver = self.ref_resolver
         type_resolver = self.type_resolver
         size = buffer.read_var_uint32()
+        # Check size limit to prevent OOM attacks from malicious payloads
+        if size > fory.max_collection_size:
+            raise ValueError(f"Map size {size} exceeds the configured limit of {fory.max_collection_size}")
         map_ = {}
         ref_resolver.reference(map_)
         chunk_header = 0
         if size != 0:
             chunk_header = buffer.read_uint8()
         key_serializer, value_serializer = self.key_serializer, self.value_serializer
-        read_ref = fory.read_ref if not self.fory.xlang else fory.xread_ref
+        read_ref = fory.read_ref
         fory.inc_depth()
         while size > 0:
             while True:
@@ -624,27 +581,13 @@ class MapSerializer(Serializer):
         return map_
 
     def _write_obj(self, serializer, buffer, obj):
-        if not self.fory.xlang:
-            serializer.write(buffer, obj)
-        else:
-            serializer.xwrite(buffer, obj)
+        serializer.write(buffer, obj)
 
     def _read_obj(self, serializer, buffer):
-        if not self.fory.xlang:
-            return serializer.read(buffer)
-        else:
-            return serializer.xread(buffer)
+        return serializer.read(buffer)
 
     def _read_obj_no_ref(self, serializer, buffer):
-        if not self.fory.xlang:
-            return serializer.read(buffer)
-        return self.fory.xread_no_ref(buffer, serializer=serializer)
-
-    def xwrite(self, buffer, value: Dict):
-        self.write(buffer, value)
-
-    def xread(self, buffer):
-        return self.read(buffer)
+        return self.fory.read_no_ref(buffer, serializer=serializer)
 
 
 SubMapSerializer = MapSerializer

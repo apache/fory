@@ -28,6 +28,7 @@ part of 'nested_collection_example.dart';
 final $NestedObject = TypeSpec(
   NestedObject,
   false,
+  true,
   false,
   [
     FieldSpec(
@@ -127,8 +128,3 @@ final $NestedObject = TypeSpec(
   null,
   () => NestedObject(),
 );
-
-mixin _$NestedObjectFory implements ForyTypeProvider {
-  @override
-  Type get foryType => NestedObject;
-}

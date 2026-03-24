@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.collection;
 
+import java.lang.invoke.MethodHandle;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -113,11 +114,24 @@ public class MapSerializers {
   }
 
   public static class SortedMapSerializer<T extends SortedMap> extends MapSerializer<T> {
+    private MethodHandle comparatorConstructor;
+    private MethodHandle noArgConstructor;
 
     public SortedMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, true);
       if (cls != TreeMap.class) {
-        this.constructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
+        try {
+          comparatorConstructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
+        } catch (Exception e) {
+          // Subclass doesn't have a (Comparator) constructor, fall back to no-arg constructor.
+          try {
+            noArgConstructor = ReflectionUtils.getCtrHandle(cls);
+          } catch (Exception e2) {
+            throw new UnsupportedOperationException(
+                "Class " + cls.getName() + " requires either a (Comparator) or no-arg constructor",
+                e2);
+          }
+        }
       }
     }
 
@@ -141,7 +155,11 @@ public class MapSerializers {
         map = (T) new TreeMap(comparator);
       } else {
         try {
-          map = (T) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            map = (T) comparatorConstructor.invoke(comparator);
+          } else {
+            map = (T) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
@@ -158,7 +176,11 @@ public class MapSerializers {
         map = new TreeMap(comparator);
       } else {
         try {
-          map = (Map) constructor.invoke(comparator);
+          if (comparatorConstructor != null) {
+            map = (Map) comparatorConstructor.invoke(comparator);
+          } else {
+            map = (Map) noArgConstructor.invoke();
+          }
         } catch (Throwable e) {
           throw new RuntimeException(e);
         }
@@ -174,20 +196,17 @@ public class MapSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Map<?, ?> value) {}
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Map<?, ?> value) {
-      super.write(buffer, value);
+    public void write(MemoryBuffer buffer, Map<?, ?> value) {
+      if (!isJava) {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Map<?, ?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_MAP;
-    }
-
-    @Override
-    public Map<?, ?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        return Collections.EMPTY_MAP;
+      }
       throw new IllegalStateException();
     }
   }
@@ -221,25 +240,22 @@ public class MapSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Map<?, ?> value) {
-      Map.Entry entry = value.entrySet().iterator().next();
-      fory.writeRef(buffer, entry.getKey());
-      fory.writeRef(buffer, entry.getValue());
+      if (isJava) {
+        Map.Entry entry = value.entrySet().iterator().next();
+        fory.writeRef(buffer, entry.getKey());
+        fory.writeRef(buffer, entry.getValue());
+      } else {
+        super.write(buffer, value);
+      }
     }
 
     @Override
     public Map<?, ?> read(MemoryBuffer buffer) {
-      Object key = fory.readRef(buffer);
-      Object value = fory.readRef(buffer);
-      return Collections.singletonMap(key, value);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, Map<?, ?> value) {
-      super.write(buffer, value);
-    }
-
-    @Override
-    public Map<?, ?> xread(MemoryBuffer buffer) {
+      if (isJava) {
+        Object key = fory.readRef(buffer);
+        Object value = fory.readRef(buffer);
+        return Collections.singletonMap(key, value);
+      }
       throw new UnsupportedOperationException();
     }
   }
@@ -320,14 +336,14 @@ public class MapSerializers {
     public Map onMapWrite(MemoryBuffer buffer, EnumMap value) {
       buffer.writeVarUint32Small7(value.size());
       Class keyType = (Class) Platform.getObject(value, keyTypeFieldOffset);
-      fory.getClassResolver().writeClassAndUpdateCache(buffer, keyType);
+      ((ClassResolver) fory.getTypeResolver()).writeClassAndUpdateCache(buffer, keyType);
       return value;
     }
 
     @Override
     public EnumMap newMap(MemoryBuffer buffer) {
       setNumElements(buffer.readVarUint32Small7());
-      Class<?> keyType = fory.getClassResolver().readTypeInfo(buffer).getCls();
+      Class<?> keyType = fory.getTypeResolver().readTypeInfo(buffer).getCls();
       return new EnumMap(keyType);
     }
 
@@ -345,7 +361,7 @@ public class MapSerializers {
 
     @Override
     protected <K, V> void copyEntry(Map<K, V> originMap, Map<K, V> newMap) {
-      ClassResolver classResolver = fory.getClassResolver();
+      ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
       for (Entry<K, V> entry : originMap.entrySet()) {
         V value = entry.getValue();
         if (value != null) {
@@ -372,14 +388,14 @@ public class MapSerializers {
       Preconditions.checkArgument(
           !fory.isCrossLanguage(),
           "Fory cross-language default map serializer should use " + MapSerializer.class);
-      fory.getClassResolver().setSerializer(cls, this);
+      fory.getTypeResolver().setSerializer(cls, this);
       Class<? extends Serializer> serializerClass =
-          fory.getClassResolver()
+          ((ClassResolver) fory.getTypeResolver())
               .getObjectSerializerClass(
                   cls, sc -> dataSerializer = Serializers.newSerializer(fory, cls, sc));
       dataSerializer = Serializers.newSerializer(fory, cls, serializerClass);
       // No need to set object serializer to this, it will be set in class resolver later.
-      // fory.getClassResolver().setSerializer(cls, this);
+      // fory.getTypeResolver().setSerializer(cls, this);
     }
 
     @Override

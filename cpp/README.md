@@ -24,7 +24,7 @@ Fory C++ demonstrates competitive performance compared to protobuf c++ serializa
 <img src="../docs/benchmarks/cpp/throughput.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [C++ Benchmarks](../benchmarks/cpp_benchmark).
+For more detailed benchmarks and methodology, see [C++ Benchmarks](../benchmarks/cpp).
 
 ## Quick Start
 

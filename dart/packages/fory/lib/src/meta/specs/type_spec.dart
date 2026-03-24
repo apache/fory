@@ -28,6 +28,7 @@ typedef NoArgsCons = Object Function();
 class TypeSpec extends CustomTypeSpec {
   final List<FieldSpec> fields;
   final bool promiseAcyclic;
+  final bool evolving;
   final bool
       noCyclicRisk; // No risk of cyclic references obtained by analyzing the code, for example, all fields are
   final HasArgsCons? construct;
@@ -38,6 +39,7 @@ class TypeSpec extends CustomTypeSpec {
   TypeSpec(
     Type dartType,
     this.promiseAcyclic,
+    this.evolving,
     this.noCyclicRisk,
     this.fields,
     this.construct,
@@ -55,7 +57,7 @@ class TypeSpec extends CustomTypeSpec {
 
   @override
   int get hashCode => Object.hash(
-      fields, promiseAcyclic, noCyclicRisk, construct, noArgConstruct);
+      fields, promiseAcyclic, evolving, noCyclicRisk, construct, noArgConstruct);
 
   @override
   bool operator ==(Object other) {
@@ -64,6 +66,7 @@ class TypeSpec extends CustomTypeSpec {
             runtimeType == other.runtimeType &&
             fields.equals(other.fields) &&
             promiseAcyclic == other.promiseAcyclic &&
+            evolving == other.evolving &&
             noCyclicRisk == other.noCyclicRisk &&
             ((identical(construct, other.construct)) ||
                 (construct == null) == (construct == null)) &&

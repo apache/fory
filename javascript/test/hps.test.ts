@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { BinaryReader } from '../packages/fory/index';
+import { BinaryReader } from '../packages/core/index';
 import hps from '../packages/hps/index';
 import { describe, expect, test } from '@jest/globals';
 

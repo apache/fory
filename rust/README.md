@@ -32,7 +32,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "0.14"
+fory = "0.16"
 ```
 
 ### Basic Example
@@ -627,7 +627,7 @@ Apache Fory™ Rust is designed for maximum performance:
 Run benchmarks:
 
 ```bash
-cd benchmarks/rust_benchmark
+cd benchmarks/rust
 cargo bench
 ```
 
@@ -670,7 +670,7 @@ cargo build
 
 ```bash
 # Run all tests
-cargo test --features tests
+cargo test --workspace
 
 # Run specific test
 cargo test -p tests --test test_complex_struct

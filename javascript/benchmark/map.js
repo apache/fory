@@ -17,7 +17,7 @@
  * under the License.
  */
 
-const Fory = require("@apache-fory/fory");
+const Fory = require("@apache-fory/core");
 const beautify = require("js-beautify");
 const hps = require('@apache-fory/hps');
 const fory = new Fory.default({

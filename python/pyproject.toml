@@ -55,7 +55,15 @@ dependencies = [
 [project.optional-dependencies]
 format = ["pyarrow"]
 all = ["pyarrow"]
-dev = ["ruff"]
+dev = [
+    "ruff",
+    "pytest",
+    "setuptools>=45",
+    "wheel",
+    "Cython>=0.29",
+    "numpy",
+    "pandas",
+]
 
 [tool.setuptools]
 packages = ["pyfory", "pyfory.format", "pyfory.lib", "pyfory.lib.mmh3", "pyfory.meta"]

@@ -321,7 +321,7 @@ def test_cross_language_serializer(data_file_path):
         assert _deserialize_and_append(fory, buffer, objects) == "str"
         day = datetime.date(2021, 11, 23)
         assert _deserialize_and_append(fory, buffer, objects) == day
-        instant = datetime.datetime.fromtimestamp(100)
+        instant = datetime.datetime.fromtimestamp(100, tz=datetime.timezone.utc)
         assert _deserialize_and_append(fory, buffer, objects) == instant
         list_ = ["a", 1, -1.0, instant, day]
         assert _deserialize_and_append(fory, buffer, objects) == list_
@@ -613,22 +613,16 @@ def struct_round_back(data_file_path, fory, obj1):
 
 class ComplexObject1Serializer(pyfory.serializer.Serializer):
     def write(self, buffer, value):
-        self.xwrite(buffer, value)
+        self.fory.write_ref(buffer, value.f1)
+        self.fory.write_ref(buffer, value.f2)
+        self.fory.write_ref(buffer, value.f3)
 
     def read(self, buffer):
-        return self.xread(buffer)
-
-    def xwrite(self, buffer, value):
-        self.fory.xwrite_ref(buffer, value.f1)
-        self.fory.xwrite_ref(buffer, value.f2)
-        self.fory.xwrite_ref(buffer, value.f3)
-
-    def xread(self, buffer):
         obj = ComplexObject1(*([None] * len(typing.get_type_hints(ComplexObject1).keys())))
         self.fory.ref_resolver.reference(obj)
-        obj.f1 = self.fory.xread_ref(buffer)
-        obj.f2 = self.fory.xread_ref(buffer)
-        obj.f3 = self.fory.xread_ref(buffer)
+        obj.f1 = self.fory.read_ref(buffer)
+        obj.f2 = self.fory.read_ref(buffer)
+        obj.f3 = self.fory.read_ref(buffer)
         return obj
 
 

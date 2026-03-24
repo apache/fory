@@ -80,8 +80,9 @@ public interface RefResolver {
   int preserveRefId(int refId);
 
   /**
-   * Preserve and return a `refId` which is `>=` {@link Fory#NOT_NULL_VALUE_FLAG} if the value is
-   * not null. If the value is referencable value, the `refId` will be {@link #preserveRefId}.
+   * Preserve and return a {@code refId} which is {@code >=} {@link Fory#NOT_NULL_VALUE_FLAG} if the
+   * value is not null. If the value is referencable value, the {@code refId} will be {@link
+   * #preserveRefId}.
    */
   int tryPreserveRefId(MemoryBuffer buffer);
 

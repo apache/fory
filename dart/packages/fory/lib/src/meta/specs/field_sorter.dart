@@ -152,8 +152,10 @@ final class FieldSorter {
   }
 
   static bool _isCompressed(ObjType objType) {
-    return objType == ObjType.VAR_INT32 ||
+    return objType == ObjType.INT32 ||
+        objType == ObjType.VAR_INT32 ||
         objType == ObjType.VAR_UINT32 ||
+        objType == ObjType.INT64 ||
         objType == ObjType.VAR_INT64 ||
         objType == ObjType.SLI_INT64 ||
         objType == ObjType.VAR_UINT64 ||

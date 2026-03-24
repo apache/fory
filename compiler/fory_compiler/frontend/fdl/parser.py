@@ -46,11 +46,13 @@ KNOWN_FILE_OPTIONS: Set[str] = {
     "java_outer_classname",
     "java_multiple_files",
     "go_package",
+    "csharp_namespace",
     "deprecated",
     "use_record_for_java_message",
     "polymorphism",
     "enable_auto_type_id",
     "go_nested_type_style",
+    "swift_namespace_style",
     "evolving",
 }
 

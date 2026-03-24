@@ -40,6 +40,7 @@ export 'src/config/fory_config.dart';
 
 // Constants
 export 'src/const/types.dart';
+export 'src/resolver/spec_lookup.dart';
 
 // User-related
 export 'src/fory_type_provider.dart';

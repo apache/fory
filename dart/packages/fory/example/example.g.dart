@@ -29,6 +29,7 @@ final $Person = TypeSpec(
   Person,
   false,
   true,
+  true,
   [
     FieldSpec(
       'age',
@@ -99,8 +100,3 @@ final $Person = TypeSpec(
   ),
   null,
 );
-
-mixin _$PersonFory implements ForyTypeProvider {
-  @override
-  Type get foryType => Person;
-}

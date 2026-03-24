@@ -37,10 +37,10 @@ public class BlockedStreamUtilsTest extends ForyTestBase {
     ByteArrayOutputStream stream = new ByteArrayOutputStream();
     Foo foo = Foo.create();
     BlockedStreamUtils.serialize(fory, stream, foo);
-    BlockedStreamUtils.serializeJavaObject(fory, stream, foo);
+    BlockedStreamUtils.serialize(fory, stream, foo);
     ByteArrayInputStream inputStream = new ByteArrayInputStream(stream.toByteArray());
     assertEquals(BlockedStreamUtils.deserialize(fory, inputStream), foo);
-    assertEquals(BlockedStreamUtils.deserializeJavaObject(fory, inputStream, Foo.class), foo);
+    assertEquals(BlockedStreamUtils.deserialize(fory, inputStream, Foo.class), foo);
   }
 
   @Test
@@ -49,11 +49,11 @@ public class BlockedStreamUtilsTest extends ForyTestBase {
     ByteArrayOutputStream stream = new ByteArrayOutputStream();
     Foo foo = Foo.create();
     BlockedStreamUtils.serialize(fory, stream, foo);
-    BlockedStreamUtils.serializeJavaObject(fory, stream, foo);
+    BlockedStreamUtils.serialize(fory, stream, foo);
     try (MemoryBufferReadableChannel channel =
         new MemoryBufferReadableChannel(MemoryBuffer.fromByteArray(stream.toByteArray()))) {
       assertEquals(BlockedStreamUtils.deserialize(fory, channel), foo);
-      assertEquals(BlockedStreamUtils.deserializeJavaObject(fory, channel, Foo.class), foo);
+      assertEquals(BlockedStreamUtils.deserialize(fory, channel, Foo.class), foo);
     }
   }
 }

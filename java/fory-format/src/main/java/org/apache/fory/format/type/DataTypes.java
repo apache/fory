@@ -246,6 +246,19 @@ public class DataTypes {
     }
   }
 
+  /** Raw binary data (fixed-width). */
+  public static class FixedWidthBinaryType extends FixedWidthType {
+
+    private FixedWidthBinaryType(int byteSize) {
+      super(TYPE_BINARY, byteSize * 8);
+    }
+
+    @Override
+    public String name() {
+      return "fixedSizeBinary(" + byteWidth() + ")";
+    }
+  }
+
   // ============================================================================
   // Temporal types
   // ============================================================================
@@ -612,6 +625,10 @@ public class DataTypes {
 
   public static BinaryType binary() {
     return BinaryType.INSTANCE;
+  }
+
+  public static FixedWidthType fixedWidthBinary(int size) {
+    return new FixedWidthBinaryType(size);
   }
 
   public static DurationType duration() {

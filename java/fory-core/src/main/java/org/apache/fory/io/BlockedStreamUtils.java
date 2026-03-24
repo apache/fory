@@ -55,16 +55,8 @@ public class BlockedStreamUtils {
     serializeToStream(fory, outputStream, buf -> fory.serialize(buf, obj, callback));
   }
 
-  /**
-   * Serialize java object without class info, deserialization should use {@link
-   * #deserializeJavaObject}.
-   */
-  public static void serializeJavaObject(Fory fory, OutputStream outputStream, Object obj) {
-    serializeToStream(fory, outputStream, buf -> fory.serializeJavaObject(buf, obj));
-  }
-
   public static Object deserialize(Fory fory, InputStream inputStream) {
-    return deserialize(fory, inputStream, null);
+    return deserialize(fory, inputStream, (Iterable<MemoryBuffer>) null);
   }
 
   public static Object deserialize(
@@ -73,7 +65,7 @@ public class BlockedStreamUtils {
   }
 
   public static Object deserialize(Fory fory, ReadableByteChannel channel) {
-    return readFromChannel(fory, channel, b -> fory.deserialize(b, null));
+    return readFromChannel(fory, channel, b -> fory.deserialize(b, (Iterable<MemoryBuffer>) null));
   }
 
   public static Object deserialize(
@@ -82,14 +74,12 @@ public class BlockedStreamUtils {
   }
 
   @SuppressWarnings("unchecked")
-  public static <T> T deserializeJavaObject(Fory fory, InputStream inputStream, Class<T> type) {
-    return (T)
-        deserializeFromStream(fory, inputStream, buf -> fory.deserializeJavaObject(buf, type));
+  public static <T> T deserialize(Fory fory, InputStream inputStream, Class<T> type) {
+    return (T) deserializeFromStream(fory, inputStream, buf -> fory.deserialize(buf, type));
   }
 
-  public static Object deserializeJavaObject(
-      Fory fory, ReadableByteChannel channel, Class<?> type) {
-    return readFromChannel(fory, channel, b -> fory.deserializeJavaObject(b, type));
+  public static <T> T deserialize(Fory fory, ReadableByteChannel channel, Class<T> type) {
+    return type.cast(readFromChannel(fory, channel, b -> fory.deserialize(b, type)));
   }
 
   private static Object readFromChannel(

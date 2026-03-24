@@ -50,7 +50,7 @@ f := fory.New(
 )
 ```
 
-## Configuration Options
+## Configuration
 
 ### WithTrackRef
 

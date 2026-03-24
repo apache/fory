@@ -85,8 +85,8 @@ import org.apache.fory.util.function.SerializableTriFunction;
 public interface Expression {
 
   /**
-   * Returns the Class<?> of the result of evaluating this expression. It is invalid to query the
-   * type of unresolved expression (i.e., when `resolved` == false).
+   * Returns the type of the result of evaluating this expression. It is invalid to query the type
+   * of unresolved expression (i.e., when `resolved` == false).
    */
   TypeRef<?> type();
 
@@ -845,6 +845,7 @@ public interface Expression {
       return new ExprCode(codeBuilder.toString(), null, null);
     }
 
+    @Override
     public String toString() {
       return String.format("SetField(%s, %s, %s)", targetObject, fieldName, fieldValue);
     }

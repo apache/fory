@@ -45,7 +45,7 @@ public class MemoryBufferObjectInputTest extends ForyTestBase {
     buffer.writeBoolean(true);
     buffer.writeFloat32(4.1f);
     buffer.writeFloat64(4.2);
-    fory.writeJavaString(buffer, "abc");
+    fory.writeString(buffer, "abc");
     try (MemoryBufferObjectInput input = new MemoryBufferObjectInput(fory, buffer)) {
       assertEquals(input.readByte(), 1);
       assertEquals(input.readInt(), 2);

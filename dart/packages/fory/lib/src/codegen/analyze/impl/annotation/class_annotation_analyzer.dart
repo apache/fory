@@ -24,7 +24,7 @@ import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/annotation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 
 class ClassAnnotationAnalyzer {
   const ClassAnnotationAnalyzer();
@@ -52,8 +52,10 @@ class ClassAnnotationAnalyzer {
     assert(
         getForyClass); // There must be a ForyMeta annotation, otherwise this class would not be analyzed
     bool promiseAcyclic = anno.getField("promiseAcyclic")!.toBoolValue()!;
+    bool evolving = anno.getField("evolving")!.toBoolValue()!;
     return ForyClass(
       promiseAcyclic: promiseAcyclic,
+      evolving: evolving,
     );
   }
 

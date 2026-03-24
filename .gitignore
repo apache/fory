@@ -67,6 +67,7 @@ python/dist/
 # C++
 cpp/build/
 cpp/bazel-*
+cpp/doc_tests/
 
 # Bazel build directories
 bazel-out/
@@ -103,6 +104,22 @@ examples/cpp/cmake_example/build
 **/benchmark_*.png
 **/results/
 benchmarks/**/report/
-ignored/**
+**/ignored/**
 ci-logs/**
 **/*.log
+swift/.build
+.build-*
+integration_tests/idl_tests/swift/.build
+integration_tests/idl_tests/swift/idl_package/.build
+
+csharp/src/Fory.Generator/bin/
+csharp/src/Fory.Generator/obj/
+csharp/src/Fory/bin/
+csharp/src/Fory/obj/
+csharp/tests/Fory.Tests/bin/
+csharp/tests/Fory.Tests/obj/
+csharp/tests/Fory.XlangPeer/bin/
+csharp/tests/Fory.XlangPeer/obj/
+csharp/artifacts/
+
+tasks/

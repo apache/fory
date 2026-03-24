@@ -60,7 +60,7 @@ def test_proto_oneof_translation():
 
     assert len(event.nested_unions) == 1
     union = event.nested_unions[0]
-    assert union.name == "payload"
+    assert union.name == "Payload"
     case_names = [f.name for f in union.fields]
     case_numbers = [f.number for f in union.fields]
     assert case_names == ["text", "number"]
@@ -68,7 +68,29 @@ def test_proto_oneof_translation():
 
     payload_field = [f for f in event.fields if f.name == "payload"][0]
     assert payload_field.optional is True
-    assert payload_field.field_type.name == "payload"
+    assert payload_field.field_type.name == "Payload"
+
+
+def test_proto_oneof_type_name_uses_pascal_case():
+    source = """
+    syntax = "proto3";
+
+    message Event {
+        oneof payload_data {
+            string text = 1;
+        }
+    }
+    """
+    schema = ProtoFrontend().parse(source)
+    event = schema.messages[0]
+
+    assert len(event.nested_unions) == 1
+    union = event.nested_unions[0]
+    assert union.name == "PayloadData"
+
+    payload_field = [f for f in event.fields if f.name == "payload_data"][0]
+    assert payload_field.optional is True
+    assert payload_field.field_type.name == "PayloadData"
 
 
 def test_proto_file_option_enable_auto_type_id():

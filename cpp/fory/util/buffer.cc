@@ -31,15 +31,25 @@ Buffer::Buffer() {
   writer_index_ = 0;
   reader_index_ = 0;
   wrapped_vector_ = nullptr;
+  input_stream_ = nullptr;
+  output_stream_ = nullptr;
 }
 
 Buffer::Buffer(Buffer &&buffer) noexcept {
+  FORY_CHECK(buffer.output_stream_ == nullptr)
+      << "Cannot move stream-writer-owned Buffer";
   data_ = buffer.data_;
   size_ = buffer.size_;
   own_data_ = buffer.own_data_;
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
   wrapped_vector_ = buffer.wrapped_vector_;
+  input_stream_ = buffer.input_stream_;
+  input_stream_owner_ = std::move(buffer.input_stream_owner_);
+  output_stream_ = buffer.output_stream_;
+  rebind_input_stream_to_this();
+  buffer.input_stream_ = nullptr;
+  buffer.output_stream_ = nullptr;
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
@@ -47,6 +57,11 @@ Buffer::Buffer(Buffer &&buffer) noexcept {
 }
 
 Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
+  FORY_CHECK(buffer.output_stream_ == nullptr)
+      << "Cannot move stream-writer-owned Buffer";
+  FORY_CHECK(output_stream_ == nullptr)
+      << "Cannot assign to stream-writer-owned Buffer";
+  detach_input_stream_from_this();
   if (own_data_) {
     free(data_);
     data_ = nullptr;
@@ -57,6 +72,12 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
   wrapped_vector_ = buffer.wrapped_vector_;
+  input_stream_ = buffer.input_stream_;
+  input_stream_owner_ = std::move(buffer.input_stream_owner_);
+  output_stream_ = buffer.output_stream_;
+  rebind_input_stream_to_this();
+  buffer.input_stream_ = nullptr;
+  buffer.output_stream_ = nullptr;
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
@@ -65,6 +86,8 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
 }
 
 Buffer::~Buffer() {
+  clear_output_stream();
+  detach_input_stream_from_this();
   if (own_data_) {
     free(data_);
     data_ = nullptr;

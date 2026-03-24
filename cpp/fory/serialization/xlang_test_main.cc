@@ -135,6 +135,23 @@ struct SimpleStruct {
   FORY_STRUCT(SimpleStruct, f1, f2, f3, f4, f5, f6, f7, f8, last);
 };
 
+struct EvolvingOverrideStruct {
+  std::string f1;
+  bool operator==(const EvolvingOverrideStruct &other) const {
+    return f1 == other.f1;
+  }
+  FORY_STRUCT(EvolvingOverrideStruct, f1);
+};
+
+struct FixedOverrideStruct {
+  std::string f1;
+  bool operator==(const FixedOverrideStruct &other) const {
+    return f1 == other.f1;
+  }
+  FORY_STRUCT(FixedOverrideStruct, f1);
+};
+FORY_STRUCT_EVOLVING(FixedOverrideStruct, false);
+
 // Integer struct used for cross-language boxed integer tests.
 // Java xlang mode: all fields are non-nullable by default.
 struct Item1 {
@@ -886,6 +903,7 @@ void run_test_string_serializer(const std::string &data_file);
 void run_test_cross_language_serializer(const std::string &data_file);
 void run_test_simple_struct(const std::string &data_file);
 void run_test_simple_named_struct(const std::string &data_file);
+void run_test_struct_evolving_override(const std::string &data_file);
 void run_test_list(const std::string &data_file);
 void run_test_map(const std::string &data_file);
 void run_test_integer(const std::string &data_file);
@@ -961,6 +979,8 @@ int main(int argc, char **argv) {
       run_test_simple_struct(data_file);
     } else if (case_name == "test_named_simple_struct") {
       run_test_simple_named_struct(data_file);
+    } else if (case_name == "test_struct_evolving_override") {
+      run_test_struct_evolving_override(data_file);
     } else if (case_name == "test_list") {
       run_test_list(data_file);
     } else if (case_name == "test_map") {
@@ -1491,6 +1511,33 @@ void run_test_simple_named_struct(const std::string &data_file) {
   }
   std::vector<uint8_t> out;
   append_serialized(fory, value, out);
+  write_file(data_file, out);
+}
+
+void run_test_struct_evolving_override(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(
+      fory.register_struct<EvolvingOverrideStruct>("test", "evolving_yes"),
+      "register evolving override struct");
+  ensure_ok(fory.register_struct<FixedOverrideStruct>("test", "evolving_off"),
+            "register fixed override struct");
+  Buffer buffer = make_buffer(bytes);
+  auto evolving = read_next<EvolvingOverrideStruct>(fory, buffer);
+  auto fixed = read_next<FixedOverrideStruct>(fory, buffer);
+  EvolvingOverrideStruct expected_evolving;
+  expected_evolving.f1 = "payload";
+  if (!(evolving == expected_evolving)) {
+    fail("EvolvingOverrideStruct mismatch");
+  }
+  FixedOverrideStruct expected_fixed;
+  expected_fixed.f1 = "payload";
+  if (!(fixed == expected_fixed)) {
+    fail("FixedOverrideStruct mismatch");
+  }
+  std::vector<uint8_t> out;
+  append_serialized(fory, evolving, out);
+  append_serialized(fory, fixed, out);
   write_file(data_file, out);
 }
 

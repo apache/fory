@@ -19,7 +19,7 @@ import datetime
 import typing
 
 from typing import Optional
-from pyfory.type_util import TypeVisitor, infer_field
+from pyfory.type_util import TypeVisitor, get_homogeneous_tuple_elem_type, infer_field
 from pyfory.format._format import (
     Schema,
     DataType,
@@ -171,6 +171,13 @@ class ForyTypeVisitor(TypeVisitor):
         elem_field = infer_field("item", elem_type, self, types_path=types_path)
         return field(field_name, list_(elem_field.type))
 
+    def visit_tuple(self, field_name, elem_types, types_path=None):
+        elem_type = get_homogeneous_tuple_elem_type(elem_types)
+        if elem_type is None:
+            raise TypeError(f"Row format supports only homogeneous tuple annotations, got {elem_types}")
+        elem_field = infer_field("item", elem_type, self, types_path=types_path)
+        return field(field_name, list_(elem_field.type))
+
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
         key_field = infer_field("key", key_type, self, types_path=types_path)
@@ -185,6 +192,8 @@ class ForyTypeVisitor(TypeVisitor):
         return field(field_name, struct(fields))
 
     def visit_other(self, field_name, type_, types_path=None):
+        if isinstance(type_, type) and type_.__module__ != "builtins":
+            return self.visit_customized(field_name, type_, types_path=types_path)
         if type_ not in _supported_types_mapping:
             raise TypeError(
                 f"Type {type_} not supported, currently only compositions of {_supported_types_str} are supported. types_path is {types_path}"

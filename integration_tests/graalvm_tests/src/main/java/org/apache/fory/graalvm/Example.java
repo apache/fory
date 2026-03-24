@@ -42,7 +42,7 @@ public class Example {
     Preconditions.checkArgument(map.equals(fory.deserialize(fory.serialize(map))));
     Foo foo = new Foo(10, "abc", List.of("str1", "str2"), Map.of("k1", 10L, "k2", 20L));
     byte[] bytes = fory.serialize(foo);
-    System.out.println(fory.getClassResolver().getSerializer(Foo.class));
+    System.out.println(fory.getTypeResolver().getSerializer(Foo.class));
     Object o = fory.deserialize(bytes);
     System.out.println(foo);
     System.out.println(o);

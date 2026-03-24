@@ -29,6 +29,7 @@ final $TypedDataArrayExample = TypeSpec(
   TypedDataArrayExample,
   false,
   true,
+  true,
   [
     FieldSpec(
       'bools',
@@ -82,8 +83,3 @@ final $TypedDataArrayExample = TypeSpec(
   null,
   () => TypedDataArrayExample(),
 );
-
-mixin _$TypedDataArrayExampleFory implements ForyTypeProvider {
-  @override
-  Type get foryType => TypedDataArrayExample;
-}

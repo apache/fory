@@ -209,7 +209,7 @@ def run_integration_tests():
     )
 
     logging.info("benchmark tests")
-    common.cd_project_subdir("benchmarks/java_benchmark")
+    common.cd_project_subdir("benchmarks/java")
     common.exec_cmd("mvn -T10 -B --no-transfer-progress clean test install -Pjmh")
 
     logging.info("Start JPMS tests")

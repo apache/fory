@@ -1,0 +1,30 @@
+{
+  "name": "@apache-fory/core",
+  "version": "0.17.0-alpha.0",
+  "description": "Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^18.7.21",
+    "@typescript-eslint/eslint-plugin": "^5.40.0",
+    "@typescript-eslint/parser": "^5.40.0",
+    "benchmark": "^2.1.4",
+    "eslint": "^8.25.0",
+    "protobufjs": "^7.2.4"
+  },
+  "dependencies": {
+    "node-gyp": "^9.4.0",
+    "tslib": "^2.4.0"
+  },
+  "repository": "git@github.com:apache/fory.git",
+  "workspaces": [
+    "packages/hps"
+  ]
+}

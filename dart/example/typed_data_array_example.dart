@@ -24,7 +24,7 @@ import 'package:fory/fory.dart';
 part 'typed_data_array_example.g.dart';
 
 @foryClass
-class TypedDataArrayExample with _$TypedDataArrayExampleFory {
+class TypedDataArrayExample {
   late final Uint8List bytes;
   late final Int32List nums;
   late final BoolList bools;

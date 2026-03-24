@@ -60,6 +60,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 const SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
+const MAX_TYPE_META_FIELDS: usize = i16::MAX as usize;
 const REGISTER_BY_NAME_FLAG: u8 = 0b100000;
 const FIELD_NAME_SIZE_THRESHOLD: usize = 0b1111;
 /// Marker value in encoding bits to indicate field ID mode (instead of field name)
@@ -277,7 +278,9 @@ impl FieldInfo {
             // Field ID mode: | 0b11:2bits | field_id_low:4bits | nullable:1bit | track_ref:1bit |
             let mut field_id = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as i16;
             if field_id == SMALL_FIELD_ID_THRESHOLD {
-                field_id += reader.read_varuint32()? as i16;
+                field_id = field_id
+                    .checked_add(reader.read_varuint32()? as i16)
+                    .ok_or_else(|| Error::invalid_data("field_id overflow"))?;
             }
 
             let mut field_type = FieldType::from_bytes(reader, false, Option::from(nullable))?;
@@ -302,9 +305,7 @@ impl FieldInfo {
 
             let field_name_bytes = reader.read_bytes(name_size)?;
 
-            let field_name = FIELD_NAME_DECODER
-                .decode(field_name_bytes, encoding)
-                .unwrap();
+            let field_name = FIELD_NAME_DECODER.decode(field_name_bytes, encoding)?;
             Ok(FieldInfo {
                 field_id: -1i16,
                 field_name: field_name.original,
@@ -642,6 +643,9 @@ impl TypeMeta {
             length as usize
         };
         let bytes = reader.read_bytes(length)?;
+        if encoding_idx as usize >= encodings.len() {
+            return Err(Error::invalid_data("encoding_index out of bounds"));
+        }
         let encoding = encodings[encoding_idx as usize];
         decoder.decode(bytes, encoding)
     }
@@ -816,6 +820,13 @@ impl TypeMeta {
         let mut num_fields = meta_header as usize & SMALL_NUM_FIELDS_THRESHOLD;
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
             num_fields += reader.read_varuint32()? as usize;
+        }
+        // limit the number of fields to prevent potential OOM when creating Vec<FieldInfo>
+        if num_fields > MAX_TYPE_META_FIELDS {
+            return Err(Error::invalid_data(format!(
+                "too many fields in type meta: {}, max: {}",
+                num_fields, MAX_TYPE_META_FIELDS
+            )));
         }
         let mut type_id;
         let mut user_type_id = NO_USER_TYPE_ID;
@@ -1044,6 +1055,8 @@ impl TypeMeta {
         if write_meta_fields_flag {
             header |= HAS_FIELDS_META_FLAG;
         }
+        // Temporary xlang behavior: keep TypeMeta uncompressed.
+        // Some runtimes still do not support TypeMeta decompression.
         let is_compressed = false;
         if is_compressed {
             header |= COMPRESS_META_FLAG;

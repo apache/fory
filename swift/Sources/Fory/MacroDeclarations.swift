@@ -1,0 +1,51 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+@attached(
+    member,
+    names: named(staticTypeId),
+    named(foryEvolving),
+    named(isRefType),
+    named(__forySchemaHash),
+    named(__forySchemaHashTrackRefDisabled),
+    named(__forySchemaHashTrackRefEnabled),
+    named(foryFieldsInfo),
+    named(__foryFieldsInfoTrackRefDisabled),
+    named(__foryFieldsInfoTrackRefEnabled),
+    named(foryDefault),
+    named(foryWrite),
+    named(foryRead),
+    named(foryWriteData),
+    named(foryReadData),
+    named(foryReadCompatibleData),
+    named(__foryReadDataImpl),
+    named(__foryReadCompatibleDataImpl)
+)
+@attached(extension, conformances: Serializer, StructSerializer)
+public macro ForyObject(evolving: Bool = true) = #externalMacro(module: "ForyMacro", type: "ForyObjectMacro")
+
+public enum ForyFieldEncoding: String {
+    case varint
+    case fixed
+    case tagged
+}
+
+@attached(peer)
+public macro ForyField(
+    id: Int? = nil,
+    encoding: ForyFieldEncoding? = nil
+) = #externalMacro(module: "ForyMacro", type: "ForyFieldMacro")

@@ -100,6 +100,7 @@ package com.example.models alias models_v1;
 | Go       | Package name (last component)     |
 | Rust     | Module name (dots to underscores) |
 | C++      | Namespace (dots to `::`)          |
+| C#       | Namespace                         |
 
 ## File-Level Options
 
@@ -150,6 +151,69 @@ message Payment {
 - Generated Go files will have `package paymentv1`
 - The import path can be used in other Go code
 - Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
+
+### C# Namespace Option
+
+Override the C# namespace for generated code:
+
+```protobuf
+package payment;
+option csharp_namespace = "MyCorp.Payment.V1";
+
+message Payment {
+    string id = 1;
+}
+```
+
+**Effect:**
+
+- Generated C# files use `namespace MyCorp.Payment.V1;`
+- Output path follows namespace segments (`MyCorp/Payment/V1/` under `--csharp_out`)
+- Type registration still uses the Fory IDL package (`payment`) for cross-language compatibility
+
+### Go Nested Type Style Option
+
+Control Go naming for nested message/enum/union types:
+
+```protobuf
+package payment;
+option go_nested_type_style = "camelcase";
+
+message Envelope {
+    message Payload {
+        string id = 1;
+    }
+}
+```
+
+**Values:**
+
+- `underscore` (default): `Envelope_Payload`
+- `camelcase`: `EnvelopePayload`
+
+The CLI flag `--go_nested_type_style` overrides this schema option when both are set.
+
+### Swift Namespace Style Option
+
+Control how package namespace is reflected in Swift generated type names:
+
+```protobuf
+package payment.v1;
+option swift_namespace_style = "flatten";
+
+message Payment {
+    string id = 1;
+}
+```
+
+**Values:**
+
+- `enum` (default): namespace wrappers (for example `Payment.V1.Payment`)
+- `flatten`: package prefix on top-level types (for example `Payment_V1_Payment`)
+
+**Important:** namespace wrapper/prefixing is only applied when package is non-empty. If package is empty, Swift emits top-level types directly for both styles.
+
+The CLI flag `--swift_namespace_style` overrides this schema option when both are set.
 
 ### Java Outer Classname Option
 
@@ -285,10 +349,10 @@ For protobuf extension options, see
 
 ### Option Priority
 
-For language-specific packages:
+For language-specific packages/namespaces:
 
 1. Command-line package override (highest priority)
-2. Language-specific option (`java_package`, `go_package`)
+2. Language-specific option (`java_package`, `go_package`, `csharp_namespace`)
 3. Fory IDL package declaration (fallback)
 
 **Example:**

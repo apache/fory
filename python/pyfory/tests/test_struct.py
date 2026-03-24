@@ -15,18 +15,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import dataclasses
 from dataclasses import dataclass
 import datetime
-from typing import Dict, Any, List, Set, Optional
+import enum
+from typing import Dict, Any, List, Set, Optional, Tuple
 
-import os
 import pytest
 import typing
 
 import pyfory
 from pyfory import Fory
 from pyfory.error import TypeUnregisteredError
-from pyfory.struct import DataClassSerializer
+from pyfory.struct import DataClassSerializer, build_default_values_factory
 from pyfory.types import TypeId
 
 
@@ -139,6 +140,30 @@ class DataClassObject:
         )
 
 
+@dataclass
+class BoolCoercionObject:
+    b: bool
+
+
+@dataclass(frozen=True)
+class TupleFieldObject:
+    bar: Tuple[str, int]
+
+
+@dataclass(frozen=True)
+class XlangTupleFieldObject:
+    bar: Tuple[str, int]
+
+
+@dataclass(frozen=True)
+class XlangNestedTupleObject:
+    tuple_field: Tuple[List[int], Dict[str, int]]
+    list_of_tuples: List[Tuple[str, int]]
+    map_of_tuples: Dict[str, Tuple[str, int]]
+    set_of_tuples: Set[Tuple[str, int]]
+    tuple_of_tuples: Tuple[Tuple[str, int], Tuple[str, int]]
+
+
 def test_sort_fields():
     @dataclass
     class TestClass:
@@ -159,7 +184,7 @@ def test_sort_fields():
         f15: datetime.datetime
 
     fory = Fory(xlang=True, ref=True)
-    serializer = DataClassSerializer(fory, TestClass, xlang=True)
+    serializer = DataClassSerializer(fory, TestClass)
     # Sorting order:
     # 1. Non-compressed primitives (compress=0) by -size, then name:
     #    float64(8), float32(4), bool(1), int8(1) => f13, f5, f11, f7
@@ -172,6 +197,57 @@ def test_sort_fields():
     # 6. Map types by type_id, then name: dict => f3, f9
     # 7. Other types (polymorphic/any) by name: any => f8
     assert serializer._field_names == ["f13", "f5", "f11", "f7", "f12", "f1", "f4", "f15", "f6", "f10", "f2", "f14", "f3", "f9", "f8"]
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (1, True),
+        (0, False),
+    ],
+)
+def test_bool_field_coercion(value, expected):
+    fory = Fory(xlang=False, ref=True, strict=False)
+    result = ser_de(fory, BoolCoercionObject(value))
+    assert result.b is expected
+
+
+def test_bool_field_coercion_numpy_bool():
+    np = pytest.importorskip("numpy")
+    fory = Fory(xlang=False, ref=True, strict=False)
+
+    result_true = ser_de(fory, BoolCoercionObject(np.bool_(True)))
+    assert result_true.b is True
+
+    result_false = ser_de(fory, BoolCoercionObject(np.bool_(False)))
+    assert result_false.b is False
+
+
+@pytest.mark.parametrize(
+    "numeric_type",
+    [
+        pyfory.int8,
+        pyfory.int16,
+        pyfory.int32,
+        pyfory.fixed_int32,
+        pyfory.int64,
+        pyfory.fixed_int64,
+        pyfory.tagged_int64,
+        pyfory.uint8,
+        pyfory.uint16,
+        pyfory.uint32,
+        pyfory.fixed_uint32,
+        pyfory.uint64,
+        pyfory.fixed_uint64,
+        pyfory.tagged_uint64,
+        pyfory.float32,
+        pyfory.float64,
+    ],
+)
+def test_numeric_serializer_need_to_write_ref_disabled(numeric_type):
+    fory = Fory(xlang=False, ref=True, strict=False)
+    serializer = fory.type_resolver.get_serializer(numeric_type)
+    assert serializer.need_to_write_ref is False
 
 
 def test_data_class_serializer_xlang():
@@ -209,13 +285,13 @@ def test_data_class_serializer_xlang():
     assert obj_deserialized.f_complex == obj_original.f_complex
     assert type(fory.type_resolver.get_serializer(DataClassObject)) is pyfory.DataClassSerializer
     # Ensure it's using xlang mode indirectly, by checking no JIT methods if possible,
-    # or by ensuring it was registered with _register_xtype which now uses DataClassSerializer(xlang=True)
+    # or by ensuring it was registered with _register_xtype which now uses DataClassSerializer.
     # For now, the registration path check is implicit via xlang=True usage.
     # We can also check if the hash is non-zero if it was computed,
     # or if the _serializers attribute exists.
     serializer_instance = fory.type_resolver.get_serializer(DataClassObject)
-    assert hasattr(serializer_instance, "_serializers")  # xlang mode creates this
-    assert serializer_instance._xlang is True
+    assert hasattr(serializer_instance, "_serializers")
+    assert not hasattr(serializer_instance, "_xlang")
 
     # Test with None for a complex field
     obj_with_none_complex = DataClassObject(
@@ -230,6 +306,44 @@ def test_data_class_serializer_xlang():
     )
     obj_deserialized_none = ser_de(fory, obj_with_none_complex)
     assert obj_deserialized_none == obj_with_none_complex
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_dataclass_with_typed_tuple_field(track_ref):
+    fory = Fory(xlang=False, ref=track_ref, strict=False)
+    obj = TupleFieldObject(bar=("a", 1))
+    assert ser_de(fory, obj) == obj
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_xlang_dataclass_tuple_field(track_ref):
+    fory = Fory(xlang=True, ref=track_ref, strict=False)
+    fory.register_type(XlangTupleFieldObject, typename="example.XlangTupleFieldObject")
+    obj = XlangTupleFieldObject(bar=("a", 1))
+    result = ser_de(fory, obj)
+    assert result == obj
+    assert isinstance(result.bar, tuple)
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_xlang_nested_tuple_container_fields(track_ref):
+    fory = Fory(xlang=True, ref=track_ref, strict=False)
+    fory.register_type(XlangNestedTupleObject, typename="example.XlangNestedTupleObject")
+    obj = XlangNestedTupleObject(
+        tuple_field=([1, 2], {"a": 1, "b": 2}),
+        list_of_tuples=[("a", 1), ("b", 2)],
+        map_of_tuples={"left": ("c", 3), "right": ("d", 4)},
+        set_of_tuples={("e", 5), ("f", 6)},
+        tuple_of_tuples=(("g", 7), ("h", 8)),
+    )
+    result = ser_de(fory, obj)
+    assert result == obj
+    assert isinstance(result.tuple_field, tuple)
+    assert all(isinstance(value, tuple) for value in result.list_of_tuples)
+    assert all(isinstance(value, tuple) for value in result.map_of_tuples.values())
+    assert all(isinstance(value, tuple) for value in result.set_of_tuples)
+    assert isinstance(result.tuple_of_tuples, tuple)
+    assert all(isinstance(value, tuple) for value in result.tuple_of_tuples)
 
 
 def test_struct_evolving_override():
@@ -249,9 +363,18 @@ def test_struct_evolving_override():
     assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
     assert fixed_info.type_id == TypeId.NAMED_STRUCT
 
+    evolving = EvolvingStruct(f1=123)
+    fixed = FixedStruct(f1=123)
+    evolving_bytes = fory.serialize(evolving)
+    fixed_bytes = fory.serialize(fixed)
 
-def test_data_class_serializer_xlang_codegen():
-    """Test that DataClassSerializer generates xwrite/xread methods correctly in xlang mode."""
+    assert len(fixed_bytes) < len(evolving_bytes)
+    assert fory.deserialize(evolving_bytes) == evolving
+    assert fory.deserialize(fixed_bytes) == fixed
+
+
+def test_data_class_serializer_xlang_serializer():
+    """Test DataClassSerializer round-trip behavior in xlang mode."""
     fory = Fory(xlang=True, ref=True)
 
     # Register types first
@@ -263,14 +386,8 @@ def test_data_class_serializer_xlang_codegen():
     # Get the serializer that was created during registration
     serializer = fory.type_resolver.get_serializer(DataClassObject)
 
-    # Check that the generated methods exist
-    assert hasattr(serializer, "_generated_xwrite_method"), "Generated xwrite method should exist"
-    assert hasattr(serializer, "_generated_xread_method"), "Generated xread method should exist"
-    assert hasattr(serializer, "_xwrite_method_code"), "Generated xwrite method code should exist"
-    assert hasattr(serializer, "_xread_method_code"), "Generated xread method code should exist"
-
-    # Check that the serializer is in xlang mode
-    assert serializer._xlang is True
+    # Serializer API is unified: no mode-specific serializer attribute.
+    assert not hasattr(serializer, "_xlang")
     assert hasattr(serializer, "_serializers")
     assert len(serializer._serializers) == len(serializer._field_names)
 
@@ -287,7 +404,6 @@ def test_data_class_serializer_xlang_codegen():
     )
 
     # Test serialization and deserialization using the normal fory flow
-    # This will use the generated methods internally
     binary = fory.serialize(test_obj)
     deserialized_obj = fory.deserialize(binary)
 
@@ -302,110 +418,8 @@ def test_data_class_serializer_xlang_codegen():
     assert deserialized_obj.f_complex == test_obj.f_complex
 
 
-def test_data_class_serializer_xlang_codegen_with_jit():
-    """Test that DataClassSerializer JIT compilation works correctly when enabled."""
-    # Save the original environment variable
-    original_jit_setting = os.environ.get("ENABLE_FORY_PYTHON_JIT")
-
-    try:
-        # Enable JIT
-        os.environ["ENABLE_FORY_PYTHON_JIT"] = "True"
-
-        # Import after setting environment variable to ensure it takes effect
-        import importlib
-        import pyfory.serializer
-
-        importlib.reload(pyfory.serializer)
-
-        fory = Fory(xlang=True, ref=True)
-
-        # Register types first
-        fory.register_type(ComplexObject, typename="example.ComplexObject")
-        fory.register_type(DataClassObject, typename="example.TestDataClassObject")
-
-        # Get the serializer that was created during registration
-        serializer = fory.type_resolver.get_serializer(DataClassObject)
-
-        # Check that JIT methods are assigned when JIT is enabled
-        # The methods should be the generated functions, not the original instance methods
-        assert callable(serializer.xwrite)
-        assert callable(serializer.xread)
-
-        # Test that the JIT-compiled methods work through normal serialization
-        test_obj = DataClassObject(
-            f_int=123,
-            f_float=45.67,
-            f_str="jit_test",
-            f_bool=False,
-            f_list=[10, 20, 30],
-            f_dict={"jit": 2.5},
-            f_any={"nested": "data"},
-            f_complex=None,
-        )
-
-        # Use normal serialization flow which will use the JIT-compiled methods internally
-        binary = fory.serialize(test_obj)
-        deserialized_obj = fory.deserialize(binary)
-
-        assert deserialized_obj.f_int == test_obj.f_int
-        assert deserialized_obj.f_float == test_obj.f_float
-        assert deserialized_obj.f_str == test_obj.f_str
-        assert deserialized_obj.f_bool == test_obj.f_bool
-        assert deserialized_obj.f_list == test_obj.f_list
-        assert deserialized_obj.f_dict == test_obj.f_dict
-        assert deserialized_obj.f_any == test_obj.f_any
-        assert deserialized_obj.f_complex == test_obj.f_complex
-
-    finally:
-        # Restore original environment variable
-        if original_jit_setting is None:
-            os.environ.pop("ENABLE_FORY_PYTHON_JIT", None)
-        else:
-            os.environ["ENABLE_FORY_PYTHON_JIT"] = original_jit_setting
-
-        # Reload to restore the original state
-        importlib.reload(pyfory.serializer)
-
-
-def test_data_class_serializer_xlang_codegen_generated_code():
-    """Test that the generated code contains expected elements."""
-    fory = Fory(xlang=True, ref=True)
-
-    # Register types first
-    fory.register_type(ComplexObject, typename="example.ComplexObject")
-    fory.register_type(DataClassObject, typename="example.TestDataClassObject")
-
-    # trigger lazy serializer replace
-    fory.serialize(DataClassObject.create())
-    # Get the serializer that was created during registration
-    serializer = fory.type_resolver.get_serializer(DataClassObject)
-
-    # Check that generated code exists and contains expected elements
-    xwrite_code = serializer._xwrite_method_code
-    xread_code = serializer._xread_method_code
-
-    assert isinstance(xwrite_code, str)
-    assert isinstance(xread_code, str)
-
-    # Check that xwrite code contains expected elements
-    assert "def xwrite_" in xwrite_code
-    assert "buffer.write_int32" in xwrite_code  # Hash writing
-    assert "fory.xwrite_ref" in xwrite_code  # Field serialization
-
-    # Check that xread code contains expected elements
-    assert "def xread_" in xread_code
-    assert "buffer.read_int32" in xread_code  # Hash reading
-    assert "fory.xread_ref" in xread_code  # Field deserialization
-    assert "TypeNotCompatibleError" in xread_code  # Hash validation
-
-    # Check that field names are referenced in the code
-    for field_name in serializer._field_names:
-        # Field names should appear in the generated code
-        assert field_name in xwrite_code or field_name in xread_code
-
-
 def test_data_class_serializer_xlang_vs_non_xlang():
-    """Test that xlang and non-xlang modes produce different serializers."""
+    """Test that xlang and non-xlang modes use the same dataclass serializer behavior."""
     fory_xlang = Fory(xlang=True, ref=True)
     fory_python = Fory(xlang=False, ref=True, strict=False)
 
@@ -417,22 +431,83 @@ def test_data_class_serializer_xlang_vs_non_xlang():
     fory_xlang.serialize(DataClassObject.create())
     # For Python mode, we can create the serializer directly since it doesn't require registration
     serializer_xlang = fory_xlang.type_resolver.get_serializer(DataClassObject)
-    serializer_python = DataClassSerializer(fory_python, DataClassObject, xlang=False)
+    serializer_python = DataClassSerializer(fory_python, DataClassObject)
 
-    # xlang serializer should have xlang-specific attributes
-    assert serializer_xlang._xlang is True
-    assert hasattr(serializer_xlang, "_serializers")
-    assert hasattr(serializer_xlang, "_generated_xwrite_method")
-    assert hasattr(serializer_xlang, "_generated_xread_method")
+    assert not hasattr(serializer_xlang, "_xlang")
+    assert not hasattr(serializer_python, "_xlang")
 
-    # non-xlang serializer should have different attributes
-    assert serializer_python._xlang is False
-    assert hasattr(serializer_python, "_generated_write_method")
-    assert hasattr(serializer_python, "_generated_read_method")
+    # Unified serializer metadata should be mode-independent.
+    assert serializer_xlang._field_names == serializer_python._field_names
+    assert serializer_xlang._nullable_fields == serializer_python._nullable_fields
+    assert serializer_xlang._dynamic_fields == serializer_python._dynamic_fields
+    assert serializer_xlang._hash == serializer_python._hash
 
-    # They should have different method implementations
-    assert serializer_xlang._generated_xwrite_method != serializer_python._generated_write_method
-    assert serializer_xlang._generated_xread_method != serializer_python._generated_read_method
+
+class MissingDefaultEnum(enum.Enum):
+    A = 1
+    B = 2
+
+
+@dataclass
+class MissingDefaultFactoryFields:
+    required: int
+    required_float: float
+    required_str: str
+    required_bytes: bytes
+    required_list: List[int]
+    required_set: Set[int]
+    required_dict: Dict[str, int]
+    plain_default: int = 7
+    list_default: List[int] = dataclasses.field(default_factory=list)
+    enum_default_none: MissingDefaultEnum = None
+
+
+def test_build_default_values_factory():
+    fory = Fory(xlang=False, ref=True, strict=False)
+    type_hints = typing.get_type_hints(MissingDefaultFactoryFields)
+    default_factories = build_default_values_factory(
+        fory,
+        type_hints,
+        dataclasses.fields(MissingDefaultFactoryFields),
+    )
+
+    assert callable(default_factories["required"])
+    assert callable(default_factories["required_float"])
+    assert callable(default_factories["required_str"])
+    assert callable(default_factories["required_bytes"])
+    assert callable(default_factories["required_list"])
+    assert callable(default_factories["required_set"])
+    assert callable(default_factories["required_dict"])
+    assert callable(default_factories["plain_default"])
+    assert callable(default_factories["list_default"])
+    assert callable(default_factories["enum_default_none"])
+
+    assert default_factories["required"]() == 0
+    assert default_factories["required_float"]() == 0.0
+    assert default_factories["required_str"]() == ""
+    assert default_factories["required_bytes"]() == b""
+    list_required_one = default_factories["required_list"]()
+    list_required_two = default_factories["required_list"]()
+    assert list_required_one == []
+    assert list_required_two == []
+    assert list_required_one is not list_required_two
+    set_required_one = default_factories["required_set"]()
+    set_required_two = default_factories["required_set"]()
+    assert set_required_one == set()
+    assert set_required_two == set()
+    assert set_required_one is not set_required_two
+    dict_required_one = default_factories["required_dict"]()
+    dict_required_two = default_factories["required_dict"]()
+    assert dict_required_one == {}
+    assert dict_required_two == {}
+    assert dict_required_one is not dict_required_two
+    assert default_factories["plain_default"]() == 7
+    assert default_factories["enum_default_none"]() is MissingDefaultEnum.A
+    list_one = default_factories["list_default"]()
+    list_two = default_factories["list_default"]()
+    assert list_one == []
+    assert list_two == []
+    assert list_one is not list_two
 
 
 @dataclass
@@ -548,6 +623,34 @@ class CompatibleV3:
     f2: str = ""
 
 
+@dataclass
+class CompatibleRequiredFieldV1:
+    f1: int
+
+
+@dataclass
+class CompatibleRequiredFieldV2:
+    f1: int
+    f2: int
+
+
+@dataclass
+class CompatibleRequiredDefaultsV1:
+    f1: int
+
+
+@dataclass
+class CompatibleRequiredDefaultsV2:
+    f1: int
+    f_int: int
+    f_float: float
+    f_str: str
+    f_bytes: bytes
+    f_list: List[int]
+    f_set: Set[int]
+    f_dict: Dict[str, int]
+
+
 @pytest.mark.parametrize("xlang", [False, True])
 def test_compatible_mode_add_field(xlang):
     """Test that adding a field with default value works in compatible mode."""
@@ -614,6 +717,50 @@ def test_compatible_mode_bidirectional(xlang):
     assert v1_result.f1 == 200
     assert v1_result.f2 == "hello"
     assert v1_result.f3 == 2.71
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_add_required_field_without_default_uses_zero_value(xlang):
+    fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v1.register_type(CompatibleRequiredFieldV1, typename="example.CompatibleRequiredField")
+    fory_v2.register_type(CompatibleRequiredFieldV2, typename="example.CompatibleRequiredField")
+
+    v1_binary = fory_v1.serialize(CompatibleRequiredFieldV1(f1=321))
+    v2_result = fory_v2.deserialize(v1_binary)
+
+    assert v2_result.f1 == 321
+    assert hasattr(v2_result, "f2")
+    assert v2_result.f2 == 0
+
+    serializer_v2 = fory_v2.type_resolver.get_serializer(CompatibleRequiredFieldV2)
+    assert hasattr(serializer_v2, "_default_values_factory")
+    assert callable(serializer_v2._default_values_factory["f2"])
+    assert serializer_v2._default_values_factory["f2"]() == 0
+    assert ser_de(fory_v2, v2_result) == v2_result
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_add_required_fields_use_type_defaults(xlang):
+    fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v1.register_type(CompatibleRequiredDefaultsV1, typename="example.CompatibleRequiredDefaults")
+    fory_v2.register_type(CompatibleRequiredDefaultsV2, typename="example.CompatibleRequiredDefaults")
+
+    v1_binary = fory_v1.serialize(CompatibleRequiredDefaultsV1(f1=11))
+    v2_result = fory_v2.deserialize(v1_binary)
+
+    assert v2_result.f1 == 11
+    assert v2_result.f_int == 0
+    assert v2_result.f_float == 0.0
+    assert v2_result.f_str == ""
+    assert v2_result.f_bytes == b""
+    assert v2_result.f_list == []
+    assert v2_result.f_set == set()
+    assert v2_result.f_dict == {}
+    assert ser_de(fory_v2, v2_result) == v2_result
 
 
 @dataclass

@@ -9,9 +9,8 @@ cd python
 # Uninstall numpy first so that when we install pyarrow, it will install the correct numpy version automatically.
 # For Python versions less than 3.13, numpy 2 is not currently supported.
 pip uninstall -y numpy
-# Install necessary environment for Python.
-pip install pyarrow Cython wheel pytest
-pip install -v -e .
+# Install development environment for Python
+pip install -v -e ".[dev,format]"
 ```
 
 If the last steps fails with an error like `libarrow_python.dylib: No such file or directory`,
@@ -29,6 +28,9 @@ temporary directory it was the last time bazel ran. To remedy this run
 ```bash
 cd python
 pytest -v -s .
+
+# Run specific test
+pytest -v -s pyfory/tests/test_serializer.py
 ```
 
 ## Formatting
@@ -36,7 +38,8 @@ pytest -v -s .
 ```bash
 cd python
 pip install ruff
-ruff format python
+ruff format .
+ruff check --fix .
 ```
 
 ## Debugging

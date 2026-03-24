@@ -18,6 +18,7 @@
  */
 
 import 'package:fory/src/deserialization_context.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/memory/byte_reader.dart';
@@ -51,6 +52,11 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   @override
   T read(ByteReader br, int refId, DeserializationContext pack) {
     int remaining = br.readVarUint32Small7();
+    if (remaining > pack.config.maxCollectionSize) {
+      throw InvalidDataException(
+          'Map size $remaining exceeds maxCollectionSize ${pack.config.maxCollectionSize}. '
+          'The input data may be malicious, or need to increase the maxCollectionSize when creating Fory.');
+    }
     T map = newMap(remaining);
     if (writeRef) {
       pack.refResolver.setRefTheLatestId(map);
@@ -92,14 +98,24 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
       int chunkSize = br.readUint8();
 
       Serializer keySerializer;
-      if (keyDeclaredType && keyWrap?.serializer != null) {
-        keySerializer = keyWrap!.serializer!;
+      if (keyDeclaredType) {
+        if (keyWrap == null) {
+          throw StateError(
+              'Map key declared type flag set but key type is unavailable');
+        }
+        keySerializer = keyWrap.serializer ??
+            pack.typeResolver.getRegisteredSerializer(keyWrap.type);
       } else {
         keySerializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
       Serializer valueSerializer;
-      if (valueDeclaredType && valueWrap?.serializer != null) {
-        valueSerializer = valueWrap!.serializer!;
+      if (valueDeclaredType) {
+        if (valueWrap == null) {
+          throw StateError(
+              'Map value declared type flag set but value type is unavailable');
+        }
+        valueSerializer = valueWrap.serializer ??
+            pack.typeResolver.getRegisteredSerializer(valueWrap.type);
       } else {
         valueSerializer = pack.typeResolver.readTypeInfo(br).serializer;
       }
@@ -311,9 +327,14 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool trackRef = (chunkHeader & _trackingKeyRef) != 0;
     bool keyDeclaredType = (chunkHeader & _keyDeclType) != 0;
-    if (keyDeclaredType && keyWrap?.serializer != null) {
-      return _readWithSerializer(
-          br, keyWrap!.serializer!, trackRef, pack, keyWrap);
+    if (keyDeclaredType) {
+      if (keyWrap == null) {
+        throw StateError(
+            'Map key declared type flag set but key type is unavailable');
+      }
+      Serializer keySerializer = keyWrap.serializer ??
+          pack.typeResolver.getRegisteredSerializer(keyWrap.type);
+      return _readWithSerializer(br, keySerializer, trackRef, pack, keyWrap);
     }
     return _readWithDynamic(br, trackRef, pack, keyWrap);
   }
@@ -326,9 +347,15 @@ abstract base class MapSerializer<T extends Map<Object?, Object?>>
   ) {
     bool trackRef = (chunkHeader & _trackingValueRef) != 0;
     bool valueDeclaredType = (chunkHeader & _valueDeclType) != 0;
-    if (valueDeclaredType && valueWrap?.serializer != null) {
+    if (valueDeclaredType) {
+      if (valueWrap == null) {
+        throw StateError(
+            'Map value declared type flag set but value type is unavailable');
+      }
+      Serializer valueSerializer = valueWrap.serializer ??
+          pack.typeResolver.getRegisteredSerializer(valueWrap.type);
       return _readWithSerializer(
-          br, valueWrap!.serializer!, trackRef, pack, valueWrap);
+          br, valueSerializer, trackRef, pack, valueWrap);
     }
     return _readWithDynamic(br, trackRef, pack, valueWrap);
   }

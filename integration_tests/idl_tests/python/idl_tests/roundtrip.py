@@ -200,6 +200,24 @@ def local_roundtrip_evolving() -> None:
     fixed_v1_round = fory_v1.deserialize(round_fixed)
     assert fixed_v1_round != fixed_v1
 
+    evolving_size_v1 = evolving1.EvolvingSizeMessage(payload="payload")
+    fixed_size_v1 = evolving1.FixedSizeMessage(payload="payload")
+    evolving_size_bytes = fory_v1.serialize(evolving_size_v1)
+    fixed_size_bytes = fory_v1.serialize(fixed_size_v1)
+    assert len(fixed_size_bytes) < len(evolving_size_bytes)
+
+    evolving_size_v2 = fory_v2.deserialize(evolving_size_bytes)
+    assert isinstance(evolving_size_v2, evolving2.EvolvingSizeMessage)
+    assert evolving_size_v2.payload == evolving_size_v1.payload
+    evolving_size_v1_round = fory_v1.deserialize(fory_v2.serialize(evolving_size_v2))
+    assert evolving_size_v1_round == evolving_size_v1
+
+    fixed_size_v2 = fory_v2.deserialize(fixed_size_bytes)
+    assert isinstance(fixed_size_v2, evolving2.FixedSizeMessage)
+    assert fixed_size_v2.payload == fixed_size_v1.payload
+    fixed_size_v1_round = fory_v1.deserialize(fory_v2.serialize(fixed_size_v2))
+    assert fixed_size_v1_round == fixed_size_v1
+
 
 def build_primitive_types() -> "complex_pb.PrimitiveTypes":
     contact = complex_pb.PrimitiveTypes.Contact.email("alice@example.com")
@@ -352,7 +370,9 @@ def build_optional_holder() -> "optional_types.OptionalHolder":
         string_value="optional",
         bytes_value=b"\x01\x02\x03",
         date_value=datetime.date(2024, 1, 2),
-        timestamp_value=datetime.datetime.fromtimestamp(1704164645),
+        timestamp_value=datetime.datetime.fromtimestamp(
+            1704164645, tz=datetime.timezone.utc
+        ),
         int32_list=np.array([1, 2, 3], dtype=np.int32),
         string_list=["alpha", "beta"],
         int64_map={"alpha": 10, "beta": 20},
@@ -368,7 +388,9 @@ def build_any_holder() -> "any_example.AnyHolder":
         bool_value=True,
         string_value="hello",
         date_value=datetime.date(2024, 1, 2),
-        timestamp_value=datetime.datetime.fromtimestamp(1704164645),
+        timestamp_value=datetime.datetime.fromtimestamp(
+            1704164645, tz=datetime.timezone.utc
+        ),
         message_value=inner,
         union_value=union_value,
         list_value=["alpha", "beta"],

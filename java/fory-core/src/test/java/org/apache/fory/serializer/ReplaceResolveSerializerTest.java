@@ -89,16 +89,15 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
     serDeCheck(fory, o1);
     assertTrue(
-        fory.getClassResolver().getSerializer(o1.getClass()) instanceof ReplaceResolveSerializer);
+        fory.getTypeResolver().getSerializer(o1.getClass()) instanceof ReplaceResolveSerializer);
 
     serDeCheck(fory, list1);
 
     serDeCheck(fory, map1);
     assertTrue(
-        fory.getClassResolver().getSerializer(list1.getClass())
-            instanceof ReplaceResolveSerializer);
+        fory.getTypeResolver().getSerializer(list1.getClass()) instanceof ReplaceResolveSerializer);
     assertTrue(
-        fory.getClassResolver().getSerializer(map1.getClass()) instanceof ReplaceResolveSerializer);
+        fory.getTypeResolver().getSerializer(map1.getClass()) instanceof ReplaceResolveSerializer);
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -169,7 +168,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     Object[] newObj = (Object[]) serDe(fory, (Object) o);
     assertEquals(newObj, new Object[] {o.copy, o.age});
     assertTrue(
-        fory.getClassResolver().getSerializer(CustomReplaceClass2.class)
+        fory.getTypeResolver().getSerializer(CustomReplaceClass2.class)
             instanceof ReplaceResolveSerializer);
   }
 
@@ -346,7 +345,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     Object[] newObj = (Object[]) serDe(fory, (Object) o);
     assertEquals(newObj, new Object[] {o.copy, o.age});
     assertTrue(
-        fory.getClassResolver().getSerializer(Subclass1.class) instanceof ReplaceResolveSerializer);
+        fory.getTypeResolver().getSerializer(Subclass1.class) instanceof ReplaceResolveSerializer);
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -403,7 +402,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     Object[] newObj = (Object[]) serDe(fory, (Object) o);
     assertEquals(newObj, new Object[] {o.copy, o.age});
     assertTrue(
-        fory.getClassResolver().getSerializer(Subclass2.class) instanceof ReplaceResolveSerializer);
+        fory.getTypeResolver().getSerializer(Subclass2.class) instanceof ReplaceResolveSerializer);
   }
 
   public static class CustomReplaceClass5 {

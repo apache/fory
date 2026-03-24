@@ -23,7 +23,7 @@ import 'package:fory_test/extensions/map_ext.dart';
 part '../generated/complex_obj_4.g.dart';
 
 @foryClass
-class ComplexObject4 with _$ComplexObject4Fory {
+class ComplexObject4 {
   late String f1;
   late String f2;
   late List<String> f3;

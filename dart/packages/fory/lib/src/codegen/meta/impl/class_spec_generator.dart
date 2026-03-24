@@ -29,6 +29,7 @@ import 'package:fory/src/codegen/tool/codegen_tool.dart';
 @immutable
 class ClassSpecGenerator extends CustomTypeSpecGenerator {
   final bool promiseAcyclic;
+  final bool evolving;
   final bool noCyclicRisk;
   final FieldsSpecGenerator _fieldsSpecGen;
   final LibraryImportPack imports;
@@ -41,6 +42,7 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     super.name,
     super.importPath,
     this.promiseAcyclic,
+    this.evolving,
     this.noCyclicRisk,
     this._fieldsSpecGen,
     this.imports,
@@ -55,21 +57,6 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
       consInfo,
       _fieldsSpecGen,
     );
-  }
-
-  void _genMixinPart(StringBuffer buf) {
-    buf.write("mixin ");
-    buf.write('_\$');
-    buf.write(name);
-    buf.write("Fory");
-    buf.write(" implements ForyTypeProvider {\n");
-    CodegenTool.writeIndent(buf, CodegenStyle.indent);
-    buf.write("@override\n");
-    CodegenTool.writeIndent(buf, CodegenStyle.indent);
-    buf.write("Type get foryType => ");
-    buf.write(name);
-    buf.write(";\n");
-    buf.write("}\n");
   }
 
   @override
@@ -105,6 +92,10 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
     buf.write(promiseAcyclic ? "true" : "false");
     buf.write(",\n");
 
+    CodegenTool.writeIndent(buf, nextTotalIndent);
+    buf.write(evolving ? "true" : "false");
+    buf.write(",\n");
+
     // arg: noCyclicRisk
     CodegenTool.writeIndent(buf, nextTotalIndent);
     buf.write(noCyclicRisk ? "true" : "false");
@@ -136,7 +127,5 @@ class ClassSpecGenerator extends CustomTypeSpecGenerator {
 
     // tail part
     buf.write(");\n\n");
-
-    _genMixinPart(buf);
   }
 }

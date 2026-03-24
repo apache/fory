@@ -140,6 +140,22 @@ class TestTupleWithNone:
         assert result == data
 
 
+class TestTupleXlang:
+    @pytest.mark.parametrize("ref", [False, True])
+    def test_top_level_tuple_roundtrip_to_list(self, ref):
+        fory = pyfory.Fory(xlang=True, ref=ref, strict=False)
+        data = ("a", 1, ("nested", 2))
+        result = fory.loads(fory.dumps(data))
+        assert result == ["a", 1, ["nested", 2]]
+
+    @pytest.mark.parametrize("ref", [False, True])
+    def test_nested_dynamic_tuples_roundtrip_to_lists(self, ref):
+        fory = pyfory.Fory(xlang=True, ref=ref, strict=False)
+        data = [("a", 1), {"x": ("b", 2), "y": [("c", 3)]}]
+        result = fory.loads(fory.dumps(data))
+        assert result == [["a", 1], {"x": ["b", 2], "y": [["c", 3]]}]
+
+
 class TestDictWithNone:
     """Test dict serialization with None keys/values."""
 

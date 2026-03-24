@@ -51,7 +51,10 @@ public class ArraySerializers {
 
     public ObjectArraySerializer(Fory fory, Class<T[]> cls) {
       super(fory, cls);
-      fory.getClassResolver().setSerializer(cls, this);
+      TypeResolver resolver = fory.getTypeResolver();
+      if (resolver instanceof ClassResolver) {
+        ((ClassResolver) resolver).setSerializer(cls, this);
+      }
       Preconditions.checkArgument(cls.isArray());
       Class<?> t = cls;
       Class<?> innerType = cls;
@@ -65,23 +68,33 @@ public class ArraySerializers {
       }
       this.innerType = (Class<T>) innerType;
       Class<?> componentType = cls.getComponentType();
-      componentGenericType = fory.getClassResolver().buildGenericType(componentType);
-      if (fory.getClassResolver().isMonomorphic(componentType)) {
+      componentGenericType = fory.getTypeResolver().buildGenericType(componentType);
+      if (fory.getTypeResolver().isMonomorphic(componentType)) {
         if (fory.isCrossLanguage()) {
           this.componentTypeSerializer = null;
         } else {
-          this.componentTypeSerializer = fory.getClassResolver().getSerializer(componentType);
+          this.componentTypeSerializer = fory.getTypeResolver().getSerializer(componentType);
         }
       } else {
         // TODO add TypeInfo cache for non-final component type.
         this.componentTypeSerializer = null;
       }
       this.stubDims = new int[dimension];
-      classInfoHolder = fory.getClassResolver().nilTypeInfoHolder();
+      classInfoHolder = fory.getTypeResolver().nilTypeInfoHolder();
     }
 
     @Override
     public void write(MemoryBuffer buffer, T[] arr) {
+      if (!isJava) {
+        int len = arr.length;
+        buffer.writeVarUint32Small7(len);
+        // TODO(chaokunyang) use generics by creating component serializers to multi-dimension
+        // array.
+        for (T t : arr) {
+          fory.writeRef(buffer, t);
+        }
+        return;
+      }
       int len = arr.length;
       RefResolver refResolver = fory.getRefResolver();
       Serializer componentSerializer = this.componentTypeSerializer;
@@ -95,7 +108,7 @@ public class ArraySerializers {
         }
       } else {
         Fory fory = this.fory;
-        ClassResolver classResolver = fory.getClassResolver();
+        ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
         TypeInfo typeInfo = null;
         Class<?> elemClass = null;
         for (T t : arr) {
@@ -136,17 +149,18 @@ public class ArraySerializers {
     }
 
     @Override
-    public void xwrite(MemoryBuffer buffer, T[] arr) {
-      int len = arr.length;
-      buffer.writeVarUint32Small7(len);
-      // TODO(chaokunyang) use generics by creating component serializers to multi-dimension array.
-      for (T t : arr) {
-        fory.xwriteRef(buffer, t);
-      }
-    }
-
-    @Override
     public T[] read(MemoryBuffer buffer) {
+      if (!isJava) {
+        int numElements = buffer.readVarUint32Small7();
+        Object[] value = newArray(numElements);
+        fory.getGenerics().pushGenericType(componentGenericType);
+        for (int i = 0; i < numElements; i++) {
+          Object x = fory.readRef(buffer);
+          value[i] = x;
+        }
+        fory.getGenerics().popGenericType();
+        return (T[]) value;
+      }
       int numElements = buffer.readVarUint32Small7();
       boolean isFinal = (numElements & 0b1) != 0;
       numElements >>>= 1;
@@ -182,19 +196,6 @@ public class ArraySerializers {
           value[i] = o;
         }
       }
-      return (T[]) value;
-    }
-
-    @Override
-    public T[] xread(MemoryBuffer buffer) {
-      int numElements = buffer.readVarUint32Small7();
-      Object[] value = newArray(numElements);
-      fory.getGenerics().pushGenericType(componentGenericType);
-      for (int i = 0; i < numElements; i++) {
-        Object x = fory.xreadRef(buffer);
-        value[i] = x;
-      }
-      fory.getGenerics().popGenericType();
       return (T[]) value;
     }
 
@@ -253,16 +254,6 @@ public class ArraySerializers {
 
     public PrimitiveArraySerializer(Fory fory, Class<T> cls) {
       super(fory, cls);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, T value) {
-      write(buffer, value);
-    }
-
-    @Override
-    public T xread(MemoryBuffer buffer) {
-      return read(buffer);
     }
   }
 
@@ -356,6 +347,9 @@ public class ArraySerializers {
 
     @Override
     public void write(MemoryBuffer buffer, char[] value) {
+      if (!isJava) {
+        throw new UnsupportedOperationException();
+      }
       if (fory.getBufferCallback() == null) {
         int size = Math.multiplyExact(value.length, 2);
         if (Platform.IS_LITTLE_ENDIAN) {
@@ -388,6 +382,9 @@ public class ArraySerializers {
 
     @Override
     public char[] read(MemoryBuffer buffer) {
+      if (!isJava) {
+        throw new UnsupportedOperationException();
+      }
       if (fory.isPeerOutOfBandEnabled()) {
         MemoryBuffer buf = fory.readBufferObject(buffer);
         int size = buf.remaining();
@@ -420,16 +417,6 @@ public class ArraySerializers {
         values[i] = (char) buffer._unsafeGetInt16(idx + i * 2);
       }
       buffer._increaseReaderIndexUnsafe(size);
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, char[] value) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public char[] xread(MemoryBuffer buffer) {
-      throw new UnsupportedOperationException();
     }
   }
 
@@ -895,6 +882,19 @@ public class ArraySerializers {
 
     @Override
     public void write(MemoryBuffer buffer, String[] value) {
+      if (!isJava) {
+        int len = value.length;
+        buffer.writeVarUint32Small7(len);
+        for (String elem : value) {
+          if (elem != null) {
+            buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+            stringSerializer.writeString(buffer, elem);
+          } else {
+            buffer.writeByte(Fory.NULL_FLAG);
+          }
+        }
+        return;
+      }
       int len = value.length;
       buffer.writeVarUint32Small7(len);
       if (len == 0) {
@@ -931,6 +931,18 @@ public class ArraySerializers {
 
     @Override
     public String[] read(MemoryBuffer buffer) {
+      if (!isJava) {
+        int numElements = buffer.readVarUint32Small7();
+        String[] value = new String[numElements];
+        for (int i = 0; i < numElements; i++) {
+          if (buffer.readByte() >= Fory.NOT_NULL_VALUE_FLAG) {
+            value[i] = stringSerializer.readString(buffer);
+          } else {
+            value[i] = null;
+          }
+        }
+        return value;
+      }
       int numElements = buffer.readVarUint32Small7();
       String[] value = new String[numElements];
       if (numElements == 0) {
@@ -940,41 +952,13 @@ public class ArraySerializers {
       StringSerializer serializer = this.stringSerializer;
       if ((flags & CollectionFlags.HAS_NULL) != CollectionFlags.HAS_NULL) {
         for (int i = 0; i < numElements; i++) {
-          value[i] = serializer.readJavaString(buffer);
+          value[i] = serializer.readString(buffer);
         }
       } else {
         for (int i = 0; i < numElements; i++) {
           if (buffer.readByte() != Fory.NULL_FLAG) {
-            value[i] = serializer.readJavaString(buffer);
+            value[i] = serializer.readString(buffer);
           }
-        }
-      }
-      return value;
-    }
-
-    @Override
-    public void xwrite(MemoryBuffer buffer, String[] value) {
-      int len = value.length;
-      buffer.writeVarUint32Small7(len);
-      for (String elem : value) {
-        if (elem != null) {
-          buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-          stringSerializer.writeString(buffer, elem);
-        } else {
-          buffer.writeByte(Fory.NULL_FLAG);
-        }
-      }
-    }
-
-    @Override
-    public String[] xread(MemoryBuffer buffer) {
-      int numElements = buffer.readVarUint32Small7();
-      String[] value = new String[numElements];
-      for (int i = 0; i < numElements; i++) {
-        if (buffer.readByte() >= Fory.NOT_NULL_VALUE_FLAG) {
-          value[i] = stringSerializer.readString(buffer);
-        } else {
-          value[i] = null;
         }
       }
       return value;

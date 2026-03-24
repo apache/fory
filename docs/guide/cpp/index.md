@@ -89,7 +89,7 @@ module(
 
 bazel_dep(name = "rules_cc", version = "0.1.1")
 
-bazel_dep(name = "fory", version = "0.15.0")
+bazel_dep(name = "fory", version = "0.16.0")
 git_override(
     module_name = "fory",
     remote = "https://github.com/apache/fory.git",
@@ -117,7 +117,7 @@ bazel run //:my_app
 For local development, you can use `local_path_override` instead:
 
 ```bazel
-bazel_dep(name = "fory", version = "0.15.0")
+bazel_dep(name = "fory", version = "0.16.0")
 local_path_override(
     module_name = "fory",
     path = "/path/to/fory",
@@ -137,11 +137,13 @@ See the [examples/cpp](https://github.com/apache/fory/tree/main/examples/cpp) di
 
 ```cpp
 #include "fory/serialization/fory.h"
+#include <string>
+#include <vector>
 
 using namespace fory::serialization;
 
 // Define a struct
-class Person {
+struct Person {
   std::string name;
   int32_t age;
   std::vector<std::string> hobbies;
@@ -149,13 +151,8 @@ class Person {
   bool operator==(const Person &other) const {
     return name == other.name && age == other.age && hobbies == other.hobbies;
   }
-
-public:
-  // Register the struct with Fory (FORY_STRUCT must be in public scope).
-  FORY_STRUCT(Person, name, age, hobbies);
 };
-
-
+FORY_STRUCT(Person, name, age, hobbies);
 
 int main() {
   // Create a Fory instance

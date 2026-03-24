@@ -72,7 +72,7 @@ class NumericRangeSerializer[A, T <: NumericRange[A]](fory: Fory, cls: Class[T])
 
   override def write(buffer: MemoryBuffer, value: T): Unit = {
     val cls = value.start.getClass
-    val resolver = fory.getClassResolver
+    val resolver = fory.getTypeResolver
     val classInfo = resolver.getTypeInfo(cls)
     resolver.writeTypeInfo(buffer, classInfo)
     val serializer = classInfo.getSerializer.asInstanceOf[Serializer[A]]
@@ -83,7 +83,7 @@ class NumericRangeSerializer[A, T <: NumericRange[A]](fory: Fory, cls: Class[T])
   }
 
   override def read(buffer: MemoryBuffer) = {
-    val resolver = fory.getClassResolver
+    val resolver = fory.getTypeResolver
     val classInfo = resolver.readTypeInfo(buffer)
     val serializer = classInfo.getSerializer.asInstanceOf[Serializer[A]]
     val start = serializer.read(buffer)

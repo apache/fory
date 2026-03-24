@@ -731,6 +731,7 @@ impl TypeResolver {
         self.register_internal_serializer::<i128>(TypeId::INT128)?;
         self.register_internal_serializer::<f32>(TypeId::FLOAT32)?;
         self.register_internal_serializer::<f64>(TypeId::FLOAT64)?;
+        self.register_internal_serializer::<crate::float16::float16>(TypeId::FLOAT16)?;
         self.register_internal_serializer::<u8>(TypeId::UINT8)?;
         self.register_internal_serializer::<u16>(TypeId::UINT16)?;
         self.register_internal_serializer::<u32>(TypeId::VAR_UINT32)?;
@@ -748,6 +749,7 @@ impl TypeResolver {
         self.register_internal_serializer::<Vec<i64>>(TypeId::INT64_ARRAY)?;
         self.register_internal_serializer::<Vec<f32>>(TypeId::FLOAT32_ARRAY)?;
         self.register_internal_serializer::<Vec<f64>>(TypeId::FLOAT64_ARRAY)?;
+        self.register_internal_serializer::<Vec<crate::float16::float16>>(TypeId::FLOAT16_ARRAY)?;
         self.register_internal_serializer::<Vec<u8>>(TypeId::BINARY)?;
         self.register_internal_serializer::<Vec<u16>>(TypeId::UINT16_ARRAY)?;
         self.register_internal_serializer::<Vec<u32>>(TypeId::UINT32_ARRAY)?;

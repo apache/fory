@@ -38,14 +38,16 @@ pub struct MetaStringBytes {
 
 const HEADER_MASK: i64 = 0xff;
 
-fn byte_to_encoding(byte: u8) -> Encoding {
+fn byte_to_encoding(byte: u8) -> Result<Encoding, Error> {
     match byte {
-        0 => Encoding::Utf8,
-        1 => Encoding::LowerSpecial,
-        2 => Encoding::LowerUpperDigitSpecial,
-        3 => Encoding::FirstToLowerSpecial,
-        4 => Encoding::AllToLowerSpecial,
-        _ => unreachable!(),
+        0 => Ok(Encoding::Utf8),
+        1 => Ok(Encoding::LowerSpecial),
+        2 => Ok(Encoding::LowerUpperDigitSpecial),
+        3 => Ok(Encoding::FirstToLowerSpecial),
+        4 => Ok(Encoding::AllToLowerSpecial),
+        _ => Err(Error::invalid_data(format!(
+            "unknown encoding byte: {byte}"
+        ))),
     }
 }
 
@@ -54,22 +56,22 @@ static EMPTY: OnceLock<MetaStringBytes> = OnceLock::new();
 impl MetaStringBytes {
     pub const DEFAULT_DYNAMIC_WRITE_STRING_ID: i16 = -1;
 
-    pub fn new(bytes: Vec<u8>, hash_code: i64) -> Self {
+    pub fn new(bytes: Vec<u8>, hash_code: i64) -> Result<Self, Error> {
         let header = (hash_code & HEADER_MASK) as u8;
-        let encoding = byte_to_encoding(header);
+        let encoding = byte_to_encoding(header)?;
         let mut data = bytes.clone();
         if bytes.len() < 16 {
             data.resize(16, 0);
         }
         let first8 = u64::from_le_bytes(data[0..8].try_into().unwrap());
         let second8 = u64::from_le_bytes(data[8..16].try_into().unwrap());
-        MetaStringBytes {
+        Ok(MetaStringBytes {
             bytes,
             hash_code,
             encoding,
             first8,
             second8,
-        }
+        })
     }
 
     pub fn to_meta_string(&self) -> Result<MetaString, Error> {
@@ -88,7 +90,7 @@ impl MetaStringBytes {
         let encoding = meta_string.encoding;
         let header = encoding as i64 & HEADER_MASK;
         hash_code |= header;
-        Ok(Self::new(bytes, hash_code))
+        Self::new(bytes, hash_code)
     }
 
     pub fn get_empty() -> &'static MetaStringBytes {
@@ -219,6 +221,9 @@ impl MetaStringReaderResolver {
                 self.read_big_meta_string_bytes_and_update(reader, len, hash_code)
             }
         } else {
+            if len == 0 {
+                return Err(Error::invalid_data("dynamic string id cannot be zero"));
+            }
             let idx = len - 1;
             self.dynamic_read
                 .get(idx)
@@ -243,6 +248,9 @@ impl MetaStringReaderResolver {
                 self.read_small_meta_string_bytes_and_update(reader, len)
             }
         } else {
+            if len == 0 {
+                return Err(Error::invalid_data("dynamic string id cannot be zero"));
+            }
             let idx = len - 1;
             self.dynamic_read
                 .get(idx)
@@ -265,7 +273,7 @@ impl MetaStringReaderResolver {
             }
             Entry::Vacant(entry) => {
                 let bytes = reader.read_bytes(len)?.to_vec();
-                let mb = MetaStringBytes::new(bytes, hash_code);
+                let mb = MetaStringBytes::new(bytes, hash_code)?;
                 entry.insert(mb)
             }
         };
@@ -319,7 +327,7 @@ impl MetaStringReaderResolver {
                 let hash_code = (murmurhash3_x64_128(&data, 47).0 as i64).abs();
                 let hash_code =
                     (hash_code as u64 & 0xffffffffffffff00_u64) as i64 | (encoding_val as i64);
-                let mb = MetaStringBytes::new(data, hash_code);
+                let mb = MetaStringBytes::new(data, hash_code)?;
                 entry.insert(mb)
             }
         };
@@ -360,13 +368,14 @@ impl MetaStringReaderResolver {
             let mb_ref = self.read_meta_string_bytes(reader)?;
             mb_ref as *const MetaStringBytes
         };
-        let ms_ref = self
-            .meta_string_bytes_to_string
-            .entry(ptr)
-            .or_insert_with(|| {
+        let ms_ref = match self.meta_string_bytes_to_string.entry(ptr) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
                 let mb_ref = unsafe { &*ptr };
-                mb_ref.to_meta_string().unwrap()
-            });
+                let ms = mb_ref.to_meta_string()?;
+                v.insert(ms)
+            }
+        };
 
         Ok(ms_ref)
     }

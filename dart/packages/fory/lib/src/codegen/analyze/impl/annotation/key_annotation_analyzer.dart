@@ -23,7 +23,7 @@ import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/annotation/require_location_level.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/exception/annotation_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/annotation/fory_key.dart';
 
 class KeyAnnotationAnalyzer {
@@ -56,9 +56,11 @@ class KeyAnnotationAnalyzer {
     // If there is no annotation, both includeFromFory and includeToFory default to true.
     bool includeFromFory = true;
     bool includeToFory = true;
+    bool ref = false;
     if (getMeta && anno != null) {
       includeFromFory = anno.getField("includeFromFory")!.toBoolValue()!;
       includeToFory = anno.getField("includeToFory")!.toBoolValue()!;
+      ref = anno.getField("ref")!.toBoolValue()!;
       // serializeToVar = anno.getField("serializeTo")?.variable;
       // deserializeFromVar = anno.getField("deserializeFrom")?.variable;
       // if (serializeToVar != null){
@@ -74,6 +76,7 @@ class KeyAnnotationAnalyzer {
       // deserializeFrom: deserializeFrom,
       includeFromFory: includeFromFory,
       includeToFory: includeToFory,
+      ref: ref,
     );
     return foryKey;
   }

@@ -21,7 +21,7 @@ import 'package:fory/src/codegen/entity/struct_hash_pair.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/const/types.dart';
 import 'package:fory/src/deserialization_context.dart';
-import 'package:fory/src/exception/deserialization_exception.dart';
+import 'package:fory/src/fory_exception.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/meta/spec_wraps/type_spec_wrap.dart';
@@ -133,6 +133,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
       }
       late Object? fieldValue;
       Serializer? serializer = _fieldTypeWraps[i].serializer;
+      if (serializer == null &&
+          !_compatible &&
+          fieldSpec.trackingRef &&
+          typeWrap.objType != ObjType.UNKNOWN) {
+        serializer = pack.typeResolver.getRegisteredSerializer(typeWrap.type);
+      }
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           fieldValue =
@@ -183,6 +189,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
       }
       Object? fieldValue = fieldSpec.getter!(v);
       Serializer? serializer = typeWrap.serializer;
+      if (serializer == null &&
+          !_compatible &&
+          fieldSpec.trackingRef &&
+          typeWrap.objType != ObjType.UNKNOWN) {
+        serializer = pack.typeResolver.getRegisteredSerializer(typeWrap.type);
+      }
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           pack.serializationDispatcher
@@ -216,6 +228,12 @@ final class ClassSerializer extends CustomSerializer<Object> {
         pack.typeWrapStack.push(typeWrap);
       }
       Serializer? serializer = typeWrap.serializer;
+      if (serializer == null &&
+          !_compatible &&
+          fieldSpec.trackingRef &&
+          typeWrap.objType != ObjType.UNKNOWN) {
+        serializer = pack.typeResolver.getRegisteredSerializer(typeWrap.type);
+      }
       if (serializer == null) {
         if (fieldSpec.trackingRef || typeWrap.nullable) {
           args[i] = pack.deserializationDispatcher.readDynamicWithRef(br, pack);

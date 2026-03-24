@@ -56,7 +56,7 @@ func TestUnsignedTypeSerialization(t *testing.T) {
 	}
 
 	var result any
-	err = f.Deserialize(data, &result)
+	err = testDeserialize(t, f, data, &result)
 	if err != nil {
 		t.Fatalf("Deserialize failed: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestOptionFieldSerialization(t *testing.T) {
 	require.NoError(t, err)
 
 	var result any
-	err = f.Deserialize(data, &result)
+	err = testDeserialize(t, f, data, &result)
 	require.NoError(t, err)
 
 	out := result.(*OptionStruct)
@@ -144,6 +144,23 @@ func TestStructEvolvingOverride(t *testing.T) {
 	fixedInfo, err := resolver.GetTypeInfo(reflect.ValueOf(fixedStruct{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(STRUCT), fixedInfo.TypeID)
+
+	evolving := &evolvingStruct{ID: 123}
+	fixed := &fixedStruct{ID: 123}
+
+	evolvingBytes, err := f.Serialize(evolving)
+	require.NoError(t, err)
+	fixedBytes, err := f.Serialize(fixed)
+	require.NoError(t, err)
+	require.Greater(t, len(evolvingBytes), len(fixedBytes))
+
+	var evolvingResult evolvingStruct
+	require.NoError(t, testDeserialize(t, f, evolvingBytes, &evolvingResult))
+	require.Equal(t, *evolving, evolvingResult)
+
+	var fixedResult fixedStruct
+	require.NoError(t, testDeserialize(t, f, fixedBytes, &fixedResult))
+	require.Equal(t, *fixed, fixedResult)
 }
 
 func TestOptionFieldUnsupportedTypes(t *testing.T) {
@@ -357,7 +374,7 @@ func TestSetFieldSerializationSchemaConsistent(t *testing.T) {
 
 	// Deserialize
 	var result any
-	err = f.Deserialize(data, &result)
+	err = testDeserialize(t, f, data, &result)
 	require.NoError(t, err, "Deserialize failed")
 
 	resultObj := result.(*SetFieldsStruct)
@@ -404,7 +421,7 @@ func TestSetFieldSerializationCompatible(t *testing.T) {
 
 	// Deserialize
 	var result any
-	err = f.Deserialize(data, &result)
+	err = testDeserialize(t, f, data, &result)
 	require.NoError(t, err, "Deserialize failed")
 
 	resultObj := result.(*SetFieldsStruct)
@@ -525,7 +542,7 @@ func TestFloat16StructField(t *testing.T) {
 
 	// Create new instance
 	res := &StructWithFloat16{}
-	err = f.Deserialize(data, res)
+	err = testDeserialize(t, f, data, res)
 	require.NoError(t, err)
 
 	// Verify

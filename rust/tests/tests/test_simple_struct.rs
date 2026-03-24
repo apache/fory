@@ -81,12 +81,12 @@ fn test_compatible_field_type_change() {
 
 #[test]
 fn test_struct_evolving_override() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyObject, Debug, PartialEq)]
     struct Evolving {
         id: i32,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyObject, Debug, PartialEq)]
     #[fory(evolving = false)]
     struct Fixed {
         id: i32,
@@ -99,13 +99,22 @@ fn test_struct_evolving_override() {
     fory.register::<Evolving>(100).unwrap();
     fory.register::<Fixed>(101).unwrap();
 
-    let evolving_bytes = fory.serialize(&Evolving { id: 1 }).unwrap();
+    let evolving = Evolving { id: 123 };
+    let evolving_bytes = fory.serialize(&evolving).unwrap();
     assert!(evolving_bytes.len() > 2);
     assert_eq!(evolving_bytes[2], TypeId::COMPATIBLE_STRUCT as u8);
 
-    let fixed_bytes = fory.serialize(&Fixed { id: 1 }).unwrap();
+    let fixed = Fixed { id: 123 };
+    let fixed_bytes = fory.serialize(&fixed).unwrap();
     assert!(fixed_bytes.len() > 2);
     assert_eq!(fixed_bytes[2], TypeId::STRUCT as u8);
+    assert!(fixed_bytes.len() < evolving_bytes.len());
+
+    let evolving_result: Evolving = fory.deserialize(&evolving_bytes).unwrap();
+    assert_eq!(evolving, evolving_result);
+
+    let fixed_result: Fixed = fory.deserialize(&fixed_bytes).unwrap();
+    assert_eq!(fixed, fixed_result);
 }
 
 // Test 4: Compatible mode - serialize with field, deserialize with empty struct
@@ -206,4 +215,46 @@ fn test_compatible_map_to_empty_struct() {
     let bytes = fory1.serialize(&data1).unwrap();
     let _result: EmptyData = fory2.deserialize(&bytes).unwrap();
     // If we get here without panic, the test passes
+}
+
+#[test]
+fn test_struct_with_float16_fields() {
+    use fory_core::float16::float16;
+
+    #[derive(ForyObject, Debug)]
+    struct Float16Data {
+        scalar: float16,
+        vec_field: Vec<float16>,
+        arr_field: [float16; 3],
+    }
+
+    let mut fory = Fory::default();
+    fory.register::<Float16Data>(200).unwrap();
+
+    let obj = Float16Data {
+        scalar: float16::from_f32(1.5),
+        vec_field: vec![
+            float16::from_f32(1.0),
+            float16::from_f32(2.0),
+            float16::INFINITY,
+        ],
+        arr_field: [float16::from_f32(-1.0), float16::MAX, float16::ZERO],
+    };
+
+    let bin = fory.serialize(&obj).unwrap();
+    let obj2: Float16Data = fory.deserialize(&bin).expect("deserialize Float16Data");
+
+    assert_eq!(obj2.scalar.to_bits(), float16::from_f32(1.5).to_bits());
+    assert_eq!(obj2.vec_field.len(), 3);
+    assert_eq!(
+        obj2.vec_field[0].to_bits(),
+        float16::from_f32(1.0).to_bits()
+    );
+    assert!(obj2.vec_field[2].is_infinite() && obj2.vec_field[2].is_sign_positive());
+    assert_eq!(
+        obj2.arr_field[0].to_bits(),
+        float16::from_f32(-1.0).to_bits()
+    );
+    assert_eq!(obj2.arr_field[1].to_bits(), float16::MAX.to_bits());
+    assert_eq!(obj2.arr_field[2].to_bits(), float16::ZERO.to_bits());
 }

@@ -33,7 +33,6 @@ on:
   pull_request:
     paths-ignore:
       - "**/*.md"
-      - "docs/**"
       - "LICENSE"
       - ".vscode/**"
       - ".gitignore"
@@ -142,6 +141,171 @@ jobs:
         shell: bash
         run: python ./ci/run_ci.py java --version windows_java21
 
+  csharp:
+    name: C# CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            csharp/**/*.csproj
+            csharp/Fory.sln
+      - name: Restore C# dependencies
+        run: |
+          cd csharp
+          dotnet restore Fory.sln
+      - name: Build C# solution
+        run: |
+          cd csharp
+          dotnet build Fory.sln -c Release --no-restore
+      - name: Run C# tests
+        run: |
+          cd csharp
+          dotnet test tests/Fory.Tests/Fory.Tests.csproj -c Release --no-build
+      - name: Verify C# format
+        run: |
+          cd csharp
+          dotnet format Fory.sln --verify-no-changes \
+            --exclude src/Fory.Generator/AnalyzerReleases.Shipped.md \
+            --exclude src/Fory.Generator/AnalyzerReleases.Unshipped.md
+
+  csharp_xlang:
+    name: C# Xlang Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            csharp/**/*.csproj
+            csharp/Fory.sln
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Restore and build C# xlang peer
+        run: |
+          cd csharp
+          dotnet restore tests/Fory.XlangPeer/Fory.XlangPeer.csproj
+          dotnet build tests/Fory.XlangPeer/Fory.XlangPeer.csproj -c Debug --no-restore
+      - name: Run C# Xlang Test
+        env:
+          FORY_CSHARP_JAVA_CI: "1"
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          cd fory-core
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CSharpXlangTest
+      - name: Run C# IDL Tests
+        run: ./integration_tests/idl_tests/run_csharp_tests.sh
+
+  swift:
+    name: Swift CI
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run Swift unit tests
+        run: |
+          cd swift
+          swift test
+      - name: Run SwiftLint check
+        run: |
+          if ! command -v swiftlint >/dev/null; then
+            brew install swiftlint
+          fi
+          cd swift
+          swiftlint lint --config .swiftlint.yml
+
+  swift_xlang:
+    name: Swift Xlang Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Cache Swift package dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+            swift/.build
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-
+      - name: Prebuild Swift xlang peer for cache reuse
+        run: |
+          cd swift
+          swift build -c release --disable-automatic-resolution --product ForyXlangTests
+      - name: Run Swift Xlang Test
+        env:
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+          FORY_SWIFT_JAVA_CI: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          cd fory-core
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
+      - name: Generate Swift IDL test code
+        run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
+      - name: Cache Swift IDL package build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            integration_tests/idl_tests/swift/idl_package/.build
+            integration_tests/idl_tests/swift/idl_package/.swiftpm
+          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/ForyMacro/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
+      - name: Prebuild Swift IDL package
+        run: |
+          cd integration_tests/idl_tests/swift/idl_package
+          swift build --disable-automatic-resolution --build-tests
+      - name: Run Swift IDL package tests
+        env:
+          ENABLE_FORY_DEBUG_OUTPUT: "1"
+        run: |
+          cd integration_tests/idl_tests/swift/idl_package
+          swift test --disable-automatic-resolution --skip-build
+      - name: Run Java IDL tests against Swift peer
+        env:
+          IDL_PEER_LANG: "swift"
+        run: ./integration_tests/idl_tests/run_java_tests.sh
+
   graalvm:
     name: GraalVM CI
     runs-on: ubuntu-latest
@@ -150,7 +314,7 @@ jobs:
         java-version: ["17", "21", "25"]
     steps:
       - uses: actions/checkout@v5
-      - uses: graalvm/setup-graalvm@v1
+      - uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1 # 1.5.0
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
@@ -220,9 +384,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - uses: sbt/setup-sbt@v1
+      - uses: sbt/setup-sbt@1cad58d595b729a71ca2254cdf5b43dd6f42d4bb # v1.1.18
       - name: Install fory java
-        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests && cd -
+        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true && cd -
       - name: Test
         run: |
           cd scala && sbt +test && cd -
@@ -255,7 +419,7 @@ jobs:
     name: JavaScript CI
     strategy:
       matrix:
-        node-version: [18, 20, 24]
+        node-version: [18, 24]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -280,6 +444,47 @@ jobs:
           python-version: ${{ runner.os == 'Windows' && '3.11' || '3.8' }}
       - name: Run CI with NodeJS
         run: python ./ci/run_ci.py javascript
+
+  javascript_xlang:
+    name: JavaScript Xlang Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Cache npm local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('javascript/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+      - name: Install JavaScript dependencies
+        run: |
+          cd javascript
+          npm install
+      - name: Run JavaScript Xlang Test
+        env:
+          FORY_JAVASCRIPT_JAVA_CI: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          cd fory-core
+          mvn --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest -DforkCount=0
 
   rust:
     name: Rust CI
@@ -306,6 +511,10 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
       - name: Run Rust CI
         run: python ./ci/run_ci.py rust
 
@@ -330,13 +539,17 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
       - name: Run Rust Xlang Test
         env:
           FORY_RUST_JAVA_CI: "1"
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.RustXlangTest
       - name: Run Rust IDL Tests
@@ -355,16 +568,11 @@ jobs:
         with:
           python-version: 3.11
           cache: 'pip'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-            C:\bazel\bazel.exe
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -395,6 +603,69 @@ jobs:
             bazel-out/*/testlogs/**/*.xml
           if-no-files-found: ignore
 
+  cpp_sanitizers:
+    name: C++ Sanitizer (${{ matrix.sanitizer }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sanitizer: [asan, ubsan]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: 'pip'
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+          restore-keys: |
+            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Bazel repository cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel/_bazel_*/*/external
+          key: bazel-repo-sanitizer-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          restore-keys: |
+            bazel-repo-sanitizer-${{ runner.os }}-${{ runner.arch }}-py311-
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: bazel-build-cpp-sanitizer-${{ runner.os }}-${{ runner.arch }}-${{ matrix.sanitizer }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE', '.bazelrc') }}
+      - name: Install Bazel and C++ deps
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Run C++ ${{ matrix.sanitizer }} tests
+        run: |
+          ARCH="$(uname -m)"
+          BAZEL_CONFIGS="--config=${{ matrix.sanitizer }}"
+          if [[ -x ~/bin/bazel ]]; then
+            BAZEL_BIN=~/bin/bazel
+          elif [[ -x ~/.local/bin/bazel ]]; then
+            BAZEL_BIN=~/.local/bin/bazel
+          else
+            echo "bazel not found in ~/bin or ~/.local/bin"
+            exit 1
+          fi
+          if [[ "${ARCH}" == "x86_64" || "${ARCH}" == "amd64" ]]; then
+            BAZEL_CONFIGS="--config=x86_64 ${BAZEL_CONFIGS}"
+          fi
+          ${BAZEL_BIN} test --cache_test_results=no ${BAZEL_CONFIGS} $(${BAZEL_BIN} query //cpp/...)
+      - name: Upload Bazel Test Logs (${{ matrix.sanitizer }})
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bazel-test-logs-${{ matrix.sanitizer }}
+          path: |
+            bazel-out/*/testlogs/**/*.log
+            bazel-out/*/testlogs/**/*.xml
+          if-no-files-found: ignore
+
   cpp_xlang:
     name: C++ Xlang Test
     runs-on: ubuntu-latest
@@ -417,60 +688,22 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
-      - name: Install bazel
-        run: python ./ci/run_ci.py cpp --install-deps-only
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Run CPP Xlang Test
         env:
           FORY_CPP_JAVA_CI: "1"
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CPPXlangTest
       - name: Run C++ IDL Tests
         run: ./integration_tests/idl_tests/run_cpp_tests.sh
-
-  javascript_xlang:
-    name: JavaScript Xlang Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: 21
-          distribution: "temurin"
-      - name: Cache Maven local repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
-      - name: Run JavaScript Xlang Test
-        env:
-          FORY_JAVASCRIPT_JAVA_CI: "0"
-        run: |
-          cd javascript
-          npm install
-          cd ../java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
-          cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest
 
   cpp_examples:
     name: C++ Examples
@@ -481,17 +714,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
-      - name: Install bazel
-        run: python ./ci/run_ci.py cpp --install-deps-only
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Build and run C++ hello_world example (CMake)
         run: |
           cd examples/cpp/hello_world
@@ -531,33 +758,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - name: Cache Bazel binary (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-
-          enableCrossOsArchive: false
-      - name: Cache Bazel binary (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: C:\bazel\bazel.exe
-          key: bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-
-      - name: Install bazel (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: python ./ci/run_ci.py cpp --install-deps-only
-      - name: Install bazel (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: ./ci/run_ci.sh install_bazel_windows
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Clean Bazel cache (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -566,6 +771,11 @@ jobs:
           bazel clean --expunge || true
       - name: Run Python CI
         shell: bash
+        run: python ./ci/run_ci.py python
+      - name: Run Python CI (ENABLE_FORY_CYTHON_SERIALIZATION=1)
+        shell: bash
+        env:
+          ENABLE_FORY_CYTHON_SERIALIZATION: "1"
         run: python ./ci/run_ci.py python
 
   python_xlang:
@@ -598,7 +808,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PythonXlangTest
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PyCrossLanguageTest
@@ -623,18 +833,11 @@ jobs:
         with:
           python-version: 3.8
           cache: 'pip'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-
-          enableCrossOsArchive: false
-      - name: Install bazel
-        run: python ./ci/run_ci.py cpp --install-deps-only
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Install python dependencies
         run: pip install pyarrow cython wheel pytest setuptools -U
       - name: Install pyfory for xlang tests
@@ -673,7 +876,7 @@ jobs:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.GoXlangTest
       - name: Run Go IDL Tests
@@ -708,13 +911,17 @@ jobs:
         run: |
           cd dart
           dart pub get
+      - name: Generate Dart code
+        run: |
+          cd dart/packages/fory-test
+          dart run build_runner build --delete-conflicting-outputs
       - name: Run Dart Xlang Test
         env:
           FORY_DART_JAVA_CI: "1"
           ENABLE_FORY_DEBUG_OUTPUT: "1"
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.DartXlangTest
 
@@ -770,6 +977,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.8
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
         with:

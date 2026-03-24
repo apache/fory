@@ -237,7 +237,7 @@ The text of each license is the standard Apache 2.0 license.
 
 * fast-serialization (https://github.com/RuedigerMoeller/fast-serialization)
     Files:
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/Identity2IdMap.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/Identity2IdMap.java
 
 * ray (https://github.com/ray-project/ray)
     Files:
@@ -256,13 +256,13 @@ The text of each license is also included in licenses/LICENSE-[project].txt.
 
 * kryo (https://github.com/EsotericSoftware/kryo)
     Files:
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/data/Data.java
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/data/Image.java
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/data/Media.java
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/data/MediaContent.java
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/data/Sample.java
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/state/BufferType.java
-      benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/state/KryoState.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/data/Data.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/data/Image.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/data/Media.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/data/MediaContent.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/data/Sample.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/state/BufferType.java
+      benchmarks/java/src/main/java/org/apache/fory/benchmark/state/KryoState.java
       java/fory-core/src/main/java/org/apache/fory/collection/ForyObjectMap.java
       java/fory-core/src/main/java/org/apache/fory/collection/IdentityMap.java
       java/fory-core/src/main/java/org/apache/fory/collection/IdentityObjectIntMap.java
