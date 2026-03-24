@@ -1192,12 +1192,14 @@ class JavaGenerator(BaseGenerator):
                 if not element_optional and not element_ref:
                     if kind == PrimitiveKind.FLOAT16:
                         imports.add(
-                            "org.apache.fory.collection." + self.PRIMITIVE_LIST_MAP[kind]
+                            "org.apache.fory.collection."
+                            + self.PRIMITIVE_LIST_MAP[kind]
                         )
                         return
                     if kind in self.PRIMITIVE_LIST_MAP and not self.java_array(field):
                         imports.add(
-                            "org.apache.fory.collection." + self.PRIMITIVE_LIST_MAP[kind]
+                            "org.apache.fory.collection."
+                            + self.PRIMITIVE_LIST_MAP[kind]
                         )
                         return
                     if kind in self.PRIMITIVE_ARRAY_MAP:
