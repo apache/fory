@@ -136,7 +136,7 @@ foryc schema.fdl --package com.myapp.models
 foryc user.fdl order.fdl product.fdl --output ./generated
 ```
 
-**Compile a simple service schema (Java + Python):**
+**Compile a simple schema containing service definitions (Java + Python models):**
 
 ```bash
 foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python
