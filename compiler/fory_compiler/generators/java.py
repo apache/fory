@@ -283,7 +283,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.FLOAT64: "double[]",
     }
 
-    # Primitive list types for repeated integer fields (default mode)
+    # Primitive list types for repeated fields when Java should use compact specialized storage.
     PRIMITIVE_LIST_MAP = {
         PrimitiveKind.INT8: "Int8List",
         PrimitiveKind.INT16: "Int16List",
@@ -299,6 +299,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "Uint64List",
         PrimitiveKind.VAR_UINT64: "Uint64List",
         PrimitiveKind.TAGGED_UINT64: "Uint64List",
+        PrimitiveKind.FLOAT16: "Float16List",
     }
 
     def generate(self) -> List[GeneratedFile]:
@@ -1139,19 +1140,16 @@ class JavaGenerator(BaseGenerator):
             return field_type.name
 
         elif isinstance(field_type, ListType):
-            # Use primitive arrays for numeric types, or primitive lists by default for integers
+            # Use specialized primitive lists when available, otherwise primitive arrays.
             if isinstance(field_type.element_type, PrimitiveType):
-                if (
-                    field_type.element_type.kind in self.PRIMITIVE_ARRAY_MAP
-                    and not element_optional
-                    and not element_ref
-                ):
-                    if (
-                        field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                        and not self.java_array(field)
-                    ):
-                        return self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
-                    return self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
+                kind = field_type.element_type.kind
+                if not element_optional and not element_ref:
+                    if kind == PrimitiveKind.FLOAT16:
+                        return self.PRIMITIVE_LIST_MAP[kind]
+                    if kind in self.PRIMITIVE_LIST_MAP and not self.java_array(field):
+                        return self.PRIMITIVE_LIST_MAP[kind]
+                    if kind in self.PRIMITIVE_ARRAY_MAP:
+                        return self.PRIMITIVE_ARRAY_MAP[kind]
             element_type = self.generate_type(field_type.element_type, True)
             if self.is_ref_target_type(field_type.element_type):
                 ref_annotation = "@Ref" if element_ref else "@Ref(enable=false)"
@@ -1188,23 +1186,23 @@ class JavaGenerator(BaseGenerator):
                 imports.add("org.apache.fory.type.Float16")
 
         elif isinstance(field_type, ListType):
-            # Primitive arrays don't need List import
+            # Specialized primitive lists/arrays don't need java.util.List imports.
             if isinstance(field_type.element_type, PrimitiveType):
-                if (
-                    field_type.element_type.kind in self.PRIMITIVE_ARRAY_MAP
-                    and not element_optional
-                    and not element_ref
-                ):
-                    if (
-                        field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                        and not self.java_array(field)
-                    ):
+                kind = field_type.element_type.kind
+                if not element_optional and not element_ref:
+                    if kind == PrimitiveKind.FLOAT16:
                         imports.add(
-                            "org.apache.fory.collection."
-                            + self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
+                            "org.apache.fory.collection." + self.PRIMITIVE_LIST_MAP[kind]
                         )
-                    self.collect_type_imports(field_type.element_type, imports)
-                    return  # No import needed for primitive arrays or primitive lists
+                        return
+                    if kind in self.PRIMITIVE_LIST_MAP and not self.java_array(field):
+                        imports.add(
+                            "org.apache.fory.collection." + self.PRIMITIVE_LIST_MAP[kind]
+                        )
+                        return
+                    if kind in self.PRIMITIVE_ARRAY_MAP:
+                        self.collect_type_imports(field_type.element_type, imports)
+                        return
             imports.add("java.util.List")
             if self.is_ref_target_type(field_type.element_type):
                 imports.add("org.apache.fory.annotation.Ref")
