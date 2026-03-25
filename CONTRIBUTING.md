@@ -89,6 +89,13 @@ RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 cargo test --test mod $dir$::$test_file::
 cd javascript
 npm run test
 ```
+## Common Mistakes
+
+- Creating PR from main branch instead of a feature branch
+- Missing Apache license header
+- Incorrect Java package folder structure
+- Not running tests before submitting PR
+- Not following PR title conventions
 
 ## Code Style
 
