@@ -18,7 +18,7 @@
 use fory_core::Fory;
 use fory_derive::ForyObject;
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Barrier};
 use std::thread;
 
 #[test]
@@ -99,4 +99,66 @@ fn test_struct_multi_thread() {
     }
     // verify
     assert_eq!(dest, src);
+}
+
+#[test]
+fn test_multiple_threads_shared_fory() {
+    const THREAD_COUNT: usize = 8;
+    const ROUNDS: usize = 200;
+    const ITERATIONS_PER_THREAD: usize = 256;
+
+    #[derive(Debug, ForyObject)]
+    struct UserSessionMetrics {
+        #[fory(id = 0)]
+        request_count: u64,
+        #[fory(id = 1)]
+        unique_ip_count: u64,
+        #[fory(id = 2)]
+        unique_user_agent_count: u64,
+        #[fory(id = 3)]
+        unique_url_count: u64,
+        #[fory(id = 4)]
+        unique_resource_count: u64,
+        #[fory(id = 5)]
+        active_duration_secs: u64,
+        #[fory(id = 6)]
+        first_seen_time: u64,
+        #[fory(id = 7)]
+        last_seen_time: u64,
+        #[fory(id = 8)]
+        updated_at: u64,
+    }
+
+    let mut fory = Fory::default();
+    fory.register::<UserSessionMetrics>(2)
+        .expect("register UserSessionMetrics");
+    let shared_fory = Arc::new(fory);
+    let shared_value = Arc::new(UserSessionMetrics {
+        request_count: 256,
+        unique_ip_count: 32,
+        unique_user_agent_count: 12,
+        unique_url_count: 64,
+        unique_resource_count: 48,
+        active_duration_secs: 90,
+        first_seen_time: 1_699_999_900_000,
+        last_seen_time: 1_700_000_000_000,
+        updated_at: 1_700_000_000_000,
+    });
+
+    for _ in 0..ROUNDS {
+        thread::scope(|s| {
+            let start_barrier = Arc::new(Barrier::new(THREAD_COUNT));
+            for _ in 0..THREAD_COUNT {
+                let fory = Arc::clone(&shared_fory);
+                let value = Arc::clone(&shared_value);
+                let start_barrier = Arc::clone(&start_barrier);
+                s.spawn(move || {
+                    start_barrier.wait();
+                    for _ in 0..ITERATIONS_PER_THREAD {
+                        let _ = fory.serialize(value.as_ref()).unwrap();
+                    }
+                });
+            }
+        });
+    }
 }

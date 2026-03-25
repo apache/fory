@@ -1376,6 +1376,13 @@ impl TypeResolver {
             })
             .collect();
 
+        // Deep clone the TypeMeta as well
+        let type_meta_by_index: Vec<Option<Rc<TypeMeta>>> = self
+            .type_meta_by_index
+            .iter()
+            .map(|opt| opt.as_ref().map(|meta| Rc::new(meta.deep_clone())))
+            .collect();
+
         TypeResolver {
             internal_type_info_by_id,
             user_type_info_by_id,
@@ -1386,7 +1393,7 @@ impl TypeResolver {
             type_id_index: self.type_id_index.clone(),
             user_type_id_index: self.user_type_id_index.clone(),
             rust_type_id_by_index: self.rust_type_id_by_index.clone(),
-            type_meta_by_index: self.type_meta_by_index.clone(),
+            type_meta_by_index,
             compatible: self.compatible,
             xlang: self.xlang,
         }

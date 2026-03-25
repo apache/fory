@@ -616,15 +616,11 @@ jobs:
         with:
           python-version: 3.11
           cache: 'pip'
-      - name: Cache Bazel binary
-        uses: actions/cache@v4
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
-          path: |
-            ~/bin/bazel
-            ~/.local/bin/bazel
-          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-          restore-keys: |
-            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          bazelisk-cache: true
+          bazelisk-version: '1.x'
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -644,18 +640,10 @@ jobs:
         run: |
           ARCH="$(uname -m)"
           BAZEL_CONFIGS="--config=${{ matrix.sanitizer }}"
-          if [[ -x ~/bin/bazel ]]; then
-            BAZEL_BIN=~/bin/bazel
-          elif [[ -x ~/.local/bin/bazel ]]; then
-            BAZEL_BIN=~/.local/bin/bazel
-          else
-            echo "bazel not found in ~/bin or ~/.local/bin"
-            exit 1
-          fi
           if [[ "${ARCH}" == "x86_64" || "${ARCH}" == "amd64" ]]; then
             BAZEL_CONFIGS="--config=x86_64 ${BAZEL_CONFIGS}"
           fi
-          ${BAZEL_BIN} test --cache_test_results=no ${BAZEL_CONFIGS} $(${BAZEL_BIN} query //cpp/...)
+          bazel test --cache_test_results=no ${BAZEL_CONFIGS} $(bazel query //cpp/...)
       - name: Upload Bazel Test Logs (${{ matrix.sanitizer }})
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
