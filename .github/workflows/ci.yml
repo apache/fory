@@ -42,6 +42,23 @@ on:
     types: ["opened", "reopened", "synchronize"]
 
 jobs:
+  compiler:
+    name: Compiler CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install python dependencies
+        run: pip install pytest
+      - name: Run compiler CI
+        run: |
+          cd compiler
+          pytest -q fory_compiler/tests
+
   java:
     name: Java CI
     runs-on: ubuntu-latest
