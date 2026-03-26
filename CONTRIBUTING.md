@@ -214,15 +214,15 @@ sudo flamegraph.pl out.folded > out.svg
 
 ```bash
 bazel run :refresh_compile_commands
-```
+```  
 
 ## How to use Jetbrains IDEA IDE for Java Development
 
-Apache Fory™ Java development is based on Java 11+, and different modules are built with different Java versions.
+Apache Fory™ Java development is based on Java 11+, and different modules may be build using different Java versions.
 
 For example, the `fory-core` module is built with Java 8, and the `fory-format` module is built with Java 11.
 
-To use Jetbrains IDEA IDE for Java Development, you need to configure the project SDK and module SDK to using JDK 11+.
+To use JetBrains IDEA IDE for Java Development, you need to configure the project SDK and module SDK to using JDK 11+.
 
 And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+, you need to configure java compiler with `--releaese` option disabled.
 
