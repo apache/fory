@@ -59,6 +59,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.stream.LongStream;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -78,6 +79,57 @@ import org.testng.collections.Maps;
 
 @SuppressWarnings("rawtypes")
 public class CollectionSerializersTest extends ForyTestBase {
+  private static final List<String> SORTED_COLLECTION_INPUT = ImmutableList.of("bbb", "a", "cc");
+  private static final List<String> NATURAL_SORT_ORDER = ImmutableList.of("a", "bbb", "cc");
+  private static final List<String> LENGTH_SORT_ORDER = ImmutableList.of("a", "cc", "bbb");
+
+  private static final class LengthThenNaturalComparator
+      implements Comparator<String>, Serializable {
+    @Override
+    public int compare(String left, String right) {
+      int delta = left.length() - right.length();
+      return delta != 0 ? delta : left.compareTo(right);
+    }
+  }
+
+  private static final class SortedSetConstructorCase {
+    private final String name;
+    private final Class<?> expectedType;
+    private final boolean comparatorExpected;
+    private final List<String> expectedOrder;
+    private final Supplier<SortedSet<String>> factory;
+
+    private SortedSetConstructorCase(
+        String name,
+        Class<?> expectedType,
+        boolean comparatorExpected,
+        List<String> expectedOrder,
+        Supplier<SortedSet<String>> factory) {
+      this.name = name;
+      this.expectedType = expectedType;
+      this.comparatorExpected = comparatorExpected;
+      this.expectedOrder = expectedOrder;
+      this.factory = factory;
+    }
+  }
+
+  private static final class PriorityQueueConstructorCase {
+    private final String name;
+    private final boolean comparatorExpected;
+    private final List<String> expectedOrder;
+    private final Supplier<PriorityQueue<String>> factory;
+
+    private PriorityQueueConstructorCase(
+        String name,
+        boolean comparatorExpected,
+        List<String> expectedOrder,
+        Supplier<PriorityQueue<String>> factory) {
+      this.name = name;
+      this.comparatorExpected = comparatorExpected;
+      this.expectedOrder = expectedOrder;
+      this.factory = factory;
+    }
+  }
 
   @Test(dataProvider = "referenceTrackingConfig")
   public void testBasicList(boolean referenceTrackingConfig) {
@@ -240,6 +292,97 @@ public class CollectionSerializersTest extends ForyTestBase {
     @Override
     public boolean equals(Object obj) {
       return ((TestComparator) obj).i.get() == this.i.get();
+    }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testTreeSetConstructorMatrix(boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    for (SortedSetConstructorCase testCase : treeSetConstructorCases()) {
+      SortedSet<String> original = testCase.factory.get();
+      assertSortedSetState(testCase, original);
+      SortedSet<String> deserialized = serDe(fory, original);
+      assertSortedSetState(testCase, deserialized);
+      Assert.assertEquals(deserialized, original, testCase.name);
+      Assert.assertNotSame(deserialized, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testTreeSetConstructorMatrix(Fory fory) {
+    for (SortedSetConstructorCase testCase : treeSetConstructorCases()) {
+      SortedSet<String> original = testCase.factory.get();
+      assertSortedSetState(testCase, original);
+      SortedSet<String> copy = fory.copy(original);
+      assertSortedSetState(testCase, copy);
+      Assert.assertEquals(copy, original, testCase.name);
+      Assert.assertNotSame(copy, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testConcurrentSkipListSetConstructorMatrix(boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    for (SortedSetConstructorCase testCase : concurrentSkipListSetConstructorCases()) {
+      SortedSet<String> original = testCase.factory.get();
+      assertSortedSetState(testCase, original);
+      SortedSet<String> deserialized = serDe(fory, original);
+      assertSortedSetState(testCase, deserialized);
+      Assert.assertEquals(deserialized, original, testCase.name);
+      Assert.assertNotSame(deserialized, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testConcurrentSkipListSetConstructorMatrix(Fory fory) {
+    for (SortedSetConstructorCase testCase : concurrentSkipListSetConstructorCases()) {
+      SortedSet<String> original = testCase.factory.get();
+      assertSortedSetState(testCase, original);
+      SortedSet<String> copy = fory.copy(original);
+      assertSortedSetState(testCase, copy);
+      Assert.assertEquals(copy, original, testCase.name);
+      Assert.assertNotSame(copy, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testPriorityQueueConstructorMatrix(boolean referenceTrackingConfig) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    for (PriorityQueueConstructorCase testCase : priorityQueueConstructorCases()) {
+      PriorityQueue<String> original = testCase.factory.get();
+      assertPriorityQueueState(testCase, original);
+      PriorityQueue<String> deserialized = serDe(fory, original);
+      assertPriorityQueueState(testCase, deserialized);
+      Assert.assertEquals(
+          drainPriorityQueue(deserialized), drainPriorityQueue(original), testCase.name);
+      Assert.assertNotSame(deserialized, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testPriorityQueueConstructorMatrix(Fory fory) {
+    for (PriorityQueueConstructorCase testCase : priorityQueueConstructorCases()) {
+      PriorityQueue<String> original = testCase.factory.get();
+      assertPriorityQueueState(testCase, original);
+      PriorityQueue<String> copy = fory.copy(original);
+      assertPriorityQueueState(testCase, copy);
+      Assert.assertEquals(drainPriorityQueue(copy), drainPriorityQueue(original), testCase.name);
+      Assert.assertNotSame(copy, original, testCase.name);
     }
   }
 
@@ -503,6 +646,185 @@ public class CollectionSerializersTest extends ForyTestBase {
     ImmutableList<String> list = ImmutableList.of("a", "b", "c");
     PriorityQueue<String> copy = fory.copy(new PriorityQueue<>(list));
     Assert.assertEquals(ImmutableList.sortedCopyOf(copy), list);
+  }
+
+  private List<SortedSetConstructorCase> treeSetConstructorCases() {
+    return Arrays.asList(
+        new SortedSetConstructorCase(
+            "TreeSet()",
+            TreeSet.class,
+            false,
+            NATURAL_SORT_ORDER,
+            () -> {
+              TreeSet<String> set = new TreeSet<>();
+              set.addAll(sortedCollectionInput());
+              return set;
+            }),
+        new SortedSetConstructorCase(
+            "TreeSet(Comparator)",
+            TreeSet.class,
+            true,
+            LENGTH_SORT_ORDER,
+            () -> {
+              TreeSet<String> set = new TreeSet<>(new LengthThenNaturalComparator());
+              set.addAll(sortedCollectionInput());
+              return set;
+            }),
+        new SortedSetConstructorCase(
+            "TreeSet(Collection)",
+            TreeSet.class,
+            false,
+            NATURAL_SORT_ORDER,
+            () -> new TreeSet<>(new ArrayList<>(sortedCollectionInput()))),
+        new SortedSetConstructorCase(
+            "TreeSet(SortedSet)",
+            TreeSet.class,
+            true,
+            LENGTH_SORT_ORDER,
+            () -> new TreeSet<>(newComparatorSortedSetSource())));
+  }
+
+  private List<SortedSetConstructorCase> concurrentSkipListSetConstructorCases() {
+    return Arrays.asList(
+        new SortedSetConstructorCase(
+            "ConcurrentSkipListSet()",
+            ConcurrentSkipListSet.class,
+            false,
+            NATURAL_SORT_ORDER,
+            () -> {
+              ConcurrentSkipListSet<String> set = new ConcurrentSkipListSet<>();
+              set.addAll(sortedCollectionInput());
+              return set;
+            }),
+        new SortedSetConstructorCase(
+            "ConcurrentSkipListSet(Comparator)",
+            ConcurrentSkipListSet.class,
+            true,
+            LENGTH_SORT_ORDER,
+            () -> {
+              ConcurrentSkipListSet<String> set =
+                  new ConcurrentSkipListSet<>(new LengthThenNaturalComparator());
+              set.addAll(sortedCollectionInput());
+              return set;
+            }),
+        new SortedSetConstructorCase(
+            "ConcurrentSkipListSet(Collection)",
+            ConcurrentSkipListSet.class,
+            false,
+            NATURAL_SORT_ORDER,
+            () -> new ConcurrentSkipListSet<>(new ArrayList<>(sortedCollectionInput()))),
+        new SortedSetConstructorCase(
+            "ConcurrentSkipListSet(SortedSet)",
+            ConcurrentSkipListSet.class,
+            true,
+            LENGTH_SORT_ORDER,
+            () -> new ConcurrentSkipListSet<>(newComparatorSortedSetSource())));
+  }
+
+  private List<PriorityQueueConstructorCase> priorityQueueConstructorCases() {
+    return Arrays.asList(
+        new PriorityQueueConstructorCase(
+            "PriorityQueue()",
+            false,
+            NATURAL_SORT_ORDER,
+            () -> {
+              PriorityQueue<String> queue = new PriorityQueue<>();
+              queue.addAll(sortedCollectionInput());
+              return queue;
+            }),
+        new PriorityQueueConstructorCase(
+            "PriorityQueue(int)",
+            false,
+            NATURAL_SORT_ORDER,
+            () -> {
+              PriorityQueue<String> queue = new PriorityQueue<>(32);
+              queue.addAll(sortedCollectionInput());
+              return queue;
+            }),
+        new PriorityQueueConstructorCase(
+            "PriorityQueue(Comparator)",
+            true,
+            LENGTH_SORT_ORDER,
+            () -> {
+              PriorityQueue<String> queue = new PriorityQueue<>(new LengthThenNaturalComparator());
+              queue.addAll(sortedCollectionInput());
+              return queue;
+            }),
+        new PriorityQueueConstructorCase(
+            "PriorityQueue(int, Comparator)",
+            true,
+            LENGTH_SORT_ORDER,
+            () -> {
+              PriorityQueue<String> queue =
+                  new PriorityQueue<>(32, new LengthThenNaturalComparator());
+              queue.addAll(sortedCollectionInput());
+              return queue;
+            }),
+        new PriorityQueueConstructorCase(
+            "PriorityQueue(Collection)",
+            false,
+            NATURAL_SORT_ORDER,
+            () -> new PriorityQueue<>(new ArrayList<>(sortedCollectionInput()))),
+        new PriorityQueueConstructorCase(
+            "PriorityQueue(PriorityQueue)",
+            true,
+            LENGTH_SORT_ORDER,
+            () -> new PriorityQueue<>(newComparatorPriorityQueueSource())),
+        new PriorityQueueConstructorCase(
+            "PriorityQueue(SortedSet)",
+            true,
+            LENGTH_SORT_ORDER,
+            () -> new PriorityQueue<>(newComparatorSortedSetSource())));
+  }
+
+  private void assertSortedSetState(SortedSetConstructorCase testCase, SortedSet<String> set) {
+    Assert.assertEquals(set.getClass(), testCase.expectedType, testCase.name);
+    Assert.assertEquals(new ArrayList<>(set), testCase.expectedOrder, testCase.name);
+    if (testCase.comparatorExpected) {
+      Assert.assertNotNull(set.comparator(), testCase.name);
+      Assert.assertEquals(
+          set.comparator().getClass(), LengthThenNaturalComparator.class, testCase.name);
+    } else {
+      Assert.assertNull(set.comparator(), testCase.name);
+    }
+  }
+
+  private void assertPriorityQueueState(
+      PriorityQueueConstructorCase testCase, PriorityQueue<String> queue) {
+    Assert.assertEquals(queue.getClass(), PriorityQueue.class, testCase.name);
+    Assert.assertEquals(drainPriorityQueue(queue), testCase.expectedOrder, testCase.name);
+    if (testCase.comparatorExpected) {
+      Assert.assertNotNull(queue.comparator(), testCase.name);
+      Assert.assertEquals(
+          queue.comparator().getClass(), LengthThenNaturalComparator.class, testCase.name);
+    } else {
+      Assert.assertNull(queue.comparator(), testCase.name);
+    }
+  }
+
+  private static PriorityQueue<String> newComparatorPriorityQueueSource() {
+    PriorityQueue<String> queue = new PriorityQueue<>(new LengthThenNaturalComparator());
+    queue.addAll(sortedCollectionInput());
+    return queue;
+  }
+
+  private static SortedSet<String> newComparatorSortedSetSource() {
+    SortedSet<String> set = new TreeSet<>(new LengthThenNaturalComparator());
+    set.addAll(sortedCollectionInput());
+    return set;
+  }
+
+  private static List<String> drainPriorityQueue(PriorityQueue<String> queue) {
+    PriorityQueue<String> copy = new PriorityQueue<>(queue);
+    List<String> ordered = new ArrayList<>(copy.size());
+    while (!copy.isEmpty()) {
+      ordered.add(copy.poll());
+    }
+    return ordered;
+  }
+
+  private static List<String> sortedCollectionInput() {
+    return new ArrayList<>(SORTED_COLLECTION_INPUT);
   }
 
   @Test
