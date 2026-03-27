@@ -50,9 +50,7 @@ public class MapSerializer<T extends Map> extends MapLikeSerializer<T> {
       return originMap;
     }
     Map newMap = newMap(originMap);
-    if (needToCopyRef) {
-      fory.reference(originMap, newMap);
-    }
+    fory.reference(originMap, newMap);
     copyEntry(originMap, newMap);
     return onMapCopy(newMap);
   }

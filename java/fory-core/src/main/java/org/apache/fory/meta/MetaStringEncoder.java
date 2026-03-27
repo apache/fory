@@ -52,19 +52,9 @@ public class MetaStringEncoder {
   }
 
   public MetaString encode(String input, Encoding[] encodings) {
-    if (input.isEmpty()) {
-      return MetaString.EMPTY;
-    }
-    if (!StringUtils.isLatin(input.toCharArray())) {
-      return new MetaString(
-          input,
-          Encoding.UTF_8,
-          specialChar1,
-          specialChar2,
-          input.getBytes(StandardCharsets.UTF_8));
-    }
-    Encoding encoding = computeEncoding(input, encodings);
-    return encode(input, encoding);
+    EncodedMetaString encodedMetaString = encodeBinary(input, encodings);
+    return new MetaString(
+        input, encodedMetaString.encoding, specialChar1, specialChar2, encodedMetaString.bytes);
   }
 
   /**
@@ -75,33 +65,54 @@ public class MetaStringEncoder {
    * @return A MetaString object representing the encoded string.
    */
   public MetaString encode(String input, Encoding encoding) {
+    EncodedMetaString encodedMetaString = encodeBinary(input, encoding);
+    return new MetaString(
+        input, encodedMetaString.encoding, specialChar1, specialChar2, encodedMetaString.bytes);
+  }
+
+  public EncodedMetaString encodeBinary(String input) {
+    return encodeBinary(input, Encoding.values());
+  }
+
+  public EncodedMetaString encodeBinary(String input, Encoding[] encodings) {
+    if (input.isEmpty()) {
+      return EncodedMetaString.EMPTY;
+    }
+    if (!StringUtils.isLatin(input.toCharArray())) {
+      return new EncodedMetaString(input.getBytes(StandardCharsets.UTF_8), Encoding.UTF_8);
+    }
+    Encoding encoding = computeEncoding(input, encodings);
+    return encodeBinary(input, encoding);
+  }
+
+  public EncodedMetaString encodeBinary(String input, Encoding encoding) {
     Preconditions.checkArgument(
         input.length() < Short.MAX_VALUE, "Long meta string than 32767 is not allowed");
     if (encoding != Encoding.UTF_8 && !StringUtils.isLatin(input.toCharArray())) {
       throw new IllegalArgumentException("Non-ASCII characters in meta string are not allowed");
     }
     if (input.isEmpty()) {
-      return MetaString.EMPTY;
+      return EncodedMetaString.EMPTY;
     }
     byte[] bytes;
     switch (encoding) {
       case LOWER_SPECIAL:
         bytes = encodeLowerSpecial(input);
-        return new MetaString(input, encoding, specialChar1, specialChar2, bytes);
+        return new EncodedMetaString(bytes, encoding);
       case LOWER_UPPER_DIGIT_SPECIAL:
         bytes = encodeLowerUpperDigitSpecial(input);
-        return new MetaString(input, encoding, specialChar1, specialChar2, bytes);
+        return new EncodedMetaString(bytes, encoding);
       case FIRST_TO_LOWER_SPECIAL:
         bytes = encodeFirstToLowerSpecial(input);
-        return new MetaString(input, encoding, specialChar1, specialChar2, bytes);
+        return new EncodedMetaString(bytes, encoding);
       case ALL_TO_LOWER_SPECIAL:
         char[] chars = input.toCharArray();
         int upperCount = countUppers(chars);
         bytes = encodeAllToLowerSpecial(chars, upperCount);
-        return new MetaString(input, encoding, specialChar1, specialChar2, bytes);
+        return new EncodedMetaString(bytes, encoding);
       default:
         bytes = input.getBytes(StandardCharsets.UTF_8);
-        return new MetaString(input, Encoding.UTF_8, specialChar1, specialChar2, bytes);
+        return new EncodedMetaString(bytes, Encoding.UTF_8);
     }
   }
 

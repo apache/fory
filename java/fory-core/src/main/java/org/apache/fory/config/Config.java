@@ -66,6 +66,7 @@ public class Config implements Serializable {
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
   private final float mapRefLoadFactor;
+  private final boolean forVirtualThread;
 
   public Config(ForyBuilder builder) {
     name = builder.name;
@@ -107,6 +108,7 @@ public class Config implements Serializable {
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
     mapRefLoadFactor = builder.mapRefLoadFactor;
+    forVirtualThread = builder.forVirtualThread;
   }
 
   /** Returns the name for Fory serialization. */
@@ -290,6 +292,20 @@ public class Config implements Serializable {
     return scalaOptimizationEnabled;
   }
 
+  /** Returns max depth for deserialization, when depth exceeds, an exception will be thrown. */
+  public int maxDepth() {
+    return maxDepth;
+  }
+
+  /** Returns loadFactor of MacRef's writtenObjects. */
+  public float mapRefLoadFactor() {
+    return mapRefLoadFactor;
+  }
+
+  public boolean forVirtualThread() {
+    return forVirtualThread;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -327,7 +343,8 @@ public class Config implements Serializable {
         && xlang == config.xlang
         && compatibleMode == config.compatibleMode
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
-        && longEncoding == config.longEncoding;
+        && longEncoding == config.longEncoding
+        && forVirtualThread == config.forVirtualThread;
   }
 
   @Override
@@ -361,7 +378,8 @@ public class Config implements Serializable {
         metaCompressor,
         asyncCompilationEnabled,
         deserializeUnknownClass,
-        scalaOptimizationEnabled);
+        scalaOptimizationEnabled,
+        forVirtualThread);
   }
 
   private static final AtomicInteger counter = new AtomicInteger(0);
@@ -374,15 +392,5 @@ public class Config implements Serializable {
       configHash = configIdMap.computeIfAbsent(this, k -> counter.incrementAndGet());
     }
     return configHash;
-  }
-
-  /** Returns max depth for deserialization, when depth exceeds, an exception will be thrown. */
-  public int maxDepth() {
-    return maxDepth;
-  }
-
-  /** Returns loadFactor of MacRef's writtenObjects. */
-  public float mapRefLoadFactor() {
-    return mapRefLoadFactor;
   }
 }

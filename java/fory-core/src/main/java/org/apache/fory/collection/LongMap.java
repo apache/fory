@@ -81,7 +81,7 @@ public class LongMap<V> {
 
   /** Creates a new map with an initial capacity of 51 and a load factor of 0.5. */
   public LongMap() {
-    this(51, 0.5f);
+    this(2, 0.5f);
   }
 
   /**

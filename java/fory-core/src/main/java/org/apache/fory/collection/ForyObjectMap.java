@@ -82,9 +82,9 @@ public class ForyObjectMap<K, V> {
    */
   protected int mask;
 
-  /** Creates a new map with an initial capacity of 51 and a load factor of 0.6. */
+  /** Creates a new map with an initial capacity of 1 and a load factor of 0.6. */
   public ForyObjectMap() {
-    this(51, 0.6f);
+    this(1, 0.6f);
   }
 
   /**

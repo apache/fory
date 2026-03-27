@@ -19,6 +19,8 @@
 
 package org.apache.fory.reflect;
 
+import javax.annotation.concurrent.ThreadSafe;
+
 /**
  * Abstract base class for creating instances of a given type.
  *
@@ -33,6 +35,7 @@ package org.apache.fory.reflect;
  *
  * @param <T> the type of objects this creator can instantiate
  */
+@ThreadSafe
 public abstract class ObjectCreator<T> {
   protected final Class<T> type;
 

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.FieldAccessor;
@@ -74,9 +75,24 @@ public class FieldGroups {
         descriptors.add(new Descriptor(field, TypeRef.of(field.getAnnotatedType()), null, null));
       }
     }
-    DescriptorGrouper descriptorGrouper =
-        fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
+    DescriptorGrouper descriptorGrouper = buildDescriptorGrouper(fory, descriptors, false, null);
     return buildFieldInfos(fory, descriptorGrouper);
+  }
+
+  static DescriptorGrouper buildDescriptorGrouper(
+      Fory fory,
+      Collection<Descriptor> descriptors,
+      boolean descriptorsGroupedOrdered,
+      Function<Descriptor, Descriptor> descriptorUpdator) {
+    TypeResolver typeResolver = fory.getTypeResolver();
+    return DescriptorGrouper.createDescriptorGrouper(
+            typeResolver::isBuildIn,
+            descriptors,
+            descriptorsGroupedOrdered,
+            descriptorUpdator,
+            typeResolver.getPrimitiveComparator(),
+            typeResolver.getDescriptorComparator())
+        .sort();
   }
 
   public static FieldGroups buildFieldInfos(Fory fory, DescriptorGrouper grouper) {
@@ -135,8 +151,6 @@ public class FieldGroups {
     public final Class<?> type;
     public final TypeRef<?> typeRef;
     public final int dispatchId;
-    public final TypeInfo typeInfo;
-    public final Serializer serializer;
     public final String qualifiedFieldName;
     public final FieldAccessor fieldAccessor;
     public final FieldConverter<?> fieldConverter;
@@ -144,12 +158,14 @@ public class FieldGroups {
     public final boolean nullable;
     public final boolean trackingRef;
     public final boolean isPrimitiveField;
+    public final boolean isArray;
     // Use declared type for serialization/deserialization
     public final boolean useDeclaredTypeInfo;
 
+    public final TypeInfo typeInfo;
+    public final Serializer serializer;
     public final GenericType genericType;
     public final TypeInfoHolder classInfoHolder;
-    public final boolean isArray;
     public final TypeInfo containerTypeInfo;
 
     SerializationFieldInfo(Fory fory, Descriptor d) {
@@ -160,7 +176,7 @@ public class FieldGroups {
       TypeResolver resolver = fory.getTypeResolver();
       // invoke `copy` to avoid ObjectSerializer construct clear serializer by `clearSerializer`.
       if (resolver.isMonomorphic(descriptor)) {
-        typeInfo = SerializationUtils.getTypeInfo(fory, typeRef.getRawType());
+        typeInfo = fory.getTypeResolver().getTypeInfo(typeRef.getRawType());
         if (!fory.isShareMeta()
             && !fory.isCompatible()
             && typeInfo.getSerializer() instanceof ReplaceResolveSerializer) {
@@ -213,7 +229,11 @@ public class FieldGroups {
       if (field != null) {
         TypeUtils.applyRefTrackingOverride(t, field.getAnnotatedType(), fory.trackingRef());
       }
-      classInfoHolder = resolver.nilTypeInfoHolder();
+      if (needsClassInfoHolder(resolver, cls)) {
+        classInfoHolder = resolver.nilTypeInfoHolder();
+      } else {
+        classInfoHolder = null;
+      }
       isArray = cls.isArray();
       if (!fory.isCrossLanguage()) {
         containerTypeInfo = null;
@@ -224,6 +244,13 @@ public class FieldGroups {
           containerTypeInfo = null;
         }
       }
+    }
+
+    private boolean needsClassInfoHolder(TypeResolver resolver, Class<?> cls) {
+      return !useDeclaredTypeInfo
+          || resolver.isCollection(cls)
+          || resolver.isMap(cls)
+          || resolver.isSet(cls);
     }
 
     public String getName() {

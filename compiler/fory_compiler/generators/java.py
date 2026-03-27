@@ -1574,7 +1574,6 @@ class JavaGenerator(BaseGenerator):
         # Imports
         lines.append("import org.apache.fory.Fory;")
         lines.append("import org.apache.fory.ThreadSafeFory;")
-        lines.append("import org.apache.fory.pool.SimpleForyPool;")
         lines.append("")
 
         # Class
@@ -1586,7 +1585,7 @@ class JavaGenerator(BaseGenerator):
         lines.append("")
         lines.append("    private static ThreadSafeFory createFory() {")
         lines.append(
-            "        ThreadSafeFory fory = new SimpleForyPool(c -> Fory.builder().withXlang(true).withRefTracking(true).build());"
+            "        ThreadSafeFory fory = Fory.builder().withXlang(true).withRefTracking(true).buildFastForyPool();"
         )
         imported_packages = self._collect_imported_packages()
         if imported_packages:

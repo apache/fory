@@ -21,7 +21,6 @@ package org.apache.fory.builder;
 
 import static org.apache.fory.builder.Generated.GeneratedMetaSharedLayerSerializer.SERIALIZER_FIELD_NAME;
 
-import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.Fory;
@@ -67,8 +66,8 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
         "Class version check should be disabled when compatible mode is enabled.");
     this.layerTypeDef = layerTypeDef;
     this.layerMarkerClass = layerMarkerClass;
-    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(typeResolver, beanClass);
-    DescriptorGrouper grouper = typeResolver(r -> r.createDescriptorGrouper(descriptors, false));
+    DescriptorGrouper grouper =
+        typeResolver(r -> r.createDescriptorGrouper(layerTypeDef, beanClass));
     objectCodecOptimizer = new ObjectCodecOptimizer(beanClass, grouper, false, ctx);
   }
 

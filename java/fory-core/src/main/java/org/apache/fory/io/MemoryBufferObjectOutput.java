@@ -42,7 +42,7 @@ public class MemoryBufferObjectOutput extends OutputStream implements ObjectOutp
     this.compressInt = fory.compressInt();
     this.longEncoding = fory.longEncoding();
     this.buffer = buffer;
-    this.stringSerializer = new StringSerializer(fory);
+    this.stringSerializer = fory.getStringSerializer();
   }
 
   public MemoryBuffer getBuffer() {

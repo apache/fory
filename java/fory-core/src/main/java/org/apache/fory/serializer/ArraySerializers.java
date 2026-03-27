@@ -54,7 +54,7 @@ public class ArraySerializers {
       super(fory, cls);
       TypeResolver resolver = fory.getTypeResolver();
       if (resolver instanceof ClassResolver) {
-        ((ClassResolver) resolver).setSerializer(cls, this);
+        resolver.setSerializer(cls, this);
       }
       Preconditions.checkArgument(cls.isArray());
       Class<?> t = cls;
@@ -129,9 +129,7 @@ public class ArraySerializers {
     public T[] copy(T[] originArray) {
       int length = originArray.length;
       Object[] newArray = newArray(length);
-      if (needToCopyRef) {
-        fory.reference(originArray, newArray);
-      }
+      fory.reference(originArray, newArray);
       Serializer componentSerializer = this.componentTypeSerializer;
       if (componentSerializer != null) {
         if (componentSerializer.isImmutable()) {
@@ -937,7 +935,7 @@ public class ArraySerializers {
 
     public StringArraySerializer(Fory fory) {
       super(fory, String[].class);
-      stringSerializer = new StringSerializer(fory);
+      stringSerializer = fory.getStringSerializer();
       collectionSerializer = new ForyArrayAsListSerializer(fory);
       list = new ForyArrayAsListSerializer.ArrayAsList(0);
     }

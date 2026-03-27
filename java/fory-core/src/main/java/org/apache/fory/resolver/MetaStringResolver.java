@@ -26,8 +26,10 @@ import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
+import org.apache.fory.meta.MetaStringEncoder;
 import org.apache.fory.util.MurmurHash3;
 
 /**
@@ -37,171 +39,214 @@ import org.apache.fory.util.MurmurHash3;
  * share common immutable datastructure globally across multiple fory.
  */
 public final class MetaStringResolver {
-  private static final int initialCapacity = 8;
+  private static final int initialCapacity = 4;
   // use a lower load factor to minimize hash collision
-  private static final float foryMapLoadFactor = 0.25f;
+  private static final float foryMapLoadFactor = 0.5f;
   private static final int SMALL_STRING_THRESHOLD = 16;
 
   // Every deserialization for unregistered string will query it, performance is important.
-  private final ObjectMap<MetaStringBytes, String> metaStringBytes2StringMap =
+  private final ObjectMap<EncodedMetaString, String> metaString2StringMap =
       new ObjectMap<>(initialCapacity, foryMapLoadFactor);
-  private final LongMap<MetaStringBytes> hash2MetaStringBytesMap =
+  private final LongMap<EncodedMetaString> hash2MetaStringMap =
       new LongMap<>(initialCapacity, foryMapLoadFactor);
-  private final LongLongByteMap<MetaStringBytes> longLongByteMap =
+  private final LongLongByteMap<EncodedMetaString> longLongMetaStringMap =
       new LongLongByteMap<>(initialCapacity, foryMapLoadFactor);
-  // Every enum bytes should be singleton at every fory, since we keep state in it.
-  private final ObjectMap<MetaString, MetaStringBytes> metaString2BytesMap =
+  private final ObjectMap<EncodedMetaString, MetaStringRef> metaString2RefMap =
       new ObjectMap<>(initialCapacity, foryMapLoadFactor);
-  private MetaStringBytes[] dynamicWrittenString = new MetaStringBytes[32];
-  private MetaStringBytes[] dynamicReadStringIds = new MetaStringBytes[32];
+  private final SharedRegistry sharedRegistry;
+  private final MetaStringRef emptyMetaStringRef;
+  private MetaStringRef[] dynamicWrittenString = new MetaStringRef[initialCapacity];
+  private MetaStringRef[] dynamicReadStringIds = new MetaStringRef[initialCapacity];
   private short dynamicWriteStringId;
   private short dynamicReadStringId;
 
   public MetaStringResolver() {
+    this(new SharedRegistry());
+  }
+
+  public MetaStringResolver(SharedRegistry sharedRegistry) {
+    this.sharedRegistry = Objects.requireNonNull(sharedRegistry);
+    emptyMetaStringRef = new MetaStringRef(EncodedMetaString.EMPTY);
+    metaString2RefMap.put(EncodedMetaString.EMPTY, emptyMetaStringRef);
+    metaString2StringMap.put(EncodedMetaString.EMPTY, "");
     dynamicWriteStringId = 0;
     dynamicReadStringId = 0;
   }
 
-  public MetaStringBytes getOrCreateMetaStringBytes(MetaString str) {
-    MetaStringBytes metaStringBytes = metaString2BytesMap.get(str);
-    if (metaStringBytes == null) {
-      metaStringBytes = MetaStringBytes.of(str);
-      metaString2BytesMap.put(str, metaStringBytes);
-    }
-    return metaStringBytes;
+  public MetaStringRef getOrCreateGenericMetaStringBytes(String str) {
+    return getOrCreateGenericMetaStringBytes(str, Encoders.computeGenericEncoding(str));
   }
 
-  public void writeMetaStringBytesWithFlag(MemoryBuffer buffer, MetaStringBytes byteString) {
-    Objects.requireNonNull(byteString);
-    short id = byteString.dynamicWriteStringId;
-    if (id == MetaStringBytes.DEFAULT_DYNAMIC_WRITE_STRING_ID) {
+  public MetaStringRef getOrCreateGenericMetaStringBytes(String str, MetaString.Encoding encoding) {
+    return getOrCreateMetaStringBytes(
+        str, Encoders.GENERIC_ENCODER, encoding, Encoders.GENERIC_ENCODER_TYPE_KEY);
+  }
+
+  public MetaStringRef getOrCreatePackageMetaStringBytes(String str) {
+    return getOrCreateMetaStringBytes(
+        str,
+        Encoders.PACKAGE_ENCODER,
+        Encoders.computePackageEncoding(str),
+        Encoders.PACKAGE_ENCODER_TYPE_KEY);
+  }
+
+  public MetaStringRef getOrCreateTypeNameMetaStringBytes(String str) {
+    return getOrCreateMetaStringBytes(
+        str,
+        Encoders.TYPE_NAME_ENCODER,
+        Encoders.computeTypeNameEncoding(str),
+        Encoders.TYPE_NAME_ENCODER_TYPE_KEY);
+  }
+
+  MetaStringRef getOrCreateMetaStringBytes(
+      String str, MetaStringEncoder encoder, MetaString.Encoding encoding, String encoderTypeKey) {
+    EncodedMetaString encodedMetaString =
+        sharedRegistry.getOrCreateEncodedMetaString(str, encoder, encoding, encoderTypeKey);
+    return getOrCreateMetaStringRef(encodedMetaString);
+  }
+
+  private MetaStringRef getOrCreateMetaStringRef(EncodedMetaString encodedMetaString) {
+    MetaStringRef metaStringRef = metaString2RefMap.get(encodedMetaString);
+    if (metaStringRef == null) {
+      metaStringRef = new MetaStringRef(encodedMetaString);
+      metaString2RefMap.put(encodedMetaString, metaStringRef);
+    }
+    return metaStringRef;
+  }
+
+  public void writeMetaStringBytesWithFlag(MemoryBuffer buffer, MetaStringRef metaStringRef) {
+    Objects.requireNonNull(metaStringRef);
+    short id = metaStringRef.dynamicWriteStringId;
+    if (id == MetaStringRef.DEFAULT_DYNAMIC_WRITE_STRING_ID) {
       // noinspection Duplicates
       id = dynamicWriteStringId++;
-      byteString.dynamicWriteStringId = id;
-      MetaStringBytes[] dynamicWrittenMetaString = this.dynamicWrittenString;
+      metaStringRef.dynamicWriteStringId = id;
+      MetaStringRef[] dynamicWrittenMetaString = this.dynamicWrittenString;
       if (dynamicWrittenMetaString.length <= id) {
         dynamicWrittenMetaString = growWrite(id);
       }
-      dynamicWrittenMetaString[id] = byteString;
-      int length = byteString.bytes.length;
+      dynamicWrittenMetaString[id] = metaStringRef;
+      EncodedMetaString encodedMetaString = metaStringRef.encoded;
+      int length = encodedMetaString.bytes.length;
       // last bit `1` indicates class is written by name instead of registered id.
       buffer.writeVarUint32Small7(length << 2 | 0b1);
       if (length > SMALL_STRING_THRESHOLD) {
-        buffer.writeInt64(byteString.hashCode);
+        buffer.writeInt64(encodedMetaString.hash);
       } else if (length != 0) {
-        buffer.writeByte(byteString.encoding.getValue());
+        buffer.writeByte(encodedMetaString.encoding.getValue());
       }
-      buffer.writeBytes(byteString.bytes);
+      buffer.writeBytes(encodedMetaString.bytes);
     } else {
       // last bit `1` indicates class is written by name instead of registered id.
       buffer.writeVarUint32Small7(((id + 1) << 2) | 0b11);
     }
   }
 
-  public void writeMetaStringBytes(MemoryBuffer buffer, MetaStringBytes byteString) {
-    short id = byteString.dynamicWriteStringId;
-    if (id == MetaStringBytes.DEFAULT_DYNAMIC_WRITE_STRING_ID) {
+  public void writeMetaStringBytes(MemoryBuffer buffer, MetaStringRef metaStringRef) {
+    short id = metaStringRef.dynamicWriteStringId;
+    if (id == MetaStringRef.DEFAULT_DYNAMIC_WRITE_STRING_ID) {
       // noinspection Duplicates
       id = dynamicWriteStringId++;
-      byteString.dynamicWriteStringId = id;
-      MetaStringBytes[] dynamicWrittenMetaString = this.dynamicWrittenString;
+      metaStringRef.dynamicWriteStringId = id;
+      MetaStringRef[] dynamicWrittenMetaString = this.dynamicWrittenString;
       if (dynamicWrittenMetaString.length <= id) {
         dynamicWrittenMetaString = growWrite(id);
       }
-      dynamicWrittenMetaString[id] = byteString;
-      int length = byteString.bytes.length;
+      dynamicWrittenMetaString[id] = metaStringRef;
+      EncodedMetaString encodedMetaString = metaStringRef.encoded;
+      int length = encodedMetaString.bytes.length;
       buffer.writeVarUint32Small7(length << 1);
       if (length > SMALL_STRING_THRESHOLD) {
-        buffer.writeInt64(byteString.hashCode);
+        buffer.writeInt64(encodedMetaString.hash);
       } else if (length != 0) {
-        buffer.writeByte(byteString.encoding.getValue());
+        buffer.writeByte(encodedMetaString.encoding.getValue());
       }
-      buffer.writeBytes(byteString.bytes);
+      buffer.writeBytes(encodedMetaString.bytes);
     } else {
       buffer.writeVarUint32Small7(((id + 1) << 1) | 1);
     }
   }
 
-  private MetaStringBytes[] growWrite(int id) {
-    MetaStringBytes[] tmp = new MetaStringBytes[id * 2];
+  private MetaStringRef[] growWrite(int id) {
+    MetaStringRef[] tmp = new MetaStringRef[id * 2];
     System.arraycopy(dynamicWrittenString, 0, tmp, 0, dynamicWrittenString.length);
     return this.dynamicWrittenString = tmp;
   }
 
   public String readMetaString(MemoryBuffer buffer) {
-    MetaStringBytes byteString = readMetaStringBytes(buffer);
-    String str = metaStringBytes2StringMap.get(byteString);
+    MetaStringRef metaStringRef = readMetaStringBytes(buffer);
+    EncodedMetaString encodedMetaString = metaStringRef.encoded;
+    String str = metaString2StringMap.get(encodedMetaString);
     if (str == null) {
       // TODO support meta string in other languages.
-      str = byteString.decode(Encoders.GENERIC_DECODER);
-      metaStringBytes2StringMap.put(byteString, str);
+      str = metaStringRef.decode(Encoders.GENERIC_DECODER);
+      metaString2StringMap.put(encodedMetaString, str);
     }
     return str;
   }
 
-  public MetaStringBytes readMetaStringBytesWithFlag(MemoryBuffer buffer, int header) {
+  public MetaStringRef readMetaStringBytesWithFlag(MemoryBuffer buffer, int header) {
     int len = header >>> 2;
     if ((header & 0b10) == 0) {
-      MetaStringBytes byteString =
+      MetaStringRef metaStringRef =
           len <= SMALL_STRING_THRESHOLD
               ? readSmallMetaStringBytes(buffer, len)
               : readBigMetaStringBytes(buffer, len, buffer.readInt64());
-      updateDynamicString(byteString);
-      return byteString;
+      updateDynamicString(metaStringRef);
+      return metaStringRef;
     } else {
       return dynamicReadStringIds[len - 1];
     }
   }
 
-  public MetaStringBytes readMetaStringBytesWithFlag(
-      MemoryBuffer buffer, MetaStringBytes cache, int header) {
+  public MetaStringRef readMetaStringBytesWithFlag(
+      MemoryBuffer buffer, MetaStringRef cache, int header) {
     int len = header >>> 2;
     if ((header & 0b10) == 0) {
-      MetaStringBytes byteString =
+      MetaStringRef metaStringRef =
           len <= SMALL_STRING_THRESHOLD
               ? readSmallMetaStringBytes(buffer, cache, len)
               : readBigMetaStringBytes(buffer, cache, len);
-      updateDynamicString(byteString);
-      return byteString;
+      updateDynamicString(metaStringRef);
+      return metaStringRef;
     } else {
       return dynamicReadStringIds[len - 1];
     }
   }
 
-  public MetaStringBytes readMetaStringBytes(MemoryBuffer buffer) {
+  public MetaStringRef readMetaStringBytes(MemoryBuffer buffer) {
     int header = buffer.readVarUint32Small7();
     int len = header >>> 1;
     if ((header & 0b1) == 0) {
-      MetaStringBytes byteString =
+      MetaStringRef metaStringRef =
           len > SMALL_STRING_THRESHOLD
               ? readBigMetaStringBytes(buffer, len, buffer.readInt64())
               : readSmallMetaStringBytes(buffer, len);
-      updateDynamicString(byteString);
-      return byteString;
+      updateDynamicString(metaStringRef);
+      return metaStringRef;
     } else {
       return dynamicReadStringIds[len - 1];
     }
   }
 
-  MetaStringBytes readMetaStringBytes(MemoryBuffer buffer, MetaStringBytes cache) {
+  MetaStringRef readMetaStringBytes(MemoryBuffer buffer, MetaStringRef cache) {
     int header = buffer.readVarUint32Small7();
     int len = header >>> 1;
     if ((header & 0b1) == 0) {
-      MetaStringBytes byteString =
+      MetaStringRef metaStringRef =
           len <= SMALL_STRING_THRESHOLD
               ? readSmallMetaStringBytes(buffer, cache, len)
               : readBigMetaStringBytes(buffer, cache, len);
-      updateDynamicString(byteString);
-      return byteString;
+      updateDynamicString(metaStringRef);
+      return metaStringRef;
     } else {
       return dynamicReadStringIds[len - 1];
     }
   }
 
-  private MetaStringBytes readBigMetaStringBytes(
-      MemoryBuffer buffer, MetaStringBytes cache, int len) {
+  private MetaStringRef readBigMetaStringBytes(MemoryBuffer buffer, MetaStringRef cache, int len) {
     long hashCode = buffer.readInt64();
-    if (cache.hashCode == hashCode) {
+    if (cache.encoded.hash == hashCode) {
       // skip byteString data
       buffer.increaseReaderIndex(len);
       return cache;
@@ -210,22 +255,24 @@ public final class MetaStringResolver {
     }
   }
 
-  /** Read enum string by try to reuse previous read {@link MetaStringBytes} object. */
-  private MetaStringBytes readBigMetaStringBytes(MemoryBuffer buffer, int len, long hashCode) {
-    MetaStringBytes byteString = hash2MetaStringBytesMap.get(hashCode);
-    if (byteString == null) {
-      byteString = new MetaStringBytes(buffer.readBytes(len), hashCode);
-      hash2MetaStringBytesMap.put(hashCode, byteString);
+  /** Read enum string by try to reuse previous read {@link MetaStringRef} object. */
+  private MetaStringRef readBigMetaStringBytes(MemoryBuffer buffer, int len, long hashCode) {
+    EncodedMetaString encodedMetaString = hash2MetaStringMap.get(hashCode);
+    if (encodedMetaString == null) {
+      EncodedMetaString newMetaString = new EncodedMetaString(buffer.readBytes(len), hashCode);
+      MetaStringRef metaStringRef = getOrCreateMetaStringRef(newMetaString);
+      hash2MetaStringMap.put(hashCode, metaStringRef.encoded);
+      return metaStringRef;
     } else {
       // skip byteString data
       buffer.increaseReaderIndex(len);
+      return getOrCreateMetaStringRef(encodedMetaString);
     }
-    return byteString;
   }
 
-  private MetaStringBytes readSmallMetaStringBytes(MemoryBuffer buffer, int len) {
+  private MetaStringRef readSmallMetaStringBytes(MemoryBuffer buffer, int len) {
     if (len == 0) {
-      return MetaStringBytes.EMPTY;
+      return emptyMetaStringRef;
     }
     byte encoding = buffer.readByte();
     long v1, v2 = 0;
@@ -235,17 +282,17 @@ public final class MetaStringResolver {
       v1 = buffer.readInt64();
       v2 = buffer.readBytesAsInt64(len - 8);
     }
-    MetaStringBytes byteString = longLongByteMap.get(v1, v2, encoding);
-    if (byteString == null) {
-      byteString = createSmallMetaStringBytes(len, encoding, v1, v2);
+    EncodedMetaString encodedMetaString = longLongMetaStringMap.get(v1, v2, encoding);
+    if (encodedMetaString == null) {
+      return createSmallMetaStringBytes(len, encoding, v1, v2);
     }
-    return byteString;
+    return getOrCreateMetaStringRef(encodedMetaString);
   }
 
-  private MetaStringBytes readSmallMetaStringBytes(
-      MemoryBuffer buffer, MetaStringBytes cache, int len) {
+  private MetaStringRef readSmallMetaStringBytes(
+      MemoryBuffer buffer, MetaStringRef cache, int len) {
     if (len == 0) {
-      return MetaStringBytes.EMPTY;
+      return emptyMetaStringRef;
     }
     byte encoding = buffer.readByte();
     long v1, v2 = 0;
@@ -255,39 +302,41 @@ public final class MetaStringResolver {
       v1 = buffer.readInt64();
       v2 = buffer.readBytesAsInt64(len - 8);
     }
-    if (cache.first8Bytes == v1 && cache.second8Bytes == v2) {
+    EncodedMetaString cachedMetaString = cache.encoded;
+    if (cachedMetaString.first8Bytes == v1 && cachedMetaString.second8Bytes == v2) {
       return cache;
     }
-    MetaStringBytes byteString = longLongByteMap.get(v1, v2, encoding);
-    if (byteString == null) {
-      byteString = createSmallMetaStringBytes(len, encoding, v1, v2);
+    EncodedMetaString encodedMetaString = longLongMetaStringMap.get(v1, v2, encoding);
+    if (encodedMetaString == null) {
+      return createSmallMetaStringBytes(len, encoding, v1, v2);
     }
-    return byteString;
+    return getOrCreateMetaStringRef(encodedMetaString);
   }
 
-  private MetaStringBytes createSmallMetaStringBytes(int len, byte encoding, long v1, long v2) {
+  private MetaStringRef createSmallMetaStringBytes(int len, byte encoding, long v1, long v2) {
     byte[] data = new byte[16];
     LittleEndian.putInt64(data, 0, v1);
     LittleEndian.putInt64(data, 8, v2);
     long hashCode = MurmurHash3.murmurhash3_x64_128(data, 0, len, 47)[0];
     hashCode = Math.abs(hashCode);
     hashCode = (hashCode & 0xffffffffffffff00L) | encoding;
-    MetaStringBytes metaStringBytes = new MetaStringBytes(Arrays.copyOf(data, len), hashCode);
-    longLongByteMap.put(v1, v2, encoding, metaStringBytes);
-    return metaStringBytes;
+    EncodedMetaString encodedMetaString = new EncodedMetaString(Arrays.copyOf(data, len), hashCode);
+    MetaStringRef metaStringRef = getOrCreateMetaStringRef(encodedMetaString);
+    longLongMetaStringMap.put(v1, v2, encoding, metaStringRef.encoded);
+    return metaStringRef;
   }
 
-  private void updateDynamicString(MetaStringBytes byteString) {
+  private void updateDynamicString(MetaStringRef metaStringRef) {
     short currentDynamicReadId = dynamicReadStringId++;
-    MetaStringBytes[] dynamicReadStringIds = this.dynamicReadStringIds;
+    MetaStringRef[] dynamicReadStringIds = this.dynamicReadStringIds;
     if (dynamicReadStringIds.length <= currentDynamicReadId) {
       dynamicReadStringIds = growRead(currentDynamicReadId);
     }
-    dynamicReadStringIds[currentDynamicReadId] = byteString;
+    dynamicReadStringIds[currentDynamicReadId] = metaStringRef;
   }
 
-  private MetaStringBytes[] growRead(int id) {
-    MetaStringBytes[] tmp = new MetaStringBytes[id * 2];
+  private MetaStringRef[] growRead(int id) {
+    MetaStringRef[] tmp = new MetaStringRef[id * 2];
     System.arraycopy(dynamicReadStringIds, 0, tmp, 0, dynamicReadStringIds.length);
     return this.dynamicReadStringIds = tmp;
   }
@@ -312,7 +361,7 @@ public final class MetaStringResolver {
     if (dynamicWriteStringId != 0) {
       for (int i = 0; i < dynamicWriteStringId; i++) {
         dynamicWrittenString[i].dynamicWriteStringId =
-            MetaStringBytes.DEFAULT_DYNAMIC_WRITE_STRING_ID;
+            MetaStringRef.DEFAULT_DYNAMIC_WRITE_STRING_ID;
         dynamicWrittenString[i] = null;
       }
       this.dynamicWriteStringId = 0;

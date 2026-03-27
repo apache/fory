@@ -29,6 +29,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.io.Serializable;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -44,9 +46,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.MetaContext;
+import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.util.Preconditions;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -190,24 +197,24 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   public void testJDKCompatiblePutFieldsCopy(Fory fory) {
     fory.registerSerializer(
         StringBuffer.class, new ObjectStreamSerializer(fory, StringBuffer.class));
-    StringBuffer newStringBuffer = fory.copy(new StringBuffer("abc"));
-    assertEquals(newStringBuffer.toString(), "abc");
-    BigInteger bigInteger = BigInteger.valueOf(1000);
     fory.registerSerializer(BigInteger.class, new ObjectStreamSerializer(fory, BigInteger.class));
-    copyCheck(fory, bigInteger);
     fory.registerSerializer(InetAddress.class, new ObjectStreamSerializer(fory, InetAddress.class));
     fory.registerSerializer(
         Inet4Address.class, new ObjectStreamSerializer(fory, Inet4Address.class));
+    fory.registerSerializer(
+        WriteObjectTestClass2.class, new ObjectStreamSerializer(fory, WriteObjectTestClass2.class));
+    fory.registerSerializer(
+        WriteObjectTestClass3.class, new ObjectStreamSerializer(fory, WriteObjectTestClass3.class));
+    StringBuffer newStringBuffer = fory.copy(new StringBuffer("abc"));
+    assertEquals(newStringBuffer.toString(), "abc");
+    BigInteger bigInteger = BigInteger.valueOf(1000);
+    copyCheck(fory, bigInteger);
     InetAddress inetAddress = InetAddress.getLoopbackAddress();
     copyCheck(fory, inetAddress);
     WriteObjectTestClass2 testClassObj2 = new WriteObjectTestClass2(new char[] {'a', 'b'}, "abc");
-    fory.registerSerializer(
-        WriteObjectTestClass2.class, new ObjectStreamSerializer(fory, WriteObjectTestClass2.class));
     copyCheck(fory, testClassObj2);
     // test defaultReadObject compatible with putFields.
     WriteObjectTestClass3 testClassObj3 = new WriteObjectTestClass3(new char[] {'a', 'b'}, "abc");
-    fory.registerSerializer(
-        WriteObjectTestClass3.class, new ObjectStreamSerializer(fory, WriteObjectTestClass3.class));
     copyCheck(fory, testClassObj3);
   }
 
@@ -249,22 +256,20 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   @Test(dataProvider = "foryCopyConfig")
   public void testJDKCompatibleMapCopy(Fory fory) {
     ImmutableMap<String, Integer> mapData = ImmutableMap.of("k1", 1, "k2", 2);
+    Map<String, Integer> map = new HashMap<>(mapData);
+    fory.registerSerializer(
+        ConcurrentHashMap.class, new ObjectStreamSerializer(fory, ConcurrentHashMap.class));
+    fory.registerSerializer(map.getClass(), new ObjectStreamSerializer(fory, map.getClass()));
     {
       ObjectStreamSerializer serializer = new ObjectStreamSerializer(fory, ConcurrentHashMap.class);
-      ConcurrentHashMap<String, Integer> map = new ConcurrentHashMap<>(mapData);
-      Object copy = serializer.copy(map);
-      assertEquals(copy, map);
+      ConcurrentHashMap<String, Integer> concurrentMap = new ConcurrentHashMap<>(mapData);
+      Object copy = serializer.copy(concurrentMap);
+      assertEquals(copy, concurrentMap);
     }
     {
-      fory.registerSerializer(
-          ConcurrentHashMap.class, new ObjectStreamSerializer(fory, ConcurrentHashMap.class));
       copyCheck(fory, new ConcurrentHashMap<>(mapData));
     }
-    {
-      Map<String, Integer> map = new HashMap<>(mapData);
-      fory.registerSerializer(map.getClass(), new ObjectStreamSerializer(fory, map.getClass()));
-      copyCheck(fory, map);
-    }
+    copyCheck(fory, map);
   }
 
   @Test(dataProvider = "javaFory")
@@ -282,11 +287,11 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   @Test(dataProvider = "foryCopyConfig")
   public void testJDKCompatibleListCopy(Fory fory) {
     fory.registerSerializer(ArrayList.class, new ObjectStreamSerializer(fory, ArrayList.class));
+    fory.registerSerializer(LinkedList.class, new ObjectStreamSerializer(fory, LinkedList.class));
+    fory.registerSerializer(Vector.class, new ObjectStreamSerializer(fory, Vector.class));
     List<String> list = new ArrayList<>(ImmutableList.of("a", "b", "c", "d"));
     copyCheck(fory, list);
-    fory.registerSerializer(LinkedList.class, new ObjectStreamSerializer(fory, LinkedList.class));
     copyCheck(fory, new LinkedList<>(list));
-    fory.registerSerializer(Vector.class, new ObjectStreamSerializer(fory, Vector.class));
     copyCheck(fory, new Vector<>(list));
   }
 
@@ -437,10 +442,10 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
 
   @Test(dataProvider = "foryCopyConfig")
   public void testWriteObjectReplaceCopy(Fory fory) throws MalformedURLException {
-    copyCheck(fory, new URL("http://test"));
-    WriteObjectTestClass4 testClassObj4 = new WriteObjectTestClass4(new char[] {'a', 'b'});
     fory.registerSerializer(
         WriteObjectTestClass4.class, new ObjectStreamSerializer(fory, WriteObjectTestClass4.class));
+    copyCheck(fory, new URL("http://test"));
+    WriteObjectTestClass4 testClassObj4 = new WriteObjectTestClass4(new char[] {'a', 'b'});
     copyCheck(fory, testClassObj4);
   }
 
@@ -994,6 +999,54 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     assertEquals(result.value, 99);
   }
 
+  @Test(dataProvider = "compatibleModeProvider")
+  public void testObjectStreamSharedRegistryCanonicalizesTypeDef(CompatibleMode compatible)
+      throws Exception {
+    ForyBuilder builder =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCompatibleMode(compatible)
+            .withMetaShare(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory writerFory =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    Fory readerFory1 =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    Fory readerFory2 =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    writerFory.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(writerFory, MixedSerializationClass.class));
+    readerFory1.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(readerFory1, MixedSerializationClass.class));
+    readerFory2.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(readerFory2, MixedSerializationClass.class));
+
+    writerFory.getSerializationContext().setMetaContext(new MetaContext());
+    byte[] bytes = writerFory.serialize(new MixedSerializationClass("shared", 7));
+
+    readerFory1.getSerializationContext().setMetaContext(new MetaContext());
+    readerFory1.deserialize(bytes);
+    readerFory2.getSerializationContext().setMetaContext(new MetaContext());
+    readerFory2.deserialize(bytes);
+
+    TypeInfo typeInfo1 =
+        getFirstTypeInfo(
+            getTypeDefIdToTypeInfo(
+                (ObjectStreamSerializer) readerFory1.getSerializer(MixedSerializationClass.class)));
+    TypeInfo typeInfo2 =
+        getFirstTypeInfo(
+            getTypeDefIdToTypeInfo(
+                (ObjectStreamSerializer) readerFory2.getSerializer(MixedSerializationClass.class)));
+
+    assertSame(typeInfo1.getTypeDef(), typeInfo2.getTypeDef());
+  }
+
   // ==================== Default Value Tests ====================
 
   /** Class to test default values when fields are missing. */
@@ -1031,6 +1084,45 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
       boolField = fields.get("boolField", true);
       doubleField = fields.get("doubleField", 99.9);
       objectField = fields.get("objectField", "defaultObject");
+    }
+  }
+
+  private static LongMap<TypeInfo> getTypeDefIdToTypeInfo(ObjectStreamSerializer serializer)
+      throws ReflectiveOperationException {
+    Field field = ObjectStreamSerializer.class.getDeclaredField("typeDefIdToTypeInfo");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    LongMap<TypeInfo> typeDefIdToTypeInfo = (LongMap<TypeInfo>) field.get(serializer);
+    return typeDefIdToTypeInfo;
+  }
+
+  private static TypeInfo getFirstTypeInfo(LongMap<TypeInfo> typeDefIdToTypeInfo)
+      throws ReflectiveOperationException {
+    Field zeroValueField = LongMap.class.getDeclaredField("zeroValue");
+    zeroValueField.setAccessible(true);
+    TypeInfo zeroValue = (TypeInfo) zeroValueField.get(typeDefIdToTypeInfo);
+    if (zeroValue != null) {
+      return zeroValue;
+    }
+    Field valueTableField = LongMap.class.getDeclaredField("valueTable");
+    valueTableField.setAccessible(true);
+    Object[] valueTable = (Object[]) valueTableField.get(typeDefIdToTypeInfo);
+    for (Object value : valueTable) {
+      if (value != null) {
+        return (TypeInfo) value;
+      }
+    }
+    Assert.fail("Expected at least one cached TypeInfo in ObjectStreamSerializer");
+    return null;
+  }
+
+  private static void finishBuilder(ForyBuilder builder) {
+    try {
+      Method finish = ForyBuilder.class.getDeclaredMethod("finish");
+      finish.setAccessible(true);
+      finish.invoke(builder);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
     }
   }
 

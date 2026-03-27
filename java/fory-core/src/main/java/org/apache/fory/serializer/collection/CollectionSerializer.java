@@ -58,9 +58,7 @@ public class CollectionSerializer<T extends Collection> extends CollectionLikeSe
     }
     Preconditions.checkArgument(supportCodegenHook);
     Collection newCollection = newCollection(originCollection);
-    if (needToCopyRef) {
-      fory.reference(originCollection, newCollection);
-    }
+    fory.reference(originCollection, newCollection);
     copyElements(originCollection, newCollection);
     return (T) newCollection;
   }

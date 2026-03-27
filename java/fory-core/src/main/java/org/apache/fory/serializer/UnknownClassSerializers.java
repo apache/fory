@@ -19,10 +19,7 @@
 
 package org.apache.fory.serializer;
 
-import static org.apache.fory.serializer.SerializationUtils.getTypeResolver;
-
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.IdentityObjectIntMap;
@@ -40,7 +37,6 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.Serializers.CrossLanguageCompatibleSerializer;
 import org.apache.fory.serializer.UnknownClass.UnknownEnum;
-import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.Types;
@@ -74,7 +70,7 @@ public final class UnknownClassSerializers {
     public UnknownStructSerializer(Fory fory, TypeDef typeDef) {
       super(fory, UnknownClass.UnknownStruct.class);
       this.typeDef = typeDef;
-      fieldsInfoMap = new LongMap<>();
+      fieldsInfoMap = new LongMap<>(1);
       Preconditions.checkArgument(fory.getConfig().isMetaShareEnabled());
       if (Utils.DEBUG_OUTPUT_ENABLED && typeDef != null) {
         LOG.info("========== UnknownClassSerializer TypeDef for {} ==========", type.getName());
@@ -203,14 +199,12 @@ public final class UnknownClassSerializers {
 
     private ClassFieldsInfo getClassFieldsInfo(TypeDef typeDef) {
       ClassFieldsInfo fieldsInfo = fieldsInfoMap.get(typeDef.getId());
-      TypeResolver resolver = getTypeResolver(fory);
+      TypeResolver resolver = fory.getTypeResolver();
       if (fieldsInfo == null) {
         // Use `UnknownEmptyStruct` since it doesn't have any field.
-        Collection<Descriptor> descriptors =
-            MetaSharedSerializer.consolidateFields(
-                resolver, UnknownClass.UnknownEmptyStruct.class, typeDef);
         DescriptorGrouper grouper =
-            fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
+            fory.getTypeResolver()
+                .createDescriptorGrouper(typeDef, UnknownClass.UnknownEmptyStruct.class);
         FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, grouper);
         int classVersionHash = 0;
         if (fory.checkClassVersion()) {

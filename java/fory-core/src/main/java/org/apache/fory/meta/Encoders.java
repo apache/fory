@@ -36,6 +36,10 @@ import org.apache.fory.util.StringUtils;
 
 /** A class used to encode package/class/field name. */
 public class Encoders {
+  public static final String GENERIC_ENCODER_TYPE_KEY = "generic";
+  public static final String PACKAGE_ENCODER_TYPE_KEY = "package";
+  public static final String TYPE_NAME_ENCODER_TYPE_KEY = "type_name";
+  public static final String FIELD_NAME_ENCODER_TYPE_KEY = "field_name";
   public static final MetaStringEncoder GENERIC_ENCODER = new MetaStringEncoder('.', '_');
   public static final MetaStringDecoder GENERIC_DECODER = new MetaStringDecoder('.', '_');
   public static final MetaStringEncoder PACKAGE_ENCODER = GENERIC_ENCODER;
@@ -52,6 +56,7 @@ public class Encoders {
       new ConcurrentHashMap<>();
   private static final ConcurrentMap<String, MetaString> fieldMetaStringCache =
       new ConcurrentHashMap<>();
+  private static final Encoding[] genericEncodings = Encoding.values();
   static final Encoding[] pkgEncodings =
       new Encoding[] {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
   static final List<Encoding> pkgEncodingsList = Arrays.asList(pkgEncodings);
@@ -65,6 +70,22 @@ public class Encoders {
   static final Encoding[] fieldNameEncodings =
       new Encoding[] {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
   static final List<Encoding> fieldNameEncodingsList = Arrays.asList(fieldNameEncodings);
+
+  public static Encoding computeGenericEncoding(String value) {
+    return GENERIC_ENCODER.computeEncoding(value, genericEncodings);
+  }
+
+  public static Encoding computePackageEncoding(String value) {
+    return PACKAGE_ENCODER.computeEncoding(value, pkgEncodings);
+  }
+
+  public static Encoding computeTypeNameEncoding(String value) {
+    return TYPE_NAME_ENCODER.computeEncoding(value, typeNameEncodings);
+  }
+
+  public static Encoding computeFieldNameEncoding(String value) {
+    return FIELD_NAME_ENCODER.computeEncoding(value, fieldNameEncodings);
+  }
 
   public static MetaString encodePackage(String pkg) {
     return pgkMetaStringCache.computeIfAbsent(pkg, k -> PACKAGE_ENCODER.encode(pkg, pkgEncodings));

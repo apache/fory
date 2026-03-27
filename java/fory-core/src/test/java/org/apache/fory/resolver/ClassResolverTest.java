@@ -20,12 +20,14 @@
 package org.apache.fory.resolver;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Primitives;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,17 +42,20 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.builder.Generated;
+import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.longlongpkg.C1;
 import org.apache.fory.resolver.longlongpkg.C2;
@@ -62,6 +67,8 @@ import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.test.bean.BeanB;
+import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.testng.Assert;
@@ -216,6 +223,185 @@ public class ClassResolverTest extends ForyTestBase {
         classResolver.getSerializerClass(
             Class.forName("org.apache.fory.serializer.collection.MapContainer")),
         MapSerializers.DefaultJavaMapSerializer.class);
+  }
+
+  @Test
+  public void testSharedRegistrySharesTypeDefCachesAcrossForyInstances() {
+    ForyBuilder builder =
+        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+
+    ClassResolver resolver1 = (ClassResolver) fory1.getTypeResolver();
+    ClassResolver resolver2 = (ClassResolver) fory2.getTypeResolver();
+
+    assertSame(resolver1.typeDefMap, resolver2.typeDefMap);
+    assertSame(
+        resolver1.extRegistry.currentLayerTypeDef, resolver2.extRegistry.currentLayerTypeDef);
+    assertSame(resolver1.extRegistry.descriptorsCache, resolver2.extRegistry.descriptorsCache);
+    assertSame(resolver1.extRegistry.codeGeneratorMap, resolver2.extRegistry.codeGeneratorMap);
+
+    TypeDef first = resolver1.getTypeDef(BeanB.class, true);
+    TypeDef second = resolver2.getTypeDef(BeanB.class, true);
+    assertSame(first, second);
+    assertNotSame(resolver1, resolver2);
+  }
+
+  @Test
+  public void testSharedRegistryCachesTypeDefByIdButKeepsTypeInfoLocal() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withMetaShare(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+
+    ClassResolver resolver1 = (ClassResolver) fory1.getTypeResolver();
+    ClassResolver resolver2 = (ClassResolver) fory2.getTypeResolver();
+    TypeDef typeDef = resolver1.getTypeDef(BeanB.class, true);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    typeDef.writeTypeDef(buffer);
+
+    buffer.readerIndex(0);
+    TypeDef canonicalTypeDef1 = resolver1.readTypeDef(buffer, buffer.readInt64());
+    buffer.readerIndex(0);
+    TypeDef canonicalTypeDef2 = resolver2.readTypeDef(buffer, buffer.readInt64());
+
+    assertSame(sharedRegistry.typeDefById.get(typeDef.getId()), canonicalTypeDef1);
+    assertSame(canonicalTypeDef1, canonicalTypeDef2);
+    assertNull(resolver1.extRegistry.typeInfoByTypeDefId.get(typeDef.getId()));
+    assertNull(resolver2.extRegistry.typeInfoByTypeDefId.get(typeDef.getId()));
+
+    TypeInfo typeInfo1 = resolver1.buildMetaSharedTypeInfo(canonicalTypeDef1);
+    TypeInfo typeInfo2 = resolver2.buildMetaSharedTypeInfo(canonicalTypeDef2);
+
+    assertSame(resolver1.extRegistry.typeInfoByTypeDefId.get(typeDef.getId()), typeInfo1);
+    assertSame(resolver2.extRegistry.typeInfoByTypeDefId.get(typeDef.getId()), typeInfo2);
+    assertNotSame(typeInfo1, typeInfo2);
+  }
+
+  @Test
+  public void testSharedRegistryCachesFieldDescriptorsAndDescriptorGrouper() {
+    ForyBuilder builder =
+        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+
+    ClassResolver resolver1 = (ClassResolver) fory1.getTypeResolver();
+    ClassResolver resolver2 = (ClassResolver) fory2.getTypeResolver();
+    resolver1.finishRegistration();
+    resolver2.finishRegistration();
+
+    List<Descriptor> descriptors1 = resolver1.getFieldDescriptors(BeanB.class, true);
+    List<Descriptor> descriptors2 = resolver2.getFieldDescriptors(BeanB.class, true);
+    assertSame(descriptors1, descriptors2);
+
+    DescriptorGrouper grouper1 = resolver1.getFieldDescriptorGrouper(BeanB.class, true, false);
+    DescriptorGrouper grouper2 = resolver2.getFieldDescriptorGrouper(BeanB.class, true, false);
+    assertSame(grouper1, grouper2);
+    assertEquals(grouper1.getSortedDescriptors(), grouper2.getSortedDescriptors());
+
+    Function<Descriptor, Descriptor> descriptorUpdator = Function.identity();
+    DescriptorGrouper updatedGrouper1 =
+        resolver1.getFieldDescriptorGrouper(BeanB.class, true, false, descriptorUpdator);
+    DescriptorGrouper updatedGrouper2 =
+        resolver2.getFieldDescriptorGrouper(BeanB.class, true, false, descriptorUpdator);
+    assertSame(updatedGrouper1, updatedGrouper2);
+    assertEquals(updatedGrouper1.getSortedDescriptors(), updatedGrouper2.getSortedDescriptors());
+  }
+
+  @Test
+  public void testSharedRegistryCachesTypeDefDescriptorsAndDescriptorGrouperBySemanticKey() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withMetaShare(true)
+            .requireClassRegistration(false);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+
+    ClassResolver resolver1 = (ClassResolver) fory1.getTypeResolver();
+    ClassResolver resolver2 = (ClassResolver) fory2.getTypeResolver();
+    resolver1.finishRegistration();
+    resolver2.finishRegistration();
+
+    TypeDef canonicalTypeDef = resolver1.getTypeDef(BeanB.class, true);
+    MemoryBuffer buffer1 = MemoryBuffer.newHeapBuffer(256);
+    canonicalTypeDef.writeTypeDef(buffer1);
+    TypeDef typeDef1 = TypeDef.readTypeDef(fory1, buffer1);
+    MemoryBuffer buffer2 = MemoryBuffer.newHeapBuffer(256);
+    canonicalTypeDef.writeTypeDef(buffer2);
+    TypeDef typeDef2 = TypeDef.readTypeDef(fory2, buffer2);
+
+    assertNotSame(typeDef1, typeDef2);
+    assertEquals(typeDef1.getId(), typeDef2.getId());
+
+    List<Descriptor> descriptors1 = typeDef1.getDescriptors(resolver1, BeanB.class);
+    List<Descriptor> descriptors2 = typeDef2.getDescriptors(resolver2, BeanB.class);
+    assertSame(descriptors1, descriptors2);
+
+    DescriptorGrouper grouper1 = resolver1.createDescriptorGrouper(typeDef1, BeanB.class);
+    DescriptorGrouper grouper2 = resolver2.createDescriptorGrouper(typeDef2, BeanB.class);
+    assertSame(grouper1, grouper2);
+    assertEquals(grouper1.getSortedDescriptors(), grouper2.getSortedDescriptors());
+  }
+
+  @Test
+  public void testRegisterNamedClassCachesOnlyNamespaceAndTypeName() {
+    ForyBuilder builder = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+
+    int before = sharedRegistry.metaStringMap.size();
+    classResolver.register(C1.class, "ns", "C1");
+
+    assertEquals(sharedRegistry.metaStringMap.size() - before, 2);
+  }
+
+  @Test
+  public void testFinishRegisterPublishesAndAdoptsSharedRegistration() {
+    ForyBuilder builder = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+
+    ClassResolver resolver1 = (ClassResolver) fory1.getTypeResolver();
+    ClassResolver resolver2 = (ClassResolver) fory2.getTypeResolver();
+
+    resolver1.register(BeanB.class, 1);
+    resolver1.register(C1.class, "ns", "C1");
+    assertNull(resolver2.getRegisteredClassId(BeanB.class));
+    assertNull(resolver2.getRegisteredClass("ns.C1"));
+
+    resolver1.finishRegistration();
+
+    assertEquals(sharedRegistry.registeredClassIdMap.get(BeanB.class), Integer.valueOf(1));
+    assertEquals(sharedRegistry.registeredClasses.get("ns.C1"), C1.class);
+    resolver2.finishRegistration();
+    assertEquals(resolver2.getRegisteredClassId(BeanB.class), Integer.valueOf(1));
+    assertEquals(resolver2.getRegisteredClass("ns.C1"), C1.class);
+  }
+
+  private static void finishBuilder(ForyBuilder builder) {
+    try {
+      Method finish = ForyBuilder.class.getDeclaredMethod("finish");
+      finish.setAccessible(true);
+      finish.invoke(builder);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
   }
 
   interface Interface1 {}
