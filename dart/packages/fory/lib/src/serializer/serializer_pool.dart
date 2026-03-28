@@ -26,7 +26,6 @@ import 'package:fory/src/const/types.dart';
 import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/float16.dart';
 import 'package:fory/src/datatype/bfloat16.dart';
-import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/int8.dart';
