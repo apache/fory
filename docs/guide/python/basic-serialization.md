@@ -143,3 +143,5 @@ for obj in objects:
 - [Configuration](configuration.md) - Fory parameters
 - [Type Registration](type-registration.md) - Registration patterns
 - [Python Native Mode](python-native.md) - Functions and lambdas
+
+
