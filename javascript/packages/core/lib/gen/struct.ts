@@ -155,10 +155,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   write(accessor: string): string {
     if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
-      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
-        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
-        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
-      return `${serializerLookup}.write(${accessor});`;
+      const hash = this.typeMeta.computeStructHash();
+      return `${!this.builder.fory.isCompatible() ? this.builder.writer.writeInt32(hash) : ""}`;
     }
     const hash = this.typeMeta.computeStructHash();
     return `
@@ -340,6 +338,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           return (accessor: (expr: string) => string, refState: string) => {
             const result = scope.uniqueName("result");
             return `
+              ${serializerExpr}.readTypeInfo();
               fory.incReadDepth();
               let ${result} = ${serializerExpr}.read(${refState});
               fory.decReadDepth();
@@ -359,6 +358,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
               } else if (${refFlag} === ${RefFlags.RefFlag}) {
                 ${result} = ${builder.referenceResolver.getReadObject(builder.reader.readVarUInt32())};
               } else {
+                ${serializerExpr}.readTypeInfo();
                 fory.incReadDepth();
                 ${result} = ${serializerExpr}.read(${refFlag} === ${RefFlags.RefValueFlag});
                 fory.decReadDepth();
@@ -394,7 +394,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       get: (target, prop: string) => {
         if (prop === "writeNoRef") {
           return (accessor: string) => {
-            return `${serializerExpr}.write(${accessor})`;
+            return `
+              ${serializerExpr}.writeTypeInfo(${accessor});
+              ${serializerExpr}.write(${accessor});
+            `;
           };
         }
         if (prop === "writeRef") {
@@ -403,6 +406,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             return `
               let ${noneedWrite} = ${serializerExpr}.writeRefOrNull(${accessor});
               if (!${noneedWrite}) {
+                ${serializerExpr}.writeTypeInfo(${accessor});
                 ${serializerExpr}.write(${accessor});
               }
             `;

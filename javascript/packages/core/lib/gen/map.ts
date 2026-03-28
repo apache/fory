@@ -296,7 +296,10 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
   }
 
   private isAny() {
-    return this.typeInfo.options?.key!.typeId === TypeId.UNKNOWN || this.typeInfo.options?.value!.typeId === TypeId.UNKNOWN || !this.typeInfo.options?.key?.isMonomorphic() || !this.typeInfo.options?.value?.isMonomorphic();
+    const keyTypeId = this.typeInfo.options?.key!.typeId;
+    const valueTypeId = this.typeInfo.options?.value!.typeId;
+    return keyTypeId === TypeId.UNKNOWN || valueTypeId === TypeId.UNKNOWN
+      || !TypeId.isBuiltin(keyTypeId!) || !TypeId.isBuiltin(valueTypeId!);
   }
 
   private writeSpecificType(accessor: string) {

@@ -212,9 +212,6 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       case "FALSE":
         return true;
       default:
-        if (TypeId.structType(this._typeId)) {
-          return false;
-        }
         if (TypeId.enumType(this._typeId)) {
           return true;
         }
