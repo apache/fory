@@ -19,13 +19,11 @@
 
 package org.apache.fory.resolver;
 
-import static org.apache.fory.meta.Encoders.GENERIC_ENCODER;
 import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.Encoders;
-import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.Serializer;
@@ -38,9 +36,8 @@ import org.apache.fory.util.function.Functions;
  */
 public class TypeInfo {
   final Class<?> cls;
-  final MetaStringBytes fullNameBytes;
-  final MetaStringBytes namespaceBytes;
-  final MetaStringBytes typeNameBytes;
+  final MetaStringRef namespaceBytes;
+  final MetaStringRef typeNameBytes;
   final boolean isDynamicGeneratedClass;
   // Fory type ID for both native and xlang modes.
   // - Types 0-30: Shared internal types (Types.BOOL, Types.STRING, etc.)
@@ -54,15 +51,13 @@ public class TypeInfo {
 
   TypeInfo(
       Class<?> cls,
-      MetaStringBytes fullNameBytes,
-      MetaStringBytes namespaceBytes,
-      MetaStringBytes typeNameBytes,
+      MetaStringRef namespaceBytes,
+      MetaStringRef typeNameBytes,
       boolean isDynamicGeneratedClass,
       Serializer<?> serializer,
       int typeId,
       int userTypeId) {
     this.cls = cls;
-    this.fullNameBytes = fullNameBytes;
     this.namespaceBytes = namespaceBytes;
     this.typeNameBytes = typeNameBytes;
     this.isDynamicGeneratedClass = isDynamicGeneratedClass;
@@ -81,7 +76,6 @@ public class TypeInfo {
   public TypeInfo(Class<?> cls, TypeDef typeDef) {
     this.cls = cls;
     this.typeDef = typeDef;
-    this.fullNameBytes = null;
     this.namespaceBytes = null;
     this.typeNameBytes = null;
     this.isDynamicGeneratedClass = false;
@@ -100,13 +94,6 @@ public class TypeInfo {
     this.serializer = serializer;
     needToWriteTypeDef = serializer != null && classResolver.needToWriteTypeDef(serializer);
     MetaStringResolver metaStringResolver = classResolver.getMetaStringResolver();
-    if (cls != null && classResolver.getFory().isCrossLanguage()) {
-      this.fullNameBytes =
-          metaStringResolver.getOrCreateMetaStringBytes(
-              GENERIC_ENCODER.encode(cls.getName(), Encoding.UTF_8));
-    } else {
-      this.fullNameBytes = null;
-    }
     // When typeId indicates a named type, we need to create classname bytes for serialization.
     // - NAMED_STRUCT: unregistered struct classes
     // - NAMED_COMPATIBLE_STRUCT: unregistered classes in compatible mode
@@ -120,10 +107,8 @@ public class TypeInfo {
             || typeId == ClassResolver.REPLACE_STUB_ID;
     if (cls != null && isNamedType) {
       Tuple2<String, String> tuple2 = Encoders.encodePkgAndClass(cls);
-      this.namespaceBytes =
-          metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodePackage(tuple2.f0));
-      this.typeNameBytes =
-          metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodeTypeName(tuple2.f1));
+      this.namespaceBytes = metaStringResolver.getOrCreatePackageMetaStringBytes(tuple2.f0);
+      this.typeNameBytes = metaStringResolver.getOrCreateTypeNameMetaStringBytes(tuple2.f1);
     } else {
       this.namespaceBytes = null;
       this.typeNameBytes = null;
@@ -151,7 +136,6 @@ public class TypeInfo {
     }
     return new TypeInfo(
         cls,
-        fullNameBytes,
         namespaceBytes,
         typeNameBytes,
         isDynamicGeneratedClass,
@@ -166,7 +150,6 @@ public class TypeInfo {
     }
     return new TypeInfo(
         cls,
-        fullNameBytes,
         namespaceBytes,
         typeNameBytes,
         isDynamicGeneratedClass,
@@ -223,8 +206,6 @@ public class TypeInfo {
     return "TypeInfo{"
         + "cls="
         + cls
-        + ", fullClassNameBytes="
-        + fullNameBytes
         + ", isDynamicGeneratedClass="
         + isDynamicGeneratedClass
         + ", serializer="

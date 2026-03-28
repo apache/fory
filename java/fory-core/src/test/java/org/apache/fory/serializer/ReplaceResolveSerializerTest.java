@@ -103,16 +103,16 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   @Test(dataProvider = "foryCopyConfig")
   public void testCommonReplace(Fory fory) {
     CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
+    ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
+    ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
+    fory.registerSerializer(list1.getClass(), new ReplaceResolveSerializer(fory, list1.getClass()));
+    fory.registerSerializer(map1.getClass(), new ReplaceResolveSerializer(fory, map1.getClass()));
     copyCheck(fory, o1);
 
-    ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
-    fory.registerSerializer(list1.getClass(), new ReplaceResolveSerializer(fory, list1.getClass()));
     copyCheck(fory, list1);
 
-    ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
-    fory.registerSerializer(map1.getClass(), new ReplaceResolveSerializer(fory, map1.getClass()));
     copyCheck(fory, map1);
   }
 
@@ -179,7 +179,6 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
         new Object[] {
           new CustomReplaceClass2(false, 2), new CustomReplaceClass2(true, 2),
         }) {
-      fory.registerSerializer(o.getClass(), ReplaceResolveSerializer.class);
       copyCheck(fory, o);
     }
   }
@@ -356,7 +355,6 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
         new Object[] {
           new Subclass1(false, 2, 10), new Subclass1(true, 2, 11),
         }) {
-      fory.registerSerializer(o.getClass(), ReplaceResolveSerializer.class);
       copyCheck(fory, o);
     }
   }

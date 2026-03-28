@@ -61,7 +61,7 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "uint64_t",
         PrimitiveKind.VAR_UINT64: "uint64_t",
         PrimitiveKind.TAGGED_UINT64: "uint64_t",
-        PrimitiveKind.FLOAT16: "float",
+        PrimitiveKind.FLOAT16: "fory::float16_t",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "std::string",
@@ -1783,6 +1783,8 @@ class CppGenerator(BaseGenerator):
                 includes.add('"fory/serialization/temporal_serializers.h"')
             elif field_type.kind == PrimitiveKind.ANY:
                 includes.add("<any>")
+            elif field_type.kind == PrimitiveKind.FLOAT16:
+                includes.add('"fory/util/float16.h"')
 
         elif isinstance(field_type, ListType):
             includes.add("<vector>")

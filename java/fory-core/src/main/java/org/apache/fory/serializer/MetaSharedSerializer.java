@@ -20,7 +20,6 @@
 package org.apache.fory.serializer;
 
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
@@ -36,7 +35,6 @@ import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.MapRefResolver;
 import org.apache.fory.resolver.RefResolver;
-import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
@@ -91,9 +89,8 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
       }
     }
-    Collection<Descriptor> descriptors = consolidateFields(fory.getTypeResolver(), type, typeDef);
     DescriptorGrouper descriptorGrouper =
-        fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
+        fory.getTypeResolver().createDescriptorGrouper(typeDef, type);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info(
           "========== MetaSharedSerializer sorted descriptors for {} ==========", type.getName());
@@ -289,10 +286,5 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         fieldInfo.descriptor.getName(),
         fieldInfo.typeRef,
         buffer.readerIndex());
-  }
-
-  public static Collection<Descriptor> consolidateFields(
-      TypeResolver resolver, Class<?> cls, TypeDef typeDef) {
-    return typeDef.getDescriptors(resolver, cls);
   }
 }

@@ -221,7 +221,7 @@ public class Serializers {
 
     public AbstractStringBuilderSerializer(Fory fory, Class<T> type) {
       super(fory, type);
-      stringSerializer = new StringSerializer(fory);
+      stringSerializer = fory.getStringSerializer();
     }
 
     @Override

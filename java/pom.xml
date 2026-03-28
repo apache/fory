@@ -89,9 +89,9 @@
       </modules>
     </profile>
     <profile>
-      <id>jdk17-and-higher</id>
+      <id>jdk21-and-higher</id>
       <activation>
-        <jdk>[17,]</jdk>
+        <jdk>[21,]</jdk>
       </activation>
       <modules>
         <module>fory-simd</module>

@@ -79,8 +79,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.apache.fory.collection.LazyMap;
+import org.apache.fory.exception.ForyException;
+import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
+import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.ChildContainerSerializersTest.ChildArrayDeque;
 import org.apache.fory.serializer.collection.SynchronizedSerializersTest;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
@@ -184,6 +187,35 @@ public class ForyCopyTest extends ForyTestBase {
     }
     TimeUnit.SECONDS.sleep(5);
     Assert.assertFalse(flag.get());
+  }
+
+  @Test
+  public void testCopyFinalizesRegistrationPhase() {
+    Fory fory =
+        builder().withCodegen(false).withRefCopy(true).requireClassRegistration(true).build();
+    fory.register(BeanA.class);
+    assertEquals(fory.copy(BeanA.createBeanA(2)), BeanA.createBeanA(2));
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
+  }
+
+  @Test
+  public void testCopyOnlySerializerStillRejectsSerialize() {
+    Fory fory =
+        builder().withCodegen(false).withRefCopy(true).requireClassRegistration(true).build();
+    BeanA beanA = BeanA.createBeanA(2);
+    fory.register(BeanA.class);
+    assertEquals(fory.copy(beanA), beanA);
+    Assert.assertThrows(ForyException.class, () -> fory.serialize(beanA));
+  }
+
+  @Test
+  public void testCopyFailureDoesNotLeakCopyDepth() {
+    Fory fory =
+        builder().withCodegen(false).withRefCopy(false).requireClassRegistration(true).build();
+    fory.registerSerializerAndType(ExplodingCopyBean.class, new ExplodingCopyBeanSerializer(fory));
+    Assert.assertThrows(Throwable.class, () -> fory.copy(new ExplodingCopyBean()));
+    Assert.assertThrows(
+        ForyException.class, () -> fory.serialize(new UnregisteredAfterCopyFailure()));
   }
 
   private void objectCopyTest() {
@@ -290,6 +322,31 @@ public class ForyCopyTest extends ForyTestBase {
     Object newObj = fory.copy(obj);
     Assert.assertEquals(obj, newObj);
     Assert.assertNotSame(obj, newObj);
+  }
+
+  private static final class ExplodingCopyBean {}
+
+  private static final class UnregisteredAfterCopyFailure {}
+
+  private static final class ExplodingCopyBeanSerializer extends Serializer<ExplodingCopyBean> {
+    private ExplodingCopyBeanSerializer(Fory fory) {
+      super(fory, ExplodingCopyBean.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, ExplodingCopyBean value) {
+      throw new UnsupportedOperationException("unused");
+    }
+
+    @Override
+    public ExplodingCopyBean read(MemoryBuffer buffer) {
+      throw new UnsupportedOperationException("unused");
+    }
+
+    @Override
+    public ExplodingCopyBean copy(ExplodingCopyBean value) {
+      throw new IllegalStateException("copy failed");
+    }
   }
 
   public static class A {

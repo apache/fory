@@ -31,8 +31,7 @@
   <artifactId>fory-latest-jdk-tests</artifactId>
 
   <properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
+    <maven.compiler.release>21</maven.compiler.release>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>

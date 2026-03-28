@@ -108,9 +108,7 @@ public class CollectionSerializers {
     public List<?> copy(List<?> originCollection) {
       Object[] elements = new Object[originCollection.size()];
       List<?> newCollection = Arrays.asList(elements);
-      if (needToCopyRef) {
-        fory.reference(originCollection, newCollection);
-      }
+      fory.reference(originCollection, newCollection);
       copyElements(originCollection, elements);
       return newCollection;
     }
@@ -307,9 +305,7 @@ public class CollectionSerializers {
     @Override
     public CopyOnWriteArrayList copy(CopyOnWriteArrayList originCollection) {
       CopyOnWriteArrayList newCollection = new CopyOnWriteArrayList();
-      if (needToCopyRef) {
-        fory.reference(originCollection, newCollection);
-      }
+      fory.reference(originCollection, newCollection);
       List copyList = new ArrayList(originCollection.size());
       copyElements(originCollection, copyList);
       newCollection.addAll(copyList);
@@ -340,9 +336,7 @@ public class CollectionSerializers {
     @Override
     public CopyOnWriteArraySet copy(CopyOnWriteArraySet originCollection) {
       CopyOnWriteArraySet newCollection = new CopyOnWriteArraySet();
-      if (needToCopyRef) {
-        fory.reference(originCollection, newCollection);
-      }
+      fory.reference(originCollection, newCollection);
       List copyList = new ArrayList(originCollection.size());
       copyElements(originCollection, copyList);
       newCollection.addAll(copyList);
@@ -481,6 +475,13 @@ public class CollectionSerializers {
       ConcurrentSkipListSet skipListSet = new ConcurrentSkipListSet(comparator);
       refResolver.setReadObject(refId, skipListSet);
       return skipListSet;
+    }
+
+    @Override
+    public Collection newCollection(Collection originCollection) {
+      Comparator comparator =
+          fory.copyObject(((ConcurrentSkipListSet) originCollection).comparator());
+      return new ConcurrentSkipListSet(comparator);
     }
   }
 

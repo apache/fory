@@ -19,8 +19,11 @@
 
 package org.apache.fory.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadLocalFory;
 import org.apache.fory.ThreadSafeFory;
@@ -29,8 +32,10 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.DeflaterMetaCompressor;
 import org.apache.fory.meta.MetaCompressor;
+import org.apache.fory.pool.FastForyPool;
 import org.apache.fory.pool.ThreadPoolFory;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.ObjectStreamSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -65,6 +70,7 @@ public final class ForyBuilder {
   boolean stringRefIgnored = true;
   boolean timeRefIgnored = true;
   ClassLoader classLoader;
+  SharedRegistry sharedRegistry;
   boolean compressInt = true;
   public LongEncoding longEncoding = LongEncoding.TAGGED;
   boolean compressIntArray = false;
@@ -85,10 +91,13 @@ public final class ForyBuilder {
   boolean suppressClassRegistrationWarnings = true;
   UnknownEnumValueStrategy unknownEnumValueStrategy = UnknownEnumValueStrategy.NOT_ALLOWED;
   boolean serializeEnumByName = false;
-  int bufferSizeLimitBytes = 128 * 1024;
+  Integer bufferSizeLimitBytes = -1;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
   int maxDepth = 50;
   float mapRefLoadFactor = 0.51f;
+  boolean forVirtualThread = false;
+  private List<Consumer<ForyBuilder>> actions = new ArrayList<>();
+  private boolean replayingActions = false;
 
   public ForyBuilder() {}
 
@@ -98,17 +107,20 @@ public final class ForyBuilder {
    */
   public ForyBuilder withLanguage(Language language) {
     this.xlang = language == Language.XLANG;
+    recordAction(b -> b.withLanguage(language));
     return this;
   }
 
   public ForyBuilder withXlang(boolean xlang) {
     this.xlang = xlang;
+    recordAction(b -> b.withXlang(xlang));
     return this;
   }
 
   /** Whether track shared or circular references. */
   public ForyBuilder withRefTracking(boolean trackingRef) {
     this.trackingRef = trackingRef;
+    recordAction(b -> b.withRefTracking(trackingRef));
     return this;
   }
 
@@ -122,12 +134,14 @@ public final class ForyBuilder {
    */
   public ForyBuilder withRefCopy(boolean copyRef) {
     this.copyRef = copyRef;
+    recordAction(b -> b.withRefCopy(copyRef));
     return this;
   }
 
   /** Whether ignore string shared reference. */
   public ForyBuilder ignoreStringRef(boolean ignoreStringRef) {
     this.stringRefIgnored = ignoreStringRef;
+    recordAction(b -> b.ignoreStringRef(ignoreStringRef));
     return this;
   }
 
@@ -138,6 +152,7 @@ public final class ForyBuilder {
     } else {
       this.unknownEnumValueStrategy = UnknownEnumValueStrategy.NOT_ALLOWED;
     }
+    recordAction(b -> b.deserializeUnknownEnumValueAsNull(deserializeUnknownEnumValueAsNull));
     return this;
   }
 
@@ -150,12 +165,14 @@ public final class ForyBuilder {
    */
   public ForyBuilder withUnknownEnumValueStrategy(UnknownEnumValueStrategy action) {
     this.unknownEnumValueStrategy = action;
+    recordAction(b -> b.withUnknownEnumValueStrategy(action));
     return this;
   }
 
   /** deserialize and serialize enum by name. */
   public ForyBuilder serializeEnumByName(boolean serializeEnumByName) {
     this.serializeEnumByName = serializeEnumByName;
+    recordAction(b -> b.serializeEnumByName(serializeEnumByName));
     return this;
   }
 
@@ -167,19 +184,22 @@ public final class ForyBuilder {
    */
   public ForyBuilder ignoreTimeRef(boolean ignoreTimeRef) {
     this.timeRefIgnored = ignoreTimeRef;
+    recordAction(b -> b.ignoreTimeRef(ignoreTimeRef));
     return this;
   }
 
   /** Use variable length encoding for int/long. */
   public ForyBuilder withNumberCompressed(boolean numberCompressed) {
     this.compressInt = numberCompressed;
-    withLongCompressed(numberCompressed);
+    this.longEncoding = numberCompressed ? LongEncoding.TAGGED : LongEncoding.FIXED;
+    recordAction(b -> b.withNumberCompressed(numberCompressed));
     return this;
   }
 
   /** Use variable length encoding for int. */
   public ForyBuilder withIntCompressed(boolean intCompressed) {
     this.compressInt = intCompressed;
+    recordAction(b -> b.withIntCompressed(intCompressed));
     return this;
   }
 
@@ -188,30 +208,36 @@ public final class ForyBuilder {
    * (Small long as int) for long encoding.
    */
   public ForyBuilder withLongCompressed(boolean longCompressed) {
-    return withLongCompressed(longCompressed ? LongEncoding.TAGGED : LongEncoding.FIXED);
+    this.longEncoding = longCompressed ? LongEncoding.TAGGED : LongEncoding.FIXED;
+    recordAction(b -> b.withLongCompressed(longCompressed));
+    return this;
   }
 
   /** Use variable length encoding for long. */
   public ForyBuilder withLongCompressed(LongEncoding longEncoding) {
     this.longEncoding = Objects.requireNonNull(longEncoding);
+    recordAction(b -> b.withLongCompressed(longEncoding));
     return this;
   }
 
   /** Whether compress int arrays when values are small. */
   public ForyBuilder withIntArrayCompressed(boolean intArrayCompressed) {
     this.compressIntArray = intArrayCompressed;
+    recordAction(b -> b.withIntArrayCompressed(intArrayCompressed));
     return this;
   }
 
   /** Whether compress long arrays when values are small. */
   public ForyBuilder withLongArrayCompressed(boolean longArrayCompressed) {
     this.compressLongArray = longArrayCompressed;
+    recordAction(b -> b.withLongArrayCompressed(longArrayCompressed));
     return this;
   }
 
   /** Whether compress string for small size. */
   public ForyBuilder withStringCompressed(boolean stringCompressed) {
     this.compressString = stringCompressed;
+    recordAction(b -> b.withStringCompressed(stringCompressed));
     return this;
   }
 
@@ -223,6 +249,7 @@ public final class ForyBuilder {
   public ForyBuilder withWriteNumUtf16BytesForUtf8Encoding(
       boolean writeNumUtf16BytesForUtf8Encoding) {
     this.writeNumUtf16BytesForUtf8Encoding = writeNumUtf16BytesForUtf8Encoding;
+    recordAction(b -> b.withWriteNumUtf16BytesForUtf8Encoding(writeNumUtf16BytesForUtf8Encoding));
     return this;
   }
 
@@ -234,6 +261,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder withBufferSizeLimitBytes(int bufferSizeLimitBytes) {
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
+    recordAction(b -> b.withBufferSizeLimitBytes(bufferSizeLimitBytes));
     return this;
   }
 
@@ -247,6 +275,13 @@ public final class ForyBuilder {
    */
   public ForyBuilder withClassLoader(ClassLoader classLoader) {
     this.classLoader = classLoader;
+    // skip add this to actions, otherwise classloader may live longer than expected
+    return this;
+  }
+
+  public ForyBuilder withSharedRegistry(SharedRegistry sharedRegistry) {
+    this.sharedRegistry = sharedRegistry;
+    // skip add this to actions, otherwise classloader may live longer than expected
     return this;
   }
 
@@ -257,12 +292,14 @@ public final class ForyBuilder {
    */
   public ForyBuilder withCompatibleMode(CompatibleMode compatibleMode) {
     this.compatibleMode = compatibleMode;
+    recordAction(b -> b.withCompatibleMode(compatibleMode));
     return this;
   }
 
   public ForyBuilder withCompatible(boolean compatible) {
-    return withCompatibleMode(
-        compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT);
+    this.compatibleMode = compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
+    recordAction(b -> b.withCompatible(compatible));
+    return this;
   }
 
   /**
@@ -276,12 +313,14 @@ public final class ForyBuilder {
           "XLANG Schema consistent mode must enable class version check");
     }
     this.checkClassVersion = checkClassVersion;
+    recordAction(b -> b.withClassVersionCheck(checkClassVersion));
     return this;
   }
 
   /** Whether check classes under `java.*` implement {@link java.io.Serializable}. */
   public ForyBuilder withJdkClassSerializableCheck(boolean checkJdkClassSerializable) {
     this.checkJdkClassSerializable = checkJdkClassSerializable;
+    recordAction(b -> b.withJdkClassSerializableCheck(checkJdkClassSerializable));
     return this;
   }
 
@@ -293,6 +332,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder registerGuavaTypes(boolean register) {
     this.registerGuavaTypes = register;
+    recordAction(b -> b.registerGuavaTypes(register));
     return this;
   }
 
@@ -308,6 +348,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder requireClassRegistration(boolean requireClassRegistration) {
     this.requireClassRegistration = requireClassRegistration;
+    recordAction(b -> b.requireClassRegistration(requireClassRegistration));
     return this;
   }
 
@@ -319,6 +360,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder suppressClassRegistrationWarnings(boolean suppress) {
     this.suppressClassRegistrationWarnings = suppress;
+    recordAction(b -> b.suppressClassRegistrationWarnings(suppress));
     return this;
   }
 
@@ -328,6 +370,7 @@ public final class ForyBuilder {
     if (!shareMeta) {
       scopedMetaShareEnabled = false;
     }
+    recordAction(b -> b.withMetaShare(shareMeta));
     return this;
   }
 
@@ -337,6 +380,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder withScopedMetaShare(boolean scoped) {
     scopedMetaShareEnabled = scoped;
+    recordAction(b -> b.withScopedMetaShare(scoped));
     return this;
   }
 
@@ -346,7 +390,9 @@ public final class ForyBuilder {
    * used. Users can pass other compressor such as `zstd` for better compression rate.
    */
   public ForyBuilder withMetaCompressor(MetaCompressor metaCompressor) {
-    this.metaCompressor = MetaCompressor.checkMetaCompressor(metaCompressor);
+    MetaCompressor checkedMetaCompressor = MetaCompressor.checkMetaCompressor(metaCompressor);
+    this.metaCompressor = checkedMetaCompressor;
+    recordAction(b -> b.withMetaCompressor(checkedMetaCompressor));
     return this;
   }
 
@@ -357,6 +403,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder withDeserializeUnknownClass(boolean deserializeUnknownClass) {
     this.deserializeUnknownClass = deserializeUnknownClass;
+    recordAction(b -> b.withDeserializeUnknownClass(deserializeUnknownClass));
     return this;
   }
 
@@ -366,6 +413,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder withCodegen(boolean codeGen) {
     this.codeGenEnabled = codeGen;
+    recordAction(b -> b.withCodegen(codeGen));
     return this;
   }
 
@@ -381,6 +429,7 @@ public final class ForyBuilder {
    */
   public ForyBuilder withAsyncCompilation(boolean asyncCompilation) {
     this.asyncCompilationEnabled = asyncCompilation;
+    recordAction(b -> b.withAsyncCompilation(asyncCompilation));
     return this;
   }
 
@@ -391,6 +440,7 @@ public final class ForyBuilder {
   public ForyBuilder withMaxDepth(int maxDepth) {
     Preconditions.checkArgument(maxDepth >= 2, "maxDepth must >= 2 but got %s", maxDepth);
     this.maxDepth = maxDepth;
+    recordAction(b -> b.withMaxDepth(maxDepth));
     return this;
   }
 
@@ -399,6 +449,7 @@ public final class ForyBuilder {
     Preconditions.checkArgument(
         loadFactor > 0 && loadFactor < 1, "loadFactor must > 0 and < 1 but got %s", loadFactor);
     this.mapRefLoadFactor = loadFactor;
+    recordAction(b -> b.withMapRefLoadFactor(loadFactor));
     return this;
   }
 
@@ -415,16 +466,37 @@ public final class ForyBuilder {
                 + "`org.apache.fory.serializer.scala.ScalaSerializers.registerSerializers` for peek performance");
       }
     }
+    recordAction(b -> b.withScalaOptimizationEnabled(enableScalaOptimization));
     return this;
   }
 
   /** Set name for Fory serialization. */
   public ForyBuilder withName(String name) {
     this.name = name;
+    recordAction(b -> b.withName(name));
     return this;
   }
 
+  private void recordAction(Consumer<ForyBuilder> action) {
+    if (!replayingActions) {
+      actions.add(action);
+    }
+  }
+
+  private void replayActions(List<Consumer<ForyBuilder>> actions) {
+    boolean previous = replayingActions;
+    replayingActions = true;
+    try {
+      actions.forEach(action -> action.accept(this));
+    } finally {
+      replayingActions = previous;
+    }
+  }
+
   private void finish() {
+    if (bufferSizeLimitBytes == -1) {
+      bufferSizeLimitBytes = forVirtualThread ? 1024 : 128 * 1024;
+    }
     if (classLoader == null) {
       classLoader = Thread.currentThread().getContextClassLoader();
       if (classLoader == null) {
@@ -501,12 +573,17 @@ public final class ForyBuilder {
 
   /**
    * Create Fory and print exception when failed. Many application will create fory as a static
-   * variable, Fory creation exception will be swallowed by {@link NoTypeDefFoundError}. We print
+   * variable, Fory creation exception will be swallowed by {@link NoClassDefFoundError}. We print
    * exception explicitly for better debugging.
    */
   private static Fory newFory(ForyBuilder builder, ClassLoader classLoader) {
+    return newFory(builder, classLoader, new SharedRegistry());
+  }
+
+  private static Fory newFory(
+      ForyBuilder builder, ClassLoader classLoader, SharedRegistry sharedRegistry) {
     try {
-      return new Fory(builder, classLoader);
+      return new Fory(builder, classLoader, sharedRegistry);
     } catch (Throwable t) {
       t.printStackTrace();
       LOG.error("Fory creation failed with classloader {}", classLoader);
@@ -521,12 +598,65 @@ public final class ForyBuilder {
     // clear classLoader to avoid `LoaderBinding#foryFactory` lambda capture classLoader by
     // capturing `ForyBuilder`, which make `classLoader` not able to be gc.
     this.classLoader = null;
-    return newFory(this, loader);
+    return newFory(this, loader, sharedRegistry);
   }
 
   /** Build thread safe fory. */
   public ThreadSafeFory buildThreadSafeFory() {
     return buildThreadLocalFory();
+  }
+
+  public ThreadSafeFory buildFastForyPool() {
+    return buildVirtualThreadSafeFory();
+  }
+
+  public ThreadSafeFory buildFastForyPool(int maxPoolSize) {
+    return buildVirtualThreadSafeFory(maxPoolSize);
+  }
+
+  /**
+   * Builds a thread-safe {@link Fory} optimized for JDK 21+ virtual-thread workloads.
+   *
+   * <p>This variant uses {@link FastForyPool} with a shared {@link SharedRegistry} and retains at
+   * most 3000 idle pooled {@link Fory} instances for reuse. Active concurrent operations may still
+   * create more instances temporarily, but at most 3000 idle instances are kept after the burst.
+   *
+   * <p>The returned serializer uses the current thread context class loader for virtual-thread
+   * execution. Use {@link #buildVirtualThreadSafeFory(int)} to choose a different idle pool cap.
+   */
+  public ThreadSafeFory buildVirtualThreadSafeFory() {
+    // each fory instance use 30+ kb memory.
+    return buildVirtualThreadSafeFory(2048);
+  }
+
+  /**
+   * Builds a thread-safe {@link Fory} optimized for JDK 21+ virtual-thread workloads.
+   *
+   * <p>This variant uses {@link FastForyPool} with a shared {@link SharedRegistry}. The {@code
+   * maxPoolSize} parameter limits how many idle pooled {@link Fory} instances are retained for
+   * reuse after operations complete. It does not cap the number of concurrently active {@link Fory}
+   * instances during a burst.
+   *
+   * @param maxPoolSize maximum number of idle pooled {@link Fory} instances to retain, must be
+   *     non-negative
+   */
+  public ThreadSafeFory buildVirtualThreadSafeFory(int maxPoolSize) {
+    forVirtualThread = true;
+    finish();
+    ClassLoader loader = this.classLoader;
+    this.classLoader = null;
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    List<Consumer<ForyBuilder>> actions = new ArrayList<>(this.actions);
+    return new FastForyPool(
+        builder -> {
+          builder.replayActions(actions);
+          builder.forVirtualThread = true;
+          builder.finish();
+          return newFory(builder, loader, sharedRegistry);
+        },
+        sharedRegistry,
+        loader,
+        maxPoolSize);
   }
 
   /** Build thread safe fory backed by {@link ThreadLocalFory}. */

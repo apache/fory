@@ -257,8 +257,8 @@ class TestNestedTypeValidation:
         is_valid = validator.validate()
 
         assert not is_valid
-        assert len(validator.errors) == 1
-        assert "Duplicate nested type name" in validator.errors[0].message
+        assert len(validator.errors) == 2
+        assert "Duplicate nested type name" in validator.errors[1].message
 
     def test_duplicate_type_ids_in_nested(self):
         """Test that duplicate type IDs in nested types are detected."""

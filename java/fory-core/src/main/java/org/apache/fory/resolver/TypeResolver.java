@@ -34,6 +34,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,12 +54,14 @@ import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
+import org.apache.fory.collection.ConcurrentIdentityMap;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.SerializerUnregisteredException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -98,13 +101,14 @@ public abstract class TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
   static final TypeInfo NIL_TYPE_INFO =
-      new TypeInfo(null, null, null, null, false, null, Types.UNKNOWN, INVALID_USER_TYPE_ID);
+      new TypeInfo(null, null, null, false, null, Types.UNKNOWN, INVALID_USER_TYPE_ID);
   // use a lower load factor to minimize hash collision
-  static final float foryMapLoadFactor = 0.25f;
-  static final int estimatedNumRegistered = 150;
+  static final float foryMapLoadFactor = 0.5f;
   static final String SET_META__CONTEXT_MSG =
       "Meta context must be set before serialization, "
           + "please set meta context by SerializationContext.setMetaContext";
+  // reserved last 5 internal type ids for future use
+  static final int INTERNAL_NATIVE_ID_LIMIT = 250;
   private static final GenericType OBJECT_GENERIC_TYPE = GenericType.build(Object.class);
   private static final float TYPE_ID_MAP_LOAD_FACTOR = 0.5f;
   static final long MAX_USER_TYPE_ID = 0xffff_fffEL;
@@ -112,12 +116,13 @@ public abstract class TypeResolver {
   final Fory fory;
   final boolean metaContextShareEnabled;
   final MetaStringResolver metaStringResolver;
+  final SharedRegistry sharedRegistry;
   // IdentityMap has better lookup performance, when loadFactor is 0.05f, performance is better
   final IdentityMap<Class<?>, TypeInfo> classInfoMap = new IdentityMap<>(64, foryMapLoadFactor);
   final ExtRegistry extRegistry;
-  final Map<Class<?>, TypeDef> typeDefMap = new HashMap<>();
+  final ConcurrentIdentityMap<Class<?>, TypeDef> typeDefMap;
   // Map for internal type ids (non-user-defined).
-  TypeInfo[] typeIdToTypeInfo = new TypeInfo[] {};
+  final TypeInfo[] typeIdToTypeInfo;
   // Map for user-registered type ids, keyed by user id.
   final LongMap<TypeInfo> userTypeIdToTypeInfo = new LongMap<>(4, TYPE_ID_MAP_LOAD_FACTOR);
   // Cache for readTypeInfo(MemoryBuffer) - persists between calls to avoid reloading
@@ -127,15 +132,20 @@ public abstract class TypeResolver {
   protected TypeResolver(Fory fory) {
     this.fory = fory;
     metaContextShareEnabled = fory.getConfig().isMetaShareEnabled();
-    extRegistry = new ExtRegistry();
+    sharedRegistry = fory.getSharedRegistry();
+    extRegistry = new ExtRegistry(sharedRegistry);
+    typeDefMap = sharedRegistry.typeDefMap;
     metaStringResolver = fory.getMetaStringResolver();
+    int length = fory.isCrossLanguage() ? Types.BOUND : INTERNAL_NATIVE_ID_LIMIT;
+    typeIdToTypeInfo = new TypeInfo[length];
   }
 
   protected final void checkRegisterAllowed() {
-    if (fory.getDepth() >= 0) {
+    if (fory.isRegistrationFinished()) {
       throw new ForyException(
-          "Cannot register class/serializer after serialization/deserialization has started. "
-              + "Please register all classes before invoking `serialize/deserialize` methods of Fory.");
+          "Cannot register class/serializer after registration has been frozen. Please register "
+              + "all classes before invoking top-level `serialize/deserialize/copy` methods of "
+              + "Fory.");
     }
   }
 
@@ -226,6 +236,26 @@ public abstract class TypeResolver {
   public abstract void registerInternalSerializer(Class<?> type, Serializer<?> serializer);
 
   /**
+   * Freezes the mutable registration phase and switches this resolver to the shared read-only
+   * registration maps.
+   *
+   * <p>Before this method runs, registration data lives in the local mutable maps inside {@link
+   * ExtRegistry}. The first caller publishes shared registration maps to {@link SharedRegistry};
+   * later callers adopt those same maps. This method is idempotent so top-level runtime entry
+   * points can call it defensively.
+   */
+  public final void finishRegistration() {
+    if (fory.isRegistrationFinished()) {
+      return;
+    }
+    sharedRegistry.setRegistrationIfAbsent(
+        extRegistry.registeredClassIdMap, extRegistry.registeredClasses);
+    extRegistry.finishRegistration(
+        sharedRegistry.getRegisteredClassIdMap(), sharedRegistry.getRegisteredClasses());
+    fory.setRegistrationFinished();
+  }
+
+  /**
    * Registers a type (if not already registered) and then registers the serializer class.
    *
    * @param type the class to register
@@ -305,6 +335,13 @@ public abstract class TypeResolver {
   public abstract boolean isRegisteredByName(Class<?> cls);
 
   public abstract boolean isBuildIn(Descriptor descriptor);
+
+  @Internal
+  public abstract Comparator<Descriptor> getDescriptorComparator();
+
+  protected DescriptorGrouper configureDescriptorGrouper(DescriptorGrouper descriptorGrouper) {
+    return descriptorGrouper;
+  }
 
   public abstract boolean isMonomorphic(Descriptor descriptor);
 
@@ -622,20 +659,20 @@ public abstract class TypeResolver {
    */
   protected final TypeInfo readTypeInfoFromBytes(
       MemoryBuffer buffer, TypeInfo typeInfoCache, int header) {
-    MetaStringBytes typeNameBytesCache = typeInfoCache != null ? typeInfoCache.typeNameBytes : null;
-    MetaStringBytes namespaceBytes;
-    MetaStringBytes simpleClassNameBytes;
+    MetaStringRef typeNameBytesCache = typeInfoCache != null ? typeInfoCache.typeNameBytes : null;
+    MetaStringRef namespaceBytes;
+    MetaStringRef simpleClassNameBytes;
 
     if (typeNameBytesCache != null) {
       // Use cache for faster comparison
-      MetaStringBytes packageNameBytesCache = typeInfoCache.namespaceBytes;
+      MetaStringRef packageNameBytesCache = typeInfoCache.namespaceBytes;
       namespaceBytes = metaStringResolver.readMetaStringBytes(buffer, packageNameBytesCache);
       assert packageNameBytesCache != null;
       simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer, typeNameBytesCache);
 
       // Fast path: if hashes match, return cached TypeInfo (already has serializer)
-      if (typeNameBytesCache.hashCode == simpleClassNameBytes.hashCode
-          && packageNameBytesCache.hashCode == namespaceBytes.hashCode) {
+      if (typeNameBytesCache.encoded.hash == simpleClassNameBytes.encoded.hash
+          && packageNameBytesCache.encoded.hash == namespaceBytes.encoded.hash) {
         return typeInfoCache;
       }
     } else {
@@ -665,21 +702,17 @@ public abstract class TypeResolver {
     } else {
       // New type in stream - but may already be known from registry
       long id = buffer.readInt64();
-      Tuple2<TypeDef, TypeInfo> tuple2 = extRegistry.classIdToDef.get(id);
-      if (tuple2 != null) {
-        // Already known - skip the TypeDef bytes, reuse existing TypeInfo
+      typeInfo = extRegistry.typeInfoByTypeDefId.get(id);
+      if (typeInfo != null) {
         TypeDef.skipTypeDef(buffer, id);
-        typeInfo = tuple2.f1;
-        if (typeInfo == null) {
-          typeInfo = buildMetaSharedTypeInfo(tuple2, tuple2.f0);
-        }
       } else {
-        // Unknown - read TypeDef and create TypeInfo
-        tuple2 = readTypeDef(buffer, id);
-        typeInfo = tuple2.f1;
-        if (typeInfo == null) {
-          typeInfo = buildMetaSharedTypeInfo(tuple2, tuple2.f0);
+        TypeDef typeDef = sharedRegistry.typeDefById.get(id);
+        if (typeDef != null) {
+          TypeDef.skipTypeDef(buffer, id);
+        } else {
+          typeDef = readTypeDef(buffer, id);
         }
+        typeInfo = buildMetaSharedTypeInfo(typeDef);
       }
       // index == readTypeInfos.size() since types are written sequentially
       metaContext.readTypeInfos.add(typeInfo);
@@ -743,14 +776,14 @@ public abstract class TypeResolver {
    * #ensureSerializerForTypeInfo} after calling this if a serializer is needed.
    */
   protected abstract TypeInfo loadBytesToTypeInfo(
-      MetaStringBytes namespaceBytes, MetaStringBytes simpleClassNameBytes);
+      MetaStringRef namespaceBytes, MetaStringRef simpleClassNameBytes);
 
   /**
    * Load class info from namespace and type name bytes, with the type id from the stream.
    * Subclasses can override this to use the incoming type id (e.g. NAMED_EXT/NAMED_ENUM).
    */
   protected TypeInfo loadBytesToTypeInfo(
-      int typeId, MetaStringBytes namespaceBytes, MetaStringBytes simpleClassNameBytes) {
+      int typeId, MetaStringRef namespaceBytes, MetaStringRef simpleClassNameBytes) {
     return loadBytesToTypeInfo(namespaceBytes, simpleClassNameBytes);
   }
 
@@ -794,11 +827,6 @@ public abstract class TypeResolver {
   }
 
   protected final void putInternalTypeInfo(int typeId, TypeInfo typeInfo) {
-    if (typeIdToTypeInfo.length <= typeId) {
-      TypeInfo[] tmp = new TypeInfo[(typeId + 1) * 2];
-      System.arraycopy(typeIdToTypeInfo, 0, tmp, 0, typeIdToTypeInfo.length);
-      typeIdToTypeInfo = tmp;
-    }
     typeIdToTypeInfo[typeId] = typeInfo;
   }
 
@@ -810,10 +838,10 @@ public abstract class TypeResolver {
     return userTypeIdToTypeInfo.containsKey(userId);
   }
 
-  final TypeInfo buildMetaSharedTypeInfo(Tuple2<TypeDef, TypeInfo> typeDefTuple, TypeDef typeDef) {
-    TypeInfo typeInfo;
-    if (typeDefTuple != null) {
-      typeDef = typeDefTuple.f0;
+  final TypeInfo buildMetaSharedTypeInfo(TypeDef typeDef) {
+    TypeInfo typeInfo = extRegistry.typeInfoByTypeDefId.get(typeDef.getId());
+    if (typeInfo != null) {
+      return typeInfo;
     }
     Class<?> cls = loadClass(typeDef.getClassSpec());
     // For nonexistent classes, always create a new TypeInfo with the correct typeDef,
@@ -829,9 +857,7 @@ public abstract class TypeResolver {
     } else {
       typeInfo = getMetaSharedTypeInfo(typeDef, cls);
     }
-    // Share serializer for same version class def to avoid too much different meta
-    // context take up too much memory.
-    putTypeDef(typeDef, typeInfo);
+    extRegistry.typeInfoByTypeDefId.put(typeDef.getId(), typeInfo);
     return typeInfo;
   }
 
@@ -842,7 +868,16 @@ public abstract class TypeResolver {
       clz = UnknownStruct.class;
     }
     Class<?> cls = clz;
-    Integer classId = extRegistry.registeredClassIdMap.get(cls);
+    int streamTypeId = typeDef.getClassSpec().typeId;
+    if (Types.isExtType(streamTypeId) || Types.isUnionType(streamTypeId) || cls.isEnum()) {
+      TypeInfo localTypeInfo = getTypeInfo(cls);
+      if ((Types.isExtType(streamTypeId) && !Types.isExtType(localTypeInfo.typeId))
+          || (Types.isUnionType(streamTypeId) && !Types.isUnionType(localTypeInfo.typeId))) {
+        throw new SerializerUnregisteredException(typeDef.getClassName());
+      }
+      return localTypeInfo;
+    }
+    Integer classId = getRegisteredClassIdLocalOrFrozen(cls);
     int typeId;
     if (classId != null) {
       TypeInfo registeredInfo = classInfoMap.get(cls);
@@ -933,19 +968,9 @@ public abstract class TypeResolver {
         || serializer instanceof MetaSharedSerializer;
   }
 
-  protected Tuple2<TypeDef, TypeInfo> readTypeDef(MemoryBuffer buffer, long header) {
+  protected TypeDef readTypeDef(MemoryBuffer buffer, long header) {
     TypeDef readTypeDef = TypeDef.readTypeDef(fory, buffer, header);
-    Tuple2<TypeDef, TypeInfo> tuple2 = extRegistry.classIdToDef.get(readTypeDef.getId());
-    if (tuple2 == null) {
-      tuple2 = putTypeDef(readTypeDef, null);
-    }
-    return tuple2;
-  }
-
-  private Tuple2<TypeDef, TypeInfo> putTypeDef(TypeDef typeDef, TypeInfo typeInfo) {
-    Tuple2<TypeDef, TypeInfo> tuple2 = Tuple2.of(typeDef, typeInfo);
-    extRegistry.classIdToDef.put(typeDef.getId(), tuple2);
-    return tuple2;
+    return cacheTypeDef(readTypeDef);
   }
 
   final Class<?> loadClass(ClassSpec classSpec) {
@@ -966,7 +991,7 @@ public abstract class TypeResolver {
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
     extRegistry.typeChecker.checkType(this, className);
-    Class<?> cls = extRegistry.registeredClasses.get(className);
+    Class<?> cls = getRegisteredClassLocalOrFrozen(className);
     if (cls != null) {
       return cls;
     }
@@ -1083,14 +1108,15 @@ public abstract class TypeResolver {
 
   public final TypeDef getTypeDef(Class<?> cls, boolean resolveParent) {
     if (resolveParent) {
-      return typeDefMap.computeIfAbsent(cls, k -> TypeDef.buildTypeDef(fory, cls));
+      return cacheTypeDef(typeDefMap.computeIfAbsent(cls, k -> TypeDef.buildTypeDef(fory, cls)));
     }
-    TypeDef typeDef = extRegistry.currentLayerTypeDef.get(cls);
-    if (typeDef == null) {
-      typeDef = TypeDef.buildTypeDef(fory, cls, false);
-      extRegistry.currentLayerTypeDef.put(cls, typeDef);
-    }
-    return typeDef;
+    return cacheTypeDef(
+        extRegistry.currentLayerTypeDef.computeIfAbsent(
+            cls, key -> TypeDef.buildTypeDef(fory, key, false)));
+  }
+
+  public final TypeDef cacheTypeDef(TypeDef typeDef) {
+    return sharedRegistry.getOrCreateTypeDef(typeDef);
   }
 
   public final boolean isSerializable(Class<?> cls) {
@@ -1213,21 +1239,76 @@ public abstract class TypeResolver {
             && ScalaTypes.getScalaMapType().isAssignableFrom(cls));
   }
 
-  public final DescriptorGrouper createDescriptorGrouper(
-      Collection<Descriptor> descriptors, boolean descriptorsGroupedOrdered) {
-    return createDescriptorGrouper(descriptors, descriptorsGroupedOrdered, null);
+  @Internal
+  public final DescriptorGrouper createDescriptorGrouper(TypeDef typeDef, Class<?> cls) {
+    return createDescriptorGrouper(typeDef, cls, false, null);
   }
 
-  public abstract DescriptorGrouper createDescriptorGrouper(
+  @Internal
+  public final DescriptorGrouper createDescriptorGrouper(
+      TypeDef typeDef,
+      Class<?> cls,
+      boolean descriptorsGroupedOrdered,
+      Function<Descriptor, Descriptor> descriptorUpdator) {
+    return sharedRegistry.getOrCreateTypeDefDescriptorGrouper(
+        typeDef,
+        cls,
+        descriptorsGroupedOrdered,
+        descriptorUpdator,
+        () ->
+            buildDescriptorGrouper(
+                typeDef.getDescriptors(this, cls), descriptorsGroupedOrdered, descriptorUpdator));
+  }
+
+  @Internal
+  public final DescriptorGrouper getFieldDescriptorGrouper(
+      Class<?> clz, boolean searchParent, boolean descriptorsGroupedOrdered) {
+    return getFieldDescriptorGrouper(clz, searchParent, descriptorsGroupedOrdered, null);
+  }
+
+  @Internal
+  public final DescriptorGrouper getFieldDescriptorGrouper(
+      Class<?> clz,
+      boolean searchParent,
+      boolean descriptorsGroupedOrdered,
+      Function<Descriptor, Descriptor> descriptorUpdator) {
+    return sharedRegistry.getOrCreateFieldDescriptorGrouper(
+        clz,
+        searchParent,
+        descriptorsGroupedOrdered,
+        descriptorUpdator,
+        () ->
+            buildDescriptorGrouper(
+                getFieldDescriptors(clz, searchParent),
+                descriptorsGroupedOrdered,
+                descriptorUpdator));
+  }
+
+  @Internal
+  public List<Descriptor> getFieldDescriptors(Class<?> clz, boolean searchParent) {
+    return sharedRegistry.getOrCreateFieldDescriptors(
+        clz, searchParent, () -> buildFieldDescriptors(clz, searchParent));
+  }
+
+  private DescriptorGrouper buildDescriptorGrouper(
       Collection<Descriptor> descriptors,
       boolean descriptorsGroupedOrdered,
-      Function<Descriptor, Descriptor> descriptorUpdator);
+      Function<Descriptor, Descriptor> descriptorUpdator) {
+    return configureDescriptorGrouper(
+            DescriptorGrouper.createDescriptorGrouper(
+                this::isBuildIn,
+                descriptors,
+                descriptorsGroupedOrdered,
+                descriptorUpdator,
+                getPrimitiveComparator(),
+                getDescriptorComparator()))
+        .sort();
+  }
 
-  public List<Descriptor> getFieldDescriptors(Class<?> clz, boolean searchParent) {
+  private List<Descriptor> buildFieldDescriptors(Class<?> clz, boolean searchParent) {
     SortedMap<Member, Descriptor> allDescriptors = getAllDescriptorsMap(clz, searchParent);
     List<Descriptor> result = new ArrayList<>(allDescriptors.size());
 
-    Map<Member, Descriptor> newDescriptorMap = new HashMap<>();
     boolean globalRefTracking = fory.trackingRef();
     boolean isXlang = fory.isCrossLanguage();
 
@@ -1265,7 +1346,6 @@ public abstract class TypeResolver {
         Descriptor newDescriptor =
             new DescriptorBuilder(descriptor).trackingRef(ref).nullable(nullable).build();
         result.add(newDescriptor);
-        newDescriptorMap.put(member, newDescriptor);
       } else {
         result.add(descriptor);
       }
@@ -1451,12 +1531,20 @@ public abstract class TypeResolver {
     return extRegistry.codeGeneratorMap.get(Arrays.asList(loaders));
   }
 
+  public CodeGenerator getOrCreateCodeGenerator(
+      ClassLoader[] loaders, Function<ClassLoader[], CodeGenerator> factory) {
+    ClassLoader[] keyLoaders = Arrays.copyOf(loaders, loaders.length);
+    List<ClassLoader> key = Arrays.asList(keyLoaders);
+    return extRegistry.codeGeneratorMap.computeIfAbsent(key, unused -> factory.apply(keyLoaders));
+  }
+
   public void setCodeGenerator(ClassLoader loader, CodeGenerator codeGenerator) {
     setCodeGenerator(new ClassLoader[] {loader}, codeGenerator);
   }
 
   public void setCodeGenerator(ClassLoader[] loaders, CodeGenerator codeGenerator) {
-    extRegistry.codeGeneratorMap.put(Arrays.asList(loaders), codeGenerator);
+    extRegistry.codeGeneratorMap.putIfAbsent(
+        Arrays.asList(Arrays.copyOf(loaders, loaders.length)), codeGenerator);
   }
 
   public SerializerFactory getSerializerFactory() {
@@ -1549,36 +1637,97 @@ public abstract class TypeResolver {
     return metaStringResolver;
   }
 
-  static class ExtRegistry {
+  /**
+   * Reads a registered class id from the mutable local maps before freeze or the shared maps after
+   * {@link #finishRegistration()}.
+   */
+  final Integer getRegisteredClassIdLocalOrFrozen(Class<?> cls) {
+    return extRegistry.registeredClassIdMap.get(cls);
+  }
+
+  /**
+   * Reads a registered class name from the mutable local maps before freeze or the shared maps
+   * after {@link #finishRegistration()}.
+   */
+  final String getRegisteredNameLocalOrFrozen(Class<?> cls) {
+    return extRegistry.registeredClasses.inverse().get(cls);
+  }
+
+  /**
+   * Reads a registered class lookup by name from the mutable local maps before freeze or the shared
+   * maps after {@link #finishRegistration()}.
+   */
+  final Class<?> getRegisteredClassLocalOrFrozen(String className) {
+    return extRegistry.registeredClasses.get(className);
+  }
+
+  final boolean isRegisteredByIdLocalOrFrozen(Class<?> cls) {
+    return getRegisteredClassIdLocalOrFrozen(cls) != null;
+  }
+
+  final boolean isRegisteredByNameLocalOrFrozen(Class<?> cls) {
+    return getRegisteredNameLocalOrFrozen(cls) != null;
+  }
+
+  final boolean isRegisteredByNameLocalOrFrozen(String className) {
+    return getRegisteredClassLocalOrFrozen(className) != null;
+  }
+
+  public GenericType getObjectGenericType() {
+    return extRegistry.objectGenericType;
+  }
+
+  static final TypeChecker DEFAULT_TYPE_CHECKER = (resolver, className) -> true;
+
+  class ExtRegistry {
     // Here we set it to 1 to avoid calculating it again in `register(Class<?> cls)`.
     int classIdGenerator = 1;
     int userIdGenerator = 0;
     SerializerFactory serializerFactory;
-    final IdentityMap<Class<?>, Integer> registeredClassIdMap =
-        new IdentityMap<>(estimatedNumRegistered);
-    final BiMap<String, Class<?>> registeredClasses = HashBiMap.create(estimatedNumRegistered);
+    final LongMap<TypeInfo> typeInfoByTypeDefId = new LongMap<>(2, 0.5f);
+
     // cache absTypeInfo, support customized serializer for abstract or interface.
-    final IdentityMap<Class<?>, TypeInfo> absTypeInfo =
-        new IdentityMap<>(estimatedNumRegistered, foryMapLoadFactor);
+    // IdentityHashMap is more memory efficient than fory IdentityMap, and this is not in hotpath
+    // for query
+    final IdentityHashMap<Class<?>, TypeInfo> abstractTypeInfo = new IdentityHashMap<>();
+    // Tuple2<Class, Class>: Tuple2<From Class, To Class>
+    final IdentityHashMap<Class<?>, Tuple2<Class<?>, TypeInfo>[]> transformedTypeInfo =
+        new IdentityHashMap<>();
+
     // avoid potential recursive call for seq codec generation.
     // ex. A->field1: B, B.field1: A
     final Set<Class<?>> getClassCtx = new HashSet<>();
-    final LongMap<Tuple2<TypeDef, TypeInfo>> classIdToDef = new LongMap<>();
-    final Map<Class<?>, TypeDef> currentLayerTypeDef = new HashMap<>();
-    // Tuple2<Class, Class>: Tuple2<From Class, To Class>
-    final IdentityMap<Class<?>, Tuple2<Class<?>, TypeInfo>[]> transformedTypeInfo =
-        new IdentityMap<>();
-    // TODO(chaokunyang) Better to  use soft reference, see ObjectStreamClass.
-    final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
-        descriptorsCache = new ConcurrentHashMap<>();
-    static final TypeChecker DEFAULT_TYPE_CHECKER = (resolver, className) -> true;
     TypeChecker typeChecker = DEFAULT_TYPE_CHECKER;
     GenericType objectGenericType;
-    final IdentityMap<Type, GenericType> genericTypes = new IdentityMap<>();
+
+    final Map<Type, GenericType> genericTypes = new HashMap<>();
     final Map<Class, Map<String, GenericType>> classGenericTypes = new HashMap<>();
-    final Map<List<ClassLoader>, CodeGenerator> codeGeneratorMap = new HashMap<>();
-    final Set<TypeInfo> registeredTypeInfos = new HashSet<>();
+    // will be clear after ensureSerializersCompiled
+    final Set<TypeInfo> registeredTypeInfos = new HashSet<>(fory.isCrossLanguage() ? 4 : 180);
     boolean ensureSerializersCompiled;
+
+    // shared across multiple fory instances.
+    IdentityHashMap<Class<?>, Integer> registeredClassIdMap =
+        new IdentityHashMap<>(fory.isCrossLanguage() ? 4 : 200);
+    BiMap<String, Class<?>> registeredClasses = HashBiMap.create(fory.isCrossLanguage() ? 4 : 200);
+    final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef;
+    // TODO(chaokunyang) Better to  use soft reference, see ObjectStreamClass.
+    final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
+        descriptorsCache;
+    final ConcurrentHashMap<List<ClassLoader>, CodeGenerator> codeGeneratorMap;
+
+    ExtRegistry(SharedRegistry sharedRegistry) {
+      currentLayerTypeDef = sharedRegistry.currentLayerTypeDef;
+      descriptorsCache = sharedRegistry.descriptorsCache;
+      codeGeneratorMap = sharedRegistry.codeGeneratorMap;
+    }
+
+    void finishRegistration(
+        IdentityHashMap<Class<?>, Integer> sharedRegisteredClassIdMap,
+        BiMap<String, Class<?>> sharedRegisteredClasses) {
+      registeredClassIdMap = sharedRegisteredClassIdMap;
+      registeredClasses = sharedRegisteredClasses;
+    }
 
     public boolean isTypeCheckerSet() {
       return typeChecker != DEFAULT_TYPE_CHECKER;

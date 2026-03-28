@@ -35,7 +35,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
@@ -46,6 +45,7 @@ import org.apache.fory.meta.FieldTypes.FieldType;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.MurmurHash3;
@@ -59,6 +59,8 @@ import org.apache.fory.util.MurmurHash3;
 public class NativeTypeDefEncoder {
   // a flag to mark a type is not struct.
   static final int NUM_CLASS_THRESHOLD = 0b1111;
+  private static final java.util.function.Function<Descriptor, Descriptor> IDENTITY_DESCRIPTOR =
+      descriptor -> descriptor;
 
   private static boolean needsUserTypeId(int typeId) {
     switch (typeId) {
@@ -76,10 +78,7 @@ public class NativeTypeDefEncoder {
   static List<Field> buildFields(Fory fory, Class<?> cls, boolean resolveParent) {
     DescriptorGrouper descriptorGrouper =
         fory.getTypeResolver()
-            .createDescriptorGrouper(
-                fory.getTypeResolver().getFieldDescriptors(cls, resolveParent),
-                false,
-                Function.identity());
+            .getFieldDescriptorGrouper(cls, resolveParent, false, IDENTITY_DESCRIPTOR);
     List<Field> fields = new ArrayList<>();
     descriptorGrouper
         .getPrimitiveDescriptors()

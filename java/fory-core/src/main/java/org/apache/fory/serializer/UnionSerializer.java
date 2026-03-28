@@ -88,7 +88,7 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       this.factory = createFactory(cls);
     }
-    finalCaseTypeInfo = new LongMap<>();
+    finalCaseTypeInfo = new LongMap<>(1);
     this.caseValueTypes = resolveCaseValueTypes(cls);
     resolver = fory.getTypeResolver();
   }

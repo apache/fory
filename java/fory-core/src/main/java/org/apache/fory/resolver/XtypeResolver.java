@@ -21,9 +21,7 @@ package org.apache.fory.resolver;
 
 import static org.apache.fory.Fory.NOT_SUPPORT_XLANG;
 import static org.apache.fory.builder.Generated.GeneratedSerializer;
-import static org.apache.fory.meta.Encoders.GENERIC_ENCODER;
 import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
-import static org.apache.fory.meta.Encoders.PACKAGE_ENCODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 import static org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer;
 import static org.apache.fory.type.TypeUtils.qualifiedName;
@@ -51,11 +49,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float16List;
 import org.apache.fory.collection.Float32List;
 import org.apache.fory.collection.Float64List;
 import org.apache.fory.collection.Int16List;
@@ -75,8 +73,6 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.meta.Encoders;
-import org.apache.fory.meta.MetaString;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.ArraySerializers;
@@ -88,7 +84,6 @@ import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
-import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnionSerializer;
 import org.apache.fory.serializer.UnknownClass;
@@ -109,6 +104,7 @@ import org.apache.fory.serializer.collection.MapSerializers.XlangMapSerializer;
 import org.apache.fory.serializer.collection.PrimitiveListSerializers;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
@@ -422,15 +418,9 @@ public class XtypeResolver extends TypeResolver {
       String typeName,
       int typeId,
       int userTypeId) {
-    MetaStringBytes fullClassNameBytes =
-        metaStringResolver.getOrCreateMetaStringBytes(
-            GENERIC_ENCODER.encode(type.getName(), MetaString.Encoding.UTF_8));
-    MetaStringBytes nsBytes =
-        metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodePackage(namespace));
-    MetaStringBytes classNameBytes =
-        metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodeTypeName(typeName));
-    return new TypeInfo(
-        type, fullClassNameBytes, nsBytes, classNameBytes, false, serializer, typeId, userTypeId);
+    MetaStringRef nsBytes = metaStringResolver.getOrCreatePackageMetaStringBytes(namespace);
+    MetaStringRef classNameBytes = metaStringResolver.getOrCreateTypeNameMetaStringBytes(typeName);
+    return new TypeInfo(type, nsBytes, classNameBytes, false, serializer, typeId, userTypeId);
   }
 
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
@@ -459,7 +449,8 @@ public class XtypeResolver extends TypeResolver {
       String qualifiedName = qualifiedName(typeInfo.decodeNamespace(), typeInfo.decodeTypeName());
       qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
       TypeNameBytes typeNameBytes =
-          new TypeNameBytes(typeInfo.namespaceBytes.hashCode, typeInfo.typeNameBytes.hashCode);
+          new TypeNameBytes(
+              typeInfo.namespaceBytes.encoded.hash, typeInfo.typeNameBytes.encoded.hash);
       compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
     }
   }
@@ -493,6 +484,12 @@ public class XtypeResolver extends TypeResolver {
    * typename bytes.
    */
   private int determineTypeIdForClass(Class<?> type) {
+    if (type == Float16.class) {
+      return Types.FLOAT16;
+    }
+    if (type == Float16[].class || type == Float16List.class) {
+      return Types.FLOAT16_ARRAY;
+    }
     if (type.isArray()) {
       Class<?> componentType = type.getComponentType();
       if (componentType.isPrimitive()) {
@@ -855,12 +852,16 @@ public class XtypeResolver extends TypeResolver {
     registerType(
         Types.FLOAT32, float.class, new PrimitiveSerializers.FloatSerializer(fory, float.class));
     registerType(
+        Types.FLOAT16,
+        Float16.class,
+        new PrimitiveSerializers.Float16Serializer(fory, Float16.class));
+    registerType(
         Types.FLOAT64, Double.class, new PrimitiveSerializers.DoubleSerializer(fory, Double.class));
     registerType(
         Types.FLOAT64, double.class, new PrimitiveSerializers.DoubleSerializer(fory, double.class));
 
     // String types
-    registerType(Types.STRING, String.class, new StringSerializer(fory));
+    registerType(Types.STRING, String.class, fory.getStringSerializer());
     registerType(Types.STRING, StringBuilder.class, new Serializers.StringBuilderSerializer(fory));
     registerType(Types.STRING, StringBuffer.class, new Serializers.StringBufferSerializer(fory));
 
@@ -907,6 +908,8 @@ public class XtypeResolver extends TypeResolver {
         Types.FLOAT32_ARRAY, float[].class, new ArraySerializers.FloatArraySerializer(fory));
     registerType(
         Types.FLOAT64_ARRAY, double[].class, new ArraySerializers.DoubleArraySerializer(fory));
+    registerType(
+        Types.FLOAT16_ARRAY, Float16[].class, new ArraySerializers.Float16ArraySerializer(fory));
 
     // Primitive lists
     registerType(
@@ -941,6 +944,10 @@ public class XtypeResolver extends TypeResolver {
         Types.FLOAT64_ARRAY,
         Float64List.class,
         new PrimitiveListSerializers.Float64ListSerializer(fory));
+    registerType(
+        Types.FLOAT16_ARRAY,
+        Float16List.class,
+        new PrimitiveListSerializers.Float16ListSerializer(fory));
 
     // Collections
     registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(fory));
@@ -1013,7 +1020,8 @@ public class XtypeResolver extends TypeResolver {
   @Override
   protected TypeDef buildTypeDef(TypeInfo typeInfo) {
     TypeDef typeDef =
-        typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls));
+        cacheTypeDef(
+            typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls)));
     typeInfo.typeDef = typeDef;
     return typeDef;
   }
@@ -1075,14 +1083,14 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   protected TypeInfo loadBytesToTypeInfo(
-      MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
+      MetaStringRef packageBytes, MetaStringRef simpleClassNameBytes) {
     // Default to NAMED_STRUCT when called without internalTypeId
     return loadBytesToTypeInfoWithTypeId(Types.NAMED_STRUCT, packageBytes, simpleClassNameBytes);
   }
 
   @Override
   protected TypeInfo loadBytesToTypeInfo(
-      int typeId, MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
+      int typeId, MetaStringRef packageBytes, MetaStringRef simpleClassNameBytes) {
     return loadBytesToTypeInfoWithTypeId(typeId, packageBytes, simpleClassNameBytes);
   }
 
@@ -1098,7 +1106,8 @@ public class XtypeResolver extends TypeResolver {
       // Update the cache with the correct TypeInfo that has a serializer
       if (typeInfo.typeNameBytes != null) {
         TypeNameBytes typeNameBytes =
-            new TypeNameBytes(typeInfo.namespaceBytes.hashCode, typeInfo.typeNameBytes.hashCode);
+            new TypeNameBytes(
+                typeInfo.namespaceBytes.encoded.hash, typeInfo.typeNameBytes.encoded.hash);
         compositeClassNameBytes2TypeInfo.put(typeNameBytes, newTypeInfo);
       }
       return newTypeInfo;
@@ -1107,9 +1116,9 @@ public class XtypeResolver extends TypeResolver {
   }
 
   private TypeInfo loadBytesToTypeInfoWithTypeId(
-      int internalTypeId, MetaStringBytes packageBytes, MetaStringBytes simpleClassNameBytes) {
+      int internalTypeId, MetaStringRef packageBytes, MetaStringRef simpleClassNameBytes) {
     TypeNameBytes typeNameBytes =
-        new TypeNameBytes(packageBytes.hashCode, simpleClassNameBytes.hashCode);
+        new TypeNameBytes(packageBytes.encoded.hash, simpleClassNameBytes.encoded.hash);
     TypeInfo typeInfo = compositeClassNameBytes2TypeInfo.get(typeNameBytes);
     if (typeInfo == null) {
       typeInfo =
@@ -1122,8 +1131,8 @@ public class XtypeResolver extends TypeResolver {
   private TypeInfo populateBytesToTypeInfo(
       int typeId,
       TypeNameBytes typeNameBytes,
-      MetaStringBytes packageBytes,
-      MetaStringBytes simpleClassNameBytes) {
+      MetaStringRef packageBytes,
+      MetaStringRef simpleClassNameBytes) {
     String namespace = packageBytes.decode(PACKAGE_DECODER);
     String typeName = simpleClassNameBytes.decode(TYPE_NAME_DECODER);
     String qualifiedName = qualifiedName(namespace, typeName);
@@ -1149,13 +1158,9 @@ public class XtypeResolver extends TypeResolver {
       } else {
         throw new ClassUnregisteredException(qualifiedName);
       }
-      MetaStringBytes fullClassNameBytes =
-          metaStringResolver.getOrCreateMetaStringBytes(
-              PACKAGE_ENCODER.encode(qualifiedName, MetaString.Encoding.UTF_8));
       typeInfo =
           new TypeInfo(
               type,
-              fullClassNameBytes,
               packageBytes,
               simpleClassNameBytes,
               false,
@@ -1171,27 +1176,22 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public DescriptorGrouper createDescriptorGrouper(
-      Collection<Descriptor> descriptors,
-      boolean descriptorsGroupedOrdered,
-      Function<Descriptor, Descriptor> descriptorUpdator) {
-    return DescriptorGrouper.createDescriptorGrouper(
-            this::isBuildIn,
-            descriptors,
-            descriptorsGroupedOrdered,
-            descriptorUpdator,
-            getPrimitiveComparator(),
-            (o1, o2) -> {
-              int typeId1 = getInternalTypeId(o1);
-              int typeId2 = getInternalTypeId(o2);
-              if (typeId1 == typeId2) {
-                return getFieldSortKey(o1).compareTo(getFieldSortKey(o2));
-              } else {
-                return typeId1 - typeId2;
-              }
-            })
-        .setOtherDescriptorComparator(Comparator.comparing(TypeResolver::getFieldSortKey))
-        .sort();
+  public Comparator<Descriptor> getDescriptorComparator() {
+    return (o1, o2) -> {
+      int typeId1 = getInternalTypeId(o1);
+      int typeId2 = getInternalTypeId(o2);
+      if (typeId1 == typeId2) {
+        return getFieldSortKey(o1).compareTo(getFieldSortKey(o2));
+      } else {
+        return typeId1 - typeId2;
+      }
+    };
+  }
+
+  @Override
+  protected DescriptorGrouper configureDescriptorGrouper(DescriptorGrouper descriptorGrouper) {
+    return descriptorGrouper.setOtherDescriptorComparator(
+        Comparator.comparing(TypeResolver::getFieldSortKey));
   }
 
   private byte getInternalTypeId(Descriptor descriptor) {

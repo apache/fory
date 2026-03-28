@@ -890,10 +890,7 @@ class Parser:
             self.advance()
             client_streaming = True
 
-        req_type_token = self.consume(TokenType.IDENT, "Expected request message type")
-        request_type = NamedType(
-            name=req_type_token.value, location=self.make_location(req_type_token)
-        )
+        request_type = self.parse_named_type_reference("Expected request message type")
         self.consume(TokenType.RPAREN, "Expected ')' after request type")
 
         # Parse return type
@@ -904,9 +901,8 @@ class Parser:
             self.advance()
             server_streaming = True
 
-        res_type_token = self.consume(TokenType.IDENT, "Expected response message type")
-        response_type = NamedType(
-            name=res_type_token.value, location=self.make_location(res_type_token)
+        response_type = self.parse_named_type_reference(
+            "Expected response message type"
         )
         self.consume(TokenType.RPAREN, "Expected ')' after response type")
 
@@ -944,6 +940,20 @@ class Parser:
             column=start.column,
             location=self.make_location(start),
         )
+
+    def parse_named_type_reference(self, message: str) -> NamedType:
+        """Parse a named type reference such as Request or Outer.Inner."""
+        type_token = self.consume(TokenType.IDENT, message)
+        type_name = type_token.value
+
+        while self.check(TokenType.DOT):
+            self.advance()
+            type_name += (
+                "."
+                + self.consume(TokenType.IDENT, "Expected identifier after '.'").value
+            )
+
+        return NamedType(name=type_name, location=self.make_location(type_token))
 
     def parse_type_options(
         self, type_name: str, known_options: Set[str], allow_zero_id: bool = False

@@ -66,7 +66,7 @@ When reading type IDs:
 | var_uint64              | 14           | long/Long       | int/pyfory.uint64        | Type.varUInt64()    | uint64_t                       | uint64           | u64               |
 | tagged_uint64           | 15           | long/Long       | int/pyfory.tagged_uint64 | Type.taggedUInt64() | uint64_t                       | uint64           | u64               |
 | float8                  | 16           | /               | /                        | /                   | /                              | /                | /                 |
-| float16                 | 17           | float/Float     | float/pyfory.float16     | Type.float16()      | fory::float16_t                | fory.float16     | fory::f16         |
+| float16                 | 17           | Float16         | float/pyfory.float16     | Type.float16()      | fory::float16_t                | fory.float16     | fory::f16         |
 | bfloat16                | 18           | /               | /                        | /                   | /                              | /                | /                 |
 | float32                 | 19           | float/Float     | float/pyfory.float32     | Type.float32()      | float                          | float32          | f32               |
 | float64                 | 20           | double/Double   | float/pyfory.float64     | Type.float64()      | double                         | float64          | f64               |
@@ -100,7 +100,7 @@ When reading type IDs:
 | uint32_array            | 50           | long[]          | ndarray(uint32)          | /                   | `uint32_t[n]/vector<T>`        | `[n]uint32/[]T`  | `Vec<u32>`        |
 | uint64_array            | 51           | long[]          | ndarray(uint64)          | /                   | `uint64_t[n]/vector<T>`        | `[n]uint64/[]T`  | `Vec<u64>`        |
 | float8_array            | 52           | /               | /                        | /                   | /                              | /                | /                 |
-| float16_array           | 53           | float[]         | ndarray(float16)         | /                   | `fory::float16_t[n]/vector<T>` | `[n]float16/[]T` | `Vec<fory::f16>`  |
+| float16_array           | 53           | Float16List     | ndarray(float16)         | /                   | `fory::float16_t[n]/vector<T>` | `[n]float16/[]T` | `Vec<fory::f16>`  |
 | bfloat16_array          | 54           | /               | /                        | /                   | /                              | /                | /                 |
 | float32_array           | 55           | float[]         | ndarray(float32)         | /                   | `float[n]/vector<T>`           | `[n]float32/[]T` | `Vec<f32>`        |
 | float64_array           | 56           | double[]        | ndarray(float64)         | /                   | `double[n]/vector<T>`          | `[n]float64/[]T` | `Vec<f64>`        |

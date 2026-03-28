@@ -19,7 +19,6 @@
 
 package org.apache.fory.serializer;
 
-import java.util.Collection;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.ObjectIntMap;
@@ -29,7 +28,6 @@ import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
-import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Generics;
 
@@ -70,8 +68,7 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
     TypeResolver typeResolver = fory.getTypeResolver();
 
     // Build field infos from layerTypeDef
-    Collection<Descriptor> descriptors = layerTypeDef.getDescriptors(typeResolver, type);
-    DescriptorGrouper descriptorGrouper = typeResolver.createDescriptorGrouper(descriptors, false);
+    DescriptorGrouper descriptorGrouper = typeResolver.createDescriptorGrouper(layerTypeDef, type);
     FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
     this.buildInFields = fieldGroups.buildInFields;
     this.otherFields = fieldGroups.userTypeFields;

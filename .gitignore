@@ -67,6 +67,7 @@ python/dist/
 # C++
 cpp/build/
 cpp/bazel-*
+cpp/doc_tests/
 
 # Bazel build directories
 bazel-out/
@@ -122,3 +123,4 @@ csharp/tests/Fory.XlangPeer/obj/
 csharp/artifacts/
 
 tasks/
+docs/superpowers

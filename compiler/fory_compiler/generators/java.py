@@ -226,7 +226,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long",
         PrimitiveKind.VAR_UINT64: "long",
         PrimitiveKind.TAGGED_UINT64: "long",
-        PrimitiveKind.FLOAT16: "float",
+        PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "String",
@@ -255,7 +255,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "Long",
         PrimitiveKind.VAR_UINT64: "Long",
         PrimitiveKind.TAGGED_UINT64: "Long",
-        PrimitiveKind.FLOAT16: "Float",
+        PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.FLOAT32: "Float",
         PrimitiveKind.FLOAT64: "Double",
         PrimitiveKind.ANY: "Object",
@@ -278,12 +278,12 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long[]",
         PrimitiveKind.VAR_UINT64: "long[]",
         PrimitiveKind.TAGGED_UINT64: "long[]",
-        PrimitiveKind.FLOAT16: "float[]",
+        PrimitiveKind.FLOAT16: "Float16[]",
         PrimitiveKind.FLOAT32: "float[]",
         PrimitiveKind.FLOAT64: "double[]",
     }
 
-    # Primitive list types for repeated integer fields (default mode)
+    # Primitive list types for repeated fields when Java should use compact specialized storage.
     PRIMITIVE_LIST_MAP = {
         PrimitiveKind.INT8: "Int8List",
         PrimitiveKind.INT16: "Int16List",
@@ -299,6 +299,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "Uint64List",
         PrimitiveKind.VAR_UINT64: "Uint64List",
         PrimitiveKind.TAGGED_UINT64: "Uint64List",
+        PrimitiveKind.FLOAT16: "Float16List",
     }
 
     def generate(self) -> List[GeneratedFile]:
@@ -417,6 +418,7 @@ class JavaGenerator(BaseGenerator):
 
         return GeneratedFile(path=path, content="\n".join(lines))
 
+    # Generates a Java class file from a message schema definition.
     def generate_message_file(self, message: Message) -> GeneratedFile:
         """Generate a Java class file for a message."""
         lines = []
@@ -513,6 +515,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{message.name}.java"
 
+        # Combine all generated lines into a single Java source file.
         return GeneratedFile(path=path, content="\n".join(lines))
 
     def generate_outer_class_file(self, outer_classname: str) -> GeneratedFile:
@@ -1139,19 +1142,16 @@ class JavaGenerator(BaseGenerator):
             return field_type.name
 
         elif isinstance(field_type, ListType):
-            # Use primitive arrays for numeric types, or primitive lists by default for integers
+            # Use specialized primitive lists when available, otherwise primitive arrays.
             if isinstance(field_type.element_type, PrimitiveType):
-                if (
-                    field_type.element_type.kind in self.PRIMITIVE_ARRAY_MAP
-                    and not element_optional
-                    and not element_ref
-                ):
-                    if (
-                        field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                        and not self.java_array(field)
-                    ):
-                        return self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
-                    return self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
+                kind = field_type.element_type.kind
+                if not element_optional and not element_ref:
+                    if kind == PrimitiveKind.FLOAT16:
+                        return self.PRIMITIVE_LIST_MAP[kind]
+                    if kind in self.PRIMITIVE_LIST_MAP and not self.java_array(field):
+                        return self.PRIMITIVE_LIST_MAP[kind]
+                    if kind in self.PRIMITIVE_ARRAY_MAP:
+                        return self.PRIMITIVE_ARRAY_MAP[kind]
             element_type = self.generate_type(field_type.element_type, True)
             if self.is_ref_target_type(field_type.element_type):
                 ref_annotation = "@Ref" if element_ref else "@Ref(enable=false)"
@@ -1184,24 +1184,29 @@ class JavaGenerator(BaseGenerator):
                 imports.add("java.time.LocalDate")
             elif field_type.kind == PrimitiveKind.TIMESTAMP:
                 imports.add("java.time.Instant")
+            elif field_type.kind == PrimitiveKind.FLOAT16:
+                imports.add("org.apache.fory.type.Float16")
 
         elif isinstance(field_type, ListType):
-            # Primitive arrays don't need List import
+            # Specialized primitive lists/arrays don't need java.util.List imports.
             if isinstance(field_type.element_type, PrimitiveType):
-                if (
-                    field_type.element_type.kind in self.PRIMITIVE_ARRAY_MAP
-                    and not element_optional
-                    and not element_ref
-                ):
-                    if (
-                        field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                        and not self.java_array(field)
-                    ):
+                kind = field_type.element_type.kind
+                if not element_optional and not element_ref:
+                    if kind == PrimitiveKind.FLOAT16:
                         imports.add(
                             "org.apache.fory.collection."
-                            + self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
+                            + self.PRIMITIVE_LIST_MAP[kind]
                         )
-                    return  # No import needed for primitive arrays or primitive lists
+                        return
+                    if kind in self.PRIMITIVE_LIST_MAP and not self.java_array(field):
+                        imports.add(
+                            "org.apache.fory.collection."
+                            + self.PRIMITIVE_LIST_MAP[kind]
+                        )
+                        return
+                    if kind in self.PRIMITIVE_ARRAY_MAP:
+                        self.collect_type_imports(field_type.element_type, imports)
+                        return
             imports.add("java.util.List")
             if self.is_ref_target_type(field_type.element_type):
                 imports.add("org.apache.fory.annotation.Ref")
@@ -1569,7 +1574,6 @@ class JavaGenerator(BaseGenerator):
         # Imports
         lines.append("import org.apache.fory.Fory;")
         lines.append("import org.apache.fory.ThreadSafeFory;")
-        lines.append("import org.apache.fory.pool.SimpleForyPool;")
         lines.append("")
 
         # Class
@@ -1581,7 +1585,7 @@ class JavaGenerator(BaseGenerator):
         lines.append("")
         lines.append("    private static ThreadSafeFory createFory() {")
         lines.append(
-            "        ThreadSafeFory fory = new SimpleForyPool(c -> Fory.builder().withXlang(true).withRefTracking(true).build());"
+            "        ThreadSafeFory fory = Fory.builder().withXlang(true).withRefTracking(true).buildFastForyPool();"
         )
         imported_packages = self._collect_imported_packages()
         if imported_packages:

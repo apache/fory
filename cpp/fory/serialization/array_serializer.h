@@ -286,5 +286,121 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
   }
 };
 
+/// Serializer for std::array<float16_t, N>
+/// float16_t is not std::is_arithmetic, so it needs an explicit specialization
+/// to use the typed-array (FLOAT16_ARRAY) wire path instead of the generic LIST
+/// path.  Stored as raw uint16_t words on the wire (little-endian).
+template <size_t N> struct Serializer<std::array<float16_t, N>> {
+  static constexpr TypeId type_id = TypeId::FLOAT16_ARRAY;
+
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    uint32_t actual = ctx.read_uint8(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    if (!type_id_matches(actual, static_cast<uint32_t>(type_id))) {
+      ctx.set_error(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+  }
+
+  static inline void write(const std::array<float16_t, N> &arr,
+                           WriteContext &ctx, RefMode ref_mode, bool write_type,
+                           bool has_generics = false) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    if (write_type) {
+      ctx.write_uint8(static_cast<uint8_t>(type_id));
+    }
+    write_data(arr, ctx);
+  }
+
+  static inline void write_data(const std::array<float16_t, N> &arr,
+                                WriteContext &ctx) {
+    Buffer &buffer = ctx.buffer();
+    constexpr size_t max_size = 8 + N * sizeof(float16_t);
+    buffer.grow(static_cast<uint32_t>(max_size));
+    uint32_t writer_index = buffer.writer_index();
+    writer_index += buffer.put_var_uint32(
+        writer_index, static_cast<uint32_t>(N * sizeof(float16_t)));
+    if constexpr (N > 0) {
+      if constexpr (FORY_LITTLE_ENDIAN) {
+        buffer.unsafe_put(writer_index, arr.data(), N * sizeof(float16_t));
+      } else {
+        for (size_t i = 0; i < N; ++i) {
+          uint16_t bits = util::to_little_endian(arr[i].to_bits());
+          buffer.unsafe_put(writer_index + i * sizeof(float16_t), &bits,
+                            sizeof(float16_t));
+        }
+      }
+    }
+    buffer.writer_index(writer_index + N * sizeof(float16_t));
+  }
+
+  static inline void write_data_generic(const std::array<float16_t, N> &arr,
+                                        WriteContext &ctx, bool has_generics) {
+    write_data(arr, ctx);
+  }
+
+  static inline std::array<float16_t, N>
+  read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
+    bool has_value = read_null_only_flag(ctx, ref_mode);
+    if (ctx.has_error() || !has_value) {
+      return std::array<float16_t, N>();
+    }
+    if (read_type) {
+      uint32_t type_id_read = ctx.read_uint8(ctx.error());
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return std::array<float16_t, N>();
+      }
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
+        ctx.set_error(
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
+        return std::array<float16_t, N>();
+      }
+    }
+    return read_data(ctx);
+  }
+
+  static inline std::array<float16_t, N> read_data(ReadContext &ctx) {
+    uint32_t size_bytes = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return std::array<float16_t, N>();
+    }
+    uint32_t length = size_bytes / sizeof(float16_t);
+    if (length != N) {
+      ctx.set_error(Error::invalid_data("Array size mismatch: expected " +
+                                        std::to_string(N) + " but got " +
+                                        std::to_string(length)));
+      return std::array<float16_t, N>();
+    }
+    std::array<float16_t, N> arr;
+    if constexpr (N > 0) {
+      if constexpr (FORY_LITTLE_ENDIAN) {
+        ctx.read_bytes(arr.data(), N * sizeof(float16_t), ctx.error());
+      } else {
+        for (size_t i = 0; i < N; ++i) {
+          uint16_t bits;
+          ctx.read_bytes(&bits, sizeof(float16_t), ctx.error());
+          if (FORY_PREDICT_FALSE(ctx.has_error())) {
+            return arr;
+          }
+          arr[i] = float16_t::from_bits(util::to_little_endian(bits));
+        }
+      }
+    }
+    return arr;
+  }
+
+  static inline std::array<float16_t, N>
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
+                      const TypeInfo &type_info) {
+    return read(ctx, ref_mode, false);
+  }
+};
+
 } // namespace serialization
 } // namespace fory

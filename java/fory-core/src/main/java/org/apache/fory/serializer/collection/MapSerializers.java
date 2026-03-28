@@ -362,10 +362,12 @@ public class MapSerializers {
     @Override
     protected <K, V> void copyEntry(Map<K, V> originMap, Map<K, V> newMap) {
       ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+      MapTypeCache state = mapTypeCache();
       for (Entry<K, V> entry : originMap.entrySet()) {
         V value = entry.getValue();
         if (value != null) {
-          TypeInfo typeInfo = classResolver.getTypeInfo(value.getClass(), valueTypeInfoWriteCache);
+          TypeInfo typeInfo =
+              classResolver.getTypeInfo(value.getClass(), state.valueTypeInfoWriteCache);
           if (!typeInfo.getSerializer().isImmutable()) {
             value = fory.copyObject(value, typeInfo.getTypeId());
           }

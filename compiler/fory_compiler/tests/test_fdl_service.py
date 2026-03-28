@@ -67,6 +67,29 @@ def test_unary_rpc():
     assert not method.server_streaming
 
 
+def test_rpc_with_qualified_request_and_response_types():
+    source = """
+    package test;
+
+    message Outer {
+        message HelloRequest {}
+    }
+
+    message ReplyEnvelope {
+        message HelloReply {}
+    }
+
+    service Greeter {
+        rpc SayHello (Outer.HelloRequest) returns (ReplyEnvelope.HelloReply);
+    }
+    """
+    schema = parse(source)
+    service = schema.services[0]
+    method = service.methods[0]
+    assert method.request_type.name == "Outer.HelloRequest"
+    assert method.response_type.name == "ReplyEnvelope.HelloReply"
+
+
 def test_client_streaming_rpc():
     source = """
     package test;
@@ -227,6 +250,27 @@ def test_service_known_types_pass_validation():
 
     service Greeter {
         rpc SayHello (HelloRequest) returns (HelloReply);
+    }
+    """
+    schema = parse(source)
+    validator = SchemaValidator(schema)
+    assert validator.validate()
+
+
+def test_service_qualified_known_types_pass_validation():
+    source = """
+    package test;
+
+    message Outer {
+        message HelloRequest {}
+    }
+
+    message ReplyEnvelope {
+        message HelloReply {}
+    }
+
+    service Greeter {
+        rpc SayHello (Outer.HelloRequest) returns (ReplyEnvelope.HelloReply);
     }
     """
     schema = parse(source)

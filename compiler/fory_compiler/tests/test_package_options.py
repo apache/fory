@@ -391,7 +391,16 @@ class TestGoPackageGeneration:
         go_file = files[0]
 
         assert (
-            '"github.com/apache/fory/integration_tests/idl_tests/go"' in go_file.content
+            '"github.com/apache/fory/integration_tests/idl_tests/go/addressbook/generated"'
+            in go_file.content
+        )
+        assert (
+            '"github.com/apache/fory/integration_tests/idl_tests/go/complex_pb/generated"'
+            in go_file.content
+        )
+        assert (
+            '"github.com/apache/fory/integration_tests/idl_tests/go/tree/generated"'
+            in go_file.content
         )
 
 

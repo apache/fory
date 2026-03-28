@@ -41,9 +41,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.Supplier;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
@@ -64,6 +66,39 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class MapSerializersTest extends ForyTestBase {
+  private static final List<String> SORTED_MAP_INPUT_KEYS = Arrays.asList("bbb", "a", "cc");
+  private static final List<String> NATURAL_KEY_ORDER = Arrays.asList("a", "bbb", "cc");
+  private static final List<String> LENGTH_KEY_ORDER = Arrays.asList("a", "cc", "bbb");
+
+  private static final class LengthThenNaturalComparator
+      implements Comparator<String>, Serializable {
+    @Override
+    public int compare(String left, String right) {
+      int delta = left.length() - right.length();
+      return delta != 0 ? delta : left.compareTo(right);
+    }
+  }
+
+  private static final class SortedMapConstructorCase {
+    private final String name;
+    private final Class<?> expectedType;
+    private final boolean comparatorExpected;
+    private final List<String> expectedKeyOrder;
+    private final Supplier<SortedMap<String, Integer>> factory;
+
+    private SortedMapConstructorCase(
+        String name,
+        Class<?> expectedType,
+        boolean comparatorExpected,
+        List<String> expectedKeyOrder,
+        Supplier<SortedMap<String, Integer>> factory) {
+      this.name = name;
+      this.expectedType = expectedType;
+      this.comparatorExpected = comparatorExpected;
+      this.expectedKeyOrder = expectedKeyOrder;
+      this.factory = factory;
+    }
+  }
 
   @Test(dataProvider = "basicMultiConfigFory")
   public void basicTestCaseWithMultiConfig(
@@ -341,6 +376,66 @@ public class MapSerializersTest extends ForyTestBase {
     copyCheck(fory, beanForMap);
   }
 
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testTreeMapConstructorMatrix(boolean referenceTrackingConfig) {
+    Fory fory =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    for (SortedMapConstructorCase testCase : treeMapConstructorCases()) {
+      SortedMap<String, Integer> original = testCase.factory.get();
+      assertSortedMapState(testCase, original);
+      SortedMap<String, Integer> deserialized = serDe(fory, original);
+      assertSortedMapState(testCase, deserialized);
+      Assert.assertEquals(deserialized, original, testCase.name);
+      Assert.assertNotSame(deserialized, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testTreeMapConstructorMatrix(Fory fory) {
+    for (SortedMapConstructorCase testCase : treeMapConstructorCases()) {
+      SortedMap<String, Integer> original = testCase.factory.get();
+      assertSortedMapState(testCase, original);
+      SortedMap<String, Integer> copy = fory.copy(original);
+      assertSortedMapState(testCase, copy);
+      Assert.assertEquals(copy, original, testCase.name);
+      Assert.assertNotSame(copy, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testConcurrentSkipListMapConstructorMatrix(boolean referenceTrackingConfig) {
+    Fory fory =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(referenceTrackingConfig)
+            .requireClassRegistration(false)
+            .build();
+    for (SortedMapConstructorCase testCase : concurrentSkipListMapConstructorCases()) {
+      SortedMap<String, Integer> original = testCase.factory.get();
+      assertSortedMapState(testCase, original);
+      SortedMap<String, Integer> deserialized = serDe(fory, original);
+      assertSortedMapState(testCase, deserialized);
+      Assert.assertEquals(deserialized, original, testCase.name);
+      Assert.assertNotSame(deserialized, original, testCase.name);
+    }
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testConcurrentSkipListMapConstructorMatrix(Fory fory) {
+    for (SortedMapConstructorCase testCase : concurrentSkipListMapConstructorCases()) {
+      SortedMap<String, Integer> original = testCase.factory.get();
+      assertSortedMapState(testCase, original);
+      SortedMap<String, Integer> copy = fory.copy(original);
+      assertSortedMapState(testCase, copy);
+      Assert.assertEquals(copy, original, testCase.name);
+      Assert.assertNotSame(copy, original, testCase.name);
+    }
+  }
+
   // TreeMap subclass without a Comparator constructor (natural ordering only)
   public static class ChildTreeMap extends TreeMap<String, String> {
     public ChildTreeMap() {
@@ -468,6 +563,106 @@ public class MapSerializersTest extends ForyTestBase {
     Map<String, Integer> data = new TreeMap<>(ImmutableMap.of("a", 1, "b", 2));
     copyCheck(fory, new ConcurrentHashMap<>(data));
     copyCheck(fory, new ConcurrentSkipListMap<>(data));
+  }
+
+  private List<SortedMapConstructorCase> treeMapConstructorCases() {
+    return Arrays.asList(
+        new SortedMapConstructorCase(
+            "TreeMap()",
+            TreeMap.class,
+            false,
+            NATURAL_KEY_ORDER,
+            () -> {
+              TreeMap<String, Integer> map = new TreeMap<>();
+              map.putAll(sortedMapInput());
+              return map;
+            }),
+        new SortedMapConstructorCase(
+            "TreeMap(Comparator)",
+            TreeMap.class,
+            true,
+            LENGTH_KEY_ORDER,
+            () -> {
+              TreeMap<String, Integer> map = new TreeMap<>(new LengthThenNaturalComparator());
+              map.putAll(sortedMapInput());
+              return map;
+            }),
+        new SortedMapConstructorCase(
+            "TreeMap(Map)",
+            TreeMap.class,
+            false,
+            NATURAL_KEY_ORDER,
+            () -> new TreeMap<>(new LinkedHashMap<>(sortedMapInput()))),
+        new SortedMapConstructorCase(
+            "TreeMap(SortedMap)",
+            TreeMap.class,
+            true,
+            LENGTH_KEY_ORDER,
+            () -> new TreeMap<>(newComparatorSortedMapSource())));
+  }
+
+  private List<SortedMapConstructorCase> concurrentSkipListMapConstructorCases() {
+    return Arrays.asList(
+        new SortedMapConstructorCase(
+            "ConcurrentSkipListMap()",
+            ConcurrentSkipListMap.class,
+            false,
+            NATURAL_KEY_ORDER,
+            () -> {
+              ConcurrentSkipListMap<String, Integer> map = new ConcurrentSkipListMap<>();
+              map.putAll(sortedMapInput());
+              return map;
+            }),
+        new SortedMapConstructorCase(
+            "ConcurrentSkipListMap(Comparator)",
+            ConcurrentSkipListMap.class,
+            true,
+            LENGTH_KEY_ORDER,
+            () -> {
+              ConcurrentSkipListMap<String, Integer> map =
+                  new ConcurrentSkipListMap<>(new LengthThenNaturalComparator());
+              map.putAll(sortedMapInput());
+              return map;
+            }),
+        new SortedMapConstructorCase(
+            "ConcurrentSkipListMap(Map)",
+            ConcurrentSkipListMap.class,
+            false,
+            NATURAL_KEY_ORDER,
+            () -> new ConcurrentSkipListMap<>(new LinkedHashMap<>(sortedMapInput()))),
+        new SortedMapConstructorCase(
+            "ConcurrentSkipListMap(SortedMap)",
+            ConcurrentSkipListMap.class,
+            true,
+            LENGTH_KEY_ORDER,
+            () -> new ConcurrentSkipListMap<>(newComparatorSortedMapSource())));
+  }
+
+  private void assertSortedMapState(
+      SortedMapConstructorCase testCase, SortedMap<String, Integer> map) {
+    Assert.assertEquals(map.getClass(), testCase.expectedType, testCase.name);
+    Assert.assertEquals(new ArrayList<>(map.keySet()), testCase.expectedKeyOrder, testCase.name);
+    if (testCase.comparatorExpected) {
+      Assert.assertNotNull(map.comparator(), testCase.name);
+      Assert.assertEquals(
+          map.comparator().getClass(), LengthThenNaturalComparator.class, testCase.name);
+    } else {
+      Assert.assertNull(map.comparator(), testCase.name);
+    }
+  }
+
+  private static SortedMap<String, Integer> newComparatorSortedMapSource() {
+    SortedMap<String, Integer> map = new TreeMap<>(new LengthThenNaturalComparator());
+    map.putAll(sortedMapInput());
+    return map;
+  }
+
+  private static Map<String, Integer> sortedMapInput() {
+    LinkedHashMap<String, Integer> map = new LinkedHashMap<>();
+    for (String key : SORTED_MAP_INPUT_KEYS) {
+      map.put(key, key.length());
+    }
+    return map;
   }
 
   @Test
@@ -1076,6 +1271,40 @@ public class MapSerializersTest extends ForyTestBase {
         ofHashMap(
             2, ofHashMap(true, ofHashMap("k1", beanB, "k2", beanB, "k3", BeanB.createBeanB(1))));
     serDeCheck(fory, struct1);
+  }
+
+  @Data
+  public static class PrivateFinalMapFieldStruct {
+    private final Map<String, PrivateFinalValue> valueMap = new LinkedHashMap<>();
+    private final Map<PrivateFinalKey, String> keyMap = new LinkedHashMap<>();
+  }
+
+  @Data
+  private static final class PrivateFinalKey {
+    private int id;
+  }
+
+  @Data
+  private static final class PrivateFinalValue {
+    private int id;
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testPrivateFinalMapFieldCodegen(boolean referenceTrackingConfig) {
+    Fory fory =
+        builder()
+            .withRefTracking(referenceTrackingConfig)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .build();
+    PrivateFinalMapFieldStruct struct = new PrivateFinalMapFieldStruct();
+    PrivateFinalValue value = new PrivateFinalValue();
+    value.setId(1);
+    PrivateFinalKey key = new PrivateFinalKey();
+    key.setId(2);
+    struct.getValueMap().put("k1", value);
+    struct.getKeyMap().put(key, "v1");
+    serDeCheck(fory, struct);
   }
 
   @Data

@@ -32,6 +32,7 @@ import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.util.LoaderBinding;
 import org.apache.fory.util.LoaderBinding.StagingType;
@@ -47,6 +48,7 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
       ThreadLocal.withInitial(() -> MemoryUtils.buffer(32));
 
   private final ThreadLocal<LoaderBinding> bindingThreadLocal;
+  private final SharedRegistry sharedRegistry;
   private Consumer<Fory> factoryCallback;
   private final Map<LoaderBinding, Object> allFory;
 
@@ -54,6 +56,11 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   private final Object callbackLock = new Object();
 
   public ThreadLocalFory(Function<ClassLoader, Fory> foryFactory) {
+    this(foryFactory, new SharedRegistry());
+  }
+
+  public ThreadLocalFory(Function<ClassLoader, Fory> foryFactory, SharedRegistry sharedRegistry) {
+    this.sharedRegistry = sharedRegistry;
     factoryCallback = f -> {};
     allFory = Collections.synchronizedMap(new WeakHashMap<>());
     bindingThreadLocal =
@@ -229,5 +236,6 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   @Override
   public void clearClassLoader(ClassLoader loader) {
     bindingThreadLocal.get().clearClassLoader(loader);
+    sharedRegistry.clearClassLoader(loader);
   }
 }

@@ -151,9 +151,25 @@ byte[] bytes = fory.serialize(object);
 System.out.println(fory.deserialize(bytes));
 ```
 
+### Virtual Threads
+
+For JDK 21+ virtual-thread workloads, use `buildVirtualThreadSafeFory(...)`:
+
+```java
+ThreadSafeFory fory = Fory.builder()
+  .withLanguage(Language.JAVA)
+  .withRefTracking(false)
+  .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+  .withAsyncCompilation(true)
+  .buildVirtualThreadSafeFory();
+```
+
+See more details in [Virtual Threads](virtual-threads.md).
+
 ### ThreadSafeForyPool
 
-For virtual threads or environments where thread-local storage is not appropriate, use `buildThreadSafeForyPool`:
+For environments where thread-local storage is not appropriate and you need the existing
+time-expiring pooled runtime, use `buildThreadSafeForyPool`:
 
 ```java
 ThreadSafeFory fory = Fory.builder()
@@ -164,7 +180,9 @@ ThreadSafeFory fory = Fory.builder()
   .buildThreadSafeForyPool(minPoolSize, maxPoolSize);
 ```
 
-Note that calling `buildThreadSafeFory()` on `ForyBuilder` will create an instance of `ThreadLocalFory`. This may not be appropriate in environments where virtual threads are used, as each thread will create its own Fory instance, a relatively expensive operation. An alternative for virtual threads is to use `buildThreadSafeForyPool`.
+Note that calling `buildThreadSafeFory()` on `ForyBuilder` creates a `ThreadLocalFory`. This is
+not a good default for virtual-thread workloads because each virtual thread can create its own
+`Fory` instance. For virtual threads, prefer `buildVirtualThreadSafeFory(...)`.
 
 ### Builder Methods
 
@@ -190,6 +208,7 @@ ThreadSafeFory fory = Fory.builder()
 
 - [Configuration](configuration.md) - Learn about ForyBuilder options
 - [Basic Serialization](basic-serialization.md) - Detailed serialization patterns
+- [Virtual Threads](virtual-threads.md) - Virtual-thread usage and pool sizing guidance
 - [Type Registration](type-registration.md) - Class registration and security
 - [Custom Serializers](custom-serializers.md) - Implement custom serializers
 - [Cross-Language Serialization](cross-language.md) - Serialize data for other languages

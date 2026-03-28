@@ -108,6 +108,7 @@ import org.apache.fory.codegen.Expression.ListExpression;
 import org.apache.fory.codegen.Expression.Literal;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.Expression.Return;
+import org.apache.fory.codegen.Expression.StaticInvoke;
 import org.apache.fory.codegen.Expression.Variable;
 import org.apache.fory.codegen.Expression.While;
 import org.apache.fory.codegen.ExpressionUtils;
@@ -137,6 +138,7 @@ import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DispatchId;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
@@ -451,7 +453,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression inputObject, Expression buffer, Descriptor descriptor, Expression serializer) {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     Class<?> clz = getRawType(typeRef);
-    if (isPrimitive(clz) || isBoxed(clz)) {
+    if (isPrimitiveLikeDescriptor(descriptor, clz)) {
       return serializePrimitiveField(inputObject, buffer, descriptor);
     } else {
       if (clz == String.class) {
@@ -505,6 +507,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         return new Invoke(buffer, "writeFloat32", inputObject);
       case DispatchId.FLOAT64:
         return new Invoke(buffer, "writeFloat64", inputObject);
+      case DispatchId.FLOAT16:
+        return new Invoke(buffer, "writeInt16", new Invoke(inputObject, "toBits", SHORT_TYPE));
       default:
         throw new IllegalStateException("Unsupported dispatchId: " + dispatchId);
     }
@@ -662,9 +666,19 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected int getNumericDescriptorDispatchId(Descriptor descriptor) {
+    int dispatchId =
+        descriptorDispatchId.computeIfAbsent(descriptor, d -> DispatchId.getDispatchId(fory, d));
     Class<?> rawType = descriptor.getRawType();
-    Preconditions.checkArgument(TypeUtils.unwrap(rawType).isPrimitive());
-    return descriptorDispatchId.computeIfAbsent(descriptor, d -> DispatchId.getDispatchId(fory, d));
+    Preconditions.checkArgument(
+        TypeUtils.unwrap(rawType).isPrimitive() || dispatchId == DispatchId.FLOAT16);
+    return dispatchId;
+  }
+
+  private boolean isPrimitiveLikeDescriptor(Descriptor descriptor, Class<?> rawType) {
+    if (isPrimitive(rawType) || isBoxed(rawType)) {
+      return true;
+    }
+    return rawType == Float16.class;
   }
 
   /**
@@ -1504,6 +1518,14 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return Tuple2.of(keySerializer, valueSerializer);
   }
 
+  private TypeRef<?> getMapChunkLocalType(TypeRef<?> typeRef) {
+    Class<?> rawType = typeRef.getRawType();
+    if (sourcePublicAccessible(rawType)) {
+      return typeRef;
+    }
+    return TypeRef.of(CodeGenerator.getSourcePublicAccessibleParentClass(rawType));
+  }
+
   protected Expression writeChunk(
       Expression buffer,
       Expression entry,
@@ -1515,11 +1537,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     boolean valueMonomorphic = isMonomorphic(valueType);
     Class<?> keyTypeRawType = keyType.getRawType();
     Class<?> valueTypeRawType = valueType.getRawType();
+    TypeRef<?> keyLocalType = keyMonomorphic ? getMapChunkLocalType(keyType) : keyType;
+    TypeRef<?> valueLocalType = valueMonomorphic ? getMapChunkLocalType(valueType) : valueType;
     Expression key =
-        keyMonomorphic ? new Variable("key", keyType) : invoke(entry, "getKey", "key", keyType);
+        keyMonomorphic
+            ? new Variable("key", keyLocalType)
+            : invoke(entry, "getKey", "key", keyType);
     Expression value =
         valueMonomorphic
-            ? new Variable("value", valueType)
+            ? new Variable("value", valueLocalType)
             : invoke(entry, "getValue", "value", valueType);
     Expression keyTypeExpr =
         keyMonomorphic
@@ -1642,9 +1668,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         new While(
             Literal.ofBoolean(true),
             () -> {
-              Expression keyAssign = new Assign(key, invokeInline(entry, "getKey", keyType));
+              Expression keyAssign = new Assign(key, invokeInline(entry, "getKey", keyLocalType));
               Expression valueAssign =
-                  new Assign(value, invokeInline(entry, "getValue", valueType));
+                  new Assign(value, invokeInline(entry, "getValue", valueLocalType));
               Expression breakCondition;
               if (keyMonomorphic && valueMonomorphic) {
                 breakCondition = or(eqNull(key), eqNull(value));
@@ -1993,7 +2019,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer, Descriptor descriptor, Expression serializer) {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     Class<?> cls = getRawType(typeRef);
-    if (isPrimitive(cls) || isBoxed(cls)) {
+    if (isPrimitiveLikeDescriptor(descriptor, cls)) {
       return deserializePrimitiveField(buffer, descriptor);
     } else {
       if (cls == String.class) {
@@ -2066,6 +2092,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         return isPrimitive
             ? readFloat64(buffer)
             : new Invoke(buffer, readFloat64Func(), DOUBLE_TYPE);
+      case DispatchId.FLOAT16:
+        return new StaticInvoke(
+            Float16.class, "fromBits", TypeRef.of(Float16.class), readInt16(buffer));
       default:
         throw new IllegalStateException("Unsupported dispatchId: " + dispatchId);
     }

@@ -56,10 +56,10 @@ import org.apache.fory.codegen.ExpressionVisitor;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.ObjectSerializer;
-import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.DispatchId;
@@ -92,19 +92,16 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   public ObjectCodecBuilder(Class<?> beanClass, Fory fory) {
     super(TypeRef.of(beanClass), fory, Generated.GeneratedObjectSerializer.class);
     Collection<Descriptor> descriptors;
+    DescriptorGrouper grouper;
     boolean shareMeta = fory.getConfig().isMetaShareEnabled();
     if (shareMeta) {
-      descriptors =
-          fory(
-              f ->
-                  f.getTypeResolver()
-                      .getTypeDef(beanClass, true)
-                      .getDescriptors(SerializationUtils.getTypeResolver(fory), beanClass));
+      TypeDef typeDef = typeResolver(r -> r.getTypeDef(beanClass, true));
+      descriptors = typeResolver(r -> typeDef.getDescriptors(r, beanClass));
+      grouper = typeResolver(r -> r.createDescriptorGrouper(typeDef, beanClass));
     } else {
-      descriptors = typeResolver(r -> r.getFieldDescriptors(beanClass, true));
+      grouper = typeResolver(r -> r.getFieldDescriptorGrouper(beanClass, true, false));
+      descriptors = grouper.getSortedDescriptors();
     }
-    Collection<Descriptor> p = descriptors;
-    DescriptorGrouper grouper = typeResolver(r -> r.createDescriptorGrouper(p, false));
     if (org.apache.fory.util.Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info(
           "========== {} sorted descriptors for {} ==========",

@@ -43,6 +43,7 @@ import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.DispatchId;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.unsigned.Uint16;
 import org.apache.fory.type.unsigned.Uint32;
@@ -450,6 +451,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.FLOAT64:
         buffer.writeFloat64((Double) fieldValue);
         return;
+      case DispatchId.FLOAT16:
+        buffer.writeInt16(((Float16) fieldValue).toBits());
+        return;
       default:
         writeField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer, fieldValue);
     }
@@ -708,6 +712,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         return buffer.readFloat32();
       case DispatchId.FLOAT64:
         return buffer.readFloat64();
+      case DispatchId.FLOAT16:
+        return Float16.fromBits(buffer.readInt16());
       case DispatchId.STRING:
         return fory.readString(buffer);
       default:
@@ -928,6 +934,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.FLOAT64:
         fieldAccessor.putObject(targetObject, buffer.readFloat64());
         return;
+      case DispatchId.FLOAT16:
+        fieldAccessor.putObject(targetObject, Float16.fromBits(buffer.readInt16()));
+        return;
       case DispatchId.STRING:
         fieldAccessor.putObject(targetObject, fory.readString(buffer));
         return;
@@ -948,9 +957,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       return copyRecord(originObj);
     }
     T newObj = newBean();
-    if (needToCopyRef) {
-      fory.reference(originObj, newObj);
-    }
+    fory.reference(originObj, newObj);
     copyFields(originObj, newObj);
     return newObj;
   }
@@ -958,7 +965,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private T copyRecord(T originObj) {
     Object[] fieldValues = copyFields(originObj);
     try {
-      T t = (T) objectCreator.newInstanceWithArguments(fieldValues);
+      T t = objectCreator.newInstanceWithArguments(fieldValues);
       Arrays.fill(copyRecordInfo.getRecordComponents(), null);
       fory.reference(originObj, t);
       return t;
@@ -1085,6 +1092,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.TAGGED_UINT64:
       case DispatchId.FLOAT32:
       case DispatchId.FLOAT64:
+      case DispatchId.FLOAT16:
       case DispatchId.STRING:
         Platform.putObject(newObj, fieldOffset, Platform.getObject(originObj, fieldOffset));
         break;
@@ -1147,6 +1155,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.VAR_UINT64:
       case DispatchId.TAGGED_UINT64:
       case DispatchId.FLOAT64:
+      case DispatchId.FLOAT16:
       case DispatchId.STRING:
         return Platform.getObject(targetObject, fieldOffset);
       default:
@@ -1178,7 +1187,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       }
     }
     DescriptorGrouper descriptorGrouper =
-        fory.getTypeResolver().createDescriptorGrouper(descriptors, false);
+        FieldGroups.buildDescriptorGrouper(fory, descriptors, false, null);
     FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
     fieldInfos = fieldGroups.allFields;
     if (isRecord) {

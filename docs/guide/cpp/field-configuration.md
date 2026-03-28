@@ -225,7 +225,7 @@ int main() {
   doc.description = "A sample document";
   doc.metadata = nullptr;  // Allowed because nullable
   doc.parent = std::make_shared<Document>();
-  doc.parent->title = "Parent Doc";
+  doc.parent.get()->title = "Parent Doc";
   doc.related = nullptr;  // Allowed because nullable
 
   auto bytes = fory.serialize(doc).value();
@@ -429,15 +429,14 @@ int main() {
   auto fory = Fory::builder().xlang(true).build();
   fory.register_struct<MetricsData>(100);
 
-  MetricsData data{
-      .request_count = 42,
-      .bytes_sent = 1024,
-      .user_id = 12345678,
-      .session_id = 9876543210,
-      .created_at = 1704067200000000000ULL, // 2024-01-01 in nanoseconds
-      .error_count = 3,
-      .last_access_time = std::nullopt
-  };
+  MetricsData data;
+  data.request_count = 42;
+  data.bytes_sent = 1024;
+  data.user_id = 12345678;
+  data.session_id = 9876543210;
+  data.created_at = 1704067200000000000ULL; // 2024-01-01 in nanoseconds
+  data.error_count = 3;
+  data.last_access_time = std::nullopt;
 
   auto bytes = fory.serialize(data).value();
   auto decoded = fory.deserialize<MetricsData>(bytes).value();

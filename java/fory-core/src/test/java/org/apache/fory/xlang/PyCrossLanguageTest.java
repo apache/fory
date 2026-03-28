@@ -36,7 +36,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -73,7 +72,6 @@ import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.test.TestUtils;
-import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.util.DateTimeUtils;
 import org.apache.fory.util.MurmurHash3;
@@ -503,8 +501,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
             "computeStructHash", Fory.class, DescriptorGrouper.class);
     method.setAccessible(true);
     TypeResolver resolver = fory.getTypeResolver();
-    Collection<Descriptor> descriptors = resolver.getFieldDescriptors(ComplexObject1.class, false);
-    DescriptorGrouper grouper = resolver.createDescriptorGrouper(descriptors, false);
+    DescriptorGrouper grouper =
+        resolver.getFieldDescriptorGrouper(ComplexObject1.class, false, false);
     Integer hash = (Integer) method.invoke(objSerializer, fory, grouper);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(4);
     buffer.writeInt32(hash);

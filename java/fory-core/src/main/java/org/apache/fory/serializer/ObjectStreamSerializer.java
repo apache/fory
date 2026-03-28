@@ -411,7 +411,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         TypeDef.skipTypeDef(buffer, typeDefId);
       } else {
         // Not cached - read full TypeDef and create TypeInfo
-        TypeDef typeDef = TypeDef.readTypeDef(fory, buffer, typeDefId);
+        TypeDef typeDef =
+            fory.getTypeResolver().cacheTypeDef(TypeDef.readTypeDef(fory, buffer, typeDefId));
         typeInfo = new TypeInfo(senderClass, typeDef);
         typeDefIdToTypeInfo.put(typeDefId, typeInfo);
       }
@@ -810,7 +811,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
           TypeDef.skipTypeDef(buffer, typeDefId);
         } else {
           // Not cached - read full TypeDef and create TypeInfo
-          TypeDef typeDef = TypeDef.readTypeDef(fory, buffer, typeDefId);
+          TypeDef typeDef =
+              fory.getTypeResolver().cacheTypeDef(TypeDef.readTypeDef(fory, buffer, typeDefId));
           typeInfo = new TypeInfo(cls, typeDef);
           typeDefIdToTypeInfo.put(typeDefId, typeInfo);
         }

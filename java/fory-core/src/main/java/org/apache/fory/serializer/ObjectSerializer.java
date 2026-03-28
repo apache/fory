@@ -34,7 +34,6 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.RefResolver;
-import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.struct.Fingerprint;
 import org.apache.fory.type.Descriptor;
@@ -60,7 +59,6 @@ import org.apache.fory.util.record.RecordUtils;
  * </ul>
  */
 // TODO(chaokunyang) support generics optimization for {@code SomeClass<T>}
-@SuppressWarnings({"unchecked"})
 public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectSerializer.class);
 
@@ -69,7 +67,6 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   private final SerializationFieldInfo[] otherFields;
   private final SerializationFieldInfo[] containerFields;
   private final int classVersionHash;
-  private final TypeResolver typeResolver;
 
   public ObjectSerializer(Fory fory, Class<T> cls) {
     this(fory, cls, true);
@@ -77,7 +74,6 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
 
   public ObjectSerializer(Fory fory, Class<T> cls, boolean resolveParent) {
     super(fory, cls);
-    typeResolver = fory.getTypeResolver();
     // avoid recursive building serializers.
     // Use `setSerializerIfAbsent` to avoid overwriting existing serializer for class when used
     // as data serializer.
@@ -85,6 +81,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       typeResolver.setSerializerIfAbsent(cls, this);
     }
     Collection<Descriptor> descriptors;
+    DescriptorGrouper grouper;
     boolean shareMeta = fory.getConfig().isMetaShareEnabled();
     if (shareMeta) {
       TypeDef typeDef = typeResolver.getTypeDef(cls, resolveParent);
@@ -96,11 +93,14 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
         }
       }
       descriptors = typeDef.getDescriptors(typeResolver, cls);
+      grouper = typeResolver.createDescriptorGrouper(typeDef, cls);
     } else {
-      descriptors = typeResolver.getFieldDescriptors(cls, resolveParent);
+      grouper = typeResolver.getFieldDescriptorGrouper(cls, resolveParent, false);
+      descriptors = grouper.getSortedDescriptors();
     }
-    DescriptorGrouper grouper = typeResolver.createDescriptorGrouper(descriptors, false);
-    descriptors = grouper.getSortedDescriptors();
+    if (shareMeta) {
+      descriptors = grouper.getSortedDescriptors();
+    }
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info(
           "========== ObjectSerializer {} sorted descriptors for {} ==========",

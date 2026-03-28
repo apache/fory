@@ -54,6 +54,7 @@ import org.apache.fory.resolver.MetaStringResolver;
 import org.apache.fory.resolver.NoRefResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.SerializationContext;
+import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
@@ -106,6 +107,7 @@ public final class Fory implements BaseFory {
   private final TypeResolver typeResolver;
   private final MetaStringResolver metaStringResolver;
   private final SerializationContext serializationContext;
+  private final SharedRegistry sharedRegistry;
   private final ClassLoader classLoader;
   private final JITContext jitContext;
   private MemoryBuffer buffer;
@@ -121,14 +123,32 @@ public final class Fory implements BaseFory {
   private boolean peerOutOfBandEnabled;
   private int depth;
   private final int maxDepth;
+  private boolean registrationFinished;
+  private final boolean forVirtualThread;
   private int copyDepth;
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
 
   public Fory(ForyBuilder builder, ClassLoader classLoader) {
+    this(builder, classLoader, new SharedRegistry());
+  }
+
+  public Fory(ForyBuilder builder, ClassLoader classLoader, SharedRegistry sharedRegistry) {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
+    if (sharedRegistry == null) {
+      sharedRegistry = new SharedRegistry();
+    }
+    if (classLoader == null) {
+      classLoader = Thread.currentThread().getContextClassLoader();
+      if (classLoader == null) {
+        classLoader = Fory.class.getClassLoader();
+      }
+    }
+    this.sharedRegistry = sharedRegistry;
+    this.classLoader = classLoader;
     config = new Config(builder);
+    this.forVirtualThread = config.forVirtualThread();
     crossLanguage = config.isXlang();
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
@@ -143,16 +163,15 @@ public final class Fory implements BaseFory {
     }
     jitContext = new JITContext(this);
     generics = new Generics(this);
-    metaStringResolver = new MetaStringResolver();
-    depth = -1;
+    // init stringSerializer first, so other places can share same StringSerializer.
+    stringSerializer = new StringSerializer(this);
+    metaStringResolver = new MetaStringResolver(sharedRegistry);
     typeResolver = crossLanguage ? new XtypeResolver(this) : new ClassResolver(this);
     typeResolver.initialize();
     serializationContext = new SerializationContext(config);
-    this.classLoader = classLoader;
-    stringSerializer = new StringSerializer(this);
     arrayListSerializer = new ArrayListSerializer(this);
     hashMapSerializer = new HashMapSerializer(this);
-    originToCopyMap = new IdentityMap<>();
+    originToCopyMap = new IdentityMap<>(2);
     LOG.info("Created new fory {}", this);
   }
 
@@ -269,6 +288,13 @@ public final class Fory implements BaseFory {
     return typeResolver.getSerializer(cls);
   }
 
+  private void ensureRegistrationFinished() {
+    if (!registrationFinished) {
+      typeResolver.finishRegistration();
+      registrationFinished = true;
+    }
+  }
+
   @Override
   public MemoryBuffer serialize(Object obj, long address, int size) {
     MemoryBuffer buffer = MemoryUtils.buffer(address, size);
@@ -303,6 +329,7 @@ public final class Fory implements BaseFory {
 
   @Override
   public MemoryBuffer serialize(MemoryBuffer buffer, Object obj, BufferCallback callback) {
+    ensureRegistrationFinished();
     byte bitmap = 0;
     if (crossLanguage) {
       bitmap |= isCrossLanguageFlag;
@@ -322,7 +349,6 @@ public final class Fory implements BaseFory {
       if (depth > 0) {
         throwDepthSerializationException();
       }
-      depth = 0;
       writeRef(buffer, obj);
       return buffer;
     } catch (Throwable t) {
@@ -705,12 +731,12 @@ public final class Fory implements BaseFory {
 
   @Override
   public <T> T deserialize(MemoryBuffer buffer, Class<T> type) {
+    ensureRegistrationFinished();
     try {
       jitContext.lock();
       if (depth > 0) {
         throwDepthDeserializationException();
       }
-      depth = 0;
       byte bitmap = buffer.readByte();
       if ((bitmap & isNilFlag) == isNilFlag) {
         return null;
@@ -771,12 +797,12 @@ public final class Fory implements BaseFory {
    */
   @Override
   public Object deserialize(MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers) {
+    ensureRegistrationFinished();
     try {
       jitContext.lock();
       if (depth > 0) {
         throwDepthDeserializationException();
       }
-      depth = 0;
       byte bitmap = buffer.readByte();
       if ((bitmap & isNilFlag) == isNilFlag) {
         return null;
@@ -1017,14 +1043,14 @@ public final class Fory implements BaseFory {
 
   @Override
   public <T> T copy(T obj) {
+    assert copyDepth == 0 : "copy should only be invoked at top level; use copyObject instead";
+    ensureRegistrationFinished();
     try {
       return copyObject(obj);
     } catch (Throwable e) {
       throw processCopyError(e);
     } finally {
-      if (copyRefTracking) {
-        resetCopy();
-      }
+      resetCopy();
     }
   }
 
@@ -1156,7 +1182,7 @@ public final class Fory implements BaseFory {
    * @param o2 the copied object
    */
   public <T> void reference(T o1, T o2) {
-    if (o1 != null) {
+    if (copyRefTracking && o1 != null) {
       originToCopyMap.put(o1, o2);
     }
   }
@@ -1207,6 +1233,9 @@ public final class Fory implements BaseFory {
     serializationContext.resetWrite();
     bufferCallback = null;
     depth = 0;
+    if (forVirtualThread) {
+      stringSerializer.clearBuffer(config.bufferSizeLimitBytes());
+    }
   }
 
   public void resetRead() {
@@ -1216,10 +1245,15 @@ public final class Fory implements BaseFory {
     serializationContext.resetRead();
     peerOutOfBandEnabled = false;
     depth = 0;
+    if (forVirtualThread) {
+      stringSerializer.clearBuffer(config.bufferSizeLimitBytes());
+    }
   }
 
   public void resetCopy() {
-    originToCopyMap.clear();
+    if (copyRefTracking) {
+      originToCopyMap.clear();
+    }
     copyDepth = 0;
   }
 
@@ -1329,6 +1363,21 @@ public final class Fory implements BaseFory {
 
   public ClassLoader getClassLoader() {
     return classLoader;
+  }
+
+  @Internal
+  public SharedRegistry getSharedRegistry() {
+    return sharedRegistry;
+  }
+
+  @Internal
+  public boolean isRegistrationFinished() {
+    return registrationFinished;
+  }
+
+  @Internal
+  public void setRegistrationFinished() {
+    registrationFinished = true;
   }
 
   public boolean isCrossLanguage() {
