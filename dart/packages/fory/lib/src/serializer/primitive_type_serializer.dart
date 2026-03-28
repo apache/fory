@@ -34,6 +34,7 @@ import 'package:fory/src/memory/byte_writer.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 import 'package:fory/src/serialization_context.dart';
+import 'package:fory/src/datatype/bfloat16.dart';
 
 abstract base class PrimitiveSerializerCache extends SerializerCache {
   const PrimitiveSerializerCache();
@@ -308,6 +309,23 @@ final class Float16Serializer extends Serializer<FixedNum> {
   }
 }
 
+final class BFloat16Serializer extends Serializer<FixedNum> {
+  static const SerializerCache cache = _BFloat16SerializerCache();
+
+  BFloat16Serializer._(bool writeRef) : super(ObjType.BFLOAT16, writeRef);
+
+  @override
+  BFloat16 read(ByteReader br, int refId, DeserializationContext pack) {
+    return br.readBFloat16();
+  }
+
+  @override
+  void write(ByteWriter bw, covariant BFloat16 v, SerializationContext pack) {
+    // No checks are performed here
+    bw.writeBFloat16(v);
+  }
+}
+
 final class _Float64SerializerCache extends PrimitiveSerializerCache {
   static Float64Serializer? serializerWithRef;
   static Float64Serializer? serializerWithoutRef;
@@ -571,5 +589,23 @@ final class TaggedUInt64Serializer extends Serializer<int> {
   @override
   void write(ByteWriter bw, int v, SerializationContext pack) {
     bw.writeVarInt64(v);
+  }
+}
+
+final class _BFloat16SerializerCache extends PrimitiveSerializerCache {
+  static BFloat16Serializer? serializerWithRef;
+  static BFloat16Serializer? serializerWithoutRef;
+
+  const _BFloat16SerializerCache();
+
+  @override
+  Serializer getSerializerWithRef(bool writeRef) {
+    if (writeRef) {
+      serializerWithRef ??= BFloat16Serializer._(true);
+      return serializerWithRef!;
+    } else {
+      serializerWithoutRef ??= BFloat16Serializer._(false);
+      return serializerWithoutRef!;
+    }
   }
 }

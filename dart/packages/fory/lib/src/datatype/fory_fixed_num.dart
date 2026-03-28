@@ -22,8 +22,9 @@ import 'float32.dart';
 import 'int16.dart';
 import 'int32.dart';
 import 'int8.dart';
+import 'bfloat16.dart';
 
-enum NumType { int8, int16, int32, float16, float32 }
+enum NumType { int8, int16, int32, float16, float32, bfloat16 }
 
 /// Base abstract class for fixed-size numeric types
 abstract base class FixedNum implements Comparable<FixedNum> {
@@ -44,6 +45,8 @@ abstract base class FixedNum implements Comparable<FixedNum> {
         return Float16(value);
       case NumType.float32:
         return Float32(value);
+      case NumType.bfloat16:
+        return BFloat16(value);
     }
   }
 

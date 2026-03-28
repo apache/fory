@@ -20,6 +20,7 @@
 import 'dart:typed_data';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/datatype/float16.dart';
+import 'package:fory/src/datatype/bfloat16.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 
 final class ByteReaderImpl extends ByteReader {
@@ -124,6 +125,13 @@ final class ByteReaderImpl extends ByteReader {
     int value = _bd.getUint16(_offset, endian);
     _offset += 2;
     return Float16.fromBits(value);
+  }
+
+  @override
+  BFloat16 readBFloat16() {
+    int value = _bd.getUint16(_offset, endian);
+    _offset += 2;
+    return BFloat16.fromBits(value);
   }
 
   @override

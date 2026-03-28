@@ -61,7 +61,9 @@ export 'src/datatype/int32.dart';
 export 'src/datatype/uint8.dart';
 export 'src/datatype/uint16.dart';
 export 'src/datatype/uint32.dart';
+export 'src/datatype/float16.dart';
 export 'src/datatype/float32.dart';
+export 'src/datatype/bfloat16.dart';
 export 'src/datatype/local_date.dart';
 export 'src/datatype/timestamp.dart';
 

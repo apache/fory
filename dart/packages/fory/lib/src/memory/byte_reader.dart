@@ -20,6 +20,7 @@
 import 'dart:typed_data';
 import 'package:meta/meta.dart';
 import 'package:fory/src/datatype/float16.dart';
+import 'package:fory/src/datatype/bfloat16.dart';
 import 'package:fory/src/memory/byte_reader_impl.dart';
 
 abstract base class ByteReader {
@@ -69,6 +70,9 @@ abstract base class ByteReader {
 
   /// Reads a 16-bit floating point number from the stream.
   Float16 readFloat16();
+
+  /// Reads a 16-bit brain float point number from the stream.
+  BFloat16 readBFloat16();
 
   int readVarUint36Small();
 
