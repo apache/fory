@@ -138,8 +138,7 @@ def test_rpc_request_type_enum_fails_validation():
     """
     v = validate(parse_fdl(source))
     assert any(
-        "RPC type 'Status'" in e.message and "not a enum" in e.message
-        for e in v.errors
+        "RPC type 'Status'" in e.message and "not a enum" in e.message for e in v.errors
     )
 
 
@@ -156,8 +155,7 @@ def test_rpc_response_type_enum_fails_validation():
     """
     v = validate(parse_fdl(source))
     assert any(
-        "RPC type 'Status'" in e.message and "not a enum" in e.message
-        for e in v.errors
+        "RPC type 'Status'" in e.message and "not a enum" in e.message for e in v.errors
     )
 
 
@@ -244,6 +242,7 @@ def test_fbs_rpc_duplicate_method_fails_validation():
     assert any(
         "Duplicate method name in service Svc: Call" in e.message for e in v.errors
     )
+
 
 def test_client_streaming_rpc_passes_validation():
     source = """

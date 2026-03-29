@@ -82,7 +82,9 @@ def parse_fdl(source: str) -> Schema:
     return Parser(Lexer(source).tokenize()).parse()
 
 
-def generate_files(schema: Schema, generator_cls: Type[BaseGenerator]) -> Dict[str, str]:
+def generate_files(
+    schema: Schema, generator_cls: Type[BaseGenerator]
+) -> Dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"))
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate()}
@@ -116,6 +118,7 @@ def test_service_schema_produces_one_file_per_message_per_language():
         assert len(files) >= 1, (
             f"{generator_cls.language_name}: expected at least one generated file"
         )
+
 
 def test_compile_service_schema_with_grpc_flag(tmp_path: Path):
     example_path = Path(__file__).resolve().parents[2] / "examples" / "service.fdl"
