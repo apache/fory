@@ -244,3 +244,65 @@ def test_fbs_rpc_duplicate_method_fails_validation():
     assert any(
         "Duplicate method name in service Svc: Call" in e.message for e in v.errors
     )
+
+def test_client_streaming_rpc_passes_validation():
+    source = """
+    package test;
+
+    message Req {}
+    message Res {}
+
+    service Svc {
+        rpc Call (stream Req) returns (Res);
+    }
+    """
+    v = validate(parse_fdl(source))
+    assert v.errors == []
+
+
+def test_server_streaming_rpc_passes_validation():
+    source = """
+    package test;
+
+    message Req {}
+    message Res {}
+
+    service Svc {
+        rpc Call (Req) returns (stream Res);
+    }
+    """
+    v = validate(parse_fdl(source))
+    assert v.errors == []
+
+
+def test_bidi_streaming_rpc_passes_validation():
+    source = """
+    package test;
+
+    message Req {}
+    message Res {}
+
+    service Svc {
+        rpc Call (stream Req) returns (stream Res);
+    }
+    """
+    v = validate(parse_fdl(source))
+    assert v.errors == []
+
+
+def test_proto_streaming_rpc_passes_validation():
+    source = """
+    syntax = "proto3";
+    package test;
+
+    message Req { string id = 1; }
+    message Res { string result = 1; }
+
+    service Svc {
+        rpc ClientStream (stream Req) returns (Res);
+        rpc ServerStream (Req) returns (stream Res);
+        rpc BidiStream (stream Req) returns (stream Res);
+    }
+    """
+    v = validate(parse_proto(source))
+    assert v.errors == []

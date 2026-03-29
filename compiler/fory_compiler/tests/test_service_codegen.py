@@ -21,6 +21,7 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Dict, Tuple, Type
 
+from fory_compiler.cli import compile_file
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.generators.base import BaseGenerator, GeneratorOptions
@@ -115,3 +116,29 @@ def test_service_schema_produces_one_file_per_message_per_language():
         assert len(files) >= 1, (
             f"{generator_cls.language_name}: expected at least one generated file"
         )
+
+def test_compile_service_schema_with_grpc_flag(tmp_path: Path):
+    example_path = Path(__file__).resolve().parents[2] / "examples" / "service.fdl"
+    lang_dirs = {}
+    for lang in ("java", "python", "rust", "go", "cpp", "csharp", "swift"):
+        lang_dirs[lang] = tmp_path / lang
+    ok = compile_file(example_path, lang_dirs, grpc=True)
+    assert ok is True
+    for lang, lang_dir in lang_dirs.items():
+        files = [p for p in lang_dir.rglob("*") if p.is_file()]
+        assert len(files) >= 1, f"{lang}: expected at least one file with grpc=True"
+
+
+def test_generated_message_contains_key_signatures():
+    schema = parse_fdl(_GREETER_WITH_SERVICE)
+    java_files = generate_files(schema, JavaGenerator)
+    all_java = "\n".join(java_files.values())
+    assert "class HelloRequest" in all_java
+    assert "class HelloReply" in all_java
+    assert "String name" in all_java
+    assert "String reply" in all_java
+
+    python_files = generate_files(schema, PythonGenerator)
+    all_python = "\n".join(python_files.values())
+    assert "HelloRequest" in all_python
+    assert "HelloReply" in all_python
