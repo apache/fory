@@ -57,7 +57,7 @@ public class CompatibleDependentSerializerExample {
     test(fory);
     System.out.println("CompatibleDependentSerializerExample succeed");
 
-    // TODO: Recreating the fory instance exposes an issue with 
+    // TODO: Recreating the fory instance exposes an issue with
     // getMetaSharedDeserializerClassFromGraalvmRegistry
     // fory = createFory();
     // test(fory);
