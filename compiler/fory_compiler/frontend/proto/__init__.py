@@ -18,8 +18,10 @@
 """Proto frontend."""
 
 import sys
+from typing import List, Optional
 
 from fory_compiler.frontend.base import BaseFrontend, FrontendError
+from fory_compiler.frontend.proto.ast import ProtoSchema
 from fory_compiler.frontend.proto.lexer import Lexer, LexerError
 from fory_compiler.frontend.proto.parser import Parser, ParseError
 from fory_compiler.frontend.proto.translator import ProtoTranslator
@@ -32,15 +34,32 @@ class ProtoFrontend(BaseFrontend):
     extensions = [".proto"]
 
     def parse(self, source: str, filename: str = "<input>") -> Schema:
+        return self.parse_with_imports(source, filename)
+
+    def parse_ast(self, source: str, filename: str = "<input>") -> ProtoSchema:
+        """Parse proto source into a proto AST without translating to Fory IR."""
         try:
             lexer = Lexer(source, filename)
             tokens = lexer.tokenize()
             parser = Parser(tokens, filename)
-            proto_schema = parser.parse()
+            return parser.parse()
         except (LexerError, ParseError) as exc:
             raise FrontendError(exc.message, filename, exc.line, exc.column) from exc
 
-        translator = ProtoTranslator(proto_schema)
+    def parse_with_imports(
+        self,
+        source: str,
+        filename: str = "<input>",
+        direct_import_proto_schemas: Optional[List[ProtoSchema]] = None,
+    ) -> Schema:
+        """Parse proto source and translate to Fory IR.
+
+        `direct_import_proto_schemas` supplies the proto ASTs of **directly**
+        imported files so the translator can resolve cross-file type references
+        and enforce import-visibility rules.
+        """
+        proto_schema = self.parse_ast(source, filename)
+        translator = ProtoTranslator(proto_schema, direct_import_proto_schemas)
         schema = translator.translate()
 
         for warning in translator.warnings:

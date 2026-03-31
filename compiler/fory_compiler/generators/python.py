@@ -727,7 +727,8 @@ class PythonGenerator(BaseGenerator):
             return base_type
 
         elif isinstance(field_type, NamedType):
-            type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            local_name = field_type.display_name or field_type.name
+            type_name = self.resolve_nested_type_name(local_name, parent_stack)
             named_type = self.schema.get_type(field_type.name)
             if named_type is not None and self.is_imported_type(named_type):
                 module = self._module_name_for_type(named_type)
@@ -906,7 +907,7 @@ class PythonGenerator(BaseGenerator):
                 return f"isinstance({value_expr}, datetime.datetime)"
         if isinstance(field.field_type, NamedType):
             type_name = self.resolve_nested_type_name(
-                field.field_type.name, parent_stack
+                field.field_type.display_name or field.field_type.name, parent_stack
             )
             return f"isinstance({value_expr}, {type_name})"
         return None

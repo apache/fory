@@ -102,9 +102,18 @@ class SchemaValidator:
                 return f"{package}.{alias}"
             return alias
 
+        own_file = self.schema.source_file or "<input>"
+
         def assign_id(type_def, full_name: str) -> None:
             if type_def.type_id is not None:
                 return
+            # For multi-file proto schemas, only assign auto-IDs for the types
+            # defined in the current file; imported types will get their own
+            # IDs when their source file is compiled.
+            if self.schema.file_packages is not None:
+                type_file = type_def.location.file if type_def.location else None
+                if type_file != own_file:
+                    return
             alias = type_def.options.get("alias")
             source_name = resolve_hash_source(full_name, alias)
             generated_id = compute_registered_type_id(source_name)
@@ -143,29 +152,32 @@ class SchemaValidator:
         for message in self.schema.messages:
             walk_message(message)
 
+    def _type_qualified_name_key(self, type_def) -> str:
+        """Return a deduplication key for a type definition.
+
+        For proto merged schemas each type is identified by its fully-qualified name
+        so that types with the same simple name from different packages are not treated
+        as duplicates.
+        """
+        if self.schema.file_packages is not None and type_def.location:
+            pkg = self.schema.file_packages.get(type_def.location.file)
+            return f"{pkg}.{type_def.name}" if pkg else type_def.name
+        return type_def.name
+
     def _check_duplicate_type_names(self) -> None:
         names = {}
-        for enum in self.schema.enums:
-            if enum.name in names:
+        for type_def in (
+            list(self.schema.enums)
+            + list(self.schema.unions)
+            + list(self.schema.messages)
+        ):
+            key = self._type_qualified_name_key(type_def)
+            if key in names:
                 self._error(
-                    f"Duplicate type name: {enum.name}",
-                    enum.location or names[enum.name],
+                    f"Duplicate type name: {type_def.name}",
+                    type_def.location or names[key],
                 )
-            names.setdefault(enum.name, enum.location)
-        for union in self.schema.unions:
-            if union.name in names:
-                self._error(
-                    f"Duplicate type name: {union.name}",
-                    union.location or names[union.name],
-                )
-            names.setdefault(union.name, union.location)
-        for message in self.schema.messages:
-            if message.name in names:
-                self._error(
-                    f"Duplicate type name: {message.name}",
-                    message.location or names[message.name],
-                )
-            names.setdefault(message.name, message.location)
+            names.setdefault(key, type_def.location)
 
     def _check_duplicate_type_ids(self) -> None:
         type_ids = {}
@@ -312,6 +324,10 @@ class SchemaValidator:
         parts = name.split(".")
         if len(parts) > 1:
             current = self._find_top_level_type(parts[0])
+            if current is None:
+                # Might be a fully-qualified name emitted by the proto translator; delegate to
+                # Schema.get_type() which handles package-prefix resolution.
+                return self.schema.get_type(name)
             for part in parts[1:]:
                 if isinstance(current, Message):
                     current = current.get_nested_type(part)

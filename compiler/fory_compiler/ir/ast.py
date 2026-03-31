@@ -18,7 +18,7 @@
 """AST node definitions for FDL."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Union as TypingUnion
+from typing import Dict, List, Optional, Union as TypingUnion
 
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -46,10 +46,16 @@ class PrimitiveType:
 
 @dataclass
 class NamedType:
-    """A reference to a user-defined type (message or enum)."""
+    """A reference to a user-defined type (message or enum).
+
+    `name` is always the lookup key (fully-qualified name for proto schemas).
+    `display_name`, when set, is the package-relative name that code enerators should use as the output type string.
+    Generators fall back to `name` when `display_name` is None (FDL / FBS frontends).
+    """
 
     name: str
     location: Optional[SourceLocation] = None
+    display_name: Optional[str] = None
 
     def __repr__(self) -> str:
         return f"NamedType({self.name})"
@@ -302,6 +308,8 @@ class Schema:
     )  # File-level options (java_package, go_package, etc.)
     source_file: Optional[str] = None
     source_format: Optional[str] = None
+    # Maps absolute file path -> package name.
+    file_packages: Optional[Dict[str, Optional[str]]] = None
 
     def __repr__(self) -> str:
         opts = f", options={len(self.options)}" if self.options else ""
@@ -317,26 +325,85 @@ class Schema:
         return self.options.get(name, default)
 
     def get_type(self, name: str) -> Optional[TypingUnion[Message, Enum, "Union"]]:
-        """Look up a type by name, supporting qualified names like Parent.Child."""
-        # Handle qualified names (e.g., SearchResponse.Result)
-        if "." in name:
-            parts = name.split(".")
-            # Find the top-level type
-            current = self._get_top_level_type(parts[0])
-            if current is None:
-                return None
-            # Navigate through nested types
+        """Look up a type by name, supporting qualified names like Parent.Child.
+
+        For proto schemas the translator emits fully-qualified names (e.g. `pkg.Outer.Inner`).
+        When `file_packages` is set we build a fully-qualified name index on first access so
+        those names resolve correctly across a merged multi-package schema.
+        """
+        if "." not in name:
+            return self._get_top_level_type(name)
+
+        # Try stripping the own package prefix first.
+        if self.package and name.startswith(self.package + "."):
+            rest = name[len(self.package) + 1 :]
+            result = self.get_type(rest)
+            if result is not None:
+                return result
+
+        # Try dot-separated nested navigation (handles Outer.Inner, A.B.C).
+        parts = name.split(".")
+        current = self._get_top_level_type(parts[0])
+        if current is not None:
             for part in parts[1:]:
                 if isinstance(current, Message):
                     current = current.get_nested_type(part)
                     if current is None:
-                        return None
+                        break
                 else:
-                    # Enums don't have nested types
-                    return None
-            return current
-        else:
-            return self._get_top_level_type(name)
+                    current = None
+                    break
+            if current is not None:
+                return current
+
+        # For merged proto schemas: look up by full qualified name across all packages.
+        if self.file_packages is not None:
+            return self._get_qualified_name_index().get(name)
+
+        return None
+
+    def _get_qualified_name_index(
+        self,
+    ) -> Dict[str, TypingUnion[Message, Enum, "Union"]]:
+        """Build (and cache) a fully-qualified name -> type index for merged proto schemas."""
+        cached = getattr(self, "_qualified_name_index_cache", None)
+        if cached is not None:
+            return cached
+
+        index: Dict[str, TypingUnion[Message, Enum, "Union"]] = {}
+
+        def pkg_for(location: Optional[SourceLocation]) -> Optional[str]:
+            if not location or not self.file_packages:
+                return self.package
+            return self.file_packages.get(location.file, self.package)
+
+        def add(
+            type_def: TypingUnion[Message, Enum, "Union"],
+            path: str,
+            package: Optional[str],
+        ) -> None:
+            qualified_name = f"{package}.{path}" if package else path
+            index[qualified_name] = type_def
+
+        def walk(msg: Message, package: Optional[str], parent: str) -> None:
+            path = f"{parent}.{msg.name}" if parent else msg.name
+            add(msg, path, package)
+            for e in msg.nested_enums:
+                add(e, f"{path}.{e.name}", package)
+            for u in msg.nested_unions:
+                add(u, f"{path}.{u.name}", package)
+            for m in msg.nested_messages:
+                walk(m, package, path)
+
+        for e in self.enums:
+            add(e, e.name, pkg_for(e.location))
+        for u in self.unions:
+            add(u, u.name, pkg_for(u.location))
+        for m in self.messages:
+            walk(m, pkg_for(m.location), "")
+
+        self._qualified_name_index_cache = index
+        return index
 
     def _get_top_level_type(
         self, name: str

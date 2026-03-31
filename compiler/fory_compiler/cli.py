@@ -116,6 +116,9 @@ def resolve_imports(
 
     visited.add(file_path)
 
+    if file_path.suffix == ".proto":
+        return _resolve_proto_imports(file_path, import_paths, visited, cache)
+
     # Parse the file
     schema = parse_idl_file(file_path)
 
@@ -161,6 +164,77 @@ def resolve_imports(
         options=schema.options,
         source_file=schema.source_file,
         source_format=schema.source_format,
+    )
+
+    cache[file_path] = copy.deepcopy(merged_schema)
+    return merged_schema
+
+
+def _resolve_proto_imports(
+    file_path: Path,
+    import_paths: Optional[List[Path]],
+    visited: Set[Path],
+    cache: Dict[Path, Schema],
+) -> Schema:
+    """Proto-specific import resolution."""
+    from fory_compiler.frontend.proto import ProtoFrontend
+
+    frontend = ProtoFrontend()
+    source = file_path.read_text()
+    proto_schema = frontend.parse_ast(source, str(file_path))
+    direct_import_proto_schemas = []
+    imported_enums = []
+    imported_messages = []
+    imported_unions = []
+    imported_services = []
+    file_packages: Dict[str, Optional[str]] = {
+        str(file_path): proto_schema.package
+    }  # file -> the package it belongs.
+
+    for imp_path_str in proto_schema.imports:
+        import_path = resolve_import_path(imp_path_str, file_path, import_paths or [])
+        if import_path is None:
+            searched = [str(file_path.parent)]
+            if import_paths:
+                searched.extend(str(p) for p in import_paths)
+            raise ImportError(
+                f"Import not found: {imp_path_str}\n  Searched in: {', '.join(searched)}"
+            )
+        imp_source = import_path.read_text()
+        imp_proto_ast = frontend.parse_ast(imp_source, str(import_path))
+        direct_import_proto_schemas.append(imp_proto_ast)
+
+        # Recursively resolve the imported file
+        imported_full = resolve_imports(
+            import_path, import_paths, visited.copy(), cache
+        )
+        imported_enums.extend(imported_full.enums)
+        imported_messages.extend(imported_full.messages)
+        imported_unions.extend(imported_full.unions)
+        imported_services.extend(imported_full.services)
+
+        # Collect file->package mappings from the imported schema.
+        if imported_full.file_packages:
+            file_packages.update(imported_full.file_packages)
+        else:
+            file_packages[str(import_path)] = imported_full.package
+
+    schema = frontend.parse_with_imports(
+        source, str(file_path), direct_import_proto_schemas
+    )
+
+    merged_schema = Schema(
+        package=schema.package,
+        package_alias=schema.package_alias,
+        imports=schema.imports,
+        enums=imported_enums + schema.enums,
+        messages=imported_messages + schema.messages,
+        unions=imported_unions + schema.unions,
+        services=imported_services + schema.services,
+        options=schema.options,
+        source_file=schema.source_file,
+        source_format=schema.source_format,
+        file_packages=file_packages,
     )
 
     cache[file_path] = copy.deepcopy(merged_schema)

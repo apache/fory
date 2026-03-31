@@ -49,8 +49,24 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
+class TranslationError(Exception):
+    """Raised when a type reference cannot be resolved during proto translation."""
+
+    def __init__(self, message: str, line: int = 0, column: int = 0) -> None:
+        super().__init__(message)
+        self.line = line
+        self.column = column
+
+
 class ProtoTranslator:
-    """Translate Proto AST to Fory IR."""
+    """Translate Proto AST to Fory IR.
+
+    Accepts an optional list of *direct* import proto schemas so that type
+    references are resolved to fully-qualified names and import-visibility is enforced during
+    translation.
+    Types from transitively-imported files (not in `direct_import_proto_schemas`)
+    are absent from the symbol table and will cause a resolution error, matching protoc semantics.
+    """
 
     TYPE_MAPPING: Dict[str, PrimitiveKind] = {
         "bool": PrimitiveKind.BOOL,
@@ -86,9 +102,141 @@ class ProtoTranslator:
         "tagged_uint64": PrimitiveKind.TAGGED_UINT64,
     }
 
-    def __init__(self, proto_schema: ProtoSchema):
+    def __init__(
+        self,
+        proto_schema: ProtoSchema,
+        direct_import_proto_schemas: Optional[List[ProtoSchema]] = None,
+    ):
         self.proto_schema = proto_schema
+        self.direct_import_proto_schemas: List[ProtoSchema] = (
+            direct_import_proto_schemas or []
+        )
         self.warnings: List[str] = []
+        # symbol table: fully-qualified name -> (source_file, package).
+        # Only own file and directly-imported files are included in the symbol table while transitively-imported are excluded.
+        self._symbol_table: Dict[str, Tuple[str, Optional[str]]] = (
+            self._build_symbol_table()
+        )
+
+    def _build_symbol_table(self) -> Dict[str, Tuple[str, Optional[str]]]:
+        table: Dict[str, Tuple[str, Optional[str]]] = {}
+        own_file = self.proto_schema.source_file or "<input>"
+        own_pkg = self.proto_schema.package
+        self._collect_proto_message_qualified_names(
+            self.proto_schema.messages, own_pkg, "", own_file, table
+        )
+        self._collect_proto_enum_qualified_names(
+            self.proto_schema.enums, own_pkg, "", own_file, table
+        )
+        for imp_ps in self.direct_import_proto_schemas:
+            imp_file = imp_ps.source_file or "<import>"
+            imp_pkg = imp_ps.package
+            self._collect_proto_message_qualified_names(
+                imp_ps.messages, imp_pkg, "", imp_file, table
+            )
+            self._collect_proto_enum_qualified_names(
+                imp_ps.enums, imp_pkg, "", imp_file, table
+            )
+        return table
+
+    def _collect_proto_message_qualified_names(
+        self,
+        messages: List[ProtoMessage],
+        package: Optional[str],
+        parent_path: str,
+        source_file: str,
+        table: Dict[str, Tuple[str, Optional[str]]],
+    ) -> None:
+        for msg in messages:
+            path = f"{parent_path}.{msg.name}" if parent_path else msg.name
+            qualified_name = f"{package}.{path}" if package else path
+            table[qualified_name] = (source_file, package)
+            # Handle nested messages.
+            self._collect_proto_message_qualified_names(
+                msg.nested_messages, package, path, source_file, table
+            )
+            # Handle nested enums.
+            self._collect_proto_enum_qualified_names(
+                msg.nested_enums, package, path, source_file, table
+            )
+
+    def _collect_proto_enum_qualified_names(
+        self,
+        enums: List[ProtoEnum],
+        package: Optional[str],
+        parent_path: str,
+        source_file: str,
+        table: Dict[str, Tuple[str, Optional[str]]],
+    ) -> None:
+        for enum in enums:
+            path = f"{parent_path}.{enum.name}" if parent_path else enum.name
+            qualified_name = f"{package}.{path}" if package else path
+            table[qualified_name] = (source_file, package)
+
+    def _resolve_ref(
+        self,
+        raw_name: str,
+        enclosing_path: List[str],
+        line: int,
+        column: int,
+    ) -> str:
+        """Resolve a proto type-reference string to its fully-qualified name.
+
+        Raise `TranslationError` if the name cannot be resolved or is not
+        visible (i.e. not in own file or a directly-imported files).
+        """
+        cleaned = raw_name.lstrip(".")
+        is_absolute = raw_name.startswith(".")
+
+        if is_absolute:
+            # Absolute names (with leading dot) are looked up directly,
+            # e.g.: ".com.example.Foo" -> "com.example.Foo".
+            if cleaned in self._symbol_table:
+                return cleaned
+            raise TranslationError(f"Unknown type '{raw_name}'", line, column)
+
+        parts = cleaned.split(".")
+        own_pkg = self.proto_schema.package
+
+        # Build scope-prefix list from innermost to outermost scope.
+        # Ref: https://protobuf.dev/programming-guides/proto3/#name-resolution
+        # e.g., for a reference inside package "com.example", message "Outer", nested
+        # message "Inner" (enclosing_path = ["Outer", "Inner"]) the prefixes are:
+        # ["com.example.Outer.Inner", "com.example.Outer", "com.example"].
+        scope_prefixes: List[Optional[str]] = []
+        for depth in range(len(enclosing_path), -1, -1):
+            scope_parts = enclosing_path[:depth]
+            if scope_parts:
+                inner = ".".join(scope_parts)
+                scope_prefixes.append(f"{own_pkg}.{inner}" if own_pkg else inner)
+            else:
+                scope_prefixes.append(own_pkg)
+
+        for prefix in scope_prefixes:
+            first_qualified_name = f"{prefix}.{parts[0]}" if prefix else parts[0]
+            if first_qualified_name not in self._symbol_table:
+                continue
+
+            if len(parts) == 1:
+                return first_qualified_name
+
+            current = first_qualified_name
+            for part in parts[1:]:
+                nxt = f"{current}.{part}"
+                if nxt not in self._symbol_table:
+                    raise TranslationError(
+                        f"Nested type '{part}' not found in '{current}'; "
+                        f"cannot resolve '{raw_name}'",
+                        line,
+                        column,
+                    )
+                current = nxt
+            return current
+
+        if cleaned in self._symbol_table:
+            return cleaned
+
+        raise TranslationError(f"Unknown type '{raw_name}'", line, column)
 
     def _location(self, line: int, column: int) -> SourceLocation:
         return SourceLocation(
@@ -99,16 +247,27 @@ class ProtoTranslator:
         )
 
     def translate(self) -> Schema:
+        # Collect the file_packages mapping so the merged schema can do fully-qualified name lookup later
+        file_packages: Dict[str, Optional[str]] = {
+            self.proto_schema.source_file or "<input>": self.proto_schema.package
+        }
+        for imp_ps in self.direct_import_proto_schemas:
+            imp_file = imp_ps.source_file or "<import>"
+            file_packages[imp_file] = imp_ps.package
+
         return Schema(
             package=self.proto_schema.package,
             package_alias=None,
             imports=self._translate_imports(),
             enums=[self._translate_enum(e) for e in self.proto_schema.enums],
-            messages=[self._translate_message(m) for m in self.proto_schema.messages],
+            messages=[
+                self._translate_message(m, []) for m in self.proto_schema.messages
+            ],
             services=[self._translate_service(s) for s in self.proto_schema.services],
             options=self._translate_file_options(self.proto_schema.options),
             source_file=self.proto_schema.source_file,
             source_format="proto",
+            file_packages=file_packages,
         )
 
     def _translate_imports(self) -> List[Import]:
@@ -145,21 +304,24 @@ class ProtoTranslator:
             location=self._location(proto_enum.line, proto_enum.column),
         )
 
-    def _translate_message(self, proto_msg: ProtoMessage) -> Message:
+    def _translate_message(
+        self, proto_msg: ProtoMessage, enclosing_path: List[str]
+    ) -> Message:
         type_id, options = self._translate_type_options(proto_msg.options)
-        fields = [self._translate_field(f) for f in proto_msg.fields]
+        msg_path = enclosing_path + [proto_msg.name]
+        fields = [self._translate_field(f, msg_path) for f in proto_msg.fields]
         nested_unions = []
         for oneof in proto_msg.oneofs:
             oneof_type_name = self._oneof_type_name(oneof.name)
             nested_unions.append(
-                self._translate_oneof(oneof, oneof_type_name, proto_msg)
+                self._translate_oneof(oneof, oneof_type_name, proto_msg, msg_path)
             )
             if not oneof.fields:
                 continue
             union_field = self._translate_oneof_field_reference(oneof, oneof_type_name)
             fields.append(union_field)
         nested_messages = [
-            self._translate_message(m) for m in proto_msg.nested_messages
+            self._translate_message(m, msg_path) for m in proto_msg.nested_messages
         ]
         nested_enums = [self._translate_enum(e) for e in proto_msg.nested_enums]
         return Message(
@@ -175,8 +337,10 @@ class ProtoTranslator:
             location=self._location(proto_msg.line, proto_msg.column),
         )
 
-    def _translate_field(self, proto_field: ProtoField) -> Field:
-        field_type = self._translate_field_type(proto_field.field_type)
+    def _translate_field(
+        self, proto_field: ProtoField, enclosing_path: List[str]
+    ) -> Field:
+        field_type = self._translate_field_type(proto_field.field_type, enclosing_path)
         ref, nullable, options, type_override = self._translate_field_options(
             proto_field.options
         )
@@ -251,8 +415,9 @@ class ProtoTranslator:
         oneof: ProtoOneof,
         oneof_type_name: str,
         _parent: ProtoMessage,
+        enclosing_path: List[str],
     ) -> Union:
-        fields = [self._translate_oneof_case(f) for f in oneof.fields]
+        fields = [self._translate_oneof_case(f, enclosing_path) for f in oneof.fields]
         return Union(
             name=oneof_type_name,
             type_id=None,
@@ -263,8 +428,10 @@ class ProtoTranslator:
             location=self._location(oneof.line, oneof.column),
         )
 
-    def _translate_oneof_case(self, proto_field: ProtoField) -> Field:
-        field_type = self._translate_field_type(proto_field.field_type)
+    def _translate_oneof_case(
+        self, proto_field: ProtoField, enclosing_path: List[str]
+    ) -> Field:
+        field_type = self._translate_field_type(proto_field.field_type, enclosing_path)
         ref, _nullable, options, type_override = self._translate_field_options(
             proto_field.options
         )
@@ -303,20 +470,35 @@ class ProtoTranslator:
             location=self._location(oneof.line, oneof.column),
         )
 
-    def _translate_field_type(self, proto_type: ProtoType):
+    def _translate_field_type(
+        self, proto_type: ProtoType, enclosing_path: List[str]
+    ) -> FieldType:
         if proto_type.is_map:
-            key_type = self._translate_type_name(proto_type.map_key_type or "")
-            value_type = self._translate_type_name(proto_type.map_value_type or "")
+            key_type = self._translate_type_name(
+                proto_type.map_key_type or "", [], proto_type.line, proto_type.column
+            )
+            value_type = self._translate_type_name(
+                proto_type.map_value_type or "",
+                enclosing_path,
+                proto_type.line,
+                proto_type.column,
+            )
             return MapType(
                 key_type,
                 value_type,
                 location=self._location(proto_type.line, proto_type.column),
             )
         return self._translate_type_name(
-            proto_type.name, proto_type.line, proto_type.column
+            proto_type.name, enclosing_path, proto_type.line, proto_type.column
         )
 
-    def _translate_type_name(self, type_name: str, line: int = 0, column: int = 0):
+    def _translate_type_name(
+        self,
+        type_name: str,
+        enclosing_path: List[str],
+        line: int = 0,
+        column: int = 0,
+    ) -> FieldType:
         cleaned = type_name.lstrip(".")
         if cleaned in self.WELL_KNOWN_TYPES:
             return PrimitiveType(
@@ -328,7 +510,39 @@ class ProtoTranslator:
                 self.TYPE_MAPPING[cleaned],
                 location=self._location(line, column),
             )
-        return NamedType(cleaned, location=self._location(line, column))
+        # Resolve user-defined type reference to its fully-qualified name.
+        try:
+            qualified_name = self._resolve_ref(type_name, enclosing_path, line, column)
+        except TranslationError as exc:
+            from fory_compiler.frontend.base import FrontendError
+
+            raise FrontendError(
+                str(exc),
+                self.proto_schema.source_file or "<input>",
+                exc.line,
+                exc.column,
+            ) from exc
+        # Compute display_name: the name that code generators should use as output type string.
+        cleaned = type_name.lstrip(".")
+        _, type_pkg = self._symbol_table.get(qualified_name, (None, None))
+        own_pkg = self.proto_schema.package
+        if type_pkg == own_pkg:
+            # Same package: use the written reference, minus any redundant package prefix.
+            if own_pkg and cleaned.startswith(own_pkg + "."):
+                display_name: Optional[str] = cleaned[len(own_pkg) + 1 :]
+            else:
+                display_name = cleaned
+        else:
+            # Cross-package: strip the type's package prefix so generators get the type-local path.
+            if type_pkg and qualified_name.startswith(type_pkg + "."):
+                display_name = qualified_name[len(type_pkg) + 1 :]
+            else:
+                display_name = qualified_name
+        return NamedType(
+            qualified_name,
+            location=self._location(line, column),
+            display_name=display_name,
+        )
 
     def _translate_type_options(
         self, options: Dict[str, object]
@@ -403,16 +617,16 @@ class ProtoTranslator:
     def _translate_rpc_method(self, proto_method: ProtoRpcMethod) -> RpcMethod:
         # Translate ProtoRpcMethod to RpcMethod
         _, options = self._translate_type_options(proto_method.options)
+        req_type = self._translate_type_name(
+            proto_method.request_type, [], proto_method.line, proto_method.column
+        )
+        resp_type = self._translate_type_name(
+            proto_method.response_type, [], proto_method.line, proto_method.column
+        )
         return RpcMethod(
             name=proto_method.name,
-            request_type=NamedType(
-                name=proto_method.request_type,
-                location=self._location(proto_method.line, proto_method.column),
-            ),
-            response_type=NamedType(
-                name=proto_method.response_type,
-                location=self._location(proto_method.line, proto_method.column),
-            ),
+            request_type=req_type,
+            response_type=resp_type,
             client_streaming=proto_method.client_streaming,
             server_streaming=proto_method.server_streaming,
             options=options,

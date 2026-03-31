@@ -674,7 +674,9 @@ class GoGenerator(BaseGenerator):
         if isinstance(field.field_type, MapType):
             return "fory.MAP"
         if isinstance(field.field_type, NamedType):
-            type_def = self.resolve_named_type(field.field_type.name, parent_stack)
+            type_def = self.resolve_named_type(
+                field.field_type.display_name or field.field_type.name, parent_stack
+            )
             if isinstance(type_def, Enum):
                 if type_def.type_id is None:
                     return "fory.NAMED_ENUM"
@@ -970,7 +972,8 @@ class GoGenerator(BaseGenerator):
             return base_type
 
         elif isinstance(field_type, NamedType):
-            type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            local_name = field_type.display_name or field_type.name
+            type_name = self.resolve_nested_type_name(local_name, parent_stack)
             named_type = self.schema.get_type(field_type.name)
             if named_type is not None and self.is_imported_type(named_type):
                 info = self._import_info_for_type(named_type)
@@ -978,7 +981,7 @@ class GoGenerator(BaseGenerator):
                     getattr(getattr(named_type, "location", None), "file", None)
                 )
                 if schema is not None:
-                    type_name = self._format_imported_type_name(field_type.name, schema)
+                    type_name = self._format_imported_type_name(local_name, schema)
                 if info is not None:
                     alias, _, _ = info
                     type_name = f"{alias}.{type_name}"
@@ -1032,9 +1035,8 @@ class GoGenerator(BaseGenerator):
     ) -> str:
         """Return the Go type for a union case."""
         if isinstance(field.field_type, NamedType):
-            type_name = self.resolve_nested_type_name(
-                field.field_type.name, parent_stack
-            )
+            local_name = field.field_type.display_name or field.field_type.name
+            type_name = self.resolve_nested_type_name(local_name, parent_stack)
             named_type = self.schema.get_type(field.field_type.name)
             if named_type is not None and self.is_imported_type(named_type):
                 info = self._import_info_for_type(named_type)
@@ -1042,9 +1044,7 @@ class GoGenerator(BaseGenerator):
                     getattr(getattr(named_type, "location", None), "file", None)
                 )
                 if schema is not None:
-                    type_name = self._format_imported_type_name(
-                        field.field_type.name, schema
-                    )
+                    type_name = self._format_imported_type_name(local_name, schema)
                 if info is not None:
                     alias, _, _ = info
                     type_name = f"{alias}.{type_name}"
