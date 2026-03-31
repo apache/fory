@@ -1584,9 +1584,9 @@ public abstract class TypeResolver {
     }
     for (TypeResolver resolver : resolvers) {
       if (resolver != this) {
-        TypeInfo typeInfo = getTypeInfo(cls, false);
+        TypeInfo typeInfo = resolver.getTypeInfo(cls, false);
         if (typeInfo != null && typeInfo.serializer != null) {
-          return typeInfo.serializer.getClass();
+          return resolver.getGraalvmSerializerClass(typeInfo.serializer);
         }
       }
     }
