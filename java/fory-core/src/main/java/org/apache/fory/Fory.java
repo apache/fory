@@ -134,8 +134,8 @@ public final class Fory implements BaseFory {
   }
 
   public Fory(ForyBuilder builder, ClassLoader classLoader, SharedRegistry sharedRegistry) {
-    // Avoid set classLoader in `ForyBuilder`, which won't be clear when
-    // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
+    // Prefer the explicit constructor argument over retaining loader state on the builder used to
+    // create thread-safe factories.
     if (sharedRegistry == null) {
       sharedRegistry = new SharedRegistry();
     }

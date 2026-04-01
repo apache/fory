@@ -30,8 +30,6 @@ import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.util.LoaderBinding;
-import org.apache.fory.util.LoaderBinding.StagingType;
 
 /**
  * A thread-safe serializer used to forward serialization to different serializer implementation.
@@ -43,20 +41,6 @@ public class ForwardSerializer {
   public abstract static class SerializerProxy<T> {
     /** Register custom serializers should be done in this method. */
     protected abstract T newSerializer();
-
-    protected void setClassLoader(T serializer, ClassLoader classLoader) {
-      throw new UnsupportedOperationException();
-    }
-
-    public void setClassLoader(T serializer, ClassLoader classLoader, StagingType stagingType) {
-      setClassLoader(serializer, classLoader);
-    }
-
-    protected ClassLoader getClassLoader(T serializer) {
-      throw new UnsupportedOperationException();
-    }
-
-    public void clearClassLoader(T serializer, ClassLoader loader) {}
 
     protected void register(T serializer, Class<?> clz) {
       throw new UnsupportedOperationException();
@@ -102,92 +86,73 @@ public class ForwardSerializer {
     }
   }
 
-  public static class DefaultForyProxy extends SerializerProxy<LoaderBinding> {
+  public static class DefaultForyProxy extends SerializerProxy<Fory> {
 
     private final ThreadLocal<MemoryBuffer> bufferLocal =
         ThreadLocal.withInitial(() -> MemoryUtils.buffer(32));
 
     /** Override this method to register custom serializers. */
     @Override
-    protected LoaderBinding newSerializer() {
-      LoaderBinding loaderBinding = new LoaderBinding(this::newForySerializer);
-      loaderBinding.setClassLoader(Thread.currentThread().getContextClassLoader());
-      return loaderBinding;
+    protected Fory newSerializer() {
+      return newForySerializer();
     }
 
-    protected Fory newForySerializer(ClassLoader loader) {
+    protected Fory newForySerializer() {
       return Fory.builder()
           .withLanguage(Language.JAVA)
           .withRefTracking(true)
-          .withClassLoader(loader)
           .requireClassRegistration(false)
           .build();
     }
 
     @Override
-    protected void setClassLoader(LoaderBinding binding, ClassLoader classLoader) {
-      binding.setClassLoader(classLoader);
+    protected void register(Fory fory, Class<?> clz) {
+      fory.register(clz);
     }
 
     @Override
-    public void setClassLoader(
-        LoaderBinding binding, ClassLoader classLoader, StagingType stagingType) {
-      binding.setClassLoader(classLoader, stagingType);
+    protected void register(Fory fory, Class<?> clz, long id) {
+      long unsignedId = id < 0 ? id & 0xffff_ffffL : id;
+      if (unsignedId < 0 || unsignedId > 0xffff_fffEL) {
+        throw new IllegalArgumentException("User type id must be in range [0, 0xfffffffe]");
+      }
+      fory.register(clz, (int) unsignedId);
     }
 
     @Override
-    protected ClassLoader getClassLoader(LoaderBinding binding) {
-      return binding.getClassLoader();
-    }
-
-    @Override
-    public void clearClassLoader(LoaderBinding loaderBinding, ClassLoader loader) {
-      loaderBinding.clearClassLoader(loader);
-    }
-
-    @Override
-    protected void register(LoaderBinding binding, Class<?> clz) {
-      binding.register(clz);
-    }
-
-    @Override
-    protected void register(LoaderBinding binding, Class<?> clz, long id) {
-      binding.register(clz, id);
-    }
-
-    @Override
-    protected byte[] serialize(LoaderBinding binding, Object obj) {
+    protected byte[] serialize(Fory fory, Object obj) {
       MemoryBuffer buffer = bufferLocal.get();
       buffer.writerIndex(0);
-      binding.get().serialize(buffer, obj);
+      fory.serialize(buffer, obj);
       return buffer.getBytes(0, buffer.writerIndex());
     }
 
     @Override
-    protected MemoryBuffer serialize(LoaderBinding binding, MemoryBuffer buffer, Object obj) {
-      binding.get().serialize(buffer, obj);
+    protected MemoryBuffer serialize(Fory fory, MemoryBuffer buffer, Object obj) {
+      fory.serialize(buffer, obj);
       return buffer;
     }
 
     @Override
-    protected Object deserialize(LoaderBinding serializer, byte[] bytes) {
-      return serializer.get().deserialize(bytes);
+    protected Object deserialize(Fory fory, byte[] bytes) {
+      return fory.deserialize(bytes);
     }
 
     @Override
-    protected Object deserialize(LoaderBinding serializer, MemoryBuffer buffer) {
-      return serializer.get().deserialize(buffer);
+    protected Object deserialize(Fory fory, MemoryBuffer buffer) {
+      return fory.deserialize(buffer);
     }
 
     @Override
-    protected Object copy(LoaderBinding serializer, Object obj) {
-      return serializer.get().copy(obj);
+    protected Object copy(Fory fory, Object obj) {
+      return fory.copy(obj);
     }
   }
 
   private final SerializerProxy proxy;
   private final ThreadLocal<Object> serializerLocal;
-  private Set<Object> serializerSet = Collections.newSetFromMap(new IdentityHashMap<>());
+  private final Set<Object> serializerSet =
+      Collections.newSetFromMap(Collections.synchronizedMap(new IdentityHashMap<>()));
   private Consumer<Object> serializerCallback = obj -> {};
 
   public ForwardSerializer(SerializerProxy proxy) {
@@ -197,35 +162,11 @@ public class ForwardSerializer {
             () -> {
               Object serializer = proxy.newSerializer();
               synchronized (ForwardSerializer.this) {
+                serializerSet.add(serializer);
                 serializerCallback.accept(serializer);
               }
-              serializerSet.add(serializer);
               return serializer;
             });
-  }
-
-  /** Set classLoader of serializer for current thread only. */
-  public void setClassLoader(ClassLoader classLoader) {
-    proxy.setClassLoader(serializerLocal.get(), classLoader);
-  }
-
-  public void setClassLoader(ClassLoader classLoader, StagingType stagingType) {
-    proxy.setClassLoader(serializerLocal.get(), classLoader, stagingType);
-  }
-
-  /** Returns classLoader of serializer for current thread. */
-  public ClassLoader getClassLoader() {
-    return proxy.getClassLoader(serializerLocal.get());
-  }
-
-  /**
-   * Clean up classloader set by {@link #setClassLoader(ClassLoader, StagingType)}, <code>
-   * classLoader
-   * </code> won't be referenced by {@link Fory} after this call and can be gc if it's not
-   * referenced by other objects.
-   */
-  public void clearClassLoader(ClassLoader loader) {
-    proxy.clearClassLoader(serializerLocal.get(), loader);
   }
 
   public synchronized void register(Class<?> clz) {

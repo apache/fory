@@ -22,8 +22,8 @@ package org.apache.fory.config;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadLocalFory;
 import org.apache.fory.ThreadSafeFory;
@@ -32,7 +32,6 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.DeflaterMetaCompressor;
 import org.apache.fory.meta.MetaCompressor;
-import org.apache.fory.pool.FastForyPool;
 import org.apache.fory.pool.ThreadPoolFory;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.SharedRegistry;
@@ -51,6 +50,8 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings("rawtypes")
 public final class ForyBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(ForyBuilder.class);
+  private static final int DEFAULT_THREAD_SAFE_POOL_SIZE =
+      Math.max(1, Runtime.getRuntime().availableProcessors() * 4);
 
   private static final boolean ENABLE_CLASS_REGISTRATION_FORCIBLY;
 
@@ -268,10 +269,8 @@ public final class ForyBuilder {
   /**
    * Set classloader for fory to load classes, this classloader can't up updated. Fory will cache
    * the class meta data, if classloader can be updated, there may be class meta collision if
-   * different classloaders have classes with same name.
-   *
-   * <p>If you want to change classloader, please use {@link org.apache.fory.util.LoaderBinding} or
-   * {@link ThreadSafeFory} to setup mapping between classloaders and fory instances.
+   * different classloaders have classes with same name. If you need a different classloader, build
+   * a different {@link Fory} or {@link ThreadSafeFory} instance.
    */
   public ForyBuilder withClassLoader(ClassLoader classLoader) {
     this.classLoader = classLoader;
@@ -577,7 +576,7 @@ public final class ForyBuilder {
    * exception explicitly for better debugging.
    */
   private static Fory newFory(ForyBuilder builder, ClassLoader classLoader) {
-    return newFory(builder, classLoader, new SharedRegistry());
+    return newFory(builder, classLoader, builder.sharedRegistry);
   }
 
   private static Fory newFory(
@@ -595,121 +594,67 @@ public final class ForyBuilder {
   public Fory build() {
     finish();
     ClassLoader loader = this.classLoader;
-    // clear classLoader to avoid `LoaderBinding#foryFactory` lambda capture classLoader by
-    // capturing `ForyBuilder`, which make `classLoader` not able to be gc.
+    // Clear the builder field so follow-up thread-safe factories don't retain the loader through
+    // this builder instance longer than needed.
     this.classLoader = null;
     return newFory(this, loader, sharedRegistry);
   }
 
-  /** Build thread safe fory. */
+  /**
+   * Builds a thread-safe {@link Fory} using the default runtime for the current JDK.
+   *
+   * <p>This variant uses {@link ThreadPoolFory} with a shared {@link SharedRegistry} and a fixed
+   * pool sized to 4x the current JVM's available processors.
+   *
+   * <p>Prefer the byte-array and {@link org.apache.fory.memory.MemoryBuffer} APIs. Stream and
+   * channel APIs keep a pooled {@link Fory} instance occupied for the whole blocking call.
+   */
   public ThreadSafeFory buildThreadSafeFory() {
-    return buildThreadLocalFory();
-  }
-
-  public ThreadSafeFory buildFastForyPool() {
-    return buildVirtualThreadSafeFory();
-  }
-
-  public ThreadSafeFory buildFastForyPool(int maxPoolSize) {
-    return buildVirtualThreadSafeFory(maxPoolSize);
-  }
-
-  /**
-   * Builds a thread-safe {@link Fory} optimized for JDK 21+ virtual-thread workloads.
-   *
-   * <p>This variant uses {@link FastForyPool} with a shared {@link SharedRegistry} and retains at
-   * most 3000 idle pooled {@link Fory} instances for reuse. Active concurrent operations may still
-   * create more instances temporarily, but at most 3000 idle instances are kept after the burst.
-   *
-   * <p>The returned serializer uses the current thread context class loader for virtual-thread
-   * execution. Use {@link #buildVirtualThreadSafeFory(int)} to choose a different idle pool cap.
-   */
-  public ThreadSafeFory buildVirtualThreadSafeFory() {
-    // each fory instance use 30+ kb memory.
-    return buildVirtualThreadSafeFory(2048);
-  }
-
-  /**
-   * Builds a thread-safe {@link Fory} optimized for JDK 21+ virtual-thread workloads.
-   *
-   * <p>This variant uses {@link FastForyPool} with a shared {@link SharedRegistry}. The {@code
-   * maxPoolSize} parameter limits how many idle pooled {@link Fory} instances are retained for
-   * reuse after operations complete. It does not cap the number of concurrently active {@link Fory}
-   * instances during a burst.
-   *
-   * @param maxPoolSize maximum number of idle pooled {@link Fory} instances to retain, must be
-   *     non-negative
-   */
-  public ThreadSafeFory buildVirtualThreadSafeFory(int maxPoolSize) {
-    forVirtualThread = true;
     finish();
     ClassLoader loader = this.classLoader;
     this.classLoader = null;
-    SharedRegistry sharedRegistry = new SharedRegistry();
-    List<Consumer<ForyBuilder>> actions = new ArrayList<>(this.actions);
-    return new FastForyPool(
-        builder -> {
-          builder.replayActions(actions);
-          builder.forVirtualThread = true;
-          builder.finish();
-          return newFory(builder, loader, sharedRegistry);
-        },
-        sharedRegistry,
-        loader,
-        maxPoolSize);
+    return new ThreadPoolFory(factory(loader), DEFAULT_THREAD_SAFE_POOL_SIZE);
   }
 
   /** Build thread safe fory backed by {@link ThreadLocalFory}. */
   public ThreadLocalFory buildThreadLocalFory() {
     finish();
     ClassLoader loader = this.classLoader;
-    // clear classLoader to avoid `LoaderBinding#foryFactory` lambda capture classLoader by
-    // capturing `ForyBuilder`,  which make `classLoader` not able to be gc.
     this.classLoader = null;
-    ThreadLocalFory threadSafeFory = new ThreadLocalFory(classLoader -> newFory(this, classLoader));
-    threadSafeFory.setClassLoader(loader);
-    return threadSafeFory;
+    return new ThreadLocalFory(factory(loader));
   }
 
   /**
-   * Build pooled ThreadSafeFory.
+   * Build a thread-safe {@link ThreadSafeFory} backed by a fixed-size shared pool.
    *
-   * @param minPoolSize min pool size
-   * @param maxPoolSize max pool size
-   * @return ThreadSafeForyPool
-   */
-  public ThreadSafeFory buildThreadSafeForyPool(int minPoolSize, int maxPoolSize) {
-    return buildThreadSafeForyPool(minPoolSize, maxPoolSize, 30L, TimeUnit.SECONDS);
-  }
-
-  /**
-   * Build pooled ThreadSafeFory.
+   * <p>{@code poolSize} {@link Fory} instances are created eagerly and kept in shared fixed slots.
+   * Each call borrows one instance through a thread-agnostic fast path and only blocks when every
+   * pooled instance is already in use. The runtime never keys reuse by {@link Thread}.
    *
-   * @param minPoolSize min pool size
-   * @param maxPoolSize max pool size
-   * @param expireTime cache expire time, default 5's
-   * @param timeUnit TimeUnit, default SECONDS
-   * @return ThreadSafeForyPool
+   * @param poolSize fixed number of pooled instances
+   * @return thread-safe fory backed by a fixed-size shared pool
    */
-  public ThreadSafeFory buildThreadSafeForyPool(
-      int minPoolSize, int maxPoolSize, long expireTime, TimeUnit timeUnit) {
-    if (minPoolSize < 0 || maxPoolSize < 0 || minPoolSize > maxPoolSize) {
+  public ThreadSafeFory buildThreadSafeForyPool(int poolSize) {
+    if (poolSize <= 0) {
       throw new IllegalArgumentException(
           String.format(
-              "thread safe fory pool's init pool size error, please check it, min:[%s], max:[%s]",
-              minPoolSize, maxPoolSize));
+              "thread safe fory pool's size error, please check it, size:[%s]", poolSize));
     }
     finish();
     ClassLoader loader = this.classLoader;
     this.classLoader = null;
-    ThreadSafeFory threadSafeFory =
-        new ThreadPoolFory(
-            classLoader -> newFory(this, classLoader),
-            minPoolSize,
-            maxPoolSize,
-            expireTime,
-            timeUnit);
-    threadSafeFory.setClassLoader(loader);
-    return threadSafeFory;
+    return new ThreadPoolFory(factory(loader), poolSize);
+  }
+
+  private Function<ForyBuilder, Fory> factory(ClassLoader loader) {
+    List<Consumer<ForyBuilder>> actions = new ArrayList<>(this.actions);
+    return builder -> {
+      builder.replayActions(actions);
+      builder.finish();
+      if (sharedRegistry != null) {
+        return newFory(builder, loader, sharedRegistry);
+      }
+      return newFory(builder, loader);
+    };
   }
 }

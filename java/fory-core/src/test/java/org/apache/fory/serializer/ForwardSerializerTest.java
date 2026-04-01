@@ -21,8 +21,6 @@ package org.apache.fory.serializer;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotEquals;
-import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 
 import com.esotericsoftware.kryo.Kryo;
@@ -32,8 +30,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.fory.Fory;
-import org.apache.fory.codegen.CompileUnit;
-import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.annotations.Test;
 
@@ -45,8 +41,8 @@ public class ForwardSerializerTest {
         return new ForwardSerializer(
             new ForwardSerializer.DefaultForyProxy() {
               @Override
-              protected Fory newForySerializer(ClassLoader loader) {
-                Fory fory = super.newForySerializer(loader);
+              protected Fory newForySerializer() {
+                Fory fory = super.newForySerializer();
                 // We can register custom serializers here.
                 System.out.printf("Created serializer %s, start to do init staff.\n", fory);
                 return fory;
@@ -168,32 +164,6 @@ public class ForwardSerializerTest {
       executorService.shutdown();
       assertTrue(executorService.awaitTermination(30, TimeUnit.SECONDS));
       assertFalse(hasException);
-    }
-  }
-
-  @Test
-  public void testClassLoader() throws Exception {
-    ForwardSerializer serializer = createSerializer("Fory");
-    CompileUnit unit =
-        new CompileUnit(
-            "demo.pkg1",
-            "A",
-            (""
-                + "package demo.pkg1;\n"
-                + "public class A {\n"
-                + "  public String f1 = \"str1\";\n"
-                + "  public String f2 = \"str2\";\n"
-                + "}"));
-    ClassLoader loader = null;
-    for (int i = 0; i < 5; i++) {
-      ClassLoader newLoader = JaninoUtils.compile(getClass().getClassLoader(), unit);
-      assertNotSame(loader, newLoader);
-      assertNotEquals(loader, newLoader);
-      loader = newLoader;
-      Class<?> clz = loader.loadClass("demo.pkg1.A");
-      Object a = clz.newInstance();
-      serializer.setClassLoader(loader);
-      serializer.deserialize(serializer.serialize(a));
     }
   }
 }

@@ -169,13 +169,12 @@ public class ForyCopyTest extends ForyTestBase {
             .withRefCopy(true)
             .withCodegen(false)
             .withAsyncCompilation(true)
-            .buildThreadSafeForyPool(5, 10);
+            .buildThreadSafeForyPool(10);
     for (int i = 0; i < 2000; i++) {
       new Thread(
               () -> {
                 for (int j = 0; j < 10; j++) {
                   try {
-                    threadSafeFory.setClassLoader(beanA.getClass().getClassLoader());
                     Assert.assertEquals(beanA, threadSafeFory.copy(beanA));
                   } catch (Exception e) {
                     e.printStackTrace();

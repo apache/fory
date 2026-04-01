@@ -90,7 +90,6 @@ fory.deserialize(bytes);
 
 ```java
 // Thread-safe fory
-fory.setClassLoader(beanA.getClass().getClassLoader());
 byte[] serialized = fory.execute(
   f -> {
     f.getSerializationContext().setMetaContext(context);
@@ -99,7 +98,6 @@ byte[] serialized = fory.execute(
 );
 
 // Thread-safe fory
-fory.setClassLoader(beanA.getClass().getClassLoader());
 Object newObj = fory.execute(
   f -> {
     f.getSerializationContext().setMetaContext(context);
@@ -108,7 +106,7 @@ Object newObj = fory.execute(
 );
 ```
 
-**Note**: `MetaContext` is not thread-safe and cannot be reused across instances of Fory or multiple threads. In cases of multi-threading, a separate `MetaContext` must be created for each Fory instance.
+**Note**: `MetaContext` is not thread-safe and cannot be reused across instances of Fory or multiple threads. `buildThreadSafeFory()` is pooled, so create a fresh `MetaContext` for each borrow unless you keep working with the same raw `Fory` instance inside one `execute(...)` call. If you need to reuse one `MetaContext` across multiple calls on the same worker thread, prefer `buildThreadLocalFory()`.
 
 For more details, please refer to the [Meta Sharing specification](https://fory.apache.org/docs/specification/fory_java_serialization_spec#meta-share).
 

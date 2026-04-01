@@ -55,7 +55,7 @@ public class ThreadPoolForySuite {
           .withCompatibleMode(CompatibleMode.COMPATIBLE)
           .withAsyncCompilation(true)
           .withRefTracking(true)
-          .buildThreadSafeForyPool(10, 60);
+          .buildThreadSafeForyPool(60);
 
   private static StructBenchmark.NumericStruct struct;
 

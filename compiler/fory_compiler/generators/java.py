@@ -1585,7 +1585,7 @@ class JavaGenerator(BaseGenerator):
         lines.append("")
         lines.append("    private static ThreadSafeFory createFory() {")
         lines.append(
-            "        ThreadSafeFory fory = Fory.builder().withXlang(true).withRefTracking(true).buildFastForyPool();"
+            "        ThreadSafeFory fory = Fory.builder().withXlang(true).withRefTracking(true).buildThreadSafeFory();"
         )
         imported_packages = self._collect_imported_packages()
         if imported_packages:

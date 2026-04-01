@@ -1194,7 +1194,7 @@ public class ClassResolver extends TypeResolver {
     if (typeInfo != null && typeInfo.serializer != null) {
       // Note: need to check `classInfo.serializer != null`, because sometimes `cls` is already
       // serialized, which will create a class info with serializer null, see `#writeClassInternal`
-      return typeInfo.serializer.getClass();
+      return getGraalvmSerializerClass(typeInfo.serializer);
     } else {
       if (getSerializerFactory() != null) {
         Serializer serializer = getSerializerFactory().createSerializer(fory, cls);

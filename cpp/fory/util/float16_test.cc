@@ -307,13 +307,31 @@ TEST(Float16FromFloatTest, IntegerAndUlpRegressionCases) {
 }
 
 TEST(Float16FromFloatTest, SignSymmetryForNonNaNBitPatterns) {
-  for (uint32_t bits = 0; bits < 0xFFFFFFFFu; bits += 104729u) {
-    const float value = bits_to_float(bits);
-    if (std::isnan(value)) {
-      continue;
+  auto test_range = [](uint32_t start, uint32_t end, uint32_t step) {
+    for (uint32_t bits = start; bits < end; bits += step) {
+      const float value = bits_to_float(bits);
+      if (!std::isnan(value)) {
+        ExpectSignSymmetry(value);
+      }
     }
-    ExpectSignSymmetry(value);
+  };
+
+  test_range(0x00000000u, 0x00800000u, 4099u);
+
+  test_range(0x33000000u, 0x38800000u, 1031u);
+  test_range(0x00800000u, 0x33000000u, 200003u);
+
+  for (uint32_t exp = 113; exp <= 142; ++exp) {
+    const uint32_t base = exp << 23;
+    test_range(base, base + 64u, 1u);
+    test_range(base + 0x007FFF00u, base + 0x00800000u, 1u);
   }
+
+  test_range(0x38800000u, 0x47800000u, 50021u);
+
+  test_range(0x47800000u, 0x7F800000u, 100003u);
+
+  ExpectSignSymmetry(bits_to_float(0x7F800000u));
 }
 
 TEST(Float16Test, FromBitsRoundTrip) {

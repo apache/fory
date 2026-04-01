@@ -115,8 +115,7 @@ public final class SharedRegistry {
     if (GraalvmSupport.isGraalBuildtime()) {
       return Collections.unmodifiableList(new ArrayList<>(factory.get()));
     }
-    TypeDefDescriptorsKey key =
-        new TypeDefDescriptorsKey(typeDef.getId(), type, typeDef.getClassSpec().type);
+    TypeDefDescriptorsKey key = new TypeDefDescriptorsKey(typeDef.getId(), type);
     return typeDefDescriptorsCache.computeIfAbsent(
         key, ignored -> Collections.unmodifiableList(new ArrayList<>(factory.get())));
   }
@@ -149,77 +148,10 @@ public final class SharedRegistry {
     }
     TypeDefDescriptorGrouperKey key =
         new TypeDefDescriptorGrouperKey(
-            new TypeDefDescriptorsKey(typeDef.getId(), type, typeDef.getClassSpec().type),
+            new TypeDefDescriptorsKey(typeDef.getId(), type),
             descriptorsGroupedOrdered,
             descriptorUpdator);
     return typeDefDescriptorGrouperCache.computeIfAbsent(key, ignored -> factory.get());
-  }
-
-  public void clearClassLoader(ClassLoader loader) {
-    if (loader == null) {
-      return;
-    }
-    clearSharedRegistrationIfClassLoader(loader);
-    typeDefMap.removeIf((cls, typeDef) -> cls.getClassLoader() == loader);
-    currentLayerTypeDef.removeIf((cls, typeDef) -> cls.getClassLoader() == loader);
-    typeDefById
-        .entrySet()
-        .removeIf(
-            entry -> {
-              Class<?> cls = entry.getValue().getClassSpec().type;
-              return cls != null && cls.getClassLoader() == loader;
-            });
-    descriptorsCache.entrySet().removeIf(entry -> entry.getKey().f0.getClassLoader() == loader);
-    fieldDescriptorsCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().type.getClassLoader() == loader);
-    typeDefDescriptorsCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().referencesClassLoader(loader));
-    fieldDescriptorGrouperCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().fieldDescriptorsKey.type.getClassLoader() == loader);
-    typeDefDescriptorGrouperCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().typeDefDescriptorsKey.referencesClassLoader(loader));
-    codeGeneratorMap.entrySet().removeIf(entry -> entry.getKey().contains(loader));
-  }
-
-  private synchronized void clearSharedRegistrationIfClassLoader(ClassLoader loader) {
-    IdentityHashMap<Class<?>, Integer> sharedRegisteredClassIdMap = registeredClassIdMap;
-    BiMap<String, Class<?>> sharedRegisteredClasses = registeredClasses;
-    if (sharedRegisteredClassIdMap == null || sharedRegisteredClasses == null) {
-      return;
-    }
-    if (containsClassLoader(sharedRegisteredClassIdMap, loader)
-        || containsClassLoader(sharedRegisteredClasses.values(), loader)) {
-      registeredClassIdMap = null;
-      registeredClasses = null;
-    }
-  }
-
-  private static boolean containsClassLoader(Iterable<Class<?>> classes, ClassLoader loader) {
-    for (Class<?> cls : classes) {
-      if (cls.getClassLoader() == loader) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean containsClassLoader(
-      IdentityHashMap<Class<?>, ?> classMap, ClassLoader loader) {
-    final boolean[] found = new boolean[1];
-    classMap.forEach(
-        (cls, value) -> {
-          if (cls.getClassLoader() == loader) {
-            found[0] = true;
-          }
-        });
-    if (found[0]) {
-      return true;
-    }
-    return false;
   }
 
   private static final class MetaStringKey {
@@ -283,17 +215,10 @@ public final class SharedRegistry {
   private static final class TypeDefDescriptorsKey {
     private final long typeDefId;
     private final Class<?> type;
-    private final Class<?> typeDefClass;
 
-    private TypeDefDescriptorsKey(long typeDefId, Class<?> type, Class<?> typeDefClass) {
+    private TypeDefDescriptorsKey(long typeDefId, Class<?> type) {
       this.typeDefId = typeDefId;
       this.type = Objects.requireNonNull(type);
-      this.typeDefClass = typeDefClass;
-    }
-
-    private boolean referencesClassLoader(ClassLoader loader) {
-      return type.getClassLoader() == loader
-          || (typeDefClass != null && typeDefClass.getClassLoader() == loader);
     }
 
     @Override
