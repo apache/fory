@@ -208,31 +208,43 @@ class JavaScriptGenerator(BaseGenerator):
         super().__init__(schema, options)
         self.indent_str = "  "  # TypeScript uses 2 spaces
         self._qualified_type_names: Dict[int, str] = {}
+        self._ts_type_names: Dict[int, str] = {}
+        self._schema_cache: Dict[Path, Schema] = {}
         self._build_qualified_type_name_index()
 
     def _build_qualified_type_name_index(self) -> None:
         """Build an index mapping type object ids to their qualified names."""
         for enum in self.schema.enums:
             self._qualified_type_names[id(enum)] = enum.name
+            self._ts_type_names[id(enum)] = self.safe_type_identifier(enum.name)
         for union in self.schema.unions:
             self._qualified_type_names[id(union)] = union.name
+            self._ts_type_names[id(union)] = self.safe_type_identifier(union.name)
 
-        def visit_message(message: Message, parents: List[str]) -> None:
+        def visit_message(message: Message, parents: List[str], prefix: str) -> None:
             path = ".".join(parents + [message.name])
+            flat = self.safe_type_identifier(prefix + message.name)
             self._qualified_type_names[id(message)] = path
+            self._ts_type_names[id(message)] = flat
             for nested_enum in message.nested_enums:
                 self._qualified_type_names[id(nested_enum)] = (
                     f"{path}.{nested_enum.name}"
+                )
+                self._ts_type_names[id(nested_enum)] = self.safe_type_identifier(
+                    flat + nested_enum.name
                 )
             for nested_union in message.nested_unions:
                 self._qualified_type_names[id(nested_union)] = (
                     f"{path}.{nested_union.name}"
                 )
+                self._ts_type_names[id(nested_union)] = self.safe_type_identifier(
+                    flat + nested_union.name
+                )
             for nested_msg in message.nested_messages:
-                visit_message(nested_msg, parents + [message.name])
+                visit_message(nested_msg, parents + [message.name], flat)
 
         for message in self.schema.messages:
-            visit_message(message, [])
+            visit_message(message, [], "")
 
     def safe_identifier(self, name: str) -> str:
         """Escape identifiers that collide with TypeScript reserved words."""
@@ -328,8 +340,6 @@ class JavaScriptGenerator(BaseGenerator):
     def _load_schema(self, file_path: str) -> Optional[Schema]:
         if not file_path:
             return None
-        if not hasattr(self, "_schema_cache"):
-            self._schema_cache: Dict[Path, Schema] = {}
         path = Path(file_path).resolve()
         if path in self._schema_cache:
             return self._schema_cache[path]
@@ -448,7 +458,10 @@ class JavaScriptGenerator(BaseGenerator):
                 if not type_str:
                     resolved = self._resolve_named_type(field_type.name, parent_stack)
                     if resolved is not None:
-                        type_str = self.safe_type_identifier(resolved.name)
+                        type_str = self._ts_type_names.get(
+                            id(resolved),
+                            self.safe_type_identifier(resolved.name),
+                        )
                     else:
                         type_str = self.safe_type_identifier(
                             self.to_pascal_case(field_type.name)
@@ -546,6 +559,12 @@ class JavaScriptGenerator(BaseGenerator):
         lines.append(self.get_license_header("//"))
         lines.append("")
 
+        imports = self.generate_imports()
+        if imports:
+            for imp in imports:
+                lines.append(imp)
+            lines.append("")
+
         # Add package comment if present
         if self.package:
             lines.append(f"// Package: {self.package}")
@@ -582,26 +601,17 @@ class JavaScriptGenerator(BaseGenerator):
         lines.extend(self.generate_registration())
         lines.append("")
 
-        # Add imports at the top
-        imports = self.generate_imports()
-        if imports:
-            # Insert after package comment or license
-            insert_idx = 0
-            for i, line in enumerate(lines):
-                if line.startswith("// Package:") or line.startswith("// Licensed"):
-                    insert_idx = i + 2
-
-            lines.insert(insert_idx, "")
-            for imp in reversed(imports):
-                lines.insert(insert_idx, imp)
-            lines.insert(insert_idx, "")
-
         return GeneratedFile(
             path=f"{self.get_module_name()}{self.file_extension}",
             content="\n".join(lines),
         )
 
-    def generate_enum(self, enum: Enum, indent: int = 0) -> List[str]:
+    def generate_enum(
+        self,
+        enum: Enum,
+        indent: int = 0,
+        ts_name: Optional[str] = None,
+    ) -> List[str]:
         """Generate a TypeScript enum."""
         lines: List[str] = []
         ind = self.indent_str * indent
@@ -609,7 +619,9 @@ class JavaScriptGenerator(BaseGenerator):
         if comment:
             lines.append(comment)
 
-        enum_name = self.safe_type_identifier(enum.name)
+        enum_name = ts_name or self._ts_type_names.get(
+            id(enum), self.safe_type_identifier(enum.name)
+        )
         lines.append(f"{ind}export enum {enum_name} {{")
         for value in enum.values:
             stripped_name = self.strip_enum_prefix(enum.name, value.name)
@@ -624,13 +636,16 @@ class JavaScriptGenerator(BaseGenerator):
         message: Message,
         indent: int = 0,
         parent_stack: Optional[List[Message]] = None,
+        ts_name: Optional[str] = None,
     ) -> List[str]:
         """Generate a TypeScript interface for a message."""
         lines: List[str] = []
         ind = self.indent_str * indent
         parent_stack = parent_stack or []
         lineage = parent_stack + [message]
-        type_name = self.safe_type_identifier(message.name)
+        type_name = ts_name or self._ts_type_names.get(
+            id(message), self.safe_type_identifier(message.name)
+        )
 
         comment = self.format_type_id_comment(message, f"{ind}//")
         if comment:
@@ -654,21 +669,47 @@ class JavaScriptGenerator(BaseGenerator):
 
         lines.append(f"{ind}}}")
 
-        # Generate nested enums after parent interface
+        # Generate nested enums after parent interface, passing the prefixed
+        # TS name so two parents with a nested enum of the same short name
+        # produce distinct exported identifiers.
         for nested_enum in message.nested_enums:
             lines.append("")
-            lines.extend(self.generate_enum(nested_enum, indent=indent))
+            nested_ts = self._ts_type_names.get(
+                id(nested_enum), self.safe_type_identifier(nested_enum.name)
+            )
+            lines.extend(self.generate_enum(nested_enum, indent=indent, ts_name=nested_ts))
 
-        # Generate nested unions after parent interface
+        # Generate nested unions after parent interface.  Pass lineage as
+        # parent_stack so that generate_type() inside generate_union() can
+        # resolve variant types that are themselves nested in the same parent
+        # (e.g. Envelope.Detail referencing Envelope.Payload → EnvelopePayload).
         for nested_union in message.nested_unions:
             lines.append("")
-            lines.extend(self.generate_union(nested_union, indent=indent))
+            nested_ts = self._ts_type_names.get(
+                id(nested_union), self.safe_type_identifier(nested_union.name)
+            )
+            lines.extend(
+                self.generate_union(
+                    nested_union,
+                    indent=indent,
+                    parent_stack=lineage,
+                    ts_name=nested_ts,
+                )
+            )
 
-        # Generate nested messages after parent interface
+        # Generate nested messages after parent interface.
         for nested_msg in message.nested_messages:
             lines.append("")
+            nested_ts = self._ts_type_names.get(
+                id(nested_msg), self.safe_type_identifier(nested_msg.name)
+            )
             lines.extend(
-                self.generate_message(nested_msg, indent=indent, parent_stack=lineage)
+                self.generate_message(
+                    nested_msg,
+                    indent=indent,
+                    parent_stack=lineage,
+                    ts_name=nested_ts,
+                )
             )
 
         return lines
@@ -678,18 +719,28 @@ class JavaScriptGenerator(BaseGenerator):
         union: Union,
         indent: int = 0,
         parent_stack: Optional[List[Message]] = None,
+        ts_name: Optional[str] = None,
     ) -> List[str]:
-        """Generate a TypeScript discriminated union."""
+        """Generate a TypeScript discriminated union.
+
+        ts_name overrides the emitted identifier for the union type alias and
+        its companion case enum; used for nested unions prefixed with the
+        parent chain (e.g. PersonAnimal / PersonAnimalCase).
+        """
         lines: List[str] = []
         ind = self.indent_str * indent
-        union_name = self.safe_type_identifier(union.name)
+        union_name = ts_name or self._ts_type_names.get(
+            id(union), self.safe_type_identifier(union.name)
+        )
 
         comment = self.format_type_id_comment(union, f"{ind}//")
         if comment:
             lines.append(comment)
 
-        # Generate case enum
-        case_enum_name = self.safe_type_identifier(f"{union.name}Case")
+        # Case-enum name is derived from the union's TS name so nested unions
+        # get e.g. PersonAnimalCase rather than a bare AnimalCase that could
+        # collide with another parent's nested union of the same short name.
+        case_enum_name = f"{union_name}Case"
         lines.append(f"{ind}export enum {case_enum_name} {{")
         for field in union.fields:
             case_name = self.safe_identifier(self.to_upper_snake_case(field.name))
@@ -935,6 +986,25 @@ class JavaScriptGenerator(BaseGenerator):
             if self.is_imported_type(message):
                 continue
             emit_message(message)
+
+        # Ensure message-typed union variants are registered even when they are
+        # not reachable through any struct field in the DFS above (e.g. a union
+        # whose variants are messages defined in the same file but not used as
+        # direct struct fields).
+        for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
+            for ufield in union.fields:
+                if isinstance(ufield.field_type, NamedType):
+                    resolved = self._resolve_named_type(ufield.field_type.name)
+                    if isinstance(resolved, Message) and not self.is_imported_type(
+                        resolved
+                    ):
+                        emit_message(resolved)
+            # Union types are encoded inline inside field descriptors in the
+            # Fory JS runtime.  Standalone registerSerializer for a union type
+            # requires runtime support that is not yet available; no call is
+            # emitted here.
 
         lines.append("}")
 

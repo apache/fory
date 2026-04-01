@@ -34,16 +34,20 @@ import {
   AnimalCase,
   Dog,
   Cat,
-  PhoneNumber,
-  PhoneType,
+  PersonPhoneNumber,
+  PersonPhoneType,
   registerAddressbookTypes,
 } from '../generated/addressbook';
+import {
+  AllOptionalTypes,
+  registerOptionalTypesTypes,
+} from '../generated/optional_types';
 import { TreeNode } from '../generated/tree';
 import {
   Envelope,
-  Payload,
+  EnvelopePayload,
   Status,
-  DetailCase,
+  EnvelopeDetailCase,
   WrapperCase,
   registerAutoIdTypes,
 } from '../generated/auto_id';
@@ -60,7 +64,7 @@ function buildCat(): Cat {
   return { name: 'Mimi', lives: 9 };
 }
 
-function buildPhoneNumber(num: string, pt: PhoneType): PhoneNumber {
+function buildPersonPhoneNumber(num: string, pt: PersonPhoneType): PersonPhoneNumber {
   return { number_: num, phoneType: pt };
 }
 
@@ -73,8 +77,8 @@ function buildPerson(): Person {
     scores: { math: 100, science: 98 },
     salary: 120000.5,
     phones: [
-      buildPhoneNumber('555-0100', PhoneType.MOBILE),
-      buildPhoneNumber('555-0111', PhoneType.WORK),
+      buildPersonPhoneNumber('555-0100', PersonPhoneType.MOBILE),
+      buildPersonPhoneNumber('555-0111', PersonPhoneType.WORK),
     ],
     pet: { case: AnimalCase.CAT, value: buildCat() },
   };
@@ -110,11 +114,11 @@ function buildTreeNode(): TreeNode {
 }
 
 function buildAutoIdEnvelope(): Envelope {
-  const payload: Payload = { value: 42 };
+  const payload: EnvelopePayload = { value: 42 };
   return {
     id: 'env-1',
     payload,
-    detail: { case: DetailCase.PAYLOAD, value: payload },
+    detail: { case: EnvelopeDetailCase.PAYLOAD, value: payload },
     status: Status.OK,
   };
 }
@@ -134,8 +138,8 @@ describe('Generated types compile and construct correctly', () => {
     expect(book.people[0].tags).toEqual(['friend', 'colleague']);
     expect(book.people[0].salary).toBe(120000.5);
     expect(book.people[0].phones).toHaveLength(2);
-    expect(book.people[0].phones[0].phoneType).toBe(PhoneType.MOBILE);
-    expect(book.people[0].phones[1].phoneType).toBe(PhoneType.WORK);
+    expect(book.people[0].phones[0].phoneType).toBe(PersonPhoneType.MOBILE);
+    expect(book.people[0].phones[1].phoneType).toBe(PersonPhoneType.WORK);
     expect(book.peopleByName['Alice']).toBe(book.people[0]);
   });
 
@@ -156,9 +160,9 @@ describe('Generated types compile and construct correctly', () => {
   });
 
   test('Enum values are correct', () => {
-    expect(PhoneType.MOBILE).toBe(0);
-    expect(PhoneType.HOME).toBe(1);
-    expect(PhoneType.WORK).toBe(2);
+    expect(PersonPhoneType.MOBILE).toBe(0);
+    expect(PersonPhoneType.HOME).toBe(1);
+    expect(PersonPhoneType.WORK).toBe(2);
 
     expect(AnimalCase.DOG).toBe(1);
     expect(AnimalCase.CAT).toBe(2);
@@ -184,8 +188,8 @@ describe('Generated types compile and construct correctly', () => {
     expect(WrapperCase.ENVELOPE).toBe(1);
     expect(WrapperCase.RAW).toBe(2);
 
-    expect(DetailCase.PAYLOAD).toBe(1);
-    expect(DetailCase.NOTE).toBe(2);
+    expect(EnvelopeDetailCase.PAYLOAD).toBe(1);
+    expect(EnvelopeDetailCase.NOTE).toBe(2);
   });
 });
 
@@ -223,61 +227,65 @@ describe('Serialization roundtrip', () => {
     expect(result).toEqual(cat);
   });
 
-  test('PhoneNumber struct roundtrip', () => {
+  test('PersonPhoneNumber struct roundtrip', () => {
     const fory = new Fory();
     registerAddressbookTypes(fory, Type);
     const serializer = fory.typeResolver.getSerializerByTypeInfo(
       Type.struct(102),
     );
 
-    const phone: PhoneNumber = buildPhoneNumber('555-0100', PhoneType.MOBILE);
+    const phone: PersonPhoneNumber = buildPersonPhoneNumber('555-0100', PersonPhoneType.MOBILE);
     const bytes = fory.serialize(phone, serializer);
-    const result = fory.deserialize(bytes, serializer) as PhoneNumber;
+    const result = fory.deserialize(bytes, serializer) as PersonPhoneNumber;
 
     expect(result).toEqual(phone);
   });
 
-  test('Payload (autoId) struct roundtrip', () => {
+  test('EnvelopePayload (autoId) struct roundtrip', () => {
     const fory = new Fory();
     registerAutoIdTypes(fory, Type);
     const serializer = fory.typeResolver.getSerializerByTypeInfo(
       Type.struct(2862577837),
     );
 
-    const payload: Payload = { value: 42 };
-    const bytes = fory.serialize(payload, serializer);
-    const result = fory.deserialize(bytes, serializer) as Payload;
+    const EnvelopePayload: EnvelopePayload = { value: 42 };
+    const bytes = fory.serialize(EnvelopePayload, serializer);
+    const result = fory.deserialize(bytes, serializer) as EnvelopePayload;
 
-    expect(result).toEqual(payload);
+    expect(result).toEqual(EnvelopePayload);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 3. Optional field tests
+// 3. Optional field tests — use generated registration helpers, not manual
+//    TypeInfo construction, so we validate the generated code end-to-end.
 // ---------------------------------------------------------------------------
 
 describe('Optional field handling', () => {
-  test('struct with nullable string field', () => {
+  test('AllOptionalTypes roundtrip with present and absent optional fields', () => {
     const fory = new Fory();
-    const optType = Type.struct(
-      { typeName: 'test.OptionalStruct' },
-      {
-        name: Type.string(),
-        nickname: Type.string().setNullable(true),
-      },
+    registerOptionalTypesTypes(fory, Type);
+    const serializer = fory.typeResolver.getSerializerByTypeInfo(
+      Type.struct(120),
     );
-    const { serialize, deserialize } = fory.registerSerializer(optType);
 
-    // With value present
-    const withValue = { name: 'Alice', nickname: 'Ali' };
-    const bytes1 = serialize(withValue);
-    const result1 = deserialize(bytes1);
-    expect(result1).toEqual(withValue);
+    // All optional fields set
+    const full: AllOptionalTypes = {
+      boolValue: true,
+      int32Value: 42,
+      stringValue: 'hello',
+    };
+    const bytes1 = fory.serialize(full, serializer);
+    const result1 = fory.deserialize(bytes1, serializer) as AllOptionalTypes;
+    expect(result1.boolValue).toBe(true);
+    expect(result1.int32Value).toBe(42);
+    expect(result1.stringValue).toBe('hello');
 
-    // With null value
-    const withNull = { name: 'Bob', nickname: null };
-    const bytes2 = serialize(withNull);
-    const result2 = deserialize(bytes2);
-    expect(result2).toEqual(withNull);
+    // Optional fields absent (undefined)
+    const sparse: AllOptionalTypes = {};
+    const bytes2 = fory.serialize(sparse, serializer);
+    const result2 = fory.deserialize(bytes2, serializer) as AllOptionalTypes;
+    expect(result2.stringValue).toBeNull();
+    expect(result2.int32Value).toBeNull();
   });
 });

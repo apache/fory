@@ -61,6 +61,8 @@ export class TypeMetaResolver {
     const typeId = typeMeta.getTypeId();
     const userTypeId = typeMeta.getUserTypeId();
     if (!TypeId.structType(typeId)) {
+      const existing = this.fory.typeResolver.getSerializerById(typeId, userTypeId);
+      if (existing) return existing;
       throw new Error("only support reconstructor struct type");
     }
     let typeInfo;

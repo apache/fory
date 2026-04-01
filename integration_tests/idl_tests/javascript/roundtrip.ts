@@ -54,47 +54,7 @@ import { registerGraphTypes } from "./generated/graph";
 import { registerMonsterTypes } from "./generated/monster";
 import { registerComplexFbsTypes } from "./generated/complex_fbs";
 
-// ---------------------------------------------------------------------------
-// Capability: compatible mode
-// ---------------------------------------------------------------------------
-// The Fory JS runtime does not yet support compatible mode (class metadata /
-// versioning is incomplete).  Set this to `true` once the runtime adds
-// compatible-mode support; all gated skips below will then run normally.
-const SUPPORTS_COMPATIBLE_MODE = false;
-
 const compatible = process.env["IDL_COMPATIBLE"] === "true";
-
-if (compatible && !SUPPORTS_COMPATIBLE_MODE) {
-  // Enumerate every data-file env var so the test output makes the exact
-  // coverage gap visible (mirrors how union-type skips are reported below).
-  const dataFileVars = [
-    "DATA_FILE",
-    "DATA_FILE_AUTO_ID",
-    "DATA_FILE_PRIMITIVES",
-    "DATA_FILE_COLLECTION",
-    "DATA_FILE_COLLECTION_UNION",
-    "DATA_FILE_COLLECTION_ARRAY",
-    "DATA_FILE_COLLECTION_ARRAY_UNION",
-    "DATA_FILE_OPTIONAL_TYPES",
-    "DATA_FILE_TREE",
-    "DATA_FILE_GRAPH",
-    "DATA_FILE_FLATBUFFERS_MONSTER",
-    "DATA_FILE_FLATBUFFERS_TEST2",
-  ];
-  const present = dataFileVars.filter((v) => process.env[v]);
-  console.log(
-    "TypeScript roundtrip: compatible mode is NOT SUPPORTED " +
-    "(SUPPORTS_COMPATIBLE_MODE = false)."
-  );
-  for (const v of present) {
-    console.log(`  SKIP [compatible]: ${v}`);
-  }
-  console.log(
-    `  0/${present.length} compatible-mode roundtrips executed. ` +
-    "Files left unchanged so Java reads back its own bytes."
-  );
-  process.exit(0);
-}
 
 // ---------------------------------------------------------------------------
 // Roundtrip helper: read file, deserialize, re-serialize, write back
@@ -104,7 +64,7 @@ function fileRoundTrip(
   envVar: string,
   rootTypeId: number,
   registerFn: (fory: any, type: any) => void,
-  foryOptions: { refTracking?: boolean | null }
+  foryOptions: { refTracking?: boolean | null; compatible?: boolean }
 ): void {
   const filePath = process.env[envVar];
   if (!filePath) {
@@ -114,7 +74,7 @@ function fileRoundTrip(
   console.log(`Processing ${envVar}: ${filePath}`);
 
   const fory = new Fory({
-    compatible: false,
+    compatible: foryOptions.compatible ?? false,
     refTracking: foryOptions.refTracking ?? null,
   });
 
@@ -144,16 +104,16 @@ function fileRoundTrip(
 // ---------------------------------------------------------------------------
 
 
-fileRoundTrip("DATA_FILE", 103, registerAddressbookTypes, {});
+fileRoundTrip("DATA_FILE", 103, registerAddressbookTypes, { compatible });
 
 
-fileRoundTrip("DATA_FILE_AUTO_ID", 3022445236, registerAutoIdTypes, {});
+fileRoundTrip("DATA_FILE_AUTO_ID", 3022445236, registerAutoIdTypes, { compatible });
 
 
-fileRoundTrip("DATA_FILE_PRIMITIVES", 200, registerComplexPbTypes, {});
+fileRoundTrip("DATA_FILE_PRIMITIVES", 200, registerComplexPbTypes, { compatible });
 
 
-fileRoundTrip("DATA_FILE_COLLECTION", 210, registerCollectionTypes, {});
+fileRoundTrip("DATA_FILE_COLLECTION", 210, registerCollectionTypes, { compatible });
 
 // DATA_FILE_COLLECTION_UNION: NumericCollectionUnion (IS a union)
 // Union types are not yet supported in the Fory JS runtime.
@@ -164,7 +124,7 @@ if (process.env["DATA_FILE_COLLECTION_UNION"]) {
 }
 
 // DATA_FILE_COLLECTION_ARRAY: NumericCollectionsArray (type ID 212)
-fileRoundTrip("DATA_FILE_COLLECTION_ARRAY", 212, registerCollectionTypes, {});
+fileRoundTrip("DATA_FILE_COLLECTION_ARRAY", 212, registerCollectionTypes, { compatible });
 
 // DATA_FILE_COLLECTION_ARRAY_UNION: NumericCollectionArrayUnion (IS a union)
 if (process.env["DATA_FILE_COLLECTION_ARRAY_UNION"]) {
@@ -174,16 +134,18 @@ if (process.env["DATA_FILE_COLLECTION_ARRAY_UNION"]) {
 }
 
 
-fileRoundTrip("DATA_FILE_OPTIONAL_TYPES", 122, registerOptionalTypesTypes, {});
+fileRoundTrip("DATA_FILE_OPTIONAL_TYPES", 122, registerOptionalTypesTypes, { compatible });
 
 
 fileRoundTrip("DATA_FILE_TREE", 2251833438, registerTreeTypes, {
   refTracking: true,
+  compatible,
 });
 
 
 fileRoundTrip("DATA_FILE_GRAPH", 2373163777, registerGraphTypes, {
   refTracking: true,
+  compatible,
 });
 
 
@@ -191,7 +153,7 @@ fileRoundTrip(
   "DATA_FILE_FLATBUFFERS_MONSTER",
   438716985,
   registerMonsterTypes,
-  {}
+  { compatible }
 );
 
 
@@ -199,7 +161,7 @@ fileRoundTrip(
   "DATA_FILE_FLATBUFFERS_TEST2",
   372413680,
   registerComplexFbsTypes,
-  {}
+  { compatible }
 );
 
 console.log("TypeScript roundtrip finished.");
