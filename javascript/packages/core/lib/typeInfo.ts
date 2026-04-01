@@ -215,6 +215,9 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         if (TypeId.enumType(this._typeId)) {
           return true;
         }
+        if (this._typeId === TypeId.TYPED_UNION || this._typeId === TypeId.NAMED_UNION) {
+          return true;
+        }
         const internalTypeId = this._typeId;
         const fory = TypeInfo.fory?.deref();
         if (!fory) {
