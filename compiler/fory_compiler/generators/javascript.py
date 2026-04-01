@@ -677,7 +677,9 @@ class JavaScriptGenerator(BaseGenerator):
             nested_ts = self._ts_type_names.get(
                 id(nested_enum), self.safe_type_identifier(nested_enum.name)
             )
-            lines.extend(self.generate_enum(nested_enum, indent=indent, ts_name=nested_ts))
+            lines.extend(
+                self.generate_enum(nested_enum, indent=indent, ts_name=nested_ts)
+            )
 
         # Generate nested unions after parent interface.  Pass lineage as
         # parent_stack so that generate_type() inside generate_union() can

@@ -108,7 +108,7 @@ def test_javascript_nested_message():
 
     # Check nested interface
     assert "export interface Person" in output
-    assert "export interface Address" in output
+    assert "export interface PersonAddress" in output
     assert "street: string;" in output
     assert "city: string;" in output
 
@@ -132,7 +132,7 @@ def test_javascript_nested_enum():
     output = generate_javascript(source)
 
     # Check nested enum
-    assert "export enum PhoneType" in output
+    assert "export enum PersonPhoneType" in output
     assert "MOBILE = 0" in output
     assert "HOME = 1" in output
 
@@ -428,7 +428,7 @@ def test_javascript_qualified_nested_type_resolved():
     output = generate_javascript(source)
 
     # Nested type is flattened to a top-level export
-    assert "export interface Inner" in output
+    assert "export interface OuterInner" in output
 
-    assert "item: Inner;" in output
-    assert "Outer.Inner" not in output
+    assert "item: OuterInner;" in output
+    assert "OuterInner.Inner" not in output
