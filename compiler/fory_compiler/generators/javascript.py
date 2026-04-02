@@ -254,7 +254,7 @@ class JavaScriptGenerator(BaseGenerator):
 
     def safe_type_identifier(self, name: str) -> str:
         """Escape type names that collide with TypeScript reserved words."""
-        return self.safe_identifier(name)
+        return self.safe_identifier(self.to_camel_case(name))
 
     def safe_member_name(self, name: str) -> str:
         """Generate a safe camelCase member name."""
@@ -268,7 +268,11 @@ class JavaScriptGenerator(BaseGenerator):
             + list(message.nested_unions)
             + list(message.nested_messages)
         ):
-            names.add(self.safe_type_identifier(nested.name))
+            ts_name = self._ts_type_names.get(id(nested))
+            if ts_name:
+                names.add(ts_name)
+            else:
+                names.add(self.safe_type_identifier(nested.name))
         return names
 
     def _field_member_name(
