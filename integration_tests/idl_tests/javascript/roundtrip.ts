@@ -89,13 +89,7 @@ function fileRoundTrip(
   const bytes = new Uint8Array(data);
 
   // Deserialize
-  let obj: any;
-  try {
-    obj = fory.deserialize(bytes, serializer);
-  } catch (e: any) {
-    console.error(`  DESERIALIZE ERROR for ${envVar}: ${e.message}`);
-    throw e;
-  }
+  const obj = fory.deserialize(bytes, serializer);
 
   // Re-serialize
   const result = fory.serialize(obj, serializer);

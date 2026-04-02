@@ -673,15 +673,10 @@ export class TypeMeta {
     return TypeMeta.toSnakeCase(i.fieldName);
   }
 
-  static isTypedArrayTypeId(typeId: number): boolean {
-    return typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY;
-  }
-
   static groupFieldsByType<T extends { fieldName: string; nullable?: boolean; typeId: number; fieldId?: number }>(typeInfos: Array<T>): Array<T> {
     const primitiveFields: Array<T> = [];
     const nullablePrimitiveFields: Array<T> = [];
     const internalTypeFields: Array<T> = [];
-    const typedArrayFields: Array<T> = [];
     const listFields: Array<T> = [];
     const setFields: Array<T> = [];
     const mapFields: Array<T> = [];
@@ -695,22 +690,20 @@ export class TypeMeta {
         continue;
       }
 
+      // Check if it's a primitive type
       if (isPrimitiveTypeId(typeId)) {
         primitiveFields.push(typeInfo);
         continue;
       }
 
+      // Categorize based on type_id
       if (typeId === TypeId.LIST) {
         listFields.push(typeInfo);
       } else if (typeId === TypeId.SET) {
         setFields.push(typeInfo);
       } else if (typeId === TypeId.MAP) {
         mapFields.push(typeInfo);
-      } else if (this.isTypedArrayTypeId(typeId)) {
-        typedArrayFields.push(typeInfo);
-      } else if (typeId === TypeId.STRING || typeId === TypeId.BINARY
-        || typeId === TypeId.DATE || typeId === TypeId.TIMESTAMP
-        || typeId === TypeId.DURATION) {
+      } else if (TypeId.isBuiltin(typeId)) {
         internalTypeFields.push(typeInfo);
       } else {
         otherFields.push(typeInfo);
@@ -761,7 +754,6 @@ export class TypeMeta {
     primitiveFields.sort(primitiveComparator);
     nullablePrimitiveFields.sort(primitiveComparator);
     internalTypeFields.sort(typeIdThenNameSorter);
-    typedArrayFields.sort(typeIdThenNameSorter);
     listFields.sort(typeIdThenNameSorter);
     setFields.sort(typeIdThenNameSorter);
     mapFields.sort(typeIdThenNameSorter);
@@ -771,7 +763,6 @@ export class TypeMeta {
       primitiveFields,
       nullablePrimitiveFields,
       internalTypeFields,
-      typedArrayFields,
       listFields,
       setFields,
       mapFields,

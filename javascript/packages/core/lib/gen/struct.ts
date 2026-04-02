@@ -265,7 +265,6 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   readTypeInfo(): string {
     const typeMeta = this.scope.uniqueName("typeMeta");
-    const readTypeId = this.scope.uniqueName("readTypeId");
     const internalTypeId = this.getInternalTypeId();
     let namesStmt = "";
     let typeMetaStmt = "";
@@ -277,13 +276,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       case TypeId.NAMED_COMPATIBLE_STRUCT:
       case TypeId.COMPATIBLE_STRUCT:
         typeMetaStmt = `
-          if (${readTypeId} === ${TypeId.STRUCT} || ${readTypeId} === ${TypeId.NAMED_STRUCT}) {
-            ${this.builder.reader.readVarUInt32()};
-          } else {
-            const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta(this.builder.reader.ownName())};
-            if (getHash() !== ${typeMeta}.getHash()) {
-              ${this.metaChangedSerializer} = ${this.builder.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta)}
-            }
+          const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta(this.builder.reader.ownName())};
+          if (getHash() !== ${typeMeta}.getHash()) {
+            ${this.metaChangedSerializer} = ${this.builder.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta)}
           }
           `;
         break;
@@ -318,7 +313,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return `
-      const ${readTypeId} = ${
+      ${
         this.builder.reader.readUint8()
       };
       ${readUserTypeIdStmt}
@@ -437,7 +432,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         break;
       case TypeId.NAMED_COMPATIBLE_STRUCT:
       case TypeId.COMPATIBLE_STRUCT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
+        {
+          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+        }
         break;
       case TypeId.NAMED_STRUCT:
         {
@@ -458,11 +456,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       default:
         break;
     }
-    let writeTypeId = this.getTypeId();
-    if (writeTypeId === TypeId.COMPATIBLE_STRUCT) writeTypeId = TypeId.STRUCT;
-    if (writeTypeId === TypeId.NAMED_COMPATIBLE_STRUCT) writeTypeId = TypeId.NAMED_STRUCT;
     return ` 
-      ${this.builder.writer.writeUint8(writeTypeId)};
+      ${this.builder.writer.writeUint8(this.getTypeId())};
       ${writeUserTypeIdStmt}
       ${typeMeta}
     `;
