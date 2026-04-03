@@ -221,13 +221,15 @@ class JavaScriptGenerator(BaseGenerator):
             self._qualified_type_names[id(union)] = union.name
             self._ts_type_names[id(union)] = self.safe_type_identifier(union.name)
 
-        def visit_message(message: Message, ts_parents: List[str], schema_parents: List[str]) -> None:
+        def visit_message(
+            message: Message, ts_parents: List[str], schema_parents: List[str]
+        ) -> None:
             schema_path = ".".join(schema_parents + [message.name])
             ts_path = ".".join(ts_parents + [self.safe_type_identifier(message.name)])
-            
+
             self._qualified_type_names[id(message)] = schema_path
             self._ts_type_names[id(message)] = ts_path
-            
+
             for nested_enum in message.nested_enums:
                 self._qualified_type_names[id(nested_enum)] = (
                     f"{schema_path}.{nested_enum.name}"
@@ -680,16 +682,22 @@ class JavaScriptGenerator(BaseGenerator):
         lines.append(f"{ind}}}")
 
         # Generate nested types inside a namespace matching the message name
-        has_nested = message.nested_enums or message.nested_unions or message.nested_messages
+        has_nested = (
+            message.nested_enums or message.nested_unions or message.nested_messages
+        )
         if has_nested:
             lines.append("")
-            lines.append(f"{ind}export namespace {self.safe_type_identifier(message.name)} {{")
-            
+            lines.append(
+                f"{ind}export namespace {self.safe_type_identifier(message.name)} {{"
+            )
+
             for nested_enum in message.nested_enums:
                 lines.append("")
                 nested_ts = self.safe_type_identifier(nested_enum.name)
                 lines.extend(
-                    self.generate_enum(nested_enum, indent=indent + 1, ts_name=nested_ts)
+                    self.generate_enum(
+                        nested_enum, indent=indent + 1, ts_name=nested_ts
+                    )
                 )
 
             for nested_union in message.nested_unions:
