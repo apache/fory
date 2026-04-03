@@ -34,8 +34,8 @@ import {
   animalCase,
   dog,
   cat,
-  personPhoneNumber,
-  personPhoneType,
+  
+  
   registerAddressbookTypes,
 } from '../generated/addressbook';
 import {
@@ -45,9 +45,9 @@ import {
 import { treeNode } from '../generated/tree';
 import {
   envelope,
-  envelopePayload,
+  
   status,
-  envelopeDetailCase,
+  
   wrapperCase,
   registerAutoIdTypes,
 } from '../generated/auto_id';
@@ -64,7 +64,7 @@ function buildcat(): cat {
   return { name: 'Mimi', lives: 9 };
 }
 
-function buildpersonPhoneNumber(num: string, pt: personPhoneType): personPhoneNumber {
+function buildPersonPhoneNumber(num: string, pt: person.phoneType): person.phoneNumber {
   return { number_: num, phoneType: pt };
 }
 
@@ -77,8 +77,8 @@ function buildperson(): person {
     scores: { math: 100, science: 98 },
     salary: 120000.5,
     phones: [
-      buildpersonPhoneNumber('555-0100', personPhoneType.MOBILE),
-      buildpersonPhoneNumber('555-0111', personPhoneType.WORK),
+      buildPersonPhoneNumber('555-0100', person.phoneType.MOBILE),
+      buildPersonPhoneNumber('555-0111', person.phoneType.WORK),
     ],
     pet: { case: animalCase.CAT, value: buildcat() },
   };
@@ -114,11 +114,11 @@ function buildtreeNode(): treeNode {
 }
 
 function buildAutoIdenvelope(): envelope {
-  const payload: envelopePayload = { value: 42 };
+  const payload: envelope.payload = { value: 42 };
   return {
     id: 'env-1',
     payload,
-    detail: { case: envelopeDetailCase.PAYLOAD, value: payload },
+    detail: { case: envelope.detailCase.PAYLOAD, value: payload },
     status: status.OK,
   };
 }
@@ -138,8 +138,8 @@ describe('Generated types compile and construct correctly', () => {
     expect(book.people[0].tags).toEqual(['friend', 'colleague']);
     expect(book.people[0].salary).toBe(120000.5);
     expect(book.people[0].phones).toHaveLength(2);
-    expect(book.people[0].phones[0].phoneType).toBe(personPhoneType.MOBILE);
-    expect(book.people[0].phones[1].phoneType).toBe(personPhoneType.WORK);
+    expect(book.people[0].phones[0].phoneType).toBe(person.phoneType.MOBILE);
+    expect(book.people[0].phones[1].phoneType).toBe(person.phoneType.WORK);
     expect(book.peopleByName['Alice']).toBe(book.people[0]);
   });
 
@@ -160,9 +160,9 @@ describe('Generated types compile and construct correctly', () => {
   });
 
   test('Enum values are correct', () => {
-    expect(personPhoneType.MOBILE).toBe(0);
-    expect(personPhoneType.HOME).toBe(1);
-    expect(personPhoneType.WORK).toBe(2);
+    expect(person.phoneType.MOBILE).toBe(0);
+    expect(person.phoneType.HOME).toBe(1);
+    expect(person.phoneType.WORK).toBe(2);
 
     expect(animalCase.DOG).toBe(1);
     expect(animalCase.CAT).toBe(2);
@@ -177,10 +177,10 @@ describe('Generated types compile and construct correctly', () => {
   });
 
   test('AutoId types type construction', () => {
-    const envelope = buildAutoIdenvelope();
-    expect(envelope.id).toBe('env-1');
-    expect(envelope.payload?.value).toBe(42);
-    expect(envelope.status).toBe(status.OK);
+    const myEnvelope = buildAutoIdenvelope();
+    expect(myEnvelope.id).toBe('env-1');
+    expect(myEnvelope.payload?.value).toBe(42);
+    expect(myEnvelope.status).toBe(status.OK);
 
     expect(status.UNKNOWN).toBe(0);
     expect(status.OK).toBe(1);
@@ -188,8 +188,8 @@ describe('Generated types compile and construct correctly', () => {
     expect(wrapperCase.ENVELOPE).toBe(1);
     expect(wrapperCase.RAW).toBe(2);
 
-    expect(envelopeDetailCase.PAYLOAD).toBe(1);
-    expect(envelopeDetailCase.NOTE).toBe(2);
+    expect(envelope.detailCase.PAYLOAD).toBe(1);
+    expect(envelope.detailCase.NOTE).toBe(2);
   });
 });
 
@@ -227,32 +227,32 @@ describe('Serialization roundtrip', () => {
     expect(result).toEqual(cat);
   });
 
-  test('personPhoneNumber struct roundtrip', () => {
+  test('person.phoneNumber struct roundtrip', () => {
     const fory = new Fory();
     registerAddressbookTypes(fory, Type);
     const serializer = fory.typeResolver.getSerializerByTypeInfo(
       Type.struct(102),
     );
 
-    const phone: personPhoneNumber = buildpersonPhoneNumber('555-0100', personPhoneType.MOBILE);
+    const phone: person.phoneNumber = buildPersonPhoneNumber('555-0100', person.phoneType.MOBILE);
     const bytes = fory.serialize(phone, serializer);
-    const result = fory.deserialize(bytes, serializer) as personPhoneNumber;
+    const result = fory.deserialize(bytes, serializer) as person.phoneNumber;
 
     expect(result).toEqual(phone);
   });
 
-  test('envelopePayload (autoId) struct roundtrip', () => {
+  test('envelope.payload (autoId) struct roundtrip', () => {
     const fory = new Fory();
     registerAutoIdTypes(fory, Type);
     const serializer = fory.typeResolver.getSerializerByTypeInfo(
       Type.struct(2862577837),
     );
 
-    const envelopePayload: envelopePayload = { value: 42 };
-    const bytes = fory.serialize(envelopePayload, serializer);
-    const result = fory.deserialize(bytes, serializer) as envelopePayload;
+    const payload: envelope.payload = { value: 42 };
+    const bytes = fory.serialize(payload, serializer);
+    const result = fory.deserialize(bytes, serializer) as envelope.payload;
 
-    expect(result).toEqual(envelopePayload);
+    expect(result).toEqual(payload);
   });
 });
 

@@ -221,30 +221,36 @@ class JavaScriptGenerator(BaseGenerator):
             self._qualified_type_names[id(union)] = union.name
             self._ts_type_names[id(union)] = self.safe_type_identifier(union.name)
 
-        def visit_message(message: Message, parents: List[str], prefix: str) -> None:
-            path = ".".join(parents + [message.name])
-            flat = self.safe_type_identifier(prefix + message.name)
-            self._qualified_type_names[id(message)] = path
-            self._ts_type_names[id(message)] = flat
+        def visit_message(message: Message, ts_parents: List[str], schema_parents: List[str]) -> None:
+            schema_path = ".".join(schema_parents + [message.name])
+            ts_path = ".".join(ts_parents + [self.safe_type_identifier(message.name)])
+            
+            self._qualified_type_names[id(message)] = schema_path
+            self._ts_type_names[id(message)] = ts_path
+            
             for nested_enum in message.nested_enums:
                 self._qualified_type_names[id(nested_enum)] = (
-                    f"{path}.{nested_enum.name}"
+                    f"{schema_path}.{nested_enum.name}"
                 )
-                self._ts_type_names[id(nested_enum)] = self.safe_type_identifier(
-                    flat + nested_enum.name
+                self._ts_type_names[id(nested_enum)] = (
+                    f"{ts_path}.{self.safe_type_identifier(nested_enum.name)}"
                 )
             for nested_union in message.nested_unions:
                 self._qualified_type_names[id(nested_union)] = (
-                    f"{path}.{nested_union.name}"
+                    f"{schema_path}.{nested_union.name}"
                 )
-                self._ts_type_names[id(nested_union)] = self.safe_type_identifier(
-                    flat + nested_union.name
+                self._ts_type_names[id(nested_union)] = (
+                    f"{ts_path}.{self.safe_type_identifier(nested_union.name)}"
                 )
             for nested_msg in message.nested_messages:
-                visit_message(nested_msg, parents + [message.name], flat)
+                visit_message(
+                    nested_msg,
+                    ts_parents + [self.safe_type_identifier(message.name)],
+                    schema_parents + [message.name],
+                )
 
         for message in self.schema.messages:
-            visit_message(message, [], "")
+            visit_message(message, [], [])
 
     def safe_identifier(self, name: str) -> str:
         """Escape identifiers that collide with TypeScript reserved words."""
@@ -673,50 +679,43 @@ class JavaScriptGenerator(BaseGenerator):
 
         lines.append(f"{ind}}}")
 
-        # Generate nested enums after parent interface, passing the prefixed
-        # TS name so two parents with a nested enum of the same short name
-        # produce distinct exported identifiers.
-        for nested_enum in message.nested_enums:
+        # Generate nested types inside a namespace matching the message name
+        has_nested = message.nested_enums or message.nested_unions or message.nested_messages
+        if has_nested:
             lines.append("")
-            nested_ts = self._ts_type_names.get(
-                id(nested_enum), self.safe_type_identifier(nested_enum.name)
-            )
-            lines.extend(
-                self.generate_enum(nested_enum, indent=indent, ts_name=nested_ts)
-            )
-
-        # Generate nested unions after parent interface.  Pass lineage as
-        # parent_stack so that generate_type() inside generate_union() can
-        # resolve variant types that are themselves nested in the same parent
-        # (e.g. Envelope.Detail referencing Envelope.Payload → EnvelopePayload).
-        for nested_union in message.nested_unions:
-            lines.append("")
-            nested_ts = self._ts_type_names.get(
-                id(nested_union), self.safe_type_identifier(nested_union.name)
-            )
-            lines.extend(
-                self.generate_union(
-                    nested_union,
-                    indent=indent,
-                    parent_stack=lineage,
-                    ts_name=nested_ts,
+            lines.append(f"{ind}export namespace {self.safe_type_identifier(message.name)} {{")
+            
+            for nested_enum in message.nested_enums:
+                lines.append("")
+                nested_ts = self.safe_type_identifier(nested_enum.name)
+                lines.extend(
+                    self.generate_enum(nested_enum, indent=indent + 1, ts_name=nested_ts)
                 )
-            )
 
-        # Generate nested messages after parent interface.
-        for nested_msg in message.nested_messages:
-            lines.append("")
-            nested_ts = self._ts_type_names.get(
-                id(nested_msg), self.safe_type_identifier(nested_msg.name)
-            )
-            lines.extend(
-                self.generate_message(
-                    nested_msg,
-                    indent=indent,
-                    parent_stack=lineage,
-                    ts_name=nested_ts,
+            for nested_union in message.nested_unions:
+                lines.append("")
+                nested_ts = self.safe_type_identifier(nested_union.name)
+                lines.extend(
+                    self.generate_union(
+                        nested_union,
+                        indent=indent + 1,
+                        parent_stack=lineage,
+                        ts_name=nested_ts,
+                    )
                 )
-            )
+
+            for nested_msg in message.nested_messages:
+                lines.append("")
+                nested_ts = self.safe_type_identifier(nested_msg.name)
+                lines.extend(
+                    self.generate_message(
+                        nested_msg,
+                        indent=indent + 1,
+                        parent_stack=lineage,
+                        ts_name=nested_ts,
+                    )
+                )
+            lines.append(f"{ind}}}")
 
         return lines
 
