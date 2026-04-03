@@ -56,7 +56,7 @@ def test_javascript_enum_generation():
     output = generate_javascript(source)
 
     # Check enum definition
-    assert "export enum color" in output
+    assert "export enum Color" in output
     assert "RED = 0" in output
     assert "GREEN = 1" in output
     assert "BLUE = 2" in output
@@ -79,7 +79,7 @@ def test_javascript_message_generation():
     output = generate_javascript(source)
 
     # Check interface definition
-    assert "export interface person" in output
+    assert "export interface Person" in output
     assert "name: string;" in output
     assert "age: number;" in output
     assert "email?: string | undefined;" in output
@@ -107,9 +107,9 @@ def test_javascript_nested_message():
     output = generate_javascript(source)
 
     # Check nested interface
-    assert "export interface person" in output
-    assert "export namespace person" in output
-    assert "export interface address" in output
+    assert "export interface Person" in output
+    assert "export namespace Person" in output
+    assert "export interface Address" in output
     assert "street: string;" in output
     assert "city: string;" in output
 
@@ -133,8 +133,8 @@ def test_javascript_nested_enum():
     output = generate_javascript(source)
 
     # Check nested enum
-    assert "export namespace person" in output
-    assert "export enum phoneType" in output
+    assert "export namespace Person" in output
+    assert "export enum PhoneType" in output
     assert "MOBILE = 0" in output
     assert "HOME = 1" in output
 
@@ -191,12 +191,12 @@ def test_javascript_union_generation():
     output = generate_javascript(source)
 
     # Check union generation
-    assert "export enum animalCase" in output
+    assert "export enum AnimalCase" in output
     assert "DOG = 1" in output
     assert "CAT = 2" in output
-    assert "export type animal" in output
-    assert "animalCase.DOG" in output
-    assert "animalCase.CAT" in output
+    assert "export type Animal" in output
+    assert "AnimalCase.DOG" in output
+    assert "AnimalCase.CAT" in output
     assert "Type ID 103" in output
 
 
@@ -430,7 +430,7 @@ def test_javascript_qualified_nested_type_resolved():
     output = generate_javascript(source)
 
     # Nested type is exported within a namespace
-    assert "export namespace outer" in output
-    assert "export interface inner" in output
+    assert "export namespace Outer" in output
+    assert "export interface Inner" in output
 
-    assert "item: outer.inner;" in output
+    assert "item: Outer.Inner;" in output
