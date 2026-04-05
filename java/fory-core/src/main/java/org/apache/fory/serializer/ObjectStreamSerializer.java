@@ -95,6 +95,18 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   // Instance-level cache: TypeDef ID -> TypeInfo (shared across all slots)
   private final LongMap<TypeInfo> typeDefIdToTypeInfo = new LongMap<>(4, 0.4f);
 
+  private static MetaSharedLayerSerializerBase<?> newGeneratedSerializer(
+      TypeResolver typeResolver,
+      Class<?> cls,
+      Class<? extends Serializer> serializerClass,
+      TypeDef layerTypeDef,
+      Class<?> layerMarkerClass) {
+    MetaSharedLayerSerializerBase<?> serializer =
+        (MetaSharedLayerSerializerBase<?>) Serializers.newSerializer(typeResolver, cls, serializerClass);
+    serializer.setLayerSerializerMeta(layerTypeDef, layerMarkerClass);
+    return serializer;
+  }
+
   /**
    * Interface for slot information used in ObjectStreamSerializer. This allows both full SlotsInfo
    * and minimal MinimalSlotsInfo implementations.
@@ -443,7 +455,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       typeInfo.setSerializer(newSerializer);
       skipSerializer = newSerializer;
     }
-    ((MetaSharedLayerSerializer<?>) skipSerializer).skipFields(readContext, buffer);
+    skipSerializer.skipFields(readContext, buffer);
   }
 
   private static void throwUnsupportedEncodingException(Class<?> cls)
@@ -678,9 +690,12 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
                                     type, fory, layerTypeDef, layerMarkerClass)),
                 c ->
                     thisInfo.slotsSerializer =
-                        (MetaSharedLayerSerializerBase)
-                            Serializers.newSerializer(
-                                typeResolver, type, (Class<? extends Serializer>) c));
+                        newGeneratedSerializer(
+                            typeResolver,
+                            type,
+                            (Class<? extends Serializer>) c,
+                            layerTypeDef,
+                            layerMarkerClass));
       }
 
       // In GraalVM, ensure serializers are generated for all field types at build time

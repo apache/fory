@@ -292,7 +292,7 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
-  public void testSharedRegistrySharesOnlyPreRegisteredTypeInfo() {
+  public void testSharedRegistrySharesThreadSafeSerializersOnly() {
     ForyBuilder builder =
         Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
     finishBuilder(builder);
@@ -305,15 +305,16 @@ public class ClassResolverTest extends ForyTestBase {
 
     TypeInfo classInfo1 = resolver1.getTypeInfo(Class.class);
     TypeInfo classInfo2 = resolver2.getTypeInfo(Class.class);
-    assertSame(classInfo1, classInfo2);
-    assertSame(sharedRegistry.getPreRegisteredTypeInfo(Class.class, classInfo1.getTypeId()), classInfo1);
+    assertNotSame(classInfo1, classInfo2);
     assertSame(classInfo1.getSerializer(), classInfo2.getSerializer());
+    assertSame(
+        sharedRegistry.getSerializer(Class.class, Serializers.ClassSerializer.class),
+        classInfo1.getSerializer());
 
     TypeInfo stringInfo1 = resolver1.getTypeInfo(String.class);
     TypeInfo stringInfo2 = resolver2.getTypeInfo(String.class);
     assertNotSame(stringInfo1, stringInfo2);
     assertNotSame(stringInfo1.getSerializer(), stringInfo2.getSerializer());
-    assertNull(sharedRegistry.getPreRegisteredTypeInfo(String.class, stringInfo1.getTypeId()));
     assertNull(sharedRegistry.getSerializer(String.class, StringSerializer.class));
 
     resolver1.register(ThreadSafeRegisteredType.class, 2048L);
@@ -327,9 +328,6 @@ public class ClassResolverTest extends ForyTestBase {
     TypeInfo registeredInfo2 = resolver2.getTypeInfo(ThreadSafeRegisteredType.class);
     assertNotSame(registeredInfo1, registeredInfo2);
     assertSame(registeredInfo1.getSerializer(), registeredInfo2.getSerializer());
-    assertNull(
-        sharedRegistry.getPreRegisteredTypeInfo(
-            ThreadSafeRegisteredType.class, registeredInfo1.getTypeId()));
     assertSame(
         sharedRegistry.getSerializer(
             ThreadSafeRegisteredType.class, ThreadSafeRegisteredTypeSerializer.class),
@@ -367,10 +365,6 @@ public class ClassResolverTest extends ForyTestBase {
     assertNotSame(
         resolver1.getTypeInfo(CountingThreadSafeRegisteredType.class),
         resolver2.getTypeInfo(CountingThreadSafeRegisteredType.class));
-    assertNull(
-        sharedRegistry.getPreRegisteredTypeInfo(
-            CountingThreadSafeRegisteredType.class,
-            resolver1.getTypeInfo(CountingThreadSafeRegisteredType.class).getTypeId()));
   }
 
   @Test
@@ -749,6 +743,23 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertEquals(foo, serDe(fory, foo));
     Assert.assertEquals(
         fory.getTypeResolver().getSerializer(foo.getClass()).getClass(), FooCustomSerializer.class);
+  }
+
+  @Test
+  public void testRejectIncompatibleCollectionAndMapSerializerRegistration() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    IllegalArgumentException collectionException =
+        Assert.expectThrows(
+            IllegalArgumentException.class,
+            () -> fory.registerSerializer(ArrayList.class, FooCustomSerializer.class));
+    Assert.assertTrue(collectionException.getMessage().contains("collection type"));
+    IllegalArgumentException mapException =
+        Assert.expectThrows(
+            IllegalArgumentException.class,
+            () ->
+                fory.registerSerializer(
+                    HashMap.class, new FooCustomSerializer(fory.getTypeResolver(), Foo.class)));
+    Assert.assertTrue(mapException.getMessage().contains("map type"));
   }
 
   interface ITest {

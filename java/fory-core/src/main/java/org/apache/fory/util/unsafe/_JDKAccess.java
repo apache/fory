@@ -282,9 +282,6 @@ public class _JDKAccess {
 
   public static Object makeGetterFunction(
       MethodHandles.Lookup lookup, MethodHandle handle, Class<?> returnType) {
-    if (GraalvmSupport.isGraalRuntime()) {
-      return makeGraalGetterFunction(handle, returnType);
-    }
     Tuple2<Class<?>, String> methodInfo = methodMap.get(returnType);
     MethodType factoryType;
     if (methodInfo == null) {
@@ -313,124 +310,6 @@ public class _JDKAccess {
       UNSAFE.throwException(e);
       throw new IllegalStateException(e);
     }
-  }
-
-  private static Object makeGraalGetterFunction(MethodHandle handle, Class<?> returnType) {
-    if (returnType == boolean.class) {
-      return new Predicate<Object>() {
-        @Override
-        public boolean test(Object value) {
-          try {
-            return (boolean) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return false;
-          }
-        }
-      };
-    }
-    if (returnType == byte.class) {
-      return new ToByteFunction<Object>() {
-        @Override
-        public byte applyAsByte(Object value) {
-          try {
-            return (byte) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0;
-          }
-        }
-      };
-    }
-    if (returnType == char.class) {
-      return new ToCharFunction<Object>() {
-        @Override
-        public char applyAsChar(Object value) {
-          try {
-            return (char) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0;
-          }
-        }
-      };
-    }
-    if (returnType == short.class) {
-      return new ToShortFunction<Object>() {
-        @Override
-        public short applyAsShort(Object value) {
-          try {
-            return (short) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0;
-          }
-        }
-      };
-    }
-    if (returnType == int.class) {
-      return new ToIntFunction<Object>() {
-        @Override
-        public int applyAsInt(Object value) {
-          try {
-            return (int) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0;
-          }
-        }
-      };
-    }
-    if (returnType == long.class) {
-      return new ToLongFunction<Object>() {
-        @Override
-        public long applyAsLong(Object value) {
-          try {
-            return (long) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0L;
-          }
-        }
-      };
-    }
-    if (returnType == float.class) {
-      return new ToFloatFunction<Object>() {
-        @Override
-        public float applyAsFloat(Object value) {
-          try {
-            return (float) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0F;
-          }
-        }
-      };
-    }
-    if (returnType == double.class) {
-      return new ToDoubleFunction<Object>() {
-        @Override
-        public double applyAsDouble(Object value) {
-          try {
-            return (double) handle.invoke(value);
-          } catch (Throwable e) {
-            UNSAFE.throwException(e);
-            return 0D;
-          }
-        }
-      };
-    }
-    return new Function<Object, Object>() {
-      @Override
-      public Object apply(Object value) {
-        try {
-          return handle.invoke(value);
-        } catch (Throwable e) {
-          UNSAFE.throwException(e);
-          return null;
-        }
-      }
-    };
   }
 
   private static volatile Method getModuleMethod;

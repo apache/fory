@@ -68,7 +68,6 @@ import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Float16List;
@@ -127,10 +126,12 @@ import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.UnknownClassSerializers;
 import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.ChildContainerSerializers;
+import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.GuavaCollectionSerializers;
 import org.apache.fory.serializer.collection.ImmutableCollectionSerializers;
+import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.serializer.collection.MapSerializer;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.serializer.collection.PrimitiveListSerializers;
@@ -233,17 +234,7 @@ public class ClassResolver extends TypeResolver {
     typeInfoCache = NIL_TYPE_INFO;
     extRegistry.classIdGenerator = NONEXISTENT_META_SHARED_ID + 1;
     shimDispatcher = new ShimDispatcher(this);
-    _addGraalvmClassRegistry(config, this);
-  }
-
-  @Override
-  protected Class<? extends Serializer> loadCodegenSerializerClass(Class<?> cls) {
-    return org.apache.fory.serializer.CodegenSerializer.loadCodegenSerializer(this, cls);
-  }
-
-  @Override
-  protected Class<? extends Serializer> loadMetaSharedCodecClass(Class<?> cls, TypeDef typeDef) {
-    return CodecUtils.loadOrGenMetaSharedCodecClass(this, cls, typeDef);
+    _addGraalvmClassRegistry(config.getConfigHash(), this);
   }
 
   @Override
@@ -498,7 +489,7 @@ public class ClassResolver extends TypeResolver {
     compositeNameBytes2TypeInfo.put(
         new TypeNameBytes(nsBytes.encoded.hash, nameBytes.encoded.hash), typeInfo);
     extRegistry.registeredClasses.put(fullname, cls);
-    GraalvmSupport.registerClass(cls, config);
+    GraalvmSupport.registerClass(cls);
   }
 
   @Override
@@ -526,7 +517,7 @@ public class ClassResolver extends TypeResolver {
     typeInfo.setSerializer(this, sharedRegistry.setSerializer(cls, serializer));
     updateTypeInfo(cls, typeInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
-    GraalvmSupport.registerClass(cls, config);
+    GraalvmSupport.registerClass(cls);
   }
 
   @Override
@@ -553,7 +544,7 @@ public class ClassResolver extends TypeResolver {
     compositeNameBytes2TypeInfo.put(
         new TypeNameBytes(nsBytes.encoded.hash, nameBytes.encoded.hash), typeInfo);
     extRegistry.registeredClasses.put(fullname, cls);
-    GraalvmSupport.registerClass(cls, config);
+    GraalvmSupport.registerClass(cls);
   }
 
   /**
@@ -618,29 +609,23 @@ public class ClassResolver extends TypeResolver {
     Preconditions.checkArgument(typeId >= 0 && typeId < INTERNAL_NATIVE_ID_LIMIT);
     checkRegistration(cls, typeId, cls.getName(), true);
     extRegistry.registeredClassIdMap.put(cls, typeId);
-    TypeInfo sharedTypeInfo = sharedRegistry.getPreRegisteredTypeInfo(cls, typeId);
-    TypeInfo typeInfo;
-    if (sharedTypeInfo != null) {
-      typeInfo = sharedTypeInfo;
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo != null) {
+      typeInfo =
+          new TypeInfo(
+              typeInfo.cls,
+              typeInfo.namespaceBytes,
+              typeInfo.typeNameBytes,
+              typeInfo.isDynamicGeneratedClass,
+              typeInfo.serializer,
+              typeId,
+              INVALID_USER_TYPE_ID);
     } else {
-      typeInfo = classInfoMap.get(cls);
-      if (typeInfo != null) {
-        typeInfo =
-            new TypeInfo(
-                typeInfo.cls,
-                typeInfo.namespaceBytes,
-                typeInfo.typeNameBytes,
-                typeInfo.isDynamicGeneratedClass,
-                typeInfo.serializer,
-                typeId,
-                INVALID_USER_TYPE_ID);
-      } else {
-        typeInfo = new TypeInfo(this, cls, null, typeId, INVALID_USER_TYPE_ID);
-      }
+      typeInfo = new TypeInfo(this, cls, null, typeId, INVALID_USER_TYPE_ID);
     }
     updateTypeInfo(cls, typeInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
-    GraalvmSupport.registerClass(cls, config);
+    GraalvmSupport.registerClass(cls);
   }
 
   private void registerUserImpl(Class<?> cls, int userId) {
@@ -665,7 +650,7 @@ public class ClassResolver extends TypeResolver {
     }
     updateTypeInfo(cls, typeInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
-    GraalvmSupport.registerClass(cls, config);
+    GraalvmSupport.registerClass(cls);
   }
 
   private int buildUserTypeId(Class<?> cls, Serializer<?> serializer) {
@@ -1006,12 +991,15 @@ public class ClassResolver extends TypeResolver {
    * @param <T> type of class
    */
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
+    checkRegisterAllowed();
+    checkSerializerRegistration(type, serializerClass);
     registerSerializer(type, Serializers.newSerializer(this, type, serializerClass));
   }
 
   @Override
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
     checkRegisterAllowed();
+    checkSerializerRegistration(type, serializer.getClass());
     if (!serializer.getClass().getPackage().getName().startsWith("org.apache.fory")) {
       SerializationUtils.validate(type, serializer.getClass());
     }
@@ -1043,7 +1031,6 @@ public class ClassResolver extends TypeResolver {
       registerInternal(type);
     }
     TypeInfo currentTypeInfo = classInfoMap.get(type);
-    boolean shareTypeInfo = currentTypeInfo == null || currentTypeInfo.serializer == null;
     if (currentTypeInfo != null
         && currentTypeInfo.serializer != null
         && currentTypeInfo.serializer.getClass() == serializer.getClass()) {
@@ -1056,16 +1043,6 @@ public class ClassResolver extends TypeResolver {
     }
     addSerializer(type, serializer, false);
     TypeInfo typeInfo = classInfoMap.get(type);
-    Serializer<?> sharedSerializer = typeInfo.getSerializer();
-    if (shareTypeInfo
-        && sharedSerializer != null
-        && sharedSerializer.threadSafe()
-        && !needToWriteTypeDef(sharedSerializer)) {
-      TypeInfo localTypeInfo = typeInfo;
-      typeInfo =
-          sharedRegistry.getOrCreatePreRegisteredTypeInfo(
-              type, typeInfo.getTypeId(), () -> localTypeInfo);
-    }
     updateTypeInfo(type, typeInfo);
     recordRegisteredTypeInfo(type, typeInfo);
   }
@@ -1082,6 +1059,25 @@ public class ClassResolver extends TypeResolver {
     if (!type.isPrimitive() && (ReflectionUtils.isAbstract(type) || type.isInterface())) {
       extRegistry.abstractTypeInfo.put(type, typeInfo);
       extRegistry.registeredTypeInfos.add(typeInfo);
+    }
+  }
+
+  private void checkSerializerRegistration(Class<?> type, Class<?> serializerClass) {
+    if (isCollection(type) && !CollectionLikeSerializer.class.isAssignableFrom(serializerClass)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Serializer %s is not supported for collection type %s. Use %s instead.",
+              serializerClass.getName(),
+              type.getName(),
+              CollectionSerializers.JDKCompatibleCollectionSerializer.class.getName()));
+    }
+    if (isMap(type) && !MapLikeSerializer.class.isAssignableFrom(serializerClass)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Serializer %s is not supported for map type %s. Use %s instead.",
+              serializerClass.getName(),
+              type.getName(),
+              MapSerializers.JDKCompatibleMapSerializer.class.getName()));
     }
   }
 
@@ -1175,8 +1171,7 @@ public class ClassResolver extends TypeResolver {
       int userTypeId = internal ? INVALID_USER_TYPE_ID : id;
       if (currentTypeInfo == null) {
         typeInfo = new TypeInfo(this, type, null, typeId, internal ? INVALID_USER_TYPE_ID : id);
-      } else if (currentTypeInfo == sharedRegistry.getPreRegisteredTypeInfo(type, typeId)
-          || currentTypeInfo.getTypeId() != typeId
+      } else if (currentTypeInfo.getTypeId() != typeId
           || currentTypeInfo.getUserTypeId() != userTypeId) {
         typeInfo =
             new TypeInfo(
@@ -1194,8 +1189,7 @@ public class ClassResolver extends TypeResolver {
       int typeId = buildUnregisteredTypeId(type, serializer);
       if (currentTypeInfo == null) {
         typeInfo = new TypeInfo(this, type, null, typeId, INVALID_USER_TYPE_ID);
-      } else if (currentTypeInfo == sharedRegistry.getPreRegisteredTypeInfo(type, typeId)
-          || currentTypeInfo.getTypeId() != typeId
+      } else if (currentTypeInfo.getTypeId() != typeId
           || currentTypeInfo.getUserTypeId() != INVALID_USER_TYPE_ID) {
         typeInfo =
             new TypeInfo(
@@ -1665,17 +1659,15 @@ public class ClassResolver extends TypeResolver {
       deserializationTypeInfo = buildMetaSharedTypeInfo(typeDef);
       if (deserializationTypeInfo != null && GraalvmSupport.isGraalBuildtime()) {
         getGraalvmClassRegistry()
-            .deserializerClassMap
-            .put(typeDef.getId(), getGraalvmSerializerClass(deserializationTypeInfo.serializer));
+            .putDeserializerClass(
+                typeDef.getId(), getGraalvmSerializerClass(deserializationTypeInfo.serializer));
         typeInfoCache = NIL_TYPE_INFO;
         extRegistry.typeInfoByTypeDefId.remove(typeDef.getId());
       }
     }
     if (GraalvmSupport.isGraalBuildtime()) {
       // Instance for generated class should be hold at graalvm runtime only.
-      getGraalvmClassRegistry()
-          .serializerClassMap
-          .put(cls, getGraalvmSerializerClass(typeInfo.serializer));
+      getGraalvmClassRegistry().putSerializerClass(cls, getGraalvmSerializerClass(typeInfo.serializer));
       typeInfoCache = NIL_TYPE_INFO;
       if (RecordUtils.isRecord(cls)) {
         RecordUtils.getRecordConstructor(cls);
@@ -2037,7 +2029,7 @@ public class ClassResolver extends TypeResolver {
       getJITContext().lock();
       classInfoMap.forEach(
           (cls, classInfo) -> {
-            GraalvmSupport.registerClass(cls, config);
+            GraalvmSupport.registerClass(cls);
             if (classInfo.serializer == null) {
               if (isSerializable(classInfo.cls)) {
                 createSerializer0(cls);

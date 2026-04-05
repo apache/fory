@@ -20,7 +20,6 @@
 package org.apache.fory.context;
 
 import java.util.Arrays;
-import java.util.Objects;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.LongLongByteMap;
 import org.apache.fory.collection.LongMap;
@@ -31,7 +30,6 @@ import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaStringDecoder;
 import org.apache.fory.resolver.MetaStringRef;
-import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.util.MurmurHash3;
 
 /** Read-side state for meta-string references. */
@@ -47,14 +45,12 @@ public final class MetaStringReader {
       new LongMap<>(INITIAL_CAPACITY, LOAD_FACTOR);
   private final LongLongByteMap<EncodedMetaString> longLongMetaStringMap =
       new LongLongByteMap<>(INITIAL_CAPACITY, LOAD_FACTOR);
-  private final SharedRegistry sharedRegistry;
   private final MetaStringRef emptyMetaStringRef;
   private MetaStringRef[] dynamicReadStringIds = new MetaStringRef[INITIAL_CAPACITY];
   private short dynamicReadStringId;
 
-  public MetaStringReader(SharedRegistry sharedRegistry) {
-    this.sharedRegistry = Objects.requireNonNull(sharedRegistry);
-    emptyMetaStringRef = sharedRegistry.getOrCreateMetaStringRef(EncodedMetaString.EMPTY);
+  public MetaStringReader() {
+    emptyMetaStringRef = new MetaStringRef(EncodedMetaString.EMPTY);
     metaString2StringMap.put(EncodedMetaString.EMPTY, "");
   }
 
@@ -137,12 +133,11 @@ public final class MetaStringReader {
     EncodedMetaString encodedMetaString = hash2MetaStringMap.get(hashCode);
     if (encodedMetaString == null) {
       EncodedMetaString newMetaString = new EncodedMetaString(buffer.readBytes(len), hashCode);
-      MetaStringRef metaStringRef = sharedRegistry.getOrCreateMetaStringRef(newMetaString);
-      hash2MetaStringMap.put(hashCode, metaStringRef.getEncoded());
-      return metaStringRef;
+      hash2MetaStringMap.put(hashCode, newMetaString);
+      return new MetaStringRef(newMetaString);
     }
     buffer.increaseReaderIndex(len);
-    return sharedRegistry.getOrCreateMetaStringRef(encodedMetaString);
+    return new MetaStringRef(encodedMetaString);
   }
 
   private MetaStringRef readSmallMetaStringBytes(MemoryBuffer buffer, int len) {
@@ -162,7 +157,7 @@ public final class MetaStringReader {
     if (encodedMetaString == null) {
       return createSmallMetaStringBytes(len, encoding, v1, v2);
     }
-    return sharedRegistry.getOrCreateMetaStringRef(encodedMetaString);
+    return new MetaStringRef(encodedMetaString);
   }
 
   private MetaStringRef readSmallMetaStringBytes(
@@ -187,7 +182,7 @@ public final class MetaStringReader {
     if (encodedMetaString == null) {
       return createSmallMetaStringBytes(len, encoding, v1, v2);
     }
-    return sharedRegistry.getOrCreateMetaStringRef(encodedMetaString);
+    return new MetaStringRef(encodedMetaString);
   }
 
   private MetaStringRef createSmallMetaStringBytes(int len, byte encoding, long v1, long v2) {
@@ -198,9 +193,8 @@ public final class MetaStringReader {
     hashCode = Math.abs(hashCode);
     hashCode = (hashCode & 0xffffffffffffff00L) | encoding;
     EncodedMetaString encodedMetaString = new EncodedMetaString(Arrays.copyOf(data, len), hashCode);
-    MetaStringRef metaStringRef = sharedRegistry.getOrCreateMetaStringRef(encodedMetaString);
-    longLongMetaStringMap.put(v1, v2, encoding, metaStringRef.getEncoded());
-    return metaStringRef;
+    longLongMetaStringMap.put(v1, v2, encoding, encodedMetaString);
+    return new MetaStringRef(encodedMetaString);
   }
 
   private void updateDynamicString(MetaStringRef metaStringRef) {

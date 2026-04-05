@@ -39,32 +39,23 @@ import org.apache.fory.util.StringUtils;
 import org.testng.annotations.Test;
 
 public class MetaStringIOTest {
-  private interface WriterFactory {
-    MetaStringWriter create(SharedRegistry sharedRegistry);
-  }
-
-  private static final WriterFactory[] WRITER_FACTORIES =
-      new WriterFactory[] {MetaStringWriter.FieldStateMetaStringWriter::new, MetaStringWriter.MapStateMetaStringWriter::new};
-
   @Test
   public void testWriteMetaString() {
-    for (WriterFactory writerFactory : WRITER_FACTORIES) {
-      SharedRegistry sharedRegistry = new SharedRegistry();
-      MetaStringWriter writer = writerFactory.create(sharedRegistry);
-      MetaStringReader reader = new MetaStringReader(sharedRegistry);
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
-      String str = StringUtils.random(128, 0);
-      MetaStringRef metaStringRef = writer.getOrCreateGenericMetaStringBytes(str);
-      for (int i = 0; i < 128; i++) {
-        writer.writeMetaStringBytes(buffer, metaStringRef);
-      }
-      for (int i = 0; i < 128; i++) {
-        String metaString = reader.readMetaString(buffer);
-        assertEquals(metaString.hashCode(), str.hashCode());
-        assertEquals(metaString.getBytes(), str.getBytes());
-      }
-      assertTrue(buffer.writerIndex() < str.getBytes().length + 128 * 4);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    MetaStringWriter writer = new MetaStringWriter(sharedRegistry);
+    MetaStringReader reader = new MetaStringReader();
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    String str = StringUtils.random(128, 0);
+    MetaStringRef metaStringRef = writer.getOrCreateGenericMetaStringBytes(str);
+    for (int i = 0; i < 128; i++) {
+      writer.writeMetaStringBytes(buffer, metaStringRef);
     }
+    for (int i = 0; i < 128; i++) {
+      String metaString = reader.readMetaString(buffer);
+      assertEquals(metaString.hashCode(), str.hashCode());
+      assertEquals(metaString.getBytes(), str.getBytes());
+    }
+    assertTrue(buffer.writerIndex() < str.getBytes().length + 128 * 4);
   }
 
   @Test
@@ -73,109 +64,102 @@ public class MetaStringIOTest {
         new MemoryBuffer[] {
           MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32)),
         }) {
-      for (WriterFactory writerFactory : WRITER_FACTORIES) {
-        for (int i = 0; i < 32; i++) {
-          String str = StringUtils.random(i, 0);
-          SharedRegistry sharedRegistry = new SharedRegistry();
-          MetaStringWriter writer = writerFactory.create(sharedRegistry);
-          MetaStringReader reader = new MetaStringReader(sharedRegistry);
-          writer.writeMetaStringBytes(buffer, writer.getOrCreateGenericMetaStringBytes(str));
-          String metaString = reader.readMetaString(buffer);
-          assertEquals(metaString.hashCode(), str.hashCode());
-          assertEquals(metaString.getBytes(), str.getBytes());
-          buffer.readerIndex(0);
-          buffer.writerIndex(0);
-        }
+      for (int i = 0; i < 32; i++) {
+        String str = StringUtils.random(i, 0);
+        SharedRegistry sharedRegistry = new SharedRegistry();
+        MetaStringWriter writer = new MetaStringWriter(sharedRegistry);
+        MetaStringReader reader = new MetaStringReader();
+        writer.writeMetaStringBytes(buffer, writer.getOrCreateGenericMetaStringBytes(str));
+        String metaString = reader.readMetaString(buffer);
+        assertEquals(metaString.hashCode(), str.hashCode());
+        assertEquals(metaString.getBytes(), str.getBytes());
+        buffer.readerIndex(0);
+        buffer.writerIndex(0);
       }
     }
   }
 
   @Test
-  public void testSharedRegistrySharesMetaStringRefsAcrossWriters() {
-    for (WriterFactory writerFactory : WRITER_FACTORIES) {
-      SharedRegistry sharedRegistry = new SharedRegistry();
-      MetaStringWriter writer1 = writerFactory.create(sharedRegistry);
-      MetaStringWriter writer2 = writerFactory.create(sharedRegistry);
+  public void testSharedRegistrySharesEncodedMetaStringsAcrossWriters() {
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    MetaStringWriter writer1 = new MetaStringWriter(sharedRegistry);
+    MetaStringWriter writer2 = new MetaStringWriter(sharedRegistry);
 
-      MetaStringRef bytes1 = writer1.getOrCreateGenericMetaStringBytes("thread_safe_fory");
-      MetaStringRef bytes2 = writer2.getOrCreateGenericMetaStringBytes("thread_safe_fory");
+    MetaStringRef bytes1 = writer1.getOrCreateGenericMetaStringBytes("thread_safe_fory");
+    MetaStringRef bytes2 = writer2.getOrCreateGenericMetaStringBytes("thread_safe_fory");
 
-      assertSame(bytes1, bytes2);
-      assertSame(bytes1.getEncoded(), bytes2.getEncoded());
-      assertSame(bytes1.getEncoded().bytes, bytes2.getEncoded().bytes);
-    }
+    assertNotSame(bytes1, bytes2);
+    assertSame(bytes1.getEncoded(), bytes2.getEncoded());
+    assertSame(bytes1.getEncoded().bytes, bytes2.getEncoded().bytes);
   }
 
   @Test
   public void testSharedRegistryDoesNotMergeDifferentEncoderTypeKeys() {
-    for (WriterFactory writerFactory : WRITER_FACTORIES) {
-      SharedRegistry sharedRegistry = new SharedRegistry();
-      MetaStringWriter writer1 = writerFactory.create(sharedRegistry);
-      MetaStringWriter writer2 = writerFactory.create(sharedRegistry);
-      MetaStringEncoder encoder = new MetaStringEncoder('$', '_');
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    MetaStringWriter writer1 = new MetaStringWriter(sharedRegistry);
+    MetaStringWriter writer2 = new MetaStringWriter(sharedRegistry);
+    MetaStringEncoder encoder = new MetaStringEncoder('$', '_');
 
-      MetaStringRef typeNameBytes =
-          writer1.getOrCreateMetaStringBytes(
-              "ExampleValue",
-              encoder,
-              MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL,
-              Encoders.TYPE_NAME_ENCODER_TYPE_KEY);
-      MetaStringRef fieldNameBytes =
-          writer2.getOrCreateMetaStringBytes(
-              "ExampleValue",
-              encoder,
-              MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL,
-              Encoders.FIELD_NAME_ENCODER_TYPE_KEY);
+    MetaStringRef typeNameBytes =
+        writer1.getOrCreateMetaStringBytes(
+            "ExampleValue",
+            encoder,
+            MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL,
+            Encoders.TYPE_NAME_ENCODER_TYPE_KEY);
+    MetaStringRef fieldNameBytes =
+        writer2.getOrCreateMetaStringBytes(
+            "ExampleValue",
+            encoder,
+            MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL,
+            Encoders.FIELD_NAME_ENCODER_TYPE_KEY);
 
-      assertNotSame(typeNameBytes, fieldNameBytes);
-      assertNotSame(typeNameBytes.getEncoded(), fieldNameBytes.getEncoded());
-      assertNotSame(typeNameBytes.getEncoded().bytes, fieldNameBytes.getEncoded().bytes);
-    }
+    assertNotSame(typeNameBytes, fieldNameBytes);
+    assertNotSame(typeNameBytes.getEncoded(), fieldNameBytes.getEncoded());
+    assertNotSame(typeNameBytes.getEncoded().bytes, fieldNameBytes.getEncoded().bytes);
   }
 
   @Test
   public void testSharedRegistryCreatesMetaStringOnlyOnCacheMiss() {
-    for (WriterFactory writerFactory : WRITER_FACTORIES) {
-      SharedRegistry sharedRegistry = new SharedRegistry();
-      MetaStringWriter writer1 = writerFactory.create(sharedRegistry);
-      MetaStringWriter writer2 = writerFactory.create(sharedRegistry);
-      CountingMetaStringEncoder encoder = new CountingMetaStringEncoder('.', '_');
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    MetaStringWriter writer1 = new MetaStringWriter(sharedRegistry);
+    MetaStringWriter writer2 = new MetaStringWriter(sharedRegistry);
+    CountingMetaStringEncoder encoder = new CountingMetaStringEncoder('.', '_');
 
-      MetaStringRef bytes1 =
-          writer1.getOrCreateMetaStringBytes(
-              "thread_safe_fory",
-              encoder,
-              MetaString.Encoding.LOWER_SPECIAL,
-              Encoders.GENERIC_ENCODER_TYPE_KEY);
-      MetaStringRef bytes2 =
-          writer2.getOrCreateMetaStringBytes(
-              "thread_safe_fory",
-              encoder,
-              MetaString.Encoding.LOWER_SPECIAL,
-              Encoders.GENERIC_ENCODER_TYPE_KEY);
+    MetaStringRef bytes1 =
+        writer1.getOrCreateMetaStringBytes(
+            "thread_safe_fory",
+            encoder,
+            MetaString.Encoding.LOWER_SPECIAL,
+            Encoders.GENERIC_ENCODER_TYPE_KEY);
+    MetaStringRef bytes2 =
+        writer2.getOrCreateMetaStringBytes(
+            "thread_safe_fory",
+            encoder,
+            MetaString.Encoding.LOWER_SPECIAL,
+            Encoders.GENERIC_ENCODER_TYPE_KEY);
 
-      assertEquals(encoder.encodeBinaryCalls.get(), 1);
-      assertSame(bytes1, bytes2);
-      assertSame(bytes1.getEncoded(), bytes2.getEncoded());
-      assertSame(bytes1.getEncoded().bytes, bytes2.getEncoded().bytes);
-    }
+    assertEquals(encoder.encodeBinaryCalls.get(), 1);
+    assertNotSame(bytes1, bytes2);
+    assertSame(bytes1.getEncoded(), bytes2.getEncoded());
+    assertSame(bytes1.getEncoded().bytes, bytes2.getEncoded().bytes);
   }
 
   @Test
-  public void testFieldStateWriterResetClearsSharedMetaStringRefState() {
+  public void testMetaStringWriterResetClearsDynamicWriteState() {
     SharedRegistry sharedRegistry = new SharedRegistry();
-    MetaStringWriter.FieldStateMetaStringWriter writer1 = new MetaStringWriter.FieldStateMetaStringWriter(sharedRegistry);
-    MetaStringWriter.FieldStateMetaStringWriter writer2 = new MetaStringWriter.FieldStateMetaStringWriter(sharedRegistry);
-    MetaStringReader reader = new MetaStringReader(sharedRegistry);
-    MetaStringRef metaStringRef = writer1.getOrCreateGenericMetaStringBytes("thread_safe_fory");
+    MetaStringWriter writer = new MetaStringWriter(sharedRegistry);
+    MetaStringReader reader = new MetaStringReader();
+    MetaStringRef metaStringRef = writer.getOrCreateGenericMetaStringBytes("thread_safe_fory");
     MemoryBuffer buffer = MemoryUtils.buffer(64);
 
-    writer1.writeMetaStringBytes(buffer, metaStringRef);
-    writer1.reset();
+    writer.writeMetaStringBytes(buffer, metaStringRef);
+    writer.reset();
+    assertEquals(
+        metaStringRef.dynamicWriteStringId, MetaStringRef.DEFAULT_DYNAMIC_WRITE_STRING_ID);
     buffer.writerIndex(0);
     buffer.readerIndex(0);
 
-    writer2.writeMetaStringBytes(buffer, metaStringRef);
+    writer.writeMetaStringBytes(buffer, metaStringRef);
 
     assertEquals(reader.readMetaString(buffer), "thread_safe_fory");
   }

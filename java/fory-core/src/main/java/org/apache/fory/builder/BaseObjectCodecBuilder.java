@@ -162,7 +162,6 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   public static final String TYPE_RESOLVER_NAME = "_f_typeResolver";
   public static final String REF_WRITER_NAME = "_f_refWriter";
   public static final String POJO_CLASS_TYPE_NAME = "_f_classType";
-  private static final TypeRef<?> STRING_SERIALIZER_TYPE_TOKEN = TypeRef.of(StringSerializer.class);
   private static final TypeRef<?> SERIALIZER_TYPE = TypeRef.of(Serializer.class);
   private static final TypeRef<?> COLLECTION_SERIALIZER_TYPE =
       TypeRef.of(CollectionLikeSerializer.class);

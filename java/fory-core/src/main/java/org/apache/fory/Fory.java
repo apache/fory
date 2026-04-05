@@ -105,7 +105,6 @@ public final class Fory implements BaseFory {
   public Fory(ForyBuilder builder, ClassLoader classLoader, SharedRegistry sharedRegistry) {
     // Prefer the explicit constructor argument over retaining loader state on the builder used to
     // create thread-safe factories.
-    boolean sharedRegistryProvided = sharedRegistry != null;
     if (sharedRegistry == null) {
       sharedRegistry = new SharedRegistry();
     }
@@ -133,11 +132,8 @@ public final class Fory implements BaseFory {
             ? new XtypeResolver(config, classLoader, sharedRegistry, jitContext)
             : new ClassResolver(config, classLoader, sharedRegistry, jitContext);
     typeResolver.initialize();
-    MetaStringWriter metaStringWriter =
-        config.forVirtualThread() || sharedRegistryProvided
-            ? new MetaStringWriter.MapStateMetaStringWriter(sharedRegistry)
-            : new MetaStringWriter.FieldStateMetaStringWriter(sharedRegistry);
-    MetaStringReader metaStringReader = new MetaStringReader(sharedRegistry);
+    MetaStringWriter metaStringWriter = new MetaStringWriter(sharedRegistry);
+    MetaStringReader metaStringReader = new MetaStringReader();
     writeContext =
         new WriteContext(
             config,

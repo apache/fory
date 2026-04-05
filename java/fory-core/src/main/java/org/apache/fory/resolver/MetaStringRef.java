@@ -19,6 +19,7 @@
 
 package org.apache.fory.resolver;
 
+import java.util.Objects;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.MetaStringDecoder;
@@ -30,8 +31,8 @@ public final class MetaStringRef {
   final EncodedMetaString encoded;
   public short dynamicWriteStringId = DEFAULT_DYNAMIC_WRITE_STRING_ID;
 
-  MetaStringRef(EncodedMetaString encoded) {
-    this.encoded = encoded;
+  public MetaStringRef(EncodedMetaString encoded) {
+    this.encoded = Objects.requireNonNull(encoded);
   }
 
   public EncodedMetaString getEncoded() {

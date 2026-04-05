@@ -23,13 +23,12 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
-import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.AbstractObjectSerializer;
+import org.apache.fory.serializer.MetaSharedLayerSerializerBase;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.Preconditions;
 
@@ -126,71 +125,9 @@ public interface Generated {
    * and does not include parent class fields.
    */
   abstract class GeneratedMetaSharedLayerSerializer
-      extends org.apache.fory.serializer.MetaSharedLayerSerializerBase implements Generated {
-    public static final String SERIALIZER_FIELD_NAME = "serializer";
-
-    /** Will be set in generated constructor by MetaSharedLayerCodecBuilder. */
-    public org.apache.fory.serializer.MetaSharedLayerSerializerBase serializer;
-
+      extends MetaSharedLayerSerializerBase implements Generated {
     public GeneratedMetaSharedLayerSerializer(TypeResolver typeResolver, Class<?> cls) {
       super(typeResolver, cls);
-    }
-
-    @Override
-    public void write(WriteContext writeContext, Object value) {
-      serializer.write(writeContext, value);
-    }
-
-    @Override
-    public Object readAndSetFields(ReadContext readContext, MemoryBuffer buffer, Object obj) {
-      return serializer.readAndSetFields(readContext, buffer, obj);
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public void setFieldValuesFromPutFields(
-        Object obj, org.apache.fory.collection.ObjectIntMap fieldIndexMap, Object[] vals) {
-      serializer.setFieldValuesFromPutFields(obj, fieldIndexMap, vals);
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public Object[] getFieldValuesForPutFields(
-        Object obj, org.apache.fory.collection.ObjectIntMap fieldIndexMap, int arraySize) {
-      return serializer.getFieldValuesForPutFields(obj, fieldIndexMap, arraySize);
-    }
-
-    @Override
-    public void writeLayerClassMeta(WriteContext writeContext, MemoryBuffer buffer) {
-      serializer.writeLayerClassMeta(writeContext, buffer);
-    }
-
-    @Override
-    public void writeFieldsOnly(WriteContext writeContext, MemoryBuffer buffer, Object value) {
-      serializer.writeFieldsOnly(writeContext, buffer, value);
-    }
-
-    @Override
-    public void writeFieldValues(
-        WriteContext writeContext, MemoryBuffer buffer, Object[] vals) {
-      serializer.writeFieldValues(writeContext, buffer, vals);
-    }
-
-    @Override
-    public Object[] readFieldValues(ReadContext readContext, MemoryBuffer buffer) {
-      return serializer.readFieldValues(readContext, buffer);
-    }
-
-    @Override
-    public int getNumFields() {
-      return serializer.getNumFields();
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public void populateFieldInfo(
-        org.apache.fory.collection.ObjectIntMap fieldIndexMap, Class[] fieldTypes) {
-      serializer.populateFieldInfo(fieldIndexMap, fieldTypes);
     }
   }
 }
