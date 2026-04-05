@@ -23,13 +23,13 @@ package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
 import org.apache.fory.memory.MemoryBuffer
-import org.apache.fory.serializer.Serializer
+import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
   fory: Fory,
   cls: Class<T>,
   private val delegateClass: Class<T_Delegate>
-) : Serializer<T>(fory, cls) {
+) : CollectionLikeSerializer<T>(fory, cls, false) {
 
   // Lazily initialize the delegatingSerializer here to avoid lookup cost.
   private val delegatingSerializer by lazy { fory.typeResolver.getSerializer(delegateClass) }
@@ -45,6 +45,14 @@ public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
   override fun read(buffer: MemoryBuffer): T {
     val delegatedValue = delegatingSerializer.read(buffer)
     return fromDelegateClass(delegatedValue)
+  }
+
+  override fun onCollectionWrite(buffer: MemoryBuffer, value: T): MutableCollection<Any?> {
+    throw IllegalStateException("supportCodegenHook is disabled for ${type.name}")
+  }
+
+  override fun onCollectionRead(collection: MutableCollection<Any?>): T {
+    throw IllegalStateException("supportCodegenHook is disabled for ${type.name}")
   }
 }
 

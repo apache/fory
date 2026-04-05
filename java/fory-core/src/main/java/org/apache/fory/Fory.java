@@ -1385,7 +1385,7 @@ public final class Fory implements BaseFory {
   }
 
   public boolean isCompatible() {
-    return config.getCompatibleMode() == CompatibleMode.COMPATIBLE;
+    return config.isCompatible();
   }
 
   public boolean isShareMeta() {

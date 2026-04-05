@@ -22,7 +22,6 @@ package org.apache.fory.serializer;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.LongEncoding;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
@@ -1204,7 +1203,7 @@ public class ArraySerializers {
       if (TypeUtils.getArrayComponent(cls).isEnum()) {
         componentSerializer = new UnknownClassSerializers.UnknownEnumSerializer(fory);
       } else {
-        if (fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE) {
+        if (fory.getConfig().isCompatible()) {
           componentSerializer = new ObjectSerializer<>(fory, UnknownClass.UnknownEmptyStruct.class);
         } else {
           componentSerializer = null;

@@ -11,9 +11,11 @@ Find the highest-value bugs, regressions, and missing verification in Apache For
 
 ## Start Here
 
-1. If reviewing against main, run `git fetch apache main` before diffing.
-2. Inspect the changed files first and cluster them by subsystem.
-3. Load only the references needed for the touched areas:
+1. If the target is a GitHub PR, create a new local git worktree for the review before checking out or fetching the PR branch.
+2. Do not switch the current branch or reuse the current worktree for PR review unless the user explicitly asks for that.
+3. If reviewing against main, run `git fetch apache main` before diffing.
+4. Inspect the changed files first and cluster them by subsystem.
+5. Load only the references needed for the touched areas:
    - `references/review-checklist.md`
    - `references/lesson-derived-red-flags.md`
    - `references/validation-command-matrix.md`
@@ -23,6 +25,8 @@ Find the highest-value bugs, regressions, and missing verification in Apache For
 1. Define the review target.
 
 - Determine whether the user wants a review of a PR, branch, commit range, or local diff.
+- For a GitHub PR, create and use a dedicated local worktree for the review. Keep the current worktree and branch unchanged unless the user explicitly requests otherwise.
+- In that worktree, fetch the PR head and review there instead of checking out the PR branch in the current workspace.
 - Prefer `git diff --stat` first, then inspect the full patch only for touched subsystems.
 
 2. Load focused context.

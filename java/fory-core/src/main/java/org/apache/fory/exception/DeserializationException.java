@@ -24,7 +24,7 @@ import java.util.List;
 /** Exception thrown when a deserialization operation fails. */
 public class DeserializationException extends ForyException {
 
-  private List<Object> readObjects;
+  private transient List<Object> readObjects;
 
   public DeserializationException(String message) {
     super(message);

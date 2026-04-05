@@ -1276,6 +1276,29 @@ public class CollectionSerializersTest extends ForyTestBase {
     copyCheck(fory, collection);
   }
 
+  @Test
+  public void testDefaultCollectionSerializerAsyncCompilation() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withCodegen(true)
+            .withAsyncCompilation(true)
+            .requireClassRegistration(false)
+            .build();
+    fory.register(TestClassForDefaultCollectionSerializer.class);
+    fory.ensureSerializersCompiled();
+
+    TestClassForDefaultCollectionSerializer collection =
+        new TestClassForDefaultCollectionSerializer();
+    collection.add("a");
+    collection.add("b");
+    Assert.assertSame(
+        fory.getTypeResolver().getSerializerClass(TestClassForDefaultCollectionSerializer.class),
+        CollectionSerializers.DefaultJavaCollectionSerializer.class);
+    serDeCheck(fory, collection);
+  }
+
   @SuppressWarnings("unchecked")
   @Test
   public void testJavaSerialization() {

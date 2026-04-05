@@ -991,9 +991,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected TypeRef<?> getSerializerType(Class<?> objType) {
-    if (typeResolver(r -> r.isCollection(objType))) {
+    if (useCollectionSerialization(objType)) {
       return COLLECTION_SERIALIZER_TYPE;
-    } else if (typeResolver(r -> r.isMap(objType))) {
+    } else if (useMapSerialization(objType)) {
       return MAP_SERIALIZER_TYPE;
     }
     return SERIALIZER_TYPE;

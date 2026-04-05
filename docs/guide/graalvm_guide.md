@@ -40,6 +40,22 @@ Note: Fory's `asyncCompilationEnabled` option is automatically disabled for Graa
 
 ## Basic Usage
 
+### Step 0: Add the GraalVM Support Dependency
+
+Add `fory-graalvm-feature` to your application dependencies when building a native image:
+
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-graalvm-feature</artifactId>
+  <version>${fory.version}</version>
+</dependency>
+```
+
+This dependency already ships GraalVM feature metadata in `META-INF/native-image`, so adding it
+automatically enables `org.apache.fory.graalvm.feature.ForyGraalVMFeature` during native-image
+builds.
+
 ### Step 1: Create Fory and Register Classes
 
 ```java
@@ -72,36 +88,22 @@ Create `resources/META-INF/native-image/your-group/your-artifact/native-image.pr
 Args = --initialize-at-build-time=com.example.Example
 ```
 
-## ForyGraalVMFeature (Optional)
+## What `fory-graalvm-feature` Handles
 
-For most types with public constructors, the basic setup above is sufficient. However, some advanced cases require reflection registration:
+After you add the `fory-graalvm-feature` dependency, Fory automatically registers the extra
+GraalVM metadata needed by advanced cases such as:
 
 - **Private constructors** (classes without accessible no-arg constructor)
 - **Private inner classes/records**
 - **Dynamic proxy serialization**
 
-The `fory-graalvm-feature` module automatically handles these cases, eliminating the need for manual `reflect-config.json` configuration.
-
-### Adding the Dependency
-
-```xml
-<dependency>
-  <groupId>org.apache.fory</groupId>
-  <artifactId>fory-graalvm-feature</artifactId>
-  <version>${fory.version}</version>
-</dependency>
-```
-
-### Enabling the Feature
-
-Add to your `native-image.properties`:
+This removes the need for manual `reflect-config.json` in most applications. Your own
+`native-image.properties` still only needs to configure your build-time initialized bootstrap
+class, for example:
 
 ```properties
-Args = --initialize-at-build-time=com.example.Example \
-       --features=org.apache.fory.graalvm.feature.ForyGraalVMFeature
+Args = --initialize-at-build-time=com.example.Example
 ```
-
-### What ForyGraalVMFeature Handles
 
 | Scenario                        | Without Feature              | With Feature       |
 | ------------------------------- | ---------------------------- | ------------------ |
@@ -137,16 +139,25 @@ public class ProxyExample {
     String execute();
   }
 
+  public interface Audited {
+    String traceId();
+  }
+
   static Fory fory;
 
   static {
     fory = Fory.builder().build();
-    // Register proxy interface for serialization
-    GraalvmSupport.registerProxySupport(MyService.class);
+    // Register the exact interface list used by Proxy.newProxyInstance(...)
+    GraalvmSupport.registerProxySupport(MyService.class, Audited.class);
     fory.ensureSerializersCompiled();
   }
 }
 ```
+
+Use `registerProxySupport(MyService.class)` for a single-interface proxy. For proxies that implement
+multiple interfaces, pass the full interface list in the same order used to create the proxy. With
+`fory-graalvm-feature` on the classpath, this replaces manual `proxy-config.json` entries for those
+registered proxy shapes.
 
 ## Thread-Safe Fory
 
@@ -163,8 +174,8 @@ public class ThreadSafeExample {
   static ThreadSafeFory fory;
 
   static {
-    fory = new ThreadLocalFory(classLoader -> {
-      Fory f = Fory.builder().build();
+    fory = new ThreadLocalFory(builder -> {
+      Fory f = builder.build();
       f.register(Foo.class);
       f.ensureSerializersCompiled();
       return f;
@@ -198,7 +209,7 @@ fory.ensureSerializersCompiled();
 
 If the class has a private constructor, either:
 
-1. Add `fory-graalvm-feature` dependency, or
+1. Make sure `fory-graalvm-feature` is already on the native-image classpath, or
 2. Create a `reflect-config.json` for that specific class
 
 ## Framework Integration

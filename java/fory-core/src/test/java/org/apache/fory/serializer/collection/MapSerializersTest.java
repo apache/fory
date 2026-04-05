@@ -858,6 +858,28 @@ public class MapSerializersTest extends ForyTestBase {
     copyCheck(fory, map2);
   }
 
+  @Test
+  public void testDefaultMapSerializerAsyncCompilation() {
+    Fory fory =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(true)
+            .withAsyncCompilation(true)
+            .requireClassRegistration(false)
+            .build();
+    fory.register(TestClass1ForDefaultMap.class);
+    fory.ensureSerializersCompiled();
+
+    TestClass1ForDefaultMap map = new TestClass1ForDefaultMap();
+    map.put("a", 1);
+    map.put("b", 2);
+    Assert.assertSame(
+        fory.getTypeResolver().getSerializerClass(TestClass1ForDefaultMap.class),
+        MapSerializers.DefaultJavaMapSerializer.class);
+    serDeCheck(fory, map);
+  }
+
   @Data
   @AllArgsConstructor
   public static class GenericMapBoundTest {

@@ -26,6 +26,10 @@ import org.testng.annotations.Test
 
 @OptIn(ExperimentalUnsignedTypes::class)
 class ArraySerializerTest {
+  class RawCollectionHolder {
+    var values: java.util.Collection<Any?>? = null
+  }
+
   @Test
   fun testSimpleArray() {
     val fory: Fory =
@@ -184,5 +188,23 @@ class ArraySerializerTest {
 
     val array = ulongArrayOf(1u, 2u, 3u)
     assert(array.contentEquals(fory.deserialize(fory.serialize(array)) as ULongArray))
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  @Test
+  fun testUnsignedArrayAsCollectionField() {
+    val fory: Fory =
+      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+    KotlinSerializers.registerSerializers(fory)
+    fory.register(RawCollectionHolder::class.java)
+
+    val array = ubyteArrayOf(0xFFu, 0xEFu, 0x00u)
+    val holder = RawCollectionHolder()
+    holder.values = array as java.util.Collection<Any?>
+
+    val roundTripped = fory.deserialize(fory.serialize(holder)) as RawCollectionHolder
+    val values = roundTripped.values
+    assertEquals(values?.javaClass, UByteArray::class.java)
+    assert(array.contentEquals(values as UByteArray))
   }
 }

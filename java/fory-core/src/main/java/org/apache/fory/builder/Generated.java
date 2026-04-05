@@ -124,69 +124,8 @@ public interface Generated {
    */
   abstract class GeneratedMetaSharedLayerSerializer
       extends org.apache.fory.serializer.MetaSharedLayerSerializerBase implements Generated {
-    public static final String SERIALIZER_FIELD_NAME = "serializer";
-
-    /** Will be set in generated constructor by MetaSharedLayerCodecBuilder. */
-    public org.apache.fory.serializer.MetaSharedLayerSerializerBase serializer;
-
     public GeneratedMetaSharedLayerSerializer(Fory fory, Class<?> cls) {
       super(fory, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Object value) {
-      serializer.write(buffer, value);
-    }
-
-    @Override
-    public Object readAndSetFields(MemoryBuffer buffer, Object obj) {
-      return serializer.readAndSetFields(buffer, obj);
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public void setFieldValuesFromPutFields(
-        Object obj, org.apache.fory.collection.ObjectIntMap fieldIndexMap, Object[] vals) {
-      serializer.setFieldValuesFromPutFields(obj, fieldIndexMap, vals);
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public Object[] getFieldValuesForPutFields(
-        Object obj, org.apache.fory.collection.ObjectIntMap fieldIndexMap, int arraySize) {
-      return serializer.getFieldValuesForPutFields(obj, fieldIndexMap, arraySize);
-    }
-
-    @Override
-    public void writeLayerClassMeta(MemoryBuffer buffer) {
-      serializer.writeLayerClassMeta(buffer);
-    }
-
-    @Override
-    public void writeFieldsOnly(MemoryBuffer buffer, Object value) {
-      serializer.writeFieldsOnly(buffer, value);
-    }
-
-    @Override
-    public void writeFieldValues(MemoryBuffer buffer, Object[] vals) {
-      serializer.writeFieldValues(buffer, vals);
-    }
-
-    @Override
-    public Object[] readFieldValues(MemoryBuffer buffer) {
-      return serializer.readFieldValues(buffer);
-    }
-
-    @Override
-    public int getNumFields() {
-      return serializer.getNumFields();
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public void populateFieldInfo(
-        org.apache.fory.collection.ObjectIntMap fieldIndexMap, Class[] fieldTypes) {
-      serializer.populateFieldInfo(fieldIndexMap, fieldTypes);
     }
   }
 }

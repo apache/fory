@@ -19,15 +19,20 @@
 
 package org.apache.fory.graalvm.feature;
 
+import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.record.RecordUtils;
 import org.graalvm.nativeimage.hosted.Feature;
+import org.graalvm.nativeimage.hosted.RuntimeClassInitialization;
+import org.graalvm.nativeimage.hosted.RuntimeProxyCreation;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
+import org.graalvm.nativeimage.hosted.RuntimeSerialization;
 
 /**
  * GraalVM native image feature for Apache Fory serialization framework.
@@ -49,10 +54,19 @@ public class ForyGraalVMFeature implements Feature {
 
   private final Set<Class<?>> processedClasses = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedProxyInterfaces = ConcurrentHashMap.newKeySet();
+  private final Set<List<Class<?>>> processedProxyInterfaceLists = ConcurrentHashMap.newKeySet();
+  private final Set<Class<?>> processedSerializerClasses = ConcurrentHashMap.newKeySet();
 
   @Override
   public String getDescription() {
     return "Registers Fory serialization classes and proxy interfaces for GraalVM native image";
+  }
+
+  @Override
+  public void beforeAnalysis(BeforeAnalysisAccess access) {
+    for (Class<?> serializerClass : GraalvmSupport.getRegisteredSerializerClasses()) {
+      RuntimeClassInitialization.initializeAtBuildTime(serializerClass);
+    }
   }
 
   @Override
@@ -66,10 +80,22 @@ public class ForyGraalVMFeature implements Feature {
       }
     }
 
-    for (Class<?> proxyInterface : GraalvmSupport.getProxyInterfaces()) {
-      if (processedProxyInterfaces.add(proxyInterface)) {
-        RuntimeReflection.register(proxyInterface);
-        RuntimeReflection.register(proxyInterface.getMethods());
+    for (Class<?> serializerClass : GraalvmSupport.getRegisteredSerializerClasses()) {
+      if (processedSerializerClasses.add(serializerClass)) {
+        registerSerializerClass(serializerClass);
+        changed = true;
+      }
+    }
+
+    for (List<Class<?>> proxyInterfaceList : GraalvmSupport.getProxyInterfaceLists()) {
+      if (processedProxyInterfaceLists.add(proxyInterfaceList)) {
+        RuntimeProxyCreation.register(proxyInterfaceList.toArray(new Class<?>[0]));
+        for (Class<?> proxyInterface : proxyInterfaceList) {
+          if (processedProxyInterfaces.add(proxyInterface)) {
+            RuntimeReflection.register(proxyInterface);
+            RuntimeReflection.register(proxyInterface.getMethods());
+          }
+        }
         changed = true;
       }
     }
@@ -81,35 +107,56 @@ public class ForyGraalVMFeature implements Feature {
 
   private void registerClass(Class<?> clazz) {
     RuntimeReflection.register(clazz);
-    RuntimeReflection.registerClassLookup(clazz.getName());
+    registerHierarchyMembers(clazz);
+    if (Serializable.class.isAssignableFrom(clazz)) {
+      registerSerializableHierarchy(clazz);
+    }
 
     if (RecordUtils.isRecord(clazz)) {
-      registerRecordClass(clazz);
+      RuntimeReflection.registerAllRecordComponents(clazz);
     } else if (GraalvmSupport.needReflectionRegisterForCreation(clazz)) {
-      registerForReflectiveInstantiation(clazz);
+      RuntimeReflection.registerForReflectiveInstantiation(clazz);
     }
   }
 
-  private void registerRecordClass(Class<?> clazz) {
-    RuntimeReflection.registerForReflectiveInstantiation(clazz);
+  private void registerHierarchyMembers(Class<?> clazz) {
+    for (Class<?> current = clazz;
+        current != null && current != Object.class;
+        current = current.getSuperclass()) {
+      RuntimeReflection.register(current);
+      registerFields(current);
+      registerMethods(current);
+      registerConstructors(current);
+    }
+  }
+
+  private void registerSerializerClass(Class<?> clazz) {
+    registerConstructors(clazz);
+  }
+
+  private void registerSerializableHierarchy(Class<?> clazz) {
+    for (Class<?> current = clazz;
+        current != null && current != Object.class && Serializable.class.isAssignableFrom(current);
+        current = current.getSuperclass()) {
+      RuntimeSerialization.registerIncludingAssociatedClasses(current);
+    }
+  }
+
+  private void registerFields(Class<?> clazz) {
     for (Field field : clazz.getDeclaredFields()) {
       RuntimeReflection.register(field);
-      RuntimeReflection.registerFieldLookup(clazz, field.getName());
     }
+  }
+
+  private void registerMethods(Class<?> clazz) {
     for (Method method : clazz.getDeclaredMethods()) {
       RuntimeReflection.register(method);
-      RuntimeReflection.registerMethodLookup(clazz, method.getName(), method.getParameterTypes());
-    }
-    for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
-      RuntimeReflection.register(constructor);
-      RuntimeReflection.registerConstructorLookup(clazz, constructor.getParameterTypes());
     }
   }
 
-  private void registerForReflectiveInstantiation(Class<?> clazz) {
-    RuntimeReflection.registerForReflectiveInstantiation(clazz);
-    for (Field field : clazz.getDeclaredFields()) {
-      RuntimeReflection.register(field);
+  private void registerConstructors(Class<?> clazz) {
+    for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+      RuntimeReflection.register(constructor);
     }
   }
 }

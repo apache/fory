@@ -161,6 +161,14 @@ public class XtypeResolver extends TypeResolver {
       Serializer serializer = new UnknownStructSerializer(fory, null);
       register(UnknownStruct.class, serializer, "", "unknown_struct", Types.COMPATIBLE_STRUCT, -1);
     }
+    if (GraalvmSupport.isGraalBuildtime()) {
+      classInfoMap.forEach(
+          (cls, classInfo) -> {
+            if (classInfo.serializer != null) {
+              extRegistry.registeredTypeInfos.add(classInfo);
+            }
+          });
+    }
   }
 
   @Override
@@ -180,7 +188,7 @@ public class XtypeResolver extends TypeResolver {
     TypeInfo typeInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildTypeInfo(type);
-      GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
+      registerGraalvmClass(type);
       return;
     }
     Serializer<?> serializer = null;
@@ -284,7 +292,7 @@ public class XtypeResolver extends TypeResolver {
     String qualifiedName = qualifiedName(namespace, typeName);
     qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
     extRegistry.registeredClasses.put(qualifiedName, type);
-    GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
+    registerGraalvmClass(type);
     if (serializer == null) {
       if (type.isEnum()) {
         typeInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);
@@ -652,7 +660,7 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public TypeInfo getTypeInfo(Class<?> cls) {
     TypeInfo typeInfo = classInfoMap.get(cls);
-    if (typeInfo == null) {
+    if (typeInfo == null || typeInfo.serializer == null) {
       typeInfo = buildTypeInfo(cls);
     }
     return typeInfo;
@@ -670,7 +678,7 @@ public class XtypeResolver extends TypeResolver {
     TypeInfo typeInfo = classInfoHolder.typeInfo;
     if (typeInfo.getCls() != cls) {
       typeInfo = classInfoMap.get(cls);
-      if (typeInfo == null) {
+      if (typeInfo == null || typeInfo.serializer == null) {
         typeInfo = buildTypeInfo(cls);
       }
       classInfoHolder.typeInfo = typeInfo;
@@ -679,22 +687,18 @@ public class XtypeResolver extends TypeResolver {
     return typeInfo;
   }
 
-  public TypeInfo getXtypeInfo(int typeId) {
-    return getInternalTypeInfoByTypeId(typeId);
-  }
-
-  public TypeInfo getUserTypeInfo(String namespace, String typeName) {
-    String name = qualifiedName(namespace, typeName);
-    return qualifiedType2TypeInfo.get(name);
-  }
-
-  public TypeInfo getUserTypeInfo(int userTypeId) {
-    return userTypeIdToTypeInfo.get(userTypeId);
-  }
-
-  // buildGenericType methods are inherited from TypeResolver
-
   private TypeInfo buildTypeInfo(Class<?> cls) {
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo != null && typeInfo.serializer != null) {
+      return typeInfo;
+    }
+    if (typeInfo != null) {
+      Class<? extends Serializer> serializerClass = getSerializerClassFromGraalvmRegistry(cls);
+      if (serializerClass != null) {
+        typeInfo.setSerializer(this, Serializers.newSerializer(fory, cls, serializerClass));
+        return typeInfo;
+      }
+    }
     Serializer serializer;
     int typeId;
     if (isSet(cls)) {
@@ -721,12 +725,12 @@ public class XtypeResolver extends TypeResolver {
         cls = HashMap.class;
         serializer = new HashMapSerializer(fory);
       } else {
-        TypeInfo typeInfo = classInfoMap.get(cls);
-        if (typeInfo != null
-            && typeInfo.serializer != null
-            && typeInfo.serializer instanceof MapLikeSerializer
-            && ((MapLikeSerializer) typeInfo.serializer).supportCodegenHook()) {
-          serializer = typeInfo.serializer;
+        TypeInfo cachedTypeInfo = classInfoMap.get(cls);
+        if (cachedTypeInfo != null
+            && cachedTypeInfo.serializer != null
+            && cachedTypeInfo.serializer instanceof MapLikeSerializer
+            && ((MapLikeSerializer) cachedTypeInfo.serializer).supportCodegenHook()) {
+          serializer = cachedTypeInfo.serializer;
         } else {
           serializer = new MapSerializer(fory, cls);
         }
@@ -756,6 +760,21 @@ public class XtypeResolver extends TypeResolver {
     classInfoMap.put(cls, info);
     return info;
   }
+
+  public TypeInfo getXtypeInfo(int typeId) {
+    return getInternalTypeInfoByTypeId(typeId);
+  }
+
+  public TypeInfo getUserTypeInfo(String namespace, String typeName) {
+    String name = qualifiedName(namespace, typeName);
+    return qualifiedType2TypeInfo.get(name);
+  }
+
+  public TypeInfo getUserTypeInfo(int userTypeId) {
+    return userTypeIdToTypeInfo.get(userTypeId);
+  }
+
+  // buildGenericType methods are inherited from TypeResolver
 
   private Serializer<?> getCollectionSerializer(Class<?> cls) {
     TypeInfo typeInfo = classInfoMap.get(cls);
@@ -1045,7 +1064,9 @@ public class XtypeResolver extends TypeResolver {
   public <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer) {
     TypeInfo typeInfo = classInfoMap.get(cls);
     Preconditions.checkNotNull(typeInfo);
-    Preconditions.checkNotNull(typeInfo.serializer);
+    if (typeInfo.serializer == null) {
+      typeInfo.serializer = serializer;
+    }
   }
 
   // nilTypeInfo and nilTypeInfoHolder are inherited from TypeResolver
@@ -1260,15 +1281,13 @@ public class XtypeResolver extends TypeResolver {
   public void ensureSerializersCompiled() {
     classInfoMap.forEach(
         (cls, classInfo) -> {
-          GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+          registerGraalvmClass(cls);
           if (classInfo.serializer != null) {
             // Trigger serializer initialization and resolution for deferred serializers
             if (classInfo.serializer
                 instanceof DeferedLazySerializer.DeferredLazyObjectSerializer) {
               ((DeferedLazySerializer.DeferredLazyObjectSerializer) classInfo.serializer)
                   .resolveSerializer();
-            } else {
-              classInfo.serializer.getClass();
             }
           }
           // For enums at GraalVM build time, also handle anonymous enum value classes
@@ -1280,6 +1299,15 @@ public class XtypeResolver extends TypeResolver {
               }
             }
           }
+          if (GraalvmSupport.isGraalBuildtime() && classInfo.serializer != null) {
+            getGraalvmClassRegistry()
+                .putSerializerClass(cls, getGraalvmSerializerClass(classInfo.serializer));
+          }
         });
+    if (GraalvmSupport.isGraalBuildtime()) {
+      clearGraalvmGeneratedTypeInfoSerializers();
+      getGraalvmClassRegistry().clearResolvers();
+    }
+    extRegistry.registeredTypeInfos.clear();
   }
 }

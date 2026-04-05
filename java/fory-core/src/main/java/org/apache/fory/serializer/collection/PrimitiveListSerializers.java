@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.collection;
 
+import java.util.Collection;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Float16List;
@@ -36,16 +37,30 @@ import org.apache.fory.config.LongEncoding;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.serializer.Serializers;
 
 /** Serializers for primitive list types. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class PrimitiveListSerializers {
 
-  public static final class BoolListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<BoolList> {
+  private abstract static class PrimitiveListSerializer<T> extends CollectionLikeSerializer<T> {
+    private PrimitiveListSerializer(Fory fory, Class<T> cls) {
+      super(fory, cls, false, false);
+    }
+
+    @Override
+    public final Collection onCollectionWrite(MemoryBuffer buffer, T value) {
+      throw new IllegalStateException("supportCodegenHook is disabled for " + type.getName());
+    }
+
+    @Override
+    public final T onCollectionRead(Collection collection) {
+      throw new IllegalStateException("supportCodegenHook is disabled for " + type.getName());
+    }
+  }
+
+  public static final class BoolListSerializer extends PrimitiveListSerializer<BoolList> {
     public BoolListSerializer(Fory fory) {
-      super(fory, BoolList.class, false, true);
+      super(fory, BoolList.class);
     }
 
     @Override
@@ -66,12 +81,16 @@ public class PrimitiveListSerializers {
       }
       return list;
     }
+
+    @Override
+    public BoolList copy(BoolList value) {
+      return new BoolList(value.copyArray());
+    }
   }
 
-  public static final class Int8ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Int8List> {
+  public static final class Int8ListSerializer extends PrimitiveListSerializer<Int8List> {
     public Int8ListSerializer(Fory fory) {
-      super(fory, Int8List.class, false, true);
+      super(fory, Int8List.class);
     }
 
     @Override
@@ -87,12 +106,16 @@ public class PrimitiveListSerializers {
       buffer.readBytes(array);
       return new Int8List(array);
     }
+
+    @Override
+    public Int8List copy(Int8List value) {
+      return new Int8List(value.copyArray());
+    }
   }
 
-  public static final class Int16ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Int16List> {
+  public static final class Int16ListSerializer extends PrimitiveListSerializer<Int16List> {
     public Int16ListSerializer(Fory fory) {
-      super(fory, Int16List.class, false, true);
+      super(fory, Int16List.class);
     }
 
     @Override
@@ -124,12 +147,16 @@ public class PrimitiveListSerializers {
       }
       return new Int16List(array);
     }
+
+    @Override
+    public Int16List copy(Int16List value) {
+      return new Int16List(value.copyArray());
+    }
   }
 
-  public static final class Int32ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Int32List> {
+  public static final class Int32ListSerializer extends PrimitiveListSerializer<Int32List> {
     public Int32ListSerializer(Fory fory) {
-      super(fory, Int32List.class, false, true);
+      super(fory, Int32List.class);
     }
 
     @Override
@@ -185,14 +212,18 @@ public class PrimitiveListSerializers {
       }
       return list;
     }
+
+    @Override
+    public Int32List copy(Int32List value) {
+      return new Int32List(value.copyArray());
+    }
   }
 
-  public static final class Int64ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Int64List> {
+  public static final class Int64ListSerializer extends PrimitiveListSerializer<Int64List> {
     private final boolean compressLongArray;
 
     public Int64ListSerializer(Fory fory) {
-      super(fory, Int64List.class, false, true);
+      super(fory, Int64List.class);
       compressLongArray =
           fory.getConfig().compressLongArray()
               && fory.getConfig().longEncoding() != LongEncoding.FIXED;
@@ -265,12 +296,16 @@ public class PrimitiveListSerializers {
       }
       return list;
     }
+
+    @Override
+    public Int64List copy(Int64List value) {
+      return new Int64List(value.copyArray());
+    }
   }
 
-  public static final class Uint8ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Uint8List> {
+  public static final class Uint8ListSerializer extends PrimitiveListSerializer<Uint8List> {
     public Uint8ListSerializer(Fory fory) {
-      super(fory, Uint8List.class, false, true);
+      super(fory, Uint8List.class);
     }
 
     @Override
@@ -286,12 +321,16 @@ public class PrimitiveListSerializers {
       buffer.readBytes(array);
       return new Uint8List(array);
     }
+
+    @Override
+    public Uint8List copy(Uint8List value) {
+      return new Uint8List(value.copyArray());
+    }
   }
 
-  public static final class Uint16ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Uint16List> {
+  public static final class Uint16ListSerializer extends PrimitiveListSerializer<Uint16List> {
     public Uint16ListSerializer(Fory fory) {
-      super(fory, Uint16List.class, false, true);
+      super(fory, Uint16List.class);
     }
 
     @Override
@@ -323,12 +362,16 @@ public class PrimitiveListSerializers {
       }
       return new Uint16List(array);
     }
+
+    @Override
+    public Uint16List copy(Uint16List value) {
+      return new Uint16List(value.copyArray());
+    }
   }
 
-  public static final class Uint32ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Uint32List> {
+  public static final class Uint32ListSerializer extends PrimitiveListSerializer<Uint32List> {
     public Uint32ListSerializer(Fory fory) {
-      super(fory, Uint32List.class, false, true);
+      super(fory, Uint32List.class);
     }
 
     @Override
@@ -384,14 +427,18 @@ public class PrimitiveListSerializers {
       }
       return list;
     }
+
+    @Override
+    public Uint32List copy(Uint32List value) {
+      return new Uint32List(value.copyArray());
+    }
   }
 
-  public static final class Uint64ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Uint64List> {
+  public static final class Uint64ListSerializer extends PrimitiveListSerializer<Uint64List> {
     private final boolean compressLongArray;
 
     public Uint64ListSerializer(Fory fory) {
-      super(fory, Uint64List.class, false, true);
+      super(fory, Uint64List.class);
       compressLongArray =
           fory.getConfig().compressLongArray()
               && fory.getConfig().longEncoding() != LongEncoding.FIXED;
@@ -464,12 +511,16 @@ public class PrimitiveListSerializers {
       }
       return list;
     }
+
+    @Override
+    public Uint64List copy(Uint64List value) {
+      return new Uint64List(value.copyArray());
+    }
   }
 
-  public static final class Float32ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Float32List> {
+  public static final class Float32ListSerializer extends PrimitiveListSerializer<Float32List> {
     public Float32ListSerializer(Fory fory) {
-      super(fory, Float32List.class, false, true);
+      super(fory, Float32List.class);
     }
 
     @Override
@@ -501,12 +552,16 @@ public class PrimitiveListSerializers {
       }
       return new Float32List(array);
     }
+
+    @Override
+    public Float32List copy(Float32List value) {
+      return new Float32List(value.copyArray());
+    }
   }
 
-  public static final class Float64ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Float64List> {
+  public static final class Float64ListSerializer extends PrimitiveListSerializer<Float64List> {
     public Float64ListSerializer(Fory fory) {
-      super(fory, Float64List.class, false, true);
+      super(fory, Float64List.class);
     }
 
     @Override
@@ -538,12 +593,16 @@ public class PrimitiveListSerializers {
       }
       return new Float64List(array);
     }
+
+    @Override
+    public Float64List copy(Float64List value) {
+      return new Float64List(value.copyArray());
+    }
   }
 
-  public static final class Float16ListSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<Float16List> {
+  public static final class Float16ListSerializer extends PrimitiveListSerializer<Float16List> {
     public Float16ListSerializer(Fory fory) {
-      super(fory, Float16List.class, false, true);
+      super(fory, Float16List.class);
     }
 
     @Override
@@ -574,6 +633,11 @@ public class PrimitiveListSerializers {
         }
       }
       return new Float16List(array);
+    }
+
+    @Override
+    public Float16List copy(Float16List value) {
+      return new Float16List(value.copyArray());
     }
   }
 

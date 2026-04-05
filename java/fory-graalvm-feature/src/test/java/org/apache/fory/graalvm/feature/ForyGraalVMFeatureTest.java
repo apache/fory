@@ -59,13 +59,12 @@ public class ForyGraalVMFeatureTest {
     assertFalse(
         GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class));
 
-    // Classes with private no-arg constructor don't need reflection registration
-    // (they have a no-arg constructor, just private)
-    assertFalse(
+    // Classes with private no-arg constructor need reflection registration.
+    assertTrue(
         GraalvmSupport.needReflectionRegisterForCreation(PrivateNoArgConstructorClass.class));
 
-    // Classes without no-arg constructor need reflection registration
-    assertTrue(GraalvmSupport.needReflectionRegisterForCreation(NoNoArgConstructorClass.class));
+    // Classes without no-arg constructor use the unsafe allocation path.
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(NoNoArgConstructorClass.class));
 
     // Abstract classes, interfaces, enums don't need reflection registration
     assertFalse(GraalvmSupport.needReflectionRegisterForCreation(AbstractClass.class));

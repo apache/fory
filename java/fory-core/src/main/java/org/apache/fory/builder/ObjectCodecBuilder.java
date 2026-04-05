@@ -199,7 +199,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     }
   }
 
-  private int getNumGroups(ObjectCodecOptimizer objectCodecOptimizer) {
+  protected int getNumGroups(ObjectCodecOptimizer objectCodecOptimizer) {
     return objectCodecOptimizer.boxedWriteGroups.size()
         + objectCodecOptimizer.buildInWriteGroups.size()
         + objectCodecOptimizer.otherWriteGroups.size()
@@ -511,7 +511,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     return expressions;
   }
 
-  private void deserializeReadGroup(
+  protected void deserializeReadGroup(
       List<List<Descriptor>> readGroups,
       int numGroups,
       ListExpression expressions,
@@ -634,7 +634,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
    * Return a list of expressions that deserialize all primitive fields. This can reduce unnecessary
    * check call and increment readerIndex in writeXXX.
    */
-  private List<Expression> deserializePrimitives(
+  protected List<Expression> deserializePrimitives(
       Expression bean, Expression buffer, List<List<Descriptor>> primitiveGroups) {
     int totalSize = getTotalSizeOfPrimitives(primitiveGroups);
     if (totalSize == 0) {

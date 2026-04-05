@@ -42,6 +42,7 @@ public class Main {
     Benchmark.main(args);
     CollectionExample.main(args);
     ArrayExample.main(args);
+    ExceptionExample.main(args);
     AbstractClassExample.main(args);
     FeatureTestExample.main(args);
   }

@@ -41,7 +41,7 @@ public class Config implements Serializable {
   private final boolean copyRef;
   private final boolean codeGenEnabled;
   private final boolean checkClassVersion;
-  private final CompatibleMode compatibleMode;
+  private final boolean compatible;
   private final boolean checkJdkClassSerializable;
   private final Class<? extends Serializer> defaultJDKStreamSerializerType;
   private final boolean compressString;
@@ -87,7 +87,7 @@ public class Config implements Serializable {
     registerGuavaTypes = builder.registerGuavaTypes;
     codeGenEnabled = builder.codeGenEnabled;
     checkClassVersion = builder.checkClassVersion;
-    compatibleMode = builder.compatibleMode;
+    compatible = builder.compatible;
     checkJdkClassSerializable = builder.checkJdkClassSerializable;
     defaultJDKStreamSerializerType = builder.defaultJDKStreamSerializerType;
     metaShareEnabled = builder.metaShareEnabled;
@@ -96,9 +96,9 @@ public class Config implements Serializable {
     deserializeUnknownClass = builder.deserializeUnknownClass;
     if (deserializeUnknownClass) {
       Preconditions.checkArgument(
-          metaShareEnabled || compatibleMode == CompatibleMode.COMPATIBLE,
+          metaShareEnabled || compatible,
           "Configuration error: deserializeUnknownClass=true requires either "
-              + "metaShareEnabled=true to access type information OR compatibleMode=COMPATIBLE "
+              + "metaShareEnabled=true to access type information OR compatibility mode enabled "
               + "to automatically resolve class schemas.");
     }
     asyncCompilationEnabled = builder.asyncCompilationEnabled;
@@ -176,8 +176,14 @@ public class Config implements Serializable {
     return checkClassVersion;
   }
 
+  /** Returns whether class schema compatibility mode is enabled. */
+  public boolean isCompatible() {
+    return compatible;
+  }
+
+  /** Returns the compatibility mode derived from {@link #isCompatible()} for API compatibility. */
   public CompatibleMode getCompatibleMode() {
-    return compatibleMode;
+    return compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
   }
 
   public boolean checkJdkClassSerializable() {
@@ -341,7 +347,7 @@ public class Config implements Serializable {
         && deserializeUnknownClass == config.deserializeUnknownClass
         && scalaOptimizationEnabled == config.scalaOptimizationEnabled
         && xlang == config.xlang
-        && compatibleMode == config.compatibleMode
+        && compatible == config.compatible
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding
         && forVirtualThread == config.forVirtualThread;
@@ -359,7 +365,7 @@ public class Config implements Serializable {
         copyRef,
         codeGenEnabled,
         checkClassVersion,
-        compatibleMode,
+        compatible,
         checkJdkClassSerializable,
         defaultJDKStreamSerializerType,
         compressString,

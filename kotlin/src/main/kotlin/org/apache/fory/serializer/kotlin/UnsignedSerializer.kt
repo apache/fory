@@ -30,13 +30,7 @@ import org.apache.fory.serializer.Serializers
  */
 public class UByteSerializer(
   fory: Fory,
-) :
-  Serializers.CrossLanguageCompatibleSerializer<UByte>(
-    fory,
-    UByte::class.java,
-    false,
-    true
-  ) {
+) : Serializers.CrossLanguageCompatibleSerializer<UByte>(fory, UByte::class.java, false, true) {
 
   override fun write(buffer: MemoryBuffer, value: UByte) {
     buffer.writeByte(value.toInt())
@@ -54,13 +48,7 @@ public class UByteSerializer(
  */
 public class UShortSerializer(
   fory: Fory,
-) :
-  Serializers.CrossLanguageCompatibleSerializer<UShort>(
-    fory,
-    UShort::class.java,
-    false,
-    true
-  ) {
+) : Serializers.CrossLanguageCompatibleSerializer<UShort>(fory, UShort::class.java, false, true) {
   override fun write(buffer: MemoryBuffer, value: UShort) {
     buffer.writeVarUint32(value.toInt())
   }
@@ -77,13 +65,7 @@ public class UShortSerializer(
  */
 public class UIntSerializer(
   fory: Fory,
-) :
-  Serializers.CrossLanguageCompatibleSerializer<UInt>(
-    fory,
-    UInt::class.java,
-    false,
-    true
-  ) {
+) : Serializers.CrossLanguageCompatibleSerializer<UInt>(fory, UInt::class.java, false, true) {
 
   override fun write(buffer: MemoryBuffer, value: UInt) {
     buffer.writeVarUint32(value.toInt())
@@ -101,13 +83,7 @@ public class UIntSerializer(
  */
 public class ULongSerializer(
   fory: Fory,
-) :
-  Serializers.CrossLanguageCompatibleSerializer<ULong>(
-    fory,
-    ULong::class.java,
-    false,
-    true
-  ) {
+) : Serializers.CrossLanguageCompatibleSerializer<ULong>(fory, ULong::class.java, false, true) {
   override fun write(buffer: MemoryBuffer, value: ULong) {
     buffer.writeVarUint64(value.toLong())
   }

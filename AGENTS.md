@@ -17,6 +17,7 @@ While working on Fory, please remember:
 - **Xlang Type System**: Java `native mode(xlang=false)` shares same type systems between type id from `Types.BOOL~Types.STRING` with `xlang mode(xlang=true)`, but for other types, java `native mode` has different type ids.
 - **Remote git repository**: `git@github.com:apache/fory.git` is remote repository, do not use other remote repository when you want to check code under `main` branch, **`apache/main`** is the only target main branch instead of `origin/main`
 - **Refresh remote main before compare**: before any diff/review/compare against `apache/main`, always run `git fetch apache main` first so comparisons use the latest remote main.
+- **PR review isolation**: when reviewing a GitHub pull request, always do the review in a new local git worktree. Do not switch the current branch or reuse the current worktree for that review unless the user explicitly asks for it.
 - **Contributor git repository**: A contributor should fork the `git@github.com:apache/fory.git` repo, and git push the code changes into their forked repo, then create a pull request from the branch in their forked repo into `git@github.com:apache/fory.git`.
 - **Debug Test Errors**: always set environment variable `ENABLE_FORY_DEBUG_OUTPUT` to `1` to see debug output.
 
