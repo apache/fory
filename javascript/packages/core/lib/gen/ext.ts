@@ -28,11 +28,16 @@ import { TypeMeta } from "../meta/TypeMeta";
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
   typeMeta: TypeMeta;
+  ownTypeInfoExpr: string;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo);
+    const serializerLookup = TypeId.isNamedType(typeInfo.typeId)
+      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      : `fory.typeResolver.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
+    this.ownTypeInfoExpr = `${serializerLookup}.getTypeInfo()`;
   }
 
   write(accessor: string): string {
@@ -164,7 +169,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
           `;
         } else {
           const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.ownTypeInfoExpr, this.builder.writer.ownName(), bytes);
         }
         break;
       default:

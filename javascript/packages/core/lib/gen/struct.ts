@@ -63,6 +63,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   sortedProps: { key: string; typeInfo: TypeInfo }[];
   metaChangedSerializer: string;
   typeMeta: TypeMeta;
+  ownTypeInfoExpr: string;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
@@ -70,6 +71,14 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     this.sortedProps = sortProps(this.typeInfo);
     this.metaChangedSerializer = this.scope.declareVar("metaChangedSerializer", "null");
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo);
+    // Build an expression that resolves this struct's own TypeInfo at runtime.
+    // This is needed so that nested struct generators (e.g., Person inside
+    // AddressBook) use their own TypeInfo for meta-share tracking, not the
+    // enclosing struct's TypeInfo.
+    const serializerLookup = TypeId.isNamedType(typeInfo.typeId)
+      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      : `fory.typeResolver.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
+    this.ownTypeInfoExpr = `${serializerLookup}.getTypeInfo()`;
   }
 
   readField(fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
@@ -434,7 +443,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       case TypeId.COMPATIBLE_STRUCT:
         {
           const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.ownTypeInfoExpr, this.builder.writer.ownName(), bytes);
         }
         break;
       case TypeId.NAMED_STRUCT:
@@ -449,7 +458,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             `;
           } else {
             const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
-            typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), this.builder.writer.ownName(), bytes);
+            typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.ownTypeInfoExpr, this.builder.writer.ownName(), bytes);
           }
         }
         break;

@@ -836,11 +836,18 @@ class JavaScriptGenerator(BaseGenerator):
                     return f"Type.union({{ {', '.join(case_parts)} }})"
                 return "Type.union()"
             if isinstance(resolved, Message):
+                evolving = self.get_effective_evolving(resolved)
                 if self.should_register_by_id(resolved):
-                    return f"Type.struct({resolved.type_id})"
+                    if evolving:
+                        return f"Type.struct({resolved.type_id})"
+                    else:
+                        return f"Type.struct({{ typeId: {resolved.type_id}, evolving: false }})"
                 ns = self.schema.package or "default"
                 qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                return f'Type.struct("{ns}.{qname}")'
+                if evolving:
+                    return f'Type.struct("{ns}.{qname}")'
+                else:
+                    return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}", evolving: false }})'
             # Unresolved — fall back to any
             return "Type.any()"
         elif isinstance(field_type, ListType):
@@ -903,12 +910,21 @@ class JavaScriptGenerator(BaseGenerator):
         props_str = ", ".join(props_parts)
         props_arg = f", {{ {props_str} }}" if props_parts else ""
 
+        evolving = self.get_effective_evolving(type_def)
         if self.should_register_by_id(type_def):
-            name_info = str(type_def.type_id)
+            if evolving:
+                name_info = str(type_def.type_id)
+            else:
+                name_info = f"{{ typeId: {type_def.type_id}, evolving: false }}"
         else:
             ns = self.schema.package or "default"
             qname = self._qualified_type_names.get(id(type_def), type_def.name)
-            name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
+            if evolving:
+                name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
+            else:
+                name_info = (
+                    f'{{ namespace: "{ns}", typeName: "{qname}", evolving: false }}'
+                )
 
         return f"{target_var}.registerSerializer(Type.struct({name_info}{props_arg}));"
 
