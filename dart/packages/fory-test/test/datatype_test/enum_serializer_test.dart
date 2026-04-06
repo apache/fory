@@ -144,5 +144,48 @@ void main() {
         ),
       ).throws<DeserializationRangeException>();
     });
+
+    test('writes and reads field-based enum ids', () {
+      final EnumSerializer serializer = EnumSerializer(false, [
+        EnumFieldBasedIds.A,
+        EnumFieldBasedIds.B,
+        EnumFieldBasedIds.C,
+      ], {
+        10: EnumFieldBasedIds.A,
+        20: EnumFieldBasedIds.B,
+        30: EnumFieldBasedIds.C,
+      });
+
+      final ByteWriter writer = ByteWriter();
+      serializer.write(writer, EnumFieldBasedIds.B, _newSerializationContext());
+      final ByteReader reader = ByteReader.forBytes(writer.takeBytes());
+      check(reader.readVarUint32Small7()).equals(20);
+
+      final ByteWriter idWriter = ByteWriter();
+      idWriter.writeVarUint32Small7(30);
+      final Enum value = serializer.read(
+        ByteReader.forBytes(idWriter.takeBytes()),
+        0,
+        _newDeserializationContext(),
+      );
+      check(value).equals(EnumFieldBasedIds.C);
+    });
+
+    test('field-based duplicate ids fall back to ordinal', () {
+      final EnumSerializer serializer = EnumSerializer(false, [
+        EnumFieldBasedDuplicateIds.A,
+        EnumFieldBasedDuplicateIds.B,
+        EnumFieldBasedDuplicateIds.C,
+      ]);
+
+      final ByteWriter writer = ByteWriter();
+      serializer.write(
+        writer,
+        EnumFieldBasedDuplicateIds.B,
+        _newSerializationContext(),
+      );
+      final ByteReader reader = ByteReader.forBytes(writer.takeBytes());
+      check(reader.readVarUint32Small7()).equals(1);
+    });
   });
 }
