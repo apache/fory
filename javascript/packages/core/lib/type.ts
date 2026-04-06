@@ -265,6 +265,8 @@ export interface Config {
   refTracking: boolean | null;
   useSliceString: boolean;
   maxDepth?: number;
+  maxBinarySize?: number;
+  maxCollectionSize?: number;
   hooks: {
     afterCodeGenerated?: (code: string) => string;
   };
