@@ -26,17 +26,31 @@ import 'package:fory/src/codegen/meta/impl/enum_spec_generator.dart';
 class EnumAnalyzerImpl implements EnumAnalyzer {
   const EnumAnalyzerImpl();
 
+  /// Finds a non-constant field annotated with @ForyEnumId().
+  String? _findIdField(EnumElement enumElement) {
+    for (final FieldElement field in enumElement.fields) {
+      if (field.isEnumConstant || field.isSynthetic) continue;
+      for (final ElementAnnotation annotation in field.metadata) {
+        final DartObject? annotationValue = annotation.computeConstantValue();
+        final Element? typeElement = annotationValue?.type?.element;
+        if (typeElement is ClassElement &&
+            AnalysisTypeIdentifier.isForyEnumId(typeElement)) {
+          return field.name;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Reads @ForyEnumId(id) from per-value annotation.
   int? _readEnumId(FieldElement enumField) {
     for (final ElementAnnotation annotation in enumField.metadata) {
       final DartObject? annotationValue = annotation.computeConstantValue();
       final Element? typeElement = annotationValue?.type?.element;
-      if (typeElement is! ClassElement) {
-        continue;
+      if (typeElement is ClassElement &&
+          AnalysisTypeIdentifier.isForyEnumId(typeElement)) {
+        return annotationValue?.getField('id')?.toIntValue();
       }
-      if (!AnalysisTypeIdentifier.isForyEnumId(typeElement)) {
-        continue;
-      }
-      return annotationValue?.getField('id')?.toIntValue();
     }
     return null;
   }
@@ -47,36 +61,37 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
     final String enumName = enumElement.name;
     final List<FieldElement> enumFields =
         enumElement.fields.where((FieldElement e) => e.isEnumConstant).toList();
-
     final List<String> enumValues =
         enumFields.map((FieldElement e) => e.name).toList();
 
+    final String? idFieldName = _findIdField(enumElement);
     final Map<String, int> enumIds = <String, int>{};
     final Map<int, String> usedIds = <int, String>{};
-    final List<String> missingIdValues = <String>[];
     final List<String> duplicateIds = <String>[];
-    int annotatedCount = 0;
+    final List<String> missingIdValues = <String>[];
+
     for (final FieldElement enumField in enumFields) {
-      final int? id = _readEnumId(enumField);
+      final int? id = idFieldName != null
+          ? enumField.computeConstantValue()?.getField(idFieldName)?.toIntValue()
+          : _readEnumId(enumField);
+
       if (id == null) {
         missingIdValues.add(enumField.name);
         continue;
       }
-      annotatedCount++;
 
       final String? firstValueWithId = usedIds[id];
       if (firstValueWithId != null) {
         duplicateIds.add('$id for $firstValueWithId and ${enumField.name}');
         continue;
       }
-
       usedIds[id] = enumField.name;
       enumIds[enumField.name] = id;
     }
 
     final bool useAnnotatedIds =
         missingIdValues.isEmpty && duplicateIds.isEmpty;
-    final bool hasAnyAnnotatedIds = annotatedCount > 0;
+    final bool hasAnyAnnotatedIds = enumIds.isNotEmpty;
     if (hasAnyAnnotatedIds && !useAnnotatedIds) {
       if (missingIdValues.isNotEmpty) {
         print(

@@ -47,19 +47,36 @@ const ForyEnum foryEnum = ForyEnum();
 ///
 /// This class extends [ForyObject] and is used to annotate enum ids
 /// within the Fory framework.
-/// Example:
+///
+/// Can be used in two ways:
+///
+/// 1. On each enum value with an explicit id:
 /// ```
-/// @foryEnum                  
+/// @foryEnum
 /// enum Color {
-///   @ForyEnumId(5)          
+///   @ForyEnumId(5)
 ///   blue,
 ///   @ForyEnumId(10)
 ///   white,
-// }
+/// }
 /// ```
-@Target({TargetKind.enumValue})
+///
+/// 2. On an int field of an enhanced enum to use its value as the id:
+/// ```
+/// @foryEnum
+/// enum UserRole {
+///   green(0),
+///   blue(1),
+///   white(2);
+///
+///   @ForyEnumId()
+///   final int code;
+///   const Color(this.code);
+/// }
+/// ```
+@Target({TargetKind.enumValue, TargetKind.field})
 class ForyEnumId extends ForyObject {
-  final int id;
+  final int? id;
 
-  const ForyEnumId(this.id);
+  const ForyEnumId([this.id]);
 }

@@ -49,3 +49,25 @@ enum EnumDuplicateIds {
   @ForyEnumId(30)
   C,
 }
+
+@foryEnum
+enum EnumFieldBasedIds {
+  A(10),
+  B(20),
+  C(30);
+
+  @ForyEnumId()
+  final int code;
+  const EnumFieldBasedIds(this.code);
+}
+
+@foryEnum
+enum EnumFieldBasedDuplicateIds {
+  A(10),
+  B(10),
+  C(30);
+
+  @ForyEnumId()
+  final int code;
+  const EnumFieldBasedDuplicateIds(this.code);
+}
